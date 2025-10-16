@@ -29,8 +29,6 @@ function App() {
     ticketMedio: vendas.length > 0 ? vendas.reduce((sum, v) => sum + v.valor, 0) / vendas.length : 0
   };
 
-  const unreadCount = notifications.filter(n => n.unread).length;
-
   const handleCalcularROI = async () => {
     if (!produtoSelecionado || !calculoROI.investimento || !calculoROI.vendasEsperadas) return;
     try {
