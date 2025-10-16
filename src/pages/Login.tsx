@@ -1,25 +1,25 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Mail, Lock, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export default function Login() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setIsLoading(true);
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: formData.email,
+        password: formData.password,
       });
 
       if (error) throw error;
@@ -29,71 +29,108 @@ export default function Login() {
     } catch (error: any) {
       toast.error(error.message || 'Erro ao fazer login');
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-6">
+      <div className="max-w-md w-full">
+        {/* Botão Voltar */}
+        <button 
+          onClick={() => navigate('/')} 
+          className="flex items-center gap-2 text-purple-300 hover:text-white mb-8 transition"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          Voltar para início
+        </button>
+
+        {/* Card Login */}
+        <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-8 shadow-2xl">
+          {/* Logo */}
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">Bem-vindo de volta!</h1>
-            <p className="text-slate-400">Entre para acessar sua conta</p>
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-3 rounded-xl inline-block mb-4">
+              <svg className="w-10 h-10" fill="white" viewBox="0 0 24 24">
+                <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
+              </svg>
+            </div>
+            <h1 className="text-3xl font-bold text-white mb-2">Bem-vindo de Volta!</h1>
+            <p className="text-purple-300">Entre para acessar sua conta</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Email */}
             <div>
-              <Label htmlFor="email" className="text-white">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="bg-slate-900/50 border-purple-500/30 text-white"
-              />
+              <label className="block text-sm font-medium text-purple-300 mb-2">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
+                <input
+                  type="email"
+                  required
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="w-full bg-slate-700/50 text-white pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
+                  placeholder="seu@email.com"
+                />
+              </div>
             </div>
 
+            {/* Senha */}
             <div>
-              <Label htmlFor="password" className="text-white">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="bg-slate-900/50 border-purple-500/30 text-white"
-              />
+              <label className="block text-sm font-medium text-purple-300 mb-2">
+                Senha
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
+                <input
+                  type="password"
+                  required
+                  value={formData.password}
+                  onChange={(e) => setFormData({...formData, password: e.target.value})}
+                  className="w-full bg-slate-700/50 text-white pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
+                  placeholder="••••••••"
+                />
+              </div>
             </div>
 
-            <Button
+            {/* Esqueci Senha */}
+            <div className="text-right">
+              <button type="button" className="text-sm text-purple-400 hover:text-purple-300 transition">
+                Esqueci minha senha
+              </button>
+            </div>
+
+            {/* Botão Login */}
+            <button
               type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
             >
-              {loading ? 'Entrando...' : 'Entrar'}
-            </Button>
+              {isLoading ? 'Entrando...' : 'Entrar'}
+            </button>
           </form>
 
-          <div className="mt-6 text-center">
-            <p className="text-slate-400">
-              Não tem uma conta?{' '}
-              <button
-                onClick={() => navigate('/cadastro')}
-                className="text-orange-400 hover:text-orange-300 font-semibold"
-              >
-                Cadastre-se
-              </button>
-            </p>
+          {/* Divider */}
+          <div className="relative my-8">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-600"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-4 bg-slate-800 text-slate-400">ou</span>
+            </div>
           </div>
 
-          <div className="mt-4 text-center">
+          {/* Criar Conta */}
+          <div className="text-center">
+            <p className="text-slate-400 mb-4">Ainda não tem conta?</p>
             <button
-              onClick={() => navigate('/landing')}
-              className="text-slate-400 hover:text-white text-sm"
+              onClick={() => navigate('/cadastro')}
+              className="w-full border-2 border-purple-500/50 text-purple-300 py-3 rounded-lg font-semibold hover:bg-purple-500/10 transition"
             >
-              ← Voltar para o início
+              Criar Conta Grátis
             </button>
           </div>
         </div>
