@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Package, RefreshCw, Bell, X, ShoppingCart, Plus, Copy, Check, Sparkles, MessageSquare, Calculator, TrendingUp, DollarSign, Target, Zap } from 'lucide-react';
+import { Package, RefreshCw, Bell, X, ShoppingCart, Plus, Copy, Check, Sparkles, MessageSquare, Calculator, TrendingUp, DollarSign, Target, Zap, Send } from 'lucide-react';
 import { API_URL } from '../config';
 
 function Index() {
@@ -18,6 +18,8 @@ function Index() {
   const [buscaTexto, setBuscaTexto] = useState('');
   const [calculoROI, setCalculoROI] = useState({ investimento: '', vendasEsperadas: '', resultado: null });
   const [notifications, setNotifications] = useState([{ id: 1, type: 'success', message: 'Sistema online!', time: 'Agora', unread: true }]);
+  const [showWhatsApp, setShowWhatsApp] = useState(false);
+  const [whatsappData, setWhatsappData] = useState({ phone: '', message: '' });
 
   const stats = {
     produtosListados: produtosAtivos.length,
@@ -116,8 +118,89 @@ function Index() {
     setVendas([{ id: Date.now(), produtoNome: produto.nome, valor: produto.preco, comissao: produto.comissao, data: new Date().toISOString() }, ...vendas]);
   };
 
+  const handleOpenWhatsApp = (produto) => {
+    const defaultMessage = `🔥 ${produto.nome}\n💰 R$ ${produto.preco.toFixed(2)}\n⭐ ${produto.rating} estrelas\n📦 Frete GRÁTIS\n👉 ${produto.url}`;
+    setProdutoSelecionado(produto);
+    setWhatsappData({ phone: '', message: defaultMessage });
+    setShowWhatsApp(true);
+  };
+
+  const handleSendWhatsApp = async () => {
+    if (!whatsappData.phone || !whatsappData.message) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/send-whatsapp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: whatsappData.phone,
+          message: whatsappData.message,
+          userId: 'user_001'
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.whatsappUrl) {
+        window.open(data.whatsappUrl, '_blank');
+        setShowWhatsApp(false);
+        setNotifications([{ id: Date.now(), type: 'success', message: 'WhatsApp aberto!', time: 'Agora', unread: true }, ...notifications]);
+      }
+    } catch (error) {
+      console.error('Erro ao enviar WhatsApp:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      {showWhatsApp && produtoSelecionado && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-orange-500/30 rounded-2xl p-6 max-w-md w-full">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <Send className="w-8 h-8 text-green-400" />
+                <h2 className="text-2xl font-bold text-white">Enviar WhatsApp</h2>
+              </div>
+              <button onClick={() => setShowWhatsApp(false)} className="text-orange-300 hover:text-white">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div className="bg-slate-700/50 p-4 rounded-lg">
+                <p className="text-orange-300 text-sm mb-2">{produtoSelecionado.nome}</p>
+                <p className="text-white font-bold">R$ {produtoSelecionado.preco.toFixed(2)}</p>
+              </div>
+              <div>
+                <label className="text-orange-300 text-sm block mb-2">Telefone (com DDD)</label>
+                <input 
+                  type="tel" 
+                  value={whatsappData.phone} 
+                  onChange={(e) => setWhatsappData({...whatsappData, phone: e.target.value})} 
+                  className="w-full bg-slate-700 text-white px-4 py-3 rounded-lg border border-orange-500/30 focus:outline-none" 
+                  placeholder="11999999999" 
+                />
+              </div>
+              <div>
+                <label className="text-orange-300 text-sm block mb-2">Mensagem</label>
+                <textarea 
+                  value={whatsappData.message} 
+                  onChange={(e) => setWhatsappData({...whatsappData, message: e.target.value})} 
+                  className="w-full bg-slate-700 text-white px-4 py-3 rounded-lg border border-orange-500/30 focus:outline-none h-32" 
+                  placeholder="Digite sua mensagem..."
+                />
+              </div>
+              <button 
+                onClick={handleSendWhatsApp} 
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-lg font-semibold flex items-center justify-center gap-2"
+              >
+                <Send className="w-5 h-5" />
+                Enviar WhatsApp
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCalculadora && produtoSelecionado && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-slate-800 border border-orange-500/30 rounded-2xl p-6 max-w-md w-full">
@@ -310,6 +393,10 @@ function Index() {
                             <button onClick={() => handleCopyMessage(produto)} className="flex items-center gap-2 bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 text-sm font-semibold">
                               {copiedStates[`msg-${produto.asin}`] ? <Check className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
                               Mensagem
+                            </button>
+                            <button onClick={() => handleOpenWhatsApp(produto)} className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600 text-sm font-semibold">
+                              <Send className="w-4 h-4" />
+                              WhatsApp
                             </button>
                             <button onClick={() => handleGerarPosts(produto)} className="flex items-center gap-2 bg-gradient-to-r from-orange-500 to-pink-500 text-white px-4 py-2 rounded-lg text-sm font-semibold">
                               <Sparkles className="w-4 h-4" />
