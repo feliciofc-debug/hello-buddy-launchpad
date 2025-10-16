@@ -44,7 +44,7 @@ function Index() {
         })
       });
       const data = await response.json();
-      if (data.success) setCalculoROI({ ...calculoROI, resultado: data.calculo });
+      if (data.calculo) setCalculoROI({ ...calculoROI, resultado: data.calculo });
     } catch (error) {
       console.error('Erro:', error);
     }
@@ -75,7 +75,7 @@ function Index() {
         body: JSON.stringify({ produto })
       });
       const data = await response.json();
-      if (data.success) setPostsGerados(data.posts);
+      if (data.posts) setPostsGerados(data.posts);
     } catch (error) {
       console.error('Erro:', error);
     } finally {
@@ -95,7 +95,7 @@ function Index() {
       const url = buscaTexto ? `${API_URL}/buscar-oportunidades?limite=100&busca=${encodeURIComponent(buscaTexto)}` : `${API_URL}/buscar-oportunidades?limite=100`;
       const response = await fetch(url);
       const data = await response.json();
-      if (data.success) {
+      if (data.produtos) {
         setOportunidades(data.produtos);
         setNotifications([{ id: Date.now(), type: 'success', message: `${data.total} produtos!`, time: 'Agora', unread: true }, ...notifications]);
         setActiveTab('oportunidades');
