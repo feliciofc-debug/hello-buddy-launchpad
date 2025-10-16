@@ -146,7 +146,7 @@ function Index() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
-        navigate('/login');
+        return; // Não faz nada, deixa o handleLogout controlar
       }
       setUser(session?.user ?? null);
     });
