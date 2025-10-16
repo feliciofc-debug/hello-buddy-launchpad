@@ -1,1 +1,1 @@
-export const API_URL = 'http://191.252.219.61:5000';
+export const API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
