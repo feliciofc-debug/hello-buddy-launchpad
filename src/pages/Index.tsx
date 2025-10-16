@@ -92,7 +92,7 @@ function Index() {
   const handleScanOportunidades = async () => {
     setIsScanning(true);
     try {
-      const url = buscaTexto ? `${API_URL}/buscar-oportunidades?limite=100&busca=${encodeURIComponent(buscaTexto)}` : `${API_URL}/buscar-oportunidades?limite=100`;
+      const url = buscaTexto ? `${API_URL}/buscar-oportunidades?limite=1000&busca=${encodeURIComponent(buscaTexto)}` : `${API_URL}/buscar-oportunidades?limite=1000`;
       const response = await fetch(url);
       const data = await response.json();
       if (data.produtos) {
