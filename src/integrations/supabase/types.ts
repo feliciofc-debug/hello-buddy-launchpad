@@ -14,7 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      whatsapp_notifications: {
+        Row: {
+          client_phone: string
+          created_at: string
+          id: string
+          message: string
+          sent_at: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          client_phone: string
+          created_at?: string
+          id?: string
+          message: string
+          sent_at?: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          client_phone?: string
+          created_at?: string
+          id?: string
+          message?: string
+          sent_at?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
