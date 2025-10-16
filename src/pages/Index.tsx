@@ -34,7 +34,7 @@ function Index() {
   const handleCalcularROI = async () => {
     if (!produtoSelecionado || !calculoROI.investimento || !calculoROI.vendasEsperadas) return;
     try {
-      const response = await fetch(`${API_URL}/api/calcular-roi`, {
+      const response = await fetch(`${API_URL}/calcular-roi`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -69,7 +69,7 @@ function Index() {
     setIsGeneratingPosts(true);
     setPostsGerados([]);
     try {
-      const response = await fetch(`${API_URL}/api/gerar-posts`, {
+      const response = await fetch(`${API_URL}/gerar-posts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ produto })
@@ -92,7 +92,7 @@ function Index() {
   const handleScanOportunidades = async () => {
     setIsScanning(true);
     try {
-      const url = buscaTexto ? `${API_URL}/api/buscar-oportunidades?limite=100&busca=${encodeURIComponent(buscaTexto)}` : `${API_URL}/api/buscar-oportunidades?limite=100`;
+      const url = buscaTexto ? `${API_URL}/buscar-oportunidades?limite=100&busca=${encodeURIComponent(buscaTexto)}` : `${API_URL}/buscar-oportunidades?limite=100`;
       const response = await fetch(url);
       const data = await response.json();
       if (data.success) {
