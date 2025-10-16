@@ -37,7 +37,7 @@ export default function Cadastro() {
       if (error) throw error;
 
       toast.success('Conta criada com sucesso! Redirecionando...');
-      setTimeout(() => navigate('/'), 2000);
+      setTimeout(() => navigate('/dashboard'), 2000);
     } catch (error: any) {
       toast.error(error.message || 'Erro ao criar conta');
     } finally {

@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { Package, RefreshCw, Bell, X, ShoppingCart, Plus, Copy, Check, Sparkles, MessageSquare, Calculator, TrendingUp, DollarSign, Target, Zap, Send } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Package, RefreshCw, Bell, X, ShoppingCart, Plus, Copy, Check, Sparkles, MessageSquare, Calculator, TrendingUp, DollarSign, Target, Zap, Send, LogOut } from 'lucide-react';
 import { API_URL } from '../config';
+import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 function Index() {
+  const navigate = useNavigate();
+  const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isScanning, setIsScanning] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -125,6 +130,36 @@ function Index() {
     setShowWhatsApp(true);
   };
 
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        navigate('/login');
+        return;
+      }
+      
+      setUser(session.user);
+    };
+
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        navigate('/login');
+      }
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success('Logout realizado com sucesso!');
+    navigate('/login');
+  };
+
   const handleSendWhatsApp = async () => {
     if (!whatsappData.phone || !whatsappData.message) return;
     
@@ -135,7 +170,7 @@ function Index() {
         body: JSON.stringify({
           phone: whatsappData.phone,
           message: whatsappData.message,
-          userId: 'user_001'
+          userId: user?.id || 'anonymous'
         })
       });
       
@@ -150,6 +185,10 @@ function Index() {
       console.error('Erro ao enviar WhatsApp:', error);
     }
   };
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -293,6 +332,15 @@ function Index() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 mr-4">
+                <div className="text-right">
+                  <p className="text-white text-sm font-semibold">{user?.email}</p>
+                  <p className="text-orange-300 text-xs">Conta ativa</p>
+                </div>
+                <button onClick={handleLogout} className="p-2 bg-red-500/20 border border-red-500/30 rounded-lg hover:bg-red-500/30 transition">
+                  <LogOut className="w-5 h-5 text-red-400" />
+                </button>
+              </div>
               <div className="relative">
                 <button onClick={() => setShowNotifications(!showNotifications)} className="relative p-2 bg-slate-700 rounded-lg hover:bg-slate-600">
                   <Bell className="w-5 h-5 text-orange-300" />
