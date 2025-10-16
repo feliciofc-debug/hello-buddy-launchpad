@@ -104,13 +104,23 @@ export default function Login() {
             </div>
 
             {/* Botão Login */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
-            >
-              {isLoading ? 'Entrando...' : 'Entrar'}
-            </button>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
+              >
+                {isLoading ? 'Entrando...' : 'Entrar'}
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => navigate('/cadastro')}
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition"
+              >
+                Criar Conta
+              </button>
+            </div>
           </form>
 
           {/* Divider */}
