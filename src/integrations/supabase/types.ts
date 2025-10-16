@@ -14,6 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      profiles: {
+        Row: {
+          amazon_id: string | null
+          cpf: string
+          created_at: string
+          hotmart_email: string | null
+          id: string
+          mercado_livre_id: string | null
+          nome: string
+          shopee_id: string | null
+          updated_at: string
+          whatsapp: string
+        }
+        Insert: {
+          amazon_id?: string | null
+          cpf: string
+          created_at?: string
+          hotmart_email?: string | null
+          id: string
+          mercado_livre_id?: string | null
+          nome: string
+          shopee_id?: string | null
+          updated_at?: string
+          whatsapp: string
+        }
+        Update: {
+          amazon_id?: string | null
+          cpf?: string
+          created_at?: string
+          hotmart_email?: string | null
+          id?: string
+          mercado_livre_id?: string | null
+          nome?: string
+          shopee_id?: string | null
+          updated_at?: string
+          whatsapp?: string
+        }
+        Relationships: []
+      }
       whatsapp_notifications: {
         Row: {
           client_phone: string
