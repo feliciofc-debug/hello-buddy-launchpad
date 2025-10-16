@@ -157,7 +157,7 @@ function Index() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast.success('Logout realizado com sucesso!');
-    navigate('/login');
+    navigate('/');
   };
 
   const handleSendWhatsApp = async () => {
