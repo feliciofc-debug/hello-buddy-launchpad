@@ -35,7 +35,9 @@ const Planos = () => {
     id: 'completo',
     nome: 'Plano Completo AMZ Ofertas',
     precoOriginal: 397,
-    preco: 147,
+    preco: 1764,
+    precoParcela: 147,
+    parcelas: 12,
     economia: 250,
     percentualDesconto: 63,
     features: [
@@ -139,10 +141,12 @@ const Planos = () => {
               </div>
               <div className="flex items-center justify-center gap-2 mb-3">
                 <span className="text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500">
-                  R$ {plano.preco}
+                  12x R$ {plano.precoParcela}
                 </span>
-                <span className="text-2xl text-orange-300">/mês</span>
               </div>
+              <p className="text-gray-300 text-lg mb-2">
+                Total: R$ {plano.preco}
+              </p>
               <p className="text-orange-300 text-lg font-semibold mb-2">
                 Apenas para os 100 primeiros clientes
               </p>
