@@ -96,9 +96,16 @@ const Planos = () => {
       console.log('✅ Resultado Stripe:', result);
       
       if (result.success && result.checkoutUrl) {
-        console.log('✅ Redirecionando para:', result.checkoutUrl);
-        // Redirect IMEDIATO sem demora
-        window.location.href = result.checkoutUrl;
+        console.log('✅ URL Checkout:', result.checkoutUrl);
+        
+        // Tentar redirect direto
+        try {
+          window.location.assign(result.checkoutUrl);
+        } catch (redirectError) {
+          console.error('Erro no redirect, tentando window.open:', redirectError);
+          // Fallback: abrir em nova aba
+          window.open(result.checkoutUrl, '_blank');
+        }
       } else {
         setLoading(false);
         toast.error('Erro ao processar pagamento: ' + (result.error || 'Tente novamente'));
