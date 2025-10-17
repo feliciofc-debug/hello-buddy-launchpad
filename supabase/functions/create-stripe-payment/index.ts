@@ -31,7 +31,6 @@ serve(async (req) => {
       },
       body: new URLSearchParams([
         ['payment_method_types[]', 'card'],
-        ['payment_method_types[]', 'pix'],
         ['payment_method_types[]', 'boleto'],
         ['payment_method_options[boleto][expires_after_days]', '3'],
         ['payment_method_options[card][installments][enabled]', 'true'],
