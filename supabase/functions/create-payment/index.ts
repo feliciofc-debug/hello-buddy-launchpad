@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.75.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,65 +13,54 @@ serve(async (req) => {
   try {
     const { plano, valor, nome } = await req.json();
     
-    // Obter o usuário autenticado
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('Não autorizado');
+    const accessToken = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN');
+    
+    if (!accessToken) {
+      throw new Error('MERCADOPAGO_ACCESS_TOKEN não configurado');
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: authHeader },
-        },
-      }
-    );
+    // Criar preferência de pagamento no Mercado Pago
+    const preference = {
+      items: [
+        {
+          title: `${nome}`,
+          unit_price: valor,
+          quantity: 1,
+        }
+      ],
+      back_urls: {
+        success: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
+        failure: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
+        pending: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`
+      },
+      auto_return: 'approved',
+      external_reference: plano,
+      notification_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
+    };
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    console.log('Criando preferência no Mercado Pago:', preference);
+
+    const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(preference),
+    });
+
+    const data = await response.json();
     
-    if (userError || !user) {
-      throw new Error('Usuário não autenticado');
+    console.log('Resposta do Mercado Pago:', data);
+
+    if (!data.init_point) {
+      throw new Error('Erro ao criar preferência de pagamento');
     }
 
-    console.log('Criando pagamento temporário para usuário:', user.id);
-    
-    // Criar assinatura ativa para teste
-    const { data: subscription, error: subError } = await supabase
-      .from('subscriptions')
-      .upsert({
-        user_id: user.id,
-        status: 'active',
-        plan_id: plano,
-        amount: valor,
-        payment_method: 'pix',
-        payment_id: `test_${Date.now()}`,
-        expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 dias
-      })
-      .select()
-      .single();
-
-    if (subError) {
-      console.error('Erro ao criar assinatura:', subError);
-      throw subError;
-    }
-
-    console.log('Assinatura criada:', subscription);
-    
-    // Simulação de pagamento PIX temporário
-    const pixCode = `00020126360014BR.GOV.BCB.PIX0114+5511999999999520400005303986540${valor.toFixed(2)}5802BR5913AMZ Ofertas6009SAO PAULO62070503***6304XXXX`;
-    
-    // Retorna dados simulados para teste
     return new Response(
       JSON.stringify({
-        success: true,
-        payment_type: 'pix',
-        pix_code: pixCode,
-        amount: valor,
-        status: 'active',
-        subscription_id: subscription.id,
-        message: 'Pagamento de teste gerado e assinatura ativada!'
+        init_point: data.init_point,
+        preference_id: data.id
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

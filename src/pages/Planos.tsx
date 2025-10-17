@@ -33,13 +33,13 @@ const Planos = () => {
 
   const plano = {
     id: 'completo',
-    nome: 'Plano Completo AMZ Ofertas - TESTE',
+    nome: 'Plano Completo AMZ Ofertas',
     precoOriginal: 397,
-    preco: 12,
-    precoParcela: 1,
+    preco: 1764,
+    precoParcela: 147,
     parcelas: 12,
     economia: 250,
-    percentualDesconto: 97,
+    percentualDesconto: 63,
     features: [
       'Produtos ilimitados',
       'Busca automática de oportunidades',
@@ -75,11 +75,9 @@ const Planos = () => {
 
       if (error) throw error;
 
-      if (data?.success) {
-        toast.success('Pagamento de teste criado! Valor: R$ ' + data.amount);
-        console.log('Código PIX:', data.pix_code);
-        // Redireciona para dashboard após 2 segundos
-        setTimeout(() => navigate('/dashboard'), 2000);
+      if (data?.init_point) {
+        // Redireciona diretamente para o Mercado Pago
+        window.location.href = data.init_point;
       } else {
         toast.error('Erro ao processar pagamento');
       }
