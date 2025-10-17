@@ -32,6 +32,10 @@ serve(async (req) => {
       body: new URLSearchParams([
         ['payment_method_types[]', 'card'],
         ['payment_method_types[]', 'boleto'],
+        ['payment_method_options[boleto][expires_after_days]', '3'],
+        ['payment_method_options[card][installments][enabled]', 'true'],
+        ['payment_method_options[card][installments][plan][count]', '12'],
+        ['payment_method_options[card][installments][plan][type]', 'fixed_count'],
         ['line_items[0][price_data][currency]', 'brl'],
         ['line_items[0][price_data][product_data][name]', 'AMZ Ofertas - Plano Mensal'],
         ['line_items[0][price_data][product_data][description]', 'Acesso completo à plataforma'],
