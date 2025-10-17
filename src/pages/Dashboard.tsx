@@ -141,22 +141,25 @@ function Index() {
           return;
         }
         
-        // Verificar se o usuário tem assinatura ativa
-        const { data: subscription, error } = await supabase
-          .from('subscriptions')
-          .select('*')
-          .eq('user_id', session.user.id)
-          .eq('status', 'active')
-          .maybeSingle();
-        
-        if (error) {
-          console.error('Erro ao verificar assinatura:', error);
-        }
-        
-        // Se não tiver assinatura ativa, redireciona para planos
-        if (!subscription) {
-          navigate('/planos');
-          return;
+        // Exceção para admin - não precisa de assinatura
+        if (session.user.email !== 'admin@amzofertas.com') {
+          // Verificar se o usuário tem assinatura ativa
+          const { data: subscription, error } = await supabase
+            .from('subscriptions')
+            .select('*')
+            .eq('user_id', session.user.id)
+            .eq('status', 'active')
+            .maybeSingle();
+          
+          if (error) {
+            console.error('Erro ao verificar assinatura:', error);
+          }
+          
+          // Se não tiver assinatura ativa, redireciona para planos
+          if (!subscription) {
+            navigate('/planos');
+            return;
+          }
         }
         
         setUser(session.user);
