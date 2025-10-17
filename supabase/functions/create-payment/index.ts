@@ -19,7 +19,7 @@ serve(async (req) => {
       throw new Error('MERCADOPAGO_ACCESS_TOKEN não configurado');
     }
 
-    // Criar preferência de pagamento no Mercado Pago com PIX
+    // Criar preferência de pagamento no Mercado Pago
     const preference = {
       items: [
         {
@@ -28,16 +28,6 @@ serve(async (req) => {
           quantity: 1,
         }
       ],
-      payment_methods: {
-        excluded_payment_types: [
-          { id: "credit_card" },
-          { id: "debit_card" },
-          { id: "ticket" },
-          { id: "bank_transfer" },
-          { id: "atm" }
-        ],
-        installments: 1
-      },
       back_urls: {
         success: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
         failure: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
