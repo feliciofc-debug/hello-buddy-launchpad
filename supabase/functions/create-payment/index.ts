@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { plano, valor, nome } = await req.json();
+    const { userId, userEmail, planType } = await req.json();
     
     const accessToken = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN');
     
@@ -19,26 +19,37 @@ serve(async (req) => {
       throw new Error('MERCADOPAGO_ACCESS_TOKEN não configurado');
     }
 
+    console.log('Criando pagamento para:', { userId, userEmail, planType });
+
     // Criar preferência de pagamento no Mercado Pago
+    // NÃO excluir métodos de pagamento para permitir PIX, Cartão e Boleto
     const preference = {
       items: [
         {
-          title: `${nome}`,
-          unit_price: valor,
+          title: 'AMZ Ofertas - Plano Mensal',
+          description: 'Acesso completo à plataforma',
+          unit_price: 147.00,
           quantity: 1,
+          currency_id: 'BRL'
         }
       ],
+      payer: {
+        email: userEmail,
+        name: 'Cliente AMZ Ofertas'
+      },
       payment_methods: {
         installments: 12,
+        // Não excluir nenhum tipo de pagamento para permitir PIX
+        excluded_payment_types: [],
+        excluded_payment_methods: []
       },
       back_urls: {
-        success: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
-        failure: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
-        pending: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`
+        success: `${req.headers.get('origin') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'}/dashboard`,
+        failure: `${req.headers.get('origin') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'}/planos`,
+        pending: `${req.headers.get('origin') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'}/planos`
       },
       auto_return: 'approved',
-      external_reference: plano,
-      notification_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
+      external_reference: userId,
       statement_descriptor: 'AMZ OFERTAS',
     };
 
@@ -63,8 +74,9 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        init_point: data.init_point,
-        preference_id: data.id
+        success: true,
+        checkoutUrl: data.init_point,
+        preferenceId: data.id
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
