@@ -92,17 +92,17 @@ const Planos = () => {
     try {
       const { data, error } = await supabase.functions.invoke('create-payment', {
         body: {
-          plano: planoSelecionado.id,
-          valor: planoSelecionado.preco,
-          nome: planoSelecionado.nome
+          userId: user.id,
+          userEmail: user.email,
+          planType: planoSelecionado.id
         }
       });
 
       if (error) throw error;
 
-      if (data?.init_point) {
+      if (data?.success && data?.checkoutUrl) {
         // Redireciona diretamente para o Mercado Pago
-        window.location.href = data.init_point;
+        window.location.href = data.checkoutUrl;
       } else {
         toast.error('Erro ao processar pagamento');
       }
