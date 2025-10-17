@@ -31,8 +31,8 @@ serve(async (req) => {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams([
-        ['payment_method_types[]', 'card'],
-        ['payment_method_types[]', 'boleto'],
+        // Removido payment_method_types para usar configuração do Dashboard (Dynamic Payment Methods)
+        // Isso permite que o Stripe mostre automaticamente todos os métodos habilitados no Dashboard
         ['payment_method_options[boleto][expires_after_days]', '3'],
         ['payment_method_options[card][installments][enabled]', 'true'],
         ['line_items[0][price_data][currency]', 'brl'],
