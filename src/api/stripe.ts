@@ -1,7 +1,7 @@
 // ⚠️ TEMPORÁRIO - Só para teste!
 // Depois mover para Edge Function
-const STRIPE_SECRET_KEY = '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'; // COLE SUA CHAVE AQUI
-export const STRIPE_PUBLIC_KEY = 'pk_live_51SCiQRPrbO1mGIU1RrJo7jMwpukt6AyPViVnh58hqAP4sDw19UkZtFsOYJ5nCk5lYHE8MHB5XlVeMTgZW0SdtdZT0049jAoNJv';
+const STRIPE_SECRET_KEY = 'sk_live_51...'; // ⚠️ COLE SUA SECRET KEY AQUI (sk_live_...)
+export const STRIPE_PUBLIC_KEY = 'pk_live_51SCiQRPrbO1mGIU10jwb9enzv8r6i3mceRTwoJ7rWCa0PY6Kdz0JzAJRMftyd48AcLbZGOvpk4yabBzmgP1v2ecS006e3LBXMn';
 
 export async function createStripePayment(userId: string, userEmail: string, planType: string) {
   try {
