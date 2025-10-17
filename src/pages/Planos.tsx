@@ -1,17 +1,35 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, Zap, TrendingUp, Users, Sparkles, Shield, Clock } from 'lucide-react';
+import { Check, Zap, Shield, Clock, CreditCard, AlertCircle, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
+import { supabase } from '@/integrations/supabase/client';
 
 const Planos = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   
-  // Simulação de vagas restantes
   const totalVagas = 100;
-  const vagasRestantes = 23; // Você pode fazer isso dinâmico depois
+  const vagasRestantes = 87;
   const progressoVagas = ((totalVagas - vagasRestantes) / totalVagas) * 100;
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        navigate('/cadastro');
+        return;
+      }
+      
+      setUser(user);
+      setCheckingAuth(false);
+    };
+
+    checkAuth();
+  }, [navigate]);
 
   const plano = {
     id: 'completo',
@@ -37,47 +55,56 @@ const Planos = () => {
   };
 
   const handleEscolherPlano = async () => {
+    if (!user) {
+      navigate('/cadastro');
+      return;
+    }
+
     setLoading(true);
     
     try {
-      const response = await fetch('https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/create-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: {
           plano: plano.id,
           valor: plano.preco,
           nome: plano.nome
-        })
+        }
       });
 
-      const data = await response.json();
+      if (error) throw error;
 
-      if (data.init_point) {
+      if (data?.init_point) {
         window.location.href = data.init_point;
       } else {
         toast.error('Erro ao processar pagamento');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro:', error);
-      toast.error('Erro ao processar pagamento');
+      toast.error(error.message || 'Erro ao processar pagamento');
     } finally {
       setLoading(false);
     }
   };
 
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-xl">Carregando...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Header de Urgência */}
-      <div className="bg-gradient-to-r from-red-600 to-orange-600 py-4 px-6 text-center">
-        <div className="max-w-4xl mx-auto">
-          <p className="text-white font-bold text-lg md:text-xl mb-1">
-            🔥 ATENÇÃO: Preço especial válido apenas para os 100 PRIMEIROS CLIENTES!
-          </p>
-          <p className="text-white/90 font-semibold">
-            ⏰ Restam apenas {vagasRestantes} vagas
-          </p>
+      {/* Alert Urgência */}
+      <div className="bg-gradient-to-r from-red-500 to-orange-500 rounded-xl p-6 mb-12 text-center max-w-4xl mx-auto">
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <AlertCircle className="w-8 h-8 text-white" />
+          <h3 className="text-2xl font-bold text-white">🔥 ATENÇÃO: OFERTA LIMITADA!</h3>
+        </div>
+        <p className="text-white text-lg mb-2">Preço especial válido apenas para os <strong>100 PRIMEIROS CLIENTES!</strong></p>
+        <div className="inline-block bg-white/20 backdrop-blur-sm px-6 py-3 rounded-full">
+          <p className="text-white font-bold text-xl">⏰ Restam apenas {vagasRestantes} vagas de 100</p>
         </div>
       </div>
 
@@ -155,10 +182,24 @@ const Planos = () => {
           <button
             onClick={handleEscolherPlano}
             disabled={loading}
-            className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-xl hover:shadow-2xl transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed mb-4"
+            className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-6 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed mb-4 flex items-center justify-center gap-3"
           >
-            {loading ? 'Processando...' : '🚀 GARANTIR MINHA VAGA - 7 DIAS GRÁTIS'}
+            {loading ? (
+              <>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                Processando...
+              </>
+            ) : (
+              <>
+                <CreditCard className="w-8 h-8" />
+                🚀 GARANTIR MINHA VAGA - 7 DIAS GRÁTIS
+              </>
+            )}
           </button>
+          
+          <p className="text-center text-slate-300 mb-6">
+            ✅ 7 dias grátis • ✅ Sem cartão de crédito • ✅ Cancele quando quiser
+          </p>
 
           {/* Badges de Confiança */}
           <div className="grid grid-cols-3 gap-4 mt-6">
