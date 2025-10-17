@@ -73,7 +73,7 @@ export default function Cadastro() {
         }
 
         toast.success('Conta criada com sucesso!');
-        navigate('/dashboard');
+        navigate('/planos');
       } catch (error: any) {
         toast.error(error.message || 'Erro ao criar conta');
       } finally {
