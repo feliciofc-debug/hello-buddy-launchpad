@@ -93,16 +93,20 @@ const Planos = () => {
     try {
       const result = await createStripePayment(user.id, user.email, planoSelecionado.id);
       
+      console.log('✅ Resultado Stripe:', result);
+      
       if (result.success && result.checkoutUrl) {
+        console.log('✅ Redirecionando para:', result.checkoutUrl);
+        // Redirect IMEDIATO sem demora
         window.location.href = result.checkoutUrl;
       } else {
+        setLoading(false);
         toast.error('Erro ao processar pagamento: ' + (result.error || 'Tente novamente'));
       }
     } catch (error: any) {
-      console.error('Erro:', error);
-      toast.error(error.message || 'Erro ao processar pagamento');
-    } finally {
+      console.error('❌ Erro:', error);
       setLoading(false);
+      toast.error(error.message || 'Erro ao processar pagamento');
     }
   };
 
