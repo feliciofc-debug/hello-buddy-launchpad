@@ -21,8 +21,22 @@ serve(async (req) => {
       throw new Error('STRIPE_SECRET_KEY not configured');
     }
 
-    // CRITICAL: Price must be in BRL (Brazilian Real) for Boleto to work
-    const price = 147.00;
+    // Define o preço baseado no tipo de plano
+    let price = 0;
+    let productName = '';
+    let productDescription = '';
+    
+    if (planType === 'teste') {
+      price = 12.00; // R$12 total (R$1/mês x 12)
+      productName = 'AMZ Ofertas - Plano TESTE';
+      productDescription = 'Plano de teste - Funcionalidade completa por R$1/mês';
+    } else if (planType === 'completo') {
+      price = 1764.00; // R$1764 total (R$147/mês x 12)
+      productName = 'AMZ Ofertas - Plano Completo Anual';
+      productDescription = 'Acesso completo à plataforma - Pagamento anual parcelado';
+    } else {
+      throw new Error('Tipo de plano inválido');
+    }
     
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
@@ -36,8 +50,8 @@ serve(async (req) => {
         ['payment_method_options[boleto][expires_after_days]', '3'],
         ['payment_method_options[card][installments][enabled]', 'true'],
         ['line_items[0][price_data][currency]', 'brl'],
-        ['line_items[0][price_data][product_data][name]', 'AMZ Ofertas - Plano Mensal'],
-        ['line_items[0][price_data][product_data][description]', 'Acesso completo à plataforma'],
+        ['line_items[0][price_data][product_data][name]', productName],
+        ['line_items[0][price_data][product_data][description]', productDescription],
         ['line_items[0][price_data][unit_amount]', String(Math.round(price * 100))],
         ['line_items[0][quantity]', '1'],
         ['mode', 'payment'],
