@@ -183,13 +183,13 @@ const Planos = () => {
         ) : (
           <>
             <CreditCard className="w-8 h-8" />
-            🚀 {isTeste ? 'TESTAR AGORA' : 'GARANTIR MINHA VAGA'} - 7 DIAS GRÁTIS
+            🚀 {isTeste ? 'ASSINAR PLANO TESTE' : 'GARANTIR MINHA VAGA'}
           </>
         )}
       </button>
       
       <p className="text-center text-slate-300 mb-6">
-        ✅ 7 dias grátis • ✅ Sem compromisso • ✅ Cancele quando quiser
+        ✅ Acesso imediato • ✅ Suporte completo • ✅ Cancele quando quiser
       </p>
 
       {/* Badges de Confiança */}
@@ -199,8 +199,8 @@ const Planos = () => {
           <p className="text-xs text-gray-300">Pagamento Seguro</p>
         </div>
         <div className="text-center">
-          <Clock className="w-8 h-8 text-blue-400 mx-auto mb-2" />
-          <p className="text-xs text-gray-300">7 Dias Grátis</p>
+          <Zap className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+          <p className="text-xs text-gray-300">Acesso Imediato</p>
         </div>
         <div className="text-center">
           <TrendingUp className="w-8 h-8 text-purple-400 mx-auto mb-2" />
@@ -242,12 +242,12 @@ const Planos = () => {
         </div>
 
         {/* Garantia */}
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-green-500/30 rounded-2xl p-6 text-center mt-8">
+      <div className="bg-slate-800/50 backdrop-blur-sm border border-green-500/30 rounded-2xl p-6 text-center mt-8">
           <h3 className="text-xl font-bold text-white mb-2">
-            ✅ Garantia de 7 Dias
+            ✅ Garantia de Satisfação
           </h3>
           <p className="text-gray-300">
-            Se não gostar, devolvemos 100% do seu dinheiro. Sem perguntas.
+            Suporte completo e acesso imediato a todas as funcionalidades.
           </p>
         </div>
 
