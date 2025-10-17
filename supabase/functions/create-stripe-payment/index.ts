@@ -21,6 +21,7 @@ serve(async (req) => {
       throw new Error('STRIPE_SECRET_KEY not configured');
     }
 
+    // CRITICAL: Price must be in BRL (Brazilian Real) for Boleto to work
     const price = 147.00;
     
     const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
@@ -30,12 +31,16 @@ serve(async (req) => {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams([
+        // CRITICAL: Must include 'boleto' for it to show as payment option
         ['payment_method_types[]', 'card'],
         ['payment_method_types[]', 'boleto'],
+        // Configure Boleto expiration (0-60 days, default is 3)
         ['payment_method_options[boleto][expires_after_days]', '3'],
+        // Enable installments for cards
         ['payment_method_options[card][installments][enabled]', 'true'],
         ['payment_method_options[card][installments][plan][count]', '12'],
         ['payment_method_options[card][installments][plan][type]', 'fixed_count'],
+        // CRITICAL: Currency MUST be 'brl' for Boleto to work
         ['line_items[0][price_data][currency]', 'brl'],
         ['line_items[0][price_data][product_data][name]', 'AMZ Ofertas - Plano Mensal'],
         ['line_items[0][price_data][product_data][description]', 'Acesso completo à plataforma'],
@@ -46,11 +51,13 @@ serve(async (req) => {
         ['cancel_url', `${req.headers.get('origin') || 'https://lovable.dev'}/planos`],
         ['customer_email', userEmail],
         ['client_reference_id', userId],
+        // Set locale to Brazilian Portuguese
         ['locale', 'pt-BR'],
         ['metadata[user_id]', userId],
         ['metadata[plan]', planType],
         ['payment_intent_data[description]', 'AMZ Ofertas - Assinatura Mensal'],
         ['allow_promotion_codes', 'true'],
+        // Required for Boleto - must collect billing address
         ['billing_address_collection', 'required']
       ]).toString()
     });
