@@ -4,6 +4,7 @@ import { Check, Zap, Shield, Clock, CreditCard, AlertCircle, TrendingUp } from '
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
+import { createStripePayment } from '@/api/stripe';
 
 const Planos = () => {
   const navigate = useNavigate();
@@ -90,21 +91,12 @@ const Planos = () => {
     setLoading(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: {
-          userId: user.id,
-          userEmail: user.email,
-          planType: planoSelecionado.id
-        }
-      });
-
-      if (error) throw error;
-
-      if (data?.success && data?.checkoutUrl) {
-        // Redireciona diretamente para o Mercado Pago
-        window.location.href = data.checkoutUrl;
+      const result = await createStripePayment(user.id, user.email, planoSelecionado.id);
+      
+      if (result.success && result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
       } else {
-        toast.error('Erro ao processar pagamento');
+        toast.error('Erro ao processar pagamento: ' + (result.error || 'Tente novamente'));
       }
     } catch (error: any) {
       console.error('Erro:', error);
