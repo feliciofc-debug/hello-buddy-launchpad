@@ -21,6 +21,7 @@ export type Database = {
           created_at: string
           hotmart_email: string | null
           id: string
+          lomadee_id: string | null
           mercado_livre_id: string | null
           nome: string
           shopee_id: string | null
@@ -33,6 +34,7 @@ export type Database = {
           created_at?: string
           hotmart_email?: string | null
           id: string
+          lomadee_id?: string | null
           mercado_livre_id?: string | null
           nome: string
           shopee_id?: string | null
@@ -45,6 +47,7 @@ export type Database = {
           created_at?: string
           hotmart_email?: string | null
           id?: string
+          lomadee_id?: string | null
           mercado_livre_id?: string | null
           nome?: string
           shopee_id?: string | null
