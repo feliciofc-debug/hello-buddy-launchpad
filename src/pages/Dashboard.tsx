@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 function Index() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isScanning, setIsScanning] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -132,33 +133,36 @@ function Index() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        navigate('/login');
-        return;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          navigate('/login');
+          return;
+        }
+        
+        // Verificar se o usuário tem assinatura ativa
+        const { data: subscription, error } = await supabase
+          .from('subscriptions')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .eq('status', 'active')
+          .maybeSingle();
+        
+        if (error) {
+          console.error('Erro ao verificar assinatura:', error);
+        }
+        
+        // Se não tiver assinatura ativa, redireciona para planos
+        if (!subscription) {
+          navigate('/planos');
+          return;
+        }
+        
+        setUser(session.user);
+      } finally {
+        setIsCheckingAuth(false);
       }
-      
-      // Verificar se o usuário tem assinatura ativa
-      const { data: subscription, error } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .eq('status', 'active')
-        .maybeSingle();
-      
-      if (error) {
-        console.error('Erro ao verificar assinatura:', error);
-      }
-      
-      // Se não tiver assinatura ativa, redireciona para planos
-      if (!subscription) {
-        toast.error('Você precisa ter uma assinatura ativa para acessar o dashboard');
-        navigate('/planos');
-        return;
-      }
-      
-      setUser(session.user);
     };
 
     checkAuth();
@@ -205,7 +209,7 @@ function Index() {
     }
   };
 
-  if (!user) {
+  if (isCheckingAuth || !user) {
     return null;
   }
 
