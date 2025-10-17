@@ -88,22 +88,33 @@ const Planos = () => {
       return;
     }
 
-    // Não mostrar loading para não bloquear o redirect
-    toast.loading('Abrindo checkout Stripe...');
+    setLoading(true);
+    toast.loading('Criando checkout...');
     
     try {
       const result = await createStripePayment(user.id, user.email, planoSelecionado.id);
       
       if (result.success && result.checkoutUrl) {
-        // REDIRECT IMEDIATO E SÍNCRONO
-        window.location.href = result.checkoutUrl;
+        toast.dismiss();
+        toast.success('Abrindo página de pagamento...', { duration: 2000 });
+        
+        // Abrir em NOVA ABA (funciona melhor no preview)
+        const opened = window.open(result.checkoutUrl, '_blank');
+        
+        if (!opened) {
+          toast.error('Por favor, permita pop-ups para continuar');
+        }
+        
+        setLoading(false);
       } else {
         toast.dismiss();
         toast.error(result.error || 'Erro ao criar checkout');
+        setLoading(false);
       }
     } catch (error: any) {
       toast.dismiss();
       toast.error(error.message || 'Erro ao processar pagamento');
+      setLoading(false);
     }
   };
 
