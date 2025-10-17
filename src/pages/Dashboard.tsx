@@ -139,6 +139,25 @@ function Index() {
         return;
       }
       
+      // Verificar se o usuário tem assinatura ativa
+      const { data: subscription, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .eq('status', 'active')
+        .maybeSingle();
+      
+      if (error) {
+        console.error('Erro ao verificar assinatura:', error);
+      }
+      
+      // Se não tiver assinatura ativa, redireciona para planos
+      if (!subscription) {
+        toast.error('Você precisa ter uma assinatura ativa para acessar o dashboard');
+        navigate('/planos');
+        return;
+      }
+      
       setUser(session.user);
     };
 
