@@ -28,6 +28,9 @@ serve(async (req) => {
           quantity: 1,
         }
       ],
+      payment_methods: {
+        installments: 12,
+      },
       back_urls: {
         success: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
         failure: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
@@ -36,6 +39,7 @@ serve(async (req) => {
       auto_return: 'approved',
       external_reference: plano,
       notification_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/payment-webhook`,
+      statement_descriptor: 'AMZ OFERTAS',
     };
 
     console.log('Criando preferência no Mercado Pago:', preference);
