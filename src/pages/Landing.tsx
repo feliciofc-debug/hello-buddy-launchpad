@@ -26,8 +26,8 @@ function Landing() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={() => scrollToSection('precos')} className="text-orange-300 hover:text-white transition">
-              Preços
+            <button onClick={() => navigate('/planos')} className="text-orange-300 hover:text-white transition">
+              Planos
             </button>
             <button onClick={() => navigate('/login')} className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition">
               Entrar
@@ -51,8 +51,8 @@ function Landing() {
                 IA + Dados em Tempo Real = Suas Vendas nas Alturas 🚀
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <button onClick={() => navigate('/cadastro')} className="bg-gradient-to-r from-green-500 to-emerald-500 px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transition transform hover:scale-105 text-center">
-                  🎁 COMEÇAR GRÁTIS - 7 DIAS
+                <button onClick={() => navigate('/planos')} className="bg-gradient-to-r from-green-500 to-emerald-500 px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transition transform hover:scale-105 text-center">
+                  🎁 VER PLANOS
                 </button>
                 <button onClick={() => scrollToSection('como-funciona')} className="border-2 border-white/30 px-8 py-4 rounded-xl font-semibold hover:bg-white/10 transition text-center">
                   Ver Como Funciona
@@ -267,8 +267,8 @@ function Landing() {
                 ))}
               </div>
 
-              <button onClick={() => navigate('/cadastro')} className="block w-full bg-gradient-to-r from-green-500 to-emerald-500 py-5 rounded-xl font-bold text-xl text-center hover:shadow-2xl transition transform hover:scale-105 mb-4">
-                🎁 COMEÇAR GRÁTIS - 7 DIAS
+              <button onClick={() => navigate('/planos')} className="block w-full bg-gradient-to-r from-green-500 to-emerald-500 py-5 rounded-xl font-bold text-xl text-center hover:shadow-2xl transition transform hover:scale-105 mb-4">
+                🎁 VER TODOS OS PLANOS
               </button>
 
               <p className="text-center text-sm text-slate-400">
@@ -316,8 +316,8 @@ function Landing() {
           <p className="text-2xl mb-10 text-purple-100">
             Junte-se a centenas de afiliados que já estão lucrando!
           </p>
-          <button onClick={() => navigate('/cadastro')} className="inline-block bg-white text-purple-900 px-12 py-6 rounded-2xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 mb-6">
-            🚀 COMEÇAR AGORA - É GRÁTIS!
+          <button onClick={() => navigate('/planos')} className="inline-block bg-white text-purple-900 px-12 py-6 rounded-2xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 mb-6">
+            🚀 VER PLANOS
           </button>
           <p className="text-purple-100">
             ✅ 7 dias grátis • ✅ Sem cartão • ✅ Cancele quando quiser
