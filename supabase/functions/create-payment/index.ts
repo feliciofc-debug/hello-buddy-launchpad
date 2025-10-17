@@ -13,45 +13,20 @@ serve(async (req) => {
   try {
     const { plano, valor, nome } = await req.json();
     
-    const accessToken = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN');
+    console.log('Criando pagamento temporário:', { plano, valor, nome });
     
-    if (!accessToken) {
-      throw new Error('MERCADOPAGO_ACCESS_TOKEN não configurado');
-    }
-
-    // Criar preferência de pagamento no Mercado Pago
-    const preference = {
-      items: [
-        {
-          title: `Plano ${nome} - AMZ Ofertas`,
-          unit_price: valor,
-          quantity: 1,
-        }
-      ],
-      back_urls: {
-        success: 'https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/payment-webhook',
-        failure: 'https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/payment-webhook',
-        pending: 'https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/payment-webhook'
-      },
-      auto_return: 'approved',
-      external_reference: plano,
-    };
-
-    const response = await fetch('https://api.mercadopago.com/checkout/preferences', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(preference),
-    });
-
-    const data = await response.json();
-
+    // Simulação de pagamento PIX temporário
+    const pixCode = `00020126360014BR.GOV.BCB.PIX0114+5511999999999520400005303986540${valor.toFixed(2)}5802BR5913AMZ Ofertas6009SAO PAULO62070503***6304XXXX`;
+    
+    // Retorna dados simulados para teste
     return new Response(
       JSON.stringify({
-        init_point: data.init_point,
-        preference_id: data.id
+        success: true,
+        payment_type: 'pix',
+        pix_code: pixCode,
+        amount: valor,
+        status: 'pending',
+        message: 'Pagamento de teste gerado com sucesso'
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -59,7 +34,7 @@ serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error('Erro ao criar preferência:', error);
+    console.error('Erro ao criar pagamento:', error);
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     return new Response(
       JSON.stringify({ error: errorMessage }),
