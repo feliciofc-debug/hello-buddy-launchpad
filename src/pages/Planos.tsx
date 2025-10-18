@@ -4,7 +4,7 @@ import { Check, Zap, Shield, Clock, CreditCard, AlertCircle, TrendingUp } from '
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
-import { createMercadoPagoPayment } from '@/api/mercadopago';
+import PaymentFormDirect from '@/components/PaymentFormDirect';
 
 const Planos = () => {
   const navigate = useNavigate();
@@ -82,40 +82,14 @@ const Planos = () => {
     ]
   };
 
-  const handleEscolherPlano = async (planoSelecionado) => {
+  const [selectedPlan, setSelectedPlan] = useState<any>(null);
+
+  const handleEscolherPlano = (planoSelecionado: any) => {
     if (!user) {
       navigate('/cadastro');
       return;
     }
-
-    setLoading(true);
-    toast.loading('Criando checkout...');
-    
-    try {
-      const result = await createMercadoPagoPayment(user.id, user.email, planoSelecionado.id);
-      
-      if (result.success && result.checkoutUrl) {
-        toast.dismiss();
-        toast.success('Abrindo página de pagamento...', { duration: 2000 });
-        
-        // Abrir em NOVA ABA
-        const opened = window.open(result.checkoutUrl, '_blank');
-        
-        if (!opened) {
-          toast.error('Por favor, permita pop-ups para continuar');
-        }
-        
-        setLoading(false);
-      } else {
-        toast.dismiss();
-        toast.error(result.error || 'Erro ao criar checkout');
-        setLoading(false);
-      }
-    } catch (error: any) {
-      toast.dismiss();
-      toast.error(error.message || 'Erro ao processar pagamento');
-      setLoading(false);
-    }
+    setSelectedPlan(planoSelecionado);
   };
 
   const renderPlano = (plano, isTeste = false) => (
@@ -218,6 +192,28 @@ const Planos = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-white text-xl">Carregando...</div>
+      </div>
+    );
+  }
+
+  if (selectedPlan) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 py-12">
+        <div className="max-w-4xl mx-auto px-6">
+          <button
+            onClick={() => setSelectedPlan(null)}
+            className="text-orange-300 hover:text-white transition mb-6"
+          >
+            ← Voltar para planos
+          </button>
+          
+          <PaymentFormDirect
+            planName={selectedPlan.nome}
+            amount={selectedPlan.preco}
+            planType="monthly"
+            userId={user.id}
+          />
+        </div>
       </div>
     );
   }
