@@ -17,7 +17,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error, data } = await supabase.auth.signInWithPassword({
         email: formData.email,
         password: formData.password,
       });
@@ -25,7 +25,20 @@ export default function Login() {
       if (error) throw error;
 
       toast.success('Login realizado com sucesso!');
-      navigate('/dashboard');
+      
+      // Verificar se tem assinatura ativa
+      console.log('Verificando assinatura...');
+      const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
+      
+      console.log('Resultado da verificação:', subscriptionCheck);
+
+      if (subscriptionCheck?.hasActiveSubscription) {
+        console.log('✅ Tem assinatura ativa - indo para dashboard');
+        navigate('/dashboard');
+      } else {
+        console.log('❌ Sem assinatura - indo para planos');
+        navigate('/planos');
+      }
     } catch (error: any) {
       toast.error(error.message || 'Erro ao fazer login');
     } finally {

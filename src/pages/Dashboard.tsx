@@ -135,58 +135,54 @@ function Index() {
   useEffect(() => {
     // Mostrar mensagem de sucesso de pagamento
     if (searchParams.get('payment') === 'success') {
-      toast.success('✅ Pagamento aprovado! Sua assinatura está ativa.');
+      toast.success('🎉 Pagamento aprovado! Sua assinatura está ativa.', {
+        duration: 5000,
+      });
     }
-  }, [searchParams]);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          navigate('/login');
-          return;
-        }
-        
-        // Exceção para admin - não precisa de assinatura
-        if (session.user.email !== 'admin@amzofertas.com') {
-          // Verificar se o usuário tem assinatura ativa
-          const { data: subscription, error } = await supabase
-            .from('subscriptions')
-            .select('*')
-            .eq('user_id', session.user.id)
-            .eq('status', 'active')
-            .maybeSingle();
-          
-          if (error) {
-            console.error('Erro ao verificar assinatura:', error);
-          }
-          
-          // Se não tiver assinatura ativa, redireciona para planos
-          if (!subscription) {
-            navigate('/planos');
-            return;
-          }
-        }
-        
-        setUser(session.user);
-      } finally {
-        setIsCheckingAuth(false);
-      }
-    };
 
     checkAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
-        return; // Não faz nada, deixa o handleLogout controlar
+        return;
       }
       setUser(session?.user ?? null);
     });
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, searchParams]);
+
+  const checkAuth = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        navigate('/login');
+        return;
+      }
+      
+      // Exceção para admin - não precisa de assinatura
+      if (session.user.email !== 'admin@amzofertas.com') {
+        // Verificar se o usuário tem assinatura ativa usando a função check-subscription
+        const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
+        
+        console.log('Verificação de assinatura:', subscriptionCheck);
+        
+        // Se não tiver assinatura ativa, redireciona para planos
+        if (!subscriptionCheck?.hasActiveSubscription) {
+          toast.error('Você precisa de uma assinatura ativa para acessar o dashboard');
+          navigate('/planos');
+          return;
+        }
+      }
+      
+      setUser(session.user);
+    } catch (error) {
+      console.error('Erro ao verificar autenticação:', error);
+    } finally {
+      setIsCheckingAuth(false);
+    }
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

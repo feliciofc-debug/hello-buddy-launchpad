@@ -195,7 +195,9 @@ export default function PaymentFormDirect({
 
   const handlePaymentSuccess = async (paymentId: string) => {
     try {
-      await supabase.functions.invoke('activate-subscription', {
+      console.log('✅ Pagamento aprovado! Ativando assinatura...');
+      
+      const { data, error } = await supabase.functions.invoke('activate-subscription', {
         body: {
           user_id: userId,
           payment_id: paymentId,
@@ -204,15 +206,27 @@ export default function PaymentFormDirect({
           amount: amount
         }
       });
+
+      if (error) {
+        console.error('Erro ao ativar assinatura:', error);
+      } else {
+        console.log('✅ Assinatura ativada com sucesso:', data);
+      }
       
-      toast.success('✅ Pagamento aprovado! Redirecionando...');
+      toast.success('🎉 Pagamento aprovado! Redirecionando para o dashboard...', {
+        duration: 3000,
+      });
+      
       setTimeout(() => {
         navigate('/dashboard?payment=success');
       }, 2000);
       
     } catch (error) {
-      console.error('Erro ao ativar assinatura:', error);
-      navigate('/dashboard?payment=success');
+      console.error('Erro ao processar sucesso do pagamento:', error);
+      toast.success('Pagamento aprovado! Redirecionando...');
+      setTimeout(() => {
+        navigate('/dashboard?payment=success');
+      }, 2000);
     }
   };
 
