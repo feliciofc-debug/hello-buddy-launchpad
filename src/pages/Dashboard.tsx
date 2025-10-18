@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Package, RefreshCw, Bell, X, ShoppingCart, Plus, Copy, Check, Sparkles, MessageSquare, Calculator, TrendingUp, DollarSign, Target, Zap, Send, LogOut } from 'lucide-react';
 import { API_URL } from '../config';
 import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 function Index() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [user, setUser] = useState(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -130,6 +131,13 @@ function Index() {
     setWhatsappData({ phone: '', message: defaultMessage });
     setShowWhatsApp(true);
   };
+
+  useEffect(() => {
+    // Mostrar mensagem de sucesso de pagamento
+    if (searchParams.get('payment') === 'success') {
+      toast.success('✅ Pagamento aprovado! Sua assinatura está ativa.');
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     const checkAuth = async () => {

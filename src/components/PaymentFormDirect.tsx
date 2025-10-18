@@ -1,5 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 interface PaymentFormDirectProps {
   planName: string;
@@ -14,17 +19,23 @@ export default function PaymentFormDirect({
   planType,
   userId 
 }: PaymentFormDirectProps) {
+  const navigate = useNavigate();
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'boleto'>('pix');
   const [loading, setLoading] = useState(false);
-  const [pixData, setPixData] = useState<any>(null);
-  const [error, setError] = useState('');
+  const [paymentData, setPaymentData] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const [installments, setInstallments] = useState(1);
   
   const [formData, setFormData] = useState({
     email: '',
     cpf: '',
     firstName: '',
-    lastName: ''
+    lastName: '',
+    cardNumber: '',
+    cardHolder: '',
+    expiryMonth: '',
+    expiryYear: '',
+    cvv: ''
   });
 
   const formatCPF = (value: string) => {
@@ -36,6 +47,13 @@ export default function PaymentFormDirect({
       .replace(/(-\d{2})\d+?$/, '$1');
   };
 
+  const formatCardNumber = (value: string) => {
+    return value
+      .replace(/\s/g, '')
+      .replace(/(\d{4})/g, '$1 ')
+      .trim();
+  };
+
   const validateCPF = (cpf: string) => {
     const cleaned = cpf.replace(/\D/g, '');
     return cleaned.length === 11;
@@ -45,10 +63,13 @@ export default function PaymentFormDirect({
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  const generatePix = async () => {
+  const calculateInstallment = (numInstallments: number) => {
+    return amount / numInstallments;
+  };
+
+  const handlePayment = async () => {
     try {
       setLoading(true);
-      setError('');
       
       if (!validateEmail(formData.email)) {
         throw new Error('Email inválido');
@@ -58,48 +79,83 @@ export default function PaymentFormDirect({
         throw new Error('CPF inválido - deve ter 11 dígitos');
       }
 
-      console.log('Gerando PIX...');
-
-      const { data, error: invokeError } = await supabase.functions.invoke('create-pix-direct', {
-        body: {
-          transaction_amount: amount,
-          description: `Assinatura ${planName} - AMZ Ofertas`,
-          payer: {
-            email: formData.email,
-            first_name: formData.firstName || 'Cliente',
-            last_name: formData.lastName || 'AMZ Ofertas',
-            identification: {
-              type: 'CPF',
-              number: formData.cpf.replace(/\D/g, '')
-            }
-          },
-          payment_method_id: 'pix',
-          metadata: {
-            plan_name: planName,
-            plan_type: planType,
-            user_id: userId
+      const basePayload = {
+        transaction_amount: amount,
+        description: `Assinatura ${planName}`,
+        payer: {
+          email: formData.email,
+          first_name: formData.firstName || 'Cliente',
+          last_name: formData.lastName || 'AMZ Ofertas',
+          identification: {
+            type: 'CPF',
+            number: formData.cpf.replace(/\D/g, '')
           }
+        },
+        metadata: {
+          plan_name: planName,
+          plan_type: planType,
+          user_id: userId
         }
-      });
+      };
 
-      if (invokeError) {
-        throw new Error(invokeError.message);
+      let result;
+
+      if (paymentMethod === 'pix') {
+        const { data, error } = await supabase.functions.invoke('create-pix-direct', {
+          body: { ...basePayload, payment_method_id: 'pix' }
+        });
+        
+        if (error) throw error;
+        result = data;
+        setPaymentData(result);
+        
+        if (result.id) {
+          checkPaymentStatus(result.id);
+        }
+      } 
+      else if (paymentMethod === 'card') {
+        if (!formData.cardNumber || !formData.cardHolder || !formData.expiryMonth || !formData.expiryYear || !formData.cvv) {
+          throw new Error('Preencha todos os dados do cartão');
+        }
+        
+        const { data, error } = await supabase.functions.invoke('create-card-payment', {
+          body: {
+            ...basePayload,
+            installments: installments
+          }
+        });
+        
+        if (error) throw error;
+        result = data;
+        
+        if (result.init_point) {
+          window.open(result.init_point, '_blank');
+          toast.info('Complete o pagamento na janela que foi aberta');
+          
+          setTimeout(() => {
+            if (result.id) checkPaymentStatus(result.id);
+          }, 10000);
+        }
       }
-
-      if (data?.error) {
-        throw new Error(data.message || 'Erro ao gerar PIX');
-      }
-
-      console.log('PIX criado com sucesso:', data);
-      setPixData(data);
-      
-      if (data.id) {
-        checkPaymentStatus(data.id);
+      else if (paymentMethod === 'boleto') {
+        if (!formData.firstName || !formData.lastName) {
+          throw new Error('Nome completo é obrigatório para boleto');
+        }
+        
+        const { data, error } = await supabase.functions.invoke('create-boleto-payment', {
+          body: { ...basePayload, payment_method_id: 'bolbradesco' }
+        });
+        
+        if (error) throw error;
+        result = data;
+        setPaymentData(result);
+        
+        toast.success('Boleto gerado! Baixe o PDF para pagamento.');
       }
 
     } catch (err: any) {
       console.error('Erro:', err);
-      setError(err.message || 'Erro ao processar pagamento');
+      toast.error(err.message || 'Erro ao processar pagamento');
     } finally {
       setLoading(false);
     }
@@ -117,21 +173,19 @@ export default function PaymentFormDirect({
           body: { paymentId }
         });
         
-        console.log('Status do pagamento:', data?.status);
+        console.log('Status:', data?.status);
         
-        if (data?.status === 'approved') {
+        if (data?.status === 'approved' || data?.approved) {
           clearInterval(interval);
-          alert('✅ Pagamento aprovado com sucesso!');
-          window.location.href = '/dashboard?payment=success';
+          await handlePaymentSuccess(paymentId);
         } else if (data?.status === 'rejected' || data?.status === 'cancelled') {
           clearInterval(interval);
-          setError('Pagamento não foi concluído');
-          setPixData(null);
+          toast.error('Pagamento não foi concluído');
+          setPaymentData(null);
         }
         
         if (attempts >= maxAttempts) {
           clearInterval(interval);
-          setError('Tempo limite expirado. Tente novamente.');
         }
       } catch (error) {
         console.error('Erro ao verificar status:', error);
@@ -139,266 +193,316 @@ export default function PaymentFormDirect({
     }, 5000);
   };
 
-  const copyToClipboard = () => {
-    if (pixData?.qr_code) {
-      navigator.clipboard.writeText(pixData.qr_code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 3000);
+  const handlePaymentSuccess = async (paymentId: string) => {
+    try {
+      await supabase.functions.invoke('activate-subscription', {
+        body: {
+          user_id: userId,
+          payment_id: paymentId,
+          plan_name: planName,
+          plan_type: planType,
+          amount: amount
+        }
+      });
+      
+      toast.success('✅ Pagamento aprovado! Redirecionando...');
+      setTimeout(() => {
+        navigate('/dashboard?payment=success');
+      }, 2000);
+      
+    } catch (error) {
+      console.error('Erro ao ativar assinatura:', error);
+      navigate('/dashboard?payment=success');
     }
   };
 
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success('Copiado!');
+    setTimeout(() => setCopied(false), 3000);
+  };
+
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-slate-800/50 backdrop-blur-sm rounded-lg shadow-lg border border-orange-500/30">
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold mb-2 text-white">Finalizar Assinatura</h2>
-        <div className="bg-gradient-to-r from-orange-500/20 to-red-500/20 p-3 rounded-lg border border-orange-500/30">
-          <p className="text-sm text-gray-300">Plano: <strong className="text-white">{planName}</strong></p>
-          <p className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500 mt-1">
+    <div className="max-w-3xl mx-auto p-6 bg-card rounded-xl shadow-xl">
+      <div className="mb-6 text-center">
+        <h2 className="text-3xl font-bold mb-2">Finalizar Assinatura</h2>
+        <div className="inline-block bg-gradient-to-r from-primary to-primary/80 text-primary-foreground px-6 py-3 rounded-lg">
+          <p className="text-sm">Plano {planName}</p>
+          <p className="text-2xl font-bold">
             R$ {amount.toFixed(2)}/{planType === 'monthly' ? 'mês' : 'ano'}
           </p>
         </div>
       </div>
 
-      {!pixData ? (
+      {!paymentData ? (
         <>
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-3">
+            <Label className="block text-sm font-medium mb-3">
               Escolha a forma de pagamento
-            </label>
+            </Label>
             <div className="grid grid-cols-3 gap-3">
               <button
                 onClick={() => setPaymentMethod('pix')}
-                className={`p-4 rounded-lg border-2 transition-all ${
+                className={`p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
                   paymentMethod === 'pix'
-                    ? 'border-green-500 bg-green-500/20'
-                    : 'border-slate-600 hover:border-slate-500 bg-slate-700/30'
+                    ? 'border-primary bg-primary/10 shadow-lg'
+                    : 'border-border hover:border-primary/50'
                 }`}
               >
                 <div className="text-center">
                   <div className="text-3xl mb-2">📱</div>
-                  <div className="font-semibold text-white">PIX</div>
-                  <div className="text-xs text-gray-400 mt-1">Aprovação instantânea</div>
+                  <div className="font-bold">PIX</div>
+                  <div className="text-xs text-muted-foreground mt-1">Instantâneo</div>
                 </div>
               </button>
 
               <button
-                disabled
-                className="p-4 rounded-lg border-2 border-slate-700 bg-slate-800/50 opacity-50 cursor-not-allowed"
+                onClick={() => setPaymentMethod('card')}
+                className={`p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
+                  paymentMethod === 'card'
+                    ? 'border-primary bg-primary/10 shadow-lg'
+                    : 'border-border hover:border-primary/50'
+                }`}
               >
                 <div className="text-center">
                   <div className="text-3xl mb-2">💳</div>
-                  <div className="font-semibold text-gray-400">Cartão</div>
-                  <div className="text-xs text-gray-500 mt-1">Em breve</div>
+                  <div className="font-bold">Cartão</div>
+                  <div className="text-xs text-muted-foreground mt-1">Até 12x</div>
                 </div>
               </button>
 
               <button
-                disabled
-                className="p-4 rounded-lg border-2 border-slate-700 bg-slate-800/50 opacity-50 cursor-not-allowed"
+                onClick={() => setPaymentMethod('boleto')}
+                className={`p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
+                  paymentMethod === 'boleto'
+                    ? 'border-primary bg-primary/10 shadow-lg'
+                    : 'border-border hover:border-primary/50'
+                }`}
               >
                 <div className="text-center">
                   <div className="text-3xl mb-2">📄</div>
-                  <div className="font-semibold text-gray-400">Boleto</div>
-                  <div className="text-xs text-gray-500 mt-1">Em breve</div>
+                  <div className="font-bold">Boleto</div>
+                  <div className="text-xs text-muted-foreground mt-1">3 dias</div>
                 </div>
               </button>
             </div>
           </div>
 
           <div className="space-y-4 mb-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                E-mail *
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-                className="w-full p-3 border border-slate-600 bg-slate-700/50 text-white rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                placeholder="seu@email.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                CPF *
-              </label>
-              <input
-                type="text"
-                value={formData.cpf}
-                onChange={(e) => setFormData({...formData, cpf: formatCPF(e.target.value)})}
-                className="w-full p-3 border border-slate-600 bg-slate-700/50 text-white rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                placeholder="000.000.000-00"
-                maxLength={14}
-                required
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Digite apenas números - a formatação é automática
-              </p>
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Nome (opcional)
-                </label>
-                <input
-                  type="text"
-                  value={formData.firstName}
-                  onChange={(e) => setFormData({...formData, firstName: e.target.value})}
-                  className="w-full p-3 border border-slate-600 bg-slate-700/50 text-white rounded-lg focus:ring-2 focus:ring-green-500"
-                  placeholder="João"
+                <Label>E-mail *</Label>
+                <Input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  placeholder="seu@email.com"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Sobrenome (opcional)
-                </label>
-                <input
+                <Label>CPF *</Label>
+                <Input
                   type="text"
-                  value={formData.lastName}
-                  onChange={(e) => setFormData({...formData, lastName: e.target.value})}
-                  className="w-full p-3 border border-slate-600 bg-slate-700/50 text-white rounded-lg focus:ring-2 focus:ring-green-500"
-                  placeholder="Silva"
+                  value={formData.cpf}
+                  onChange={(e) => setFormData({...formData, cpf: formatCPF(e.target.value)})}
+                  placeholder="000.000.000-00"
+                  maxLength={14}
                 />
               </div>
             </div>
+
+            {(paymentMethod === 'boleto' || paymentMethod === 'card') && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Nome *</Label>
+                  <Input
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+                    placeholder="João"
+                  />
+                </div>
+                <div>
+                  <Label>Sobrenome *</Label>
+                  <Input
+                    value={formData.lastName}
+                    onChange={(e) => setFormData({...formData, lastName: e.target.value})}
+                    placeholder="Silva"
+                  />
+                </div>
+              </div>
+            )}
+
+            {paymentMethod === 'card' && (
+              <>
+                <div>
+                  <Label>Número do Cartão *</Label>
+                  <Input
+                    value={formData.cardNumber}
+                    onChange={(e) => setFormData({...formData, cardNumber: formatCardNumber(e.target.value)})}
+                    placeholder="0000 0000 0000 0000"
+                    maxLength={19}
+                  />
+                </div>
+
+                <div>
+                  <Label>Nome no Cartão *</Label>
+                  <Input
+                    value={formData.cardHolder}
+                    onChange={(e) => setFormData({...formData, cardHolder: e.target.value.toUpperCase()})}
+                    placeholder="JOÃO SILVA"
+                  />
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label>Mês *</Label>
+                    <select
+                      value={formData.expiryMonth}
+                      onChange={(e) => setFormData({...formData, expiryMonth: e.target.value})}
+                      className="w-full p-2 border rounded-lg bg-background"
+                    >
+                      <option value="">MM</option>
+                      {Array.from({length: 12}, (_, i) => i + 1).map(month => (
+                        <option key={month} value={month.toString().padStart(2, '0')}>
+                          {month.toString().padStart(2, '0')}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label>Ano *</Label>
+                    <select
+                      value={formData.expiryYear}
+                      onChange={(e) => setFormData({...formData, expiryYear: e.target.value})}
+                      className="w-full p-2 border rounded-lg bg-background"
+                    >
+                      <option value="">AAAA</option>
+                      {Array.from({length: 15}, (_, i) => new Date().getFullYear() + i).map(year => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label>CVV *</Label>
+                    <Input
+                      value={formData.cvv}
+                      onChange={(e) => setFormData({...formData, cvv: e.target.value.replace(/\D/g, '')})}
+                      placeholder="123"
+                      maxLength={4}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Parcelamento</Label>
+                  <select
+                    value={installments}
+                    onChange={(e) => setInstallments(Number(e.target.value))}
+                    className="w-full p-2 border rounded-lg bg-background"
+                  >
+                    <option value={1}>À vista - R$ {amount.toFixed(2)}</option>
+                    {Array.from({length: 11}, (_, i) => i + 2).map(num => (
+                      <option key={num} value={num}>
+                        {num}x de R$ {calculateInstallment(num).toFixed(2)} sem juros
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
           </div>
 
-          {error && (
-            <div className="mb-4 p-4 bg-red-500/20 border border-red-500/50 rounded-lg">
-              <p className="text-red-300 text-sm font-medium">⚠️ {error}</p>
-            </div>
-          )}
-
-          <button
-            onClick={generatePix}
+          <Button
+            onClick={handlePayment}
             disabled={loading || !formData.email || !formData.cpf}
-            className={`w-full py-4 rounded-lg font-bold text-lg transition-all ${
-              loading || !formData.email || !formData.cpf
-                ? 'bg-slate-600 cursor-not-allowed text-gray-400'
-                : 'bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600 shadow-lg'
-            }`}
+            className="w-full py-6 text-lg"
           >
-            {loading ? (
-              <span className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
-                Gerando PIX...
-              </span>
-            ) : (
-              `Gerar PIX - R$ ${amount.toFixed(2)}`
-            )}
-          </button>
+            {loading ? 'Processando...' : 
+              paymentMethod === 'pix' ? `Gerar PIX - R$ ${amount.toFixed(2)}` :
+              paymentMethod === 'card' && installments > 1 ? 
+                `Pagar ${installments}x de R$ {calculateInstallment(installments).toFixed(2)}` :
+              `Pagar R$ ${amount.toFixed(2)}`
+            }
+          </Button>
 
-          <div className="mt-4 text-center">
-            <p className="text-xs text-gray-400">
-              🔒 Pagamento 100% seguro via Mercado Pago
-            </p>
+          <div className="mt-6 flex items-center justify-center space-x-8 text-xs text-muted-foreground">
+            <span>🔒 Pagamento seguro</span>
+            <span>✅ Mercado Pago</span>
+            <span>🛡️ Dados criptografados</span>
           </div>
         </>
       ) : (
-        <div className="text-center">
-          <div className="mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-500/20 rounded-full mb-4 border-2 border-green-500">
-              <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-              </svg>
-            </div>
-            <h3 className="text-2xl font-bold text-white">PIX Gerado com Sucesso!</h3>
-            <p className="text-gray-300 mt-2">Escaneie o QR Code ou copie o código</p>
-          </div>
-          
-          {pixData.qr_code_base64 ? (
-            <div className="bg-white p-6 rounded-lg inline-block border-2 border-green-500 mb-6">
-              <img 
-                src={`data:image/png;base64,${pixData.qr_code_base64}`}
-                alt="QR Code PIX"
-                className="w-64 h-64"
-              />
-            </div>
-          ) : pixData.qr_code ? (
-            <div className="bg-white p-6 rounded-lg inline-block border-2 border-green-500 mb-6">
-              <img 
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(pixData.qr_code)}`}
-                alt="QR Code PIX"
-                className="w-64 h-64"
-              />
-            </div>
-          ) : null}
+        <div>
+          {paymentMethod === 'pix' && paymentData.qr_code && (
+            <div className="text-center">
+              <h3 className="text-2xl font-bold mb-4">📱 Pague com PIX</h3>
+              
+              <div className="bg-white p-6 rounded-xl inline-block border-2 border-primary shadow-xl mb-6">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(paymentData.qr_code)}`}
+                  alt="QR Code PIX"
+                  className="w-64 h-64"
+                />
+              </div>
 
-          {pixData.qr_code && (
-            <div className="mb-6">
-              <p className="text-sm font-medium text-gray-300 mb-2">PIX Copia e Cola:</p>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 p-3 bg-slate-700/50 rounded-lg border border-slate-600">
-                  <p className="text-xs font-mono break-all text-gray-400">
-                    {pixData.qr_code.substring(0, 50)}...
-                  </p>
+              <div className="mb-6">
+                <p className="text-sm font-medium mb-2">PIX Copia e Cola:</p>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={paymentData.qr_code}
+                    readOnly
+                    className="flex-1 text-xs font-mono"
+                  />
+                  <Button
+                    onClick={() => copyToClipboard(paymentData.qr_code)}
+                    variant={copied ? "default" : "outline"}
+                  >
+                    {copied ? '✓ Copiado!' : 'Copiar'}
+                  </Button>
                 </div>
-                <button
-                  onClick={copyToClipboard}
-                  className={`px-6 py-3 rounded-lg font-medium transition-all ${
-                    copied 
-                      ? 'bg-green-500 text-white' 
-                      : 'bg-blue-500 text-white hover:bg-blue-600'
-                  }`}
-                >
-                  {copied ? '✓ Copiado!' : 'Copiar'}
-                </button>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 dark:bg-yellow-900/20 dark:border-yellow-800">
+                <p className="text-yellow-800 dark:text-yellow-200 font-medium">⏱️ Aguardando pagamento...</p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
+                  Após o pagamento, você será redirecionado automaticamente
+                </p>
               </div>
             </div>
           )}
 
-          <div className="bg-blue-500/20 border border-blue-500/30 rounded-lg p-4 text-left mb-6">
-            <h4 className="font-semibold text-blue-300 mb-2">Como pagar:</h4>
-            <ol className="text-sm text-gray-300 space-y-2">
-              <li className="flex items-start">
-                <span className="font-bold mr-2 text-blue-400">1.</span>
-                Abra o app do seu banco ou carteira digital
-              </li>
-              <li className="flex items-start">
-                <span className="font-bold mr-2 text-blue-400">2.</span>
-                Escolha a opção pagar com PIX
-              </li>
-              <li className="flex items-start">
-                <span className="font-bold mr-2 text-blue-400">3.</span>
-                Escaneie o QR Code ou use o código Copia e Cola
-              </li>
-              <li className="flex items-start">
-                <span className="font-bold mr-2 text-blue-400">4.</span>
-                Confirme o pagamento de R$ {amount.toFixed(2)}
-              </li>
-            </ol>
-          </div>
+          {paymentMethod === 'boleto' && paymentData.barcode && (
+            <div className="text-center">
+              <h3 className="text-2xl font-bold mb-4">📄 Boleto Gerado!</h3>
+              
+              <div className="bg-orange-50 rounded-xl p-6 mb-6 dark:bg-orange-900/20">
+                <p className="text-sm text-orange-800 dark:text-orange-200 mb-2">
+                  Vencimento: {new Date(paymentData.due_date).toLocaleDateString('pt-BR')}
+                </p>
+                <div className="bg-white dark:bg-gray-800 p-4 rounded-lg">
+                  <p className="font-mono text-xs break-all">{paymentData.barcode}</p>
+                </div>
+              </div>
 
-          <div className="bg-yellow-500/20 border border-yellow-500/30 rounded-lg p-4">
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-400 mr-2"></div>
-              <p className="text-sm font-medium text-yellow-300">
-                Aguardando confirmação do pagamento...
-              </p>
+              <div className="flex gap-3 justify-center">
+                {paymentData.pdf_url && (
+                  <Button asChild>
+                    <a href={paymentData.pdf_url} target="_blank" rel="noopener noreferrer">
+                      📄 Baixar PDF
+                    </a>
+                  </Button>
+                )}
+                <Button variant="outline" onClick={() => copyToClipboard(paymentData.barcode)}>
+                  📋 Copiar código
+                </Button>
+              </div>
             </div>
-            <p className="text-xs text-yellow-400/80 mt-2">
-              Você será redirecionado automaticamente após o pagamento
-            </p>
-          </div>
-
-          {pixData.expiration_date && (
-            <p className="text-xs text-gray-400 mt-4">
-              ⏰ Este QR Code expira em: {new Date(pixData.expiration_date).toLocaleString('pt-BR')}
-            </p>
           )}
-
-          <button
-            onClick={() => {
-              setPixData(null);
-              setError('');
-            }}
-            className="mt-4 text-sm text-blue-400 hover:text-blue-300 underline"
-          >
-            Gerar novo PIX
-          </button>
         </div>
       )}
     </div>
