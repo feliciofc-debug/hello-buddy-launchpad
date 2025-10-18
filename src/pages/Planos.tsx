@@ -4,7 +4,7 @@ import { Check, Zap, Shield, Clock, CreditCard, AlertCircle, TrendingUp } from '
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
-import { createStripePayment } from '@/api/stripe';
+import { createMercadoPagoPayment } from '@/api/mercadopago';
 
 const Planos = () => {
   const navigate = useNavigate();
@@ -92,13 +92,13 @@ const Planos = () => {
     toast.loading('Criando checkout...');
     
     try {
-      const result = await createStripePayment(user.id, user.email, planoSelecionado.id);
+      const result = await createMercadoPagoPayment(user.id, user.email, planoSelecionado.id);
       
       if (result.success && result.checkoutUrl) {
         toast.dismiss();
         toast.success('Abrindo página de pagamento...', { duration: 2000 });
         
-        // Abrir em NOVA ABA (funciona melhor no preview)
+        // Abrir em NOVA ABA
         const opened = window.open(result.checkoutUrl, '_blank');
         
         if (!opened) {

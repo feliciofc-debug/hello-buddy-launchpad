@@ -21,14 +21,31 @@ serve(async (req) => {
 
     console.log('Criando pagamento para:', { userId, userEmail, planType });
 
+    // Definir valores baseados no plano
+    let price = 0;
+    let title = '';
+    let description = '';
+    
+    if (planType === 'teste') {
+      price = 12.00; // R$12 total (R$1/mês x 12)
+      title = 'AMZ Ofertas - Plano TESTE';
+      description = 'Plano de teste - Funcionalidade completa por R$1/mês';
+    } else if (planType === 'completo') {
+      price = 1764.00; // R$1764 total (R$147/mês x 12)
+      title = 'AMZ Ofertas - Plano Completo Anual';
+      description = 'Acesso completo à plataforma - Pagamento anual parcelado';
+    } else {
+      throw new Error('Tipo de plano inválido');
+    }
+
     // Criar preferência de pagamento no Mercado Pago
-    // NÃO excluir métodos de pagamento para permitir PIX, Cartão e Boleto
+    // Permite PIX, Cartão e Boleto
     const preference = {
       items: [
         {
-          title: 'AMZ Ofertas - Plano Mensal',
-          description: 'Acesso completo à plataforma',
-          unit_price: 147.00,
+          title,
+          description,
+          unit_price: price,
           quantity: 1,
           currency_id: 'BRL'
         }
@@ -39,7 +56,6 @@ serve(async (req) => {
       },
       payment_methods: {
         installments: 12,
-        // Não excluir nenhum tipo de pagamento para permitir PIX
         excluded_payment_types: [],
         excluded_payment_methods: []
       },
@@ -51,6 +67,10 @@ serve(async (req) => {
       auto_return: 'approved',
       external_reference: userId,
       statement_descriptor: 'AMZ OFERTAS',
+      metadata: {
+        plan_type: planType,
+        user_id: userId
+      }
     };
 
     console.log('Criando preferência no Mercado Pago:', preference);
