@@ -40,6 +40,46 @@ function Index() {
 
   const unreadCount = notifications.filter(n => n.unread).length;
 
+  // Verificar se voltou do pagamento e ativar assinatura
+  useEffect(() => {
+    const checkPaymentReturn = async () => {
+      const paymentSuccess = searchParams.get('payment') === 'success';
+      const userId = searchParams.get('user_id');
+      const planType = searchParams.get('plan_type');
+      
+      if (paymentSuccess && userId && planType) {
+        console.log('🔄 Ativando assinatura após pagamento...');
+        try {
+          const { data, error } = await supabase.functions.invoke('activate-subscription', {
+            body: {
+              user_id: userId,
+              payment_id: `mp_redirect_${Date.now()}`,
+              plan_name: planType === 'teste' ? 'Teste' : 'Pro',
+              plan_type: 'monthly',
+              amount: planType === 'teste' ? 12 : 1764
+            }
+          });
+          
+          if (error) {
+            console.error('Erro ao ativar assinatura:', error);
+          } else {
+            console.log('✅ Assinatura ativada:', data);
+            toast.success('🎉 Pagamento aprovado! Bem-vindo ao AMZ Ofertas!');
+          }
+        } catch (err) {
+          console.error('Erro:', err);
+        }
+        // Limpar URL
+        window.history.replaceState({}, '', '/dashboard');
+      } else if (paymentSuccess) {
+        toast.success('Bem-vindo ao AMZ Ofertas! 🎉');
+        window.history.replaceState({}, '', '/dashboard');
+      }
+    };
+    
+    checkPaymentReturn();
+  }, [searchParams]);
+
   const handleCalcularROI = async () => {
     if (!produtoSelecionado || !calculoROI.investimento || !calculoROI.vendasEsperadas) return;
     try {
