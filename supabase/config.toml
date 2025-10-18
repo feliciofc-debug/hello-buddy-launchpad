@@ -17,3 +17,9 @@ verify_jwt = false
 
 [functions.create-payment]
 verify_jwt = false
+
+[functions.buscar-produtos-lomadee]
+verify_jwt = false
+
+[functions.buscar-produtos-shopee]
+verify_jwt = false
