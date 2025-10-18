@@ -153,7 +153,7 @@ function Landing() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
-              { icon: "🔍", title: "1000+ Produtos", desc: "Produtos com alta demanda, boas comissões e frete grátis. Amazon, Shopee, Hotmart!" },
+              { icon: "🔍", title: "1000+ Produtos", desc: "Produtos com alta demanda, boas comissões e frete grátis. Amazon, Shopee, TikTok Shop, Hotmart!" },
               { icon: "🤖", title: "Posts com IA", desc: "IA gera posts profissionais em segundos! Copiar e colar nunca foi tão fácil." },
               { icon: "📊", title: "Calculadora ROI", desc: "Calcule lucro, break-even e ROI antes de investir em tráfego pago!" },
               { icon: "📱", title: "WhatsApp em Massa", desc: "Envie ofertas para sua lista de clientes automaticamente!" },
@@ -293,7 +293,7 @@ function Landing() {
           <div className="space-y-6">
             {[
               { q: "❓ Preciso ter experiência como afiliado?", a: "Não! O sistema é perfeito para iniciantes. Guiamos você passo a passo!" },
-              { q: "❓ Funciona com quais plataformas?", a: "Amazon, Shopee, Hotmart, Eduzz, Monetizze e Mercado Livre!" },
+              { q: "❓ Funciona com quais plataformas?", a: "Amazon, Shopee, TikTok Shop, Hotmart, Eduzz, Monetizze e Mercado Livre!" },
               { q: "❓ Posso cancelar quando quiser?", a: "Sim! Sem fidelidade. Cancele com 1 clique no painel." },
               { q: "❓ Como funciona o teste grátis?", a: "7 dias de acesso completo sem pagar nada. Sem cartão de crédito!" },
               { q: "❓ Tem suporte?", a: "Sim! Suporte via WhatsApp de segunda a sexta, 9h às 18h." }
