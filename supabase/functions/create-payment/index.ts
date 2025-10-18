@@ -60,15 +60,17 @@ serve(async (req) => {
         excluded_payment_methods: []
       },
       back_urls: {
-        success: `${req.headers.get('origin') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'}/dashboard`,
+        success: `${req.headers.get('origin') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'}/dashboard?payment=success&user_id=${userId}&plan_type=${planType}`,
         failure: `${req.headers.get('origin') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'}/planos`,
         pending: `${req.headers.get('origin') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'}/planos`
       },
       auto_return: 'approved',
       external_reference: userId,
       statement_descriptor: 'AMZ OFERTAS',
+      notification_url: `https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/payment-webhook`,
       metadata: {
         plan_type: planType,
+        plan_name: planType === 'teste' ? 'Teste' : 'Pro',
         user_id: userId
       }
     };
