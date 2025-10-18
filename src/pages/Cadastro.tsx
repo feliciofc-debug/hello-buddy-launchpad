@@ -18,7 +18,6 @@ export default function Cadastro() {
     amazonId: '',
     hotmartEmail: '',
     shopeeId: '',
-    tiktokShopId: '',
     mercadoLivreId: '',
     aceitoTermos: false
   });
@@ -64,7 +63,6 @@ export default function Cadastro() {
               amazon_id: formData.amazonId || null,
               hotmart_email: formData.hotmartEmail || null,
               shopee_id: formData.shopeeId || null,
-              tiktok_shop_id: formData.tiktokShopId || null,
               mercado_livre_id: formData.mercadoLivreId || null
             })
             .eq('id', authData.user.id);
@@ -301,21 +299,6 @@ export default function Cadastro() {
                       placeholder="12345678"
                     />
                     <p className="text-xs text-slate-400 mt-1">ID de afiliado Shopee</p>
-                  </div>
-
-                  {/* TikTok Shop Affiliate ID */}
-                  <div>
-                    <label className="block text-sm font-medium text-purple-300 mb-2">
-                      TikTok Shop Affiliate ID
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.tiktokShopId}
-                      onChange={(e) => setFormData({...formData, tiktokShopId: e.target.value})}
-                      className="w-full bg-slate-700/50 text-white px-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                      placeholder="TS12345678"
-                    />
-                    <p className="text-xs text-slate-400 mt-1">ID de afiliado TikTok Shop</p>
                   </div>
 
                   {/* Mercado Livre User ID */}
