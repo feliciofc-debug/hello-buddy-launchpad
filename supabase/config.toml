@@ -9,6 +9,15 @@ verify_jwt = false
 [functions.calcular-roi]
 verify_jwt = false
 
+[functions.calcular-roi-avancado]
+verify_jwt = false
+
+[functions.rastrear-pixel]
+verify_jwt = false
+
+[functions.gerar-conteudo-ia]
+verify_jwt = false
+
 [functions.send-whatsapp]
 verify_jwt = false
 

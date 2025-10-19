@@ -7,7 +7,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -15,20 +14,18 @@ serve(async (req) => {
   try {
     const { productTitle, productPrice, productRating, productLink, platform } = await req.json();
     
-    console.log('Gerando conteúdo para:', { productTitle, platform });
+    console.log('Gerando conteúdo com Gemini para:', { productTitle, platform });
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY não configurada');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY não configurada');
     }
 
     // Criar prompt específico para cada plataforma
-    let systemPrompt = '';
-    let userPrompt = '';
+    let prompt = '';
 
     if (platform === 'instagram') {
-      systemPrompt = 'Você é um expert em copywriting para Instagram. Crie legendas engajantes com emojis, quebras de linha e call-to-action.';
-      userPrompt = `Crie uma legenda de Instagram para promover este produto:
+      prompt = `Crie uma legenda de Instagram para promover este produto:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
@@ -40,8 +37,7 @@ A legenda deve:
 - Sugerir 5-8 hashtags relevantes
 - Mencionar "link na bio"`;
     } else if (platform === 'whatsapp') {
-      systemPrompt = 'Você é um expert em vendas pelo WhatsApp. Crie mensagens persuasivas e amigáveis.';
-      userPrompt = `Crie uma mensagem de WhatsApp para promover este produto:
+      prompt = `Crie uma mensagem de WhatsApp para promover este produto:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
@@ -52,8 +48,7 @@ A mensagem deve:
 - Criar urgência
 - Incluir o link: ${productLink}`;
     } else if (platform === 'facebook') {
-      systemPrompt = 'Você é um expert em marketing no Facebook. Crie posts que geram engajamento.';
-      userPrompt = `Crie um post de Facebook para promover este produto:
+      prompt = `Crie um post de Facebook para promover este produto:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
@@ -64,8 +59,7 @@ O post deve:
 - Incluir call-to-action claro
 - Link: ${productLink}`;
     } else if (platform === 'tiktok') {
-      systemPrompt = 'Você é um expert em conteúdo para TikTok. Crie scripts virais e envolventes.';
-      userPrompt = `Crie um script de TikTok para promover este produto:
+      prompt = `Crie um script de TikTok para promover este produto:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
@@ -75,9 +69,8 @@ O script deve:
 - Ser dinâmico e energético
 - Mencionar "link nos comentários"
 - Usar linguagem jovem`;
-    } else { // email
-      systemPrompt = 'Você é um expert em email marketing. Crie emails persuasivos que convertem.';
-      userPrompt = `Crie um email marketing para promover este produto:
+    } else {
+      prompt = `Crie um email marketing para promover este produto:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
@@ -90,32 +83,40 @@ O email deve incluir:
 - Link: ${productLink}`;
     }
 
-    // Chamar Lovable AI (Gemini Flash)
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-      }),
-    });
+    // Chamar Google Gemini API diretamente
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.9,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
+          }
+        }),
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erro na API Lovable AI:', response.status, errorText);
+      console.error('Erro na API Gemini:', response.status, errorText);
       throw new Error(`Erro ao gerar conteúdo: ${response.status}`);
     }
 
     const data = await response.json();
-    const generatedContent = data.choices[0].message.content;
+    const generatedContent = data.candidates[0].content.parts[0].text;
 
-    console.log('Conteúdo gerado com sucesso');
+    console.log('Conteúdo gerado com sucesso via Gemini');
 
     return new Response(
       JSON.stringify({ 
@@ -127,11 +128,11 @@ O email deve incluir:
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Erro em gerar-conteudo-ia:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Erro ao gerar conteúdo'
+        error: error?.message || 'Erro ao gerar conteúdo'
       }), 
       {
         status: 500,
