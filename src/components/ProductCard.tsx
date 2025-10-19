@@ -17,6 +17,8 @@ interface ProductCardProps {
 const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
   const [copied, setCopied] = useState(false);
   const [calculatingROI, setCalculatingROI] = useState(false);
+  const [estimatedSales, setEstimatedSales] = useState<number | null>(null);
+  const [loadingSales, setLoadingSales] = useState(false);
 
   const copyAffiliateLink = () => {
     navigator.clipboard.writeText(product.affiliateLink);
@@ -69,6 +71,35 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
       toast.error('Erro ao rastrear visualização');
     }
   };
+
+  const fetchEstimatedSales = async () => {
+    // Simula um BSR baseado nas vendas do produto (quanto mais vendas, menor o BSR)
+    const estimatedBSR = Math.max(1, Math.round(100000 / (product.sales + 1)));
+    
+    setLoadingSales(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('estimate-sales', {
+        body: {
+          bsr: estimatedBSR,
+          category: product.category
+        }
+      });
+
+      if (error) throw error;
+
+      setEstimatedSales(data.estimatedDailySales);
+    } catch (error) {
+      console.error('Erro ao estimar vendas:', error);
+      setEstimatedSales(null);
+    } finally {
+      setLoadingSales(false);
+    }
+  };
+
+  // Carrega a estimativa ao montar o componente
+  useState(() => {
+    fetchEstimatedSales();
+  });
 
   const getMarketplaceBadgeColor = (marketplace: string) => {
     const colors: Record<string, string> = {
@@ -150,6 +181,21 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
             </span>
           </div>
         </div>
+
+        {/* Estimativa de Vendas BSR */}
+        {estimatedSales !== null && (
+          <div className="mb-3 p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                <Activity className="w-3 h-3" />
+                Estimativa vendas/dia:
+              </span>
+              <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                {loadingSales ? '...' : estimatedSales}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Price Section */}
         <div className="mb-4">
