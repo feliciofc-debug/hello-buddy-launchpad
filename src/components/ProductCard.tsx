@@ -3,9 +3,11 @@
 
 "use client";
 
-import { Star, TrendingUp, ExternalLink, Copy, Sparkles, MessageCircle } from 'lucide-react';
+import { Star, TrendingUp, ExternalLink, Copy, Sparkles, MessageCircle, Calculator, Activity } from 'lucide-react';
 import type { Product } from '@/data/mockData';
 import { useState } from 'react';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ProductCardProps {
   product: Product;
@@ -14,11 +16,58 @@ interface ProductCardProps {
 
 const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
   const [copied, setCopied] = useState(false);
+  const [calculatingROI, setCalculatingROI] = useState(false);
 
   const copyAffiliateLink = () => {
     navigator.clipboard.writeText(product.affiliateLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCalculateROI = async () => {
+    setCalculatingROI(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('calcular-roi-avancado', {
+        body: {
+          productId: product.id,
+          productPrice: product.price,
+          commission: product.commission,
+          adSpend: 50 // Valor padrão de investimento em anúncios
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success('ROI Calculado!', {
+        description: `Lucro: R$ ${data.lucro.toFixed(2)} | ROI: ${data.roi}% | Margem: ${data.margem}%`
+      });
+    } catch (error) {
+      console.error('Erro ao calcular ROI:', error);
+      toast.error('Erro ao calcular ROI');
+    } finally {
+      setCalculatingROI(false);
+    }
+  };
+
+  const handleTrackPixel = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('rastrear-pixel', {
+        body: {
+          productId: product.id,
+          eventType: 'view',
+          pixelId: product.pixelId || `pixel_${product.id}`
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success('Visualização rastreada!', {
+        description: 'Pixel de rastreamento ativado com sucesso'
+      });
+    } catch (error) {
+      console.error('Erro ao rastrear pixel:', error);
+      toast.error('Erro ao rastrear visualização');
+    }
   };
 
   const getMarketplaceBadgeColor = (marketplace: string) => {
@@ -131,6 +180,25 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
 
         {/* Action Buttons */}
         <div className="space-y-2">
+          {/* ROI and Pixel Buttons Row */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleCalculateROI}
+              disabled={calculatingROI}
+              className="flex items-center justify-center gap-1 py-2 px-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg transition-colors font-medium disabled:opacity-50"
+            >
+              <Calculator className="w-4 h-4" />
+              <span className="text-xs">ROI</span>
+            </button>
+            <button
+              onClick={handleTrackPixel}
+              className="flex items-center justify-center gap-1 py-2 px-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg transition-colors font-medium"
+            >
+              <Activity className="w-4 h-4" />
+              <span className="text-xs">Pixel</span>
+            </button>
+          </div>
+
           {/* Copy Link Button */}
           <button
             onClick={copyAffiliateLink}
