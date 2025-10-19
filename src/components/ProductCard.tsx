@@ -5,7 +5,7 @@
 
 import { Star, TrendingUp, ExternalLink, Copy, Sparkles, MessageCircle, Calculator, Activity } from 'lucide-react';
 import type { Product } from '@/data/mockData';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -97,9 +97,9 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
   };
 
   // Carrega a estimativa ao montar o componente
-  useState(() => {
+  useEffect(() => {
     fetchEstimatedSales();
-  });
+  }, []);
 
   const getMarketplaceBadgeColor = (marketplace: string) => {
     const colors: Record<string, string> = {
