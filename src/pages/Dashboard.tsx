@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTheme } from 'next-themes';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import NotificationCenter from '@/components/NotificationCenter';
@@ -11,10 +12,10 @@ import { mockProducts, type Marketplace } from '@/data/mockData';
 const Dashboard = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { theme, setTheme } = useTheme();
   const [user, setUser] = useState<any>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true);
 
   // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
   const metrics = useMemo(() => {
@@ -175,8 +176,7 @@ const Dashboard = () => {
   };
 
   const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    document.documentElement.classList.toggle('dark');
+    setTheme(theme === 'dark' ? 'light' : 'dark');
   };
 
   const handleLogout = async () => {
@@ -286,9 +286,9 @@ const Dashboard = () => {
             <button
               onClick={toggleDarkMode}
               className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              title={isDarkMode ? 'Modo Claro' : 'Modo Escuro'}
+              title={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
             >
-              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             </button>
             <NotificationCenter />
             <div className="flex items-center gap-3">
