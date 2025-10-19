@@ -1,15 +1,128 @@
 "use client";
 
-import { useState, useMemo } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import ProductsPage from '@/components/ProductsPage';
 import AffiliateProfile from '@/components/AffiliateProfile';
 import NotificationCenter from '@/components/NotificationCenter';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [user, setUser] = useState<any>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'products' | 'profile'>('dashboard');
+
+  // Verificar autenticação e assinatura
+  useEffect(() => {
+    checkAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        navigate('/login');
+        return;
+      }
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  // Verificar se voltou do pagamento e ativar assinatura
+  useEffect(() => {
+    const checkPaymentReturn = async () => {
+      const paymentSuccess = searchParams.get('payment') === 'success';
+      const userId = searchParams.get('user_id');
+      const planType = searchParams.get('plan_type');
+      
+      if (paymentSuccess && userId && planType) {
+        console.log('🔄 Ativando assinatura após pagamento...');
+        try {
+          const { data, error } = await supabase.functions.invoke('activate-subscription', {
+            body: {
+              user_id: userId,
+              payment_id: `mp_redirect_${Date.now()}`,
+              plan_name: planType === 'teste' ? 'Teste' : 'Pro',
+              plan_type: 'monthly',
+              amount: planType === 'teste' ? 12 : 1764
+            }
+          });
+          
+          if (error) {
+            console.error('Erro ao ativar assinatura:', error);
+          } else {
+            console.log('✅ Assinatura ativada:', data);
+            toast.success('🎉 Pagamento aprovado! Bem-vindo ao AMZ Ofertas!');
+          }
+        } catch (err) {
+          console.error('Erro:', err);
+        }
+        window.history.replaceState({}, '', '/dashboard');
+      } else if (paymentSuccess) {
+        toast.success('Bem-vindo ao AMZ Ofertas! 🎉');
+        window.history.replaceState({}, '', '/dashboard');
+      }
+    };
+    
+    checkPaymentReturn();
+  }, [searchParams]);
+
+  const checkAuth = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        toast.error('Você precisa fazer login para acessar o dashboard');
+        navigate('/login');
+        return;
+      }
+      
+      // Exceção para admin - não precisa de assinatura
+      if (session.user.email !== 'admin@amzofertas.com') {
+        // Verificar se o usuário tem assinatura ativa
+        const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
+        
+        console.log('Verificação de assinatura:', subscriptionCheck);
+        
+        // Se não tiver assinatura ativa, redireciona para planos
+        if (!subscriptionCheck?.hasActiveSubscription) {
+          toast.error('Você precisa de uma assinatura ativa para acessar o dashboard');
+          navigate('/planos');
+          return;
+        }
+      }
+      
+      setUser(session.user);
+    } catch (error) {
+      console.error('Erro ao verificar autenticação:', error);
+      toast.error('Erro ao verificar autenticação');
+      navigate('/login');
+    } finally {
+      setIsCheckingAuth(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    toast.success('Logout realizado com sucesso!');
+    navigate('/');
+  };
+
+  if (isCheckingAuth || !user) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600 dark:text-gray-400">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Calcular métricas reais baseadas nos produtos
   const metrics = useMemo(() => {
@@ -151,7 +264,17 @@ const Dashboard = () => {
           </div>
           <div className="flex items-center space-x-4">
             <NotificationCenter />
-            <User className="text-gray-500 cursor-pointer" />
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-600 dark:text-gray-400">{user?.email}</span>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                title="Sair"
+              >
+                <LogOut size={18} />
+                Sair
+              </button>
+            </div>
           </div>
         </header>
 
