@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from 'react';
-import { Save, Eye, EyeOff, Key, ShoppingBag, AlertCircle, CheckCircle, Copy } from 'lucide-react';
+import { Save, Eye, EyeOff, Key, ShoppingBag, AlertCircle, CheckCircle, Copy, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface APIConfig {
   marketplace: string;
@@ -11,6 +12,7 @@ interface APIConfig {
 }
 
 const SettingsPage = () => {
+  const navigate = useNavigate();
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState(false);
   const [configs, setConfigs] = useState<APIConfig[]>([
@@ -114,6 +116,15 @@ const SettingsPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-5xl mx-auto">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span className="font-medium">Voltar ao Dashboard</span>
+        </button>
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">

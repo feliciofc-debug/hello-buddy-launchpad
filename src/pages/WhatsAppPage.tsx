@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from 'react';
-import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings } from 'lucide-react';
+import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface WhatsAppGroup {
   id: string;
@@ -18,6 +19,7 @@ interface WhatsAppConfig {
 }
 
 const WhatsAppPage = () => {
+  const navigate = useNavigate();
   const [config, setConfig] = useState<WhatsAppConfig>({
     apiToken: '',
     phoneNumber: '',
@@ -89,6 +91,15 @@ const WhatsAppPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-6xl mx-auto">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span className="font-medium">Voltar ao Dashboard</span>
+        </button>
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">

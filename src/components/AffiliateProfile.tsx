@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from 'react';
-import { User, Bell, Save, Mail } from 'lucide-react';
+import { User, Bell, Save, Mail, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import type { Category } from '@/data/mockData';
 
 const CATEGORIES: Category[] = [
@@ -38,6 +39,7 @@ interface AffiliateSettings {
 }
 
 const AffiliateProfile = () => {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<AffiliateSettings>({
     name: 'Felicio',
     email: 'felicio@example.com',
@@ -80,6 +82,15 @@ const AffiliateProfile = () => {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
+      {/* Back Button */}
+      <button
+        onClick={() => navigate('/dashboard')}
+        className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors"
+      >
+        <ArrowLeft className="w-5 h-5" />
+        <span className="font-medium">Voltar ao Dashboard</span>
+      </button>
+
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8 pb-6 border-b border-gray-200 dark:border-gray-700">

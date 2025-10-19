@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import ProductCard from '@/components/ProductCard';
 import FilterPanel, { FilterOptions } from '@/components/FilterPanel';
 import GerarConteudoModal from './GerarConteudoModal';
@@ -17,6 +19,7 @@ const MARKETPLACE_TABS: { value: Marketplace | 'all'; label: string; icon: strin
 ];
 
 const ProductsPage = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Marketplace | 'all'>('all');
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
@@ -126,6 +129,15 @@ const ProductsPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto px-4 py-8">
+        {/* Back Button */}
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span className="font-medium">Voltar ao Dashboard</span>
+        </button>
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
