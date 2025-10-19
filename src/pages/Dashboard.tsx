@@ -204,8 +204,13 @@ const Dashboard = () => {
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className={`bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 w-64 space-y-6 py-7 px-2 absolute inset-y-0 left-0 transform ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition duration-200 ease-in-out z-20`}>
-        <a href="#" className="text-gray-900 dark:text-white text-2xl font-bold px-4">
-          Amazon Seller Pro
+        <a href="#" className="flex items-center gap-3 px-4">
+          <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center shadow-md">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+          </div>
+          <span className="text-gray-900 dark:text-white text-2xl font-bold">AMZ Ofertas</span>
         </a>
         <nav className="space-y-2">
           <button
