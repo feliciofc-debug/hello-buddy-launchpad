@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import ProductsPage from '@/components/ProductsPage';
 import AffiliateProfile from '@/components/AffiliateProfile';
 import NotificationCenter from '@/components/NotificationCenter';
+import SettingsPage from '@/components/SettingsPage';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -16,7 +17,7 @@ const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'products' | 'profile'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'products' | 'profile' | 'settings'>('dashboard');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
   // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
@@ -240,6 +241,17 @@ const Dashboard = () => {
             <UserCircle size={20} />
             Meu Perfil
           </button>
+          <button
+            onClick={() => setCurrentPage('settings')}
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+              currentPage === 'settings' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Settings size={20} />
+            Configurações API
+          </button>
         </nav>
       </aside>
 
@@ -258,6 +270,7 @@ const Dashboard = () => {
               {currentPage === 'dashboard' && 'Dashboard'}
               {currentPage === 'products' && 'Produtos'}
               {currentPage === 'profile' && 'Meu Perfil'}
+              {currentPage === 'settings' && 'Configurações API'}
             </h2>
           </div>
           <div className="flex items-center space-x-4">
@@ -492,6 +505,7 @@ const Dashboard = () => {
           
           {currentPage === 'products' && <ProductsPage />}
           {currentPage === 'profile' && <AffiliateProfile />}
+          {currentPage === 'settings' && <SettingsPage />}
         </main>
       </div>
     </div>
