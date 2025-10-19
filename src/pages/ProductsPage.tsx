@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
 import ProductCard from '@/components/ProductCard';
 import FilterPanel, { FilterOptions } from '@/components/FilterPanel';
+import GerarConteudoModal from './GerarConteudoModal';
 import { mockProducts } from '@/data/mockData';
-import type { Marketplace } from '@/types/product';
+import type { Marketplace, Product } from '@/types/product';
 
 const MARKETPLACE_TABS: { value: Marketplace | 'all'; label: string; icon: string }[] = [
   { value: 'all', label: 'Todos', icon: '🌐' },
@@ -26,7 +27,8 @@ const ProductsPage = () => {
     sortBy: 'sales',
     quantity: 500
   });
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   // Filter and sort products
   const filteredProducts = useMemo(() => {
@@ -116,10 +118,9 @@ const ProductsPage = () => {
     };
   }, [filteredProducts]);
 
-  const handleGenerateContent = (product: any) => {
+  const handleGenerateContent = (product: Product) => {
     setSelectedProduct(product);
-    // TODO: Integrar com Gemini API para gerar conteúdo
-    alert(`Gerar conteúdo para: ${product.title}\n\nEm breve: Integração com IA para gerar posts automáticos!`);
+    setShowModal(true);
   };
 
   return (
@@ -213,6 +214,17 @@ const ProductsPage = () => {
             )}
           </div>
         </div>
+
+        {/* Modal de Geração de Conteúdo */}
+        {showModal && selectedProduct && (
+          <GerarConteudoModal
+            product={selectedProduct}
+            onClose={() => {
+              setShowModal(false);
+              setSelectedProduct(null);
+            }}
+          />
+        )}
       </div>
     </div>
   );

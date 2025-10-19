@@ -3,7 +3,7 @@
 
 "use client";
 
-import { Star, TrendingUp, ExternalLink, Copy, Sparkles } from 'lucide-react';
+import { Star, TrendingUp, ExternalLink, Copy, Sparkles, MessageCircle } from 'lucide-react';
 import type { Product } from '@/data/mockData';
 import { useState } from 'react';
 
@@ -146,6 +146,18 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
                 <span className="text-sm">Copiar Link</span>
               </>
             )}
+          </button>
+
+          {/* WhatsApp Button */}
+          <button
+            onClick={() => {
+              const message = `🔥 *${product.title}*%0A%0A💰 R$ ${product.price.toFixed(2)}%0A⭐ ${product.rating}/5 estrelas%0A%0A🔗 ${product.affiliateLink}`;
+              window.open(`https://wa.me/?text=${message}`, '_blank');
+            }}
+            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-medium"
+          >
+            <MessageCircle className="w-4 h-4" />
+            <span className="text-sm">Enviar WhatsApp</span>
           </button>
 
           {/* Generate Content Button */}
