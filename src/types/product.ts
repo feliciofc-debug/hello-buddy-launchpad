@@ -44,4 +44,6 @@ export interface Product {
   roi?: number;
   pixelId?: string;
   lastScraped?: Date;
+  bsr?: number; // Best Sellers Rank - para estimativa de vendas
+  bsrCategory?: string; // Categoria BSR (ex: "Books", "Electronics")
 }

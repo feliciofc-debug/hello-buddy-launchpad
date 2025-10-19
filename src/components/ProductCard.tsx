@@ -73,15 +73,18 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
   };
 
   const fetchEstimatedSales = async () => {
-    // Simula um BSR baseado nas vendas do produto (quanto mais vendas, menor o BSR)
-    const estimatedBSR = Math.max(1, Math.round(100000 / (product.sales + 1)));
+    // Verifica se o produto tem os dados BSR necessários
+    if (!product.bsr || !product.bsrCategory) {
+      setLoadingSales(false);
+      return;
+    }
     
     setLoadingSales(true);
     try {
       const { data, error } = await supabase.functions.invoke('estimate-sales', {
         body: {
-          bsr: estimatedBSR,
-          category: product.category
+          bsr: product.bsr,
+          category: product.bsrCategory
         }
       });
 

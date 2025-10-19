@@ -34,7 +34,9 @@ export const mockProducts: Product[] = [
     reviews: 15234,
     sales: 2340,
     badge: '⭐ TOP VENDAS',
-    createdAt: new Date('2024-08-15')
+    createdAt: new Date('2024-08-15'),
+    bsr: 450,
+    bsrCategory: 'Electronics'
   },
   {
     id: 'amz-002',
@@ -52,7 +54,9 @@ export const mockProducts: Product[] = [
     reviews: 8945,
     sales: 1876,
     badge: '📈 EM ALTA',
-    createdAt: new Date('2024-09-20')
+    createdAt: new Date('2024-09-20'),
+    bsr: 850,
+    bsrCategory: 'Electronics'
   },
   
   // SHOPEE - Casa e Cozinha
@@ -72,7 +76,9 @@ export const mockProducts: Product[] = [
     reviews: 23456,
     sales: 3421,
     badge: '⭐ TOP VENDAS',
-    createdAt: new Date('2024-07-10')
+    createdAt: new Date('2024-07-10'),
+    bsr: 320,
+    bsrCategory: 'Home & Kitchen'
   },
   {
     id: 'shp-002',
@@ -90,7 +96,9 @@ export const mockProducts: Product[] = [
     reviews: 5678,
     sales: 892,
     badge: '📈 EM ALTA',
-    createdAt: new Date('2024-09-25')
+    createdAt: new Date('2024-09-25'),
+    bsr: 1200,
+    bsrCategory: 'Home & Kitchen'
   },
 
   // ALIEXPRESS - Moda
@@ -109,7 +117,9 @@ export const mockProducts: Product[] = [
     reviews: 12789,
     sales: 4567,
     badge: '⭐ TOP VENDAS',
-    createdAt: new Date('2024-06-05')
+    createdAt: new Date('2024-06-05'),
+    bsr: 280,
+    bsrCategory: 'Clothing, Shoes & Jewelry'
   },
   {
     id: 'ali-002',
@@ -126,7 +136,9 @@ export const mockProducts: Product[] = [
     reviews: 3456,
     sales: 234,
     badge: '🌟 NOVO',
-    createdAt: new Date('2024-10-01')
+    createdAt: new Date('2024-10-01'),
+    bsr: 2500,
+    bsrCategory: 'Clothing, Shoes & Jewelry'
   },
 
   // HOTMART - Infoprodutos
@@ -145,7 +157,9 @@ export const mockProducts: Product[] = [
     reviews: 8934,
     sales: 12456,
     badge: '⭐ TOP VENDAS',
-    createdAt: new Date('2024-01-15')
+    createdAt: new Date('2024-01-15'),
+    bsr: 50,
+    bsrCategory: 'Books'
   },
   {
     id: 'hot-002',
@@ -162,7 +176,9 @@ export const mockProducts: Product[] = [
     reviews: 456,
     sales: 89,
     badge: '🔥 LANÇAMENTO',
-    createdAt: new Date('2024-10-12')
+    createdAt: new Date('2024-10-12'),
+    bsr: 5000,
+    bsrCategory: 'Books'
   },
 
   // LOMADEE - Pet Shop
@@ -181,7 +197,9 @@ export const mockProducts: Product[] = [
     reviews: 2345,
     sales: 567,
     badge: '📈 EM ALTA',
-    createdAt: new Date('2024-09-15')
+    createdAt: new Date('2024-09-15'),
+    bsr: 800,
+    bsrCategory: 'default'
   },
 
   // SAÚDE E SUPLEMENTOS
@@ -201,7 +219,9 @@ export const mockProducts: Product[] = [
     reviews: 9876,
     sales: 4321,
     badge: '⭐ TOP VENDAS',
-    createdAt: new Date('2024-05-20')
+    createdAt: new Date('2024-05-20'),
+    bsr: 150,
+    bsrCategory: 'Health & Household'
   },
 
   // BRINQUEDOS
@@ -220,7 +240,9 @@ export const mockProducts: Product[] = [
     reviews: 1234,
     sales: 456,
     badge: '📈 EM ALTA',
-    createdAt: new Date('2024-09-28')
+    createdAt: new Date('2024-09-28'),
+    bsr: 650,
+    bsrCategory: 'Toys & Games'
   },
 
   // BELEZA
@@ -240,7 +262,9 @@ export const mockProducts: Product[] = [
     reviews: 3456,
     sales: 123,
     badge: '🌟 NOVO',
-    createdAt: new Date('2024-10-05')
+    createdAt: new Date('2024-10-05'),
+    bsr: 3500,
+    bsrCategory: 'default'
   },
 
   // FITNESS
@@ -259,7 +283,9 @@ export const mockProducts: Product[] = [
     reviews: 5678,
     sales: 2345,
     badge: '⭐ TOP VENDAS',
-    createdAt: new Date('2024-03-10')
+    createdAt: new Date('2024-03-10'),
+    bsr: 200,
+    bsrCategory: 'Sports & Outdoors'
   }
 ];
 
