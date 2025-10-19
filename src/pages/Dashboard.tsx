@@ -1,14 +1,11 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import ProductsPage from '@/components/ProductsPage';
-import AffiliateProfile from '@/components/AffiliateProfile';
 import NotificationCenter from '@/components/NotificationCenter';
-import SettingsPage from '@/components/SettingsPage';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -17,7 +14,6 @@ const Dashboard = () => {
   const [user, setUser] = useState<any>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'products' | 'profile' | 'settings'>('dashboard');
   const [isDarkMode, setIsDarkMode] = useState(true);
 
   // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
@@ -213,50 +209,61 @@ const Dashboard = () => {
           <span className="text-gray-900 dark:text-white text-2xl font-bold">AMZ Ofertas</span>
         </a>
         <nav className="space-y-2">
-          <button
-            onClick={() => setCurrentPage('dashboard')}
+          <a
+            href="/dashboard"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              currentPage === 'dashboard' 
+              window.location.pathname === '/dashboard' 
                 ? 'bg-blue-500 text-white' 
                 : 'hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
             <BarChart3 size={20} />
             Dashboard
-          </button>
-          <button
-            onClick={() => setCurrentPage('products')}
+          </a>
+          <a
+            href="/produtos"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              currentPage === 'products' 
+              window.location.pathname === '/produtos' 
                 ? 'bg-blue-500 text-white' 
                 : 'hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
             <Package size={20} />
             Produtos
-          </button>
-          <button
-            onClick={() => setCurrentPage('profile')}
+          </a>
+          <a
+            href="/perfil"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              currentPage === 'profile' 
+              window.location.pathname === '/perfil' 
                 ? 'bg-blue-500 text-white' 
                 : 'hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
             <UserCircle size={20} />
             Meu Perfil
-          </button>
-          <button
-            onClick={() => setCurrentPage('settings')}
+          </a>
+          <a
+            href="/configuracoes"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              currentPage === 'settings' 
+              window.location.pathname === '/configuracoes' 
                 ? 'bg-blue-500 text-white' 
                 : 'hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}
           >
             <Settings size={20} />
             Configurações API
-          </button>
+          </a>
+          <a
+            href="/whatsapp"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+              window.location.pathname === '/whatsapp' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <MessageCircle size={20} />
+            WhatsApp
+          </a>
         </nav>
       </aside>
 
@@ -272,10 +279,7 @@ const Dashboard = () => {
               {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
             <h2 className="ml-4 text-xl font-semibold text-gray-900 dark:text-white">
-              {currentPage === 'dashboard' && 'Dashboard'}
-              {currentPage === 'products' && 'Produtos'}
-              {currentPage === 'profile' && 'Meu Perfil'}
-              {currentPage === 'settings' && 'Configurações API'}
+              Dashboard
             </h2>
           </div>
           <div className="flex items-center space-x-4">
@@ -303,8 +307,7 @@ const Dashboard = () => {
 
         {/* Content */}
         <main className="flex-1 bg-gray-50 dark:bg-gray-900 overflow-auto">
-          {currentPage === 'dashboard' && (
-            <div className="p-6">
+          <div className="p-6">
               {/* Welcome Message */}
               <div className="mb-8">
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
@@ -506,11 +509,6 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
-          )}
-          
-          {currentPage === 'products' && <ProductsPage />}
-          {currentPage === 'profile' && <AffiliateProfile />}
-          {currentPage === 'settings' && <SettingsPage />}
         </main>
       </div>
     </div>

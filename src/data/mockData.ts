@@ -1,44 +1,7 @@
-export type Marketplace = 'amazon' | 'shopee' | 'aliexpress' | 'lomadee' | 'hotmart' | 'eduzz' | 'monetizze';
+import type { Product, Marketplace, Category, Badge } from '@/types/product';
 
-export type Category = 
-  | '📱 Eletrônicos'
-  | '🏠 Casa e Cozinha'
-  | '👶 Bebês'
-  | '👗 Moda'
-  | '💄 Beleza'
-  | '⚽ Esportes'
-  | '🎮 Games'
-  | '🐶 Pet Shop'
-  | '🧸 Brinquedos'
-  | '💊 Saúde e Suplementos'
-  | '📚 Livros'
-  | '🔧 Ferramentas'
-  | '🚗 Automotivo'
-  | '💼 Negócios'
-  | '📖 Educação'
-  | '💪 Fitness'
-  | '💰 Finanças';
-
-export type Badge = '🌟 NOVO' | '🔥 LANÇAMENTO' | '⭐ TOP VENDAS' | '📈 EM ALTA';
-
-export interface Product {
-  id: string;
-  title: string;
-  description: string;
-  price: number;
-  originalPrice?: number;
-  commission: number;
-  commissionPercent: number;
-  marketplace: Marketplace;
-  category: Category;
-  imageUrl: string;
-  affiliateLink: string;
-  rating: number;
-  reviews: number;
-  sales: number;
-  badge?: Badge;
-  createdAt: Date;
-}
+// Re-export types for backward compatibility
+export type { Marketplace, Category, Badge, Product };
 
 // Função helper para calcular badge
 function calculateBadge(createdAt: Date, sales: number): Badge | undefined {
