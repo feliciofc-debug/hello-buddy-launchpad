@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -17,6 +17,7 @@ const Dashboard = () => {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'products' | 'profile'>('dashboard');
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
   // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
   const metrics = useMemo(() => {
@@ -176,6 +177,11 @@ const Dashboard = () => {
     }
   };
 
+  const toggleDarkMode = () => {
+    setIsDarkMode(!isDarkMode);
+    document.documentElement.classList.toggle('dark');
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast.success('Logout realizado com sucesso!');
@@ -255,6 +261,13 @@ const Dashboard = () => {
             </h2>
           </div>
           <div className="flex items-center space-x-4">
+            <button
+              onClick={toggleDarkMode}
+              className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              title={isDarkMode ? 'Modo Claro' : 'Modo Escuro'}
+            >
+              {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
             <NotificationCenter />
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-600 dark:text-gray-400">{user?.email}</span>
