@@ -18,6 +18,75 @@ const Dashboard = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<'dashboard' | 'products' | 'profile'>('dashboard');
 
+  // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
+  const metrics = useMemo(() => {
+    const totalProducts = mockProducts.length;
+    const soldProducts = mockProducts.slice(0, 8);
+    const totalRevenue = soldProducts.reduce((acc, p) => acc + p.price, 0);
+    const totalCommissions = soldProducts.reduce((acc, p) => acc + p.commission, 0);
+    const realProfit = totalCommissions;
+    const averageTicket = totalRevenue / soldProducts.length;
+    const previousRevenue = totalRevenue / 1.125;
+    const revenueGrowth = ((totalRevenue - previousRevenue) / previousRevenue) * 100;
+    
+    const marketplaceEarnings = soldProducts.reduce((acc, product) => {
+      const mp = product.marketplace;
+      if (!acc[mp]) {
+        acc[mp] = {
+          marketplace: mp,
+          revenue: 0,
+          commission: 0,
+          sales: 0,
+          products: 0
+        };
+      }
+      acc[mp].revenue += product.price;
+      acc[mp].commission += product.commission;
+      acc[mp].sales += 1;
+      return acc;
+    }, {} as Record<Marketplace, {
+      marketplace: Marketplace;
+      revenue: number;
+      commission: number;
+      sales: number;
+      products: number;
+    }>);
+
+    mockProducts.forEach(product => {
+      const mp = product.marketplace;
+      if (marketplaceEarnings[mp]) {
+        marketplaceEarnings[mp].products += 1;
+      }
+    });
+
+    const marketplaceArray = Object.values(marketplaceEarnings).sort((a, b) => b.commission - a.commission);
+    
+    return {
+      totalRevenue,
+      totalCommissions,
+      realProfit,
+      averageTicket,
+      revenueGrowth,
+      soldProducts: soldProducts.length,
+      totalProducts,
+      marketplaceEarnings: marketplaceArray
+    };
+  }, []);
+
+  // Função para obter ícone e cor por marketplace
+  const getMarketplaceInfo = (marketplace: Marketplace) => {
+    const info: Record<Marketplace, { icon: string; color: string; name: string }> = {
+      amazon: { icon: '📦', color: 'bg-orange-500', name: 'Amazon' },
+      shopee: { icon: '🛍️', color: 'bg-orange-600', name: 'Shopee' },
+      aliexpress: { icon: '🌐', color: 'bg-red-500', name: 'AliExpress' },
+      lomadee: { icon: '🔗', color: 'bg-blue-500', name: 'Lomadee' },
+      hotmart: { icon: '🎓', color: 'bg-green-500', name: 'Hotmart' },
+      eduzz: { icon: '💼', color: 'bg-purple-500', name: 'Eduzz' },
+      monetizze: { icon: '💰', color: 'bg-pink-500', name: 'Monetizze' }
+    };
+    return info[marketplace];
+  };
+
   // Verificar autenticação e assinatura
   useEffect(() => {
     checkAuth();
@@ -123,83 +192,6 @@ const Dashboard = () => {
       </div>
     );
   }
-
-  // Calcular métricas reais baseadas nos produtos
-  const metrics = useMemo(() => {
-    const totalProducts = mockProducts.length;
-    
-    // Simular vendas (assumindo que vendeu alguns produtos)
-    const soldProducts = mockProducts.slice(0, 8); // Primeiros 8 produtos vendidos
-    
-    const totalRevenue = soldProducts.reduce((acc, p) => acc + p.price, 0);
-    const totalCommissions = soldProducts.reduce((acc, p) => acc + p.commission, 0);
-    const realProfit = totalCommissions;
-    const averageTicket = totalRevenue / soldProducts.length;
-    
-    // Calcular crescimento (simulado - 12.5% de crescimento)
-    const previousRevenue = totalRevenue / 1.125;
-    const revenueGrowth = ((totalRevenue - previousRevenue) / previousRevenue) * 100;
-    
-    // Calcular ganhos por marketplace
-    const marketplaceEarnings = soldProducts.reduce((acc, product) => {
-      const mp = product.marketplace;
-      if (!acc[mp]) {
-        acc[mp] = {
-          marketplace: mp,
-          revenue: 0,
-          commission: 0,
-          sales: 0,
-          products: 0
-        };
-      }
-      acc[mp].revenue += product.price;
-      acc[mp].commission += product.commission;
-      acc[mp].sales += 1;
-      return acc;
-    }, {} as Record<Marketplace, {
-      marketplace: Marketplace;
-      revenue: number;
-      commission: number;
-      sales: number;
-      products: number;
-    }>);
-
-    // Contar produtos por marketplace
-    mockProducts.forEach(product => {
-      const mp = product.marketplace;
-      if (marketplaceEarnings[mp]) {
-        marketplaceEarnings[mp].products += 1;
-      }
-    });
-
-    // Converter para array e ordenar por comissão
-    const marketplaceArray = Object.values(marketplaceEarnings).sort((a, b) => b.commission - a.commission);
-    
-    return {
-      totalRevenue,
-      totalCommissions,
-      realProfit,
-      averageTicket,
-      revenueGrowth,
-      soldProducts: soldProducts.length,
-      totalProducts,
-      marketplaceEarnings: marketplaceArray
-    };
-  }, []);
-
-  // Função para obter ícone e cor por marketplace
-  const getMarketplaceInfo = (marketplace: Marketplace) => {
-    const info: Record<Marketplace, { icon: string; color: string; name: string }> = {
-      amazon: { icon: '📦', color: 'bg-orange-500', name: 'Amazon' },
-      shopee: { icon: '🛍️', color: 'bg-orange-600', name: 'Shopee' },
-      aliexpress: { icon: '🌐', color: 'bg-red-500', name: 'AliExpress' },
-      lomadee: { icon: '🔗', color: 'bg-blue-500', name: 'Lomadee' },
-      hotmart: { icon: '🎓', color: 'bg-green-500', name: 'Hotmart' },
-      eduzz: { icon: '💼', color: 'bg-purple-500', name: 'Eduzz' },
-      monetizze: { icon: '💰', color: 'bg-pink-500', name: 'Monetizze' }
-    };
-    return info[marketplace];
-  };
 
   return (
     <div className="flex min-h-screen">
