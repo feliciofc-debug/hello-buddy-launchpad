@@ -36,18 +36,21 @@ serve(async (req) => {
     const credentials = btoa(`${clientId}:${clientSecret}`);
     console.log('✅ [HOTMART-AUTH] Credenciais codificadas');
 
+    // Prepara o body para a requisição
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: clientId,
+      client_secret: clientSecret
+    });
+
     // Faz a requisição para obter o token OAuth2
     const tokenResponse = await fetch('https://api-sec-vlc.hotmart.com/security/oauth/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${credentials}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: JSON.stringify({
-        grant_type: 'client_credentials',
-        client_id: clientId,
-        client_secret: clientSecret
-      })
+      body: body.toString()
     });
 
     const tokenData = await tokenResponse.json();
@@ -82,12 +85,12 @@ serve(async (req) => {
       }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('💥 [HOTMART-AUTH] Erro crítico:', error);
     return new Response(
       JSON.stringify({ 
         status: 'error',
-        error: error.message 
+        error: error?.message || 'Erro desconhecido' 
       }),
       { 
         status: 500,
