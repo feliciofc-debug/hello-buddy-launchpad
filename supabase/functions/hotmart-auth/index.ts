@@ -41,18 +41,20 @@ serve(async (req) => {
     console.log('✅ [HOTMART-AUTH] Credenciais codificadas');
 
     // Faz a requisição para obter o token OAuth2
+    // Seguindo a documentação oficial da Hotmart: parâmetros na URL
     console.log('📡 [HOTMART-AUTH] Enviando requisição para API Hotmart...');
     
-    const formData = new URLSearchParams();
-    formData.append('grant_type', 'client_credentials');
+    const url = new URL('https://api-sec-vlc.hotmart.com/security/oauth/token');
+    url.searchParams.append('grant_type', 'client_credentials');
+    url.searchParams.append('client_id', clientId);
+    url.searchParams.append('client_secret', clientSecret);
     
-    const tokenResponse = await fetch('https://api-sec-vlc.hotmart.com/security/oauth/token', {
+    const tokenResponse = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${credentials}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString()
+        'Content-Type': 'application/json',
+      }
     });
 
     console.log(`📡 [HOTMART-AUTH] Status da resposta: ${tokenResponse.status}`);
