@@ -39,24 +39,26 @@ serve(async (req) => {
     // Prepara dados no formato application/x-www-form-urlencoded
     console.log('📡 [HOTMART-AUTH] Enviando requisição para API Hotmart...');
     
-    const params = new URLSearchParams();
-    params.append('grant_type', 'client_credentials');
-    params.append('client_id', clientId);
-    params.append('client_secret', clientSecret);
+    // Formato exato conforme documentação Hotmart
+    const body = `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`;
+    
+    console.log(`📤 [HOTMART-AUTH] Body length: ${body.length} chars`);
     
     const tokenResponse = await fetch('https://api-sec-vlc.hotmart.com/security/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
       },
-      body: params.toString()
+      body: body
     });
 
     console.log(`📡 [HOTMART-AUTH] Status da resposta: ${tokenResponse.status}`);
+    console.log(`📡 [HOTMART-AUTH] Headers da resposta:`, Object.fromEntries(tokenResponse.headers.entries()));
     
     // Pega o texto primeiro para debug
     const responseText = await tokenResponse.text();
-    console.log(`📡 [HOTMART-AUTH] Resposta (primeiros 200 chars): ${responseText.substring(0, 200)}`);
+    console.log(`📡 [HOTMART-AUTH] Resposta completa: ${responseText}`);
 
     if (!tokenResponse.ok) {
       // Tenta parsear como JSON, se falhar mostra o texto
@@ -64,15 +66,22 @@ serve(async (req) => {
       try {
         errorData = JSON.parse(responseText);
       } catch {
-        errorData = { raw_response: responseText };
+        errorData = { 
+          raw_response: responseText,
+          status: tokenResponse.status,
+          statusText: tokenResponse.statusText
+        };
       }
       
       console.error('❌ [HOTMART-AUTH] Erro na autenticação:', errorData);
+      console.error('❌ [HOTMART-AUTH] Verifique se as credenciais Client ID e Client Secret estão corretas');
+      
       return new Response(
         JSON.stringify({ 
           status: 'error',
-          error: 'Erro ao autenticar com a Hotmart',
-          details: errorData
+          error: 'Erro ao autenticar com a Hotmart - Verifique suas credenciais',
+          details: errorData,
+          hint: 'Certifique-se de que o Client ID e Client Secret estão corretos e foram criados em https://app-vlc.hotmart.com/tools/credentials'
         }),
         { 
           status: tokenResponse.status,
