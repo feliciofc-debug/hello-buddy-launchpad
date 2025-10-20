@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { Eye, EyeOff } from 'lucide-react';
 
 export default function ReviewerLogin() {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -19,23 +19,18 @@ export default function ReviewerLogin() {
     setLoading(true);
 
     try {
-      // Validação direta das credenciais do revisor
-      if (username === 'shopee_reviewer' && password === 'ShopeeReview@2025!') {
-        // Armazenar sessão temporária
-        localStorage.setItem('reviewer_session', JSON.stringify({
-          username: 'shopee_reviewer',
-          role: 'reviewer',
-          loginTime: new Date().toISOString()
-        }));
-        
-        toast.success('Login realizado com sucesso!');
-        navigate('/dashboard');
-      } else {
-        toast.error('Credenciais inválidas');
-      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      toast.success('Login realizado com sucesso!');
+      navigate('/dashboard');
     } catch (error: any) {
       console.error('Erro no login:', error);
-      toast.error('Erro ao realizar login');
+      toast.error('Credenciais inválidas');
     } finally {
       setLoading(false);
     }
@@ -51,13 +46,13 @@ export default function ReviewerLogin() {
 
         <form onSubmit={handleLogin} className="space-y-6">
           <div className="space-y-2">
-            <Label htmlFor="username">Usuário</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="shopee_reviewer"
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="shopee_reviewer@review.shopee.com"
               required
               disabled={loading}
             />
