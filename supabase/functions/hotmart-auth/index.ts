@@ -36,42 +36,65 @@ serve(async (req) => {
     console.log(`✅ [HOTMART-AUTH] Client ID: ${clientId.substring(0, 8)}...`);
     console.log(`✅ [HOTMART-AUTH] Client Secret: ${clientSecret.substring(0, 8)}...`);
 
-    // Codifica as credenciais em Base64 para autenticação Basic
-    const credentials = btoa(`${clientId}:${clientSecret}`);
-    console.log('✅ [HOTMART-AUTH] Credenciais codificadas');
-
-    // Faz a requisição para obter o token OAuth2
-    // Endpoint oficial: api-sec-vlc.hotmart.com/security/oauth/token
-    // Formato: application/x-www-form-urlencoded (não JSON!)
+    // Prepara dados no formato application/x-www-form-urlencoded
     console.log('📡 [HOTMART-AUTH] Enviando requisição para API Hotmart...');
     
-    const formData = new URLSearchParams();
-    formData.append('grant_type', 'client_credentials');
-    formData.append('client_id', clientId);
-    formData.append('client_secret', clientSecret);
+    const params = new URLSearchParams();
+    params.append('grant_type', 'client_credentials');
+    params.append('client_id', clientId);
+    params.append('client_secret', clientSecret);
     
     const tokenResponse = await fetch('https://api-sec-vlc.hotmart.com/security/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: formData.toString()
+      body: params.toString()
     });
 
     console.log(`📡 [HOTMART-AUTH] Status da resposta: ${tokenResponse.status}`);
-
-    const tokenData = await tokenResponse.json();
+    
+    // Pega o texto primeiro para debug
+    const responseText = await tokenResponse.text();
+    console.log(`📡 [HOTMART-AUTH] Resposta (primeiros 200 chars): ${responseText.substring(0, 200)}`);
 
     if (!tokenResponse.ok) {
-      console.error('❌ [HOTMART-AUTH] Erro na autenticação:', tokenData);
+      // Tenta parsear como JSON, se falhar mostra o texto
+      let errorData;
+      try {
+        errorData = JSON.parse(responseText);
+      } catch {
+        errorData = { raw_response: responseText };
+      }
+      
+      console.error('❌ [HOTMART-AUTH] Erro na autenticação:', errorData);
       return new Response(
         JSON.stringify({ 
           status: 'error',
           error: 'Erro ao autenticar com a Hotmart',
-          details: tokenData
+          details: errorData
         }),
         { 
           status: tokenResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
+    }
+
+    // Tenta parsear o JSON
+    let tokenData;
+    try {
+      tokenData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('❌ [HOTMART-AUTH] Erro ao parsear JSON:', parseError);
+      return new Response(
+        JSON.stringify({ 
+          status: 'error',
+          error: 'Resposta inválida da API Hotmart',
+          details: { raw_response: responseText }
+        }),
+        { 
+          status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
