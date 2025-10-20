@@ -35,13 +35,14 @@ serve(async (req) => {
     // Log parcial para debug (primeiros 8 caracteres)
     console.log(`✅ [HOTMART-AUTH] Client ID: ${clientId.substring(0, 8)}...`);
     console.log(`✅ [HOTMART-AUTH] Client Secret: ${clientSecret.substring(0, 8)}...`);
+    console.log(`✅ [HOTMART-AUTH] Client ID length: ${clientId.length}`);
+    console.log(`✅ [HOTMART-AUTH] Client Secret length: ${clientSecret.length}`);
 
-    // Prepara dados no formato application/x-www-form-urlencoded
-    console.log('📡 [HOTMART-AUTH] Enviando requisição para API Hotmart...');
-    
     // Formato exato conforme documentação Hotmart
     const body = `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`;
     
+    console.log(`📡 [HOTMART-AUTH] Enviando requisição para API Hotmart...`);
+    console.log(`📤 [HOTMART-AUTH] Body preview: grant_type=client_credentials&client_id=${clientId.substring(0, 8)}...&client_secret=${clientSecret.substring(0, 8)}...`);
     console.log(`📤 [HOTMART-AUTH] Body length: ${body.length} chars`);
     
     const tokenResponse = await fetch('https://api-sec-vlc.hotmart.com/security/oauth/token', {
