@@ -17,7 +17,7 @@ serve(async (req) => {
 
     const partnerId = Deno.env.get('SHOPEE_APP_ID');
     const partnerKey = Deno.env.get('SHOPEE_PARTNER_KEY');
-    const redirectUrl = Deno.env.get('SHOPEE_REDIRECT_URL') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com/dashboard';
+    const redirectUrl = Deno.env.get('SHOPEE_REDIRECT_URL') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com/shopee-callback';
 
     if (!partnerId || !partnerKey) {
       console.error('❌ [SHOPEE-AUTH] Credenciais não configuradas');
