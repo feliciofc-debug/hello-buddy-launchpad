@@ -19,31 +19,23 @@ export default function ReviewerLogin() {
     setLoading(true);
 
     try {
-      // Mapear username para email interno
-      const emailMap: { [key: string]: string } = {
-        'shopee_reviewer': 'shopee_reviewer@review.shopee.com'
-      };
-
-      const email = emailMap[username];
-      
-      if (!email) {
-        toast.error('Usuário não encontrado');
-        setLoading(false);
-        return;
+      // Validação direta das credenciais do revisor
+      if (username === 'shopee_reviewer' && password === 'ShopeeReview@2025!') {
+        // Armazenar sessão temporária
+        localStorage.setItem('reviewer_session', JSON.stringify({
+          username: 'shopee_reviewer',
+          role: 'reviewer',
+          loginTime: new Date().toISOString()
+        }));
+        
+        toast.success('Login realizado com sucesso!');
+        navigate('/dashboard');
+      } else {
+        toast.error('Credenciais inválidas');
       }
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      toast.success('Login realizado com sucesso!');
-      navigate('/dashboard');
     } catch (error: any) {
       console.error('Erro no login:', error);
-      toast.error('Credenciais inválidas');
+      toast.error('Erro ao realizar login');
     } finally {
       setLoading(false);
     }
