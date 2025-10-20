@@ -42,14 +42,20 @@ serve(async (req) => {
 
     // Faz a requisição para obter o token OAuth2
     console.log('📡 [HOTMART-AUTH] Enviando requisição para API Hotmart...');
+    
+    const formData = new URLSearchParams();
+    formData.append('grant_type', 'client_credentials');
+    
     const tokenResponse = await fetch('https://api-sec-vlc.hotmart.com/security/oauth/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${credentials}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: 'grant_type=client_credentials'
+      body: formData.toString()
     });
+
+    console.log(`📡 [HOTMART-AUTH] Status da resposta: ${tokenResponse.status}`);
 
     const tokenData = await tokenResponse.json();
 
