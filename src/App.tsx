@@ -15,6 +15,7 @@ import ProductsPage from "./pages/ProductsPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
 import AffiliateProfile from "./components/AffiliateProfile";
 import SettingsPage from "./components/SettingsPage";
+import ShopeeCallback from "./pages/ShopeeCallback";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/perfil" element={<AffiliateProfile />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
             <Route path="/whatsapp" element={<WhatsAppPage />} />
+            <Route path="/shopee-callback" element={<ShopeeCallback />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

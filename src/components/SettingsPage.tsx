@@ -119,6 +119,41 @@ const SettingsPage = () => {
       } finally {
         setTesting(prev => ({ ...prev, [marketplace]: false }));
       }
+    } else if (marketplace === 'Shopee Affiliates') {
+      setTesting(prev => ({ ...prev, [marketplace]: true }));
+      
+      try {
+        console.log('🔐 Iniciando autenticação OAuth Shopee...');
+        
+        const { data, error } = await supabase.functions.invoke('shopee-auth-url');
+        
+        if (error) {
+          console.error('❌ Erro ao gerar URL de autorização Shopee:', error);
+          toast({
+            title: "Erro ao conectar Shopee",
+            description: error.message || "Não foi possível gerar URL de autorização",
+            variant: "destructive",
+          });
+        } else if (data?.authUrl) {
+          console.log('✅ URL de autorização gerada:', data.authUrl);
+          toast({
+            title: "🛍️ Autorize o acesso à sua loja Shopee",
+            description: "Abrindo página de autorização...",
+          });
+          
+          // Abrir URL de autorização em nova aba
+          window.open(data.authUrl, '_blank');
+        }
+      } catch (error: any) {
+        console.error('💥 Erro crítico:', error);
+        toast({
+          title: "Erro crítico",
+          description: error.message || "Erro desconhecido ao testar conexão",
+          variant: "destructive",
+        });
+      } finally {
+        setTesting(prev => ({ ...prev, [marketplace]: false }));
+      }
     } else {
       toast({
         title: `Teste de ${marketplace}`,
