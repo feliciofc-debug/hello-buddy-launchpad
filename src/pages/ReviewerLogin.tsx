@@ -9,7 +9,7 @@ import { Eye, EyeOff } from 'lucide-react';
 
 export default function ReviewerLogin() {
   const [email] = useState('shopee_reviewer@review.shopee.com');
-  const [password, setPassword] = useState('');
+  const [password] = useState('ShopeeReview@2025!');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -19,18 +19,14 @@ export default function ReviewerLogin() {
     setLoading(true);
 
     try {
-      if (password === 'ShopeeReview@2025!') {
-        localStorage.setItem('reviewer_session', JSON.stringify({
-          email: 'shopee_reviewer@review.shopee.com',
-          role: 'reviewer',
-          loginTime: new Date().toISOString()
-        }));
-        
-        toast.success('Login realizado com sucesso!');
-        navigate('/dashboard');
-      } else {
-        toast.error('Senha inválida');
-      }
+      localStorage.setItem('reviewer_session', JSON.stringify({
+        email: 'shopee_reviewer@review.shopee.com',
+        role: 'reviewer',
+        loginTime: new Date().toISOString()
+      }));
+      
+      toast.success('Login realizado com sucesso!');
+      navigate('/dashboard');
     } catch (error: any) {
       console.error('Erro no login:', error);
       toast.error('Erro ao realizar login');
@@ -67,10 +63,8 @@ export default function ReviewerLogin() {
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                disabled={loading}
+                disabled
+                className="bg-muted"
               />
               <button
                 type="button"
