@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { Eye, EyeOff } from 'lucide-react';
 
 export default function ReviewerLogin() {
-  const [email, setEmail] = useState('');
+  const [email] = useState('shopee_reviewer@review.shopee.com');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -19,18 +19,21 @@ export default function ReviewerLogin() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      toast.success('Login realizado com sucesso!');
-      navigate('/dashboard');
+      if (password === 'ShopeeReview@2025!') {
+        localStorage.setItem('reviewer_session', JSON.stringify({
+          email: 'shopee_reviewer@review.shopee.com',
+          role: 'reviewer',
+          loginTime: new Date().toISOString()
+        }));
+        
+        toast.success('Login realizado com sucesso!');
+        navigate('/dashboard');
+      } else {
+        toast.error('Senha inválida');
+      }
     } catch (error: any) {
       console.error('Erro no login:', error);
-      toast.error('Credenciais inválidas');
+      toast.error('Erro ao realizar login');
     } finally {
       setLoading(false);
     }
@@ -51,10 +54,9 @@ export default function ReviewerLogin() {
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
               placeholder="shopee_reviewer@review.shopee.com"
-              required
-              disabled={loading}
+              disabled
+              className="bg-muted"
             />
           </div>
 
