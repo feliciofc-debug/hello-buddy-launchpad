@@ -32,26 +32,24 @@ serve(async (req) => {
       );
     }
 
-    // Log parcial para debug (primeiros 8 caracteres)
+    // Log parcial para debug
     console.log(`✅ [HOTMART-AUTH] Client ID: ${clientId.substring(0, 8)}...`);
     console.log(`✅ [HOTMART-AUTH] Client Secret: ${clientSecret.substring(0, 8)}...`);
-    console.log(`✅ [HOTMART-AUTH] Client ID length: ${clientId.length}`);
-    console.log(`✅ [HOTMART-AUTH] Client Secret length: ${clientSecret.length}`);
 
-    // Formato exato conforme documentação Hotmart
-    const body = `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`;
+    // Encode credentials em Base64 para Authorization Basic
+    const credentials = `${clientId}:${clientSecret}`;
+    const encodedCredentials = btoa(credentials);
     
-    console.log(`📡 [HOTMART-AUTH] Enviando requisição para API Hotmart...`);
-    console.log(`📤 [HOTMART-AUTH] Body preview: grant_type=client_credentials&client_id=${clientId.substring(0, 8)}...&client_secret=${clientSecret.substring(0, 8)}...`);
-    console.log(`📤 [HOTMART-AUTH] Body length: ${body.length} chars`);
+    console.log(`📡 [HOTMART-AUTH] Enviando requisição com Basic Auth...`);
     
     const tokenResponse = await fetch('https://api-sec-vlc.hotmart.com/security/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Authorization': `Basic ${encodedCredentials}`
       },
-      body: body
+      body: 'grant_type=client_credentials'
     });
 
     console.log(`📡 [HOTMART-AUTH] Status da resposta: ${tokenResponse.status}`);
