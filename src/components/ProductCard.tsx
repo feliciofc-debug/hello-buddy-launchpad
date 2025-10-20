@@ -73,14 +73,20 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
   };
 
   const fetchEstimatedSales = async () => {
+    console.log(`[CARD] Tentando buscar estimativa para: ${product.title}`);
+    console.log(`[CARD] BSR: ${product.bsr}, Categoria: ${product.bsrCategory}`);
+    
     // Verifica se o produto tem os dados BSR necessários
     if (!product.bsr || !product.bsrCategory) {
+      console.log('[CARD] Produto sem BSR ou categoria, pulando estimativa');
       setLoadingSales(false);
       return;
     }
     
     setLoadingSales(true);
     try {
+      console.log(`[CARD] Chamando edge function com BSR=${product.bsr}, category=${product.bsrCategory}`);
+      
       const { data, error } = await supabase.functions.invoke('estimate-sales', {
         body: {
           bsr: product.bsr,
@@ -88,11 +94,15 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[CARD] Erro da edge function:', error);
+        throw error;
+      }
 
+      console.log('[CARD] Sucesso! Resposta da edge function:', data);
       setEstimatedSales(data.estimatedDailySales);
     } catch (error) {
-      console.error('Erro ao estimar vendas:', error);
+      console.error('[CARD] Erro ao estimar vendas:', error);
       setEstimatedSales(null);
     } finally {
       setLoadingSales(false);
@@ -186,16 +196,22 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
         </div>
 
         {/* Estimativa de Vendas BSR */}
-        {estimatedSales !== null && (
+        {(loadingSales || estimatedSales !== null) && (
           <div className="mb-3 p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
                 <Activity className="w-3 h-3" />
                 Estimativa vendas/dia:
               </span>
-              <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
-                {loadingSales ? '...' : estimatedSales}
-              </span>
+              {loadingSales ? (
+                <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                  Calculando...
+                </span>
+              ) : (
+                <span className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                  {estimatedSales}
+                </span>
+              )}
             </div>
           </div>
         )}

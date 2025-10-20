@@ -54,12 +54,29 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const bsrParam = url.searchParams.get('bsr');
-    const categoryParam = url.searchParams.get('category');
+    console.log("✅ [API] Rota estimate-sales foi chamada!");
+    
+    // Aceita tanto query params quanto body
+    let bsr: number;
+    let category: string;
+    
+    if (req.method === 'POST') {
+      const body = await req.json();
+      bsr = body.bsr;
+      category = body.category;
+      console.log(`[API] Parâmetros recebidos via POST body: bsr=${bsr}, category=${category}`);
+    } else {
+      const url = new URL(req.url);
+      const bsrParam = url.searchParams.get('bsr');
+      const categoryParam = url.searchParams.get('category');
+      bsr = bsrParam ? parseInt(bsrParam, 10) : 0;
+      category = categoryParam || '';
+      console.log(`[API] Parâmetros recebidos via query: bsr=${bsr}, category=${category}`);
+    }
 
     // Validação dos parâmetros de entrada
-    if (!bsrParam || !categoryParam) {
+    if (!bsr || !category) {
+      console.error("[API] Erro: Parâmetros faltando");
       return new Response(
         JSON.stringify({ 
           error: 'Parâmetros "bsr" e "category" são obrigatórios.' 
@@ -71,9 +88,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const bsr = parseInt(bsrParam, 10);
-
-    if (isNaN(bsr) || bsr <= 0) {
+    if (typeof bsr !== 'number' || isNaN(bsr) || bsr <= 0) {
+      console.error("[API] Erro: BSR inválido");
       return new Response(
         JSON.stringify({ 
           error: 'O parâmetro "bsr" deve ser um número positivo.' 
@@ -86,15 +102,15 @@ Deno.serve(async (req) => {
     }
 
     // Chama a função de estimativa
-    const estimatedSales = estimateDailySales(bsr, categoryParam);
+    const estimatedSales = estimateDailySales(bsr, category);
 
-    console.log(`BSR: ${bsr}, Categoria: ${categoryParam}, Vendas estimadas: ${estimatedSales}`);
+    console.log(`[API] BSR: ${bsr}, Categoria: ${category}, Vendas estimadas: ${estimatedSales}`);
 
     // Retorna a resposta com sucesso
     return new Response(
       JSON.stringify({ 
         bsr,
-        category: categoryParam,
+        category: category,
         estimatedDailySales: estimatedSales 
       }),
       { 
