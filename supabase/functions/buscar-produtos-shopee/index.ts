@@ -14,24 +14,39 @@ serve(async (req) => {
   try {
     const { searchTerm, categoryId, limit = 50, offset = 0 } = await req.json();
     
-    const partnerId = Deno.env.get("SHOPEE_PARTNER_ID");
+    const partnerId = Deno.env.get("SHOPEE_APP_ID");
     const partnerKey = Deno.env.get("SHOPEE_PARTNER_KEY");
     const shopId = Deno.env.get("SHOPEE_SHOP_ID");
+    const accessToken = Deno.env.get("SHOPEE_ACCESS_TOKEN");
     
-    if (!partnerId || !partnerKey || !shopId) {
+    if (!partnerId || !partnerKey) {
       console.error("[SHOPEE] API credentials não configuradas");
-      throw new Error("API credentials não configuradas. Configure SHOPEE_PARTNER_ID, SHOPEE_PARTNER_KEY e SHOPEE_SHOP_ID");
+      throw new Error("API credentials não configuradas. Configure SHOPEE_APP_ID e SHOPEE_PARTNER_KEY");
     }
+
+    // Se não tiver access_token, usar endpoints públicos
+    // Se tiver access_token e shop_id, usar endpoints autenticados
+    const useAuth = !!(accessToken && shopId);
 
     console.log("[SHOPEE] Buscando produtos:", { searchTerm, categoryId, limit, offset });
 
     // Gerar assinatura para autenticação Shopee
     const timestamp = Math.floor(Date.now() / 1000);
     const path = "/api/v2/product/get_item_list";
-    const baseString = `${partnerId}${path}${timestamp}`;
+    
+    // Montar base string conforme documentação Shopee
+    // Para endpoints autenticados: partner_id + path + timestamp + access_token + shop_id
+    // Para endpoints públicos: partner_id + path + timestamp
+    let baseString = `${partnerId}${path}${timestamp}`;
+    if (useAuth) {
+      baseString += accessToken + shopId;
+    }
+    
     const sign = createHmac("sha256", partnerKey)
       .update(baseString)
       .digest("hex");
+    
+    console.log("[SHOPEE] Auth:", useAuth ? "Autenticado" : "Público");
 
     // Construir URL da API Shopee
     const apiUrl = `https://partner.shopeemobile.com${path}`;
@@ -39,11 +54,16 @@ serve(async (req) => {
       partner_id: partnerId,
       timestamp: timestamp.toString(),
       sign: sign,
-      shop_id: shopId,
       page_size: limit.toString(),
       offset: offset.toString(),
-      item_status: "NORMAL", // Apenas produtos ativos
     });
+
+    // Adicionar parâmetros autenticados se disponível
+    if (useAuth) {
+      params.append("access_token", accessToken!);
+      params.append("shop_id", shopId!);
+      params.append("item_status", "NORMAL"); // Apenas produtos ativos
+    }
 
     console.log("[SHOPEE] URL da API:", `${apiUrl}?${params.toString()}`);
 
