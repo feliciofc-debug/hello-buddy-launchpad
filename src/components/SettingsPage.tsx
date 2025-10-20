@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { Save, Eye, EyeOff, Key, ShoppingBag, AlertCircle, CheckCircle, Copy, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface APIConfig {
   marketplace: string;
@@ -13,8 +15,10 @@ interface APIConfig {
 
 const SettingsPage = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState(false);
+  const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [configs, setConfigs] = useState<APIConfig[]>([
     {
       marketplace: 'Amazon Associates',
@@ -83,8 +87,44 @@ const SettingsPage = () => {
   };
 
   const testConnection = async (marketplace: string) => {
-    // Aqui você testaria a conexão com a API
-    alert(`Testando conexão com ${marketplace}...`);
+    if (marketplace === 'Hotmart') {
+      setTesting(prev => ({ ...prev, [marketplace]: true }));
+      
+      try {
+        console.log('🔐 Testando autenticação Hotmart...');
+        
+        const { data, error } = await supabase.functions.invoke('hotmart-auth');
+        
+        if (error) {
+          console.error('❌ Erro ao testar Hotmart:', error);
+          toast({
+            title: "Erro ao testar Hotmart",
+            description: error.message || "Não foi possível conectar à API da Hotmart",
+            variant: "destructive",
+          });
+        } else {
+          console.log('✅ Resposta da Hotmart:', data);
+          toast({
+            title: "✅ Hotmart conectado!",
+            description: data.message || "Autenticação realizada com sucesso",
+          });
+        }
+      } catch (error: any) {
+        console.error('💥 Erro crítico:', error);
+        toast({
+          title: "Erro crítico",
+          description: error.message || "Erro desconhecido ao testar conexão",
+          variant: "destructive",
+        });
+      } finally {
+        setTesting(prev => ({ ...prev, [marketplace]: false }));
+      }
+    } else {
+      toast({
+        title: `Teste de ${marketplace}`,
+        description: "Teste em desenvolvimento para este marketplace",
+      });
+    }
   };
 
   const getMarketplaceIcon = (marketplace: string) => {
@@ -241,15 +281,18 @@ const SettingsPage = () => {
               </div>
 
               {/* Botão de Testar Conexão */}
-              {config.apiKey && config.userId && (
-                <button
-                  onClick={() => testConnection(config.marketplace)}
-                  className="text-sm text-blue-500 hover:text-blue-600 font-medium flex items-center gap-2"
-                >
-                  <CheckCircle size={16} />
-                  Testar Conexão
-                </button>
-              )}
+              <button
+                onClick={() => testConnection(config.marketplace)}
+                disabled={testing[config.marketplace]}
+                className={`text-sm font-medium flex items-center gap-2 ${
+                  testing[config.marketplace]
+                    ? 'text-gray-400 cursor-not-allowed'
+                    : 'text-blue-500 hover:text-blue-600'
+                }`}
+              >
+                <CheckCircle size={16} />
+                {testing[config.marketplace] ? 'Testando...' : 'Testar Conexão'}
+              </button>
             </div>
           ))}
         </div>
