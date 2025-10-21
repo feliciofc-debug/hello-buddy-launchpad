@@ -125,40 +125,61 @@ const SettingsPage = () => {
       setShopeeProducts([]);
       
       try {
-        console.log('🛒 Buscando produtos na Shopee...');
+        console.log('🛒 Buscando produtos da loja Shopee...');
         
-        const { data, error } = await supabase.functions.invoke('shopee-affiliate-api');
+        // Buscar credenciais do localStorage (armazenadas no callback OAuth)
+        const shopId = localStorage.getItem('shopee_shop_id');
+        const accessToken = localStorage.getItem('shopee_access_token');
+
+        if (!shopId || !accessToken) {
+          toast({
+            title: "Shopee não conectada",
+            description: "Conecte sua loja Shopee primeiro para listar produtos.",
+            variant: "destructive",
+          });
+          setTesting(prev => ({ ...prev, [marketplace]: false }));
+          return;
+        }
+
+        const { data, error } = await supabase.functions.invoke('shopee-list-products', {
+          body: { 
+            shop_id: shopId,
+            access_token: accessToken
+          }
+        });
 
         if (error) {
-          console.error('❌ Erro ao buscar produtos na Shopee:', error);
+          console.error('❌ Erro ao buscar produtos:', error);
           toast({
             title: "Erro ao buscar produtos",
-            description: error.message || "Não foi possível conectar à API de Afiliados",
+            description: error.message,
+            variant: "destructive",
+          });
+        } else if (data?.status === 'error') {
+          console.error('❌ Erro da API:', data.error);
+          toast({
+            title: "Erro da API Shopee",
+            description: data.error,
             variant: "destructive",
           });
         } else {
           console.log('✅ Resposta completa da API:', data);
           
-          // Lógica de busca inteligente - tenta diferentes caminhos possíveis
-          const products = data?.data?.productOfferV2?.nodes || 
-                          data?.data?.hotProduct?.nodes || 
-                          data?.nodes || 
-                          [];
+          const products = data?.products || [];
 
           if (products.length > 0) {
             setShopeeProducts(products);
             toast({
               title: "✅ Produtos carregados!",
-              description: `${products.length} produtos carregados e exibidos abaixo.`,
+              description: `${products.length} produtos da sua loja carregados com sucesso.`,
             });
-            console.log('Produtos carregados para exibição:', products);
+            console.log('Produtos carregados:', products);
           } else {
             setShopeeProducts([]);
             toast({
               title: "Nenhum produto encontrado",
-              description: "API conectou, mas a lista de produtos estava vazia. Verifique o console.",
+              description: "Sua loja Shopee não possui produtos cadastrados.",
             });
-            console.log('Resposta completa (sem produtos):', data);
           }
         }
       } catch (error: any) {
@@ -366,7 +387,7 @@ const SettingsPage = () => {
                             Preço
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            Comissão
+                            Status
                           </th>
                         </tr>
                       </thead>
@@ -375,19 +396,19 @@ const SettingsPage = () => {
                           <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                             <td className="px-4 py-3">
                               <img 
-                                src={product.imageUrl || product.productImage} 
-                                alt={product.productName} 
+                                src={product.image?.image_url_list?.[0] || product.imageUrl || product.productImage} 
+                                alt={product.item_name || product.productName} 
                                 className="w-16 h-16 object-cover rounded"
                               />
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              {product.productName || 'N/A'}
+                              {product.item_name || product.productName || 'N/A'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              R$ {product.price || 'N/A'}
+                              R$ {product.price_info?.[0]?.current_price || product.price || 'N/A'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              {product.commissionRate ? `${(parseFloat(product.commissionRate) * 100).toFixed(0)}%` : 'N/A'}
+                              {product.item_status || product.commissionRate || 'N/A'}
                             </td>
                           </tr>
                         ))}
