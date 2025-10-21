@@ -9,49 +9,8 @@ const corsHeaders = {
 
 const SHOPEE_API_ENDPOINT = 'https://open-api.affiliate.shopee.com.br/graphql';
 
-// Query GraphQL para buscar "Hot Products" (produtos em destaque)
-const GET_HOT_PRODUCTS_QUERY = `
-  query getHotProducts($pageNo: Int, $pageSize: Int) {
-    hotProduct(pageNo: $pageNo, pageSize: $pageSize) {
-      nodes {
-        productName
-        price
-        commissionRate
-        promotionLink
-        productImage
-      }
-      pageInfo {
-        pageNo
-        pageSize
-        total
-      }
-    }
-  }
-`;
-
-// Query alternativa para buscar por palavra-chave
-const SEARCH_PRODUCTS_QUERY = `
-  query searchProducts($keyword: String!, $limit: Int) {
-    productOfferV2(keyword: $keyword, limit: $limit) {
-      nodes {
-        productId
-        productName
-        productLink
-        commission
-        commissionRate
-        price
-        sales
-        imageUrl
-        shopName
-        rating
-      }
-      pageInfo {
-        hasNextPage
-        endCursor
-      }
-    }
-  }
-`;
+// Query simplificada para buscar Hot Products
+const GET_HOT_PRODUCTS_QUERY = `query getHotProducts{hotProduct{nodes{productName,price,commissionRate,promotionLink,productImage}}}`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -59,7 +18,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca com assinatura HMAC...');
+    console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca com assinatura (Bala de Prata)...');
 
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
@@ -71,25 +30,13 @@ serve(async (req) => {
 
     console.log(`✅ [SHOPEE-AFFILIATE] App ID: ${APP_ID.substring(0, 8)}...`);
 
-    // Pegar parâmetros da requisição
-    const { keyword, limit, pageNo = 1, pageSize = 10 } = await req.json().catch(() => ({}));
-
-    // Decide qual query usar
-    const useSearch = !!keyword;
-    const query = useSearch ? SEARCH_PRODUCTS_QUERY : GET_HOT_PRODUCTS_QUERY;
-    const variables = useSearch 
-      ? { keyword, limit: limit || 10 }
-      : { pageNo, pageSize };
-
-    console.log(`📋 [SHOPEE-AFFILIATE] Tipo: ${useSearch ? 'BUSCA' : 'HOT PRODUCTS'}`);
-
-    // Gerar assinatura HMAC-SHA256
     const timestamp = Math.floor(Date.now() / 1000);
-    const queryForSignature = query.replace(/\s+/g, ' ').trim(); // Normaliza espaços
-    const baseString = `${APP_ID}${timestamp}${queryForSignature}`;
+    
+    // LÓGICA DE ASSINATURA SIMPLIFICADA: AppID + Timestamp
+    const baseString = `${APP_ID}${timestamp}`;
     
     console.log(`🔐 [SHOPEE-AFFILIATE] Timestamp: ${timestamp}`);
-    console.log(`🔐 [SHOPEE-AFFILIATE] Base string (primeiros 100 chars): ${baseString.substring(0, 100)}...`);
+    console.log(`🔐 [SHOPEE-AFFILIATE] Base string: ${baseString}`);
     
     // Usar Web Crypto API para gerar HMAC-SHA256
     const encoder = new TextEncoder();
@@ -110,18 +57,22 @@ serve(async (req) => {
     
     console.log(`🔐 [SHOPEE-AFFILIATE] Assinatura gerada: ${signature.substring(0, 16)}...`);
 
-    // Montar requisição com assinatura
+    // Montar URL com parâmetros de autenticação
+    const urlWithParams = new URL(SHOPEE_API_ENDPOINT);
+    urlWithParams.searchParams.append('appid', APP_ID);
+    urlWithParams.searchParams.append('timestamp', timestamp.toString());
+    urlWithParams.searchParams.append('sign', signature);
+
+    console.log(`📡 [SHOPEE-AFFILIATE] URL com params: ${urlWithParams.toString().substring(0, 100)}...`);
+
+    // O corpo da requisição contém apenas a query GraphQL
     const requestBody = {
-      query,
-      variables,
-      appid: parseInt(APP_ID, 10),
-      timestamp: timestamp,
-      sign: signature // Campo 'sign' para a assinatura
+      query: GET_HOT_PRODUCTS_QUERY,
     };
 
-    console.log('📡 [SHOPEE-AFFILIATE] Enviando requisição com assinatura...');
+    console.log('📡 [SHOPEE-AFFILIATE] Enviando requisição com autenticação na URL...');
 
-    const response = await fetch(SHOPEE_API_ENDPOINT, {
+    const response = await fetch(urlWithParams.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -171,7 +122,7 @@ serve(async (req) => {
         status: 'success',
         data: data.data,
         fullResponse: data,
-        searchType: useSearch ? 'keyword' : 'hotProducts',
+        searchType: 'hotProducts',
         message: 'Produtos da Shopee carregados com sucesso!'
       }),
       { 
