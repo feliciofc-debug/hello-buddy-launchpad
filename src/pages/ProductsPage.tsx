@@ -35,42 +35,28 @@ const ProductsPage = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [shopeeProducts, setShopeeProducts] = useState<Product[]>([]);
+  const [masterShopeeList, setMasterShopeeList] = useState<Product[]>([]);
   const [isLoadingShopee, setIsLoadingShopee] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // A página começa vazia, esperando a primeira busca
+  // Carrega todos os produtos da Shopee UMA VEZ quando a página carrega
   useEffect(() => {
-    setShopeeProducts([]);
+    loadInitialProducts();
   }, []);
 
-  const fetchShopeeProducts = async (term: string) => {
-    if (!term) {
-      toast({
-        title: "Campo vazio",
-        description: "Por favor, digite um termo para buscar.",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const loadInitialProducts = async () => {
     setIsLoadingShopee(true);
-    setShopeeProducts([]); // Limpa os resultados antigos antes de cada nova busca
-    
     try {
-      console.log('🛒 Buscando produtos da Shopee...', `Palavra-chave: ${term}`);
-      // Chama a Edge Function ENVIANDO o termo de busca no corpo (body)
-      const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
-        body: { keywords: term }
-      });
+      console.log('🛒 Carregando produtos da Shopee...');
+      const { data, error } = await supabase.functions.invoke('shopee-affiliate-api');
 
       if (error) {
-        console.error('❌ Erro ao buscar produtos:', error);
+        console.error('❌ Erro ao carregar produtos:', error);
         throw error;
       }
 
-      // A resposta vem de 'productOfferV2' (filtrada no backend se houver keywords)
       const productsFromApi = data?.data?.productOfferV2?.nodes || [];
-      console.log(`✅ Encontrados ${productsFromApi.length} produtos da Shopee`);
+      console.log(`✅ ${productsFromApi.length} produtos carregados da Shopee`);
 
       if (productsFromApi.length > 0) {
         const formattedProducts: Product[] = productsFromApi.map((p: any, index: number) => ({
@@ -90,23 +76,14 @@ const ProductsPage = () => {
           createdAt: new Date(),
         }));
 
+        setMasterShopeeList(formattedProducts);
         setShopeeProducts(formattedProducts);
-        toast({
-          title: "Produtos encontrados!",
-          description: `${formattedProducts.length} produtos encontrados para "${term}"`,
-        });
-      } else {
-        setShopeeProducts([]);
-        toast({
-          title: "Nenhum produto encontrado",
-          description: "Tente buscar com outras palavras-chave",
-        });
       }
     } catch (error: any) {
-      console.error('💥 Erro ao buscar produtos da Shopee:', error);
+      console.error('💥 Erro ao carregar produtos da Shopee:', error);
       toast({
         title: "Erro ao carregar produtos",
-        description: error.message || "Não foi possível buscar produtos da Shopee",
+        description: error.message || "Não foi possível carregar produtos da Shopee",
         variant: "destructive",
       });
     } finally {
@@ -115,7 +92,26 @@ const ProductsPage = () => {
   };
 
   const handleSearchClick = () => {
-    fetchShopeeProducts(searchTerm);
+    if (searchTerm === '') {
+      setShopeeProducts(masterShopeeList);
+    } else {
+      const filtered = masterShopeeList.filter(p =>
+        p.title.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setShopeeProducts(filtered);
+      
+      if (filtered.length === 0) {
+        toast({
+          title: "Nenhum produto encontrado",
+          description: `Nenhum produto contém "${searchTerm}"`,
+        });
+      } else {
+        toast({
+          title: "Produtos encontrados!",
+          description: `${filtered.length} produtos encontrados para "${searchTerm}"`,
+        });
+      }
+    }
   };
 
   // Filter and sort products
@@ -240,7 +236,18 @@ const ProductsPage = () => {
               placeholder="Buscar produtos na Shopee..."
               className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                // Busca em tempo real enquanto digita
+                if (e.target.value === '') {
+                  setShopeeProducts(masterShopeeList);
+                } else {
+                  const filtered = masterShopeeList.filter(p =>
+                    p.title.toLowerCase().includes(e.target.value.toLowerCase())
+                  );
+                  setShopeeProducts(filtered);
+                }
+              }}
               onKeyPress={(e) => { if (e.key === 'Enter') handleSearchClick(); }}
             />
             <button
