@@ -6,6 +6,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const SHOPEE_API_ENDPOINT = 'https://open-api.affiliate.shopee.com.br/graphql';
+
 // Query GraphQL para buscar "Hot Products" (produtos em destaque)
 const GET_HOT_PRODUCTS_QUERY = `
   query getHotProducts($pageNo: Int, $pageSize: Int) {
@@ -52,30 +54,21 @@ const SEARCH_PRODUCTS_QUERY = `
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
     console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca de produtos...');
 
-    const shopeeAppId = Deno.env.get('SHOPEE_APP_ID');
-    const shopeePartnerKey = Deno.env.get('SHOPEE_PARTNER_KEY');
+    const APP_ID = Deno.env.get('SHOPEE_APP_ID');
+    const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
 
-    if (!shopeeAppId || !shopeePartnerKey) {
+    if (!APP_ID || !SECRET_KEY) {
       console.error('❌ [SHOPEE-AFFILIATE] Credenciais não configuradas');
-      return new Response(
-        JSON.stringify({ 
-          status: 'error',
-          error: 'Credenciais da Shopee não configuradas. Verifique SHOPEE_APP_ID e SHOPEE_PARTNER_KEY.' 
-        }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+      throw new Error('Credenciais da Shopee não encontradas. Verifique SHOPEE_APP_ID e SHOPEE_PARTNER_KEY.');
     }
 
-    console.log(`✅ [SHOPEE-AFFILIATE] App ID: ${shopeeAppId.substring(0, 8)}...`);
+    console.log(`✅ [SHOPEE-AFFILIATE] App ID: ${APP_ID.substring(0, 8)}...`);
 
     // Pegar parâmetros da requisição
     const { keyword, limit, pageNo = 1, pageSize = 10 } = await req.json().catch(() => ({}));
@@ -90,60 +83,41 @@ serve(async (req) => {
     console.log(`📋 [SHOPEE-AFFILIATE] Tipo de busca: ${useSearch ? 'BUSCA POR PALAVRA-CHAVE' : 'HOT PRODUCTS'}`);
     console.log(`📋 [SHOPEE-AFFILIATE] Variáveis:`, JSON.stringify(variables));
 
-    // Montar requisição GraphQL
-    const graphqlRequest = {
+    // NOVA ABORDAGEM: Credenciais no corpo da requisição
+    const requestBody = {
       query,
-      variables
+      variables,
+      // Credenciais enviadas no corpo (appid como número)
+      appid: parseInt(APP_ID, 10),
+      secret: SECRET_KEY
     };
 
-    console.log('📡 [SHOPEE-AFFILIATE] Enviando requisição GraphQL...');
-    console.log('📡 [SHOPEE-AFFILIATE] Query:', query.substring(0, 100) + '...');
+    console.log('📡 [SHOPEE-AFFILIATE] Enviando requisição (credenciais no body)...');
 
-    // Fazer requisição para a API GraphQL da Shopee
-    const response = await fetch('https://open-api.affiliate.shopee.com.br/graphql', {
+    // Fazer requisição SEM autenticação no header
+    const response = await fetch(SHOPEE_API_ENDPOINT, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${shopeeAppId}:${shopeePartnerKey}`
       },
-      body: JSON.stringify(graphqlRequest)
+      body: JSON.stringify(requestBody),
     });
 
     const responseText = await response.text();
-    console.log(`📥 [SHOPEE-AFFILIATE] Status da resposta: ${response.status}`);
+    console.log(`📥 [SHOPEE-AFFILIATE] Status: ${response.status}`);
     console.log(`📥 [SHOPEE-AFFILIATE] Resposta completa:`, responseText);
+
+    if (!response.ok) {
+      console.error('❌ [SHOPEE-AFFILIATE] Erro HTTP:', responseText);
+      throw new Error(`Erro na API da Shopee: ${response.status} ${response.statusText} - ${responseText}`);
+    }
 
     let data;
     try {
       data = JSON.parse(responseText);
     } catch (parseError) {
-      console.error('❌ [SHOPEE-AFFILIATE] Erro ao fazer parse da resposta:', parseError);
-      return new Response(
-        JSON.stringify({ 
-          status: 'error',
-          error: 'Erro ao processar resposta da Shopee',
-          rawResponse: responseText 
-        }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
-    }
-
-    if (!response.ok) {
-      console.error('❌ [SHOPEE-AFFILIATE] Erro HTTP na API da Shopee:', data);
-      return new Response(
-        JSON.stringify({ 
-          status: 'error',
-          error: data.errors || 'Erro na API da Shopee',
-          details: data
-        }),
-        { 
-          status: response.status,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      );
+      console.error('❌ [SHOPEE-AFFILIATE] Erro ao fazer parse:', parseError);
+      throw new Error(`Erro ao processar resposta: ${responseText}`);
     }
 
     // Verificar se há erros no GraphQL
@@ -163,17 +137,16 @@ serve(async (req) => {
       );
     }
 
-    console.log('✅ [SHOPEE-AFFILIATE] Resposta recebida com sucesso!');
+    console.log('✅ [SHOPEE-AFFILIATE] Sucesso!');
     console.log('📦 [SHOPEE-AFFILIATE] Dados:', JSON.stringify(data, null, 2));
-    
-    // Retornar a resposta COMPLETA para análise
+
     return new Response(
       JSON.stringify({ 
         status: 'success',
         data: data.data,
         fullResponse: data,
         searchType: useSearch ? 'keyword' : 'hotProducts',
-        message: 'Resposta da Shopee recebida com sucesso!'
+        message: 'Produtos da Shopee carregados com sucesso!'
       }),
       { 
         status: 200,
@@ -190,7 +163,7 @@ serve(async (req) => {
         stack: error?.stack
       }),
       { 
-        status: 500,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
