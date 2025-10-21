@@ -19,6 +19,7 @@ const SettingsPage = () => {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState<Record<string, boolean>>({});
+  const [shopeeProducts, setShopeeProducts] = useState<any[]>([]);
   const [configs, setConfigs] = useState<APIConfig[]>([
     {
       marketplace: 'Amazon Associates',
@@ -121,34 +122,45 @@ const SettingsPage = () => {
       }
     } else if (marketplace === 'Shopee Affiliates') {
       setTesting(prev => ({ ...prev, [marketplace]: true }));
+      setShopeeProducts([]); // Limpa a lista antes de uma nova busca
       
       try {
-        console.log('🛒 Testando API de Afiliados da Shopee...');
+        console.log('🛒 Buscando produtos na Shopee...');
         
         const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
-          body: { keyword: 'celular', limit: 10 }
+          body: { keyword: 'fone de ouvido bluetooth', limit: 10 }
         });
         
         if (error) {
-          console.error('❌ Erro ao testar API de Afiliados Shopee:', error);
+          console.error('❌ Erro ao buscar produtos na Shopee:', error);
           toast({
-            title: "Erro ao conectar Shopee Affiliates",
+            title: "Erro ao buscar produtos",
             description: error.message || "Não foi possível conectar à API de Afiliados",
             variant: "destructive",
           });
         } else {
           console.log('✅ Resposta da API de Afiliados Shopee:', data);
-          const productCount = data?.data?.productOfferV2?.nodes?.length || 0;
-          toast({
-            title: "✅ Shopee Affiliates conectado!",
-            description: `API funcionando! Encontrados ${productCount} produtos. Veja o console (F12) para detalhes.`,
-          });
+          const products = data?.data?.productOfferV2?.nodes || [];
+          
+          if (products.length > 0) {
+            setShopeeProducts(products);
+            toast({
+              title: "✅ Produtos carregados!",
+              description: `Encontrados ${products.length} produtos da Shopee.`,
+            });
+          } else {
+            setShopeeProducts([]);
+            toast({
+              title: "Nenhum produto encontrado",
+              description: "A API conectou, mas não retornou produtos. Tente outra palavra-chave.",
+            });
+          }
         }
       } catch (error: any) {
         console.error('💥 Erro crítico:', error);
         toast({
           title: "Erro crítico",
-          description: error.message || "Erro desconhecido ao testar conexão",
+          description: error.message || "Erro desconhecido ao buscar produtos",
           variant: "destructive",
         });
       } finally {
@@ -326,8 +338,49 @@ const SettingsPage = () => {
                 }`}
               >
                 <CheckCircle size={16} />
-                {testing[config.marketplace] ? 'Testando...' : 'Testar Conexão'}
+                {testing[config.marketplace] ? 'Testando...' : config.marketplace === 'Shopee Affiliates' ? 'Buscar Produtos' : 'Testar Conexão'}
               </button>
+
+              {/* Tabela de Produtos da Shopee */}
+              {config.marketplace === 'Shopee Affiliates' && shopeeProducts.length > 0 && (
+                <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <h4 className="text-md font-semibold text-gray-900 dark:text-white mb-3">
+                    Produtos Encontrados ({shopeeProducts.length})
+                  </h4>
+                  <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                      <thead className="bg-gray-50 dark:bg-gray-900">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Produto
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Preço
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Comissão
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                        {shopeeProducts.map((product, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                              {product.productName || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                              {product.price || 'N/A'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
+                              {product.commissionRate ? `${product.commissionRate}%` : 'N/A'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
