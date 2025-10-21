@@ -127,8 +127,9 @@ const SettingsPage = () => {
       try {
         console.log('🛒 Buscando produtos na Shopee...');
         
+        // Não envia keyword para buscar Hot Products
         const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
-          body: { keyword: 'fone de ouvido bluetooth', limit: 10 }
+          body: { pageNo: 1, pageSize: 10 }
         });
         
         if (error) {
@@ -139,14 +140,17 @@ const SettingsPage = () => {
             variant: "destructive",
           });
         } else {
-          console.log('✅ Resposta da API de Afiliados Shopee:', data);
-          const products = data?.data?.productOfferV2?.nodes || [];
+          console.log('✅ Resposta completa da API de Afiliados Shopee:', data);
+          
+          // Tentar pegar produtos de hotProduct ou productOfferV2
+          const products = data?.data?.hotProduct?.nodes || data?.data?.productOfferV2?.nodes || [];
+          const totalProducts = data?.data?.hotProduct?.pageInfo?.total || products.length;
           
           if (products.length > 0) {
             setShopeeProducts(products);
             toast({
               title: "✅ Produtos carregados!",
-              description: `Encontrados ${products.length} produtos da Shopee.`,
+              description: `Encontrados ${products.length} produtos em destaque${totalProducts > products.length ? ` (total: ${totalProducts})` : ''}.`,
             });
           } else {
             setShopeeProducts([]);
