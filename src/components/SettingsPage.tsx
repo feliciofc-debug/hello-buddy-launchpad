@@ -123,26 +123,26 @@ const SettingsPage = () => {
       setTesting(prev => ({ ...prev, [marketplace]: true }));
       
       try {
-        console.log('🔐 Iniciando autenticação OAuth Shopee...');
+        console.log('🛒 Testando API de Afiliados da Shopee...');
         
-        const { data, error } = await supabase.functions.invoke('shopee-auth-url');
+        const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
+          body: { keyword: 'celular', limit: 10 }
+        });
         
         if (error) {
-          console.error('❌ Erro ao gerar URL de autorização Shopee:', error);
+          console.error('❌ Erro ao testar API de Afiliados Shopee:', error);
           toast({
-            title: "Erro ao conectar Shopee",
-            description: error.message || "Não foi possível gerar URL de autorização",
+            title: "Erro ao conectar Shopee Affiliates",
+            description: error.message || "Não foi possível conectar à API de Afiliados",
             variant: "destructive",
           });
-        } else if (data?.authUrl) {
-          console.log('✅ URL de autorização gerada:', data.authUrl);
+        } else {
+          console.log('✅ Resposta da API de Afiliados Shopee:', data);
+          const productCount = data?.data?.productOfferV2?.nodes?.length || 0;
           toast({
-            title: "🛍️ Autorize o acesso à sua loja Shopee",
-            description: "Abrindo página de autorização...",
+            title: "✅ Shopee Affiliates conectado!",
+            description: `API funcionando! Encontrados ${productCount} produtos. Veja o console (F12) para detalhes.`,
           });
-          
-          // Abrir URL de autorização em nova aba
-          window.open(data.authUrl, '_blank');
         }
       } catch (error: any) {
         console.error('💥 Erro crítico:', error);
