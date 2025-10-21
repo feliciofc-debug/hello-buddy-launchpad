@@ -38,17 +38,29 @@ const ProductsPage = () => {
   const [isLoadingShopee, setIsLoadingShopee] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Buscar produtos da Shopee quando a página carregar
+  // A página começa vazia, esperando a primeira busca
   useEffect(() => {
-    fetchShopeeProducts();
+    setShopeeProducts([]);
   }, []);
 
-  const fetchShopeeProducts = async (keywords?: string) => {
+  const fetchShopeeProducts = async (term: string) => {
+    if (!term) {
+      toast({
+        title: "Campo vazio",
+        description: "Por favor, digite um termo para buscar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoadingShopee(true);
+    setShopeeProducts([]); // Limpa os resultados antigos antes de cada nova busca
+    
     try {
-      console.log('🛒 Buscando produtos da Shopee...', keywords ? `Palavra-chave: ${keywords}` : 'Ofertas em destaque');
+      console.log('🛒 Buscando produtos da Shopee...', `Palavra-chave: ${term}`);
+      // Chama a Edge Function ENVIANDO o termo de busca no corpo (body)
       const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
-        body: { keywords: keywords || '' }
+        body: { keywords: term }
       });
 
       if (error) {
@@ -56,8 +68,8 @@ const ProductsPage = () => {
         throw error;
       }
 
-      // A resposta pode vir de 'productSearch' ou 'productOfferV2'
-      const productsFromApi = data?.data?.productSearch?.nodes || data?.data?.productOfferV2?.nodes || [];
+      // A resposta da busca vem de 'productSearch'
+      const productsFromApi = data?.data?.productSearch?.nodes || [];
       console.log(`✅ Encontrados ${productsFromApi.length} produtos da Shopee`);
 
       if (productsFromApi.length > 0) {
@@ -80,16 +92,14 @@ const ProductsPage = () => {
 
         setShopeeProducts(formattedProducts);
         toast({
-          title: "Produtos carregados!",
-          description: keywords 
-            ? `${formattedProducts.length} produtos encontrados para "${keywords}"` 
-            : `${formattedProducts.length} produtos da Shopee disponíveis`,
+          title: "Produtos encontrados!",
+          description: `${formattedProducts.length} produtos encontrados para "${term}"`,
         });
       } else {
         setShopeeProducts([]);
         toast({
           title: "Nenhum produto encontrado",
-          description: keywords ? `Tente buscar com outras palavras-chave` : "Nenhum produto disponível no momento",
+          description: "Tente buscar com outras palavras-chave",
         });
       }
     } catch (error: any) {
@@ -104,7 +114,7 @@ const ProductsPage = () => {
     }
   };
 
-  const handleSearch = () => {
+  const handleSearchClick = () => {
     fetchShopeeProducts(searchTerm);
   };
 
@@ -231,10 +241,10 @@ const ProductsPage = () => {
               className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+              onKeyPress={(e) => { if (e.key === 'Enter') handleSearchClick(); }}
             />
             <button
-              onClick={handleSearch}
+              onClick={handleSearchClick}
               disabled={isLoadingShopee}
               className="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
