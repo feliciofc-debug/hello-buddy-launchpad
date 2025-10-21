@@ -9,8 +9,8 @@ const corsHeaders = {
 
 const SHOPEE_API_ENDPOINT = 'https://open-api.affiliate.shopee.com.br/graphql';
 
-// Query única que funciona - a API da Shopee não suporta busca por keywords via GraphQL
-const GET_PRODUCTS_QUERY = `query Fetch($page:Int){productOfferV2(listType:0,sortType:2,page:$page,limit:50){nodes{commissionRate,commission,price,productLink,offerLink,productName,imageUrl}}}`;
+// Query que aceita pageSize dinâmico
+const GET_PRODUCTS_QUERY = `query Fetch($page:Int,$limit:Int){productOfferV2(listType:0,sortType:2,page:$page,limit:$limit){nodes{commissionRate,commission,price,productLink,offerLink,productName,imageUrl}}}`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -18,9 +18,12 @@ serve(async (req) => {
   }
 
   try {
-    const { keywords } = await req.json().catch(() => ({}));
+    const { keywords, pageSize } = await req.json().catch(() => ({}));
+    
+    const requestedPageSize = pageSize || 50; // Usa o pageSize recebido ou 50 como padrão
     
     console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca...', keywords ? `Filtrando por: ${keywords}` : 'Ofertas em destaque');
+    console.log(`📊 [SHOPEE-AFFILIATE] Quantidade solicitada: ${requestedPageSize} produtos`);
 
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
@@ -34,9 +37,9 @@ serve(async (req) => {
 
     const timestamp = Math.floor(Date.now() / 1000);
     
-    // Sempre usa productOfferV2 - a filtragem por keywords será feita no frontend
+    // Sempre usa productOfferV2 com a quantidade solicitada
     const query = GET_PRODUCTS_QUERY;
-    const variables = { page: 0 };
+    const variables = { page: 0, limit: requestedPageSize };
     
     // O corpo da requisição GraphQL com variáveis
     const payload = JSON.stringify({
