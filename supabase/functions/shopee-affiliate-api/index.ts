@@ -9,8 +9,8 @@ const corsHeaders = {
 
 const SHOPEE_API_ENDPOINT = 'https://open-api.affiliate.shopee.com.br/graphql';
 
-// Query simplificada para buscar Hot Products
-const GET_HOT_PRODUCTS_QUERY = `query getHotProducts{hotProduct{nodes{productName,price,commissionRate,promotionLink,productImage}}}`;
+// Query correta para buscar produtos da Shopee Affiliate API
+const GET_PRODUCTS_QUERY = `query Fetch($page:Int){productOfferV2(listType:0,sortType:2,page:$page,limit:50){nodes{commissionRate,commission,price,productLink,offerLink,productName,imageUrl}}}`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -32,9 +32,11 @@ serve(async (req) => {
 
     const timestamp = Math.floor(Date.now() / 1000);
     
-    // O corpo da requisição GraphQL
+    // O corpo da requisição GraphQL com variáveis
     const payload = JSON.stringify({
-      query: GET_HOT_PRODUCTS_QUERY,
+      query: GET_PRODUCTS_QUERY,
+      variables: { page: 0 },
+      operationName: null
     });
 
     // FORMATO CORRETO DA ASSINATURA: SHA256(appID + timestamp + payload + secret)
@@ -109,7 +111,7 @@ serve(async (req) => {
         status: 'success',
         data: responseData.data,
         fullResponse: responseData,
-        searchType: 'hotProducts',
+        searchType: 'productOfferV2',
         message: 'Produtos da Shopee carregados com sucesso!'
       }),
       { 
