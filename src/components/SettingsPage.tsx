@@ -129,6 +129,57 @@ const SettingsPage = () => {
     }
   };
 
+  const testShopeeAffiliate = async () => {
+    setTesting(prev => ({ ...prev, 'Shopee Affiliates': true }));
+    setShopeeProducts([]);
+    
+    try {
+      console.log('🛒 Buscando produtos da API de afiliados Shopee...');
+      
+      const { data, error } = await supabase.functions.invoke('shopee-affiliate-api');
+
+      if (error) {
+        console.error('❌ Erro ao buscar produtos:', error);
+        toast({
+          title: "Erro ao buscar produtos",
+          description: error.message || "Não foi possível conectar à API da Shopee",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log('✅ Resposta completa da API:', data);
+      
+      // Caminho correto para os produtos: data.data.productOfferV2.nodes
+      const products = data?.data?.productOfferV2?.nodes || [];
+
+      if (products.length > 0) {
+        setShopeeProducts(products);
+        toast({
+          title: "✅ Produtos carregados!",
+          description: `${products.length} produtos encontrados com sucesso.`,
+        });
+        console.log('Produtos carregados para exibição:', products);
+      } else {
+        setShopeeProducts([]);
+        toast({
+          title: "Nenhum produto encontrado",
+          description: "A busca não retornou produtos. A resposta da API pode estar vazia.",
+        });
+        console.log('Resposta completa da API (sem produtos):', data);
+      }
+    } catch (error: any) {
+      console.error('💥 Erro crítico:', error);
+      toast({
+        title: "Erro crítico",
+        description: error.message || "Erro desconhecido ao buscar produtos",
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(prev => ({ ...prev, 'Shopee Affiliates': false }));
+    }
+  };
+
   const testConnection = async (marketplace: string) => {
     if (marketplace === 'Hotmart') {
       setTesting(prev => ({ ...prev, [marketplace]: true }));
@@ -163,77 +214,8 @@ const SettingsPage = () => {
         setTesting(prev => ({ ...prev, [marketplace]: false }));
       }
     } else if (marketplace === 'Shopee Affiliates') {
-      setTesting(prev => ({ ...prev, [marketplace]: true }));
-      setShopeeProducts([]);
-      
-      try {
-        console.log('🛒 Buscando produtos da loja Shopee...');
-        
-        // Buscar credenciais do localStorage (armazenadas no callback OAuth)
-        const shopId = localStorage.getItem('shopee_shop_id');
-        const accessToken = localStorage.getItem('shopee_access_token');
-
-        if (!shopId || !accessToken) {
-          toast({
-            title: "Shopee não conectada",
-            description: "Conecte sua loja Shopee primeiro para listar produtos.",
-            variant: "destructive",
-          });
-          setTesting(prev => ({ ...prev, [marketplace]: false }));
-          return;
-        }
-
-        const { data, error } = await supabase.functions.invoke('shopee-list-products', {
-          body: { 
-            shop_id: shopId,
-            access_token: accessToken
-          }
-        });
-
-        if (error) {
-          console.error('❌ Erro ao buscar produtos:', error);
-          toast({
-            title: "Erro ao buscar produtos",
-            description: error.message,
-            variant: "destructive",
-          });
-        } else if (data?.status === 'error') {
-          console.error('❌ Erro da API:', data.error);
-          toast({
-            title: "Erro da API Shopee",
-            description: data.error,
-            variant: "destructive",
-          });
-        } else {
-          console.log('✅ Resposta completa da API:', data);
-          
-          const products = data?.products || [];
-
-          if (products.length > 0) {
-            setShopeeProducts(products);
-            toast({
-              title: "✅ Produtos carregados!",
-              description: `${products.length} produtos da sua loja carregados com sucesso.`,
-            });
-            console.log('Produtos carregados:', products);
-          } else {
-            setShopeeProducts([]);
-            toast({
-              title: "Nenhum produto encontrado",
-              description: "Sua loja Shopee não possui produtos cadastrados.",
-            });
-          }
-        }
-      } catch (error: any) {
-        console.error('💥 Erro crítico:', error);
-        toast({
-          title: "Erro crítico",
-          description: error.message || "Erro desconhecido ao buscar produtos",
-          variant: "destructive",
-        });
-      } finally {
-        setTesting(prev => ({ ...prev, [marketplace]: false }));
-      }
+      // Usar a função dedicada para Shopee Affiliates
+      await testShopeeAffiliate();
     } else {
       toast({
         title: `Teste de ${marketplace}`,
@@ -454,19 +436,19 @@ const SettingsPage = () => {
                           <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                             <td className="px-4 py-3">
                               <img 
-                                src={product.image?.image_url_list?.[0] || product.imageUrl || product.productImage} 
-                                alt={product.item_name || product.productName} 
+                                src={product.productImage || product.image?.image_url_list?.[0] || product.imageUrl} 
+                                alt={product.productName || product.item_name || 'Produto'} 
                                 className="w-16 h-16 object-cover rounded"
                               />
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              {product.item_name || product.productName || 'N/A'}
+                              {product.productName || product.item_name || 'N/A'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              R$ {product.price_info?.[0]?.current_price || product.price || 'N/A'}
+                              R$ {product.price || product.price_info?.[0]?.current_price || 'N/A'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              {product.item_status || product.commissionRate || 'N/A'}
+                              {product.commissionRate || product.item_status || 'N/A'}
                             </td>
                           </tr>
                         ))}
