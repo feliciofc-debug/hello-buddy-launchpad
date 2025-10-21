@@ -68,8 +68,8 @@ const ProductsPage = () => {
         throw error;
       }
 
-      // A resposta da busca vem de 'productSearch'
-      const productsFromApi = data?.data?.productSearch?.nodes || [];
+      // A resposta vem de 'productOfferV2' (filtrada no backend se houver keywords)
+      const productsFromApi = data?.data?.productOfferV2?.nodes || [];
       console.log(`✅ Encontrados ${productsFromApi.length} produtos da Shopee`);
 
       if (productsFromApi.length > 0) {
