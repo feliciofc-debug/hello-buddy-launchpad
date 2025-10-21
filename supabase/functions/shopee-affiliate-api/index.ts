@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,7 +59,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca de produtos...');
+    console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca com assinatura HMAC...');
 
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
@@ -73,28 +74,53 @@ serve(async (req) => {
     // Pegar parâmetros da requisição
     const { keyword, limit, pageNo = 1, pageSize = 10 } = await req.json().catch(() => ({}));
 
-    // Decide qual query usar: se tiver keyword, usa busca; senão, usa hot products
+    // Decide qual query usar
     const useSearch = !!keyword;
     const query = useSearch ? SEARCH_PRODUCTS_QUERY : GET_HOT_PRODUCTS_QUERY;
     const variables = useSearch 
       ? { keyword, limit: limit || 10 }
       : { pageNo, pageSize };
 
-    console.log(`📋 [SHOPEE-AFFILIATE] Tipo de busca: ${useSearch ? 'BUSCA POR PALAVRA-CHAVE' : 'HOT PRODUCTS'}`);
-    console.log(`📋 [SHOPEE-AFFILIATE] Variáveis:`, JSON.stringify(variables));
+    console.log(`📋 [SHOPEE-AFFILIATE] Tipo: ${useSearch ? 'BUSCA' : 'HOT PRODUCTS'}`);
 
-    // NOVA ABORDAGEM: Credenciais no corpo da requisição
+    // Gerar assinatura HMAC-SHA256
+    const timestamp = Math.floor(Date.now() / 1000);
+    const queryForSignature = query.replace(/\s+/g, ' ').trim(); // Normaliza espaços
+    const baseString = `${APP_ID}${timestamp}${queryForSignature}`;
+    
+    console.log(`🔐 [SHOPEE-AFFILIATE] Timestamp: ${timestamp}`);
+    console.log(`🔐 [SHOPEE-AFFILIATE] Base string (primeiros 100 chars): ${baseString.substring(0, 100)}...`);
+    
+    // Usar Web Crypto API para gerar HMAC-SHA256
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(SECRET_KEY);
+    const messageData = encoder.encode(baseString);
+    
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+    
+    const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+    const signatureArray = Array.from(new Uint8Array(signatureBuffer));
+    const signature = signatureArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    console.log(`🔐 [SHOPEE-AFFILIATE] Assinatura gerada: ${signature.substring(0, 16)}...`);
+
+    // Montar requisição com assinatura
     const requestBody = {
       query,
       variables,
-      // Credenciais enviadas no corpo (appid como número)
       appid: parseInt(APP_ID, 10),
-      secret: SECRET_KEY
+      timestamp: timestamp,
+      sign: signature // Campo 'sign' para a assinatura
     };
 
-    console.log('📡 [SHOPEE-AFFILIATE] Enviando requisição (credenciais no body)...');
+    console.log('📡 [SHOPEE-AFFILIATE] Enviando requisição com assinatura...');
 
-    // Fazer requisição SEM autenticação no header
     const response = await fetch(SHOPEE_API_ENDPOINT, {
       method: 'POST',
       headers: {
@@ -105,7 +131,7 @@ serve(async (req) => {
 
     const responseText = await response.text();
     console.log(`📥 [SHOPEE-AFFILIATE] Status: ${response.status}`);
-    console.log(`📥 [SHOPEE-AFFILIATE] Resposta completa:`, responseText);
+    console.log(`📥 [SHOPEE-AFFILIATE] Resposta:`, responseText);
 
     if (!response.ok) {
       console.error('❌ [SHOPEE-AFFILIATE] Erro HTTP:', responseText);
@@ -120,8 +146,8 @@ serve(async (req) => {
       throw new Error(`Erro ao processar resposta: ${responseText}`);
     }
 
-    // Verificar se há erros no GraphQL
-    if (data.errors) {
+    // Verificar erros GraphQL
+    if (data.errors && data.errors.length > 0) {
       console.error('❌ [SHOPEE-AFFILIATE] Erros GraphQL:', JSON.stringify(data.errors));
       return new Response(
         JSON.stringify({ 
@@ -137,7 +163,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('✅ [SHOPEE-AFFILIATE] Sucesso!');
+    console.log('✅ [SHOPEE-AFFILIATE] Sucesso com assinatura HMAC!');
     console.log('📦 [SHOPEE-AFFILIATE] Dados:', JSON.stringify(data, null, 2));
 
     return new Response(
