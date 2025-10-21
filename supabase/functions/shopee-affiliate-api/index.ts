@@ -9,7 +9,8 @@ const corsHeaders = {
 
 const SHOPEE_API_ENDPOINT = 'https://open-api.affiliate.shopee.com.br/graphql';
 
-// Query correta para buscar produtos da Shopee Affiliate API
+// Queries: uma para busca por palavra-chave, outra para ofertas em destaque
+const SEARCH_PRODUCTS_QUERY = `query productSearch($keywords:String!){productSearch(keywords:$keywords){nodes{commissionRate,commission,price,productLink,offerLink,productName,imageUrl}}}`;
 const GET_PRODUCTS_QUERY = `query Fetch($page:Int){productOfferV2(listType:0,sortType:2,page:$page,limit:50){nodes{commissionRate,commission,price,productLink,offerLink,productName,imageUrl}}}`;
 
 serve(async (req) => {
@@ -18,7 +19,9 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca (formato correto)...');
+    const { keywords } = await req.json().catch(() => ({}));
+    
+    console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca...', keywords ? `Palavra-chave: ${keywords}` : 'Ofertas em destaque');
 
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
@@ -32,10 +35,15 @@ serve(async (req) => {
 
     const timestamp = Math.floor(Date.now() / 1000);
     
+    // Decide qual query e variáveis usar baseado na presença de keywords
+    const isSearch = keywords && keywords.length > 0;
+    const query = isSearch ? SEARCH_PRODUCTS_QUERY : GET_PRODUCTS_QUERY;
+    const variables = isSearch ? { keywords } : { page: 0 };
+    
     // O corpo da requisição GraphQL com variáveis
     const payload = JSON.stringify({
-      query: GET_PRODUCTS_QUERY,
-      variables: { page: 0 },
+      query,
+      variables,
       operationName: null
     });
 
@@ -111,8 +119,8 @@ serve(async (req) => {
         status: 'success',
         data: responseData.data,
         fullResponse: responseData,
-        searchType: 'productOfferV2',
-        message: 'Produtos da Shopee carregados com sucesso!'
+        searchType: isSearch ? 'productSearch' : 'productOfferV2',
+        message: isSearch ? `Busca por "${keywords}" concluída!` : 'Produtos da Shopee carregados com sucesso!'
       }),
       { 
         status: 200,

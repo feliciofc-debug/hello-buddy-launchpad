@@ -36,24 +36,28 @@ const ProductsPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [shopeeProducts, setShopeeProducts] = useState<Product[]>([]);
   const [isLoadingShopee, setIsLoadingShopee] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Buscar produtos da Shopee quando a página carregar
   useEffect(() => {
     fetchShopeeProducts();
   }, []);
 
-  const fetchShopeeProducts = async () => {
+  const fetchShopeeProducts = async (keywords?: string) => {
     setIsLoadingShopee(true);
     try {
-      console.log('🛒 Buscando produtos da Shopee...');
-      const { data, error } = await supabase.functions.invoke('shopee-affiliate-api');
+      console.log('🛒 Buscando produtos da Shopee...', keywords ? `Palavra-chave: ${keywords}` : 'Ofertas em destaque');
+      const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
+        body: { keywords: keywords || '' }
+      });
 
       if (error) {
         console.error('❌ Erro ao buscar produtos:', error);
         throw error;
       }
 
-      const productsFromApi = data?.data?.productOfferV2?.nodes || [];
+      // A resposta pode vir de 'productSearch' ou 'productOfferV2'
+      const productsFromApi = data?.data?.productSearch?.nodes || data?.data?.productOfferV2?.nodes || [];
       console.log(`✅ Encontrados ${productsFromApi.length} produtos da Shopee`);
 
       if (productsFromApi.length > 0) {
@@ -77,7 +81,15 @@ const ProductsPage = () => {
         setShopeeProducts(formattedProducts);
         toast({
           title: "Produtos carregados!",
-          description: `${formattedProducts.length} produtos da Shopee disponíveis`,
+          description: keywords 
+            ? `${formattedProducts.length} produtos encontrados para "${keywords}"` 
+            : `${formattedProducts.length} produtos da Shopee disponíveis`,
+        });
+      } else {
+        setShopeeProducts([]);
+        toast({
+          title: "Nenhum produto encontrado",
+          description: keywords ? `Tente buscar com outras palavras-chave` : "Nenhum produto disponível no momento",
         });
       }
     } catch (error: any) {
@@ -90,6 +102,10 @@ const ProductsPage = () => {
     } finally {
       setIsLoadingShopee(false);
     }
+  };
+
+  const handleSearch = () => {
+    fetchShopeeProducts(searchTerm);
   };
 
   // Filter and sort products
@@ -206,6 +222,25 @@ const ProductsPage = () => {
           <p className="text-gray-600 dark:text-gray-400">
             Encontre os melhores produtos para promover e ganhar comissões
           </p>
+          
+          {/* Search Bar */}
+          <div className="mt-6 flex gap-3">
+            <input
+              type="text"
+              placeholder="Buscar produtos na Shopee..."
+              className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+            />
+            <button
+              onClick={handleSearch}
+              disabled={isLoadingShopee}
+              className="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoadingShopee ? 'Buscando...' : 'Buscar'}
+            </button>
+          </div>
         </div>
 
         {/* Stats */}
