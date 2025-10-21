@@ -18,12 +18,24 @@ serve(async (req) => {
   }
 
   try {
-    const { keywords, pageSize } = await req.json().catch(() => ({}));
+    // Tratamento defensivo do body da requisição
+    let pageSize = 50; // Valor padrão
+    let keywords = null;
     
-    const requestedPageSize = pageSize || 50; // Usa o pageSize recebido ou 50 como padrão
+    try {
+      const body = await req.json();
+      if (body && body.pageSize) {
+        pageSize = body.pageSize;
+      }
+      if (body && body.keywords) {
+        keywords = body.keywords;
+      }
+    } catch (e) {
+      console.warn('⚠️ [SHOPEE-AFFILIATE] Requisição sem body, usando valores padrão');
+    }
     
     console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca...', keywords ? `Filtrando por: ${keywords}` : 'Ofertas em destaque');
-    console.log(`📊 [SHOPEE-AFFILIATE] Quantidade solicitada: ${requestedPageSize} produtos`);
+    console.log(`📊 [SHOPEE-AFFILIATE] Quantidade solicitada: ${pageSize} produtos`);
 
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
@@ -39,7 +51,7 @@ serve(async (req) => {
     
     // Sempre usa productOfferV2 com a quantidade solicitada
     const query = GET_PRODUCTS_QUERY;
-    const variables = { page: 0, limit: requestedPageSize };
+    const variables = { page: 0, limit: pageSize };
     
     // O corpo da requisição GraphQL com variáveis
     const payload = JSON.stringify({
