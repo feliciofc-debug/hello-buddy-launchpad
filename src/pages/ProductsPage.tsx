@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ProductCard from '@/components/ProductCard';
@@ -6,6 +6,8 @@ import FilterPanel, { FilterOptions } from '@/components/FilterPanel';
 import GerarConteudoModal from './GerarConteudoModal';
 import { mockProducts } from '@/data/mockData';
 import type { Marketplace, Product } from '@/types/product';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 const MARKETPLACE_TABS: { value: Marketplace | 'all'; label: string; icon: string }[] = [
   { value: 'all', label: 'Todos', icon: '🌐' },
@@ -32,10 +34,68 @@ const ProductsPage = () => {
   });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [shopeeProducts, setShopeeProducts] = useState<Product[]>([]);
+  const [isLoadingShopee, setIsLoadingShopee] = useState(false);
+
+  // Buscar produtos da Shopee quando a página carregar
+  useEffect(() => {
+    fetchShopeeProducts();
+  }, []);
+
+  const fetchShopeeProducts = async () => {
+    setIsLoadingShopee(true);
+    try {
+      console.log('🛒 Buscando produtos da Shopee...');
+      const { data, error } = await supabase.functions.invoke('shopee-affiliate-api');
+
+      if (error) {
+        console.error('❌ Erro ao buscar produtos:', error);
+        throw error;
+      }
+
+      const productsFromApi = data?.data?.productOfferV2?.nodes || [];
+      console.log(`✅ Encontrados ${productsFromApi.length} produtos da Shopee`);
+
+      if (productsFromApi.length > 0) {
+        const formattedProducts: Product[] = productsFromApi.map((p: any, index: number) => ({
+          id: `shopee-${index}`,
+          title: p.productName || 'Sem título',
+          description: p.productName || '',
+          price: parseFloat(p.price) || 0,
+          commission: parseFloat(p.commission) || 0,
+          commissionPercent: parseFloat(p.commissionRate) * 100 || 0,
+          marketplace: 'shopee' as Marketplace,
+          category: '📱 Eletrônicos',
+          imageUrl: p.imageUrl || '/placeholder.svg',
+          affiliateLink: p.offerLink || p.productLink || '',
+          rating: 4.5,
+          reviews: 0,
+          sales: 0,
+          createdAt: new Date(),
+        }));
+
+        setShopeeProducts(formattedProducts);
+        toast({
+          title: "Produtos carregados!",
+          description: `${formattedProducts.length} produtos da Shopee disponíveis`,
+        });
+      }
+    } catch (error: any) {
+      console.error('💥 Erro ao buscar produtos da Shopee:', error);
+      toast({
+        title: "Erro ao carregar produtos",
+        description: error.message || "Não foi possível buscar produtos da Shopee",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingShopee(false);
+    }
+  };
 
   // Filter and sort products
   const filteredProducts = useMemo(() => {
-    let filtered = [...mockProducts];
+    // Combinar produtos mock com produtos reais da Shopee
+    let filtered = [...mockProducts, ...shopeeProducts];
 
     // Filter by active tab
     if (activeTab !== 'all') {
@@ -96,7 +156,7 @@ const ProductsPage = () => {
 
     // Limit quantity
     return filtered.slice(0, filters.quantity);
-  }, [mockProducts, activeTab, filters]);
+  }, [mockProducts, shopeeProducts, activeTab, filters]);
 
   // Calculate stats from filtered products
   const stats = useMemo(() => {
@@ -204,7 +264,16 @@ const ProductsPage = () => {
               <FilterPanel onFilterChange={setFilters} />
             </div>
 
-            {filteredProducts.length === 0 ? (
+            {isLoadingShopee ? (
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                  <p className="text-xl text-gray-700 dark:text-gray-300">
+                    🛍️ Buscando produtos na Shopee...
+                  </p>
+                </div>
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
                 <p className="text-xl text-gray-500 dark:text-gray-400 mb-4">
                   Nenhum produto encontrado
