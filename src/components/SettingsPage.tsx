@@ -122,16 +122,13 @@ const SettingsPage = () => {
       }
     } else if (marketplace === 'Shopee Affiliates') {
       setTesting(prev => ({ ...prev, [marketplace]: true }));
-      setShopeeProducts([]); // Limpa a lista antes de uma nova busca
+      setShopeeProducts([]);
       
       try {
         console.log('🛒 Buscando produtos na Shopee...');
         
-        // Não envia keyword para buscar Hot Products
-        const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
-          body: { pageNo: 1, pageSize: 10 }
-        });
-        
+        const { data, error } = await supabase.functions.invoke('shopee-affiliate-api');
+
         if (error) {
           console.error('❌ Erro ao buscar produtos na Shopee:', error);
           toast({
@@ -140,24 +137,28 @@ const SettingsPage = () => {
             variant: "destructive",
           });
         } else {
-          console.log('✅ Resposta completa da API de Afiliados Shopee:', data);
+          console.log('✅ Resposta completa da API:', data);
           
-          // Tentar pegar produtos de hotProduct ou productOfferV2
-          const products = data?.data?.hotProduct?.nodes || data?.data?.productOfferV2?.nodes || [];
-          const totalProducts = data?.data?.hotProduct?.pageInfo?.total || products.length;
-          
+          // Lógica de busca inteligente - tenta diferentes caminhos possíveis
+          const products = data?.data?.productOfferV2?.nodes || 
+                          data?.data?.hotProduct?.nodes || 
+                          data?.nodes || 
+                          [];
+
           if (products.length > 0) {
             setShopeeProducts(products);
             toast({
               title: "✅ Produtos carregados!",
-              description: `Encontrados ${products.length} produtos em destaque${totalProducts > products.length ? ` (total: ${totalProducts})` : ''}.`,
+              description: `${products.length} produtos carregados e exibidos abaixo.`,
             });
+            console.log('Produtos carregados para exibição:', products);
           } else {
             setShopeeProducts([]);
             toast({
               title: "Nenhum produto encontrado",
-              description: "A API conectou, mas não retornou produtos. Tente outra palavra-chave.",
+              description: "API conectou, mas a lista de produtos estava vazia. Verifique o console.",
             });
+            console.log('Resposta completa (sem produtos):', data);
           }
         }
       } catch (error: any) {
@@ -356,6 +357,9 @@ const SettingsPage = () => {
                       <thead className="bg-gray-50 dark:bg-gray-900">
                         <tr>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            Imagem
+                          </th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             Produto
                           </th>
                           <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -369,14 +373,21 @@ const SettingsPage = () => {
                       <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                         {shopeeProducts.map((product, idx) => (
                           <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            <td className="px-4 py-3">
+                              <img 
+                                src={product.imageUrl || product.productImage} 
+                                alt={product.productName} 
+                                className="w-16 h-16 object-cover rounded"
+                              />
+                            </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
                               {product.productName || 'N/A'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              {product.price || 'N/A'}
+                              R$ {product.price || 'N/A'}
                             </td>
                             <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                              {product.commissionRate ? `${product.commissionRate}%` : 'N/A'}
+                              {product.commissionRate ? `${(parseFloat(product.commissionRate) * 100).toFixed(0)}%` : 'N/A'}
                             </td>
                           </tr>
                         ))}
