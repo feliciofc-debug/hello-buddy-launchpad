@@ -22,10 +22,16 @@ serve(async (req) => {
     let pageSize = 50; // Valor padrão
     let keywords = null;
     
+    console.log('📨 [SHOPEE-AFFILIATE] Requisição recebida');
+    
     try {
       const body = await req.json();
+      console.log('📦 [SHOPEE-AFFILIATE] Body recebido:', JSON.stringify(body));
+      
       if (body && body.pageSize) {
-        pageSize = body.pageSize;
+        // CRÍTICO: A API da Shopee tem limite máximo de 50 produtos por requisição
+        pageSize = Math.min(body.pageSize, 50);
+        console.log(`⚠️ [SHOPEE-AFFILIATE] pageSize ajustado de ${body.pageSize} para ${pageSize} (máximo permitido pela API)`);
       }
       if (body && body.keywords) {
         keywords = body.keywords;
@@ -35,7 +41,7 @@ serve(async (req) => {
     }
     
     console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca...', keywords ? `Filtrando por: ${keywords}` : 'Ofertas em destaque');
-    console.log(`📊 [SHOPEE-AFFILIATE] Quantidade solicitada: ${pageSize} produtos`);
+    console.log(`📊 [SHOPEE-AFFILIATE] Quantidade final: ${pageSize} produtos`);
 
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
@@ -45,7 +51,7 @@ serve(async (req) => {
       throw new Error('Credenciais da Shopee não encontradas. Verifique SHOPEE_APP_ID e SHOPEE_PARTNER_KEY.');
     }
 
-    console.log(`✅ [SHOPEE-AFFILIATE] App ID: ${APP_ID.substring(0, 8)}...`);
+    console.log(`✅ [SHOPEE-AFFILIATE] Credenciais carregadas - App ID: ${APP_ID.substring(0, 8)}...`);
 
     const timestamp = Math.floor(Date.now() / 1000);
     
