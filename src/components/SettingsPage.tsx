@@ -87,6 +87,48 @@ const SettingsPage = () => {
     setTimeout(() => setSaved(false), 3000);
   };
 
+  const connectShopee = async () => {
+    setTesting(prev => ({ ...prev, 'Shopee Affiliates': true }));
+    
+    try {
+      console.log('🔐 Iniciando autenticação OAuth da Shopee...');
+      
+      const { data, error } = await supabase.functions.invoke('shopee-auth-url');
+      
+      if (error) {
+        console.error('❌ Erro ao obter URL de autorização:', error);
+        toast({
+          title: "Erro ao conectar Shopee",
+          description: error.message || "Não foi possível gerar URL de autorização",
+          variant: "destructive",
+        });
+      } else if (data?.authUrl) {
+        console.log('✅ URL de autorização gerada:', data.authUrl);
+        toast({
+          title: "Redirecionando para Shopee",
+          description: "Você será redirecionado para autorizar sua loja...",
+        });
+        // Redirecionar para a URL de autorização da Shopee
+        window.location.href = data.authUrl;
+      } else {
+        toast({
+          title: "Erro",
+          description: "URL de autorização não recebida",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      console.error('💥 Erro crítico:', error);
+      toast({
+        title: "Erro crítico",
+        description: error.message || "Erro desconhecido ao conectar Shopee",
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(prev => ({ ...prev, 'Shopee Affiliates': false }));
+    }
+  };
+
   const testConnection = async (marketplace: string) => {
     if (marketplace === 'Hotmart') {
       setTesting(prev => ({ ...prev, [marketplace]: true }));
@@ -353,19 +395,35 @@ const SettingsPage = () => {
                 </div>
               </div>
 
-              {/* Botão de Testar Conexão */}
-              <button
-                onClick={() => testConnection(config.marketplace)}
-                disabled={testing[config.marketplace]}
-                className={`text-sm font-medium flex items-center gap-2 ${
-                  testing[config.marketplace]
-                    ? 'text-gray-400 cursor-not-allowed'
-                    : 'text-blue-500 hover:text-blue-600'
-                }`}
-              >
-                <CheckCircle size={16} />
-                {testing[config.marketplace] ? 'Testando...' : config.marketplace === 'Shopee Affiliates' ? 'Buscar Produtos' : 'Testar Conexão'}
-              </button>
+              {/* Botões de ação */}
+              <div className="flex gap-3">
+                {config.marketplace === 'Shopee Affiliates' && (
+                  <button
+                    onClick={connectShopee}
+                    disabled={testing[config.marketplace]}
+                    className={`text-sm font-medium flex items-center gap-2 px-4 py-2 rounded ${
+                      testing[config.marketplace]
+                        ? 'bg-gray-400 cursor-not-allowed text-white'
+                        : 'bg-orange-500 hover:bg-orange-600 text-white'
+                    }`}
+                  >
+                    <ShoppingBag size={16} />
+                    {localStorage.getItem('shopee_access_token') ? 'Reconectar Loja' : 'Conectar Loja'}
+                  </button>
+                )}
+                <button
+                  onClick={() => testConnection(config.marketplace)}
+                  disabled={testing[config.marketplace]}
+                  className={`text-sm font-medium flex items-center gap-2 ${
+                    testing[config.marketplace]
+                      ? 'text-gray-400 cursor-not-allowed'
+                      : 'text-blue-500 hover:text-blue-600'
+                  }`}
+                >
+                  <CheckCircle size={16} />
+                  {testing[config.marketplace] ? 'Testando...' : config.marketplace === 'Shopee Affiliates' ? 'Buscar Produtos' : 'Testar Conexão'}
+                </button>
+              </div>
 
               {/* Tabela de Produtos da Shopee */}
               {config.marketplace === 'Shopee Affiliates' && shopeeProducts.length > 0 && (
