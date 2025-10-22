@@ -58,6 +58,13 @@ const ProductsPage = () => {
       try {
         console.log('🏷️ Buscando categorias da Shopee...');
         const { data, error } = await supabase.functions.invoke('shopee-get-categories');
+        
+        // Se a API da Shopee retornou um erro controlado (graças ao Agente Duplo)
+        if (data && data.error) {
+          // Usamos a função de erro que já existe para exibir a mensagem detalhada
+          throw new Error(data.error); 
+        }
+
         if (error) throw error;
         
         // Filtra para pegar apenas as categorias principais (que não têm pai ou cujo pai não está na lista)
@@ -68,10 +75,13 @@ const ProductsPage = () => {
         console.log(`✅ ${mainCategories.length} categorias principais carregadas`);
 
       } catch (error: any) {
-        console.error("❌ Erro ao buscar categorias:", error);
+        console.error("❌ Erro detalhado ao buscar categorias:", error);
+        
+        // A MUDANÇA ESTÁ AQUI!
+        // Em vez de uma mensagem genérica, agora mostramos a mensagem de erro real.
         toast({
           title: "Erro ao buscar categorias",
-          description: error.message,
+          description: error.message || 'Ocorreu um erro desconhecido.',
           variant: "destructive",
         });
       }
