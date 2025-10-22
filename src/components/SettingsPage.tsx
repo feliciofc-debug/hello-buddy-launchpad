@@ -100,6 +100,33 @@ const SettingsPage = () => {
             )}
           </div>
 
+          {/* Card de Integração Meta (Facebook/Instagram) */}
+          <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Meta (Facebook / Instagram)</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Conecte sua conta do Facebook e Instagram para automatizar suas postagens de produtos.
+            </p>
+            <button
+              onClick={() => {
+                const META_APP_ID = import.meta.env.VITE_META_APP_ID;
+                const REDIRECT_URI = `${window.location.origin}/auth/callback/meta`;
+                const permissions = [
+                  'public_profile',
+                  'email',
+                  'pages_show_list',
+                  'pages_read_engagement',
+                  'instagram_basic',
+                  'instagram_content_publish'
+                ].join(',');
+                const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${REDIRECT_URI}&scope=${permissions}&response_type=code`;
+                window.location.href = loginUrl;
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+            >
+              Conectar com Facebook / Instagram
+            </button>
+          </div>
+
           {/* Card para futuras integrações */}
           <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md opacity-60">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Outras Integrações</h2>
