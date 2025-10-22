@@ -4,10 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import ProductCard from '@/components/ProductCard';
 import FilterPanel, { FilterOptions } from '@/components/FilterPanel';
 import GerarConteudoModal from './GerarConteudoModal';
+import { TesmannModal } from '@/components/TesmannModal';
 import { mockProducts } from '@/data/mockData';
 import type { Marketplace, Product } from '@/types/product';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { toast as sonnerToast } from 'sonner';
 
 const MARKETPLACE_TABS: { value: Marketplace | 'all'; label: string; icon: string }[] = [
   { value: 'all', label: 'Todos', icon: '🌐' },
@@ -27,6 +29,11 @@ const ProductsPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [shopeeProducts, setShopeeProducts] = useState<Product[]>([]);
   const [isLoadingShopee, setIsLoadingShopee] = useState(false);
+  
+  // Estados para o modal Tesmann
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [generatedContent, setGeneratedContent] = useState<any>(null);
+  const [isIaLoading, setIsIaLoading] = useState(false);
   
   // Estado centralizado de filtros
   const [filters, setFilters] = useState<FilterOptions>({
@@ -200,9 +207,31 @@ const ProductsPage = () => {
     };
   }, [filteredProducts]);
 
-  const handleGenerateContent = (product: Product) => {
+  const handleGenerateContent = async (product: Product) => {
     setSelectedProduct(product);
-    setShowModal(true);
+    setIsModalOpen(true);
+    setIsIaLoading(true);
+    setGeneratedContent(null); // Limpa o conteúdo anterior
+
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-tesmann-content', {
+        body: { product },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+      
+      setGeneratedContent(data.content);
+      sonnerToast.success('Conteúdo gerado com sucesso!');
+
+    } catch (error: any) {
+      console.error("Erro ao gerar conteúdo:", error);
+      sonnerToast.error("Erro ao gerar conteúdo.", { description: error.message });
+      setIsModalOpen(false); // Fecha o modal em caso de erro
+    } finally {
+      setIsIaLoading(false);
+    }
   };
 
   return (
@@ -344,6 +373,14 @@ const ProductsPage = () => {
             }}
           />
         )}
+        
+        {/* Modal Tesmann */}
+        <TesmannModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          content={generatedContent}
+          isLoading={isIaLoading}
+        />
       </div>
     </div>
   );
