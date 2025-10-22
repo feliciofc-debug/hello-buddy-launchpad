@@ -2,9 +2,13 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { corsHeaders } from '../_shared/cors.ts'
-// Usando a biblioteca padrão do Deno para HMAC, que é mais estável.
 import { HmacSha256 } from "https://deno.land/std@0.119.0/hash/sha256.ts";
+
+// Headers CORS definidos diretamente aqui para evitar problemas de importação.
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 const SHOPEE_API_URL = 'https://affiliate-api.shopee.com.br/api/v3/product_category_v2';
 
@@ -25,8 +29,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Usuário não autenticado' }), { status: 401, headers: corsHeaders });
     }
     
-    const APP_ID = Deno.env.get('SHOPEE_AFFILIATE_APP_ID');
-    const SECRET_KEY = Deno.env.get('SHOPEE_AFFILIATE_SECRET');
+    const APP_ID = Deno.env.get('SHOPEE_APP_ID');
+    const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
 
     if (!APP_ID || !SECRET_KEY) {
       throw new Error('Credenciais da Shopee não configuradas nos Secrets.');
