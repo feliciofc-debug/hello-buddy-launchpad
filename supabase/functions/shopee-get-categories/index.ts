@@ -9,7 +9,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// ATENÇÃO: URL da API de CATEGORIAS
 const SHOPEE_API_URL = 'https://affiliate-api.shopee.com.br/api/v3/product_category_v2';
 
 serve(async (req) => {
@@ -18,72 +17,54 @@ serve(async (req) => {
   }
 
   try {
-    // --- LÓGICA DE AUTENTICAÇÃO COPIADA DA FUNÇÃO QUE FUNCIONA ---
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    )
-
-    const { data: { user } } = await supabaseClient.auth.getUser();
-    if (!user) {
-      return new Response(JSON.stringify({ error: 'Usuário não autenticado' }), { status: 401, headers: corsHeaders });
-    }
-    
-    // Usando os nomes de Secrets que a Lovable confirmou que estão corretos
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
 
     if (!APP_ID || !SECRET_KEY) {
-      throw new Error('Credenciais da Shopee (SHOPEE_APP_ID, SHOPEE_PARTNER_KEY) não configuradas nos Secrets.');
+      throw new Error('Secrets SHOPEE_APP_ID ou SHOPEE_PARTNER_KEY não encontrados.');
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
-    
-    const sign = new HmacSha256(SECRET_KEY)
-      .update(`${APP_ID}${timestamp}`)
-      .hex();
-    // --- FIM DA LÓGICA COPIADA ---
+    const sign = new HmacSha256(SECRET_KEY).update(`${APP_ID}${timestamp}`).hex();
 
-    // A "CARGA" DO CAVALO DE TROIA: A query de categorias
-    const query = `
-      query {
-        productCategoryV2 {
-          nodes {
-            categoryId
-            categoryName
-            parentCategoryId
-          }
-        }
-      }
-    `;
+    const query = `query { productCategoryV2 { nodes { categoryId, categoryName, parentCategoryId } } }`;
+    const requestBody = { query, variables: {} };
 
-    const requestBody = {
-      query,
-      variables: {}
-    };
+    let response;
+    let responseBody;
+    let responseStatus;
 
-    const response = await fetch(SHOPEE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `SHA256-HMAC ${APP_ID},${timestamp},${sign}`
-      },
-      body: JSON.stringify(requestBody)
-    });
+    try {
+      response = await fetch(SHOPEE_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `SHA256-HMAC ${APP_ID},${timestamp},${sign}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+      responseStatus = response.status;
+      responseBody = await response.json();
 
+    } catch (fetchError: any) {
+      // Se o próprio fetch falhar, o erro é de rede ou DNS.
+      throw new Error(`Erro no fetch: ${fetchError.message}`);
+    }
+
+    // Se a resposta NÃO for OK, vamos retornar o corpo do erro que a Shopee enviou
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Erro na API da Shopee: ${response.status} ${errorText}`);
+      // O objetivo é retornar ESTA MENSAGEM para o frontend, em vez de quebrar a função.
+      return new Response(JSON.stringify({ 
+        error: 'A API da Shopee retornou um erro.',
+        shopee_status: responseStatus,
+        shopee_response: responseBody 
+      }), {
+        status: 400, // Retornamos um erro "controlado"
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    const result = await response.json();
-    
-    if (result.errors) {
-        throw new Error(`Erro no GraphQL da Shopee: ${JSON.stringify(result.errors)}`);
-    }
-
-    const categories = result.data.productCategoryV2.nodes;
+    const categories = responseBody.data.productCategoryV2.nodes;
 
     return new Response(JSON.stringify({ categories }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -91,7 +72,8 @@ serve(async (req) => {
     })
 
   } catch (error: any) {
-    return new Response(JSON.stringify({ error: error.message }), {
+    // Este catch agora pega erros de configuração (secrets) ou do fetch em si.
+    return new Response(JSON.stringify({ error: `Erro inesperado na Edge Function: ${error.message}` }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     })
