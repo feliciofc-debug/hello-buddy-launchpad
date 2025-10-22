@@ -57,17 +57,31 @@ const ProductsPage = () => {
     const fetchCategories = async () => {
       try {
         console.log('🏷️ Buscando categorias da Shopee...');
+        // A chamada invoke continua a mesma
         const { data, error } = await supabase.functions.invoke('shopee-get-categories');
-        
-        // Se a API da Shopee retornou um erro controlado (graças ao Agente Duplo)
-        if (data && data.error) {
-          // Usamos a função de erro que já existe para exibir a mensagem detalhada
-          throw new Error(data.error); 
+
+        // Se o 'error' do invoke existir, é um erro de rede ou da própria Supabase.
+        if (error) {
+          // Vamos tentar ver se a mensagem de erro contém um JSON
+          try {
+            const errorDetails = JSON.parse(error.message);
+            // Se conseguirmos parsear, mostramos os detalhes
+            throw new Error(`Erro na chamada da função: ${JSON.stringify(errorDetails, null, 2)}`);
+          } catch (e) {
+            // Se não, é um erro de rede simples
+            throw error;
+          }
         }
 
-        if (error) throw error;
+        // Se não houve 'error', mas 'data' existe, a função retornou algo.
+        // Verificamos se 'data' contém o nosso objeto de erro customizado.
+        if (data && data.error) {
+          // Este é o caminho do SUCESSO DO DIAGNÓSTICO!
+          // Estamos pegando o dossiê completo (com o objeto 'diag') e mostrando na tela.
+          throw new Error(`Diagnóstico da API Recebido: ${JSON.stringify(data, null, 2)}`);
+        }
         
-        // Filtra para pegar apenas as categorias principais (que não têm pai ou cujo pai não está na lista)
+        // Se tudo deu certo, processamos as categorias
         const mainCategories = data.categories.filter((cat: any) => 
           !cat.parentCategoryId || !data.categories.some((p: any) => p.categoryId === cat.parentCategoryId)
         );
@@ -75,14 +89,13 @@ const ProductsPage = () => {
         console.log(`✅ ${mainCategories.length} categorias principais carregadas`);
 
       } catch (error: any) {
-        console.error("❌ Erro detalhado ao buscar categorias:", error);
-        
-        // A MUDANÇA ESTÁ AQUI!
-        // Em vez de uma mensagem genérica, agora mostramos a mensagem de erro real.
+        // Este catch agora vai receber a mensagem de erro formatada e detalhada.
+        console.error("ERRO FINAL DIAGNOSTICADO:", error.message);
         toast({
-          title: "Erro ao buscar categorias",
-          description: error.message || 'Ocorreu um erro desconhecido.',
+          title: "Diagnóstico Recebido!",
+          description: error.message,
           variant: "destructive",
+          duration: 30000, // 30 segundos para dar tempo de ler
         });
       }
     };
