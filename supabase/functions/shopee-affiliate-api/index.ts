@@ -9,8 +9,33 @@ const corsHeaders = {
 
 const SHOPEE_API_ENDPOINT = 'https://open-api.affiliate.shopee.com.br/graphql';
 
-// Query que aceita pageSize dinâmico
-const GET_PRODUCTS_QUERY = `query Fetch($page:Int,$limit:Int){productOfferV2(listType:0,sortType:2,page:$page,limit:$limit){nodes{commissionRate,commission,price,productLink,offerLink,productName,imageUrl}}}`;
+// Query correta que suporta filtro por categoria
+const GET_PRODUCTS_QUERY = `
+  query GetProducts($page: Int, $limit: Int, $categoryId: Int64, $keyword: String) {
+    productOfferV2(
+      page: $page,
+      limit: $limit,
+      categoryId: $categoryId,
+      keyword: $keyword,
+      sortType: 2
+    ) {
+      nodes {
+        commissionRate
+        commission
+        price
+        productLink
+        offerLink
+        productName
+        imageUrl
+      }
+      pageInfo {
+        page
+        limit
+        hasNextPage
+      }
+    }
+  }
+`;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -36,17 +61,18 @@ serve(async (req) => {
       }
       if (body && body.keywords) {
         keywords = body.keywords;
+        console.log(`🔍 [SHOPEE-AFFILIATE] Filtrando por palavra-chave: ${keywords}`);
       }
       if (body && body.categoryId) {
         categoryId = body.categoryId;
-        console.log(`🏷️ [SHOPEE-AFFILIATE] Filtrando por categoria: ${categoryId}`);
+        console.log(`🏷️ [SHOPEE-AFFILIATE] Filtrando por categoria ID: ${categoryId}`);
       }
     } catch (e) {
       console.warn('⚠️ [SHOPEE-AFFILIATE] Requisição sem body, usando valores padrão');
     }
     
-    console.log('🛒 [SHOPEE-AFFILIATE] Iniciando busca...', keywords ? `Filtrando por: ${keywords}` : 'Ofertas em destaque');
-    console.log(`📊 [SHOPEE-AFFILIATE] Quantidade final: ${pageSize} produtos`);
+    console.log(`🛒 [SHOPEE-AFFILIATE] Iniciando busca...${keywords ? ` Palavra-chave: "${keywords}"` : ''}${categoryId ? ` Categoria: ${categoryId}` : ''}`);
+    console.log(`📊 [SHOPEE-AFFILIATE] Quantidade solicitada: ${pageSize} produtos`);
 
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
@@ -60,9 +86,25 @@ serve(async (req) => {
 
     const timestamp = Math.floor(Date.now() / 1000);
     
-    // Sempre usa productOfferV2 com a quantidade solicitada
+    // Monta as variáveis da query
+    const variables: any = { 
+      page: 0, 
+      limit: pageSize
+    };
+    
+    // Adiciona categoria se fornecida
+    if (categoryId) {
+      variables.categoryId = parseInt(categoryId);
+      console.log(`🏷️ [SHOPEE-AFFILIATE] Aplicando filtro de categoria: ${variables.categoryId}`);
+    }
+    
+    // Adiciona palavra-chave se fornecida
+    if (keywords) {
+      variables.keyword = keywords;
+      console.log(`🔍 [SHOPEE-AFFILIATE] Aplicando filtro de palavra-chave: "${keywords}"`);
+    }
+    
     const query = GET_PRODUCTS_QUERY;
-    const variables = { page: 0, limit: pageSize };
     
     // O corpo da requisição GraphQL com variáveis
     const payload = JSON.stringify({
@@ -140,14 +182,8 @@ serve(async (req) => {
     // Pegar os produtos da resposta
     let products = responseData.data?.productOfferV2?.nodes || [];
     
-    // Se há keywords, filtrar produtos no backend
-    if (keywords && keywords.length > 0) {
-      const keywordsLower = keywords.toLowerCase();
-      products = products.filter((p: any) => 
-        p.productName?.toLowerCase().includes(keywordsLower)
-      );
-      console.log(`🔍 [SHOPEE-AFFILIATE] Filtrados ${products.length} produtos para "${keywords}"`);
-    }
+    console.log(`📦 [SHOPEE-AFFILIATE] ${products.length} produtos recebidos da API`);
+    console.log(`✅ [SHOPEE-AFFILIATE] Filtros aplicados com sucesso!`);
 
     console.log('📦 [SHOPEE-AFFILIATE] Retornando', products.length, 'produtos');
 
@@ -155,8 +191,12 @@ serve(async (req) => {
       JSON.stringify({ 
         status: 'success',
         data: { productOfferV2: { nodes: products } },
-        message: keywords ? `${products.length} produtos encontrados para "${keywords}"` : 'Produtos da Shopee carregados com sucesso!',
-        searchTerm: keywords || null
+        message: `${products.length} produtos encontrados${keywords ? ` para "${keywords}"` : ''}${categoryId ? ` na categoria ${categoryId}` : ''}`,
+        filters: {
+          keyword: keywords || null,
+          categoryId: categoryId || null,
+          pageSize
+        }
       }),
       { 
         status: 200,
