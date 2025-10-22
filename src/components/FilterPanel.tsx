@@ -16,6 +16,7 @@ export interface FilterOptions {
   minCommission: number;
   sortBy: 'sales' | 'commission' | 'price-asc' | 'price-desc' | 'rating' | 'newest';
   quantity: 100 | 200 | 500 | 1000;
+  category?: number | null; // Nova propriedade para categoria Shopee
 }
 
 const MARKETPLACES: { value: Marketplace; label: string }[] = [

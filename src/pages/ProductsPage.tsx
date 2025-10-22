@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ListFilter, Tag } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 import ProductCard from '@/components/ProductCard';
 import FilterPanel, { FilterOptions } from '@/components/FilterPanel';
 import GerarConteudoModal from './GerarConteudoModal';
@@ -30,6 +31,10 @@ const ProductsPage = () => {
   const [shopeeProducts, setShopeeProducts] = useState<Product[]>([]);
   const [isLoadingShopee, setIsLoadingShopee] = useState(false);
   
+  // Novos estados para categorias
+  const [categories, setCategories] = useState<any[]>([]);
+  const [activeCategory, setActiveCategory] = useState<number | null>(null);
+  
   // Estados para o modal Tesmann
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<any>(null);
@@ -43,8 +48,37 @@ const ProductsPage = () => {
     priceRange: { min: 0, max: 10000 },
     minCommission: 0,
     sortBy: 'sales',
-    quantity: 100 // Valor inicial
+    quantity: 100, // Valor inicial
+    category: null // Adiciona categoria ao filtro
   });
+
+  // Busca categorias quando a página carregar
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        console.log('🏷️ Buscando categorias da Shopee...');
+        const { data, error } = await supabase.functions.invoke('shopee-get-categories');
+        if (error) throw error;
+        
+        // Filtra para pegar apenas as categorias principais (que não têm pai ou cujo pai não está na lista)
+        const mainCategories = data.categories.filter((cat: any) => 
+          !cat.parentCategoryId || !data.categories.some((p: any) => p.categoryId === cat.parentCategoryId)
+        );
+        setCategories(mainCategories);
+        console.log(`✅ ${mainCategories.length} categorias principais carregadas`);
+
+      } catch (error: any) {
+        console.error("❌ Erro ao buscar categorias:", error);
+        toast({
+          title: "Erro ao buscar categorias",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+    };
+
+    fetchCategories();
+  }, []);
 
   // Função maestro que busca produtos baseado nos filtros
   const handleFetchProducts = async () => {
@@ -53,9 +87,13 @@ const ProductsPage = () => {
 
     if (filters.marketplaces.includes('shopee')) {
       try {
-        console.log(`🛒 Buscando ${filters.quantity} produtos da Shopee...`);
+        console.log(`🛒 Buscando ${filters.quantity} produtos da Shopee${filters.category ? ' na categoria ' + filters.category : ''}...`);
         const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
-          body: { pageSize: filters.quantity },
+          body: { 
+            pageSize: filters.quantity,
+            keywords: filters.search,
+            categoryId: filters.category
+          },
         });
 
         if (error) {
@@ -113,10 +151,10 @@ const ProductsPage = () => {
     setIsLoadingShopee(false);
   };
 
-  // Busca produtos quando quantidade ou marketplaces mudam
+  // Busca produtos quando filtros relevantes mudam
   useEffect(() => {
     handleFetchProducts();
-  }, [filters.quantity, filters.marketplaces]);
+  }, [filters.quantity, filters.marketplaces, filters.category]);
 
   // Filter and sort products
   const filteredProducts = useMemo(() => {
@@ -320,7 +358,44 @@ const ProductsPage = () => {
           {/* Sidebar Filters */}
           <div className="hidden lg:block lg:w-80 flex-shrink-0">
             <div className="sticky top-6">
-              <FilterPanel onFilterChange={setFilters} />
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
+                <div>
+                  <h2 className="text-lg font-semibold flex items-center text-gray-900 dark:text-white">
+                    <ListFilter className="mr-2 h-5 w-5" />
+                    Filtros Avançados
+                  </h2>
+                </div>
+
+                {/* Seção de Categorias */}
+                <div>
+                  <h3 className="text-md font-semibold mb-3 flex items-center text-gray-900 dark:text-white">
+                    <Tag className="mr-2 h-4 w-4" />
+                    Categorias Shopee
+                  </h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <Button
+                      variant={filters.category === null ? 'secondary' : 'ghost'}
+                      className="w-full justify-start"
+                      onClick={() => setFilters(prev => ({ ...prev, category: null }))}
+                    >
+                      Todas as Categorias
+                    </Button>
+                    {categories.map((cat) => (
+                      <Button
+                        key={cat.categoryId}
+                        variant={filters.category === cat.categoryId ? 'secondary' : 'ghost'}
+                        className="w-full justify-start text-sm"
+                        onClick={() => setFilters(prev => ({ ...prev, category: cat.categoryId }))}
+                      >
+                        {cat.categoryName}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Painel de Filtros Original */}
+                <FilterPanel onFilterChange={setFilters} />
+              </div>
             </div>
           </div>
 

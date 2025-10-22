@@ -21,6 +21,7 @@ serve(async (req) => {
     // Tratamento defensivo do body da requisição
     let pageSize = 50; // Valor padrão
     let keywords = null;
+    let categoryId = null;
     
     console.log('📨 [SHOPEE-AFFILIATE] Requisição recebida');
     
@@ -35,6 +36,10 @@ serve(async (req) => {
       }
       if (body && body.keywords) {
         keywords = body.keywords;
+      }
+      if (body && body.categoryId) {
+        categoryId = body.categoryId;
+        console.log(`🏷️ [SHOPEE-AFFILIATE] Filtrando por categoria: ${categoryId}`);
       }
     } catch (e) {
       console.warn('⚠️ [SHOPEE-AFFILIATE] Requisição sem body, usando valores padrão');
