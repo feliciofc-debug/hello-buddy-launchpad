@@ -113,12 +113,11 @@ const SettingsPage = () => {
                 const permissions = [
                   'public_profile',
                   'email',
-                  'pages_show_list',
-                  'pages_read_engagement',
-                  'instagram_basic',
-                  'instagram_content_publish'
+                  'pages_show_list'
                 ].join(',');
-                const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${REDIRECT_URI}&scope=${permissions}&response_type=code`;
+                const encodedRedirectUri = encodeURIComponent(REDIRECT_URI);
+                const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodedRedirectUri}&scope=${permissions}&response_type=code`;
+                console.log("Redirecionando para a URL de login da Meta:", loginUrl);
                 window.location.href = loginUrl;
               }}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
