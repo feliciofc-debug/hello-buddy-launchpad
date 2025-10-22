@@ -4,12 +4,12 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { HmacSha256 } from "https://deno.land/std@0.119.0/hash/sha256.ts";
 
-// Headers CORS definidos diretamente aqui para evitar problemas de importação.
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// ATENÇÃO: URL da API de CATEGORIAS
 const SHOPEE_API_URL = 'https://affiliate-api.shopee.com.br/api/v3/product_category_v2';
 
 serve(async (req) => {
@@ -18,6 +18,7 @@ serve(async (req) => {
   }
 
   try {
+    // --- LÓGICA DE AUTENTICAÇÃO COPIADA DA FUNÇÃO QUE FUNCIONA ---
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -29,20 +30,22 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Usuário não autenticado' }), { status: 401, headers: corsHeaders });
     }
     
+    // Usando os nomes de Secrets que a Lovable confirmou que estão corretos
     const APP_ID = Deno.env.get('SHOPEE_APP_ID');
     const SECRET_KEY = Deno.env.get('SHOPEE_PARTNER_KEY');
 
     if (!APP_ID || !SECRET_KEY) {
-      throw new Error('Credenciais da Shopee não configuradas nos Secrets.');
+      throw new Error('Credenciais da Shopee (SHOPEE_APP_ID, SHOPEE_PARTNER_KEY) não configuradas nos Secrets.');
     }
 
     const timestamp = Math.floor(Date.now() / 1000);
     
-    // CORREÇÃO: Usando a implementação HMAC nativa e mais confiável do Deno.
     const sign = new HmacSha256(SECRET_KEY)
       .update(`${APP_ID}${timestamp}`)
       .hex();
+    // --- FIM DA LÓGICA COPIADA ---
 
+    // A "CARGA" DO CAVALO DE TROIA: A query de categorias
     const query = `
       query {
         productCategoryV2 {
