@@ -1,5 +1,8 @@
 project_id = "jibpvpqgplmahjhswiza"
 
+[functions.meta-auth-callback]
+verify_jwt = false
+
 [functions.hotmart-auth]
 verify_jwt = false
 
