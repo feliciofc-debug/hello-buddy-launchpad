@@ -112,8 +112,7 @@ const SettingsPage = () => {
                 const REDIRECT_URI = `${window.location.origin}/auth/callback/meta`;
                 const permissions = [
                   'public_profile',
-                  'email',
-                  'pages_show_list'
+                  'email'
                 ].join(',');
                 const encodedRedirectUri = encodeURIComponent(REDIRECT_URI);
                 const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodedRedirectUri}&scope=${permissions}&response_type=code`;
