@@ -1,13 +1,13 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 
-// Defina os cabeçalhos CORS para permitir requisições do seu frontend
+// Define os cabeçalhos CORS para permitir requisições de qualquer origem
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
 serve(async (req) => {
-  // Trata a requisição pre-flight OPTIONS
+  // Trata a requisição pre-flight OPTIONS, essencial para CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -28,7 +28,7 @@ serve(async (req) => {
     }
 
     // ATENÇÃO: A URL de redirecionamento DEVE ser exatamente a mesma configurada no painel de desenvolvedores da Meta
-    const REDIRECT_URI = Deno.env.get('VITE_META_REDIRECT_URI') || 'http://localhost:5173/auth/callback/meta';
+    const REDIRECT_URI = Deno.env.get('VITE_META_REDIRECT_URI') || 'https://hello-buddy-launchpad.lovable.app/auth/callback/meta';
 
     const tokenUrl = `https://graph.facebook.com/v18.0/oauth/access_token?client_id=${APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&client_secret=${APP_SECRET}&code=${code}`;
 
@@ -75,7 +75,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         message: "Conexão com a Meta realizada com sucesso!",
-        accessToken: longLivedAccessToken // Opcional: não retorne o token em produção final
+        accessToken: longLivedAccessToken
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -83,9 +83,11 @@ serve(async (req) => {
   } catch (error) {
     // Captura qualquer outro erro inesperado no processo
     console.error('meta-auth-callback: Erro inesperado no bloco catch:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Um erro inesperado ocorreu.';
+    const errorDetails = error instanceof Error ? error.stack : String(error);
     return new Response(JSON.stringify({
-      error: error.message || 'Um erro inesperado ocorreu.',
-      details: error.stack || String(error)
+      error: errorMessage,
+      details: errorDetails
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500
