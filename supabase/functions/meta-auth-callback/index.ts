@@ -28,7 +28,7 @@ serve(async (req) => {
     }
 
     // ATENÇÃO: A URL de redirecionamento DEVE ser exatamente a mesma configurada no painel de desenvolvedores da Meta
-    const REDIRECT_URI = Deno.env.get('META_REDIRECT_URI') || 'https://www.amzofertas.com.br/auth/callback/meta';
+    const REDIRECT_URI = Deno.env.get('META_REDIRECT_URI') || 'https://amzofertas.com.br/auth/callback/meta';
 
     const tokenUrl = `https://graph.facebook.com/v18.0/oauth/access_token?client_id=${APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&client_secret=${APP_SECRET}&code=${code}`;
 
