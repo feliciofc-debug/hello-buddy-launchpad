@@ -109,7 +109,7 @@ const SettingsPage = () => {
             <button
               onClick={() => {
                 const META_APP_ID = import.meta.env.VITE_META_APP_ID;
-                const REDIRECT_URI = 'https://amzofertas.com.br/auth/callback/meta';
+                const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta';
                 const permissions = [
                   'public_profile',
                   'email'
