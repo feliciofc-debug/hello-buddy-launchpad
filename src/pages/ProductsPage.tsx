@@ -54,12 +54,15 @@ export default function ProductsPage() {
       return;
     }
 
+    console.log('[BUSCA] Iniciando:', { searchTerm, marketplace: activeMarketplace });
+    
     setIsLoading(true);
     setProducts([]);
     setKeyword(searchTerm);
 
     try {
       const config = marketplaceConfig[activeMarketplace];
+      console.log('[BUSCA] Chamando função:', config.apiFunctionName);
       
       const { data, error } = await supabase.functions.invoke(config.apiFunctionName, {
         body: {
@@ -69,18 +72,34 @@ export default function ProductsPage() {
         }
       });
 
-      if (error) throw error;
+      console.log('[BUSCA] Resposta:', { data, error });
+
+      if (error) {
+        console.error('[BUSCA] Erro da função:', error);
+        throw error;
+      }
 
       const foundProducts = data.produtos || data.products || [];
+      console.log('[BUSCA] Produtos encontrados:', foundProducts.length);
+      
       setProducts(foundProducts);
       
       if (foundProducts.length === 0) {
-        toast.info('Nenhum produto encontrado');
+        toast.info('Nenhum produto encontrado para este termo');
+      } else {
+        toast.success(`${foundProducts.length} produtos encontrados!`);
       }
 
     } catch (err: any) {
-      console.error('Erro ao buscar produtos:', err);
-      toast.error('Falha na busca', { description: err.message });
+      console.error('[BUSCA] Erro completo:', err);
+      
+      // Mensagem de erro mais clara
+      const errorMessage = err.message || 'Erro desconhecido ao buscar produtos';
+      
+      toast.error('Erro na busca', { 
+        description: errorMessage,
+        duration: 6000,
+      });
     } finally {
       setIsLoading(false);
     }

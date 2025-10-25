@@ -104,7 +104,13 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error("[LOMADEE] Erro na API:", response.status, errorText);
-      throw new Error(`Erro na API Lomadee: ${response.status}`);
+      
+      // Tratamento específico para erro de sourceId inválido
+      if (response.status === 400 && errorText.includes('sourceId')) {
+        throw new Error(`SourceID "${sourceId}" inválido ou não aprovado pela Lomadee. Verifique suas credenciais no painel da Lomadee e atualize nas Configurações.`);
+      }
+      
+      throw new Error(`Erro na API Lomadee (${response.status}): ${errorText.substring(0, 100)}`);
     }
 
     const data = await response.json();
