@@ -1,9 +1,35 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Função para buscar as credenciais do usuário
+async function getLomadeeCredentials(supabaseClient: any, userId: string): Promise<{ token: string; sourceId: string }> {
+  const { data, error } = await supabaseClient
+    .from('integrations')
+    .select('lomadee_app_token, lomadee_source_id')
+    .eq('user_id', userId)
+    .eq('platform', 'lomadee')
+    .maybeSingle();
+
+  if (error) {
+    console.error('[LOMADEE] Erro ao buscar credenciais:', error);
+    throw new Error('Erro ao buscar credenciais da Lomadee.');
+  }
+  
+  if (!data) {
+    throw new Error('Integração com a Lomadee não encontrada. Configure suas credenciais na página de Configurações.');
+  }
+  
+  if (!data.lomadee_app_token || !data.lomadee_source_id) {
+    throw new Error('Credenciais da Lomadee incompletas. Configure o App Token e Source ID na página de Configurações.');
+  }
+
+  return { token: data.lomadee_app_token, sourceId: data.lomadee_source_id };
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -11,17 +37,32 @@ serve(async (req) => {
   }
 
   try {
-    const { searchTerm, categoryId, limit = 50, offset = 0 } = await req.json();
+    // Autenticação: Criar um cliente Supabase usando o token de autorização do usuário
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Token de autorização não fornecido.');
+    }
     
-    const appToken = Deno.env.get("LOMADEE_APP_TOKEN");
-    const sourceId = Deno.env.get("LOMADEE_SOURCE_ID");
-    
-    if (!appToken || !sourceId) {
-      console.error("[LOMADEE] API credentials não configuradas");
-      throw new Error("API credentials não configuradas. Configure LOMADEE_APP_TOKEN e LOMADEE_SOURCE_ID");
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Obter o usuário autenticado
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+      throw new Error('Usuário não autenticado.');
     }
 
-    console.log("[LOMADEE] Buscando produtos:", { searchTerm, categoryId, limit, offset });
+    console.log('[LOMADEE] Usuário autenticado:', user.id);
+
+    const { searchTerm, categoryId, limit = 50, offset = 0 } = await req.json();
+
+    console.log('[LOMADEE] Buscando produtos:', { searchTerm, categoryId, limit, offset });
+
+    // **MUDANÇA PRINCIPAL: Busca as credenciais do usuário específico**
+    const { token: appToken, sourceId } = await getLomadeeCredentials(supabaseClient, user.id);
 
     // Construir URL da API Lomadee
     let apiUrl = `https://api.lomadee.com/v3/${appToken}/product/_search`;

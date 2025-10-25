@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   
   // Estados para o teste de conexão da Hotmart
   const [loadingHotmart, setLoadingHotmart] = useState(false);
@@ -13,6 +17,38 @@ const SettingsPage = () => {
   // Estados para o teste de conexão da Shopee (simplificado)
   const [loadingShopee, setLoadingShopee] = useState(false);
   const [shopeeResponse, setShopeeResponse] = useState('');
+
+  // Lomadee state
+  const [lomadeeAppToken, setLomadeeAppToken] = useState('');
+  const [lomadeeSourceId, setLomadeeSourceId] = useState('');
+  const [lomadeeLoading, setLomadeeLoading] = useState(false);
+  const [lomadeeConnected, setLomadeeConnected] = useState(false);
+
+  // Load Lomadee credentials on mount
+  useEffect(() => {
+    const loadLomadeeCredentials = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const { data, error } = await supabase
+          .from('integrations')
+          .select('lomadee_app_token, lomadee_source_id')
+          .eq('user_id', user.id)
+          .eq('platform', 'lomadee')
+          .maybeSingle();
+
+        if (data?.lomadee_app_token && data?.lomadee_source_id) {
+          setLomadeeAppToken(data.lomadee_app_token);
+          setLomadeeSourceId(data.lomadee_source_id);
+          setLomadeeConnected(true);
+        }
+      } catch (error) {
+        console.error('Error loading Lomadee credentials:', error);
+      }
+    };
+    loadLomadeeCredentials();
+  }, []);
 
   // Função para testar a conexão com a Hotmart
   const handleTestHotmart = async () => {
@@ -42,6 +78,74 @@ const SettingsPage = () => {
       setShopeeResponse('Erro ao chamar a função da Shopee: ' + error.message);
     } finally {
       setLoadingShopee(false);
+    }
+  };
+
+  const handleSaveLomadeeCredentials = async () => {
+    if (!lomadeeAppToken.trim() || !lomadeeSourceId.trim()) {
+      toast({
+        title: "Erro",
+        description: "Preencha todos os campos da Lomadee",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLomadeeLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Check if integration exists
+      const { data: existing } = await supabase
+        .from('integrations')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('platform', 'lomadee')
+        .maybeSingle();
+
+      if (existing) {
+        // Update existing
+        const { error } = await supabase
+          .from('integrations')
+          .update({
+            lomadee_app_token: lomadeeAppToken,
+            lomadee_source_id: lomadeeSourceId,
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existing.id);
+
+        if (error) throw error;
+      } else {
+        // Insert new
+        const { error } = await supabase
+          .from('integrations')
+          .insert({
+            user_id: user.id,
+            platform: 'lomadee',
+            access_token: 'placeholder', // Required by schema
+            lomadee_app_token: lomadeeAppToken,
+            lomadee_source_id: lomadeeSourceId,
+            is_active: true,
+          });
+
+        if (error) throw error;
+      }
+
+      setLomadeeConnected(true);
+      toast({
+        title: "Sucesso",
+        description: "Credenciais da Lomadee salvas com sucesso!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLomadeeLoading(false);
     }
   };
 
@@ -131,11 +235,66 @@ const SettingsPage = () => {
             </button>
           </div>
 
+          {/* Card de Integração Lomadee */}
+          <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+            <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Lomadee</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+              Conecte sua conta da Lomadee para buscar produtos e gerar links de afiliado.
+              <br />
+              <a 
+                href="https://www.lomadee.com" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:underline text-sm"
+              >
+                Obtenha suas credenciais no painel da Lomadee →
+              </a>
+            </p>
+            
+            <div className="space-y-4 mb-4">
+              <div className="space-y-2">
+                <Label htmlFor="lomadee-app-token">App Token</Label>
+                <Input
+                  id="lomadee-app-token"
+                  type="password"
+                  placeholder="Seu App Token da Lomadee"
+                  value={lomadeeAppToken}
+                  onChange={(e) => setLomadeeAppToken(e.target.value)}
+                  disabled={lomadeeLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lomadee-source-id">Source ID</Label>
+                <Input
+                  id="lomadee-source-id"
+                  type="password"
+                  placeholder="Seu Source ID de afiliado"
+                  value={lomadeeSourceId}
+                  onChange={(e) => setLomadeeSourceId(e.target.value)}
+                  disabled={lomadeeLoading}
+                />
+              </div>
+              {lomadeeConnected && (
+                <div className="text-sm text-green-600 dark:text-green-400">
+                  ✓ Conectado com sucesso
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleSaveLomadeeCredentials}
+              disabled={lomadeeLoading}
+              className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-500 transition-colors"
+            >
+              {lomadeeLoading ? 'Salvando...' : (lomadeeConnected ? 'Atualizar Conexão' : 'Salvar Conexão')}
+            </button>
+          </div>
+
           {/* Card para futuras integrações */}
           <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md opacity-60">
             <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Outras Integrações</h2>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Amazon, Lomadee, AliExpress e outras integrações serão adicionadas em breve.
+              Amazon, AliExpress e outras integrações serão adicionadas em breve.
             </p>
           </div>
         </div>
