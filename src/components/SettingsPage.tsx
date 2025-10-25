@@ -22,6 +22,7 @@ const SettingsPage = () => {
   const [lomadeeAppToken, setLomadeeAppToken] = useState('');
   const [lomadeeSourceId, setLomadeeSourceId] = useState('');
   const [lomadeeLoading, setLomadeeLoading] = useState(false);
+  const [lomadeeTesting, setLomadeeTesting] = useState(false);
   const [lomadeeConnected, setLomadeeConnected] = useState(false);
 
   // Load Lomadee credentials on mount
@@ -81,68 +82,104 @@ const SettingsPage = () => {
     }
   };
 
+  const handleTestLomadeeConnection = async () => {
+    if (!lomadeeAppToken.trim() || !lomadeeSourceId.trim()) {
+      toast({
+        title: 'Campos obrigatórios',
+        description: 'Preencha as credenciais antes de testar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLomadeeTesting(true);
+    try {
+      const testUrl = `https://api.lomadee.com/v3/${lomadeeAppToken}/offer/_search?sourceId=${lomadeeSourceId}&keyword=teste&size=1`;
+      const response = await fetch(testUrl);
+      
+      if (!response.ok) throw new Error('Credenciais inválidas ou API indisponível.');
+      
+      toast({
+        title: 'Conexão bem-sucedida',
+        description: '✅ Conexão com a Lomadee funcionando!',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Falha no teste de conexão',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLomadeeTesting(false);
+    }
+  };
+
   const handleSaveLomadeeCredentials = async () => {
     if (!lomadeeAppToken.trim() || !lomadeeSourceId.trim()) {
       toast({
-        title: "Erro",
-        description: "Preencha todos os campos da Lomadee",
-        variant: "destructive",
+        title: 'Campos obrigatórios',
+        description: 'O App Token e o Source ID são obrigatórios.',
+        variant: 'destructive',
       });
       return;
     }
 
     setLomadeeLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Usuário não autenticado');
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) throw new Error('Usuário não autenticado.');
 
-      // Check if integration exists
-      const { data: existing } = await supabase
+      // Verificar se já existe registro
+      const { data: existing, error: checkError } = await supabase
         .from('integrations')
         .select('id')
         .eq('user_id', user.id)
-        .eq('platform', 'lomadee')
-        .maybeSingle();
+        .single();
 
+      if (checkError && checkError.code !== 'PGRST116') {
+        throw checkError;
+      }
+
+      const payload = {
+        lomadee_app_token: lomadeeAppToken.trim(),
+        lomadee_source_id: lomadeeSourceId.trim(),
+        lomadee_connected_at: new Date().toISOString(),
+      };
+
+      let error;
       if (existing) {
-        // Update existing
-        const { error } = await supabase
+        // Atualizar registro existente
+        const result = await supabase
           .from('integrations')
-          .update({
-            lomadee_app_token: lomadeeAppToken,
-            lomadee_source_id: lomadeeSourceId,
-            is_active: true,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existing.id);
-
-        if (error) throw error;
+          .update(payload)
+          .eq('user_id', user.id);
+        error = result.error;
       } else {
-        // Insert new
-        const { error } = await supabase
+        // Inserir novo registro
+        const result = await supabase
           .from('integrations')
           .insert({
+            ...payload,
             user_id: user.id,
             platform: 'lomadee',
-            access_token: 'placeholder', // Required by schema
-            lomadee_app_token: lomadeeAppToken,
-            lomadee_source_id: lomadeeSourceId,
-            is_active: true,
+            access_token: '', // campo obrigatório
           });
-
-        if (error) throw error;
+        error = result.error;
       }
+
+      if (error) throw error;
 
       setLomadeeConnected(true);
       toast({
-        title: "Sucesso",
-        description: "Credenciais da Lomadee salvas com sucesso!",
+        title: 'Sucesso',
+        description: 'Integração com a Lomadee salva com sucesso!',
       });
     } catch (error: any) {
+      console.error('Erro ao salvar credenciais Lomadee:', error);
       toast({
-        title: "Erro",
+        title: 'Erro ao salvar',
         description: error.message,
-        variant: "destructive",
+        variant: 'destructive',
       });
     } finally {
       setLomadeeLoading(false);
@@ -281,13 +318,22 @@ const SettingsPage = () => {
               )}
             </div>
 
-            <button
-              onClick={handleSaveLomadeeCredentials}
-              disabled={lomadeeLoading}
-              className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-500 transition-colors"
-            >
-              {lomadeeLoading ? 'Salvando...' : (lomadeeConnected ? 'Atualizar Conexão' : 'Salvar Conexão')}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleTestLomadeeConnection}
+                disabled={lomadeeLoading || lomadeeTesting}
+                className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400 transition-colors"
+              >
+                {lomadeeTesting ? 'Testando...' : 'Testar Conexão'}
+              </button>
+              <button
+                onClick={handleSaveLomadeeCredentials}
+                disabled={lomadeeLoading || lomadeeTesting}
+                className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400 transition-colors"
+              >
+                {lomadeeLoading ? 'Salvando...' : (lomadeeConnected ? 'Atualizar' : 'Salvar')}
+              </button>
+            </div>
           </div>
 
           {/* Card para futuras integrações */}

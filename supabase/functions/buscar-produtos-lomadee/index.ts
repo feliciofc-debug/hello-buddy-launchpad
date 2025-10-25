@@ -84,12 +84,22 @@ serve(async (req) => {
 
     console.log("[LOMADEE] URL da API:", apiUrl);
 
-    const response = await fetch(apiUrl, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json",
-      },
-    });
+    // Adicionar timeout de 10 segundos
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    let response;
+    try {
+      response = await fetch(apiUrl, {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+        },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -136,6 +146,19 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("[LOMADEE] Erro:", error);
+    
+    // Tratamento especial para timeout
+    if (error instanceof Error && error.name === 'AbortError') {
+      return new Response(JSON.stringify({ 
+        error: 'API da Lomadee demorou muito para responder (Timeout).',
+        produtos: [],
+        total: 0,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 504,
+      });
+    }
+    
     return new Response(JSON.stringify({ 
       error: error instanceof Error ? error.message : String(error),
       produtos: [],

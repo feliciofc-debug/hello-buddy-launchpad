@@ -4,10 +4,10 @@ import { TrendingUp, DollarSign, Star, ShoppingBag, Search, Loader2 } from "luci
 import { Card, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
+import { Skeleton } from "./ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import GerarConteudoModal from "@/pages/GerarConteudoModal";
 import { TesmannModal } from "./TesmannModal";
 import type { Product } from "@/types/product";
 
@@ -236,9 +236,17 @@ export default function ProductsPage() {
         {/* ÁREA DE RESULTADOS */}
         <main className="md:col-span-3">
           {isLoading && (
-            <div className="flex flex-col items-center justify-center text-center p-10">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="mt-4 text-muted-foreground">Buscando as melhores ofertas...</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="flex flex-col space-y-3">
+                  <Skeleton className="h-[200px] w-full rounded-xl" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
           
