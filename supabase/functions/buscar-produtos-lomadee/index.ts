@@ -57,9 +57,14 @@ serve(async (req) => {
 
     console.log('[LOMADEE] Usuário autenticado:', user.id);
 
-    const { searchTerm, categoryId, limit = 50, offset = 0 } = await req.json();
+    // Obter parâmetros da URL (não do body)
+    const url = new URL(req.url);
+    const searchTerm = url.searchParams.get('keyword') || url.searchParams.get('searchTerm') || '';
+    const categoryId = url.searchParams.get('categoryId') || '';
+    const limit = parseInt(url.searchParams.get('limit') || '50');
+    const offset = parseInt(url.searchParams.get('offset') || '0');
 
-    console.log('[LOMADEE] Buscando produtos:', { searchTerm, categoryId, limit, offset });
+    console.log('[LOMADEE] Parâmetros recebidos via URL:', { searchTerm, categoryId, limit, offset });
 
     // **MUDANÇA PRINCIPAL: Busca as credenciais do usuário específico**
     const { token: appToken, sourceId } = await getLomadeeCredentials(supabaseClient, user.id);

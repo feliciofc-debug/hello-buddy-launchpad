@@ -64,44 +64,53 @@ export default function ProductsPage() {
     setKeyword(searchTerm);
 
     try {
-      const config = marketplaceConfig[activeMarketplace];
-      console.log('📞 [BUSCA] Chamando função:', config.apiFunctionName);
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      // Preparar body conforme marketplace
-      const body = activeMarketplace === 'shopee' 
-        ? { pageSize: 50, keywords: searchTerm }
-        : { searchTerm: searchTerm, limit: 50, offset: 0 };
-      
-      console.log('📦 [BUSCA] Body:', body);
-      
-      const { data, error } = await supabase.functions.invoke(config.apiFunctionName, { body });
-
-      console.log('📥 [BUSCA] Resposta completa:', data);
-      console.log('❌ [BUSCA] Erro (se houver):', error);
-
-      if (error) {
-        throw error;
+      if (sessionError || !session) {
+        throw new Error('Faça login para buscar produtos');
       }
 
-      if (!data || data.status === 'error') {
-        throw new Error(data?.error || 'Erro desconhecido da API');
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        throw new Error('Configuração do sistema incompleta');
       }
 
-      // MAPEAR PRODUTOS CONFORME MARKETPLACE
-      let foundProducts: Product[] = [];
-      
+      // ===== SHOPEE =====
       if (activeMarketplace === 'shopee') {
-        // Shopee retorna: { status: 'success', data: { productOfferV2: { nodes: [...] } } }
+        // Aviso sobre limitação da API
+        toast.info('A Shopee retorna ofertas em destaque que serão filtradas pela busca');
+        
+        console.log('🛍️ [SHOPEE] Buscando ofertas...');
+        
+        const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
+          body: { pageSize: 50, keywords: searchTerm }
+        });
+
+        console.log('📥 [SHOPEE] Resposta completa:', data);
+        console.log('❌ [SHOPEE] Erro:', error);
+
+        if (error) throw error;
+
+        if (data.status === 'error') {
+          throw new Error(data.error || 'Erro na API Shopee');
+        }
+
         const shopeeNodes = data.data?.productOfferV2?.nodes || [];
         console.log('🛍️ [SHOPEE] Nodes recebidos:', shopeeNodes.length);
-        
-        foundProducts = shopeeNodes.map((node: any) => ({
+
+        if (shopeeNodes.length === 0) {
+          toast.warning('Nenhuma oferta disponível no momento. Tente novamente mais tarde.');
+          setProducts([]);
+          return;
+        }
+
+        const foundProducts = shopeeNodes.map((node: any) => ({
           id: `shopee_${node.productLink?.split('/').pop() || Math.random()}`,
           title: node.productName || 'Produto sem nome',
           price: parseFloat(node.price) || 0,
           commission: parseFloat(node.commission) || 0,
           commissionPercent: Math.round((parseFloat(node.commissionRate) || 0) * 100),
-          rating: 4.5, // Shopee não retorna rating nessa API
+          rating: 4.5,
           reviews: 0,
           sales: 0,
           imageUrl: node.imageUrl || 'https://via.placeholder.com/400',
@@ -110,27 +119,71 @@ export default function ProductsPage() {
           marketplace: 'shopee',
           badge: '',
         }));
-        
+
         console.log('🛍️ [SHOPEE] Produtos mapeados:', foundProducts.length);
-        if (foundProducts.length > 0) {
-          console.log('🛍️ [SHOPEE] Exemplo produto:', foundProducts[0]);
-        }
-      } else {
-        // Lomadee retorna: { produtos: [...] }
-        const lomadeeProducts = data.produtos || [];
-        console.log('🔗 [LOMADEE] Produtos recebidos:', lomadeeProducts.length);
-        
-        foundProducts = lomadeeProducts;
+        setProducts(foundProducts);
+        toast.success(`${foundProducts.length} produtos encontrados!`);
       }
 
-      console.log('✅ [BUSCA] Total mapeado:', foundProducts.length);
-      
-      setProducts(foundProducts);
-      
-      if (foundProducts.length === 0) {
-        toast.info('Nenhum produto encontrado');
-      } else {
-        toast.success(`${foundProducts.length} produtos encontrados!`);
+      // ===== LOMADEE =====
+      else if (activeMarketplace === 'lomadee') {
+        console.log('🔗 [LOMADEE] Buscando produtos...');
+        
+        const lomadeeUrl = `${supabaseUrl}/functions/v1/buscar-produtos-lomadee`;
+        const params = new URLSearchParams({
+          keyword: searchTerm,
+          limit: '50',
+          offset: '0',
+        });
+
+        console.log('🌐 [LOMADEE] URL completa:', `${lomadeeUrl}?${params}`);
+
+        const response = await fetch(`${lomadeeUrl}?${params}`, {
+          method: 'GET',
+          headers: { 
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+
+        console.log('📡 [LOMADEE] Status:', response.status);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ [LOMADEE] Erro:', errorText);
+          throw new Error(`Erro Lomadee: ${errorText}`);
+        }
+
+        const data = await response.json();
+        console.log('📦 [LOMADEE] Resposta:', data);
+
+        const lomadeeProducts = data.produtos || [];
+        console.log('📦 [LOMADEE] Produtos:', lomadeeProducts.length);
+
+        if (lomadeeProducts.length === 0) {
+          toast.info('Nenhum produto encontrado na Lomadee');
+          setProducts([]);
+          return;
+        }
+
+        // Mapear para formato universal
+        const mappedProducts = lomadeeProducts.map((p: any) => ({
+          id: p.id,
+          title: p.nome,
+          price: p.preco,
+          commission: p.comissao,
+          commissionPercent: p.comissaoPercentual || 0,
+          rating: p.rating || 0,
+          reviews: p.reviews || 0,
+          sales: p.demandaMensal || 0,
+          imageUrl: p.imagem,
+          affiliateLink: p.url,
+          category: p.categoria || 'Lomadee',
+          marketplace: 'lomadee',
+          badge: '',
+        }));
+
+        setProducts(mappedProducts);
+        toast.success(`${mappedProducts.length} produtos encontrados!`);
       }
 
     } catch (err: any) {
