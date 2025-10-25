@@ -1,18 +1,24 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useCallback } from "react";
 import ProductCard from "./ProductCard";
-import { TrendingUp, DollarSign, Star, ShoppingBag, Search, Loader2 } from "lucide-react";
-import { Card, CardContent } from "./ui/card";
+import { Search, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Skeleton } from "./ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { TesmannModal } from "./TesmannModal";
 import type { Product } from "@/types/product";
 
-// Tipos para os marketplaces suportados
 type Marketplace = 'shopee' | 'lomadee';
+
+// Categorias estáticas clicáveis
+const staticCategories = [
+  'Celulares',
+  'Informática',
+  'Casa e Cozinha',
+  'Beleza',
+  'Moda',
+  'Esportes',
+];
 
 // Configuração central para cada marketplace
 const marketplaceConfig = {
@@ -42,21 +48,22 @@ export default function ProductsPage() {
   const [generatedContent, setGeneratedContent] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
-  const handleSearch = async () => {
-    if (!keyword.trim()) {
-      toast.warning('Por favor, digite um termo para buscar.');
+  const executeSearch = useCallback(async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      toast.warning('Digite ou selecione um termo para buscar');
       return;
     }
 
     setIsLoading(true);
     setProducts([]);
+    setKeyword(searchTerm);
 
     try {
       const config = marketplaceConfig[activeMarketplace];
       
       const { data, error } = await supabase.functions.invoke(config.apiFunctionName, {
         body: {
-          searchTerm: keyword,
+          searchTerm: searchTerm,
           limit: 50,
           offset: 0
         }
@@ -64,10 +71,11 @@ export default function ProductsPage() {
 
       if (error) throw error;
 
-      setProducts(data.produtos || data.products || []);
+      const foundProducts = data.produtos || data.products || [];
+      setProducts(foundProducts);
       
-      if ((data.produtos || data.products || []).length === 0) {
-        toast.info('Nenhum produto encontrado para este termo.');
+      if (foundProducts.length === 0) {
+        toast.info('Nenhum produto encontrado');
       }
 
     } catch (err: any) {
@@ -76,7 +84,7 @@ export default function ProductsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeMarketplace]);
 
   const handleGenerateContent = async (product: Product) => {
     setSelectedProduct(product);
@@ -106,185 +114,141 @@ export default function ProductsPage() {
     }
   };
 
-  // Calcular estatísticas
-  const stats = useMemo(() => {
-    const total = products.length;
-    const totalCommission = products.reduce((acc, p) => acc + (p.commission || 0), 0);
-    const avgRating = products.length > 0 
-      ? products.reduce((acc, p) => acc + (p.rating || 0), 0) / total 
-      : 0;
-    const topSeller = products.length > 0
-      ? products.reduce((max, p) => (p.sales || 0) > (max.sales || 0) ? p : max, products[0])
-      : null;
-
-    return { total, totalCommission, avgRating, topSeller };
-  }, [products]);
 
   const currentConfig = marketplaceConfig[activeMarketplace];
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 space-y-6">
+      {/* Header */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">Produtos para Afiliados</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Buscador de Produtos para Afiliados</h1>
         <p className="text-muted-foreground">
-          Encontre os melhores produtos para promover e ganhar comissões.
+          Encontre as melhores ofertas para promover e ganhar comissões
         </p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <ShoppingBag className="w-8 h-8 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">Total de Produtos</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <DollarSign className="w-8 h-8 text-green-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Comissão Potencial</p>
-                <p className="text-2xl font-bold">
-                  R$ {stats.totalCommission.toFixed(2)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <Star className="w-8 h-8 text-yellow-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Avaliação Média</p>
-                <p className="text-2xl font-bold">
-                  {stats.avgRating.toFixed(1)} ⭐
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <TrendingUp className="w-8 h-8 text-purple-500" />
-              <div>
-                <p className="text-sm text-muted-foreground">Top Seller</p>
-                <p className="text-sm font-bold line-clamp-2">
-                  {stats.topSeller?.title || 'N/A'}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* SELETOR DE MARKETPLACE */}
-      <Tabs value={activeMarketplace} onValueChange={(value) => setActiveMarketplace(value as Marketplace)}>
-        <TabsList>
-          <TabsTrigger value="shopee">
-            <span className="mr-2">{marketplaceConfig.shopee.icon}</span>
-            {marketplaceConfig.shopee.label}
-          </TabsTrigger>
-          <TabsTrigger value="lomadee">
-            <span className="mr-2">{marketplaceConfig.lomadee.icon}</span>
-            {marketplaceConfig.lomadee.label}
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {/* BARRA DE BUSCA DINÂMICA */}
-      <div className="flex w-full max-w-2xl items-center space-x-2">
-        <Input
-          type="text"
-          placeholder={currentConfig.placeholder}
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          disabled={isLoading}
-        />
-        <Button onClick={handleSearch} disabled={isLoading}>
-          {isLoading ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Search className="mr-2 h-4 w-4" />
-          )}
-          Buscar
-        </Button>
+      <div className="flex items-center gap-2 border-b pb-2">
+        {Object.keys(marketplaceConfig).map((key) => (
+          <Button
+            key={key}
+            variant={activeMarketplace === key ? 'default' : 'ghost'}
+            onClick={() => {
+              setActiveMarketplace(key as Marketplace);
+              setProducts([]);
+              setKeyword('');
+            }}
+          >
+            <span className="mr-2">{marketplaceConfig[key as Marketplace].icon}</span>
+            {marketplaceConfig[key as Marketplace].label}
+          </Button>
+        ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* FILTROS LATERAIS DINÂMICOS */}
-        <aside className="md:col-span-1">
-          <Card>
-            <CardContent className="p-4">
-              <h3 className="font-semibold mb-4">{currentConfig.categoryTitle}</h3>
-              <p className="text-sm text-muted-foreground">Categorias em breve...</p>
-            </CardContent>
-          </Card>
+      {/* Layout: Sidebar + Main */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        
+        {/* Sidebar: Categorias Clicáveis */}
+        <aside className="lg:col-span-1">
+          <h3 className="font-semibold mb-4">
+            {currentConfig.categoryTitle}
+          </h3>
+          <div className="flex flex-col space-y-2">
+            {staticCategories.map((category) => (
+              <Button
+                key={category}
+                variant="ghost"
+                className="justify-start"
+                onClick={() => executeSearch(category)}
+                disabled={isLoading}
+              >
+                {category}
+              </Button>
+            ))}
+          </div>
         </aside>
 
-        {/* ÁREA DE RESULTADOS */}
-        <main className="md:col-span-3">
-          {isLoading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="flex flex-col space-y-3">
-                  <Skeleton className="h-[200px] w-full rounded-xl" />
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-4 w-1/2" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        {/* Main Content */}
+        <main className="lg:col-span-3 space-y-6">
           
-          {!isLoading && products.length === 0 && keyword && (
-            <Card>
-              <CardContent className="p-10 text-center">
-                <ShoppingBag className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-bold mb-2">Nenhum produto encontrado</h3>
-                <p className="text-muted-foreground">
-                  Tente um termo de busca diferente.
-                </p>
-              </CardContent>
-            </Card>
-          )}
+          {/* Campo de Busca */}
+          <div className="flex w-full items-center space-x-2">
+            <Input
+              type="text"
+              placeholder={currentConfig.placeholder}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  executeSearch(keyword);
+                }
+              }}
+              disabled={isLoading}
+              className="flex-1"
+            />
+            <Button 
+              onClick={() => executeSearch(keyword)} 
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Buscando...
+                </>
+              ) : (
+                <>
+                  <Search className="mr-2 h-4 w-4" />
+                  Buscar
+                </>
+              )}
+            </Button>
+          </div>
 
-          {!isLoading && products.length === 0 && !keyword && (
-            <Card>
-              <CardContent className="p-10 text-center">
-                <Search className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-bold mb-2">Comece sua busca</h3>
-                <p className="text-muted-foreground">
-                  Digite um termo acima para encontrar produtos incríveis.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-          
-          {!isLoading && products.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {products.map((product) => (
-                <ProductCard 
-                  key={`${product.id}-${activeMarketplace}`} 
-                  product={product}
-                  onGenerateContent={handleGenerateContent}
-                />
-              ))}
-            </div>
-          )}
+          {/* Resultados */}
+          <div>
+            {/* Loading Skeleton */}
+            {isLoading && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="animate-pulse">
+                    <div className="bg-muted h-64 rounded-lg"></div>
+                    <div className="mt-2 bg-muted h-4 w-3/4 rounded"></div>
+                    <div className="mt-2 bg-muted h-4 w-1/2 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Products Grid */}
+            {!isLoading && products.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {products.map((product) => (
+                  <ProductCard
+                    key={`${product.id}-${activeMarketplace}`}
+                    product={product}
+                    onGenerateContent={handleGenerateContent}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && products.length === 0 && keyword && (
+              <div className="text-center p-10 text-muted-foreground">
+                <p className="text-lg mb-2">Nenhum produto encontrado</p>
+                <p className="text-sm">Tente outro termo ou categoria</p>
+              </div>
+            )}
+
+            {/* Initial State */}
+            {!isLoading && products.length === 0 && !keyword && (
+              <div className="text-center p-10 text-muted-foreground">
+                <Search className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p className="text-lg mb-2">Busque produtos em {currentConfig.label}</p>
+                <p className="text-sm">Digite um termo ou clique em uma categoria</p>
+              </div>
+            )}
+          </div>
         </main>
       </div>
 
