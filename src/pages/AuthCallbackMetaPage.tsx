@@ -1,40 +1,15 @@
 import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { useLocation } from 'react-router-dom';
 
 const AuthCallbackMetaPage = () => {
   const [message, setMessage] = useState('Processando autenticação...');
   const location = useLocation();
-  const navigate = useNavigate();
 
   useEffect(() => {
-    const processAuth = async () => {
-      const params = new URLSearchParams(location.search);
-      const code = params.get('code');
-
-      if (code) {
-        try {
-          setMessage('Código recebido. Trocando pelo token de acesso...');
-          
-          const { data, error } = await supabase.functions.invoke('meta-auth-callback', {
-            body: { code },
-          });
-
-          if (error) throw error;
-
-          setMessage('Conexão bem-sucedida! Você será redirecionado em breve.');
-          setTimeout(() => navigate('/configuracoes'), 3000);
-
-        } catch (err: any) {
-          setMessage(`Erro ao conectar com a Meta: ${err.message}`);
-        }
-      } else {
-        setMessage('Erro: Nenhum código de autorização recebido.');
-      }
-    };
-
-    processAuth();
-  }, [location, navigate]);
+    // Redirecionar para a edge function com os parâmetros da URL
+    const edgeFunctionUrl = `https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/meta-auth-callback${location.search}`;
+    window.location.href = edgeFunctionUrl;
+  }, [location]);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-6">
