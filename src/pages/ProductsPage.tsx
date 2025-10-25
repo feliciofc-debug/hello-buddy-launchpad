@@ -1,487 +1,268 @@
-import { useState, useMemo, useEffect } from 'react';
-import { ArrowLeft, ListFilter, Tag } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import ProductCard from '@/components/ProductCard';
-import FilterPanel, { FilterOptions } from '@/components/FilterPanel';
-import GerarConteudoModal from './GerarConteudoModal';
-import { TesmannModal } from '@/components/TesmannModal';
-import { mockProducts } from '@/data/mockData';
-import type { Marketplace, Product } from '@/types/product';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from '@/hooks/use-toast';
-import { toast as sonnerToast } from 'sonner';
+import { useState, useCallback } from "react";
+import ProductCard from "@/components/ProductCard";
+import { Search, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { TesmannModal } from "@/components/TesmannModal";
+import type { Product } from "@/types/product";
 
-const MARKETPLACE_TABS: { value: Marketplace | 'all'; label: string; icon: string }[] = [
-  { value: 'all', label: 'Todos', icon: '🌐' },
-  { value: 'amazon', label: 'Amazon', icon: '📦' },
-  { value: 'shopee', label: 'Shopee', icon: '🛍️' },
-  { value: 'aliexpress', label: 'AliExpress', icon: '🌍' },
-  { value: 'lomadee', label: 'Lomadee', icon: '🔗' },
-  { value: 'hotmart', label: 'Hotmart', icon: '🎓' },
-  { value: 'eduzz', label: 'Eduzz', icon: '💼' },
-  { value: 'monetizze', label: 'Monetizze', icon: '💰' }
+type Marketplace = 'shopee' | 'lomadee';
+
+// Categorias estáticas clicáveis
+const staticCategories = [
+  'Celulares',
+  'Informática',
+  'Casa e Cozinha',
+  'Beleza',
+  'Moda',
+  'Esportes',
 ];
 
-const ProductsPage = () => {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<Marketplace | 'all'>('all');
+// Configuração central para cada marketplace
+const marketplaceConfig = {
+  shopee: {
+    label: 'Shopee',
+    placeholder: 'Buscar produtos na Shopee...',
+    apiFunctionName: 'shopee-affiliate-api',
+    categoryTitle: 'Categorias Shopee',
+    icon: '🛍️',
+  },
+  lomadee: {
+    label: 'Lomadee',
+    placeholder: 'Buscar produtos na Lomadee...',
+    apiFunctionName: 'buscar-produtos-lomadee',
+    categoryTitle: 'Categorias Lomadee',
+    icon: '🔗',
+  },
+};
+
+export default function ProductsPage() {
+  const [activeMarketplace, setActiveMarketplace] = useState<Marketplace>('lomadee');
+  const [keyword, setKeyword] = useState<string>('');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [showModal, setShowModal] = useState(false);
-  const [shopeeProducts, setShopeeProducts] = useState<Product[]>([]);
-  const [isLoadingShopee, setIsLoadingShopee] = useState(false);
-  
-  // Novos estados para categorias
-  const [categories, setCategories] = useState<any[]>([]);
-  const [activeCategory, setActiveCategory] = useState<number | null>(null);
-  
-  // Estados para o modal Tesmann
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showTesmannModal, setShowTesmannModal] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<any>(null);
-  const [isIaLoading, setIsIaLoading] = useState(false);
-  
-  // Estado centralizado de filtros
-  const [filters, setFilters] = useState<FilterOptions>({
-    search: '',
-    marketplaces: ['shopee'], // Começa com Shopee
-    categories: [],
-    priceRange: { min: 0, max: 10000 },
-    minCommission: 0,
-    sortBy: 'sales',
-    quantity: 100, // Valor inicial
-    category: null // Adiciona categoria ao filtro
-  });
+  const [aiLoading, setAiLoading] = useState(false);
 
-  // Busca categorias quando a página carregar
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        console.log('🏷️ Buscando categorias da Shopee...');
-        // A chamada invoke continua a mesma
-        const { data, error } = await supabase.functions.invoke('shopee-get-categories');
-
-        // Se o 'error' do invoke existir, é um erro de rede ou da própria Supabase.
-        if (error) {
-          // Vamos tentar ver se a mensagem de erro contém um JSON
-          try {
-            const errorDetails = JSON.parse(error.message);
-            // Se conseguirmos parsear, mostramos os detalhes
-            throw new Error(`Erro na chamada da função: ${JSON.stringify(errorDetails, null, 2)}`);
-          } catch (e) {
-            // Se não, é um erro de rede simples
-            throw error;
-          }
-        }
-
-        // Se não houve 'error', mas 'data' existe, a função retornou algo.
-        // Verificamos se 'data' contém o nosso objeto de erro customizado.
-        if (data && data.error) {
-          // Este é o caminho do SUCESSO DO DIAGNÓSTICO!
-          // Estamos pegando o dossiê completo (com o objeto 'diag') e mostrando na tela.
-          throw new Error(`Diagnóstico da API Recebido: ${JSON.stringify(data, null, 2)}`);
-        }
-        
-        // Se tudo deu certo, processamos as categorias
-        const mainCategories = data.categories.filter((cat: any) => 
-          !cat.parentCategoryId || !data.categories.some((p: any) => p.categoryId === cat.parentCategoryId)
-        );
-        setCategories(mainCategories);
-        console.log(`✅ ${mainCategories.length} categorias principais carregadas`);
-
-      } catch (error: any) {
-        // Este catch agora vai receber a mensagem de erro formatada e detalhada.
-        console.error("ERRO FINAL DIAGNOSTICADO:", error.message);
-        toast({
-          title: "Diagnóstico Recebido!",
-          description: error.message,
-          variant: "destructive",
-          duration: 30000, // 30 segundos para dar tempo de ler
-        });
-      }
-    };
-
-    fetchCategories();
-  }, []);
-
-  // Função maestro que busca produtos baseado nos filtros
-  const handleFetchProducts = async () => {
-    setIsLoadingShopee(true);
-    let finalProductList: Product[] = [];
-
-    if (filters.marketplaces.includes('shopee')) {
-      try {
-        console.log(`🛒 Buscando ${filters.quantity} produtos da Shopee${filters.category ? ' na categoria ' + filters.category : ''}...`);
-        const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
-          body: { 
-            pageSize: filters.quantity,
-            keywords: filters.search,
-            categoryId: filters.category
-          },
-        });
-
-        if (error) {
-          console.error('❌ Erro ao carregar produtos:', error);
-          throw error;
-        }
-
-        const productsFromApi = data?.data?.productOfferV2?.nodes || [];
-        console.log(`✅ ${productsFromApi.length} produtos carregados da Shopee`);
-
-        const formattedProducts: Product[] = productsFromApi.map((p: any, index: number) => ({
-          id: `shopee-${index}`,
-          title: p.productName || 'Sem título',
-          description: p.productName || '',
-          price: parseFloat(p.price) || 0,
-          commission: parseFloat(p.commission) || 0,
-          commissionPercent: parseFloat(p.commissionRate) * 100 || 0,
-          marketplace: 'shopee' as Marketplace,
-          category: '📱 Eletrônicos',
-          imageUrl: p.imageUrl || '/placeholder.svg',
-          affiliateLink: p.offerLink || p.productLink || '',
-          rating: 4.5,
-          reviews: 0,
-          sales: 0,
-          createdAt: new Date(),
-        }));
-
-        finalProductList = [...finalProductList, ...formattedProducts];
-      } catch (error: any) {
-        console.error('💥 Erro ao carregar produtos da Shopee:', error);
-        toast({
-          title: "Erro ao carregar produtos",
-          description: error.message || "Não foi possível carregar produtos da Shopee",
-          variant: "destructive",
-        });
-      }
+  const executeSearch = useCallback(async (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      toast.warning('Digite ou selecione um termo para buscar');
+      return;
     }
 
-    // Aplica filtro de busca por texto (se houver)
-    let filteredList = finalProductList;
-    if (filters.search) {
-      filteredList = finalProductList.filter(p =>
-        p.title.toLowerCase().includes(filters.search.toLowerCase())
-      );
+    setIsLoading(true);
+    setProducts([]);
+    setKeyword(searchTerm);
+
+    try {
+      const config = marketplaceConfig[activeMarketplace];
       
-      toast({
-        title: filteredList.length > 0 ? "Produtos encontrados!" : "Nenhum produto encontrado",
-        description: filteredList.length > 0 
-          ? `${filteredList.length} produtos encontrados para "${filters.search}"`
-          : `Nenhum produto contém "${filters.search}"`,
+      const { data, error } = await supabase.functions.invoke(config.apiFunctionName, {
+        body: {
+          searchTerm: searchTerm,
+          limit: 50,
+          offset: 0
+        }
       });
+
+      if (error) throw error;
+
+      const foundProducts = data.produtos || data.products || [];
+      setProducts(foundProducts);
+      
+      if (foundProducts.length === 0) {
+        toast.info('Nenhum produto encontrado');
+      }
+
+    } catch (err: any) {
+      console.error('Erro ao buscar produtos:', err);
+      toast.error('Falha na busca', { description: err.message });
+    } finally {
+      setIsLoading(false);
     }
-
-    setShopeeProducts(filteredList);
-    setIsLoadingShopee(false);
-  };
-
-  // Busca produtos quando filtros relevantes mudam
-  useEffect(() => {
-    handleFetchProducts();
-  }, [filters.quantity, filters.marketplaces, filters.category]);
-
-  // Filter and sort products
-  const filteredProducts = useMemo(() => {
-    // Combinar produtos mock com produtos reais da Shopee
-    let filtered = [...mockProducts, ...shopeeProducts];
-
-    // Filter by active tab
-    if (activeTab !== 'all') {
-      filtered = filtered.filter(p => p.marketplace === activeTab);
-    }
-
-    // Filter by marketplaces (from sidebar)
-    if (filters.marketplaces.length > 0) {
-      filtered = filtered.filter(p => filters.marketplaces.includes(p.marketplace));
-    }
-
-    // Filter by categories
-    if (filters.categories.length > 0) {
-      filtered = filtered.filter(p => filters.categories.includes(p.category));
-    }
-
-    // Filter by search
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      filtered = filtered.filter(p =>
-        p.title.toLowerCase().includes(searchLower) ||
-        p.description.toLowerCase().includes(searchLower)
-      );
-    }
-
-    // Filter by price range
-    filtered = filtered.filter(p =>
-      p.price >= filters.priceRange.min &&
-      p.price <= filters.priceRange.max
-    );
-
-    // Filter by minimum commission
-    if (filters.minCommission > 0) {
-      filtered = filtered.filter(p => p.commission >= filters.minCommission);
-    }
-
-    // Sort
-    switch (filters.sortBy) {
-      case 'sales':
-        filtered.sort((a, b) => b.sales - a.sales);
-        break;
-      case 'commission':
-        filtered.sort((a, b) => b.commission - a.commission);
-        break;
-      case 'price-asc':
-        filtered.sort((a, b) => a.price - b.price);
-        break;
-      case 'price-desc':
-        filtered.sort((a, b) => b.price - a.price);
-        break;
-      case 'rating':
-        filtered.sort((a, b) => b.rating - a.rating);
-        break;
-      case 'newest':
-        filtered.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-        break;
-    }
-
-    // Limit quantity
-    return filtered.slice(0, filters.quantity);
-  }, [mockProducts, shopeeProducts, activeTab, filters]);
-
-  // Calculate stats from filtered products
-  const stats = useMemo(() => {
-    const total = filteredProducts.length;
-    const totalCommission = filteredProducts.reduce((sum, p) => sum + p.commission, 0);
-    const avgRating = filteredProducts.length > 0
-      ? filteredProducts.reduce((sum, p) => sum + p.rating, 0) / filteredProducts.length
-      : 0;
-    
-    const categoryCounts = filteredProducts.reduce((acc, p) => {
-      acc[p.category] = (acc[p.category] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    
-    const topCategory = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
-
-    return {
-      totalProducts: total,
-      totalCommission: totalCommission.toFixed(2),
-      averageRating: avgRating.toFixed(1),
-      topSeller: topCategory
-    };
-  }, [filteredProducts]);
+  }, [activeMarketplace]);
 
   const handleGenerateContent = async (product: Product) => {
     setSelectedProduct(product);
-    setIsModalOpen(true);
-    setIsIaLoading(true);
-    setGeneratedContent(null); // Limpa o conteúdo anterior
+    setAiLoading(true);
+    setShowTesmannModal(true);
 
     try {
       const { data, error } = await supabase.functions.invoke('generate-tesmann-content', {
-        body: { product },
+        body: {
+          productTitle: product.title,
+          productPrice: product.price,
+          productRating: product.rating,
+          productLink: product.affiliateLink,
+        }
       });
 
-      if (error) {
-        throw new Error(error.message);
-      }
-      
-      setGeneratedContent(data.content);
-      sonnerToast.success('Conteúdo gerado com sucesso!');
+      if (error) throw error;
 
-    } catch (error: any) {
-      console.error("Erro ao gerar conteúdo:", error);
-      sonnerToast.error("Erro ao gerar conteúdo.", { description: error.message });
-      setIsModalOpen(false); // Fecha o modal em caso de erro
+      setGeneratedContent(data);
+      toast.success('Conteúdo gerado com sucesso!');
+    } catch (err: any) {
+      console.error('Erro ao gerar conteúdo:', err);
+      toast.error('Erro ao gerar conteúdo. Tente novamente.');
+      setShowTesmannModal(false);
     } finally {
-      setIsIaLoading(false);
+      setAiLoading(false);
     }
   };
 
+
+  const currentConfig = marketplaceConfig[activeMarketplace];
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="container mx-auto px-4 py-8">
-        {/* Back Button */}
-        <button
-          onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span className="font-medium">Voltar ao Dashboard</span>
-        </button>
+    <div className="min-h-screen bg-background p-4 md:p-8 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-2">
+        <h1 className="text-2xl font-bold tracking-tight">Buscador de Produtos para Afiliados</h1>
+        <p className="text-muted-foreground">
+          Encontre as melhores ofertas para promover e ganhar comissões
+        </p>
+      </div>
 
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-            Produtos para Afiliados
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Encontre os melhores produtos para promover e ganhar comissões
-          </p>
-          
-          {/* Search Bar */}
-          <div className="mt-6 flex gap-3">
-            <input
-              type="text"
-              placeholder="Buscar produtos na Shopee..."
-              className="flex-1 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={filters.search}
-              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-              onKeyPress={(e) => { if (e.key === 'Enter') handleFetchProducts(); }}
-            />
-            <button
-              onClick={handleFetchProducts}
-              disabled={isLoadingShopee}
-              className="px-8 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoadingShopee ? 'Buscando...' : 'Buscar'}
-            </button>
-          </div>
-        </div>
+      {/* SELETOR DE MARKETPLACE */}
+      <div className="flex items-center gap-2 border-b pb-2">
+        {Object.keys(marketplaceConfig).map((key) => (
+          <Button
+            key={key}
+            variant={activeMarketplace === key ? 'default' : 'ghost'}
+            onClick={() => {
+              setActiveMarketplace(key as Marketplace);
+              setProducts([]);
+              setKeyword('');
+            }}
+          >
+            <span className="mr-2">{marketplaceConfig[key as Marketplace].icon}</span>
+            {marketplaceConfig[key as Marketplace].label}
+          </Button>
+        ))}
+      </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Total de Produtos</p>
-            <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.totalProducts}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Comissão Total</p>
-            <p className="text-3xl font-bold text-green-500">R$ {stats.totalCommission}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Avaliação Média</p>
-            <p className="text-3xl font-bold text-yellow-500">⭐ {stats.averageRating}</p>
-          </div>
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Categoria Top</p>
-            <p className="text-lg font-bold text-gray-900 dark:text-white">{stats.topSeller}</p>
-          </div>
-        </div>
-
-        {/* Marketplace Tabs */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow mb-6 p-2 overflow-x-auto">
-          <div className="flex gap-2 min-w-max">
-            {MARKETPLACE_TABS.map(tab => (
-              <button
-                key={tab.value}
-                onClick={() => setActiveTab(tab.value)}
-                className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all whitespace-nowrap ${
-                  activeTab === tab.value
-                    ? 'bg-blue-500 text-white shadow-lg'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
+      {/* Layout: Sidebar + Main */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        
+        {/* Sidebar: Categorias Clicáveis */}
+        <aside className="lg:col-span-1">
+          <h3 className="font-semibold mb-4">
+            {currentConfig.categoryTitle}
+          </h3>
+          <div className="flex flex-col space-y-2">
+            {staticCategories.map((category) => (
+              <Button
+                key={category}
+                variant="ghost"
+                className="justify-start"
+                onClick={() => executeSearch(category)}
+                disabled={isLoading}
               >
-                <span className="text-xl">{tab.icon}</span>
-                <span>{tab.label}</span>
-              </button>
+                {category}
+              </Button>
             ))}
           </div>
-        </div>
+        </aside>
 
         {/* Main Content */}
-        <div className="flex gap-6">
-          {/* Sidebar Filters */}
-          <div className="hidden lg:block lg:w-80 flex-shrink-0">
-            <div className="sticky top-6">
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 space-y-6">
-                <div>
-                  <h2 className="text-lg font-semibold flex items-center text-gray-900 dark:text-white">
-                    <ListFilter className="mr-2 h-5 w-5" />
-                    Filtros Avançados
-                  </h2>
-                </div>
-
-                {/* Seção de Categorias */}
-                <div>
-                  <h3 className="text-md font-semibold mb-3 flex items-center text-gray-900 dark:text-white">
-                    <Tag className="mr-2 h-4 w-4" />
-                    Categorias Shopee
-                  </h3>
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    <Button
-                      variant={filters.category === null ? 'secondary' : 'ghost'}
-                      className="w-full justify-start"
-                      onClick={() => setFilters(prev => ({ ...prev, category: null }))}
-                    >
-                      Todas as Categorias
-                    </Button>
-                    {categories.map((cat) => (
-                      <Button
-                        key={cat.categoryId}
-                        variant={filters.category === cat.categoryId ? 'secondary' : 'ghost'}
-                        className="w-full justify-start text-sm"
-                        onClick={() => setFilters(prev => ({ ...prev, category: cat.categoryId }))}
-                      >
-                        {cat.categoryName}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Painel de Filtros Original */}
-                <FilterPanel onFilterChange={setFilters} />
-              </div>
-            </div>
+        <main className="lg:col-span-3 space-y-6">
+          
+          {/* Campo de Busca */}
+          <div className="flex w-full items-center space-x-2">
+            <Input
+              type="text"
+              placeholder={currentConfig.placeholder}
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  executeSearch(keyword);
+                }
+              }}
+              disabled={isLoading}
+              className="flex-1"
+            />
+            <Button 
+              onClick={() => executeSearch(keyword)} 
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Buscando...
+                </>
+              ) : (
+                <>
+                  <Search className="mr-2 h-4 w-4" />
+                  Buscar
+                </>
+              )}
+            </Button>
           </div>
 
-          {/* Products Grid */}
-          <div className="flex-1">
-            {/* Mobile Filter Toggle */}
-            <div className="lg:hidden mb-6">
-              <FilterPanel onFilterChange={setFilters} />
-            </div>
+          {/* Resultados */}
+          <div>
+            {/* Loading Skeleton */}
+            {isLoading && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <div key={i} className="animate-pulse">
+                    <div className="bg-muted h-64 rounded-lg"></div>
+                    <div className="mt-2 bg-muted h-4 w-3/4 rounded"></div>
+                    <div className="mt-2 bg-muted h-4 w-1/2 rounded"></div>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            {isLoadingShopee ? (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-                  <p className="text-xl text-gray-700 dark:text-gray-300">
-                    🛍️ Buscando produtos na Shopee...
-                  </p>
-                </div>
-              </div>
-            ) : filteredProducts.length === 0 ? (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-12 text-center">
-                <p className="text-xl text-gray-500 dark:text-gray-400 mb-4">
-                  Nenhum produto encontrado
-                </p>
-                <p className="text-gray-400 dark:text-gray-500">
-                  Tente ajustar os filtros ou escolher outro marketplace
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {filteredProducts.map(product => (
+            {/* Products Grid */}
+            {!isLoading && products.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {products.map((product) => (
                   <ProductCard
-                    key={product.id}
+                    key={`${product.id}-${activeMarketplace}`}
                     product={product}
                     onGenerateContent={handleGenerateContent}
                   />
                 ))}
               </div>
             )}
-          </div>
-        </div>
 
-        {/* Modal de Geração de Conteúdo */}
-        {showModal && selectedProduct && (
-          <GerarConteudoModal
-            product={selectedProduct}
-            onClose={() => {
-              setShowModal(false);
-              setSelectedProduct(null);
-            }}
-          />
-        )}
-        
-        {/* Modal Tesmann */}
-        <TesmannModal
-          isOpen={isModalOpen}
-          onClose={() => setIsModalOpen(false)}
-          content={generatedContent}
-          isLoading={isIaLoading}
-        />
+            {/* Empty State */}
+            {!isLoading && products.length === 0 && keyword && (
+              <div className="text-center p-10 text-muted-foreground">
+                <p className="text-lg mb-2">Nenhum produto encontrado</p>
+                <p className="text-sm">Tente outro termo ou categoria</p>
+              </div>
+            )}
+
+            {/* Initial State */}
+            {!isLoading && products.length === 0 && !keyword && (
+              <div className="text-center p-10 text-muted-foreground">
+                <Search className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                <p className="text-lg mb-2">Busque produtos em {currentConfig.label}</p>
+                <p className="text-sm">Digite um termo ou clique em uma categoria</p>
+              </div>
+            )}
+          </div>
+        </main>
       </div>
+
+      {/* Modal Tesmann */}
+      <TesmannModal
+        isOpen={showTesmannModal}
+        onClose={() => {
+          setShowTesmannModal(false);
+          setSelectedProduct(null);
+          setGeneratedContent(null);
+        }}
+        content={generatedContent}
+        isLoading={aiLoading}
+      />
     </div>
   );
-};
-
-export default ProductsPage;
+}
