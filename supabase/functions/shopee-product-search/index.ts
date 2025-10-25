@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 
 // --- CONFIGURAÇÃO DAS CHAVES ---
 const SHOPEE_APP_ID = Deno.env.get("SHOPEE_APP_ID") || "";
-const SHOPEE_PARTNER_KEY = Deno.env.get("SHOPEE_PARTNER_KEY") || "";
+const SHOPEE_SECRET_KEY = Deno.env.get("SHOPEE_SECRET_KEY") || "";
 const SCRAPER_API_KEY = Deno.env.get("SCRAPER_API_KEY") || "";
 
 const corsHeaders = {
@@ -11,13 +11,10 @@ const corsHeaders = {
 };
 
 // --- FUNÇÃO 1: COLETOR (BLINDADA COM PROXY) ---
-// Usa a API Pública da Shopee através de um proxy para evitar bloqueios.
 async function coletarProdutosPublicos(keyword: string, limit = 50) {
   console.log(`[V7] Coletando produtos para "${keyword}" via Proxy...`);
   
   const shopeeUrl = `https://shopee.com.br/api/v4/search/search_items?by=sales&keyword=${encodeURIComponent(keyword)}&limit=${limit}&order=desc&page_type=search&scenario=PAGE_GLOBAL_SEARCH&version=2`;
-  
-  // A chamada é feita para o ScraperAPI, que por sua vez acessa a Shopee por nós.
   const proxyUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(shopeeUrl)}`;
 
   const response = await fetch(proxyUrl);
@@ -45,12 +42,11 @@ async function coletarProdutosPublicos(keyword: string, limit = 50) {
 }
 
 // --- FUNÇÃO 2: ENRIQUECEDOR (API OFICIAL DE AFILIADO) ---
-// Gera o link de afiliado comissionado.
 async function gerarLinkAfiliado(productUrl: string) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const query = `mutation { generateShortLink(productLink: "${productUrl}") { shortLink, commission } }`;
   const payload = JSON.stringify({ query });
-  const dataToSign = SHOPEE_APP_ID + timestamp + payload + SHOPEE_PARTNER_KEY;
+  const dataToSign = SHOPEE_APP_ID + timestamp + payload + SHOPEE_SECRET_KEY;
 
   const signatureBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(dataToSign));
   const signatureHex = Array.from(new Uint8Array(signatureBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -84,26 +80,23 @@ serve(async (req) => {
     const produtosPublicos = await coletarProdutosPublicos(keyword, 50);
 
     // 2. Processar em paralelo para enriquecer com links de afiliado
-    const produtosQualificadosPromises = produtosPublicos.map(async (p) => {
+    const produtosQualificadosPromises = produtosPublicos.map(async (p: any) => {
       const productUrl = `https://shopee.com.br/product/${p.shopid}/${p.itemid}`;
       const affiliateData = await gerarLinkAfiliado(productUrl);
 
-      if (!affiliateData) return null; // Se não conseguir gerar link, descarta
+      if (!affiliateData) return null;
 
       return {
         id: `shopee_${p.itemid}`,
-        title: p.name,
+        name: p.name,
         price: p.price,
-        sales: p.sold,
+        sold: p.sold,
         rating: p.rating,
         discount: p.discount,
         imageUrl: p.images?.[0] ? `https://cf.shopee.com.br/file/${p.images[0]}` : '',
-        affiliateLink: affiliateData.shortLink,
-        commission: (affiliateData.commission ?? 0) / 100000,
-        commissionPercent: 0,
-        category: 'Shopee',
-        marketplace: 'shopee',
-        badge: p.sold > 1000 ? 'Best Seller' : '',
+        link_afiliado: affiliateData.shortLink,
+        comissao: (affiliateData.commission ?? 0) / 100000,
+        platform: 'Shopee'
       };
     });
 
