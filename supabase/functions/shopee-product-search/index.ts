@@ -30,7 +30,19 @@ serve(async (req) => {
       version: '2',
     });
     
-    const response = await fetch(`${shopeePublicUrl}?${params}`);
+    // Headers para imitar navegador e evitar bloqueio 403
+    const requestHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json',
+      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+      'Referer': 'https://shopee.com.br/',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Origin': 'https://shopee.com.br',
+    };
+    
+    const response = await fetch(`${shopeePublicUrl}?${params}`, {
+      headers: requestHeaders,
+    });
     
     if (!response.ok) {
       throw new Error(`Erro ao comunicar com a API da Shopee. Status: ${response.status}`);
