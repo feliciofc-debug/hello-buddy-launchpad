@@ -18,9 +18,9 @@ serve(async (req) => {
       throw new Error('A palavra-chave de busca é obrigatória.');
     }
     
-    console.log(`[SHOPEE PROXY SEARCH] Iniciando busca por: "${keyword}"`);
+    console.log(`[SHOPEE REVERSE ENG V4] Iniciando busca por: "${keyword}"`);
     
-    // Construir URL da API da Shopee
+    // Construir URL da API da Shopee com parâmetros completos (engenharia reversa)
     const shopeePublicUrl = 'https://shopee.com.br/api/v4/search/search_items';
     const params = new URLSearchParams({
       by: 'sales',
@@ -31,13 +31,16 @@ serve(async (req) => {
       page_type: 'search',
       scenario: 'PAGE_GLOBAL_SEARCH',
       version: '2',
+      // Parâmetros adicionais descobertos por engenharia reversa
+      entry_point: 'GlobalSearchPageSearchBar',
+      __classic__: '1',
     });
     
     // Montar URL completa que será passada para o proxy
     const targetUrl = `${shopeePublicUrl}?${params}`;
     const proxyRequest = `${PROXY_URL}${encodeURIComponent(targetUrl)}`;
     
-    console.log(`[SHOPEE PROXY SEARCH] Usando proxy para: ${targetUrl}`);
+    console.log(`[SHOPEE REVERSE ENG V4] Usando proxy para: ${targetUrl}`);
     
     // Fazer requisição através do proxy
     const response = await fetch(proxyRequest);
@@ -48,11 +51,14 @@ serve(async (req) => {
     
     const data = await response.json();
     
-    if (data.error) {
-      throw new Error(`Erro retornado pela API da Shopee: ${data.error_msg || data.error}`);
+    // Verificar erros internos da API Shopee
+    if (data.error || data.error_msg) {
+      const errorMsg = data.error_msg || data.error || 'Erro desconhecido da Shopee';
+      console.error(`[SHOPEE REVERSE ENG V4] Erro da API: ${errorMsg}`);
+      throw new Error(`Erro da API Shopee: ${errorMsg}`);
     }
     
-    console.log(`[SHOPEE PROXY SEARCH] Produtos encontrados: ${data.items?.length || 0}`);
+    console.log(`[SHOPEE REVERSE ENG V4] Produtos encontrados: ${data.items?.length || 0}`);
     
     // Mapear produtos para formato padrão
     const products = (data.items || []).map((item: any) => ({
@@ -87,7 +93,7 @@ serve(async (req) => {
     );
     
   } catch (error: any) {
-    console.error('[SHOPEE PROXY SEARCH] Erro:', error.message);
+    console.error('[SHOPEE REVERSE ENG V4] Erro:', error.message);
     return new Response(
       JSON.stringify({ error: error.message, products: [] }),
       {
