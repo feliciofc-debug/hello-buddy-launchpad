@@ -64,12 +64,22 @@ export default function ProductsPage() {
       const config = marketplaceConfig[activeMarketplace];
       console.log('[BUSCA] Chamando função:', config.apiFunctionName);
       
+      // Adaptar os parâmetros conforme o marketplace
+      const bodyParams = activeMarketplace === 'shopee' 
+        ? {
+            pageSize: 50,
+            keywords: searchTerm,
+          }
+        : {
+            searchTerm: searchTerm,
+            limit: 50,
+            offset: 0
+          };
+      
+      console.log('[BUSCA] Parâmetros:', bodyParams);
+      
       const { data, error } = await supabase.functions.invoke(config.apiFunctionName, {
-        body: {
-          searchTerm: searchTerm,
-          limit: 50,
-          offset: 0
-        }
+        body: bodyParams
       });
 
       console.log('[BUSCA] Resposta:', { data, error });
@@ -79,7 +89,8 @@ export default function ProductsPage() {
         throw error;
       }
 
-      const foundProducts = data.produtos || data.products || [];
+      // Adaptar a resposta conforme o marketplace
+      const foundProducts = data.products || data.produtos || [];
       console.log('[BUSCA] Produtos encontrados:', foundProducts.length);
       
       setProducts(foundProducts);
