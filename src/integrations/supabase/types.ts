@@ -24,6 +24,7 @@ export type Database = {
           meta_user_id: string | null
           meta_user_name: string | null
           platform: string
+          refresh_token: string | null
           token_expires_at: string | null
           updated_at: string | null
           user_id: string
@@ -37,6 +38,7 @@ export type Database = {
           meta_user_id?: string | null
           meta_user_name?: string | null
           platform: string
+          refresh_token?: string | null
           token_expires_at?: string | null
           updated_at?: string | null
           user_id: string
@@ -50,6 +52,7 @@ export type Database = {
           meta_user_id?: string | null
           meta_user_name?: string | null
           platform?: string
+          refresh_token?: string | null
           token_expires_at?: string | null
           updated_at?: string | null
           user_id?: string

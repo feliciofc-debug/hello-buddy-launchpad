@@ -107,7 +107,13 @@ const SettingsPage = () => {
               Conecte sua conta do Facebook e Instagram para automatizar suas postagens de produtos.
             </p>
             <button
-              onClick={() => {
+              onClick={async () => {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                  alert('Você precisa estar logado para conectar com a Meta');
+                  return;
+                }
+                
                 const META_APP_ID = import.meta.env.VITE_META_APP_ID;
                 const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta';
                 const permissions = [
@@ -115,7 +121,7 @@ const SettingsPage = () => {
                   'email'
                 ].join(',');
                 const encodedRedirectUri = encodeURIComponent(REDIRECT_URI);
-                const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodedRedirectUri}&scope=${permissions}&response_type=code`;
+                const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodedRedirectUri}&scope=${permissions}&response_type=code&state=${user.id}`;
                 console.log("Redirecionando para a URL de login da Meta:", loginUrl);
                 window.location.href = loginUrl;
               }}
