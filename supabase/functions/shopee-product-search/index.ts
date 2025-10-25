@@ -1,6 +1,9 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
+// Proxy para contornar bloqueio 403 da Shopee
+const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -15,12 +18,12 @@ serve(async (req) => {
       throw new Error('A palavra-chave de busca é obrigatória.');
     }
     
-    console.log(`[SHOPEE SMART SEARCH] Iniciando busca por: "${keyword}"`);
+    console.log(`[SHOPEE PROXY SEARCH] Iniciando busca por: "${keyword}"`);
     
-    // USAR A API PÚBLICA DA SHOPEE PARA BUSCAR OS MAIS VENDIDOS
+    // Construir URL da API da Shopee
     const shopeePublicUrl = 'https://shopee.com.br/api/v4/search/search_items';
     const params = new URLSearchParams({
-      by: 'sales', // Ordenar por mais vendidos
+      by: 'sales',
       keyword: keyword,
       limit: Math.min(limit, 60).toString(),
       newest: '0',
@@ -30,22 +33,17 @@ serve(async (req) => {
       version: '2',
     });
     
-    // Headers para imitar navegador e evitar bloqueio 403
-    const requestHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'application/json',
-      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-      'Referer': 'https://shopee.com.br/',
-      'X-Requested-With': 'XMLHttpRequest',
-      'Origin': 'https://shopee.com.br',
-    };
+    // Montar URL completa que será passada para o proxy
+    const targetUrl = `${shopeePublicUrl}?${params}`;
+    const proxyRequest = `${PROXY_URL}${encodeURIComponent(targetUrl)}`;
     
-    const response = await fetch(`${shopeePublicUrl}?${params}`, {
-      headers: requestHeaders,
-    });
+    console.log(`[SHOPEE PROXY SEARCH] Usando proxy para: ${targetUrl}`);
+    
+    // Fazer requisição através do proxy
+    const response = await fetch(proxyRequest);
     
     if (!response.ok) {
-      throw new Error(`Erro ao comunicar com a API da Shopee. Status: ${response.status}`);
+      throw new Error(`Erro ao comunicar com proxy ou Shopee. Status: ${response.status}`);
     }
     
     const data = await response.json();
@@ -54,35 +52,31 @@ serve(async (req) => {
       throw new Error(`Erro retornado pela API da Shopee: ${data.error_msg || data.error}`);
     }
     
-    console.log(`[SHOPEE SMART SEARCH] Produtos brutos encontrados: ${data.items?.length || 0}`);
+    console.log(`[SHOPEE PROXY SEARCH] Produtos encontrados: ${data.items?.length || 0}`);
     
-    // MAPEAR E FORMATAR OS DADOS PARA O NOSSO PADRÃO
-    const products = (data.items || []).map((item: any) => {
-      const productLink = `https://shopee.com.br/product/${item.shopid}/${item.itemid}`;
-
-      return {
-        id: `shopee_${item.itemid}`,
-        title: item.name,
-        price: (item.price || 0) / 100000,
-        priceFrom: item.price_max ? item.price_max / 100000 : null,
-        imageUrl: `https://cf.shopee.com.br/file/${item.images?.[0] || ''}`,
-        affiliateLink: productLink,
-        
-        // DADOS DE PERFORMANCE
-        sales: item.sold || 0,
-        historicalSold: item.historical_sold || 0,
-        rating: item.item_rating?.rating_star || 0,
-        reviews: item.item_rating?.rating_count?.[0] || 0,
-        discount: item.raw_discount || 0,
-        
-        // Campos compatíveis com ProductCard
-        commission: 0, // Será calculado posteriormente
-        commissionPercent: 0,
-        category: 'Shopee',
-        marketplace: 'shopee',
-        badge: item.sold > 1000 ? 'Best Seller' : '',
-      };
-    });
+    // Mapear produtos para formato padrão
+    const products = (data.items || []).map((item: any) => ({
+      id: `shopee_${item.itemid}`,
+      title: item.name,
+      price: (item.price || 0) / 100000,
+      priceFrom: item.price_max ? item.price_max / 100000 : null,
+      imageUrl: `https://cf.shopee.com.br/file/${item.images?.[0] || ''}`,
+      affiliateLink: `https://shopee.com.br/product/${item.shopid}/${item.itemid}`,
+      
+      // Dados de performance
+      sales: item.sold || 0,
+      historicalSold: item.historical_sold || 0,
+      rating: item.item_rating?.rating_star || 0,
+      reviews: item.item_rating?.rating_count?.[0] || 0,
+      discount: item.raw_discount || 0,
+      
+      // Compatibilidade com ProductCard
+      commission: 0,
+      commissionPercent: 0,
+      category: 'Shopee',
+      marketplace: 'shopee',
+      badge: item.sold > 1000 ? 'Best Seller' : '',
+    }));
     
     return new Response(
       JSON.stringify({ products: products }),
@@ -93,7 +87,7 @@ serve(async (req) => {
     );
     
   } catch (error: any) {
-    console.error('[SHOPEE SMART SEARCH] Erro na Edge Function:', error.message);
+    console.error('[SHOPEE PROXY SEARCH] Erro:', error.message);
     return new Response(
       JSON.stringify({ error: error.message, products: [] }),
       {
