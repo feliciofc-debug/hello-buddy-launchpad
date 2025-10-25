@@ -1,96 +1,144 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 
-// Define os cabeçalhos CORS para permitir requisições de qualquer origem
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+interface FacebookTokenResponse {
+  access_token: string
+  token_type: string
+  expires_in?: number
+}
+
+interface FacebookLongLivedTokenResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+}
+
+interface FacebookUserResponse {
+  id: string
+  name: string
+  email?: string
+}
+
 serve(async (req) => {
-  // Trata a requisição pre-flight OPTIONS, essencial para CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { code } = await req.json();
+    const META_APP_ID = Deno.env.get('META_APP_ID')
+    const META_APP_SECRET = Deno.env.get('META_APP_SECRET')
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta'
+    const SITE_URL = 'https://www.amzofertas.com.br'
+
+    if (!META_APP_ID || !META_APP_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error('Missing required environment variables')
+    }
+
+    const url = new URL(req.url)
+    const code = url.searchParams.get('code')
+    const state = url.searchParams.get('state')
+    const error = url.searchParams.get('error')
+
+    if (error) {
+      console.error('Facebook OAuth error:', error)
+      const redirectUrl = `${SITE_URL}/configuracoes?error=true&message=${encodeURIComponent('Permissão negada pelo usuário.')}`
+      return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': redirectUrl } })
+    }
+
     if (!code) {
-      throw new Error("O código de autorização da Meta não foi fornecido.");
+      throw new Error('No authorization code provided')
     }
 
-    const APP_ID = Deno.env.get('META_APP_ID');
-    const APP_SECRET = Deno.env.get('META_APP_SECRET');
+    const tokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token')
+    tokenUrl.searchParams.set('client_id', META_APP_ID)
+    tokenUrl.searchParams.set('client_secret', META_APP_SECRET)
+    tokenUrl.searchParams.set('redirect_uri', REDIRECT_URI)
+    tokenUrl.searchParams.set('code', code)
 
-    // Validação crucial das variáveis de ambiente
-    if (!APP_ID || !APP_SECRET) {
-      console.error('meta-auth-callback: ERRO CRÍTICO - Variáveis de ambiente META_APP_ID ou META_APP_SECRET não encontradas!');
-      throw new Error('Configuração do servidor incompleta: credenciais da Meta ausentes.');
+    console.log('🔄 Trocando código por token de curta duração...')
+    const tokenResponse = await fetch(tokenUrl.toString())
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.text()
+      console.error('❌ Erro ao trocar código:', errorData)
+      throw new Error(`Failed to exchange code for token: ${errorData}`)
     }
+    const tokenData: FacebookTokenResponse = await tokenResponse.json()
+    const shortLivedToken = tokenData.access_token
+    console.log('✅ Token de curta duração obtido')
 
-    // ATENÇÃO: A URL de redirecionamento DEVE ser exatamente a mesma configurada no painel de desenvolvedores da Meta
-    const REDIRECT_URI = Deno.env.get('META_REDIRECT_URI') || 'https://amzofertas.com.br/auth/callback/meta';
+    const longLivedTokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token')
+    longLivedTokenUrl.searchParams.set('grant_type', 'fb_exchange_token')
+    longLivedTokenUrl.searchParams.set('client_id', META_APP_ID)
+    longLivedTokenUrl.searchParams.set('client_secret', META_APP_SECRET)
+    longLivedTokenUrl.searchParams.set('fb_exchange_token', shortLivedToken)
 
-    const tokenUrl = `https://graph.facebook.com/v18.0/oauth/access_token?client_id=${APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&client_secret=${APP_SECRET}&code=${code}`;
-
-    // Etapa 1: Trocar o código por um token de acesso de curta duração
-    const tokenResponse = await fetch(tokenUrl);
-    const tokenData = await tokenResponse.json();
-
-    // Se a resposta não for bem-sucedida, retorne um log detalhado
-    if (!tokenResponse.ok || tokenData.error) {
-      console.error('meta-auth-callback: Erro ao obter token de curta duração:', { status: tokenResponse.status, body: tokenData });
-      return new Response(JSON.stringify({
-        error: 'Erro ao obter token de acesso de curta duração da Meta.',
-        status: tokenResponse.status,
-        details: tokenData
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      });
+    console.log('🔄 Trocando por token de longa duração...')
+    const longLivedResponse = await fetch(longLivedTokenUrl.toString())
+    if (!longLivedResponse.ok) {
+      const errorData = await longLivedResponse.text()
+      console.error('❌ Erro ao obter token de longa duração:', errorData)
+      throw new Error(`Failed to get long-lived token: ${errorData}`)
     }
+    const longLivedData: FacebookLongLivedTokenResponse = await longLivedResponse.json()
+    const longLivedToken = longLivedData.access_token
+    const expiresIn = longLivedData.expires_in
+    console.log('✅ Token de longa duração obtido (expira em', expiresIn, 'segundos)')
 
-    const shortLivedToken = tokenData.access_token;
-    const longLivedTokenUrl = `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${APP_ID}&client_secret=${APP_SECRET}&fb_exchange_token=${shortLivedToken}`;
+    const userInfoUrl = new URL('https://graph.facebook.com/v18.0/me')
+    userInfoUrl.searchParams.set('fields', 'id,name,email')
+    userInfoUrl.searchParams.set('access_token', longLivedToken)
 
-    // Etapa 2: Trocar o token de curta duração por um de longa duração
-    const longLivedTokenResponse = await fetch(longLivedTokenUrl);
-    const longLivedTokenData = await longLivedTokenResponse.json();
-
-    // Se a resposta não for bem-sucedida, retorne um log detalhado
-    if (!longLivedTokenResponse.ok || longLivedTokenData.error) {
-      console.error('meta-auth-callback: Erro ao obter token de longa duração:', { status: longLivedTokenResponse.status, body: longLivedTokenData });
-      return new Response(JSON.stringify({
-        error: 'Erro ao obter token de acesso de longa duração da Meta.',
-        status: longLivedTokenResponse.status,
-        details: longLivedTokenData
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
-      });
+    console.log('🔄 Obtendo informações do usuário...')
+    const userInfoResponse = await fetch(userInfoUrl.toString())
+    if (!userInfoResponse.ok) {
+      const errorData = await userInfoResponse.text()
+      console.error('❌ Erro ao obter informações do usuário:', errorData)
+      throw new Error(`Failed to get user info: ${errorData}`)
     }
+    const userData: FacebookUserResponse = await userInfoResponse.json()
+    console.log('✅ Informações do usuário obtidas:', userData.id, userData.name)
 
-    const longLivedAccessToken = longLivedTokenData.access_token;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const expiresAt = new Date()
+    expiresAt.setSeconds(expiresAt.getSeconds() + expiresIn)
 
-    // Sucesso! Retorne uma resposta positiva.
-    return new Response(
-      JSON.stringify({
-        message: "Conexão com a Meta realizada com sucesso!",
-        accessToken: longLivedAccessToken
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.log('🔄 Salvando integração no banco de dados...')
+    const { error: insertError } = await supabase
+      .from('integrations')
+      .upsert({
+        user_id: state,
+        platform: 'meta',
+        access_token: longLivedToken,
+        meta_user_id: userData.id,
+        meta_user_name: userData.name,
+        meta_user_email: userData.email,
+        token_expires_at: expiresAt.toISOString(),
+        is_active: true,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'user_id,platform'
+      })
+
+    if (insertError) {
+      console.error('❌ Erro ao salvar no banco:', insertError)
+      throw new Error(`Failed to save to database: ${insertError.message}`)
+    }
+    console.log('✅ Integração salva com sucesso!')
+
+    const redirectUrl = `${SITE_URL}/configuracoes?success=true&platform=meta`
+    return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': redirectUrl } })
 
   } catch (error) {
-    // Captura qualquer outro erro inesperado no processo
-    console.error('meta-auth-callback: Erro inesperado no bloco catch:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Um erro inesperado ocorreu.';
-    const errorDetails = error instanceof Error ? error.stack : String(error);
-    return new Response(JSON.stringify({
-      error: errorMessage,
-      details: errorDetails
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 500
-    });
+    console.error('❌ Meta auth callback error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const redirectUrl = `https://www.amzofertas.com.br/configuracoes?error=true&message=${encodeURIComponent(errorMessage)}`
+    return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': redirectUrl } })
   }
 })

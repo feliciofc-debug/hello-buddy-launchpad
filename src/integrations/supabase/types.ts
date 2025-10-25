@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      integrations: {
+        Row: {
+          access_token: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          meta_user_email: string | null
+          meta_user_id: string | null
+          meta_user_name: string | null
+          platform: string
+          token_expires_at: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          meta_user_email?: string | null
+          meta_user_id?: string | null
+          meta_user_name?: string | null
+          platform: string
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          meta_user_email?: string | null
+          meta_user_id?: string | null
+          meta_user_name?: string | null
+          platform?: string
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           amazon_id: string | null
