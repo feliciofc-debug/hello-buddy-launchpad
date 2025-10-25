@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import ProductCard from "@/components/ProductCard";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -39,6 +40,7 @@ const marketplaceConfig = {
 };
 
 export default function ProductsPage() {
+  const navigate = useNavigate();
   const [activeMarketplace, setActiveMarketplace] = useState<Marketplace>('shopee');
   const [keyword, setKeyword] = useState<string>('');
   const [products, setProducts] = useState<Product[]>([]);
@@ -176,6 +178,18 @@ export default function ProductsPage() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 space-y-6">
+      {/* Botão Voltar */}
+      <div>
+        <Button
+          variant="ghost"
+          onClick={() => navigate('/dashboard')}
+          className="gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Voltar para Dashboard
+        </Button>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold tracking-tight">Buscador de Produtos para Afiliados</h1>
