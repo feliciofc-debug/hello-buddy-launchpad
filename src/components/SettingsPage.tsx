@@ -129,14 +129,18 @@ const SettingsPage = () => {
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError || !user) throw new Error('Usuário não autenticado.');
 
-      // Verificar se já existe registro
+      console.log('💾 [LOMADEE] Salvando credenciais para user:', user.id);
+
+      // Verificar se já existe registro para este usuário e plataforma
       const { data: existing, error: checkError } = await supabase
         .from('integrations')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .eq('platform', 'lomadee')
+        .maybeSingle();
 
-      if (checkError && checkError.code !== 'PGRST116') {
+      if (checkError) {
+        console.error('❌ Erro ao verificar integração:', checkError);
         throw checkError;
       }
 
@@ -144,18 +148,22 @@ const SettingsPage = () => {
         lomadee_app_token: lomadeeAppToken.trim(),
         lomadee_source_id: lomadeeSourceId.trim(),
         lomadee_connected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
 
       let error;
       if (existing) {
         // Atualizar registro existente
+        console.log('🔄 [LOMADEE] Atualizando registro existente:', existing.id);
         const result = await supabase
           .from('integrations')
           .update(payload)
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .eq('platform', 'lomadee');
         error = result.error;
       } else {
         // Inserir novo registro
+        console.log('➕ [LOMADEE] Criando novo registro');
         const result = await supabase
           .from('integrations')
           .insert({
@@ -167,15 +175,19 @@ const SettingsPage = () => {
         error = result.error;
       }
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao salvar:', error);
+        throw error;
+      }
 
+      console.log('✅ [LOMADEE] Credenciais salvas com sucesso!');
       setLomadeeConnected(true);
       toast({
         title: 'Sucesso',
         description: 'Integração com a Lomadee salva com sucesso!',
       });
     } catch (error: any) {
-      console.error('Erro ao salvar credenciais Lomadee:', error);
+      console.error('❌ [LOMADEE] Erro:', error);
       toast({
         title: 'Erro ao salvar',
         description: error.message,
