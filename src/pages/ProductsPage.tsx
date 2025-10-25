@@ -75,54 +75,45 @@ export default function ProductsPage() {
         throw new Error('Configuração do sistema incompleta');
       }
 
-      // ===== SHOPEE =====
+      // ===== SHOPEE SMART SEARCH =====
       if (activeMarketplace === 'shopee') {
-        // Aviso sobre limitação da API
-        toast.info('A Shopee retorna ofertas em destaque que serão filtradas pela busca');
+        console.log('🛍️ [SHOPEE SMART] Buscando produtos mais vendidos...');
         
-        console.log('🛍️ [SHOPEE] Buscando ofertas...');
-        
-        const { data, error } = await supabase.functions.invoke('shopee-affiliate-api', {
-          body: { pageSize: 50, keywords: searchTerm }
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        const shopeeUrl = `${supabaseUrl}/functions/v1/shopee-product-search`;
+        const params = new URLSearchParams({
+          keyword: searchTerm,
+          limit: '50',
         });
 
-        console.log('📥 [SHOPEE] Resposta completa:', data);
-        console.log('❌ [SHOPEE] Erro:', error);
+        console.log('🌐 [SHOPEE SMART] URL completa:', `${shopeeUrl}?${params}`);
 
-        if (error) throw error;
+        const response = await fetch(`${shopeeUrl}?${params}`, {
+          method: 'GET',
+        });
 
-        if (data.status === 'error') {
-          throw new Error(data.error || 'Erro na API Shopee');
+        console.log('📡 [SHOPEE SMART] Status:', response.status);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('❌ [SHOPEE SMART] Erro:', errorText);
+          throw new Error(`Erro Shopee: ${errorText}`);
         }
 
-        const shopeeNodes = data.data?.productOfferV2?.nodes || [];
-        console.log('🛍️ [SHOPEE] Nodes recebidos:', shopeeNodes.length);
+        const data = await response.json();
+        console.log('📦 [SHOPEE SMART] Resposta:', data);
 
-        if (shopeeNodes.length === 0) {
-          toast.warning('Nenhuma oferta disponível no momento. Tente novamente mais tarde.');
+        const shopeeProducts = data.products || [];
+        console.log('📦 [SHOPEE SMART] Produtos:', shopeeProducts.length);
+
+        if (shopeeProducts.length === 0) {
+          toast.info('Nenhum produto encontrado na Shopee');
           setProducts([]);
           return;
         }
 
-        const foundProducts = shopeeNodes.map((node: any) => ({
-          id: `shopee_${node.productLink?.split('/').pop() || Math.random()}`,
-          title: node.productName || 'Produto sem nome',
-          price: parseFloat(node.price) || 0,
-          commission: parseFloat(node.commission) || 0,
-          commissionPercent: Math.round((parseFloat(node.commissionRate) || 0) * 100),
-          rating: 4.5,
-          reviews: 0,
-          sales: 0,
-          imageUrl: node.imageUrl || 'https://via.placeholder.com/400',
-          affiliateLink: node.offerLink || node.productLink || '#',
-          category: 'Shopee',
-          marketplace: 'shopee',
-          badge: '',
-        }));
-
-        console.log('🛍️ [SHOPEE] Produtos mapeados:', foundProducts.length);
-        setProducts(foundProducts);
-        toast.success(`${foundProducts.length} produtos encontrados!`);
+        setProducts(shopeeProducts);
+        toast.success(`${shopeeProducts.length} produtos mais vendidos encontrados!`);
       }
 
       // ===== LOMADEE =====

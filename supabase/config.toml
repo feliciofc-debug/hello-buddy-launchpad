@@ -39,6 +39,9 @@ verify_jwt = false
 [functions.buscar-produtos-shopee]
 verify_jwt = false
 
+[functions.shopee-product-search]
+verify_jwt = false
+
 [functions.create-reviewer-user]
 verify_jwt = false
 
