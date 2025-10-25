@@ -54,61 +54,88 @@ export default function ProductsPage() {
       return;
     }
 
-    console.log('[BUSCA] Iniciando:', { searchTerm, marketplace: activeMarketplace });
-    
+    console.log('🔍 [BUSCA] Iniciando:', searchTerm);
+    console.log('📍 [MARKETPLACE]:', activeMarketplace);
+
     setIsLoading(true);
     setProducts([]);
     setKeyword(searchTerm);
 
     try {
       const config = marketplaceConfig[activeMarketplace];
-      console.log('[BUSCA] Chamando função:', config.apiFunctionName);
+      console.log('📞 [BUSCA] Chamando função:', config.apiFunctionName);
       
-      // Adaptar os parâmetros conforme o marketplace
-      const bodyParams = activeMarketplace === 'shopee' 
-        ? {
-            pageSize: 50,
-            keywords: searchTerm,
-          }
-        : {
-            searchTerm: searchTerm,
-            limit: 50,
-            offset: 0
-          };
+      // Preparar body conforme marketplace
+      const body = activeMarketplace === 'shopee' 
+        ? { pageSize: 50, keywords: searchTerm }
+        : { searchTerm: searchTerm, limit: 50, offset: 0 };
       
-      console.log('[BUSCA] Parâmetros:', bodyParams);
+      console.log('📦 [BUSCA] Body:', body);
       
-      const { data, error } = await supabase.functions.invoke(config.apiFunctionName, {
-        body: bodyParams
-      });
+      const { data, error } = await supabase.functions.invoke(config.apiFunctionName, { body });
 
-      console.log('[BUSCA] Resposta:', { data, error });
+      console.log('📥 [BUSCA] Resposta completa:', data);
+      console.log('❌ [BUSCA] Erro (se houver):', error);
 
       if (error) {
-        console.error('[BUSCA] Erro da função:', error);
         throw error;
       }
 
-      // Adaptar a resposta conforme o marketplace
-      const foundProducts = data.products || data.produtos || [];
-      console.log('[BUSCA] Produtos encontrados:', foundProducts.length);
+      if (!data || data.status === 'error') {
+        throw new Error(data?.error || 'Erro desconhecido da API');
+      }
+
+      // MAPEAR PRODUTOS CONFORME MARKETPLACE
+      let foundProducts: Product[] = [];
+      
+      if (activeMarketplace === 'shopee') {
+        // Shopee retorna: { status: 'success', data: { productOfferV2: { nodes: [...] } } }
+        const shopeeNodes = data.data?.productOfferV2?.nodes || [];
+        console.log('🛍️ [SHOPEE] Nodes recebidos:', shopeeNodes.length);
+        
+        foundProducts = shopeeNodes.map((node: any) => ({
+          id: `shopee_${node.productLink?.split('/').pop() || Math.random()}`,
+          title: node.productName || 'Produto sem nome',
+          price: parseFloat(node.price) || 0,
+          commission: parseFloat(node.commission) || 0,
+          commissionPercent: Math.round((parseFloat(node.commissionRate) || 0) * 100),
+          rating: 4.5, // Shopee não retorna rating nessa API
+          reviews: 0,
+          sales: 0,
+          imageUrl: node.imageUrl || 'https://via.placeholder.com/400',
+          affiliateLink: node.offerLink || node.productLink || '#',
+          category: 'Shopee',
+          marketplace: 'shopee',
+          badge: '',
+        }));
+        
+        console.log('🛍️ [SHOPEE] Produtos mapeados:', foundProducts.length);
+        if (foundProducts.length > 0) {
+          console.log('🛍️ [SHOPEE] Exemplo produto:', foundProducts[0]);
+        }
+      } else {
+        // Lomadee retorna: { produtos: [...] }
+        const lomadeeProducts = data.produtos || [];
+        console.log('🔗 [LOMADEE] Produtos recebidos:', lomadeeProducts.length);
+        
+        foundProducts = lomadeeProducts;
+      }
+
+      console.log('✅ [BUSCA] Total mapeado:', foundProducts.length);
       
       setProducts(foundProducts);
       
       if (foundProducts.length === 0) {
-        toast.info('Nenhum produto encontrado para este termo');
+        toast.info('Nenhum produto encontrado');
       } else {
         toast.success(`${foundProducts.length} produtos encontrados!`);
       }
 
     } catch (err: any) {
-      console.error('[BUSCA] Erro completo:', err);
-      
-      // Mensagem de erro mais clara
-      const errorMessage = err.message || 'Erro desconhecido ao buscar produtos';
+      console.error('❌ [BUSCA] Erro:', err);
       
       toast.error('Erro na busca', { 
-        description: errorMessage,
+        description: err.message || 'Erro desconhecido',
         duration: 6000,
       });
     } finally {
