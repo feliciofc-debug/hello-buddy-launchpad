@@ -39,7 +39,7 @@ const marketplaceConfig = {
 };
 
 export default function ProductsPage() {
-  const [activeMarketplace, setActiveMarketplace] = useState<Marketplace>('lomadee');
+  const [activeMarketplace, setActiveMarketplace] = useState<Marketplace>('shopee');
   const [keyword, setKeyword] = useState<string>('');
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
