@@ -1,15 +1,14 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ProductCard from "@/components/ProductCard";
-import { Search, Loader2, ArrowLeft, Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Search, Loader2, ArrowLeft, BarChart3, Package } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { TesmannModal } from "@/components/TesmannModal";
-import type { Product, Category, Badge, Marketplace } from "@/types/product";
+import type { Product, Marketplace } from "@/types/product";
 
 // Categorias estáticas clicáveis
 const staticCategories = [
@@ -98,158 +97,63 @@ export default function ProductsPage() {
               },
               body: JSON.stringify({
                 searchTerm: searchTerm,
-                limit: 50
+                limit: 20
               })
             }
           );
 
-          if (response.ok) {
-            const data = await response.json();
-            console.log('✅ Produtos recebidos da Edge Function:', data);
-            
-            if (data.products && data.products.length > 0) {
-              const shopeeProducts: Product[] = data.products.map((item: any) => ({
-                id: `${item.itemid}-${item.shopid}`,
-                title: item.name || 'Produto',
-                description: item.name || '',
-                price: item.price || 0,
-                commission: (item.price || 0) * 0.10,
-                commissionPercent: 10,
-                rating: item.rating || 4.5,
-                reviews: 0,
-                sales: item.sold || 0,
-                imageUrl: item.image || `https://via.placeholder.com/300`,
-                affiliateLink: `https://shopee.com.br/product/${item.shopid}/${item.itemid}`,
-                category: '📱 Eletrônicos' as Category,
-                marketplace: 'shopee' as Marketplace,
-                badge: item.discount ? '🔥 LANÇAMENTO' as Badge : undefined,
-                createdAt: new Date(),
-              }));
-              
-              setProducts(shopeeProducts);
-              toast.success(`✅ ${shopeeProducts.length} produtos REAIS encontrados!`);
-              return;
-            } else {
-              console.warn('⚠️ Edge Function retornou sem produtos');
-            }
+          if (!response.ok) {
+            throw new Error(`Erro HTTP ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log('✅ [SHOPEE] Dados recebidos:', data);
+
+          if (data.products && Array.isArray(data.products)) {
+            setProducts(data.products);
+            toast.success(`${data.products.length} produtos encontrados!`);
           } else {
-            console.error('❌ Erro na Edge Function:', response.status);
+            throw new Error('Formato de resposta inválido');
           }
-        } catch (error) {
-          console.error('❌ Erro ao chamar Edge Function:', error);
+        } catch (error: any) {
+          console.error('❌ [SHOPEE] Erro:', error);
+          toast.error('Erro ao buscar produtos Shopee');
         }
-        
-        // FALLBACK: Produtos de exemplo
-        console.log('📦 Mostrando produtos de exemplo');
-        const mockProducts: Product[] = [
-          {
-            id: `mock-${Date.now()}-1`,
-            title: `${searchTerm} - Produto Premium Oferta Especial`,
-            description: `Melhor ${searchTerm} com ótimo custo-benefício`,
-            price: 89.90,
-            commission: 8.99,
-            commissionPercent: 10,
-            rating: 4.8,
-            reviews: 523,
-            sales: 1523,
-            imageUrl: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(searchTerm)}`,
-            affiliateLink: `https://shopee.com.br/`,
-            category: '📱 Eletrônicos' as Category,
-            marketplace: 'shopee' as Marketplace,
-            badge: '🔥 LANÇAMENTO' as Badge,
-            createdAt: new Date(),
-          },
-          {
-            id: `mock-${Date.now()}-2`,
-            title: `${searchTerm} - Kit Completo com Frete Grátis`,
-            description: `Kit completo de ${searchTerm}`,
-            price: 129.90,
-            commission: 12.99,
-            commissionPercent: 10,
-            rating: 4.6,
-            reviews: 312,
-            sales: 892,
-            imageUrl: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(searchTerm + ' 2')}`,
-            affiliateLink: `https://shopee.com.br/`,
-            category: '🏠 Casa e Cozinha' as Category,
-            marketplace: 'shopee' as Marketplace,
-            createdAt: new Date(),
-          }
-        ];
-        
-        setProducts(mockProducts);
-        toast.info('Mostrando produtos de exemplo. Configure credenciais para resultados reais.');
-        return;
       }
-
-      // ===== LOMADEE =====
+      // ===== LOMADEE VIA EDGE FUNCTION =====
       else if (activeMarketplace === 'lomadee') {
-        console.log('🔗 [LOMADEE] Buscando produtos...');
+        console.log('🔗 [LOMADEE] Buscando via Edge Function...');
         
-        const lomadeeUrl = `${supabaseUrl}/functions/v1/buscar-produtos-lomadee`;
-        const params = new URLSearchParams({
-          keyword: searchTerm,
-          limit: '50',
-          offset: '0',
-        });
-
-        console.log('🌐 [LOMADEE] URL completa:', `${lomadeeUrl}?${params}`);
-
-        const response = await fetch(`${lomadeeUrl}?${params}`, {
-          method: 'GET',
-          headers: { 
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        });
-
-        console.log('📡 [LOMADEE] Status:', response.status);
+        const response = await fetch(
+          `${supabaseUrl}/functions/v1/buscar-produtos-lomadee`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.access_token}`
+            },
+            body: JSON.stringify({
+              keyword: searchTerm,
+              sourceId: "all"
+            })
+          }
+        );
 
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error('❌ [LOMADEE] Erro:', errorText);
-          throw new Error(`Erro Lomadee: ${errorText}`);
+          throw new Error(`Erro HTTP ${response.status}`);
         }
 
         const data = await response.json();
-        console.log('📦 [LOMADEE] Resposta:', data);
+        console.log('✅ [LOMADEE] Dados recebidos:', data);
 
-        const lomadeeProducts = data.produtos || [];
-        console.log('📦 [LOMADEE] Produtos:', lomadeeProducts.length);
-
-        if (lomadeeProducts.length === 0) {
-          toast.info('Nenhum produto encontrado na Lomadee');
-          setProducts([]);
-          return;
+        if (data.products && Array.isArray(data.products)) {
+          setProducts(data.products);
+          toast.success(`${data.products.length} produtos encontrados!`);
         }
-
-        // Mapear para formato universal
-        const mappedProducts = lomadeeProducts.map((p: any) => ({
-          id: p.id,
-          title: p.nome,
-          price: p.preco,
-          commission: p.comissao,
-          commissionPercent: p.comissaoPercentual || 0,
-          rating: p.rating || 0,
-          reviews: p.reviews || 0,
-          sales: p.demandaMensal || 0,
-          imageUrl: p.imagem,
-          affiliateLink: p.url,
-          category: p.categoria || 'Lomadee',
-          marketplace: 'lomadee',
-          badge: '',
-        }));
-
-        setProducts(mappedProducts);
-        toast.success(`${mappedProducts.length} produtos encontrados!`);
       }
-
-    } catch (err: any) {
-      console.error('❌ [BUSCA] Erro:', err);
-      
-      toast.error('Erro na busca', { 
-        description: err.message || 'Erro desconhecido',
-        duration: 6000,
-      });
+    } catch (error: any) {
+      console.error('❌ Erro na busca:', error);
+      toast.error(error.message || 'Erro ao buscar produtos');
     } finally {
       setIsLoading(false);
     }
@@ -257,199 +161,174 @@ export default function ProductsPage() {
 
   const handleGenerateContent = async (product: Product) => {
     setSelectedProduct(product);
-    setAiLoading(true);
     setShowTesmannModal(true);
-
+    setAiLoading(true);
+    
     try {
       const { data, error } = await supabase.functions.invoke('generate-tesmann-content', {
-        body: {
-          productTitle: product.title,
-          productPrice: product.price,
-          productRating: product.rating,
-          productLink: product.affiliateLink,
-        }
+        body: { product }
       });
 
       if (error) throw error;
-
+      
       setGeneratedContent(data);
-      toast.success('Conteúdo gerado com sucesso!');
-    } catch (err: any) {
-      console.error('Erro ao gerar conteúdo:', err);
-      toast.error('Erro ao gerar conteúdo. Tente novamente.');
+    } catch (error) {
+      console.error('Erro ao gerar conteúdo:', error);
+      toast.error('Erro ao gerar conteúdo');
       setShowTesmannModal(false);
     } finally {
       setAiLoading(false);
     }
   };
 
-
   const currentConfig = marketplaceConfig[activeMarketplace];
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8 space-y-6">
-      {/* Botão Voltar */}
-      <div>
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/dashboard')}
-          className="gap-2"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Voltar para Dashboard
-        </Button>
-      </div>
+    <div className="flex min-h-screen">
+      {/* Sidebar igual ao Dashboard */}
+      <aside className="hidden lg:block bg-card border-r w-64 space-y-6 py-7 px-2">
+        <a href="/dashboard" className="flex items-center gap-3 px-4">
+          <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center shadow-md">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            </svg>
+          </div>
+          <span className="text-2xl font-bold">AMZ Ofertas</span>
+        </a>
+        <nav className="space-y-2">
+          <a href="/dashboard" className="w-full text-left flex items-center gap-3 py-2.5 px-4 rounded hover:bg-accent transition">
+            <BarChart3 size={20} />
+            Dashboard
+          </a>
+          <a href="/produtos" className="w-full text-left flex items-center gap-3 py-2.5 px-4 rounded bg-primary text-primary-foreground">
+            <Package size={20} />
+            Produtos
+          </a>
+        </nav>
+      </aside>
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">Buscador de Produtos para Afiliados</h1>
-          <p className="text-muted-foreground">
-            Encontre as melhores ofertas para promover e ganhar comissões
-          </p>
-        </div>
-        <ThemeToggle />
-      </div>
+      {/* Main content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header igual ao Dashboard */}
+        <header className="flex items-center justify-between p-4 bg-card border-b">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="lg:hidden flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <h2 className="text-xl font-semibold">Buscar Produtos</h2>
+          </div>
+          <ThemeToggle />
+        </header>
 
-      {/* SELETOR DE MARKETPLACE */}
-      <div className="flex items-center gap-2 border-b pb-2">
-        {Object.keys(marketplaceConfig).map((key) => (
-          <Button
-            key={key}
-            variant={activeMarketplace === key ? 'default' : 'ghost'}
-            onClick={() => {
-              setActiveMarketplace(key as Marketplace);
-              setProducts([]);
-              setKeyword('');
-            }}
-          >
-            <span className="mr-2">{marketplaceConfig[key as Marketplace].icon}</span>
-            {marketplaceConfig[key as Marketplace].label}
-          </Button>
-        ))}
-      </div>
-
-      {/* Layout: Sidebar + Main */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        
-        {/* Sidebar: Categorias Clicáveis */}
-        <aside className="lg:col-span-1">
-          <h3 className="font-semibold mb-4">
-            {currentConfig.categoryTitle}
-          </h3>
-          <div className="flex flex-col space-y-2">
-            {staticCategories.map((category) => (
+        {/* Content */}
+        <main className="flex-1 bg-background overflow-auto p-6">
+          {/* SELETOR DE MARKETPLACE */}
+          <div className="flex items-center gap-2 border-b pb-4 mb-6">
+            {Object.keys(marketplaceConfig).map((key) => (
               <Button
-                key={category}
-                variant="ghost"
-                className="justify-start"
-                onClick={() => executeSearch(category)}
-                disabled={isLoading}
+                key={key}
+                variant={activeMarketplace === key ? 'default' : 'ghost'}
+                onClick={() => {
+                  setActiveMarketplace(key as Marketplace);
+                  setProducts([]);
+                  setKeyword('');
+                }}
               >
-                {category}
+                <span className="mr-2">{marketplaceConfig[key as Marketplace].icon}</span>
+                {marketplaceConfig[key as Marketplace].label}
               </Button>
             ))}
           </div>
-        </aside>
 
-        {/* Main Content */}
-        <main className="lg:col-span-3 space-y-6">
-          {/* Categorias Rápidas */}
-          <div className="mb-4">
-            <p className="text-sm text-muted-foreground mb-2 font-medium">Busque por categoria:</p>
-            <div className="flex flex-wrap gap-2">
-              {['Eletrônicos', 'Celulares', 'Notebooks', 'Fones', 'Casa', 'Beleza', 'Moda', 'Esporte'].map(cat => (
-                <button
-                  key={cat}
-                  onClick={() => {
-                    setKeyword(cat);
-                    executeSearch(cat);
+          {/* Layout: Sidebar + Main */}
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+            {/* Sidebar: Categorias Clicáveis */}
+            <aside className="lg:col-span-1">
+              <h3 className="font-semibold mb-4">
+                {currentConfig.categoryTitle}
+              </h3>
+              <div className="flex flex-col space-y-2">
+                {staticCategories.map((category) => (
+                  <Button
+                    key={category}
+                    variant="outline"
+                    onClick={() => {
+                      setKeyword(category);
+                      executeSearch(category);
+                    }}
+                    className="justify-start"
+                  >
+                    {category}
+                  </Button>
+                ))}
+              </div>
+            </aside>
+
+            {/* Main Content */}
+            <div className="lg:col-span-3 space-y-6">
+              {/* Campo de Busca */}
+              <div className="flex w-full items-center space-x-2">
+                <Input
+                  type="text"
+                  placeholder={currentConfig.placeholder}
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      executeSearch(keyword);
+                    }
                   }}
-                  className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-full text-sm hover:bg-orange-200 dark:hover:bg-orange-900/50 transition"
+                />
+                <Button
+                  onClick={() => executeSearch(keyword)}
+                  disabled={isLoading}
                 >
-                  {cat}
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          {/* Campo de Busca */}
-          <div className="flex w-full items-center space-x-2">
-            <Input
-              type="text"
-              placeholder={currentConfig.placeholder}
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  executeSearch(keyword);
-                }
-              }}
-              disabled={isLoading}
-              className="flex-1"
-            />
-            <Button 
-              onClick={() => executeSearch(keyword)} 
-              disabled={isLoading}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Buscando...
-                </>
-              ) : (
-                <>
-                  <Search className="mr-2 h-4 w-4" />
-                  Buscar
-                </>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Buscando...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="mr-2 h-4 w-4" />
+                      Buscar
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Loading State */}
+              {isLoading && (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
               )}
-            </Button>
-          </div>
 
-          {/* Resultados */}
-          <div>
-            {/* Loading Skeleton */}
-            {isLoading && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {[...Array(6)].map((_, i) => (
-                  <div key={i} className="animate-pulse">
-                    <div className="bg-muted h-64 rounded-lg"></div>
-                    <div className="mt-2 bg-muted h-4 w-3/4 rounded"></div>
-                    <div className="mt-2 bg-muted h-4 w-1/2 rounded"></div>
-                  </div>
-                ))}
-              </div>
-            )}
+              {/* Products Grid */}
+              {!isLoading && products.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {products.map((product, index) => (
+                    <ProductCard
+                      key={product.id || index}
+                      product={product}
+                      onGenerateContent={handleGenerateContent}
+                    />
+                  ))}
+                </div>
+              )}
 
-            {/* Products Grid */}
-            {!isLoading && products.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {products.map((product) => (
-                  <ProductCard
-                    key={`${product.id}-${activeMarketplace}`}
-                    product={product}
-                    onGenerateContent={handleGenerateContent}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* Empty State */}
-            {!isLoading && products.length === 0 && keyword && (
-              <div className="text-center p-10 text-muted-foreground">
-                <p className="text-lg mb-2">Nenhum produto encontrado</p>
-                <p className="text-sm">Tente outro termo ou categoria</p>
-              </div>
-            )}
-
-            {/* Initial State */}
-            {!isLoading && products.length === 0 && !keyword && (
-              <div className="text-center p-10 text-muted-foreground">
-                <Search className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                <p className="text-lg mb-2">Busque produtos em {currentConfig.label}</p>
-                <p className="text-sm">Digite um termo ou clique em uma categoria</p>
-              </div>
-            )}
+              {/* Initial State */}
+              {!isLoading && products.length === 0 && !keyword && (
+                <div className="text-center p-10 text-muted-foreground">
+                  <Search className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg mb-2">Busque produtos em {currentConfig.label}</p>
+                  <p className="text-sm">Digite um termo ou clique em uma categoria</p>
+                </div>
+              )}
+            </div>
           </div>
         </main>
       </div>
