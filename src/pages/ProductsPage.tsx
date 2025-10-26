@@ -228,32 +228,38 @@ const ProductsPage: React.FC = () => {
       if (data && data.items && data.items.length > 0) {
         console.log(`[BUSCA V10] ✅ ${data.items.length} produtos encontrados via Cloudflare`);
         
-        const formattedProducts: Product[] = data.items.map((item: any) => {
-          const itemBasic = item.item_basic || item;
-          const price = (itemBasic.price || 0) / 100000;
-          
-          return {
-            id: itemBasic.itemid?.toString() || String(Math.random()),
-            title: itemBasic.name || 'Produto sem nome',
-            description: itemBasic.name || '',
-            price: price,
-            originalPrice: price * 1.2,
-            imageUrl: itemBasic.image 
-              ? `https://cf.shopee.com.br/file/${itemBasic.image}`
-              : 'https://via.placeholder.com/200',
-            affiliateLink: `https://shopee.com.br/product/${itemBasic.shopid}/${itemBasic.itemid}`,
-            marketplace: 'shopee',
-            category: '📱 Eletrônicos',
-            rating: itemBasic.item_rating?.rating_star || 0,
-            reviews: itemBasic.historical_sold || itemBasic.sold || 0,
-            sales: itemBasic.historical_sold || itemBasic.sold || 0,
-            commission: price * 0.1,
-            commissionPercent: 10,
-            createdAt: new Date(),
-            bsr: 0,
-            bsrCategory: 'Electronics'
-          };
-        });
+        const formattedProducts: Product[] = data.items
+          .filter((item: any) => item != null) // Remove items null/undefined
+          .map((item: any) => {
+            // Lógica de segurança para encontrar os dados do item
+            const itemBasic = item.item_basic || item;
+            const ratingInfo = itemBasic?.item_rating || {};
+            
+            const price = (itemBasic?.price || 0) / 100000;
+            const soldCount = itemBasic?.historical_sold || itemBasic?.sold || 0;
+            
+            return {
+              id: itemBasic?.itemid?.toString() || `shopee-${Math.random()}`,
+              title: itemBasic?.name || 'Produto Shopee',
+              description: itemBasic?.name || '',
+              price: price,
+              originalPrice: price * 1.2,
+              imageUrl: itemBasic?.image 
+                ? `https://cf.shopee.com.br/file/${itemBasic.image}`
+                : 'https://via.placeholder.com/200',
+              affiliateLink: `https://shopee.com.br/product/${itemBasic?.shopid || '0'}/${itemBasic?.itemid || '0'}`,
+              marketplace: 'shopee',
+              category: '📱 Eletrônicos',
+              rating: ratingInfo?.rating_star || 4.5,
+              reviews: soldCount,
+              sales: soldCount,
+              commission: price * 0.1,
+              commissionPercent: 10,
+              createdAt: new Date(),
+              bsr: 0,
+              bsrCategory: 'Electronics'
+            };
+          });
 
         setShopeeProducts(formattedProducts);
       } else {
