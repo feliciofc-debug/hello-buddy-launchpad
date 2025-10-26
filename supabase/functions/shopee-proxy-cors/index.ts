@@ -1,12 +1,9 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-serve(async (req) => {
-  // Handle CORS preflight requests
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -23,12 +20,10 @@ serve(async (req) => {
 
     console.log(`[PROXY CORS] Buscando produtos para: "${query}"`);
 
-    // URL da API pública da Shopee
     const shopeeApiUrl = `https://shopee.com.br/api/v4/search/search_items?by=sales&keyword=${encodeURIComponent(query)}&limit=20&newest=0&order=desc&page_type=search`;
 
     console.log(`[PROXY CORS] URL: ${shopeeApiUrl}`);
 
-    // Faz a requisição com headers que imitam um navegador real
     const response = await fetch(shopeeApiUrl, {
       method: 'GET',
       headers: {
@@ -79,7 +74,7 @@ serve(async (req) => {
     console.error('[PROXY CORS] Erro:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         items: []
       }),
       { 
