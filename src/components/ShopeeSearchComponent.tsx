@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, ShoppingBag, Loader2, AlertCircle, TrendingUp, Star, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -8,9 +8,11 @@ interface Product {
   name: string;
   image: string;
   price: number;
+  price_min?: number;
+  price_max?: number;
   sold: number;
-  location: string;
-  rating: number;
+  shop_location: string;
+  rating_star: number;
   discount?: string;
   affiliate_link?: string;
 }
@@ -21,18 +23,47 @@ const ShopeeSearchComponent: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [generatingLinks, setGeneratingLinks] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState('relevancia');
 
-  // BUSCA DADOS REAIS via Edge Function (COM CREDENCIAIS)
+  // Categorias populares para busca rápida
+  const categoriasPopulares = [
+    { nome: '📱 Celulares', termo: 'celular smartphone' },
+    { nome: '💻 Notebooks', termo: 'notebook laptop' },
+    { nome: '🎧 Fones', termo: 'fone bluetooth airpods' },
+    { nome: '⌚ Smartwatch', termo: 'smartwatch relógio inteligente' },
+    { nome: '👟 Tênis', termo: 'tênis esportivo' },
+    { nome: '💄 Beleza', termo: 'maquiagem perfume' },
+    { nome: '🎮 Games', termo: 'playstation xbox nintendo' },
+    { nome: '🏠 Casa', termo: 'decoração casa cozinha' }
+  ];
+
+  // Carrega produtos populares ao iniciar
+  useEffect(() => {
+    const termosPopolares = [
+      'eletrônicos',
+      'celular',
+      'notebook',
+      'fone bluetooth',
+      'smartwatch',
+      'tênis',
+      'perfume',
+      'maquiagem'
+    ];
+    
+    const termoAleatorio = termosPopolares[Math.floor(Math.random() * termosPopolares.length)];
+    searchShopeeProducts(termoAleatorio);
+  }, []);
+
+  // USA A EDGE FUNCTION QUE JÁ EXISTE E TEM CREDENCIAIS!
   const searchShopeeProducts = async (query: string) => {
-    console.log('🔍 Iniciando busca por:', query);
-    console.log('📡 Chamando Edge Function com credenciais...');
+    console.log('🔍 Buscando produtos:', query);
     
     setLoading(true);
     setError('');
     setProducts([]);
 
     try {
-      // MÉTODO CORRETO: Usar a Edge Function que TEM as credenciais
+      // USA A EDGE FUNCTION QUE JÁ EXISTE E TEM CREDENCIAIS!
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/buscar-produtos-shopee`,
         {
@@ -50,45 +81,46 @@ const ShopeeSearchComponent: React.FC = () => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Resposta da Edge Function:', data);
+        console.log('✅ Produtos recebidos:', data);
         
         if (data.products && data.products.length > 0) {
+          // Formata os produtos recebidos
           const formattedProducts = data.products.map((item: any) => ({
-            itemid: item.itemid,
-            shopid: item.shopid,
-            name: item.name,
-            image: item.image || `https://via.placeholder.com/200`,
-            price: item.price,
-            sold: item.sold || 0,
-            location: item.shop_location || 'Brasil',
-            rating: item.rating || 0,
-            discount: item.discount ? `${item.discount}%` : null
+            itemid: item.itemid || item.item_id,
+            shopid: item.shopid || item.shop_id,
+            name: item.name || item.title,
+            image: item.image || item.image_url || 'https://via.placeholder.com/200',
+            price: item.price || item.price_min || 99.90,
+            price_min: item.price_min || item.price,
+            price_max: item.price_max || item.price,
+            sold: item.sold || item.historical_sold || 0,
+            shop_location: item.location || item.shop_location || 'Brasil',
+            rating_star: item.rating || item.rating_star || 4.5,
+            discount: item.discount || null
           }));
           
           setProducts(formattedProducts);
-          toast.success(`✅ ${formattedProducts.length} produtos REAIS da Shopee encontrados!`);
-          console.log('✅ Produtos reais carregados:', formattedProducts);
-          return;
+          toast.success(`✅ ${formattedProducts.length} produtos reais encontrados!`);
         } else {
-          console.warn('⚠️ Edge Function retornou sem produtos');
+          console.log('⚠️ Nenhum produto encontrado, usando mock');
+          setProducts(getMockProducts(query));
+          setError('Nenhum produto encontrado. Mostrando exemplos.');
         }
       } else {
-        const errorData = await response.text();
-        console.error('❌ Erro na Edge Function:', errorData);
-        throw new Error(`Edge Function falhou: ${response.status}`);
+        console.error('❌ Erro na resposta:', response.status);
+        setError('Erro ao buscar produtos. Mostrando exemplos.');
+        setProducts(getMockProducts(query));
       }
-      
     } catch (error) {
-      console.error('❌ Erro ao buscar produtos:', error);
-      setError('Erro ao buscar produtos reais. Mostrando produtos de exemplo.');
+      console.error('❌ Erro na busca:', error);
+      setError('Erro ao conectar. Mostrando produtos de exemplo.');
       setProducts(getMockProducts(query));
-      toast.error('Falha ao buscar produtos reais');
     } finally {
       setLoading(false);
     }
   };
 
-  // DADOS MOCK (IMPORTANTE - sempre ter fallback)
+  // DADOS MOCK (FALLBACK)
   const getMockProducts = (query: string): Product[] => [
     {
       itemid: Date.now(),
@@ -97,8 +129,8 @@ const ShopeeSearchComponent: React.FC = () => {
       price: 89.90,
       image: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(query)}`,
       sold: 1523,
-      rating: 4.8,
-      location: 'São Paulo',
+      rating_star: 4.8,
+      shop_location: 'São Paulo',
       discount: '15%'
     },
     {
@@ -108,31 +140,9 @@ const ShopeeSearchComponent: React.FC = () => {
       price: 129.90,
       image: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(query + ' 2')}`,
       sold: 892,
-      rating: 4.6,
-      location: 'Rio de Janeiro',
+      rating_star: 4.6,
+      shop_location: 'Rio de Janeiro',
       discount: '20%'
-    },
-    {
-      itemid: Date.now() + 2,
-      shopid: Math.floor(Math.random() * 1000000),
-      name: `${query} - Mais Vendido da Categoria`,
-      price: 59.90,
-      image: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(query + ' 3')}`,
-      sold: 3421,
-      rating: 4.9,
-      location: 'Minas Gerais',
-      discount: '10%'
-    },
-    {
-      itemid: Date.now() + 3,
-      shopid: Math.floor(Math.random() * 1000000),
-      name: `${query} - Edição Limitada Super Desconto`,
-      price: 199.90,
-      image: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(query + ' 4')}`,
-      sold: 645,
-      rating: 4.7,
-      location: 'Santa Catarina',
-      discount: '25%'
     }
   ];
 
@@ -205,11 +215,33 @@ const ShopeeSearchComponent: React.FC = () => {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-800 mb-2">
-            🛍️ Busca de Produtos Shopee
+            🛍️ Produtos em Destaque
           </h1>
-          <p className="text-gray-600">
-            Encontre produtos incríveis e gere seus links de afiliado
+          <p className="text-gray-600 text-lg mb-1">
+            Encontre as melhores ofertas e ganhe comissões como afiliado!
           </p>
+          <p className="text-sm text-gray-500">
+            Produtos atualizados em tempo real • Clique para gerar seu link de afiliado
+          </p>
+        </div>
+
+        {/* Categorias Populares */}
+        <div className="mb-6">
+          <p className="text-sm text-gray-600 mb-3 font-medium">Busque por categoria:</p>
+          <div className="flex flex-wrap gap-2">
+            {categoriasPopulares.map((cat) => (
+              <button
+                key={cat.termo}
+                onClick={() => {
+                  setSearchTerm(cat.termo);
+                  searchShopeeProducts(cat.termo);
+                }}
+                className="px-4 py-2 bg-white border border-orange-300 text-orange-600 rounded-full hover:bg-orange-50 transition-colors text-sm font-medium"
+              >
+                {cat.nome}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Search Bar */}
@@ -258,6 +290,38 @@ const ShopeeSearchComponent: React.FC = () => {
           )}
         </div>
 
+        {/* Filtros e Ordenação */}
+        {products.length > 0 && (
+          <div className="flex justify-between items-center mb-6">
+            <p className="text-gray-600 font-medium">
+              {products.length} produtos encontrados
+            </p>
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                const sorted = [...products].sort((a, b) => {
+                  switch(e.target.value) {
+                    case 'preco_menor': return a.price - b.price;
+                    case 'preco_maior': return b.price - a.price;
+                    case 'mais_vendidos': return b.sold - a.sold;
+                    case 'melhor_avaliados': return b.rating_star - a.rating_star;
+                    default: return 0;
+                  }
+                });
+                setProducts(sorted);
+              }}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              <option value="relevancia">Relevância</option>
+              <option value="preco_menor">Menor Preço</option>
+              <option value="preco_maior">Maior Preço</option>
+              <option value="mais_vendidos">Mais Vendidos</option>
+              <option value="melhor_avaliados">Melhor Avaliados</option>
+            </select>
+          </div>
+        )}
+
         {/* Products Grid */}
         {products.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -294,7 +358,7 @@ const ShopeeSearchComponent: React.FC = () => {
                     <div className="flex items-center gap-4 mb-3 text-sm">
                       <div className="flex items-center gap-1">
                         <Star className="text-yellow-400 fill-current" size={16} />
-                        <span className="text-gray-600">{product.rating.toFixed(1)}</span>
+                        <span className="text-gray-600">{product.rating_star.toFixed(1)}</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <TrendingUp className="text-green-500" size={16} />
@@ -312,7 +376,7 @@ const ShopeeSearchComponent: React.FC = () => {
                     {/* Location */}
                     <div className="flex items-center gap-1 text-xs text-gray-500 mb-3">
                       <Package size={14} />
-                      <span>{product.location}</span>
+                      <span>{product.shop_location}</span>
                     </div>
 
                     {/* Action Button */}
