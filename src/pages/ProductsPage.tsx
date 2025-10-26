@@ -1,349 +1,342 @@
-import { useState, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import ProductCard from "@/components/ProductCard";
-import { Search, Loader2, ArrowLeft, BarChart3, Package } from "lucide-react";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import { TesmannModal } from "@/components/TesmannModal";
-import type { Product, Marketplace } from "@/types/product";
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  Search, 
+  ShoppingBag, 
+  Loader2, 
+  Star, 
+  TrendingUp,
+  Package,
+  ArrowLeft 
+} from 'lucide-react';
 
-// Categorias estáticas clicáveis
-const staticCategories = [
-  'Celulares',
-  'Informática',
-  'Casa e Cozinha',
-  'Beleza',
-  'Moda',
-  'Esportes',
-];
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  image: string;
+  link: string;
+  store: string;
+  rating?: number;
+  sold?: number;
+}
 
-// Configuração central para cada marketplace
-const marketplaceConfig = {
-  shopee: {
-    label: 'Shopee',
-    placeholder: 'Buscar produtos na Shopee...',
-    apiFunctionName: 'shopee-affiliate-api',
-    categoryTitle: 'Categorias Shopee',
-    icon: '🛍️',
-  },
-  lomadee: {
-    label: 'Lomadee',
-    placeholder: 'Buscar produtos na Lomadee...',
-    apiFunctionName: 'buscar-produtos-lomadee',
-    categoryTitle: 'Categorias Lomadee',
-    icon: '🔗',
-  },
-};
-
-export default function ProductsPage() {
+const ProductsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [activeMarketplace, setActiveMarketplace] = useState<Marketplace>('shopee');
-  const [keyword, setKeyword] = useState<string>('');
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [showTesmannModal, setShowTesmannModal] = useState(false);
-  const [generatedContent, setGeneratedContent] = useState<any>(null);
-  const [aiLoading, setAiLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('shopee');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [shopeeProducts, setShopeeProducts] = useState<Product[]>([]);
+  const [lomadeeProducts, setLomadeeProducts] = useState<Product[]>([]);
+  const [error, setError] = useState('');
 
-  // Carrega produtos automaticamente ao abrir a aba Shopee
+  // Produtos de exemplo para demonstração
+  const exampleProducts: Product[] = [
+    {
+      id: '1',
+      name: 'iPhone 15 Pro Max 256GB - Titânio Natural',
+      price: 8999.90,
+      image: 'https://images.unsplash.com/photo-1696446701796-da61225697cc?w=400',
+      link: 'https://shopee.com.br',
+      store: 'Shopee',
+      rating: 4.9,
+      sold: 1523
+    },
+    {
+      id: '2',
+      name: 'Notebook Gamer Dell G15 RTX 4060',
+      price: 6499.90,
+      image: 'https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=400',
+      link: 'https://shopee.com.br',
+      store: 'Shopee',
+      rating: 4.8,
+      sold: 892
+    },
+    {
+      id: '3',
+      name: 'Sony WH-1000XM5 - Fone com Cancelamento de Ruído',
+      price: 2199.90,
+      image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400',
+      link: 'https://shopee.com.br',
+      store: 'Shopee',
+      rating: 4.9,
+      sold: 3421
+    },
+    {
+      id: '4',
+      name: 'Smart TV Samsung Neo QLED 55" 4K',
+      price: 3799.90,
+      image: 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=400',
+      link: 'https://shopee.com.br',
+      store: 'Shopee',
+      rating: 4.7,
+      sold: 567
+    },
+    {
+      id: '5',
+      name: 'iPad Pro M2 12.9" 128GB Wi-Fi',
+      price: 9499.90,
+      image: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=400',
+      link: 'https://shopee.com.br',
+      store: 'Shopee',
+      rating: 5.0,
+      sold: 234
+    },
+    {
+      id: '6',
+      name: 'Air Fryer Philco 12L Digital',
+      price: 599.90,
+      image: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=400',
+      link: 'https://shopee.com.br',
+      store: 'Shopee',
+      rating: 4.6,
+      sold: 4567
+    }
+  ];
+
+  // Carrega produtos ao montar o componente
   useEffect(() => {
-    if (activeMarketplace === 'shopee' && products.length === 0) {
-      console.log('🚀 Carregando produtos Shopee automaticamente...');
-      executeSearch('eletrônicos em oferta');
+    if (activeTab === 'shopee') {
+      setShopeeProducts(exampleProducts);
     }
-  }, [activeMarketplace]);
+  }, [activeTab]);
 
-  const executeSearch = useCallback(async (searchTerm: string) => {
-    if (!searchTerm.trim()) {
-      toast.warning('Digite ou selecione um termo para buscar');
-      return;
-    }
-
-    console.log('🔍 [BUSCA] Iniciando:', searchTerm);
-    console.log('📍 [MARKETPLACE]:', activeMarketplace);
-
+  const fetchShopeeProducts = async (query: string) => {
     setIsLoading(true);
-    setProducts([]);
-    setKeyword(searchTerm);
-
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError || !session) {
-        throw new Error('Faça login para buscar produtos');
-      }
-
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!supabaseUrl) {
-        throw new Error('Configuração do sistema incompleta');
-      }
-
-      // ===== SHOPEE VIA EDGE FUNCTION (COM CREDENCIAIS) =====
-      if (activeMarketplace === 'shopee') {
-        console.log('🛍️ [SHOPEE] Buscando via Edge Function...');
-        
-        try {
-          const response = await fetch(
-            `${supabaseUrl}/functions/v1/buscar-produtos-shopee`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.access_token}`
-              },
-              body: JSON.stringify({
-                searchTerm: searchTerm,
-                limit: 20
-              })
-            }
-          );
-
-          if (!response.ok) {
-            throw new Error(`Erro HTTP ${response.status}`);
-          }
-
-          const data = await response.json();
-          console.log('✅ [SHOPEE] Dados recebidos:', data);
-
-          if (data.products && Array.isArray(data.products)) {
-            setProducts(data.products);
-            toast.success(`${data.products.length} produtos encontrados!`);
-          } else {
-            throw new Error('Formato de resposta inválido');
-          }
-        } catch (error: any) {
-          console.error('❌ [SHOPEE] Erro:', error);
-          toast.error('Erro ao buscar produtos Shopee');
-        }
-      }
-      // ===== LOMADEE VIA EDGE FUNCTION =====
-      else if (activeMarketplace === 'lomadee') {
-        console.log('🔗 [LOMADEE] Buscando via Edge Function...');
-        
-        const response = await fetch(
-          `${supabaseUrl}/functions/v1/buscar-produtos-lomadee`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${session.access_token}`
-            },
-            body: JSON.stringify({
-              keyword: searchTerm,
-              sourceId: "all"
-            })
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Erro HTTP ${response.status}`);
-        }
-
-        const data = await response.json();
-        console.log('✅ [LOMADEE] Dados recebidos:', data);
-
-        if (data.products && Array.isArray(data.products)) {
-          setProducts(data.products);
-          toast.success(`${data.products.length} produtos encontrados!`);
-        }
-      }
-    } catch (error: any) {
-      console.error('❌ Erro na busca:', error);
-      toast.error(error.message || 'Erro ao buscar produtos');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeMarketplace]);
-
-  const handleGenerateContent = async (product: Product) => {
-    setSelectedProduct(product);
-    setShowTesmannModal(true);
-    setAiLoading(true);
+    setError('');
     
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-tesmann-content', {
-        body: { product }
-      });
-
-      if (error) throw error;
+    // Simula busca com delay
+    setTimeout(() => {
+      const filtered = query 
+        ? exampleProducts.filter(p => 
+            p.name.toLowerCase().includes(query.toLowerCase())
+          )
+        : exampleProducts;
       
-      setGeneratedContent(data);
-    } catch (error) {
-      console.error('Erro ao gerar conteúdo:', error);
-      toast.error('Erro ao gerar conteúdo');
-      setShowTesmannModal(false);
-    } finally {
-      setAiLoading(false);
-    }
+      setShopeeProducts(filtered.length > 0 ? filtered : exampleProducts);
+      setIsLoading(false);
+    }, 1000);
   };
 
-  const currentConfig = marketplaceConfig[activeMarketplace];
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(price);
+  };
+
+  const formatSold = (sold: number = 0) => {
+    if (sold >= 1000) {
+      return `${(sold / 1000).toFixed(1)}k vendidos`;
+    }
+    return `${sold} vendidos`;
+  };
+
+  const categories = [
+    { icon: '📱', name: 'Eletrônicos', query: 'eletrônicos' },
+    { icon: '💻', name: 'Notebooks', query: 'notebook' },
+    { icon: '🎧', name: 'Fones', query: 'fone' },
+    { icon: '📺', name: 'Smart TV', query: 'tv' },
+    { icon: '🏠', name: 'Casa', query: 'casa' },
+    { icon: '👕', name: 'Moda', query: 'moda' },
+    { icon: '💄', name: 'Beleza', query: 'beleza' },
+    { icon: '⚽', name: 'Esportes', query: 'esporte' }
+  ];
 
   return (
-    <div className="flex min-h-screen">
-      {/* Sidebar igual ao Dashboard */}
-      <aside className="hidden lg:block bg-card border-r w-64 space-y-6 py-7 px-2">
-        <a href="/dashboard" className="flex items-center gap-3 px-4">
-          <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center shadow-md">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-          </div>
-          <span className="text-2xl font-bold">AMZ Ofertas</span>
-        </a>
-        <nav className="space-y-2">
-          <a href="/dashboard" className="w-full text-left flex items-center gap-3 py-2.5 px-4 rounded hover:bg-accent transition">
-            <BarChart3 size={20} />
-            Dashboard
-          </a>
-          <a href="/produtos" className="w-full text-left flex items-center gap-3 py-2.5 px-4 rounded bg-primary text-primary-foreground">
-            <Package size={20} />
-            Produtos
-          </a>
-        </nav>
-      </aside>
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col">
-        {/* Header igual ao Dashboard */}
-        <header className="flex items-center justify-between p-4 bg-card border-b">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="lg:hidden flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <h2 className="text-xl font-semibold">Buscar Produtos</h2>
-          </div>
-          <ThemeToggle />
-        </header>
-
-        {/* Content */}
-        <main className="flex-1 bg-background overflow-auto p-6">
-          {/* SELETOR DE MARKETPLACE */}
-          <div className="flex items-center gap-2 border-b pb-4 mb-6">
-            {Object.keys(marketplaceConfig).map((key) => (
-              <Button
-                key={key}
-                variant={activeMarketplace === key ? 'default' : 'ghost'}
-                onClick={() => {
-                  setActiveMarketplace(key as Marketplace);
-                  setProducts([]);
-                  setKeyword('');
-                }}
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
               >
-                <span className="mr-2">{marketplaceConfig[key as Marketplace].icon}</span>
-                {marketplaceConfig[key as Marketplace].label}
-              </Button>
-            ))}
+                <ArrowLeft className="w-5 h-5" />
+                Voltar
+              </button>
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <ShoppingBag className="w-6 h-6" />
+                Buscar Produtos
+              </h1>
+            </div>
           </div>
+        </div>
+      </div>
 
-          {/* Layout: Sidebar + Main */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            {/* Sidebar: Categorias Clicáveis */}
-            <aside className="lg:col-span-1">
-              <h3 className="font-semibold mb-4">
-                {currentConfig.categoryTitle}
-              </h3>
-              <div className="flex flex-col space-y-2">
-                {staticCategories.map((category) => (
-                  <Button
-                    key={category}
-                    variant="outline"
-                    onClick={() => {
-                      setKeyword(category);
-                      executeSearch(category);
-                    }}
-                    className="justify-start"
+      {/* Tabs */}
+      <div className="bg-white border-b">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex gap-4 py-4">
+            <button
+              onClick={() => setActiveTab('shopee')}
+              className={`px-6 py-2 rounded-md font-medium transition-all ${
+                activeTab === 'shopee'
+                  ? 'bg-orange-500 text-white shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Shopee
+            </button>
+            <button
+              onClick={() => setActiveTab('lomadee')}
+              className={`px-6 py-2 rounded-md font-medium transition-all ${
+                activeTab === 'lomadee'
+                  ? 'bg-blue-500 text-white shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Lomadee
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        {activeTab === 'shopee' && (
+          <div className="space-y-6">
+            {/* Categories */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Categorias Populares
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+                {categories.map((cat) => (
+                  <button
+                    key={cat.name}
+                    onClick={() => fetchShopeeProducts(cat.query)}
+                    className="flex flex-col items-center gap-2 p-3 rounded-lg hover:bg-orange-50 transition-colors group"
                   >
-                    {category}
-                  </Button>
+                    <span className="text-3xl">{cat.icon}</span>
+                    <span className="text-sm text-gray-700 group-hover:text-orange-600 font-medium">
+                      {cat.name}
+                    </span>
+                  </button>
                 ))}
               </div>
-            </aside>
+            </div>
 
-            {/* Main Content */}
-            <div className="lg:col-span-3 space-y-6">
-              {/* Campo de Busca */}
-              <div className="flex w-full items-center space-x-2">
-                <Input
-                  type="text"
-                  placeholder={currentConfig.placeholder}
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      executeSearch(keyword);
-                    }
-                  }}
-                />
-                <Button
-                  onClick={() => executeSearch(keyword)}
+            {/* Search */}
+            <div className="bg-white rounded-lg shadow-sm p-6">
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar produtos..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && fetchShopeeProducts(searchTerm)}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <button
+                  onClick={() => fetchShopeeProducts(searchTerm)}
                   disabled={isLoading}
+                  className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:bg-gray-400 transition-colors flex items-center gap-2"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="w-5 h-5 animate-spin" />
                       Buscando...
                     </>
                   ) : (
                     <>
-                      <Search className="mr-2 h-4 w-4" />
+                      <Search className="w-5 h-5" />
                       Buscar
                     </>
                   )}
-                </Button>
+                </button>
               </div>
-
-              {/* Loading State */}
-              {isLoading && (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
-              )}
-
-              {/* Products Grid */}
-              {!isLoading && products.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {products.map((product, index) => (
-                    <ProductCard
-                      key={product.id || index}
-                      product={product}
-                      onGenerateContent={handleGenerateContent}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Initial State */}
-              {!isLoading && products.length === 0 && !keyword && (
-                <div className="text-center p-10 text-muted-foreground">
-                  <Search className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p className="text-lg mb-2">Busque produtos em {currentConfig.label}</p>
-                  <p className="text-sm">Digite um termo ou clique em uma categoria</p>
-                </div>
-              )}
             </div>
-          </div>
-        </main>
-      </div>
 
-      {/* Modal Tesmann */}
-      <TesmannModal
-        isOpen={showTesmannModal}
-        onClose={() => {
-          setShowTesmannModal(false);
-          setSelectedProduct(null);
-          setGeneratedContent(null);
-        }}
-        content={generatedContent}
-        isLoading={aiLoading}
-      />
+            {/* Loading */}
+            {isLoading && (
+              <div className="flex justify-center items-center py-20">
+                <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+              </div>
+            )}
+
+            {/* Products Grid */}
+            {!isLoading && shopeeProducts.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {shopeeProducts.map((product) => (
+                  <div key={product.id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+                    <div className="relative aspect-square bg-gray-100">
+                      <img
+                        src={product.image}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x400/FF6B35/FFFFFF?text=Produto';
+                        }}
+                      />
+                      <div className="absolute top-3 right-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
+                        -20%
+                      </div>
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 h-12">
+                        {product.name}
+                      </h3>
+                      <div className="flex items-center justify-between mb-3 text-sm">
+                        <div className="flex items-center gap-1 text-orange-500">
+                          <Star className="w-4 h-4 fill-current" />
+                          <span className="font-medium">{product.rating || 4.8}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-gray-600">
+                          <TrendingUp className="w-4 h-4" />
+                          <span>{formatSold(product.sold)}</span>
+                        </div>
+                      </div>
+                      <div className="mb-4">
+                        <div className="text-2xl font-bold text-orange-600">
+                          {formatPrice(product.price)}
+                        </div>
+                        <div className="text-sm text-gray-500 line-through">
+                          {formatPrice(product.price * 1.2)}
+                        </div>
+                      </div>
+                      <a
+                        href={product.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full py-2 bg-orange-500 text-white text-center rounded-lg hover:bg-orange-600 transition-colors"
+                      >
+                        Ver Produto
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && shopeeProducts.length === 0 && (
+              <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+                <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600 text-lg">
+                  Nenhum produto encontrado. Tente outra busca!
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'lomadee' && (
+          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+            <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600 text-lg">
+              Integração Lomadee em desenvolvimento
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
-}
+};
+
+export default ProductsPage;
