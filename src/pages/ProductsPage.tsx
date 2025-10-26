@@ -10,17 +10,8 @@ import {
   ArrowLeft 
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
-
-interface Product {
-  id: string;
-  name: string;
-  price: number;
-  image: string;
-  link: string;
-  store: string;
-  rating?: number;
-  sold?: number;
-}
+import ProductCard from '@/components/ProductCard';
+import type { Product } from '@/data/mockData';
 
 const ProductsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -31,67 +22,126 @@ const ProductsPage: React.FC = () => {
   const [lomadeeProducts, setLomadeeProducts] = useState<Product[]>([]);
   const [error, setError] = useState('');
 
-  // Produtos de exemplo para demonstração
+  // Produtos de exemplo convertidos para o formato do ProductCard
   const exampleProducts: Product[] = [
     {
       id: '1',
-      name: 'iPhone 15 Pro Max 256GB - Titânio Natural',
+      title: 'iPhone 15 Pro Max 256GB - Titânio Natural',
+      description: 'O iPhone mais avançado com chip A17 Pro e câmera de 48MP',
       price: 8999.90,
-      image: 'https://images.unsplash.com/photo-1696446701796-da61225697cc?w=400',
-      link: 'https://shopee.com.br',
-      store: 'Shopee',
+      originalPrice: 10999.90,
+      imageUrl: 'https://images.unsplash.com/photo-1696446701796-da61225697cc?w=400',
+      affiliateLink: 'https://shopee.com.br/iphone-15-pro',
+      marketplace: 'shopee',
+      category: '📱 Eletrônicos',
       rating: 4.9,
-      sold: 1523
+      reviews: 1523,
+      sales: 1523,
+      commission: 899.99,
+      commissionPercent: 10,
+      badge: '⭐ TOP VENDAS',
+      createdAt: new Date('2024-09-15'),
+      bsr: 10,
+      bsrCategory: 'Electronics'
     },
     {
       id: '2',
-      name: 'Notebook Gamer Dell G15 RTX 4060',
+      title: 'Notebook Gamer Dell G15 RTX 4060',
+      description: 'Notebook gamer com RTX 4060, 16GB RAM e SSD 512GB',
       price: 6499.90,
-      image: 'https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=400',
-      link: 'https://shopee.com.br',
-      store: 'Shopee',
+      originalPrice: 7999.90,
+      imageUrl: 'https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=400',
+      affiliateLink: 'https://shopee.com.br/notebook-gamer',
+      marketplace: 'shopee',
+      category: '📱 Eletrônicos',
       rating: 4.8,
-      sold: 892
+      reviews: 892,
+      sales: 892,
+      commission: 649.99,
+      commissionPercent: 10,
+      badge: '📈 EM ALTA',
+      createdAt: new Date('2024-09-20'),
+      bsr: 25,
+      bsrCategory: 'Electronics'
     },
     {
       id: '3',
-      name: 'Sony WH-1000XM5 - Fone com Cancelamento de Ruído',
+      title: 'Sony WH-1000XM5 - Fone com Cancelamento de Ruído',
+      description: 'Fone premium com cancelamento de ruído de última geração',
       price: 2199.90,
-      image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400',
-      link: 'https://shopee.com.br',
-      store: 'Shopee',
+      originalPrice: 2699.90,
+      imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400',
+      affiliateLink: 'https://shopee.com.br/fone-sony',
+      marketplace: 'shopee',
+      category: '📱 Eletrônicos',
       rating: 4.9,
-      sold: 3421
+      reviews: 3421,
+      sales: 3421,
+      commission: 219.99,
+      commissionPercent: 10,
+      badge: '⭐ TOP VENDAS',
+      createdAt: new Date('2024-08-10'),
+      bsr: 5,
+      bsrCategory: 'Electronics'
     },
     {
       id: '4',
-      name: 'Smart TV Samsung Neo QLED 55" 4K',
+      title: 'Smart TV Samsung Neo QLED 55" 4K',
+      description: 'Smart TV com tecnologia Neo QLED e resolução 4K',
       price: 3799.90,
-      image: 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=400',
-      link: 'https://shopee.com.br',
-      store: 'Shopee',
+      originalPrice: 4999.90,
+      imageUrl: 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=400',
+      affiliateLink: 'https://shopee.com.br/smart-tv',
+      marketplace: 'shopee',
+      category: '📱 Eletrônicos',
       rating: 4.7,
-      sold: 567
+      reviews: 567,
+      sales: 567,
+      commission: 379.99,
+      commissionPercent: 10,
+      createdAt: new Date('2024-09-01'),
+      bsr: 50,
+      bsrCategory: 'Electronics'
     },
     {
       id: '5',
-      name: 'iPad Pro M2 12.9" 128GB Wi-Fi',
+      title: 'iPad Pro M2 12.9" 128GB Wi-Fi',
+      description: 'iPad Pro com chip M2 e tela Liquid Retina XDR',
       price: 9499.90,
-      image: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=400',
-      link: 'https://shopee.com.br',
-      store: 'Shopee',
+      originalPrice: 11999.90,
+      imageUrl: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=400',
+      affiliateLink: 'https://shopee.com.br/ipad-pro',
+      marketplace: 'shopee',
+      category: '📱 Eletrônicos',
       rating: 5.0,
-      sold: 234
+      reviews: 234,
+      sales: 234,
+      commission: 949.99,
+      commissionPercent: 10,
+      badge: '🔥 LANÇAMENTO',
+      createdAt: new Date('2024-10-10'),
+      bsr: 15,
+      bsrCategory: 'Electronics'
     },
     {
       id: '6',
-      name: 'Air Fryer Philco 12L Digital',
+      title: 'Air Fryer Philco 12L Digital',
+      description: 'Fritadeira elétrica sem óleo com capacidade de 12 litros',
       price: 599.90,
-      image: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=400',
-      link: 'https://shopee.com.br',
-      store: 'Shopee',
+      originalPrice: 799.90,
+      imageUrl: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=400',
+      affiliateLink: 'https://shopee.com.br/air-fryer',
+      marketplace: 'shopee',
+      category: '🏠 Casa e Cozinha',
       rating: 4.6,
-      sold: 4567
+      reviews: 4567,
+      sales: 4567,
+      commission: 59.99,
+      commissionPercent: 10,
+      badge: '⭐ TOP VENDAS',
+      createdAt: new Date('2024-07-15'),
+      bsr: 3,
+      bsrCategory: 'Home & Kitchen'
     }
   ];
 
@@ -110,7 +160,7 @@ const ProductsPage: React.FC = () => {
     setTimeout(() => {
       const filtered = query 
         ? exampleProducts.filter(p => 
-            p.name.toLowerCase().includes(query.toLowerCase())
+            p.title.toLowerCase().includes(query.toLowerCase())
           )
         : exampleProducts;
       
@@ -266,52 +316,7 @@ const ProductsPage: React.FC = () => {
             {!isLoading && shopeeProducts.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {shopeeProducts.map((product) => (
-                  <div key={product.id} className="bg-card rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden border">
-                    <div className="relative aspect-square bg-muted">
-                      <img
-                        src={product.image}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x400/FF6B35/FFFFFF?text=Produto';
-                        }}
-                      />
-                      <div className="absolute top-3 right-3 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
-                        -20%
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <h3 className="font-semibold text-foreground mb-2 line-clamp-2 h-12">
-                        {product.name}
-                      </h3>
-                      <div className="flex items-center justify-between mb-3 text-sm">
-                        <div className="flex items-center gap-1 text-orange-500">
-                          <Star className="w-4 h-4 fill-current" />
-                          <span className="font-medium">{product.rating || 4.8}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <TrendingUp className="w-4 h-4" />
-                          <span>{formatSold(product.sold)}</span>
-                        </div>
-                      </div>
-                      <div className="mb-4">
-                        <div className="text-2xl font-bold text-orange-600">
-                          {formatPrice(product.price)}
-                        </div>
-                        <div className="text-sm text-muted-foreground line-through">
-                          {formatPrice(product.price * 1.2)}
-                        </div>
-                      </div>
-                      <a
-                        href={product.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block w-full py-2 bg-orange-500 text-white text-center rounded-lg hover:bg-orange-600 transition-colors"
-                      >
-                        Ver Produto
-                      </a>
-                    </div>
-                  </div>
+                  <ProductCard key={product.id} product={product} />
                 ))}
               </div>
             )}
