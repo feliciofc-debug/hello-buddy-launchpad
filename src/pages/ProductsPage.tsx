@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ProductCard from "@/components/ProductCard";
 import { Search, Loader2, ArrowLeft } from "lucide-react";
@@ -47,6 +47,14 @@ export default function ProductsPage() {
   const [showTesmannModal, setShowTesmannModal] = useState(false);
   const [generatedContent, setGeneratedContent] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
+
+  // Carrega produtos automaticamente ao abrir a aba Shopee
+  useEffect(() => {
+    if (activeMarketplace === 'shopee' && products.length === 0) {
+      console.log('🚀 Carregando produtos Shopee automaticamente...');
+      executeSearch('eletrônicos em oferta');
+    }
+  }, [activeMarketplace]);
 
   const executeSearch = useCallback(async (searchTerm: string) => {
     if (!searchTerm.trim()) {
@@ -341,6 +349,24 @@ export default function ProductsPage() {
 
         {/* Main Content */}
         <main className="lg:col-span-3 space-y-6">
+          {/* Categorias Rápidas */}
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground mb-2 font-medium">Busque por categoria:</p>
+            <div className="flex flex-wrap gap-2">
+              {['Eletrônicos', 'Celulares', 'Notebooks', 'Fones', 'Casa', 'Beleza', 'Moda', 'Esporte'].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    setKeyword(cat);
+                    executeSearch(cat);
+                  }}
+                  className="px-3 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded-full text-sm hover:bg-orange-200 dark:hover:bg-orange-900/50 transition"
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
           
           {/* Campo de Busca */}
           <div className="flex w-full items-center space-x-2">
