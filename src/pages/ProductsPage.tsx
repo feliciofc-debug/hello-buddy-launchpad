@@ -158,9 +158,8 @@ const ProductsPage: React.FC = () => {
     setError('');
     setShopeeProducts([]);
 
-    // 🔥 IMPORTANTE: Substitua esta URL pela URL do seu Cloudflare Worker após criá-lo
-    // Exemplo: 'https://shopee-proxy.sua-conta.workers.dev/?url='
-    const CLOUDFLARE_WORKER_URL = 'COLOQUE_A_URL_DO_SEU_CLOUDFLARE_WORKER_AQUI/?url=';
+    // ✅ Proxy privado do Cloudflare configurado e ativo
+    const CLOUDFLARE_WORKER_URL = 'https://amz-ofertas-proxy.feliciofc.workers.dev/?url=';
     
     const shopeeApiUrl = `https://shopee.com.br/api/v4/search/search_items?by=sales&keyword=${encodeURIComponent(query)}&limit=20&newest=0&order=desc&page_type=search`;
 
