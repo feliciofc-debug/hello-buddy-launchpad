@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ProductCard from "@/components/ProductCard";
-import { Search, Loader2, ArrowLeft } from "lucide-react";
+import { Search, Loader2, ArrowLeft, Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -299,11 +301,14 @@ export default function ProductsPage() {
       </div>
 
       {/* Header */}
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight">Buscador de Produtos para Afiliados</h1>
-        <p className="text-muted-foreground">
-          Encontre as melhores ofertas para promover e ganhar comissões
-        </p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">Buscador de Produtos para Afiliados</h1>
+          <p className="text-muted-foreground">
+            Encontre as melhores ofertas para promover e ganhar comissões
+          </p>
+        </div>
+        <ThemeToggle />
       </div>
 
       {/* SELETOR DE MARKETPLACE */}
