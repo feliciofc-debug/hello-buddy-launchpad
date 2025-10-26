@@ -158,23 +158,76 @@ const ProductsPage: React.FC = () => {
     setError('');
     setShopeeProducts([]);
 
-    console.log(`[BUSCA REAL] Iniciando busca por: "${query}"`);
+    // 🔥 IMPORTANTE: Substitua esta URL pela URL do seu Cloudflare Worker após criá-lo
+    // Exemplo: 'https://shopee-proxy.sua-conta.workers.dev/?url='
+    const CLOUDFLARE_WORKER_URL = 'COLOQUE_A_URL_DO_SEU_CLOUDFLARE_WORKER_AQUI/?url=';
+    
+    const shopeeApiUrl = `https://shopee.com.br/api/v4/search/search_items?by=sales&keyword=${encodeURIComponent(query)}&limit=20&newest=0&order=desc&page_type=search`;
+
+    console.log(`[BUSCA V10] Iniciando busca por: "${query}"`);
 
     try {
-      // Usa nossa Edge Function própria como proxy CORS
-      console.log('[BUSCA REAL] Usando nosso proxy CORS próprio (Supabase Edge Function)');
-      
-      const { data, error: funcError } = await supabase.functions.invoke('shopee-proxy-cors', {
-        body: { query }
-      });
+      // Verifica se o proxy foi configurado
+      if (CLOUDFLARE_WORKER_URL.includes('COLOQUE_A_URL')) {
+        console.warn('[BUSCA V10] ⚠️ Cloudflare Worker não configurado, usando Edge Function como fallback');
+        
+        // FALLBACK: Usa nossa Edge Function do Supabase
+        const { data, error: funcError } = await supabase.functions.invoke('shopee-proxy-cors', {
+          body: { query }
+        });
 
-      if (funcError) {
-        console.error('[BUSCA REAL] Erro na Edge Function:', funcError);
-        throw funcError;
+        if (funcError) {
+          throw new Error(funcError.message || 'Erro na Edge Function');
+        }
+
+        if (data && data.items && data.items.length > 0) {
+          console.log(`[BUSCA V10] ✅ ${data.items.length} produtos encontrados via Edge Function`);
+          const formattedProducts: Product[] = data.items.map((item: any) => {
+            const itemBasic = item.item_basic || item;
+            const price = (itemBasic.price || 0) / 100000;
+            
+            return {
+              id: itemBasic.itemid?.toString() || String(Math.random()),
+              title: itemBasic.name || 'Produto sem nome',
+              description: itemBasic.name || '',
+              price: price,
+              originalPrice: price * 1.2,
+              imageUrl: itemBasic.image 
+                ? `https://cf.shopee.com.br/file/${itemBasic.image}`
+                : 'https://via.placeholder.com/200',
+              affiliateLink: `https://shopee.com.br/product/${itemBasic.shopid}/${itemBasic.itemid}`,
+              marketplace: 'shopee',
+              category: '📱 Eletrônicos',
+              rating: itemBasic.item_rating?.rating_star || 0,
+              reviews: itemBasic.historical_sold || itemBasic.sold || 0,
+              sales: itemBasic.historical_sold || itemBasic.sold || 0,
+              commission: price * 0.1,
+              commissionPercent: 10,
+              createdAt: new Date(),
+              bsr: 0,
+              bsrCategory: 'Electronics'
+            };
+          });
+          
+          setShopeeProducts(formattedProducts);
+          return;
+        } else {
+          throw new Error('Nenhum produto encontrado');
+        }
       }
 
+      // USA CLOUDFLARE WORKER (quando configurado)
+      console.log('[BUSCA V10] 🚀 Usando Cloudflare Worker privado...');
+      const response = await fetch(`${CLOUDFLARE_WORKER_URL}${encodeURIComponent(shopeeApiUrl)}`);
+
+      if (!response.ok) {
+        throw new Error(`Proxy retornou erro: ${response.status}`);
+      }
+
+      const data = await response.json();
+
       if (data && data.items && data.items.length > 0) {
-        console.log(`[BUSCA REAL] SUCESSO! ${data.items.length} produtos encontrados.`);
+        console.log(`[BUSCA V10] ✅ ${data.items.length} produtos encontrados via Cloudflare`);
         
         const formattedProducts: Product[] = data.items.map((item: any) => {
           const itemBasic = item.item_basic || item;
@@ -202,16 +255,16 @@ const ProductsPage: React.FC = () => {
             bsrCategory: 'Electronics'
           };
         });
-        
+
         setShopeeProducts(formattedProducts);
       } else {
-        console.warn('[BUSCA REAL] Nenhum produto encontrado na resposta');
+        console.log('[BUSCA V10] Nenhum produto encontrado');
         setError('Nenhum produto encontrado para esta busca.');
+        setShopeeProducts([]);
       }
-
     } catch (error) {
-      console.error('[BUSCA REAL] Erro geral:', error);
-      setError('Não foi possível buscar produtos no momento. Tente novamente.');
+      console.error('[BUSCA V10] ❌ Erro:', error);
+      setError(error instanceof Error ? error.message : 'Não foi possível buscar produtos. Tente novamente.');
       setShopeeProducts([]);
     } finally {
       setIsLoading(false);
