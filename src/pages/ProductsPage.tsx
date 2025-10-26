@@ -9,6 +9,7 @@ import {
   Package,
   ArrowLeft 
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 interface Product {
   id: string;
@@ -144,30 +145,31 @@ const ProductsPage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
+      <div className="bg-card shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate('/dashboard')}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+                className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ArrowLeft className="w-5 h-5" />
                 Voltar
               </button>
-              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
                 <ShoppingBag className="w-6 h-6" />
                 Buscar Produtos
               </h1>
             </div>
+            <ThemeToggle />
           </div>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="bg-white border-b">
+      <div className="bg-card border-b">
         <div className="max-w-7xl mx-auto px-4">
           <div className="flex gap-4 py-4">
             <button
@@ -175,7 +177,7 @@ const ProductsPage: React.FC = () => {
               className={`px-6 py-2 rounded-md font-medium transition-all ${
                 activeTab === 'shopee'
                   ? 'bg-orange-500 text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               Shopee
@@ -185,7 +187,7 @@ const ProductsPage: React.FC = () => {
               className={`px-6 py-2 rounded-md font-medium transition-all ${
                 activeTab === 'lomadee'
                   ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-600 hover:text-gray-900'
+                  : 'text-muted-foreground hover:text-foreground'
               }`}
             >
               Lomadee
@@ -199,8 +201,8 @@ const ProductsPage: React.FC = () => {
         {activeTab === 'shopee' && (
           <div className="space-y-6">
             {/* Categories */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            <div className="bg-card rounded-lg shadow-sm p-6 border">
+              <h2 className="text-lg font-semibold text-foreground mb-4">
                 Categorias Populares
               </h2>
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
@@ -208,10 +210,10 @@ const ProductsPage: React.FC = () => {
                   <button
                     key={cat.name}
                     onClick={() => fetchShopeeProducts(cat.query)}
-                    className="flex flex-col items-center gap-2 p-3 rounded-lg hover:bg-orange-50 transition-colors group"
+                    className="flex flex-col items-center gap-2 p-3 rounded-lg hover:bg-accent transition-colors group"
                   >
                     <span className="text-3xl">{cat.icon}</span>
-                    <span className="text-sm text-gray-700 group-hover:text-orange-600 font-medium">
+                    <span className="text-sm text-foreground group-hover:text-orange-600 font-medium">
                       {cat.name}
                     </span>
                   </button>
@@ -220,17 +222,17 @@ const ProductsPage: React.FC = () => {
             </div>
 
             {/* Search */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="bg-card rounded-lg shadow-sm p-6 border">
               <div className="flex gap-3">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                   <input
                     type="text"
                     placeholder="Buscar produtos..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && fetchShopeeProducts(searchTerm)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    className="w-full pl-10 pr-4 py-3 border border-input bg-background text-foreground rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
                 <button
@@ -264,8 +266,8 @@ const ProductsPage: React.FC = () => {
             {!isLoading && shopeeProducts.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {shopeeProducts.map((product) => (
-                  <div key={product.id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-                    <div className="relative aspect-square bg-gray-100">
+                  <div key={product.id} className="bg-card rounded-lg shadow-sm hover:shadow-md transition-shadow overflow-hidden border">
+                    <div className="relative aspect-square bg-muted">
                       <img
                         src={product.image}
                         alt={product.name}
@@ -279,7 +281,7 @@ const ProductsPage: React.FC = () => {
                       </div>
                     </div>
                     <div className="p-4">
-                      <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 h-12">
+                      <h3 className="font-semibold text-foreground mb-2 line-clamp-2 h-12">
                         {product.name}
                       </h3>
                       <div className="flex items-center justify-between mb-3 text-sm">
@@ -287,7 +289,7 @@ const ProductsPage: React.FC = () => {
                           <Star className="w-4 h-4 fill-current" />
                           <span className="font-medium">{product.rating || 4.8}</span>
                         </div>
-                        <div className="flex items-center gap-1 text-gray-600">
+                        <div className="flex items-center gap-1 text-muted-foreground">
                           <TrendingUp className="w-4 h-4" />
                           <span>{formatSold(product.sold)}</span>
                         </div>
@@ -296,7 +298,7 @@ const ProductsPage: React.FC = () => {
                         <div className="text-2xl font-bold text-orange-600">
                           {formatPrice(product.price)}
                         </div>
-                        <div className="text-sm text-gray-500 line-through">
+                        <div className="text-sm text-muted-foreground line-through">
                           {formatPrice(product.price * 1.2)}
                         </div>
                       </div>
@@ -316,9 +318,9 @@ const ProductsPage: React.FC = () => {
 
             {/* Empty State */}
             {!isLoading && shopeeProducts.length === 0 && (
-              <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-                <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600 text-lg">
+              <div className="bg-card rounded-lg shadow-sm p-12 text-center border">
+                <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground text-lg">
                   Nenhum produto encontrado. Tente outra busca!
                 </p>
               </div>
@@ -327,9 +329,9 @@ const ProductsPage: React.FC = () => {
         )}
 
         {activeTab === 'lomadee' && (
-          <div className="bg-white rounded-lg shadow-sm p-12 text-center">
-            <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 text-lg">
+          <div className="bg-card rounded-lg shadow-sm p-12 text-center border">
+            <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground text-lg">
               Integração Lomadee em desenvolvimento
             </p>
           </div>
