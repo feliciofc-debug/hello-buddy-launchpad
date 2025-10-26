@@ -73,97 +73,103 @@ export default function ProductsPage() {
         throw new Error('Configuração do sistema incompleta');
       }
 
-      // ===== SHOPEE CLIENT-SIDE SEARCH (SEM SCRAPERAPI) =====
+      // ===== SHOPEE VIA EDGE FUNCTION (COM CREDENCIAIS) =====
       if (activeMarketplace === 'shopee') {
-        console.log('🛍️ [SHOPEE] Buscando via client-side...');
+        console.log('🛍️ [SHOPEE] Buscando via Edge Function...');
         
         try {
-          // MÉTODO 1: Tenta API direta
-          const shopeeApiUrl = `https://shopee.com.br/api/v4/search/search_items?by=relevancy&keyword=${encodeURIComponent(searchTerm)}&limit=50`;
-          const directResponse = await fetch(shopeeApiUrl, {
-            method: 'GET',
-            mode: 'no-cors',
-          });
-          
-          throw new Error('no-cors fallback'); // Força usar proxy
-        } catch {
-          // MÉTODO 2: Usa proxy CORS gratuito
-          try {
-            const proxyUrl = 'https://api.allorigins.win/raw?url=';
-            const shopeeUrl = `https://shopee.com.br/api/v4/search/search_items?keyword=${encodeURIComponent(searchTerm)}&limit=50`;
-            const response = await fetch(proxyUrl + encodeURIComponent(shopeeUrl));
-            
-            if (response.ok) {
-              const data = await response.json();
-              
-              if (data.items && data.items.length > 0) {
-                const shopeeProducts: Product[] = data.items.map((item: any) => ({
-                  id: `${item.itemid || item.item_basic?.itemid}-${item.shopid || item.item_basic?.shopid}`,
-                  title: item.name || item.item_basic?.name || 'Produto',
-                  description: item.name || item.item_basic?.name || '',
-                  price: (item.price || item.item_basic?.price || 0) / 100000,
-                  commission: ((item.price || item.item_basic?.price || 0) / 100000) * 0.10,
-                  commissionPercent: 10,
-                  rating: item.item_rating?.rating_star || item.item_basic?.item_rating?.rating_star || 4.5,
-                  reviews: item.item_rating?.rating_count?.[0] || 0,
-                  sales: item.historical_sold || item.item_basic?.sold || 0,
-                  imageUrl: `https://cf.shopee.com.br/file/${item.image || item.item_basic?.image}`,
-                  affiliateLink: `https://shopee.com.br/product/${item.shopid || item.item_basic?.shopid}/${item.itemid || item.item_basic?.itemid}`,
-                  category: '📱 Eletrônicos' as Category,
-                  marketplace: 'shopee' as Marketplace,
-                  badge: item.raw_discount ? '🔥 LANÇAMENTO' as Badge : undefined,
-                  createdAt: new Date(),
-                }));
-                
-                setProducts(shopeeProducts);
-                toast.success(`${shopeeProducts.length} produtos encontrados!`);
-                return;
-              }
+          const response = await fetch(
+            `${supabaseUrl}/functions/v1/buscar-produtos-shopee`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify({
+                searchTerm: searchTerm,
+                limit: 50
+              })
             }
-          } catch (proxyError) {
-            console.error('Proxy falhou:', proxyError);
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Produtos recebidos da Edge Function:', data);
+            
+            if (data.products && data.products.length > 0) {
+              const shopeeProducts: Product[] = data.products.map((item: any) => ({
+                id: `${item.itemid}-${item.shopid}`,
+                title: item.name || 'Produto',
+                description: item.name || '',
+                price: item.price || 0,
+                commission: (item.price || 0) * 0.10,
+                commissionPercent: 10,
+                rating: item.rating || 4.5,
+                reviews: 0,
+                sales: item.sold || 0,
+                imageUrl: item.image || `https://via.placeholder.com/300`,
+                affiliateLink: `https://shopee.com.br/product/${item.shopid}/${item.itemid}`,
+                category: '📱 Eletrônicos' as Category,
+                marketplace: 'shopee' as Marketplace,
+                badge: item.discount ? '🔥 LANÇAMENTO' as Badge : undefined,
+                createdAt: new Date(),
+              }));
+              
+              setProducts(shopeeProducts);
+              toast.success(`✅ ${shopeeProducts.length} produtos REAIS encontrados!`);
+              return;
+            } else {
+              console.warn('⚠️ Edge Function retornou sem produtos');
+            }
+          } else {
+            console.error('❌ Erro na Edge Function:', response.status);
           }
-          
-          const mockProducts: Product[] = [
-            {
-              id: `mock-${Date.now()}-1`,
-              title: `${searchTerm} - Produto Premium Oferta Especial`,
-              description: `Melhor ${searchTerm} com ótimo custo-benefício`,
-              price: 89.90,
-              commission: 8.99,
-              commissionPercent: 10,
-              rating: 4.8,
-              reviews: 523,
-              sales: 1523,
-              imageUrl: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(searchTerm)}`,
-              affiliateLink: `https://shopee.com.br/`,
-              category: '📱 Eletrônicos' as Category,
-              marketplace: 'shopee' as Marketplace,
-              badge: '🔥 LANÇAMENTO' as Badge,
-              createdAt: new Date(),
-            },
-            {
-              id: `mock-${Date.now()}-2`,
-              title: `${searchTerm} - Kit Completo com Frete Grátis`,
-              description: `Kit completo de ${searchTerm}`,
-              price: 129.90,
-              commission: 12.99,
-              commissionPercent: 10,
-              rating: 4.6,
-              reviews: 312,
-              sales: 892,
-              imageUrl: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(searchTerm + ' Kit')}`,
-              affiliateLink: `https://shopee.com.br/`,
-              category: '🏠 Casa e Cozinha' as Category,
-              marketplace: 'shopee' as Marketplace,
-              badge: '⭐ TOP VENDAS' as Badge,
-              createdAt: new Date(),
-            },
-          ];
-          
-          setProducts(mockProducts);
-          toast.info('Mostrando produtos de exemplo. Configure credenciais para resultados reais.');
+        } catch (error) {
+          console.error('❌ Erro ao chamar Edge Function:', error);
         }
+        
+        // FALLBACK: Produtos de exemplo
+        console.log('📦 Mostrando produtos de exemplo');
+        const mockProducts: Product[] = [
+          {
+            id: `mock-${Date.now()}-1`,
+            title: `${searchTerm} - Produto Premium Oferta Especial`,
+            description: `Melhor ${searchTerm} com ótimo custo-benefício`,
+            price: 89.90,
+            commission: 8.99,
+            commissionPercent: 10,
+            rating: 4.8,
+            reviews: 523,
+            sales: 1523,
+            imageUrl: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(searchTerm)}`,
+            affiliateLink: `https://shopee.com.br/`,
+            category: '📱 Eletrônicos' as Category,
+            marketplace: 'shopee' as Marketplace,
+            badge: '🔥 LANÇAMENTO' as Badge,
+            createdAt: new Date(),
+          },
+          {
+            id: `mock-${Date.now()}-2`,
+            title: `${searchTerm} - Kit Completo com Frete Grátis`,
+            description: `Kit completo de ${searchTerm}`,
+            price: 129.90,
+            commission: 12.99,
+            commissionPercent: 10,
+            rating: 4.6,
+            reviews: 312,
+            sales: 892,
+            imageUrl: `https://via.placeholder.com/300x300/FF6B35/FFFFFF?text=${encodeURIComponent(searchTerm + ' 2')}`,
+            affiliateLink: `https://shopee.com.br/`,
+            category: '🏠 Casa e Cozinha' as Category,
+            marketplace: 'shopee' as Marketplace,
+            createdAt: new Date(),
+          }
+        ];
+        
+        setProducts(mockProducts);
+        toast.info('Mostrando produtos de exemplo. Configure credenciais para resultados reais.');
+        return;
       }
 
       // ===== LOMADEE =====
