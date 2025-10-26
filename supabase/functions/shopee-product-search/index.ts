@@ -14,15 +14,35 @@ const corsHeaders = {
 async function coletarProdutosPublicos(keyword: string, limit = 50) {
   console.log(`[V7] Coletando produtos para "${keyword}" via Proxy...`);
   
+  // Log da chave (apenas primeiros/últimos chars para segurança)
+  const keyPreview = SCRAPER_API_KEY ? `${SCRAPER_API_KEY.slice(0, 4)}...${SCRAPER_API_KEY.slice(-4)}` : 'VAZIA';
+  console.log(`[V7] SCRAPER_API_KEY: ${keyPreview} (tamanho: ${SCRAPER_API_KEY?.length || 0})`);
+  
   const shopeeUrl = `https://shopee.com.br/api/v4/search/search_items?by=sales&keyword=${encodeURIComponent(keyword)}&limit=${limit}&order=desc&page_type=search&scenario=PAGE_GLOBAL_SEARCH&version=2`;
   const proxyUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(shopeeUrl)}`;
+  
+  console.log(`[V7] URL Shopee: ${shopeeUrl}`);
+  console.log(`[V7] URL Proxy (sem chave): http://api.scraperapi.com?api_key=***&url=${encodeURIComponent(shopeeUrl)}`);
 
-  const response = await fetch(proxyUrl);
+  const response = await fetch(proxyUrl, {
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+    },
+  });
+
+  console.log(`[V7] Response Status: ${response.status}`);
+  console.log(`[V7] Response Headers:`, Object.fromEntries(response.headers.entries()));
 
   if (!response.ok) {
-    throw new Error(`[V7] Erro no Proxy ou na API Pública. Status: ${response.status}`);
+    const errorText = await response.text();
+    console.error(`[V7] Erro Detalhado - Status: ${response.status}`);
+    console.error(`[V7] Corpo da resposta:`, errorText);
+    throw new Error(`[V7] Erro no Proxy ou na API Pública. Status: ${response.status}. Detalhes: ${errorText}`);
   }
+  
   const data = await response.json();
+  console.log(`[V7] Resposta JSON recebida:`, JSON.stringify(data).slice(0, 200));
 
   if (data.error) {
     throw new Error(`[V7] Erro interno da Shopee: ${data.error_msg || data.error}`);
