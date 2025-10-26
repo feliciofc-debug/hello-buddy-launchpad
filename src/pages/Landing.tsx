@@ -329,10 +329,17 @@ function Landing() {
       <footer className="bg-slate-950 py-12 px-6 border-t border-purple-500/20">
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <h4 className="font-bold mb-4 text-orange-400">AMZ Ofertas</h4>
-              <p className="text-sm text-slate-400">Plataforma completa para afiliados de sucesso.</p>
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-1.5 rounded-lg">
+                <svg className="w-5 h-5" fill="white" viewBox="0 0 24 24">
+                  <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
+                </svg>
+              </div>
+              <h4 className="font-bold text-orange-400">AMZ Ofertas</h4>
             </div>
+            <p className="text-sm text-slate-400">Plataforma completa para afiliados de sucesso.</p>
+          </div>
             <div>
               <h4 className="font-bold mb-4">Produto</h4>
               <ul className="space-y-2 text-sm text-slate-400">
