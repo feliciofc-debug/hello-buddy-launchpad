@@ -7,6 +7,7 @@ import { useTheme } from 'next-themes';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import NotificationCenter from '@/components/NotificationCenter';
+import ShopeeSearchComponent from '@/components/ShopeeSearchComponent';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -478,6 +479,11 @@ const Dashboard = () => {
                     </div>
                   </div>
                 </div>
+              </div>
+
+              {/* Shopee Search Component */}
+              <div className="mb-8">
+                <ShopeeSearchComponent />
               </div>
 
               {/* Recent Activity */}
