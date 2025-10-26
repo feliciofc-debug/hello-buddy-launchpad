@@ -54,70 +54,206 @@ const ShopeeSearchComponent: React.FC = () => {
     searchShopeeProducts(termoAleatorio);
   }, []);
 
-  // USA A EDGE FUNCTION QUE JÁ EXISTE E TEM CREDENCIAIS!
+  // SISTEMA HÍBRIDO: Tenta múltiplos métodos até funcionar
   const searchShopeeProducts = async (query: string) => {
-    console.log('🔍 Buscando produtos:', query);
+    console.log('🔍 Iniciando busca por:', query);
+    console.log('📡 Tentando buscar dados reais da Shopee...');
     
     setLoading(true);
     setError('');
     setProducts([]);
 
     try {
-      // USA A EDGE FUNCTION QUE JÁ EXISTE E TEM CREDENCIAIS!
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/buscar-produtos-shopee`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-          },
-          body: JSON.stringify({
-            searchTerm: query,
-            limit: 20
-          })
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Produtos recebidos:', data);
-        
-        if (data.products && data.products.length > 0) {
-          // Formata os produtos recebidos
-          const formattedProducts = data.products.map((item: any) => ({
-            itemid: item.itemid || item.item_id,
-            shopid: item.shopid || item.shop_id,
-            name: item.name || item.title,
-            image: item.image || item.image_url || 'https://via.placeholder.com/200',
-            price: item.price || item.price_min || 99.90,
-            price_min: item.price_min || item.price,
-            price_max: item.price_max || item.price,
-            sold: item.sold || item.historical_sold || 0,
-            shop_location: item.location || item.shop_location || 'Brasil',
-            rating_star: item.rating || item.rating_star || 4.5,
-            discount: item.discount || null
-          }));
+      // MÉTODO 1: Tenta buscar via PROXY CORS (mais confiável)
+      const corsProxies = [
+        'https://api.codetabs.com/v1/proxy?quest=',
+        'https://corsproxy.io/?',
+        'https://api.allorigins.win/raw?url=',
+        'https://cors-anywhere.herokuapp.com/',
+        'https://thingproxy.freeboard.io/fetch/'
+      ];
+      
+      // URL da API pública da Shopee
+      const shopeeApiUrl = `https://shopee.com.br/api/v4/search/search_items?by=relevancy&keyword=${encodeURIComponent(query)}&limit=20&newest=0&order=desc&page_type=search&scenario=PAGE_GLOBAL_SEARCH&version=2`;
+      
+      let dataFetched = false;
+      
+      // Tenta cada proxy até funcionar
+      for (const proxy of corsProxies) {
+        try {
+          console.log(`📡 Tentando proxy: ${proxy}`);
+          const response = await fetch(`${proxy}${encodeURIComponent(shopeeApiUrl)}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+            }
+          });
           
-          setProducts(formattedProducts);
-          toast.success(`✅ ${formattedProducts.length} produtos reais encontrados!`);
-        } else {
-          console.log('⚠️ Nenhum produto encontrado, usando mock');
-          setProducts(getMockProducts(query));
-          setError('Nenhum produto encontrado. Mostrando exemplos.');
+          if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Resposta da Shopee:', data);
+            
+            // Verifica se tem produtos
+            if (data && data.items && data.items.length > 0) {
+              const formattedProducts = data.items.map((item: any) => {
+                // Extrai os dados corretos da estrutura da Shopee
+                const itemBasic = item.item_basic || item;
+                return {
+                  itemid: itemBasic.itemid,
+                  shopid: itemBasic.shopid,
+                  name: itemBasic.name,
+                  image: itemBasic.image ? `https://cf.shopee.com.br/file/${itemBasic.image}` : 'https://via.placeholder.com/200',
+                  price: itemBasic.price ? itemBasic.price / 100000 : itemBasic.price_min / 100000,
+                  price_min: itemBasic.price_min ? itemBasic.price_min / 100000 : 0,
+                  price_max: itemBasic.price_max ? itemBasic.price_max / 100000 : 0,
+                  sold: itemBasic.historical_sold || itemBasic.sold || 0,
+                  shop_location: itemBasic.shop_location || 'Brasil',
+                  rating_star: itemBasic.item_rating?.rating_star || 0,
+                  discount: itemBasic.raw_discount ? `${itemBasic.raw_discount}%` : null
+                };
+              });
+              
+              setProducts(formattedProducts);
+              toast.success(`🎉 ${formattedProducts.length} produtos REAIS encontrados!`);
+              dataFetched = true;
+              break; // Sucesso! Para de tentar outros proxies
+            }
+          }
+        } catch (proxyError) {
+          console.error(`❌ Erro com proxy ${proxy}:`, proxyError);
+          continue; // Tenta o próximo proxy
         }
-      } else {
-        console.error('❌ Erro na resposta:', response.status);
-        setError('Erro ao buscar produtos. Mostrando exemplos.');
-        setProducts(getMockProducts(query));
       }
+      
+      // MÉTODO 2: FALLBACK via Edge Function (se proxies falharam)
+      if (!dataFetched) {
+        console.log('⚠️ Proxies falharam, tentando Edge Function...');
+        
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/buscar-produtos-shopee`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+              },
+              body: JSON.stringify({
+                searchTerm: query,
+                limit: 20
+              })
+            }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Produtos da Edge Function:', data);
+            
+            if (data.products && data.products.length > 0) {
+              const formattedProducts = data.products.map((item: any) => ({
+                itemid: item.itemid || item.item_id,
+                shopid: item.shopid || item.shop_id,
+                name: item.name || item.title,
+                image: item.image || item.image_url || 'https://via.placeholder.com/200',
+                price: item.price || item.price_min || 99.90,
+                price_min: item.price_min || item.price,
+                price_max: item.price_max || item.price,
+                sold: item.sold || item.historical_sold || 0,
+                shop_location: item.location || item.shop_location || 'Brasil',
+                rating_star: item.rating || item.rating_star || 4.5,
+                discount: item.discount || null
+              }));
+              
+              setProducts(formattedProducts);
+              toast.success(`✅ ${formattedProducts.length} produtos encontrados via API!`);
+              dataFetched = true;
+            }
+          }
+        } catch (edgeFunctionError) {
+          console.error('❌ Edge Function também falhou:', edgeFunctionError);
+        }
+      }
+      
+      // MÉTODO 3: JSONP como backup adicional
+      if (!dataFetched) {
+        console.log('🔄 Tentando JSONP...');
+        try {
+          const jsonpData = await searchViaJSONP(query);
+          if (jsonpData && jsonpData.items && jsonpData.items.length > 0) {
+            const formattedProducts = jsonpData.items.map((item: any) => {
+              const itemBasic = item.item_basic || item;
+              return {
+                itemid: itemBasic.itemid,
+                shopid: itemBasic.shopid,
+                name: itemBasic.name,
+                image: itemBasic.image ? `https://cf.shopee.com.br/file/${itemBasic.image}` : 'https://via.placeholder.com/200',
+                price: itemBasic.price ? itemBasic.price / 100000 : itemBasic.price_min / 100000,
+                sold: itemBasic.historical_sold || itemBasic.sold || 0,
+                shop_location: itemBasic.shop_location || 'Brasil',
+                rating_star: itemBasic.item_rating?.rating_star || 0,
+                discount: itemBasic.raw_discount ? `${itemBasic.raw_discount}%` : null
+              };
+            });
+            setProducts(formattedProducts);
+            toast.success(`🎉 ${formattedProducts.length} produtos via JSONP!`);
+            dataFetched = true;
+          }
+        } catch (jsonpError) {
+          console.error('❌ JSONP falhou:', jsonpError);
+        }
+      }
+      
+      // ÚLTIMO RECURSO: Dados mock para demonstração
+      if (!dataFetched) {
+        console.log('📦 Usando dados de demonstração...');
+        setError('Não foi possível buscar dados reais. Mostrando produtos de exemplo.');
+        setProducts(getMockProducts(query));
+        toast.info('Mostrando produtos de exemplo');
+      }
+      
     } catch (error) {
-      console.error('❌ Erro na busca:', error);
-      setError('Erro ao conectar. Mostrando produtos de exemplo.');
+      console.error('❌ Erro geral na busca:', error);
+      setError('Erro ao buscar produtos. Mostrando resultados de exemplo.');
       setProducts(getMockProducts(query));
+      toast.error('Erro na busca, mostrando exemplos');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Função auxiliar para busca via JSONP (backup)
+  const searchViaJSONP = (query: string): Promise<any> => {
+    return new Promise((resolve, reject) => {
+      const callbackName = `shopeeCallback_${Date.now()}`;
+      const script = document.createElement('script');
+      
+      // Define callback global
+      (window as any)[callbackName] = (data: any) => {
+        delete (window as any)[callbackName];
+        document.body.removeChild(script);
+        resolve(data);
+      };
+      
+      // URL com callback JSONP
+      script.src = `https://shopee.com.br/api/v4/search/search_items?by=relevancy&keyword=${encodeURIComponent(query)}&limit=20&newest=0&order=desc&callback=${callbackName}`;
+      
+      script.onerror = () => {
+        delete (window as any)[callbackName];
+        document.body.removeChild(script);
+        reject(new Error('JSONP failed'));
+      };
+      
+      document.body.appendChild(script);
+      
+      // Timeout de 5 segundos
+      setTimeout(() => {
+        if ((window as any)[callbackName]) {
+          delete (window as any)[callbackName];
+          document.body.removeChild(script);
+          reject(new Error('JSONP timeout'));
+        }
+      }, 5000);
+    });
   };
 
   // DADOS MOCK (FALLBACK)
