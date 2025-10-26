@@ -130,20 +130,46 @@ const ShopeeSearchComponent: React.FC = () => {
     }
   ];
 
-  // Gerar link de afiliado
+  // Gerar link de afiliado usando Edge Function do Supabase
   const generateAffiliateLink = async (product: Product) => {
-    const key = `${product.itemid}`;
+    const key = `${product.itemid}-${product.shopid}`;
     setGeneratingLinks(prev => new Set([...prev, key]));
 
     try {
-      // Por enquanto, apenas retorna o link direto
-      const affiliateLink = `https://shopee.com.br/product/${product.shopid}/${product.itemid}`;
-      
-      product.affiliate_link = affiliateLink;
+      // USA A EDGE FUNCTION DO SUPABASE JÁ EXISTENTE
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-shopee-affiliate-link`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            itemid: product.itemid,
+            shopid: product.shopid,
+            productName: product.name
+          })
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        product.affiliate_link = data.affiliateLink;
+        setProducts([...products]);
+        toast.success('Link de afiliado gerado!');
+      } else {
+        // Fallback: link direto sem tracking
+        product.affiliate_link = `https://shopee.com.br/product/${product.shopid}/${product.itemid}`;
+        setProducts([...products]);
+        toast.info('Link direto gerado');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar link:', error);
+      // Em caso de erro, gera link direto
+      product.affiliate_link = `https://shopee.com.br/product/${product.shopid}/${product.itemid}`;
       setProducts([...products]);
-      toast.success('Link gerado com sucesso!');
-    } catch (err) {
-      toast.error('Erro ao gerar link');
+      toast.info('Link direto gerado');
     } finally {
       setGeneratingLinks(prev => {
         const next = new Set(prev);
