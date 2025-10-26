@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   Search, 
   ShoppingBag, 
@@ -155,77 +156,62 @@ const ProductsPage: React.FC = () => {
   const fetchShopeeProducts = async (query: string) => {
     setIsLoading(true);
     setError('');
-    setShopeeProducts([]); // Limpa os produtos antes da nova busca
+    setShopeeProducts([]);
 
     console.log(`[BUSCA REAL] Iniciando busca por: "${query}"`);
 
     try {
-      // Lista de proxies CORS gratuitos para fallback
-      const corsProxies = [
-        'https://api.allorigins.win/raw?url=',
-        'https://corsproxy.io/?',
-        'https://cors-anywhere.herokuapp.com/'
-      ];
+      // Usa nossa Edge Function própria como proxy CORS
+      console.log('[BUSCA REAL] Usando nosso proxy CORS próprio (Supabase Edge Function)');
       
-      const shopeeApiUrl = `https://shopee.com.br/api/v4/search/search_items?by=sales&keyword=${encodeURIComponent(query)}&limit=20&newest=0&order=desc&page_type=search`;
-      
-      let dataFetched = false;
+      const { data, error: funcError } = await supabase.functions.invoke('shopee-proxy-cors', {
+        body: { query }
+      });
 
-      // Tenta cada proxy
-      for (const proxy of corsProxies) {
-        try {
-          console.log(`[BUSCA REAL] Tentando com o proxy: ${proxy.split('/')[2]}`);
-          const response = await fetch(`${proxy}${encodeURIComponent(shopeeApiUrl)}`);
-          
-          if (response.ok) {
-            const data = await response.json();
-            
-            if (data && data.items && data.items.length > 0) {
-              console.log(`[BUSCA REAL] SUCESSO! ${data.items.length} produtos encontrados.`);
-              const formattedProducts: Product[] = data.items.map((item: any) => {
-                const itemBasic = item.item_basic || item;
-                const price = (itemBasic.price || 0) / 100000;
-                return {
-                  id: itemBasic.itemid.toString(),
-                  title: itemBasic.name,
-                  description: itemBasic.name,
-                  price: price,
-                  originalPrice: price * 1.2,
-                  imageUrl: `https://cf.shopee.com.br/file/${itemBasic.image}`,
-                  affiliateLink: `https://shopee.com.br/product/${itemBasic.shopid}/${itemBasic.itemid}`,
-                  marketplace: 'shopee',
-                  category: '📱 Eletrônicos',
-                  rating: itemBasic.item_rating?.rating_star || 0,
-                  reviews: itemBasic.historical_sold || itemBasic.sold || 0,
-                  sales: itemBasic.historical_sold || itemBasic.sold || 0,
-                  commission: price * 0.1,
-                  commissionPercent: 10,
-                  createdAt: new Date(),
-                  bsr: 0,
-                  bsrCategory: 'Electronics'
-                };
-              });
-              setShopeeProducts(formattedProducts);
-              dataFetched = true;
-              break; // Sucesso, para o loop
-            }
-          }
-        } catch (proxyError) {
-          console.warn(`[BUSCA REAL] Proxy ${proxy.split('/')[2]} falhou. Tentando o próximo.`);
-          continue;
-        }
+      if (funcError) {
+        console.error('[BUSCA REAL] Erro na Edge Function:', funcError);
+        throw funcError;
       }
 
-      // Se nenhum método funcionou, informa o usuário
-      if (!dataFetched) {
-        console.error("[BUSCA REAL] Todos os métodos falharam. Mostrando erro.");
-        setError('Não foi possível buscar produtos reais no momento. Verifique sua conexão ou tente mais tarde.');
-        setShopeeProducts([]); // Garante que a lista fique vazia
+      if (data && data.items && data.items.length > 0) {
+        console.log(`[BUSCA REAL] SUCESSO! ${data.items.length} produtos encontrados.`);
+        
+        const formattedProducts: Product[] = data.items.map((item: any) => {
+          const itemBasic = item.item_basic || item;
+          const price = (itemBasic.price || 0) / 100000;
+          
+          return {
+            id: itemBasic.itemid?.toString() || String(Math.random()),
+            title: itemBasic.name || 'Produto sem nome',
+            description: itemBasic.name || '',
+            price: price,
+            originalPrice: price * 1.2,
+            imageUrl: itemBasic.image 
+              ? `https://cf.shopee.com.br/file/${itemBasic.image}`
+              : 'https://via.placeholder.com/200',
+            affiliateLink: `https://shopee.com.br/product/${itemBasic.shopid}/${itemBasic.itemid}`,
+            marketplace: 'shopee',
+            category: '📱 Eletrônicos',
+            rating: itemBasic.item_rating?.rating_star || 0,
+            reviews: itemBasic.historical_sold || itemBasic.sold || 0,
+            sales: itemBasic.historical_sold || itemBasic.sold || 0,
+            commission: price * 0.1,
+            commissionPercent: 10,
+            createdAt: new Date(),
+            bsr: 0,
+            bsrCategory: 'Electronics'
+          };
+        });
+        
+        setShopeeProducts(formattedProducts);
+      } else {
+        console.warn('[BUSCA REAL] Nenhum produto encontrado na resposta');
+        setError('Nenhum produto encontrado para esta busca.');
       }
 
     } catch (error) {
-      console.error("[BUSCA REAL] Erro geral:", error);
-      setError('Ocorreu um erro inesperado durante a busca.');
+      console.error('[BUSCA REAL] Erro geral:', error);
+      setError('Não foi possível buscar produtos no momento. Tente novamente.');
       setShopeeProducts([]);
     } finally {
       setIsLoading(false);
