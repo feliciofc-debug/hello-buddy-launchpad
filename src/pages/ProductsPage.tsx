@@ -155,18 +155,81 @@ const ProductsPage: React.FC = () => {
   const fetchShopeeProducts = async (query: string) => {
     setIsLoading(true);
     setError('');
-    
-    // Simula busca com delay
-    setTimeout(() => {
-      const filtered = query 
-        ? exampleProducts.filter(p => 
-            p.title.toLowerCase().includes(query.toLowerCase())
-          )
-        : exampleProducts;
+    setShopeeProducts([]); // Limpa os produtos antes da nova busca
+
+    console.log(`[BUSCA REAL] Iniciando busca por: "${query}"`);
+
+    try {
+      // Lista de proxies CORS gratuitos para fallback
+      const corsProxies = [
+        'https://api.allorigins.win/raw?url=',
+        'https://corsproxy.io/?',
+        'https://cors-anywhere.herokuapp.com/'
+      ];
       
-      setShopeeProducts(filtered.length > 0 ? filtered : exampleProducts);
+      const shopeeApiUrl = `https://shopee.com.br/api/v4/search/search_items?by=sales&keyword=${encodeURIComponent(query)}&limit=20&newest=0&order=desc&page_type=search`;
+      
+      let dataFetched = false;
+
+      // Tenta cada proxy
+      for (const proxy of corsProxies) {
+        try {
+          console.log(`[BUSCA REAL] Tentando com o proxy: ${proxy.split('/')[2]}`);
+          const response = await fetch(`${proxy}${encodeURIComponent(shopeeApiUrl)}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data && data.items && data.items.length > 0) {
+              console.log(`[BUSCA REAL] SUCESSO! ${data.items.length} produtos encontrados.`);
+              const formattedProducts: Product[] = data.items.map((item: any) => {
+                const itemBasic = item.item_basic || item;
+                const price = (itemBasic.price || 0) / 100000;
+                return {
+                  id: itemBasic.itemid.toString(),
+                  title: itemBasic.name,
+                  description: itemBasic.name,
+                  price: price,
+                  originalPrice: price * 1.2,
+                  imageUrl: `https://cf.shopee.com.br/file/${itemBasic.image}`,
+                  affiliateLink: `https://shopee.com.br/product/${itemBasic.shopid}/${itemBasic.itemid}`,
+                  marketplace: 'shopee',
+                  category: '📱 Eletrônicos',
+                  rating: itemBasic.item_rating?.rating_star || 0,
+                  reviews: itemBasic.historical_sold || itemBasic.sold || 0,
+                  sales: itemBasic.historical_sold || itemBasic.sold || 0,
+                  commission: price * 0.1,
+                  commissionPercent: 10,
+                  createdAt: new Date(),
+                  bsr: 0,
+                  bsrCategory: 'Electronics'
+                };
+              });
+              setShopeeProducts(formattedProducts);
+              dataFetched = true;
+              break; // Sucesso, para o loop
+            }
+          }
+        } catch (proxyError) {
+          console.warn(`[BUSCA REAL] Proxy ${proxy.split('/')[2]} falhou. Tentando o próximo.`);
+          continue;
+        }
+      }
+
+      // Se nenhum método funcionou, informa o usuário
+      if (!dataFetched) {
+        console.error("[BUSCA REAL] Todos os métodos falharam. Mostrando erro.");
+        setError('Não foi possível buscar produtos reais no momento. Verifique sua conexão ou tente mais tarde.');
+        setShopeeProducts([]); // Garante que a lista fique vazia
+      }
+
+    } catch (error) {
+      console.error("[BUSCA REAL] Erro geral:", error);
+      setError('Ocorreu um erro inesperado durante a busca.');
+      setShopeeProducts([]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const formatPrice = (price: number) => {
