@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Instagram, MessageCircle, Smartphone } from "lucide-react";
+import { Loader2, Instagram, MessageCircle, Smartphone, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 interface ProductAnalysis {
   produto: {
@@ -21,6 +22,7 @@ interface ProductAnalysis {
 }
 
 const IAMarketing = () => {
+  const navigate = useNavigate();
   const [link, setLink] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<ProductAnalysis | null>(null);
@@ -70,6 +72,16 @@ const IAMarketing = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted p-6">
       <div className="max-w-7xl mx-auto">
+        {/* Botão Voltar */}
+        <Button
+          onClick={() => navigate('/produtos')}
+          variant="ghost"
+          className="mb-6 hover:bg-muted"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Voltar para Produtos
+        </Button>
+
         {/* Seção de Análise */}
         <div className="mb-12">
           <h1 className="text-4xl md:text-5xl font-bold text-center mb-8 bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent">
