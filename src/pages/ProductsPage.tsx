@@ -393,12 +393,20 @@ const ProductsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Banner Instrutivo */}
+            {/* Banner IA Marketing */}
             {!isLoading && !error && lomadeeProducts.length > 0 && (
-              <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border-2 border-blue-200 dark:border-blue-800">
-                <p className="text-center text-lg font-semibold text-gray-800 dark:text-gray-200">
-                  💡 <span className="font-bold">Como funciona:</span> 1. Visite a loja ➔ 2. Escolha um produto e copie o link ➔ 3. Use nossa ferramenta 'IA Marketing' para criar seus posts!
-                </p>
+              <div className="sticky top-0 z-10 mb-8 p-6 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-2xl border-2 border-purple-400">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                  <p className="text-center md:text-left text-lg font-semibold text-white">
+                    💡 Já escolheu seu produto? Copie o link e use nossa ferramenta de IA para criar posts virais!
+                  </p>
+                  <button
+                    onClick={() => navigate('/ia-marketing')}
+                    className="whitespace-nowrap px-8 py-3 bg-white text-purple-600 rounded-lg font-bold hover:bg-purple-50 transition-colors shadow-lg hover:shadow-xl"
+                  >
+                    USAR IA MARKETING ➡️
+                  </button>
+                </div>
               </div>
             )}
 

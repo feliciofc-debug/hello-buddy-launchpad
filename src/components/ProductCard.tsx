@@ -175,13 +175,8 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
             rel="noopener noreferrer"
             className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-bold text-center shadow-lg hover:shadow-xl"
           >
-            🛍️ VISITAR LOJA E ESCOLHER PRODUTOS
+            🛍️ ESCOLHER PRODUTOS
           </a>
-          
-          {/* Texto Explicativo */}
-          <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-3">
-            Escolha o produto que deseja promover e copie o link
-          </p>
         </div>
       </div>
     );
