@@ -144,7 +144,7 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
             <img
               src={product.imageUrl}
               alt={product.title}
-              className="w-36 h-36 object-contain rounded-lg"
+              className="w-[150px] h-[150px] object-contain rounded-lg"
             />
             {isTopCommission && (
               <div className="absolute -top-2 -right-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg animate-pulse">
@@ -154,12 +154,12 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
           </div>
 
           {/* Nome da Loja */}
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3 text-center">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 text-center">
             {product.title}
           </h3>
 
           {/* Comissão */}
-          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg w-full">
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg w-full">
             <div className="text-center">
               <span className="text-xs text-gray-600 dark:text-gray-400 block mb-1">Comissão</span>
               <span className="text-4xl font-bold text-green-600 dark:text-green-400">
@@ -168,45 +168,20 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
             </div>
           </div>
 
-          {/* Botões de Ação */}
-          <div className="space-y-2 w-full">
-            {/* Botão Visitar Loja */}
-            <a
-              href={product.affiliateLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-medium"
-            >
-              🛍️ Visitar Loja
-            </a>
-
-            {/* Botão Copiar Link */}
-            <button
-              onClick={copyAffiliateLink}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
-            >
-              {copied ? (
-                <>✓ Link Copiado!</>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  📋 Copiar Link
-                </>
-              )}
-            </button>
-
-            {/* Botão WhatsApp */}
-            <button
-              onClick={() => {
-                const message = `🔥 *${product.title}*%0A%0A💰 Comissão: ${product.commissionPercent}%%0A%0A🔗 ${product.affiliateLink}`;
-                window.open(`https://wa.me/?text=${message}`, '_blank');
-              }}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-green-400 hover:bg-green-500 text-white rounded-lg transition-colors font-medium"
-            >
-              <MessageCircle className="w-4 h-4" />
-              📱 WhatsApp
-            </button>
-          </div>
+          {/* Botão Principal */}
+          <a
+            href={product.affiliateLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-bold text-center shadow-lg hover:shadow-xl"
+          >
+            🛍️ VISITAR LOJA E ESCOLHER PRODUTOS
+          </a>
+          
+          {/* Texto Explicativo */}
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-3">
+            Escolha o produto que deseja promover e copie o link
+          </p>
         </div>
       </div>
     );

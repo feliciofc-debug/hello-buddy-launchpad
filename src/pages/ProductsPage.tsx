@@ -393,9 +393,27 @@ const ProductsPage: React.FC = () => {
               </div>
             )}
 
+            {/* Banner Instrutivo */}
+            {!isLoading && !error && lomadeeProducts.length > 0 && (
+              <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border-2 border-blue-200 dark:border-blue-800">
+                <p className="text-center text-lg font-semibold text-gray-800 dark:text-gray-200">
+                  💡 <span className="font-bold">Como funciona:</span> 1. Visite a loja ➔ 2. Escolha um produto e copie o link ➔ 3. Use nossa ferramenta 'IA Marketing' para criar seus posts!
+                </p>
+              </div>
+            )}
+
+            {/* Contador de Lojas */}
+            {!isLoading && !error && lomadeeProducts.length > 0 && (
+              <div className="mb-6">
+                <p className="text-center text-lg font-semibold text-gray-700 dark:text-gray-300">
+                  Exibindo <span className="text-green-600 dark:text-green-400 font-bold">{lomadeeProducts.length}</span> lojas com as melhores comissões
+                </p>
+              </div>
+            )}
+
             {/* Products Grid */}
             {!isLoading && !error && lomadeeProducts.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                 {lomadeeProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
