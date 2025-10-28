@@ -23,135 +23,62 @@ const ProductsPage: React.FC = () => {
   const [lomadeeProducts, setLomadeeProducts] = useState<Product[]>([]);
   const [error, setError] = useState('');
 
-  // Produtos de exemplo convertidos para o formato do ProductCard
-  const exampleProducts: Product[] = [
-    {
-      id: '1',
-      title: 'iPhone 15 Pro Max 256GB - Titânio Natural',
-      description: 'O iPhone mais avançado com chip A17 Pro e câmera de 48MP',
-      price: 8999.90,
-      originalPrice: 10999.90,
-      imageUrl: 'https://images.unsplash.com/photo-1696446701796-da61225697cc?w=400',
-      affiliateLink: 'https://shopee.com.br/iphone-15-pro',
-      marketplace: 'shopee',
-      category: '📱 Eletrônicos',
-      rating: 4.9,
-      reviews: 1523,
-      sales: 1523,
-      commission: 899.99,
-      commissionPercent: 10,
-      badge: '⭐ TOP VENDAS',
-      createdAt: new Date('2024-09-15'),
-      bsr: 10,
-      bsrCategory: 'Electronics'
-    },
-    {
-      id: '2',
-      title: 'Notebook Gamer Dell G15 RTX 4060',
-      description: 'Notebook gamer com RTX 4060, 16GB RAM e SSD 512GB',
-      price: 6499.90,
-      originalPrice: 7999.90,
-      imageUrl: 'https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=400',
-      affiliateLink: 'https://shopee.com.br/notebook-gamer',
-      marketplace: 'shopee',
-      category: '📱 Eletrônicos',
-      rating: 4.8,
-      reviews: 892,
-      sales: 892,
-      commission: 649.99,
-      commissionPercent: 10,
-      badge: '📈 EM ALTA',
-      createdAt: new Date('2024-09-20'),
-      bsr: 25,
-      bsrCategory: 'Electronics'
-    },
-    {
-      id: '3',
-      title: 'Sony WH-1000XM5 - Fone com Cancelamento de Ruído',
-      description: 'Fone premium com cancelamento de ruído de última geração',
-      price: 2199.90,
-      originalPrice: 2699.90,
-      imageUrl: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400',
-      affiliateLink: 'https://shopee.com.br/fone-sony',
-      marketplace: 'shopee',
-      category: '📱 Eletrônicos',
-      rating: 4.9,
-      reviews: 3421,
-      sales: 3421,
-      commission: 219.99,
-      commissionPercent: 10,
-      badge: '⭐ TOP VENDAS',
-      createdAt: new Date('2024-08-10'),
-      bsr: 5,
-      bsrCategory: 'Electronics'
-    },
-    {
-      id: '4',
-      title: 'Smart TV Samsung Neo QLED 55" 4K',
-      description: 'Smart TV com tecnologia Neo QLED e resolução 4K',
-      price: 3799.90,
-      originalPrice: 4999.90,
-      imageUrl: 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?w=400',
-      affiliateLink: 'https://shopee.com.br/smart-tv',
-      marketplace: 'shopee',
-      category: '📱 Eletrônicos',
-      rating: 4.7,
-      reviews: 567,
-      sales: 567,
-      commission: 379.99,
-      commissionPercent: 10,
-      createdAt: new Date('2024-09-01'),
-      bsr: 50,
-      bsrCategory: 'Electronics'
-    },
-    {
-      id: '5',
-      title: 'iPad Pro M2 12.9" 128GB Wi-Fi',
-      description: 'iPad Pro com chip M2 e tela Liquid Retina XDR',
-      price: 9499.90,
-      originalPrice: 11999.90,
-      imageUrl: 'https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0?w=400',
-      affiliateLink: 'https://shopee.com.br/ipad-pro',
-      marketplace: 'shopee',
-      category: '📱 Eletrônicos',
-      rating: 5.0,
-      reviews: 234,
-      sales: 234,
-      commission: 949.99,
-      commissionPercent: 10,
-      badge: '🔥 LANÇAMENTO',
-      createdAt: new Date('2024-10-10'),
-      bsr: 15,
-      bsrCategory: 'Electronics'
-    },
-    {
-      id: '6',
-      title: 'Air Fryer Philco 12L Digital',
-      description: 'Fritadeira elétrica sem óleo com capacidade de 12 litros',
-      price: 599.90,
-      originalPrice: 799.90,
-      imageUrl: 'https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=400',
-      affiliateLink: 'https://shopee.com.br/air-fryer',
-      marketplace: 'shopee',
-      category: '🏠 Casa e Cozinha',
-      rating: 4.6,
-      reviews: 4567,
-      sales: 4567,
-      commission: 59.99,
-      commissionPercent: 10,
-      badge: '⭐ TOP VENDAS',
-      createdAt: new Date('2024-07-15'),
-      bsr: 3,
-      bsrCategory: 'Home & Kitchen'
-    }
-  ];
-
-  // Carrega produtos ao montar o componente
+  // Carrega produtos reais da Lomadee ao montar o componente
   useEffect(() => {
-    if (activeTab === 'shopee') {
-      setShopeeProducts(exampleProducts);
+    if (activeTab === 'lomadee') {
+      fetchLomadeeProducts();
     }
   }, [activeTab]);
+
+  const fetchLomadeeProducts = async () => {
+    setIsLoading(true);
+    setError('');
+    setLomadeeProducts([]);
+
+    try {
+      console.log('[LOMADEE] Carregando ofertas reais...');
+      const response = await fetch('https://amz-ofertas-robo.onrender.com/scrape/lomadee?limit=50');
+      
+      if (!response.ok) {
+        throw new Error('Erro ao conectar com a API de ofertas');
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.produtos && data.produtos.length > 0) {
+        console.log(`[LOMADEE] ✅ ${data.produtos.length} ofertas carregadas`);
+        
+        const formattedProducts: Product[] = data.produtos.map((item: any, index: number) => ({
+          id: `lomadee-${index}`,
+          title: item.titulo || 'Loja sem nome',
+          description: item.titulo || '',
+          price: 0, // API não retorna preço
+          commission: item.comissao || 0,
+          commissionPercent: item.comissao || 0,
+          marketplace: 'lomadee',
+          category: '💼 Negócios',
+          imageUrl: item.imagem_url || 'https://via.placeholder.com/200',
+          affiliateLink: item.produto_url || '#',
+          rating: 0,
+          reviews: 0,
+          sales: 0,
+          createdAt: new Date(),
+          bsr: 0,
+          bsrCategory: 'Business'
+        }));
+        
+        setLomadeeProducts(formattedProducts);
+      } else {
+        throw new Error('Nenhuma oferta encontrada');
+      }
+    } catch (error) {
+      console.error('[LOMADEE] ❌ Erro:', error);
+      setError(error instanceof Error ? error.message : 'Erro ao conectar com a API de ofertas');
+      setLomadeeProducts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const fetchShopeeProducts = async (query: string) => {
     setIsLoading(true);
@@ -441,11 +368,46 @@ const ProductsPage: React.FC = () => {
         )}
 
         {activeTab === 'lomadee' && (
-          <div className="bg-card rounded-lg shadow-sm p-12 text-center border">
-            <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground text-lg">
-              Integração Lomadee em desenvolvimento
-            </p>
+          <div className="space-y-6">
+            {/* Loading */}
+            {isLoading && (
+              <div className="flex flex-col justify-center items-center py-20">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-4" />
+                <p className="text-muted-foreground">Carregando ofertas reais...</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && !isLoading && (
+              <div className="bg-destructive/10 border border-destructive rounded-lg p-6 text-center">
+                <p className="text-destructive font-medium">{error}</p>
+                <button
+                  onClick={fetchLomadeeProducts}
+                  className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            )}
+
+            {/* Products Grid */}
+            {!isLoading && !error && lomadeeProducts.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {lomadeeProducts.map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+              </div>
+            )}
+
+            {/* Empty State */}
+            {!isLoading && !error && lomadeeProducts.length === 0 && (
+              <div className="bg-card rounded-lg shadow-sm p-12 text-center border">
+                <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground text-lg">
+                  Nenhuma oferta disponível no momento
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
