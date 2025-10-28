@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { supabase } from '@/integrations/supabase/client';
@@ -233,6 +233,17 @@ const Dashboard = () => {
             Produtos
           </a>
           <a
+            href="/ia-marketing"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+              window.location.pathname === '/ia-marketing' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Bot size={20} />
+            IA Marketing
+          </a>
+          <a
             href="/perfil"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
               window.location.pathname === '/perfil' 
@@ -373,6 +384,36 @@ const Dashboard = () => {
                   <p className="text-sm opacity-80 mb-1">Ticket Médio</p>
                   <p className="text-3xl font-bold">R$ {metrics.averageTicket.toFixed(2)}</p>
                   <p className="text-xs opacity-70 mt-2">Valor médio por venda</p>
+                </div>
+              </div>
+
+              {/* Card de Destaque IA Marketing */}
+              <div className="mb-8">
+                <div className="bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 rounded-xl shadow-2xl p-8 text-white relative overflow-hidden">
+                  {/* Efeito de fundo */}
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-400/10 to-transparent"></div>
+                  
+                  <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex-1 text-center md:text-left">
+                      <div className="flex items-center gap-3 mb-3 justify-center md:justify-start">
+                        <Bot className="w-10 h-10" />
+                        <span className="bg-white/20 text-xs font-bold px-3 py-1 rounded-full">NOVO</span>
+                      </div>
+                      <h3 className="text-2xl md:text-3xl font-bold mb-3">
+                        Nova Ferramenta: IA Marketing
+                      </h3>
+                      <p className="text-white/90 text-lg">
+                        Transforme qualquer link de produto em posts virais com o poder da nossa IA.
+                      </p>
+                    </div>
+                    
+                    <button
+                      onClick={() => navigate('/ia-marketing')}
+                      className="whitespace-nowrap px-8 py-4 bg-white text-purple-600 rounded-lg font-bold text-lg hover:bg-purple-50 transition-all shadow-lg hover:shadow-xl hover:scale-105 flex items-center gap-2"
+                    >
+                      Experimentar Agora 🚀
+                    </button>
+                  </div>
                 </div>
               </div>
 
