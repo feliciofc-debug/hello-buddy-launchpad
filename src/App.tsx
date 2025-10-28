@@ -19,6 +19,7 @@ import ShopeeCallback from "./pages/ShopeeCallback";
 import ReviewerLogin from "./pages/ReviewerLogin";
 import AuthCallbackMetaPage from "./pages/AuthCallbackMetaPage";
 import LomadeeFinder from "./pages/LomadeeFinder";
+import IAMarketing from "./pages/IAMarketing";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/shopee-callback" element={<ShopeeCallback />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
             <Route path="/lomadee" element={<LomadeeFinder />} />
+            <Route path="/ia-marketing" element={<IAMarketing />} />
             <Route path="/reviewer" element={<ReviewerLogin />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
