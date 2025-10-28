@@ -131,6 +131,88 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
     : 0;
 
+  const isLomadee = product.marketplace === 'lomadee';
+  const isTopCommission = product.commissionPercent >= 15;
+
+  // Render simplificado para Lomadee (foco em LOJAS)
+  if (isLomadee) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden">
+        <div className="p-6 flex flex-col items-center">
+          {/* Logo da Loja */}
+          <div className="relative mb-4">
+            <img
+              src={product.imageUrl}
+              alt={product.title}
+              className="w-36 h-36 object-contain rounded-lg"
+            />
+            {isTopCommission && (
+              <div className="absolute -top-2 -right-2 bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg animate-pulse">
+                🔥 TOP COMISSÃO
+              </div>
+            )}
+          </div>
+
+          {/* Nome da Loja */}
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3 text-center">
+            {product.title}
+          </h3>
+
+          {/* Comissão */}
+          <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg w-full">
+            <div className="text-center">
+              <span className="text-xs text-gray-600 dark:text-gray-400 block mb-1">Comissão</span>
+              <span className="text-4xl font-bold text-green-600 dark:text-green-400">
+                {product.commissionPercent}%
+              </span>
+            </div>
+          </div>
+
+          {/* Botões de Ação */}
+          <div className="space-y-2 w-full">
+            {/* Botão Visitar Loja */}
+            <a
+              href={product.affiliateLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-medium"
+            >
+              🛍️ Visitar Loja
+            </a>
+
+            {/* Botão Copiar Link */}
+            <button
+              onClick={copyAffiliateLink}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
+            >
+              {copied ? (
+                <>✓ Link Copiado!</>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4" />
+                  📋 Copiar Link
+                </>
+              )}
+            </button>
+
+            {/* Botão WhatsApp */}
+            <button
+              onClick={() => {
+                const message = `🔥 *${product.title}*%0A%0A💰 Comissão: ${product.commissionPercent}%%0A%0A🔗 ${product.affiliateLink}`;
+                window.open(`https://wa.me/?text=${message}`, '_blank');
+              }}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-green-400 hover:bg-green-500 text-white rounded-lg transition-colors font-medium"
+            >
+              <MessageCircle className="w-4 h-4" />
+              📱 WhatsApp
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Render padrão para outros marketplaces (produtos)
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden group">
       {/* Image Container */}

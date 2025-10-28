@@ -67,7 +67,10 @@ const ProductsPage: React.FC = () => {
           bsrCategory: 'Business'
         }));
         
-        setLomadeeProducts(formattedProducts);
+        // Ordenar por maior comissão
+        const sortedProducts = formattedProducts.sort((a, b) => b.commissionPercent - a.commissionPercent);
+        
+        setLomadeeProducts(sortedProducts);
       } else {
         throw new Error('Nenhuma oferta encontrada');
       }
@@ -392,7 +395,7 @@ const ProductsPage: React.FC = () => {
 
             {/* Products Grid */}
             {!isLoading && !error && lomadeeProducts.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {lomadeeProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
