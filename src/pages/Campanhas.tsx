@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChevronRight, ChevronLeft, Rocket, Play, Pause, Edit, Copy, Trash2, TrendingUp } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Rocket, Play, Pause, Edit, Copy, Trash2, TrendingUp, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,6 +14,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const Campanhas = () => {
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
   const [ageRange, setAgeRange] = useState([18, 65]);
@@ -339,9 +341,15 @@ const Campanhas = () => {
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-7xl mx-auto space-y-6">
           <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold">Campanhas</h1>
-              <p className="text-muted-foreground">Gerencie suas campanhas de marketing</p>
+            <div className="flex items-center gap-4">
+              <Button variant="outline" onClick={() => navigate('/dashboard')}>
+                <ArrowLeft className="mr-2" size={18} />
+                Voltar
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold">Campanhas</h1>
+                <p className="text-muted-foreground">Gerencie suas campanhas de marketing</p>
+              </div>
             </div>
             <Button onClick={() => setCurrentStep(1)} size="lg">
               <Rocket className="mr-2" />
@@ -464,6 +472,12 @@ const Campanhas = () => {
       <div className="max-w-5xl mx-auto">
         <Card>
           <CardHeader>
+            <div className="flex items-center justify-between mb-4">
+              <Button variant="outline" onClick={() => navigate('/dashboard')}>
+                <ArrowLeft className="mr-2" size={18} />
+                Dashboard
+              </Button>
+            </div>
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-2xl">Nova Campanha</CardTitle>
