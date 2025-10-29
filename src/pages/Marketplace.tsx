@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTheme } from 'next-themes';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Search, Filter, TrendingUp, CheckCircle, Clock, XCircle, Users, ShoppingBag } from 'lucide-react';
+import { Store, Search, Filter, TrendingUp, CheckCircle, Clock, XCircle, Users, ShoppingBag, ArrowLeft, Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Offer {
@@ -178,6 +180,8 @@ const mockApplications: Application[] = [
 ];
 
 export default function Marketplace() {
+  const navigate = useNavigate();
+  const { theme, setTheme } = useTheme();
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [applications, setApplications] = useState<Application[]>(mockApplications);
@@ -186,6 +190,10 @@ export default function Marketplace() {
   const [commissionFilter, setCommissionFilter] = useState('0');
   const [typeFilter, setTypeFilter] = useState('all');
   const [applicationText, setApplicationText] = useState('');
+
+  const toggleDarkMode = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
 
   const handleCardClick = (offer: Offer) => {
     setSelectedOffer(offer);
@@ -257,13 +265,33 @@ export default function Marketplace() {
       <div className="container mx-auto p-6 space-y-8">
         {/* Header */}
         <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-pink-500 rounded-xl flex items-center justify-center">
-              <Store className="w-6 h-6 text-white" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-pink-500 rounded-xl flex items-center justify-center">
+                <Store className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-4xl font-bold text-foreground">🏪 Marketplace de Produtos</h1>
+                <p className="text-muted-foreground mt-1">Conecte-se com marcas e ganhe comissões exclusivas</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-4xl font-bold text-foreground">🏪 Marketplace de Produtos</h1>
-              <p className="text-muted-foreground mt-1">Conecte-se com marcas e ganhe comissões exclusivas</p>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                onClick={() => navigate('/dashboard')}
+                className="gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Voltar para Dashboard
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={toggleDarkMode}
+                title={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'}
+              >
+                {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              </Button>
             </div>
           </div>
         </div>
