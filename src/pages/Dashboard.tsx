@@ -324,17 +324,6 @@ const Dashboard = () => {
             <Settings size={20} />
             Configurações API
           </a>
-          <a
-            href="/whatsapp"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/whatsapp' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <MessageCircle size={20} />
-            WhatsApp
-          </a>
         </nav>
       </aside>
 
