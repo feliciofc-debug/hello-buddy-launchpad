@@ -300,7 +300,7 @@ const IAMarketing = () => {
             {/* Header da Página */}
             <div className="mb-8">
               <Button
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/dashboard')}
                 variant="ghost"
                 className="mb-4 hover:bg-muted"
               >
