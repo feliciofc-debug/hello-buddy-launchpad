@@ -473,17 +473,20 @@ const Campanhas = () => {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Button variant="outline" size="icon" onClick={() => setCurrentStep(0)}>
-                  <ArrowLeft size={18} />
-                </Button>
-                <div>
-                  <CardTitle className="text-2xl">Nova Campanha</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Passo {currentStep} de 4
-                  </p>
-                </div>
+              <Button variant="outline" onClick={() => setCurrentStep(0)}>
+                <ArrowLeft className="mr-2" size={18} />
+                Voltar para Dashboard
+              </Button>
+              <div className="text-center flex-1">
+                <CardTitle className="text-2xl">Nova Campanha</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Passo {currentStep} de 4
+                </p>
               </div>
+              <Button onClick={() => setCurrentStep(1)}>
+                <Rocket className="mr-2" />
+                Nova Campanha
+              </Button>
             </div>
             
             {/* Progress Bar */}
