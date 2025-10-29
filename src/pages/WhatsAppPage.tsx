@@ -1,382 +1,644 @@
 "use client";
 
-import { useState } from 'react';
-import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft, Upload, Eye, Calendar, BarChart3, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-interface WhatsAppGroup {
-  id: string;
+interface Contact {
   name: string;
-  contactCount: number;
-  lastMessageSent: string;
-  isActive: boolean;
+  phone: string;
+  customFields?: Record<string, string>;
 }
 
-interface WhatsAppConfig {
-  apiToken: string;
-  phoneNumber: string;
-  isConnected: boolean;
+interface BulkSend {
+  id: string;
+  campaign_name: string;
+  message_template: string;
+  total_contacts: number;
+  sent_count: number;
+  delivered_count: number;
+  read_count: number;
+  response_count: number;
+  status: string;
+  created_at: string;
+}
+
+interface GroupMessage {
+  id: string;
+  message: string;
+  sent_at: string;
+  status: string;
 }
 
 const WhatsAppPage = () => {
   const navigate = useNavigate();
-  const [config, setConfig] = useState<WhatsAppConfig>({
-    apiToken: '',
-    phoneNumber: '',
-    isConnected: false
-  });
-
-  const [autoSend, setAutoSend] = useState({
-    enabled: false,
-    frequency: 'daily' as 'daily' | 'twice-daily' | 'weekly',
-    preferredTimes: [] as string[]
-  });
-
+  
+  // State para envio em massa
+  const [campaignName, setCampaignName] = useState('');
   const [messageTemplate, setMessageTemplate] = useState(
-    'Olá! 👋\n\nConfira esta oferta incrível:\n\n🔥 {{NomeProduto}}\n💰 R$ {{Preco}}\n⭐ Avaliação excelente!\n\n🔗 {{LinkAfiliado}}\n\nNão perca!'
+    'Olá {nome}! 👋\n\nConfira esta oferta:\n\n🔥 {produto}\n💰 {preco}\n\n🔗 {link}\n\nNão perca!'
   );
+  const [csvText, setCsvText] = useState('');
+  const [phoneNumbers, setPhoneNumbers] = useState('');
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [previewMessage, setPreviewMessage] = useState('');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [groups, setGroups] = useState<WhatsAppGroup[]>([
-    {
-      id: '1',
-      name: 'Ofertas Eletrônicos VIP',
-      contactCount: 234,
-      lastMessageSent: 'Há 2 horas',
-      isActive: true
-    },
-    {
-      id: '2',
-      name: 'Grupo Moda & Beleza',
-      contactCount: 156,
-      lastMessageSent: 'Há 5 horas',
-      isActive: true
-    },
-    {
-      id: '3',
-      name: 'Casa & Cozinha Premium',
-      contactCount: 89,
-      lastMessageSent: 'Ontem',
-      isActive: false
+  // State para histórico e estatísticas
+  const [bulkSends, setBulkSends] = useState<BulkSend[]>([]);
+  const [stats, setStats] = useState({
+    messagesToday: 0,
+    responseRate: 0,
+    peakHour: '19h-21h',
+    leadsGenerated: 0
+  });
+
+  // State para grupos
+  const [groups, setGroups] = useState<any[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
+  const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
+
+  // Carregar dados ao montar componente
+  useEffect(() => {
+    loadBulkSends();
+    loadGroups();
+    calculateStats();
+  }, []);
+
+  const loadBulkSends = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('whatsapp_bulk_sends')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.error('Erro ao carregar envios:', error);
+      return;
     }
-  ]);
 
-  const [saved, setSaved] = useState(false);
+    setBulkSends(data || []);
+  };
 
-  const handleTestConnection = async () => {
-    // TODO: Implementar teste de conexão real com WhatsApp API
-    if (config.apiToken && config.phoneNumber) {
-      alert('Testando conexão...\n\nEm breve: Integração com Evolution API / Baileys / Z-API');
-      setConfig({ ...config, isConnected: true });
-    } else {
-      alert('Preencha o Token e o Número de Telefone');
+  const loadGroups = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('whatsapp_groups')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('member_count', { ascending: false });
+
+    if (error) {
+      console.error('Erro ao carregar grupos:', error);
+      return;
+    }
+
+    setGroups(data || []);
+  };
+
+  const calculateStats = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Mensagens enviadas hoje
+    const today = new Date().toISOString().split('T')[0];
+    const { data: todayData } = await supabase
+      .from('whatsapp_bulk_sends')
+      .select('sent_count')
+      .eq('user_id', user.id)
+      .gte('created_at', today);
+
+    const messagesToday = todayData?.reduce((sum, item) => sum + item.sent_count, 0) || 0;
+
+    // Taxa de resposta (simulado)
+    const { data: allSends } = await supabase
+      .from('whatsapp_bulk_sends')
+      .select('sent_count, response_count')
+      .eq('user_id', user.id);
+
+    const totalSent = allSends?.reduce((sum, item) => sum + item.sent_count, 0) || 1;
+    const totalResponses = allSends?.reduce((sum, item) => sum + item.response_count, 0) || 0;
+    const responseRate = ((totalResponses / totalSent) * 100).toFixed(1);
+
+    setStats({
+      messagesToday,
+      responseRate: parseFloat(responseRate),
+      peakHour: '19h-21h',
+      leadsGenerated: totalResponses
+    });
+  };
+
+  const parseCSV = (text: string) => {
+    const lines = text.trim().split('\n');
+    const parsed: Contact[] = [];
+
+    lines.forEach((line, index) => {
+      if (index === 0) return; // Skip header
+      const [name, phone, ...customFields] = line.split(',').map(s => s.trim());
+      if (name && phone) {
+        parsed.push({ name, phone });
+      }
+    });
+
+    return parsed;
+  };
+
+  const handleCSVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const parsed = parseCSV(text);
+      setContacts(parsed);
+      toast.success(`${parsed.length} contatos carregados do CSV`);
+    };
+    reader.readAsText(file);
+  };
+
+  const handlePhoneNumbersChange = (text: string) => {
+    setPhoneNumbers(text);
+    const lines = text.split('\n').filter(l => l.trim());
+    const parsed = lines.map(line => {
+      const [name, phone] = line.split(',').map(s => s.trim());
+      return { name: name || 'Contato', phone: phone || line };
+    });
+    setContacts(parsed);
+  };
+
+  const generatePreview = () => {
+    if (contacts.length === 0) {
+      toast.error('Adicione contatos primeiro');
+      return;
+    }
+
+    const sample = contacts[0];
+    let preview = messageTemplate;
+    preview = preview.replace(/{nome}/g, sample.name);
+    preview = preview.replace(/{telefone}/g, sample.phone);
+    
+    // Substituir campos customizados de exemplo
+    preview = preview.replace(/{produto}/g, 'Produto Exemplo');
+    preview = preview.replace(/{preco}/g, 'R$ 99,90');
+    preview = preview.replace(/{link}/g, 'https://exemplo.com/produto');
+
+    setPreviewMessage(preview);
+    toast.success('Preview gerado!');
+  };
+
+  const handleBulkSend = async () => {
+    if (contacts.length === 0) {
+      toast.error('Adicione contatos para enviar');
+      return;
+    }
+
+    if (!messageTemplate) {
+      toast.error('Defina um template de mensagem');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      const { data, error } = await supabase.functions.invoke('whatsapp-bulk-send', {
+        body: {
+          campaignName: campaignName || `Campanha ${new Date().toLocaleDateString()}`,
+          messageTemplate,
+          contacts,
+          scheduledAt: scheduledDate || null
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success(data.message);
+      
+      // Limpar formulário
+      setCampaignName('');
+      setContacts([]);
+      setCsvText('');
+      setPhoneNumbers('');
+      setPreviewMessage('');
+      
+      // Recarregar histórico
+      await loadBulkSends();
+      await calculateStats();
+    } catch (error: any) {
+      console.error('Erro ao enviar:', error);
+      toast.error(error.message || 'Erro ao enviar mensagens');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSaveConfig = () => {
-    // TODO: Salvar configuração no banco de dados
-    console.log('Salvando configuração WhatsApp:', config, autoSend, messageTemplate);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
-  };
+  const loadGroupMessages = async (groupId: string) => {
+    const { data, error } = await supabase
+      .from('whatsapp_group_messages')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('sent_at', { ascending: false })
+      .limit(5);
 
-  const toggleTime = (time: string) => {
-    setAutoSend(prev => ({
-      ...prev,
-      preferredTimes: prev.preferredTimes.includes(time)
-        ? prev.preferredTimes.filter(t => t !== time)
-        : [...prev.preferredTimes, time]
-    }));
+    if (error) {
+      console.error('Erro ao carregar mensagens:', error);
+      return;
+    }
+
+    setGroupMessages(data || []);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-7xl mx-auto">
         {/* Back Button */}
-        <button
+        <Button
+          variant="ghost"
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white mb-6 transition-colors"
+          className="mb-6"
         >
-          <ArrowLeft className="w-5 h-5" />
-          <span className="font-medium">Voltar ao Dashboard</span>
-        </button>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Voltar ao Dashboard
+        </Button>
 
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3">
-            <MessageCircle className="w-8 h-8 text-green-500" />
-            WhatsApp Business Integration
+          <h1 className="text-4xl font-bold flex items-center gap-3 mb-2">
+            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
+              <MessageCircle className="w-7 h-7 text-white" />
+            </div>
+            WhatsApp Marketing
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            Configure envios automáticos e gerencie seus grupos de WhatsApp
+          <p className="text-muted-foreground">
+            Envios em massa e gestão de campanhas WhatsApp
           </p>
         </div>
 
-        {/* Alert - API Integration Info */}
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
-          <div className="flex gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                APIs Recomendadas para Integração
-              </h3>
-              <ul className="text-sm text-blue-700 dark:text-blue-300 space-y-1">
-                <li>• <strong>Evolution API</strong> - API oficial brasileira (recomendado)</li>
-                <li>• <strong>Baileys</strong> - Biblioteca open-source para Node.js</li>
-                <li>• <strong>Z-API</strong> - Solução comercial com suporte</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        {/* Configuração WhatsApp API */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <Settings className="w-6 h-6 text-green-500" />
-            Configuração WhatsApp Business API
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                WhatsApp API Token
-              </label>
-              <input
-                type="password"
-                value={config.apiToken}
-                onChange={(e) => setConfig({ ...config, apiToken: e.target.value })}
-                placeholder="Cole seu token de API aqui"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Número de Telefone (WhatsApp)
-              </label>
-              <input
-                type="tel"
-                value={config.phoneNumber}
-                onChange={(e) => setConfig({ ...config, phoneNumber: e.target.value })}
-                placeholder="+55 11 99999-9999"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <button
-              onClick={handleTestConnection}
-              className="px-6 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
-            >
-              <CheckCircle className="w-5 h-5" />
-              Testar Conexão
-            </button>
-            
-            {config.isConnected && (
-              <span className="text-sm text-green-600 dark:text-green-400 font-medium flex items-center gap-2">
-                <CheckCircle className="w-4 h-4" />
-                Conectado
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Métricas WhatsApp */}
+        {/* Estatísticas */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <Send className="w-8 h-8 opacity-80" />
-              <span className="text-3xl font-bold">127</span>
-            </div>
-            <p className="text-green-100">Mensagens Hoje</p>
-          </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span>Mensagens Hoje</span>
+                <Send className="w-4 h-4 text-muted-foreground" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.messagesToday}</div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <TrendingUp className="w-8 h-8 opacity-80" />
-              <span className="text-3xl font-bold">23.5%</span>
-            </div>
-            <p className="text-blue-100">Taxa de Cliques</p>
-          </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span>Taxa de Resposta</span>
+                <TrendingUp className="w-4 h-4 text-muted-foreground" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.responseRate}%</div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <Users className="w-8 h-8 opacity-80" />
-              <span className="text-3xl font-bold">{groups.filter(g => g.isActive).length}</span>
-            </div>
-            <p className="text-purple-100">Grupos Ativos</p>
-          </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span>Horário Pico</span>
+                <Clock className="w-4 h-4 text-muted-foreground" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.peakHour}</div>
+            </CardContent>
+          </Card>
 
-          <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow p-6 text-white">
-            <div className="flex items-center justify-between mb-2">
-              <MessageCircle className="w-8 h-8 opacity-80" />
-              <span className="text-3xl font-bold">89</span>
-            </div>
-            <p className="text-orange-100">Leads Gerados</p>
-          </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                <span>Leads Gerados</span>
+                <Users className="w-4 h-4 text-muted-foreground" />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">{stats.leadsGenerated}</div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Grupos e Contatos */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <Users className="w-6 h-6 text-blue-500" />
-              Grupos e Contatos
-            </h2>
-            <button className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors text-sm">
-              + Adicionar Grupo
-            </button>
-          </div>
+        <Tabs defaultValue="bulk-send" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="bulk-send">
+              <Send className="w-4 h-4 mr-2" />
+              Envio em Massa
+            </TabsTrigger>
+            <TabsTrigger value="groups">
+              <Users className="w-4 h-4 mr-2" />
+              Grupos
+            </TabsTrigger>
+            <TabsTrigger value="history">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Histórico
+            </TabsTrigger>
+          </TabsList>
 
-          <div className="space-y-3">
-            {groups.map(group => (
-              <div
-                key={group.id}
-                className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
-              >
-                <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                    group.isActive ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-200 dark:bg-gray-600'
-                  }`}>
-                    <Users className={`w-6 h-6 ${
-                      group.isActive ? 'text-green-600 dark:text-green-400' : 'text-gray-500'
-                    }`} />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-white">{group.name}</h3>
-                    <div className="flex items-center gap-4 mt-1">
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        {group.contactCount} contatos
-                      </span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">
-                        Última mensagem: {group.lastMessageSent}
-                      </span>
+          {/* ENVIO EM MASSA */}
+          <TabsContent value="bulk-send" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Nova Campanha</CardTitle>
+                <CardDescription>
+                  Envie mensagens personalizadas para múltiplos contatos
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Nome da Campanha */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Nome da Campanha (opcional)
+                  </label>
+                  <Input
+                    value={campaignName}
+                    onChange={(e) => setCampaignName(e.target.value)}
+                    placeholder="Ex: Black Friday Novembro"
+                  />
+                </div>
+
+                {/* Upload de Contatos */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Adicionar Contatos</label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Upload CSV */}
+                    <div className="space-y-2">
+                      <label className="cursor-pointer">
+                        <div className="border-2 border-dashed rounded-lg p-6 text-center hover:bg-accent transition-colors">
+                          <Upload className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                          <p className="text-sm font-medium">Upload CSV</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Formato: Nome, Telefone
+                          </p>
+                        </div>
+                        <input
+                          type="file"
+                          accept=".csv"
+                          onChange={handleCSVUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    {/* Cola números */}
+                    <div className="space-y-2">
+                      <Textarea
+                        placeholder="Ou cole números (um por linha)&#10;João, 11999999999&#10;Maria, 11988888888"
+                        rows={6}
+                        value={phoneNumbers}
+                        onChange={(e) => handlePhoneNumbersChange(e.target.value)}
+                      />
                     </div>
                   </div>
+
+                  {contacts.length > 0 && (
+                    <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <span className="text-sm font-medium">
+                        {contacts.length} contatos carregados
+                      </span>
+                    </div>
+                  )}
                 </div>
-                
-                <div className="flex items-center gap-3">
-                  <span className={`text-xs px-3 py-1 rounded-full ${
-                    group.isActive
-                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
-                      : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-400'
-                  }`}>
-                    {group.isActive ? 'Ativo' : 'Inativo'}
-                  </span>
-                  <button className="px-4 py-2 bg-gray-100 dark:bg-gray-600 hover:bg-gray-200 dark:hover:bg-gray-500 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors">
-                    Gerenciar
-                  </button>
+
+                {/* Template de Mensagem */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Template de Mensagem</label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Variáveis disponíveis:{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{nome}'}</code>{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{telefone}'}</code>{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{produto}'}</code>{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{preco}'}</code>{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{link}'}</code>
+                  </p>
+                  <Textarea
+                    value={messageTemplate}
+                    onChange={(e) => setMessageTemplate(e.target.value)}
+                    rows={8}
+                    placeholder="Digite sua mensagem..."
+                    className="font-mono text-sm"
+                  />
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
 
-        {/* Envios Automáticos */}
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <Clock className="w-6 h-6 text-purple-500" />
-            Envios Automáticos
-          </h2>
+                {/* Preview e Agendamento */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Preview */}
+                  <div className="space-y-2">
+                    <Button
+                      variant="outline"
+                      onClick={generatePreview}
+                      className="w-full"
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      Ver Preview
+                    </Button>
+                    {previewMessage && (
+                      <div className="p-4 bg-muted rounded-lg">
+                        <p className="text-xs font-medium mb-2">Preview:</p>
+                        <p className="text-sm whitespace-pre-wrap">{previewMessage}</p>
+                      </div>
+                    )}
+                  </div>
 
-          {/* Toggle Ativar */}
-          <label className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg mb-4 cursor-pointer">
-            <div>
-              <span className="font-semibold text-gray-900 dark:text-white">Ativar envio automático</span>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Envie ofertas automaticamente para seus grupos
-              </p>
-            </div>
-            <input
-              type="checkbox"
-              checked={autoSend.enabled}
-              onChange={(e) => setAutoSend({ ...autoSend, enabled: e.target.checked })}
-              className="w-5 h-5 text-purple-500 rounded focus:ring-2 focus:ring-purple-500"
-            />
-          </label>
+                  {/* Agendamento */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">
+                      Agendamento (opcional)
+                    </label>
+                    <Input
+                      type="datetime-local"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                    />
+                  </div>
+                </div>
 
-          {/* Frequência */}
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-              Frequência de Envio:
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { value: 'daily', label: '📅 Diária' },
-                { value: 'twice-daily', label: '📅📅 2x ao Dia' },
-                { value: 'weekly', label: '📆 Semanal' }
-              ].map(freq => (
-                <button
-                  key={freq.value}
-                  onClick={() => setAutoSend({ ...autoSend, frequency: freq.value as any })}
-                  className={`py-3 px-4 rounded-lg font-medium transition-all ${
-                    autoSend.frequency === freq.value
-                      ? 'bg-purple-500 text-white shadow-lg'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                  }`}
+                {/* Botão Enviar */}
+                <Button
+                  onClick={handleBulkSend}
+                  disabled={loading || contacts.length === 0}
+                  className="w-full"
+                  size="lg"
                 >
-                  {freq.label}
-                </button>
-              ))}
-            </div>
-          </div>
+                  {loading ? (
+                    'Enviando...'
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 mr-2" />
+                      Enviar para {contacts.length} contatos
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {/* Horários Preferenciais */}
-          <div className="mb-4">
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-              Horários Preferenciais:
-            </label>
-            <div className="grid grid-cols-4 gap-2">
-              {['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'].map(time => (
-                <button
-                  key={time}
-                  onClick={() => toggleTime(time)}
-                  className={`py-2 px-4 rounded-lg font-medium transition-all ${
-                    autoSend.preferredTimes.includes(time)
-                      ? 'bg-purple-500 text-white'
-                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  {time}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* GRUPOS */}
+          <TabsContent value="groups" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Grupos do WhatsApp</span>
+                  <Button size="sm">+ Adicionar Grupo</Button>
+                </CardTitle>
+                <CardDescription>
+                  Gerencie seus grupos e envie mensagens
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {groups.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>Nenhum grupo cadastrado ainda</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {groups.map((group) => (
+                      <Card key={group.id} className="hover:shadow-md transition-shadow">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                                <Users className="w-6 h-6 text-green-600" />
+                              </div>
+                              <div>
+                                <h3 className="font-semibold">{group.group_name}</h3>
+                                <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                                  <span>{group.member_count} membros</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-xs ${
+                                    group.status === 'active'
+                                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600'
+                                  }`}>
+                                    {group.status === 'active' ? 'Ativo' : 'Inativo'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedGroup(group);
+                                  loadGroupMessages(group.id);
+                                }}
+                              >
+                                Ver Mensagens
+                              </Button>
+                              <Button size="sm">
+                                <Send className="w-4 h-4 mr-2" />
+                                Enviar
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-          {/* Template de Mensagem */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-              Template de Mensagem:
-            </label>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-              Use as variáveis: <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{'{{NomeProduto}}'}</code>,{' '}
-              <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{'{{Preco}}'}</code>,{' '}
-              <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{'{{LinkAfiliado}}'}</code>
-            </p>
-            <textarea
-              value={messageTemplate}
-              onChange={(e) => setMessageTemplate(e.target.value)}
-              rows={6}
-              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
-              placeholder="Digite seu template de mensagem..."
-            />
-          </div>
-        </div>
+            {/* Últimas mensagens do grupo selecionado */}
+            {selectedGroup && groupMessages.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Últimas Mensagens - {selectedGroup.group_name}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    {groupMessages.map((msg) => (
+                      <div key={msg.id} className="p-3 bg-muted rounded-lg">
+                        <p className="text-sm">{msg.message}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(msg.sent_at).toLocaleString('pt-BR')}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
 
-        {/* Botão Salvar */}
-        <div className="flex justify-end">
-          <button
-            onClick={handleSaveConfig}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
-              saved
-                ? 'bg-green-500 text-white'
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
-            }`}
-          >
-            <CheckCircle className="w-5 h-5" />
-            {saved ? '✓ Salvo com sucesso!' : 'Salvar Configurações'}
-          </button>
-        </div>
+          {/* HISTÓRICO */}
+          <TabsContent value="history" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Histórico de Envios</CardTitle>
+                <CardDescription>
+                  Acompanhe suas campanhas anteriores
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {bulkSends.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>Nenhuma campanha enviada ainda</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {bulkSends.map((send) => (
+                      <Card key={send.id} className="hover:shadow-md transition-shadow">
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <h3 className="font-semibold">
+                                {send.campaign_name || 'Sem nome'}
+                              </h3>
+                              <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                                <span>{send.total_contacts} contatos</span>
+                                <span>Enviados: {send.sent_count}</span>
+                                <span>Respostas: {send.response_count}</span>
+                                <span className={`px-2 py-0.5 rounded-full text-xs ${
+                                  send.status === 'completed'
+                                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700'
+                                    : send.status === 'sending'
+                                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700'
+                                    : 'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {send.status}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {new Date(send.created_at).toLocaleDateString('pt-BR')}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

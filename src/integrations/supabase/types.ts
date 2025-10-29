@@ -149,6 +149,181 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_bulk_sends: {
+        Row: {
+          campaign_name: string | null
+          completed_at: string | null
+          created_at: string
+          delivered_count: number
+          id: string
+          message_template: string
+          read_count: number
+          response_count: number
+          scheduled_at: string | null
+          sent_count: number
+          started_at: string | null
+          status: string
+          total_contacts: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          campaign_name?: string | null
+          completed_at?: string | null
+          created_at?: string
+          delivered_count?: number
+          id?: string
+          message_template: string
+          read_count?: number
+          response_count?: number
+          scheduled_at?: string | null
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          total_contacts?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          campaign_name?: string | null
+          completed_at?: string | null
+          created_at?: string
+          delivered_count?: number
+          id?: string
+          message_template?: string
+          read_count?: number
+          response_count?: number
+          scheduled_at?: string | null
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          total_contacts?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_contacts: {
+        Row: {
+          bulk_send_id: string
+          created_at: string
+          custom_fields: Json | null
+          delivered_at: string | null
+          error_message: string | null
+          id: string
+          name: string | null
+          phone: string
+          read_at: string | null
+          responded_at: string | null
+          sent_at: string | null
+          status: string
+        }
+        Insert: {
+          bulk_send_id: string
+          created_at?: string
+          custom_fields?: Json | null
+          delivered_at?: string | null
+          error_message?: string | null
+          id?: string
+          name?: string | null
+          phone: string
+          read_at?: string | null
+          responded_at?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Update: {
+          bulk_send_id?: string
+          created_at?: string
+          custom_fields?: Json | null
+          delivered_at?: string | null
+          error_message?: string | null
+          id?: string
+          name?: string | null
+          phone?: string
+          read_at?: string | null
+          responded_at?: string | null
+          sent_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_contacts_bulk_send_id_fkey"
+            columns: ["bulk_send_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_bulk_sends"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_group_messages: {
+        Row: {
+          group_id: string
+          id: string
+          message: string
+          sent_at: string
+          status: string
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          message: string
+          sent_at?: string
+          status?: string
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          message?: string
+          sent_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_group_messages_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_groups: {
+        Row: {
+          created_at: string
+          group_id: string
+          group_name: string
+          id: string
+          last_message_at: string | null
+          member_count: number
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          group_name: string
+          id?: string
+          last_message_at?: string | null
+          member_count?: number
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          group_name?: string
+          id?: string
+          last_message_at?: string | null
+          member_count?: number
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_notifications: {
         Row: {
           client_phone: string
