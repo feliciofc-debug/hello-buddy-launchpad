@@ -472,22 +472,18 @@ const Campanhas = () => {
       <div className="max-w-5xl mx-auto">
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between mb-4">
-              <Button variant="outline" onClick={() => navigate('/dashboard')}>
-                <ArrowLeft className="mr-2" size={18} />
-                Dashboard
-              </Button>
-            </div>
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-2xl">Nova Campanha</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Passo {currentStep} de 4
-                </p>
+              <div className="flex items-center gap-3">
+                <Button variant="outline" size="icon" onClick={() => setCurrentStep(0)}>
+                  <ArrowLeft size={18} />
+                </Button>
+                <div>
+                  <CardTitle className="text-2xl">Nova Campanha</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Passo {currentStep} de 4
+                  </p>
+                </div>
               </div>
-              <Button variant="outline" onClick={() => setCurrentStep(0)}>
-                ← Voltar ao Dashboard
-              </Button>
             </div>
             
             {/* Progress Bar */}
