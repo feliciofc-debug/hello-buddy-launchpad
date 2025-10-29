@@ -49,22 +49,53 @@ const IAMarketing = () => {
     setError("");
     setResultado(null);
     
+    console.log('🔍 Enviando URL para análise:', url.trim());
+    
     try {
       const response = await axios.post(
         "https://amz-ofertas-robo.onrender.com/analisar-produto",
-        { url },
-        { timeout: 30000 }
+        { 
+          url: url.trim(),
+          usuario_id: 'user123'
+        },
+        { 
+          timeout: 30000,
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
       );
 
-      setResultado(response.data);
-      setEditableInstagram(response.data.posts.instagram);
-      setEditableStories(response.data.posts.stories);
-      setEditableWhatsApp(response.data.posts.whatsapp);
-      toast.success("Análise concluída com sucesso!");
-    } catch (err) {
-      console.error(err);
-      setError("Erro ao analisar produto. Verifique o link e tente novamente.");
-      toast.error("Erro ao analisar produto");
+      console.log('✅ Resposta recebida:', response.data);
+
+      if (response.data.success) {
+        setResultado(response.data);
+        setEditableInstagram(response.data.posts.instagram);
+        setEditableStories(response.data.posts.stories);
+        setEditableWhatsApp(response.data.posts.whatsapp);
+        toast.success("Análise concluída com sucesso!");
+      } else {
+        setError(response.data.error || 'Erro desconhecido');
+        toast.error(response.data.error || 'Erro desconhecido');
+      }
+    } catch (err: any) {
+      console.error('❌ Erro completo:', err);
+      
+      let errorMessage = '';
+      
+      if (err.code === 'ECONNABORTED') {
+        errorMessage = 'Tempo esgotado. Link demorou muito para responder.';
+      } else if (err.response) {
+        errorMessage = err.response.data?.error || 'Erro no servidor';
+        console.error('Erro do servidor:', err.response.data);
+      } else if (err.request) {
+        errorMessage = 'Sem resposta do servidor. Verifique sua conexão.';
+      } else {
+        errorMessage = err.message || 'Erro desconhecido';
+      }
+      
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -72,7 +103,8 @@ const IAMarketing = () => {
 
   const handleCopy = (text: string, type: string) => {
     navigator.clipboard.writeText(text);
-    toast.success(`${type} copiado para a área de transferência!`);
+    console.log('📋 Texto copiado:', type);
+    toast.success(`✅ ${type} copiado para a área de transferência!`);
   };
 
   const handleWhatsAppSend = (text: string) => {
