@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { supabase } from '@/integrations/supabase/client';
@@ -242,6 +242,28 @@ const Dashboard = () => {
           >
             <Bot size={20} />
             IA Marketing
+          </a>
+          <a
+            href="/configuracoes/redes-sociais"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+              window.location.pathname === '/configuracoes/redes-sociais' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Instagram size={20} />
+            Redes Sociais
+          </a>
+          <a
+            href="/biblioteca"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+              window.location.pathname === '/biblioteca' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <BookOpen size={20} />
+            Biblioteca
           </a>
           <a
             href="/perfil"
