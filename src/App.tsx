@@ -23,6 +23,7 @@ import IAMarketing from "./pages/IAMarketing";
 import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
 import Campanhas from "./pages/Campanhas";
+import Marketplace from "./pages/Marketplace";
 
 const queryClient = new QueryClient();
 
@@ -51,6 +52,7 @@ const App = () => (
           <Route path="/configuracoes/redes-sociais" element={<RedesSociais />} />
           <Route path="/biblioteca" element={<Biblioteca />} />
           <Route path="/campanhas" element={<Campanhas />} />
+          <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/reviewer" element={<ReviewerLogin />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
