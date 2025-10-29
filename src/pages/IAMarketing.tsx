@@ -1,13 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Instagram, Smartphone, MessageCircle, ArrowLeft, AlertCircle } from "lucide-react";
+import { Loader2, Instagram, Smartphone, MessageCircle, ArrowLeft, AlertCircle, Calendar as CalendarIcon, Download, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface ProductAnalysis {
   produto: {
@@ -22,6 +32,24 @@ interface ProductAnalysis {
     stories: string;
     whatsapp: string;
   };
+  url?: string;
+}
+
+interface HistoryItem {
+  id: string;
+  date: string;
+  produto: string;
+  posts: {
+    instagram: string;
+    stories: string;
+    whatsapp: string;
+  };
+  status: 'rascunho' | 'agendado' | 'postado';
+  scheduledDate?: string;
+}
+
+interface BulkResult extends ProductAnalysis {
+  selected: boolean;
 }
 
 const IAMarketing = () => {
@@ -38,6 +66,51 @@ const IAMarketing = () => {
   const [editingInstagram, setEditingInstagram] = useState(false);
   const [editingStories, setEditingStories] = useState(false);
   const [editingWhatsApp, setEditingWhatsApp] = useState(false);
+
+  // Estados para análise em massa
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkUrls, setBulkUrls] = useState("");
+  const [bulkResults, setBulkResults] = useState<BulkResult[]>([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  // Estados para agendamento
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState<Date>();
+  const [scheduleNetworks, setScheduleNetworks] = useState({
+    instagram: true,
+    facebook: false,
+    tiktok: false,
+    whatsapp: false,
+  });
+  const [scheduleFrequency, setScheduleFrequency] = useState<'once' | 'daily' | 'weekly'>('once');
+
+  // Estados para histórico
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyFilter, setHistoryFilter] = useState<'todos' | 'agendado' | 'postado' | 'rascunho'>('todos');
+  const [historySearch, setHistorySearch] = useState("");
+
+  // Carregar histórico do localStorage
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('ia-marketing-history');
+    if (savedHistory) {
+      setHistory(JSON.parse(savedHistory));
+    }
+  }, []);
+
+  // Salvar no histórico
+  const saveToHistory = (result: ProductAnalysis, status: 'rascunho' | 'agendado' | 'postado' = 'rascunho', scheduledDate?: string) => {
+    const newItem: HistoryItem = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      produto: result.produto.titulo,
+      posts: result.posts,
+      status,
+      scheduledDate,
+    };
+    const updatedHistory = [newItem, ...history];
+    setHistory(updatedHistory);
+    localStorage.setItem('ia-marketing-history', JSON.stringify(updatedHistory));
+  };
 
   const handleAnalyze = async () => {
     if (!url.trim()) {
@@ -112,6 +185,98 @@ const IAMarketing = () => {
     window.open(`https://web.whatsapp.com/send?text=${encodedText}`, "_blank");
   };
 
+  // Análise em massa
+  const handleBulkAnalyze = async () => {
+    const urls = bulkUrls.split('\n').filter(u => u.trim()).slice(0, 10);
+    if (urls.length === 0) {
+      toast.error("Cole pelo menos um link!");
+      return;
+    }
+
+    setBulkLoading(true);
+    setBulkResults([]);
+    
+    for (const singleUrl of urls) {
+      try {
+        const response = await axios.post(
+          "https://amz-ofertas-robo.onrender.com/analisar-produto",
+          { 
+            url: singleUrl.trim(),
+            usuario_id: 'user123'
+          },
+          { 
+            timeout: 30000,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+
+        if (response.data.success) {
+          setBulkResults(prev => [...prev, { ...response.data, url: singleUrl, selected: false }]);
+        }
+      } catch (err) {
+        console.error('Erro ao analisar:', singleUrl, err);
+      }
+    }
+    
+    setBulkLoading(false);
+    toast.success(`${urls.length} links analisados!`);
+  };
+
+  const toggleBulkSelection = (index: number) => {
+    setBulkResults(prev => prev.map((r, i) => i === index ? { ...r, selected: !r.selected } : r));
+  };
+
+  const copySelected = () => {
+    const selected = bulkResults.filter(r => r.selected);
+    if (selected.length === 0) {
+      toast.error("Selecione pelo menos um resultado!");
+      return;
+    }
+    const text = selected.map(r => 
+      `${r.produto.titulo}\n\nInstagram:\n${r.posts.instagram}\n\nStories:\n${r.posts.stories}\n\nWhatsApp:\n${r.posts.whatsapp}\n\n---\n\n`
+    ).join('');
+    navigator.clipboard.writeText(text);
+    toast.success(`${selected.length} posts copiados!`);
+  };
+
+  const downloadAll = () => {
+    const text = bulkResults.map(r => 
+      `${r.produto.titulo}\n\nInstagram:\n${r.posts.instagram}\n\nStories:\n${r.posts.stories}\n\nWhatsApp:\n${r.posts.whatsapp}\n\n---\n\n`
+    ).join('');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `posts-gerados-${Date.now()}.txt`;
+    a.click();
+    toast.success("Arquivo baixado!");
+  };
+
+  // Agendamento
+  const handleSchedule = () => {
+    if (!scheduleDate) {
+      toast.error("Selecione uma data!");
+      return;
+    }
+    if (resultado) {
+      saveToHistory(resultado, 'agendado', scheduleDate.toISOString());
+      toast.success("Postagens agendadas com sucesso!");
+      setShowScheduleModal(false);
+    }
+  };
+
+  // Histórico
+  const filteredHistory = history
+    .filter(item => historyFilter === 'todos' || item.status === historyFilter)
+    .filter(item => item.produto.toLowerCase().includes(historySearch.toLowerCase()));
+
+  const deleteHistoryItem = (id: string) => {
+    const updatedHistory = history.filter(item => item.id !== id);
+    setHistory(updatedHistory);
+    localStorage.setItem('ia-marketing-history', JSON.stringify(updatedHistory));
+    toast.success("Item removido!");
+  };
+
   const getScoreColor = (score: number) => {
     if (score >= 8) return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100";
     if (score >= 5) return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100";
@@ -125,83 +290,180 @@ const IAMarketing = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header da Página */}
-        <div className="mb-8">
-          <Button
-            onClick={() => navigate('/')}
-            variant="ghost"
-            className="mb-4 hover:bg-muted"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar para o Dashboard
-          </Button>
-          
-          <div className="text-center space-y-2">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent">
-              🤖 IA Marketing
-            </h1>
-            <p className="text-lg md:text-xl text-muted-foreground">
-              Transforme qualquer link de produto em posts virais com IA
-            </p>
-          </div>
-        </div>
+        <Tabs defaultValue="gerar" className="w-full">
+          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">
+            <TabsTrigger value="gerar">Gerar Posts</TabsTrigger>
+            <TabsTrigger value="historico">Meus Posts</TabsTrigger>
+          </TabsList>
 
-        {/* Seção de Análise do Produto */}
-        <Card className="max-w-3xl mx-auto mb-8 shadow-lg">
-          <CardContent className="pt-6 space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">
-                Cole o link do produto que você quer promover:
-              </label>
-              <Input
-                type="text"
-                placeholder="https://shopee.com.br/produto... ou qualquer link de afiliado"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className="h-12 text-base"
-                disabled={loading}
-              />
-            </div>
-            
-            <Button
-              onClick={handleAnalyze}
-              disabled={loading}
-              className="w-full h-14 text-lg font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  🔍 Analisando produto... Aguarde 10-20 segundos
-                </>
-              ) : (
-                "✨ ANALISAR COM IA"
-              )}
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Estado de Erro */}
-        {error && (
-          <Alert variant="destructive" className="max-w-3xl mx-auto mb-8">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between">
-              <span>❌ {error}</span>
+          <TabsContent value="gerar">
+            {/* Header da Página */}
+            <div className="mb-8">
               <Button
-                onClick={handleAnalyze}
-                variant="outline"
-                size="sm"
-                className="ml-4"
+                onClick={() => navigate('/')}
+                variant="ghost"
+                className="mb-4 hover:bg-muted"
               >
-                Tentar Novamente
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Voltar para o Dashboard
               </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+              
+              <div className="text-center space-y-2">
+                <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent">
+                  🤖 IA Marketing
+                </h1>
+                <p className="text-lg md:text-xl text-muted-foreground">
+                  Transforme qualquer link de produto em posts virais com IA
+                </p>
+              </div>
+            </div>
 
-        {/* Seção de Informações do Produto */}
-        {resultado && (
-          <>
+            {/* Seção de Análise do Produto */}
             <Card className="max-w-3xl mx-auto mb-8 shadow-lg">
+              <CardContent className="pt-6 space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <Label htmlFor="bulk-mode" className="text-base font-semibold">Analisar múltiplos links</Label>
+                  <Switch id="bulk-mode" checked={bulkMode} onCheckedChange={setBulkMode} />
+                </div>
+
+                {!bulkMode ? (
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Cole o link do produto que você quer promover:
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="https://shopee.com.br/produto... ou qualquer link de afiliado"
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      className="h-12 text-base"
+                      disabled={loading}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">
+                      Cole até 10 links, um por linha:
+                    </label>
+                    <Textarea
+                      placeholder="https://shopee.com.br/produto1&#10;https://shopee.com.br/produto2&#10;https://shopee.com.br/produto3"
+                      value={bulkUrls}
+                      onChange={(e) => setBulkUrls(e.target.value)}
+                      className="min-h-[200px] text-base"
+                      disabled={bulkLoading}
+                    />
+                  </div>
+                )}
+                
+                <Button
+                  onClick={bulkMode ? handleBulkAnalyze : handleAnalyze}
+                  disabled={loading || bulkLoading}
+                  className="w-full h-14 text-lg font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg"
+                >
+                  {(loading || bulkLoading) ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      🔍 Analisando produto... Aguarde 10-20 segundos
+                    </>
+                  ) : bulkMode ? (
+                    `✨ ANALISAR TODOS (${bulkUrls.split('\n').filter(u => u.trim()).length}/10)`
+                  ) : (
+                    "✨ ANALISAR COM IA"
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Resultados em massa */}
+            {bulkMode && bulkResults.length > 0 && (
+              <Card className="max-w-6xl mx-auto mb-8 shadow-lg">
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span>📊 Resultados da Análise ({bulkResults.length})</span>
+                    <div className="flex gap-2">
+                      <Button onClick={copySelected} variant="outline" size="sm">
+                        📋 Copiar Selecionados
+                      </Button>
+                      <Button onClick={downloadAll} variant="outline" size="sm">
+                        <Download className="mr-2 h-4 w-4" />
+                        Baixar Todos
+                      </Button>
+                    </div>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12"></TableHead>
+                        <TableHead>Produto</TableHead>
+                        <TableHead>Score</TableHead>
+                        <TableHead>Preço</TableHead>
+                        <TableHead>Posts</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bulkResults.map((result, index) => (
+                        <TableRow key={index}>
+                          <TableCell>
+                            <Checkbox 
+                              checked={result.selected}
+                              onCheckedChange={() => toggleBulkSelection(index)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">{result.produto.titulo}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${getScoreColor(result.produto.score)}`}>
+                              {result.produto.score}/10
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {result.produto.preco ? `R$ ${result.produto.preco.toFixed(2)}` : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                setResultado(result);
+                                setEditableInstagram(result.posts.instagram);
+                                setEditableStories(result.posts.stories);
+                                setEditableWhatsApp(result.posts.whatsapp);
+                              }}
+                            >
+                              Ver Posts
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Estado de Erro */}
+            {error && (
+              <Alert variant="destructive" className="max-w-3xl mx-auto mb-8">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="flex items-center justify-between">
+                  <span>❌ {error}</span>
+                  <Button
+                    onClick={handleAnalyze}
+                    variant="outline"
+                    size="sm"
+                    className="ml-4"
+                  >
+                    Tentar Novamente
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Seção de Informações do Produto */}
+            {resultado && (
+              <>
+                <Card className="max-w-3xl mx-auto mb-8 shadow-lg">
               <CardHeader>
                 <CardTitle className="text-2xl">📦 Informações do Produto</CardTitle>
               </CardHeader>
@@ -238,11 +500,88 @@ const IAMarketing = () => {
                     </p>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-            {/* Seção de Posts Gerados */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Botão de Agendamento */}
+                <div className="max-w-3xl mx-auto mb-8 flex justify-center">
+                  <Dialog open={showScheduleModal} onOpenChange={setShowScheduleModal}>
+                    <DialogTrigger asChild>
+                      <Button className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        📅 Agendar Postagens
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>📅 Agendar Postagens</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div>
+                          <Label className="mb-2 block">Data e Hora</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !scheduleDate && "text-muted-foreground")}>
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {scheduleDate ? format(scheduleDate, "PPP") : "Selecione uma data"}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar mode="single" selected={scheduleDate} onSelect={setScheduleDate} initialFocus className="pointer-events-auto" />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+
+                        <div>
+                          <Label className="mb-2 block">Redes Sociais</Label>
+                          <div className="space-y-2">
+                            <div className="flex items-center">
+                              <Checkbox id="instagram" checked={scheduleNetworks.instagram} onCheckedChange={(checked) => setScheduleNetworks(prev => ({ ...prev, instagram: checked as boolean }))} />
+                              <label htmlFor="instagram" className="ml-2 text-sm">Instagram</label>
+                            </div>
+                            <div className="flex items-center">
+                              <Checkbox id="facebook" checked={scheduleNetworks.facebook} onCheckedChange={(checked) => setScheduleNetworks(prev => ({ ...prev, facebook: checked as boolean }))} />
+                              <label htmlFor="facebook" className="ml-2 text-sm">Facebook</label>
+                            </div>
+                            <div className="flex items-center">
+                              <Checkbox id="tiktok" checked={scheduleNetworks.tiktok} onCheckedChange={(checked) => setScheduleNetworks(prev => ({ ...prev, tiktok: checked as boolean }))} />
+                              <label htmlFor="tiktok" className="ml-2 text-sm">TikTok</label>
+                            </div>
+                            <div className="flex items-center">
+                              <Checkbox id="whatsapp" checked={scheduleNetworks.whatsapp} onCheckedChange={(checked) => setScheduleNetworks(prev => ({ ...prev, whatsapp: checked as boolean }))} />
+                              <label htmlFor="whatsapp" className="ml-2 text-sm">WhatsApp</label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <Label className="mb-2 block">Frequência</Label>
+                          <div className="flex gap-2">
+                            <Button variant={scheduleFrequency === 'once' ? 'default' : 'outline'} size="sm" onClick={() => setScheduleFrequency('once')}>Uma vez</Button>
+                            <Button variant={scheduleFrequency === 'daily' ? 'default' : 'outline'} size="sm" onClick={() => setScheduleFrequency('daily')}>Diário</Button>
+                            <Button variant={scheduleFrequency === 'weekly' ? 'default' : 'outline'} size="sm" onClick={() => setScheduleFrequency('weekly')}>Semanal</Button>
+                          </div>
+                        </div>
+
+                        {scheduleDate && (
+                          <div className="bg-muted p-3 rounded-lg">
+                            <p className="text-sm font-semibold mb-1">Preview do Agendamento:</p>
+                            <p className="text-xs">Data: {format(scheduleDate, "PPP")}</p>
+                            <p className="text-xs">Redes: {Object.entries(scheduleNetworks).filter(([_, v]) => v).map(([k]) => k).join(', ')}</p>
+                            <p className="text-xs">Frequência: {scheduleFrequency === 'once' ? 'Uma vez' : scheduleFrequency === 'daily' ? 'Diário' : 'Semanal'}</p>
+                          </div>
+                        )}
+
+                        <Button onClick={handleSchedule} className="w-full">
+                          Confirmar Agendamento
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+
+                {/* Seção de Posts Gerados */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Card Instagram Post */}
               <Card className="shadow-lg">
                 <CardHeader className="pb-4">
@@ -379,10 +718,106 @@ const IAMarketing = () => {
                     </Button>
                   </div>
                 </CardContent>
-              </Card>
+                  </Card>
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          <TabsContent value="historico">
+            <div className="mb-8">
+              <h2 className="text-3xl font-bold mb-4">📚 Meus Posts Gerados</h2>
+              
+              <div className="flex flex-col md:flex-row gap-4 mb-6">
+                <div className="flex gap-2">
+                  <Button variant={historyFilter === 'todos' ? 'default' : 'outline'} onClick={() => setHistoryFilter('todos')}>Todos</Button>
+                  <Button variant={historyFilter === 'agendado' ? 'default' : 'outline'} onClick={() => setHistoryFilter('agendado')}>Agendados</Button>
+                  <Button variant={historyFilter === 'postado' ? 'default' : 'outline'} onClick={() => setHistoryFilter('postado')}>Postados</Button>
+                  <Button variant={historyFilter === 'rascunho' ? 'default' : 'outline'} onClick={() => setHistoryFilter('rascunho')}>Rascunhos</Button>
+                </div>
+                
+                <div className="flex-1 max-w-md">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="Buscar por produto..." 
+                      value={historySearch}
+                      onChange={(e) => setHistorySearch(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {filteredHistory.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <p className="text-muted-foreground">Nenhum post encontrado. Comece gerando posts na aba "Gerar Posts"!</p>
+                </Card>
+              ) : (
+                <Card>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Data</TableHead>
+                        <TableHead>Produto</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Agendado Para</TableHead>
+                        <TableHead>Ações</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredHistory.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{format(new Date(item.date), "dd/MM/yyyy HH:mm")}</TableCell>
+                          <TableCell className="font-medium">{item.produto}</TableCell>
+                          <TableCell>
+                            <span className={cn(
+                              "px-2 py-1 rounded-full text-xs font-bold",
+                              item.status === 'postado' && "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100",
+                              item.status === 'agendado' && "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100",
+                              item.status === 'rascunho' && "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100"
+                            )}>
+                              {item.status}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            {item.scheduledDate ? format(new Date(item.scheduledDate), "dd/MM/yyyy HH:mm") : '-'}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                  setResultado({
+                                    produto: { titulo: item.produto, imagem: '', score: 0, recomendacao: '' },
+                                    posts: item.posts
+                                  });
+                                  setEditableInstagram(item.posts.instagram);
+                                  setEditableStories(item.posts.stories);
+                                  setEditableWhatsApp(item.posts.whatsapp);
+                                }}
+                              >
+                                Ver Posts
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => deleteHistoryItem(item.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Card>
+              )}
             </div>
-          </>
-        )}
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
