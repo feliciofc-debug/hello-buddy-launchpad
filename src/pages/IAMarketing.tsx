@@ -12,12 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { SchedulePostsModal } from "@/components/SchedulePostsModal";
 
 interface ProductAnalysis {
   produto: {
@@ -75,14 +74,6 @@ const IAMarketing = () => {
 
   // Estados para agendamento
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [scheduleDate, setScheduleDate] = useState<Date>();
-  const [scheduleNetworks, setScheduleNetworks] = useState({
-    instagram: true,
-    facebook: false,
-    tiktok: false,
-    whatsapp: false,
-  });
-  const [scheduleFrequency, setScheduleFrequency] = useState<'once' | 'daily' | 'weekly'>('once');
 
   // Estados para histórico
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -252,18 +243,7 @@ const IAMarketing = () => {
     toast.success("Arquivo baixado!");
   };
 
-  // Agendamento
-  const handleSchedule = () => {
-    if (!scheduleDate) {
-      toast.error("Selecione uma data!");
-      return;
-    }
-    if (resultado) {
-      saveToHistory(resultado, 'agendado', scheduleDate.toISOString());
-      toast.success("Postagens agendadas com sucesso!");
-      setShowScheduleModal(false);
-    }
-  };
+  // Agendamento - agora é gerenciado pelo SchedulePostsModal
 
   // Histórico
   const filteredHistory = history
@@ -505,80 +485,25 @@ const IAMarketing = () => {
 
                 {/* Botão de Agendamento */}
                 <div className="max-w-3xl mx-auto mb-8 flex justify-center">
-                  <Dialog open={showScheduleModal} onOpenChange={setShowScheduleModal}>
-                    <DialogTrigger asChild>
-                      <Button className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        📅 Agendar Postagens
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>📅 Agendar Postagens</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4 py-4">
-                        <div>
-                          <Label className="mb-2 block">Data e Hora</Label>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !scheduleDate && "text-muted-foreground")}>
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {scheduleDate ? format(scheduleDate, "PPP") : "Selecione uma data"}
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0">
-                              <Calendar mode="single" selected={scheduleDate} onSelect={setScheduleDate} initialFocus className="pointer-events-auto" />
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-
-                        <div>
-                          <Label className="mb-2 block">Redes Sociais</Label>
-                          <div className="space-y-2">
-                            <div className="flex items-center">
-                              <Checkbox id="instagram" checked={scheduleNetworks.instagram} onCheckedChange={(checked) => setScheduleNetworks(prev => ({ ...prev, instagram: checked as boolean }))} />
-                              <label htmlFor="instagram" className="ml-2 text-sm">Instagram</label>
-                            </div>
-                            <div className="flex items-center">
-                              <Checkbox id="facebook" checked={scheduleNetworks.facebook} onCheckedChange={(checked) => setScheduleNetworks(prev => ({ ...prev, facebook: checked as boolean }))} />
-                              <label htmlFor="facebook" className="ml-2 text-sm">Facebook</label>
-                            </div>
-                            <div className="flex items-center">
-                              <Checkbox id="tiktok" checked={scheduleNetworks.tiktok} onCheckedChange={(checked) => setScheduleNetworks(prev => ({ ...prev, tiktok: checked as boolean }))} />
-                              <label htmlFor="tiktok" className="ml-2 text-sm">TikTok</label>
-                            </div>
-                            <div className="flex items-center">
-                              <Checkbox id="whatsapp" checked={scheduleNetworks.whatsapp} onCheckedChange={(checked) => setScheduleNetworks(prev => ({ ...prev, whatsapp: checked as boolean }))} />
-                              <label htmlFor="whatsapp" className="ml-2 text-sm">WhatsApp</label>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <Label className="mb-2 block">Frequência</Label>
-                          <div className="flex gap-2">
-                            <Button variant={scheduleFrequency === 'once' ? 'default' : 'outline'} size="sm" onClick={() => setScheduleFrequency('once')}>Uma vez</Button>
-                            <Button variant={scheduleFrequency === 'daily' ? 'default' : 'outline'} size="sm" onClick={() => setScheduleFrequency('daily')}>Diário</Button>
-                            <Button variant={scheduleFrequency === 'weekly' ? 'default' : 'outline'} size="sm" onClick={() => setScheduleFrequency('weekly')}>Semanal</Button>
-                          </div>
-                        </div>
-
-                        {scheduleDate && (
-                          <div className="bg-muted p-3 rounded-lg">
-                            <p className="text-sm font-semibold mb-1">Preview do Agendamento:</p>
-                            <p className="text-xs">Data: {format(scheduleDate, "PPP")}</p>
-                            <p className="text-xs">Redes: {Object.entries(scheduleNetworks).filter(([_, v]) => v).map(([k]) => k).join(', ')}</p>
-                            <p className="text-xs">Frequência: {scheduleFrequency === 'once' ? 'Uma vez' : scheduleFrequency === 'daily' ? 'Diário' : 'Semanal'}</p>
-                          </div>
-                        )}
-
-                        <Button onClick={handleSchedule} className="w-full">
-                          Confirmar Agendamento
-                        </Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
+                  <Button 
+                    onClick={() => setShowScheduleModal(true)}
+                    className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    📅 Agendar Postagens
+                  </Button>
                 </div>
+
+                {/* Modal de Agendamento Completo */}
+                <SchedulePostsModal
+                  open={showScheduleModal}
+                  onOpenChange={setShowScheduleModal}
+                  postContent={{
+                    instagram: editableInstagram,
+                    stories: editableStories,
+                    whatsapp: editableWhatsApp,
+                  }}
+                />
 
                 {/* Seção de Posts Gerados */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
