@@ -478,7 +478,7 @@ const Campanhas = () => {
                 Voltar para Dashboard
               </Button>
               <div className="text-center flex-1">
-                <CardTitle className="text-2xl">Nova Campanha</CardTitle>
+                <CardTitle className="text-2xl">CAMPANHA</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
                   Passo {currentStep} de 4
                 </p>
