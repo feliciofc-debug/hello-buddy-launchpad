@@ -22,6 +22,7 @@ import LomadeeFinder from "./pages/LomadeeFinder";
 import IAMarketing from "./pages/IAMarketing";
 import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
+import Campanhas from "./pages/Campanhas";
 
 const queryClient = new QueryClient();
 
@@ -47,8 +48,9 @@ const App = () => (
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
             <Route path="/lomadee" element={<LomadeeFinder />} />
             <Route path="/ia-marketing" element={<IAMarketing />} />
-            <Route path="/configuracoes/redes-sociais" element={<RedesSociais />} />
-            <Route path="/biblioteca" element={<Biblioteca />} />
+          <Route path="/configuracoes/redes-sociais" element={<RedesSociais />} />
+          <Route path="/biblioteca" element={<Biblioteca />} />
+          <Route path="/campanhas" element={<Campanhas />} />
             <Route path="/reviewer" element={<ReviewerLogin />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
