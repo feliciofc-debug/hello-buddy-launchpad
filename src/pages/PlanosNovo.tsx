@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Check, Users, Building2, Rocket, ChevronDown } from 'lucide-react';
+import { Check, Users, Building2, Rocket, ChevronDown, ArrowLeft } from 'lucide-react';
 
 export default function PlanosNovo() {
   const navigate = useNavigate();
@@ -37,6 +37,15 @@ export default function PlanosNovo() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
       {/* Header */}
       <div className="container mx-auto px-4 py-12">
+        <Button
+          onClick={() => navigate('/')}
+          variant="ghost"
+          className="mb-8 text-white hover:bg-white/10"
+        >
+          <ArrowLeft className="mr-2 h-5 w-5" />
+          Voltar para Página Principal
+        </Button>
+        
         <div className="text-center mb-12 animate-fade-in">
           <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-orange-400 to-pink-500 bg-clip-text text-transparent">
             Escolha o Plano Ideal para Você
