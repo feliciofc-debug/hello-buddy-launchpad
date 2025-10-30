@@ -9,6 +9,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Cadastro from "./pages/Cadastro";
 import Planos from "./pages/Planos";
+import PlanosNovo from "./pages/PlanosNovo";
 import TestPayment from "./pages/TestPayment";
 import NotFound from "./pages/NotFound";
 import ProductsPage from "./pages/ProductsPage";
@@ -38,7 +39,8 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro" element={<Cadastro />} />
-            <Route path="/planos" element={<Planos />} />
+            <Route path="/planos-antigo" element={<Planos />} />
+            <Route path="/planos" element={<PlanosNovo />} />
             <Route path="/test-payment" element={<TestPayment />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/produtos" element={<ProductsPage />} />

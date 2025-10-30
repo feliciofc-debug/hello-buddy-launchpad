@@ -221,62 +221,111 @@ function Landing() {
         </div>
       </section>
 
-      {/* PREÇOS */}
+      {/* PREÇOS - Preview Planos */}
       <section id="precos" className="py-20 px-6 bg-gradient-to-b from-slate-900 to-purple-900">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <div className="inline-block bg-green-500/20 border border-green-500 rounded-full px-4 py-2 mb-6">
-              <span className="text-green-300 font-semibold">🔥 OFERTA DE LANÇAMENTO</span>
+              <span className="text-green-300 font-semibold">💳 PLANOS PARA TODOS OS PERFIS</span>
             </div>
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Comece <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500">GRÁTIS</span> Hoje!
+              Escolha o <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500">Plano Ideal</span> para Você
             </h2>
-            <p className="text-xl text-purple-300">7 dias de teste sem compromisso. Cancele quando quiser.</p>
+            <p className="text-xl text-purple-300">Afiliados, empresas, indústrias e agências</p>
           </div>
 
-          <div className="max-w-lg mx-auto">
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-green-500 rounded-3xl p-10 relative overflow-hidden">
-              <div className="absolute top-0 right-0 bg-gradient-to-r from-orange-500 to-red-500 px-6 py-2 text-sm font-bold transform rotate-45 translate-x-8 translate-y-4">
-                MAIS VENDIDO
-              </div>
-              
-              <div className="text-center mb-8">
-                <h3 className="text-3xl font-bold mb-4">Plano Mensal</h3>
-                <div className="mb-4">
-                  <span className="text-5xl font-bold">R$ 147</span>
-                  <span className="text-slate-400">/mês</span>
+          {/* Preview dos 3 Cards Principais */}
+          <div className="grid md:grid-cols-3 gap-8 mb-12">
+            {/* Card Afiliados */}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-purple-500 rounded-2xl p-8 hover:scale-105 transition-transform">
+              <div className="text-center mb-6">
+                <div className="text-5xl mb-3">💰</div>
+                <h3 className="text-2xl font-bold mb-2">AFILIADO</h3>
+                <div className="text-3xl font-bold text-green-400">
+                  R$ 147<span className="text-sm text-gray-400">/mês</span>
                 </div>
-                <p className="text-slate-400 line-through">De R$ 297/mês</p>
-                <p className="text-green-400 font-bold">Economize 50% 🎉</p>
               </div>
-
-              <div className="space-y-4 mb-8">
+              <div className="space-y-3 mb-6">
                 {[
-                  "1000+ produtos com alta demanda",
-                  "Posts gerados com IA ilimitados",
-                  "Calculadora ROI profissional",
-                  "WhatsApp em massa",
-                  "Gerador de anúncios IA",
-                  "Rastreamento de conversões",
-                  "Suporte prioritário"
+                  "IA gera posts virais",
+                  "Análise de produtos",
+                  "Agendamento automático",
+                  "Múltiplas redes sociais",
+                  "WhatsApp integrado"
                 ].map((feature, index) => (
-                  <div key={index} className="flex items-center gap-3">
-                    <span className="text-green-400 text-2xl">✅</span>
+                  <div key={index} className="flex items-center gap-2 text-sm">
+                    <span className="text-green-400">✅</span>
                     <span>{feature}</span>
                   </div>
                 ))}
               </div>
-
-              <button onClick={() => navigate('/cadastro')} className="block w-full bg-gradient-to-r from-green-500 to-emerald-500 py-5 rounded-xl font-bold text-xl text-center hover:shadow-2xl transition transform hover:scale-105 mb-4">
-                🎁 COMEÇAR GRÁTIS - 7 DIAS
-              </button>
-
-              <p className="text-center text-sm text-slate-400">
-                ✅ Sem cartão de crédito<br/>
-                ✅ Cancele quando quiser<br/>
-                ✅ Acesso imediato
-              </p>
             </div>
+
+            {/* Card Empresas */}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-orange-500 rounded-2xl p-8 hover:scale-105 transition-transform relative">
+              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-500 px-4 py-1 rounded-full text-xs font-bold">
+                MAIS POPULAR
+              </div>
+              <div className="text-center mb-6">
+                <div className="text-5xl mb-3">🏪</div>
+                <h3 className="text-2xl font-bold mb-2">EMPRESAS</h3>
+                <div className="text-3xl font-bold text-green-400">
+                  R$ 447<span className="text-sm text-gray-400">/mês</span>
+                </div>
+              </div>
+              <div className="space-y-3 mb-6">
+                {[
+                  "Upload fotos",
+                  "IA gera posts",
+                  "Cria vídeos",
+                  "Google Ads",
+                  "Analytics avançado"
+                ].map((feature, index) => (
+                  <div key={index} className="flex items-center gap-2 text-sm">
+                    <span className="text-green-400">✅</span>
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Card Indústria */}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-blue-500 rounded-2xl p-8 hover:scale-105 transition-transform">
+              <div className="text-center mb-6">
+                <div className="text-5xl mb-3">🏭</div>
+                <h3 className="text-2xl font-bold mb-2">INDÚSTRIA</h3>
+                <div className="text-3xl font-bold text-green-400">
+                  R$ 947<span className="text-sm text-gray-400">/mês</span>
+                </div>
+              </div>
+              <div className="space-y-3 mb-6">
+                {[
+                  "Catálogo produtos",
+                  "Rede de vendas",
+                  "Marketplace afiliados",
+                  "Suporte prioritário",
+                  "Onboarding dedicado"
+                ].map((feature, index) => (
+                  <div key={index} className="flex items-center gap-2 text-sm">
+                    <span className="text-green-400">✅</span>
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Ver Todos os Planos */}
+          <div className="text-center">
+            <button 
+              onClick={() => navigate('/planos')} 
+              className="inline-block bg-gradient-to-r from-purple-500 to-pink-500 px-12 py-5 rounded-xl font-bold text-xl hover:shadow-2xl transition transform hover:scale-105"
+            >
+              Ver Todos os Planos
+            </button>
+            <p className="mt-4 text-purple-200">
+              ✅ 7 dias grátis • ✅ Cancele quando quiser
+            </p>
           </div>
         </div>
       </section>
