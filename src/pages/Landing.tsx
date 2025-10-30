@@ -251,7 +251,8 @@ function Landing() {
                   "Análise de produtos",
                   "Agendamento automático",
                   "Múltiplas redes sociais",
-                  "WhatsApp integrado"
+                  "WhatsApp (envio individual)",
+                  "Marketplace (candidatar-se a ofertas)"
                 ].map((feature, index) => (
                   <div key={index} className="flex items-center gap-2 text-sm">
                     <span className="text-green-400">✅</span>
@@ -279,7 +280,9 @@ function Landing() {
                   "IA gera posts",
                   "Cria vídeos",
                   "Google Ads",
-                  "Analytics avançado"
+                  "Analytics avançado",
+                  "WhatsApp em Massa (até 1000/dia)",
+                  "Marketplace (criar ofertas)"
                 ].map((feature, index) => (
                   <div key={index} className="flex items-center gap-2 text-sm">
                     <span className="text-green-400">✅</span>
@@ -304,7 +307,9 @@ function Landing() {
                   "Rede de vendas",
                   "Marketplace afiliados",
                   "Suporte prioritário",
-                  "Onboarding dedicado"
+                  "Onboarding dedicado",
+                  "WhatsApp em Massa (ilimitado)",
+                  "Marketplace (publicar + recrutar afiliados)"
                 ].map((feature, index) => (
                   <div key={index} className="flex items-center gap-2 text-sm">
                     <span className="text-green-400">✅</span>
