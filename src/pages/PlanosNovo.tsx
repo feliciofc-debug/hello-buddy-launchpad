@@ -104,7 +104,7 @@ export default function PlanosNovo() {
                 ].map((feature, index) => (
                   <div key={index} className="flex items-center gap-3 text-lg">
                     <Check className="h-6 w-6 text-green-400 flex-shrink-0" />
-                    <span>{feature}</span>
+                    <span className="text-white">{feature}</span>
                   </div>
                 ))}
               </CardContent>
@@ -161,7 +161,7 @@ export default function PlanosNovo() {
                   ].map((feature, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-400 flex-shrink-0" />
-                      <span>{feature}</span>
+                      <span className="text-white">{feature}</span>
                     </div>
                   ))}
                 </div>
@@ -215,7 +215,7 @@ export default function PlanosNovo() {
                   ].map((feature, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-400 flex-shrink-0" />
-                      <span>{feature}</span>
+                      <span className="text-white">{feature}</span>
                     </div>
                   ))}
                 </div>
@@ -260,7 +260,7 @@ export default function PlanosNovo() {
                   ].map((feature, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <Check className="h-4 w-4 text-green-400 flex-shrink-0" />
-                      <span>{feature}</span>
+                      <span className="text-white">{feature}</span>
                     </div>
                   ))}
                 </div>
