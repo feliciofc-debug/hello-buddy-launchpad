@@ -95,12 +95,12 @@ export default function PlanosNovo() {
                   'IA gera posts virais',
                   '3 formatos (Post/Story/Video)',
                   'Agendamento automático',
-                  'WhatsApp integrado',
+                  'WhatsApp (envio individual)',
                   'Biblioteca de conteúdo',
                   'Múltiplas redes sociais',
                   'Links Shopee/Amazon/Hotmart',
                   'Análise de comissões',
-                  'Marketplace de ofertas'
+                  'Marketplace (candidatar-se a ofertas)'
                 ].map((feature, index) => (
                   <div key={index} className="flex items-center gap-3 text-lg">
                     <Check className="h-6 w-6 text-green-400 flex-shrink-0" />
@@ -151,6 +151,8 @@ export default function PlanosNovo() {
                     'Cria vídeos',
                     'Postagens ilimitadas',
                     'Agendamento',
+                    'WhatsApp em Massa (até 1000/dia)',
+                    'Marketplace (criar ofertas)',
                     'Google Ads',
                     'Analytics',
                     '5 redes sociais',
@@ -201,9 +203,10 @@ export default function PlanosNovo() {
                 <div className="space-y-3 text-sm">
                   {[
                     'Tudo do Empresas',
+                    'WhatsApp em Massa (ilimitado)',
+                    'Marketplace (publicar + recrutar afiliados)',
                     'Catálogo de produtos',
                     'Rede de vendas',
-                    'Marketplace afiliados',
                     'Google Ads integrado',
                     'Analytics avançado',
                     'Suporte prioritário',

@@ -319,7 +319,7 @@ function Landing() {
           <div className="text-center">
             <button 
               onClick={() => navigate('/planos')} 
-              className="inline-block bg-gradient-to-r from-purple-500 to-pink-500 px-12 py-5 rounded-xl font-bold text-xl hover:shadow-2xl transition transform hover:scale-105"
+              className="inline-block bg-gradient-to-r from-purple-500 to-pink-500 px-12 py-5 rounded-xl font-bold text-xl text-white hover:shadow-2xl transition transform hover:scale-105"
             >
               Ver Todos os Planos
             </button>
