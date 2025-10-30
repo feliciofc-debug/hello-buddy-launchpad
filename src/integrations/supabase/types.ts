@@ -71,41 +71,68 @@ export type Database = {
       profiles: {
         Row: {
           amazon_id: string | null
+          cnae: string | null
+          cnae_descricao: string | null
           cpf: string
+          cpf_cnpj: string | null
           created_at: string
+          endereco: Json | null
           hotmart_email: string | null
           id: string
           lomadee_id: string | null
           mercado_livre_id: string | null
           nome: string
+          nome_fantasia: string | null
+          plano: string | null
+          razao_social: string | null
           shopee_id: string | null
+          tipo: string | null
           updated_at: string
+          valor_plano: number | null
           whatsapp: string
         }
         Insert: {
           amazon_id?: string | null
+          cnae?: string | null
+          cnae_descricao?: string | null
           cpf: string
+          cpf_cnpj?: string | null
           created_at?: string
+          endereco?: Json | null
           hotmart_email?: string | null
           id: string
           lomadee_id?: string | null
           mercado_livre_id?: string | null
           nome: string
+          nome_fantasia?: string | null
+          plano?: string | null
+          razao_social?: string | null
           shopee_id?: string | null
+          tipo?: string | null
           updated_at?: string
+          valor_plano?: number | null
           whatsapp: string
         }
         Update: {
           amazon_id?: string | null
+          cnae?: string | null
+          cnae_descricao?: string | null
           cpf?: string
+          cpf_cnpj?: string | null
           created_at?: string
+          endereco?: Json | null
           hotmart_email?: string | null
           id?: string
           lomadee_id?: string | null
           mercado_livre_id?: string | null
           nome?: string
+          nome_fantasia?: string | null
+          plano?: string | null
+          razao_social?: string | null
           shopee_id?: string | null
+          tipo?: string | null
           updated_at?: string
+          valor_plano?: number | null
           whatsapp?: string
         }
         Relationships: []
