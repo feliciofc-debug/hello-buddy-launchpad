@@ -461,37 +461,6 @@ const Dashboard = () => {
               {/* Seletor de Tipo de Usuário (apenas para admin) */}
               <UserTypeSelector />
               
-              {/* Banner Personalizado por Plano */}
-              {userProfile && (
-                <div className={`mb-8 rounded-xl p-6 ${
-                  userProfile.plano === 'premium' 
-                    ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600' 
-                    : userProfile.plano === 'empresas'
-                    ? 'bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-600'
-                    : 'bg-gradient-to-r from-green-600 via-emerald-600 to-green-600'
-                }`}>
-                  <div className="flex items-center justify-between text-white">
-                    <div>
-                      <h2 className="text-2xl font-bold mb-2">
-                        {userProfile.plano === 'premium' && '🏭 Plano Indústria - Recursos Ilimitados'}
-                        {userProfile.plano === 'empresas' && '🏪 Plano Empresas - Postagens Ilimitadas'}
-                        {userProfile.plano === 'free' && '💰 Plano Afiliado - Ganhe Comissões'}
-                      </h2>
-                      <p className="text-white/90">
-                        {userProfile.tipo === 'afiliado' 
-                          ? 'Continue promovendo produtos e aumentando suas comissões'
-                          : 'Maximize suas vendas com todas as ferramentas disponíveis'}
-                      </p>
-                    </div>
-                    {userProfile.valor_plano > 0 && (
-                      <div className="text-right">
-                        <div className="text-3xl font-bold">R$ {userProfile.valor_plano}</div>
-                        <div className="text-sm opacity-90">/mês</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {/* Welcome Message */}
               <div className="mb-8">
