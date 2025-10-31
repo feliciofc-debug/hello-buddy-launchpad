@@ -332,7 +332,7 @@ const Dashboard = () => {
             <BookOpen size={20} />
             Biblioteca
           </a>
-          {userProfile?.tipo === 'empresa' && (
+          {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') && (
             <a
               href="/campanhas"
               className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -345,7 +345,7 @@ const Dashboard = () => {
               Campanhas Google Ads
             </a>
           )}
-          {userProfile?.tipo === 'empresa' && (
+          {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') && (
             <a
               href="/analytics"
               className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
