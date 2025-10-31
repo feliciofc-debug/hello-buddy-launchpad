@@ -99,6 +99,10 @@ const Dashboard = () => {
         return;
       }
       setUser(session?.user ?? null);
+      // Recarregar perfil quando o usuário mudar
+      if (session?.user) {
+        checkAuth();
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -153,17 +157,21 @@ const Dashboard = () => {
         return;
       }
       
-      // Buscar perfil do usuário
+      // Buscar perfil do usuário - forçar busca sem cache
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', session.user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError) {
         console.error('Erro ao buscar perfil:', profileError);
-      } else {
+      } else if (profile) {
+        console.log('✅ Perfil carregado:', profile);
+        console.log('📋 Tipo do usuário:', profile.tipo);
         setUserProfile(profile);
+      } else {
+        console.warn('⚠️ Nenhum perfil encontrado para o usuário');
       }
       
       // Exceção para admin - não precisa de assinatura
@@ -495,6 +503,12 @@ const Dashboard = () => {
                     ? 'Aqui está um resumo do seu desempenho como afiliado'
                     : 'Aqui está um resumo do desempenho da sua empresa'}
                 </p>
+                {/* Debug - Mostrar tipo atual */}
+                {userProfile && (
+                  <div className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Tipo atual: <span className="font-bold text-blue-600 dark:text-blue-400">{userProfile.tipo?.toUpperCase() || 'NÃO DEFINIDO'}</span>
+                  </div>
+                )}
               </div>
 
               {/* Main Metrics - 4 Cards */}
