@@ -34,8 +34,14 @@ serve(async (req) => {
     const META_APP_SECRET = Deno.env.get('META_APP_SECRET')
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta'
-    const SITE_URL = 'https://www.amzofertas.com.br'
+    
+    // Get the origin from the request or use a default
+    const origin = req.headers.get('origin') || req.headers.get('referer') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'
+    const siteUrl = new URL(origin).origin
+    const REDIRECT_URI = `${siteUrl}/auth/callback/meta`
+    const SITE_URL = siteUrl
+    
+    console.log('🔍 Using redirect URI:', REDIRECT_URI)
 
     if (!META_APP_ID || !META_APP_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Missing required environment variables')
