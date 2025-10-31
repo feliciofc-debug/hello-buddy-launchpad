@@ -131,20 +131,32 @@ export default function Cadastro() {
   };
 
   // Detectar plano baseado no CNAE
-  const detectPlan = (cnae: string) => {
+  const detectPlan = (cnae: string | number) => {
+    if (!cnae) {
+      console.warn('⚠️ CNAE não fornecido');
+      return;
+    }
+
+    // Converter CNAE para string
+    const cnaeString = String(cnae);
+    console.log('🔍 Detectando plano para CNAE:', cnaeString);
+
     const cnaesIndustria = ['10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33'];
     const cnaesConcessionaria = ['4511-1/01', '4511-1/02'];
     const cnaesDistribuidor = ['4681-8/01', '4681-8/02', '4681-8/99'];
 
-    const cnaeCode = cnae.substring(0, 2);
+    const cnaeCode = cnaeString.substring(0, 2);
+    console.log('🔍 Código CNAE extraído:', cnaeCode);
 
-    if (cnaesIndustria.includes(cnaeCode) || cnaesConcessionaria.includes(cnae) || cnaesDistribuidor.includes(cnae)) {
+    if (cnaesIndustria.includes(cnaeCode) || cnaesConcessionaria.includes(cnaeString) || cnaesDistribuidor.includes(cnaeString)) {
+      console.log('✅ Plano detectado: INDÚSTRIA');
       setSuggestedPlan({
         plano: 'premium',
         valor: 997.00,
         mensagem: '🏭 Plano Indústria/Distribuidor'
       });
     } else {
+      console.log('✅ Plano detectado: EMPRESAS');
       setSuggestedPlan({
         plano: 'empresas',
         valor: 447.00,
