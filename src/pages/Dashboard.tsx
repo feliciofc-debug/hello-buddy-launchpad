@@ -166,13 +166,41 @@ const Dashboard = () => {
         .maybeSingle();
 
       if (profileError) {
-        console.error('Erro ao buscar perfil:', profileError);
+        console.error('❌ Erro ao buscar perfil:', profileError);
       } else if (profile) {
         console.log('✅ Perfil carregado:', profile);
         console.log('📋 Tipo do usuário:', profile.tipo);
         setUserProfile(profile);
+        
+        // Se não tem tipo definido, definir como 'afiliado' por padrão
+        if (!profile.tipo) {
+          console.warn('⚠️ Perfil sem tipo definido, definindo como afiliado');
+          await supabase
+            .from('profiles')
+            .update({ tipo: 'afiliado' })
+            .eq('id', session.user.id);
+          profile.tipo = 'afiliado';
+          setUserProfile(profile);
+        }
       } else {
-        console.warn('⚠️ Nenhum perfil encontrado para o usuário');
+        console.warn('⚠️ Nenhum perfil encontrado para o usuário, criando perfil padrão');
+        // Criar perfil se não existir com dados mínimos
+        const { data: newProfile } = await supabase
+          .from('profiles')
+          .insert([{ 
+            id: session.user.id, 
+            tipo: 'afiliado',
+            nome: session.user.email?.split('@')[0] || 'Usuário',
+            cpf: '',
+            whatsapp: ''
+          }])
+          .select()
+          .single();
+        
+        if (newProfile) {
+          console.log('✅ Perfil criado:', newProfile);
+          setUserProfile(newProfile);
+        }
       }
       
       // Exceção para admin - não precisa de assinatura
@@ -1656,6 +1684,15 @@ const Dashboard = () => {
 
 
 
+
+              {/* Fallback - Quando tipo não está definido */}
+              {!userProfile?.tipo && (
+                <div className="text-center py-20">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                  <p className="text-gray-600 dark:text-gray-400">Carregando dashboard...</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">Configurando seu perfil</p>
+                </div>
+              )}
 
               {/* Google Ads + Analytics - Apenas para Empresa */}
               {userProfile?.tipo === 'empresa' && (
