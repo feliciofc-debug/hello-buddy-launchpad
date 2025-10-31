@@ -437,7 +437,7 @@ const IAMarketing = () => {
                           </label>
                           <Input
                             type="text"
-                            placeholder="https://shopee.com.br/produto... ou qualquer link de afiliado"
+                            placeholder="Cole o link do produto ou link de afiliado"
                             value={url}
                             onChange={(e) => setUrl(e.target.value)}
                             className="h-12 text-base"
@@ -450,7 +450,7 @@ const IAMarketing = () => {
                             Cole até 10 links, um por linha:
                           </label>
                           <Textarea
-                            placeholder="https://shopee.com.br/produto1&#10;https://shopee.com.br/produto2&#10;https://shopee.com.br/produto3"
+                            placeholder="Cole um link por linha&#10;https://exemplo.com/produto1&#10;https://exemplo.com/produto2"
                             value={bulkUrls}
                             onChange={(e) => setBulkUrls(e.target.value)}
                             className="min-h-[200px] text-base"
@@ -621,7 +621,7 @@ const IAMarketing = () => {
                         </label>
                         <Input
                           type="text"
-                          placeholder="https://shopee.com.br/produto... ou qualquer link de afiliado"
+                          placeholder="Cole o link do produto ou link de afiliado"
                           value={url}
                           onChange={(e) => setUrl(e.target.value)}
                           className="h-12 text-base"
@@ -634,7 +634,7 @@ const IAMarketing = () => {
                           Cole até 10 links, um por linha:
                         </label>
                         <Textarea
-                          placeholder="https://shopee.com.br/produto1&#10;https://shopee.com.br/produto2&#10;https://shopee.com.br/produto3"
+                          placeholder="Cole um link por linha&#10;https://exemplo.com/produto1&#10;https://exemplo.com/produto2"
                           value={bulkUrls}
                           onChange={(e) => setBulkUrls(e.target.value)}
                           className="min-h-[200px] text-base"
