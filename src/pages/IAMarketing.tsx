@@ -409,8 +409,8 @@ const IAMarketing = () => {
             {/* Seção de Análise do Produto */}
             <Card className="max-w-3xl mx-auto mb-8 shadow-lg">
               <CardContent className="pt-6 space-y-4">
-                {/* Tabs Analisar Link / Upload (apenas para empresas) */}
-                {userProfile?.tipo === 'empresa' ? (
+                {/* Tabs Analisar Link / Upload (para empresas e fábricas) */}
+                {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') ? (
                   <Tabs value={uploadMode} onValueChange={(v) => setUploadMode(v as 'link' | 'upload')} className="w-full">
                     <TabsList className="grid w-full grid-cols-2 mb-6">
                       <TabsTrigger value="link" className="flex items-center gap-2">
