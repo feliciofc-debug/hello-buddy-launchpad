@@ -28,6 +28,7 @@ import Marketplace from "./pages/Marketplace";
 import GoogleAds from "./pages/GoogleAds";
 import Analytics from "./pages/Analytics";
 import Terms from "./pages/Terms";
+import Privacy from "./pages/Privacy";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +63,7 @@ const App = () => (
           <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/reviewer" element={<ReviewerLogin />} />
             <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
