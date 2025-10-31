@@ -899,34 +899,6 @@ const Dashboard = () => {
                 </div>
               )}
 
-              {/* Recent Activity */}
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-                  Produtos Mais Vendidos
-                </h3>
-                <div className="space-y-4">
-                  {mockProducts.slice(0, 5).map((product, index) => (
-                    <div key={product.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                      <div className="flex items-center gap-4">
-                        <span className="text-2xl font-bold text-gray-400">#{index + 1}</span>
-                        <div>
-                          <p className="font-semibold text-gray-900 dark:text-white line-clamp-1">{product.title}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-gray-500 dark:text-gray-400">{product.category}</span>
-                            <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
-                              {getMarketplaceInfo(product.marketplace).name}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-green-500">R$ {product.commission.toFixed(2)}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">comissão</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
         </main>
       </div>
