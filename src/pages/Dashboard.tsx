@@ -513,64 +513,252 @@ const Dashboard = () => {
 
               {/* Main Metrics - 4 Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {/* Faturamento Total */}
-                <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
-                  <div className="flex items-center justify-between mb-4">
-                    <DollarSign className="w-10 h-10 opacity-80" />
-                    <span className={`text-sm font-semibold px-2 py-1 rounded ${
-                      metrics.revenueGrowth > 0 ? 'bg-green-500/20' : 'bg-red-500/20'
-                    }`}>
-                      {metrics.revenueGrowth > 0 ? '+' : ''}{metrics.revenueGrowth.toFixed(1)}%
-                    </span>
-                  </div>
-                  <p className="text-sm opacity-80 mb-1">Faturamento Total</p>
-                  <p className="text-3xl font-bold">R$ {metrics.totalRevenue.toFixed(2)}</p>
-                  <p className="text-xs opacity-70 mt-2">{metrics.soldProducts} vendas realizadas</p>
-                </div>
+                {userProfile?.tipo === 'empresa' ? (
+                  <>
+                    {/* EMPRESA - Postagens */}
+                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <MessageCircle className="w-10 h-10 opacity-80" />
+                        <span className="text-sm font-semibold px-2 py-1 rounded bg-green-500/20">
+                          +23%
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-80 mb-1">📱 Postagens</p>
+                      <p className="text-3xl font-bold">127</p>
+                      <p className="text-xs opacity-70 mt-2">este mês</p>
+                    </div>
 
-                {/* Comissões Ganhas (Afiliado) ou Vendas (Empresa) */}
-                <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
-                  <div className="flex items-center justify-between mb-4">
-                    <TrendingUp className="w-10 h-10 opacity-80" />
-                    <span className="text-sm font-semibold px-2 py-1 rounded bg-white/20">
-                      {((metrics.totalCommissions / metrics.totalRevenue) * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  <p className="text-sm opacity-80 mb-1">
-                    {userProfile?.tipo === 'afiliado' ? 'Comissões Ganhas' : 'Vendas Totais'}
-                  </p>
-                  <p className="text-3xl font-bold">R$ {metrics.totalCommissions.toFixed(2)}</p>
-                  <p className="text-xs opacity-70 mt-2">
-                    {userProfile?.tipo === 'afiliado' ? 'Total de todos os marketplaces' : 'Total de vendas realizadas'}
-                  </p>
-                </div>
+                    {/* EMPRESA - Alcance */}
+                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <User className="w-10 h-10 opacity-80" />
+                        <span className="text-sm font-semibold px-2 py-1 rounded bg-green-500/20">
+                          +18%
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-80 mb-1">👥 Alcance</p>
+                      <p className="text-3xl font-bold">45.2K</p>
+                      <p className="text-xs opacity-70 mt-2">pessoas alcançadas</p>
+                    </div>
 
-                {/* Lucro Real */}
-                <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
-                  <div className="flex items-center justify-between mb-4">
-                    <Target className="w-10 h-10 opacity-80" />
-                    <span className="text-sm font-semibold px-2 py-1 rounded bg-white/20">
-                      100%
-                    </span>
-                  </div>
-                  <p className="text-sm opacity-80 mb-1">Lucro Real</p>
-                  <p className="text-3xl font-bold">R$ {metrics.realProfit.toFixed(2)}</p>
-                  <p className="text-xs opacity-70 mt-2">Seu ganho líquido</p>
-                </div>
+                    {/* EMPRESA - Vendas */}
+                    <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <DollarSign className="w-10 h-10 opacity-80" />
+                        <span className="text-sm font-semibold px-2 py-1 rounded bg-green-500/20">
+                          +31%
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-80 mb-1">💰 Vendas</p>
+                      <p className="text-3xl font-bold">R$ 12.450</p>
+                      <p className="text-xs opacity-70 mt-2">faturamento total</p>
+                    </div>
 
-                {/* Ticket Médio */}
-                <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
-                  <div className="flex items-center justify-between mb-4">
-                    <BarChart3 className="w-10 h-10 opacity-80" />
-                    <span className="text-sm font-semibold px-2 py-1 rounded bg-white/20">
-                      Médio
-                    </span>
-                  </div>
-                  <p className="text-sm opacity-80 mb-1">Ticket Médio</p>
-                  <p className="text-3xl font-bold">R$ {metrics.averageTicket.toFixed(2)}</p>
-                  <p className="text-xs opacity-70 mt-2">Valor médio por venda</p>
-                </div>
+                    {/* EMPRESA - Engajamento */}
+                    <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <TrendingUp className="w-10 h-10 opacity-80" />
+                        <span className="text-sm font-semibold px-2 py-1 rounded bg-green-500/20">
+                          +12%
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-80 mb-1">📈 Engajamento</p>
+                      <p className="text-3xl font-bold">8.5%</p>
+                      <p className="text-xs opacity-70 mt-2">taxa média</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* AFILIADO/FÁBRICA - Faturamento Total */}
+                    <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <DollarSign className="w-10 h-10 opacity-80" />
+                        <span className={`text-sm font-semibold px-2 py-1 rounded ${
+                          metrics.revenueGrowth > 0 ? 'bg-green-500/20' : 'bg-red-500/20'
+                        }`}>
+                          {metrics.revenueGrowth > 0 ? '+' : ''}{metrics.revenueGrowth.toFixed(1)}%
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-80 mb-1">Faturamento Total</p>
+                      <p className="text-3xl font-bold">R$ {metrics.totalRevenue.toFixed(2)}</p>
+                      <p className="text-xs opacity-70 mt-2">{metrics.soldProducts} vendas realizadas</p>
+                    </div>
+
+                    {/* Comissões Ganhas (Afiliado) ou Vendas (Empresa) */}
+                    <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <TrendingUp className="w-10 h-10 opacity-80" />
+                        <span className="text-sm font-semibold px-2 py-1 rounded bg-white/20">
+                          {((metrics.totalCommissions / metrics.totalRevenue) * 100).toFixed(1)}%
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-80 mb-1">
+                        {userProfile?.tipo === 'afiliado' ? 'Comissões Ganhas' : 'Vendas Totais'}
+                      </p>
+                      <p className="text-3xl font-bold">R$ {metrics.totalCommissions.toFixed(2)}</p>
+                      <p className="text-xs opacity-70 mt-2">
+                        {userProfile?.tipo === 'afiliado' ? 'Total de todos os marketplaces' : 'Total de vendas realizadas'}
+                      </p>
+                    </div>
+
+                    {/* Lucro Real */}
+                    <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <Target className="w-10 h-10 opacity-80" />
+                        <span className="text-sm font-semibold px-2 py-1 rounded bg-white/20">
+                          100%
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-80 mb-1">Lucro Real</p>
+                      <p className="text-3xl font-bold">R$ {metrics.realProfit.toFixed(2)}</p>
+                      <p className="text-xs opacity-70 mt-2">Seu ganho líquido</p>
+                    </div>
+
+                    {/* Ticket Médio */}
+                    <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <BarChart3 className="w-10 h-10 opacity-80" />
+                        <span className="text-sm font-semibold px-2 py-1 rounded bg-white/20">
+                          Médio
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-80 mb-1">Ticket Médio</p>
+                      <p className="text-3xl font-bold">R$ {metrics.averageTicket.toFixed(2)}</p>
+                      <p className="text-xs opacity-70 mt-2">Valor médio por venda</p>
+                    </div>
+                  </>
+                )}
               </div>
+
+              {/* Quick Actions - Para Empresa */}
+              {userProfile?.tipo === 'empresa' && (
+                <div className="mb-8">
+                  <div className="flex flex-wrap gap-3 justify-center">
+                    <button
+                      onClick={() => navigate('/ia-marketing')}
+                      className="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                      <Bot className="w-5 h-5" />
+                      ➕ Novo Post
+                    </button>
+                    <button
+                      onClick={() => navigate('/configuracoes/redes-sociais')}
+                      className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                      📅 Agendar
+                    </button>
+                    <button
+                      onClick={() => navigate('/produtos')}
+                      className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                      📤 Upload
+                    </button>
+                    <button
+                      onClick={() => navigate('/ia-marketing')}
+                      className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                      🎬 Vídeo
+                    </button>
+                    <button
+                      onClick={() => navigate('/campanhas')}
+                      className="px-6 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                    >
+                      <Target className="w-5 h-5" />
+                      🎯 Criar Campanha Ads
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Gráfico de Desempenho 30 Dias - Para Empresa */}
+              {userProfile?.tipo === 'empresa' && (
+                <div className="mb-8">
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                      <BarChart3 className="w-6 h-6 text-blue-500" />
+                      📊 Desempenho 30 Dias
+                    </h3>
+                    <div className="h-64 flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-700 dark:to-gray-600 rounded-lg">
+                      <div className="text-center text-gray-500 dark:text-gray-400">
+                        <TrendingUp className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg font-semibold">Gráfico: Postagens vs Alcance vs Vendas</p>
+                        <p className="text-sm mt-2">Integração com dados reais em breve</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Redes Sociais - Para Empresa */}
+              {userProfile?.tipo === 'empresa' && (
+                <div className="mb-8">
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                    <Instagram className="w-6 h-6 text-pink-500" />
+                    Redes Sociais
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Instagram */}
+                    <div className="bg-gradient-to-br from-pink-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-3xl">📷</div>
+                        <Instagram className="w-8 h-8 opacity-80" />
+                      </div>
+                      <h4 className="text-lg font-bold mb-2">Instagram</h4>
+                      <div className="space-y-1 text-sm">
+                        <p className="opacity-90">23.5K seguidores</p>
+                        <p className="opacity-90">45 posts</p>
+                        <p className="text-xs opacity-75 mt-2">Taxa eng.: 6.2%</p>
+                      </div>
+                    </div>
+
+                    {/* Facebook */}
+                    <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-3xl">📘</div>
+                        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                        </svg>
+                      </div>
+                      <h4 className="text-lg font-bold mb-2">Facebook</h4>
+                      <div className="space-y-1 text-sm">
+                        <p className="opacity-90">15.2K curtidas</p>
+                        <p className="opacity-90">32 posts</p>
+                        <p className="text-xs opacity-75 mt-2">Alcance: 28K</p>
+                      </div>
+                    </div>
+
+                    {/* TikTok */}
+                    <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-3xl">🎵</div>
+                        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
+                        </svg>
+                      </div>
+                      <h4 className="text-lg font-bold mb-2">TikTok</h4>
+                      <div className="space-y-1 text-sm">
+                        <p className="opacity-90">8.1K views</p>
+                        <p className="opacity-90">18 vídeos</p>
+                        <p className="text-xs opacity-75 mt-2">Média: 450 views</p>
+                      </div>
+                    </div>
+
+                    {/* WhatsApp */}
+                    <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-3xl">💬</div>
+                        <MessageCircle className="w-8 h-8 opacity-80" />
+                      </div>
+                      <h4 className="text-lg font-bold mb-2">WhatsApp</h4>
+                      <div className="space-y-1 text-sm">
+                        <p className="opacity-90">450 contatos</p>
+                        <p className="opacity-90">89 envios</p>
+                        <p className="text-xs opacity-75 mt-2">Taxa abertura: 78%</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Card de Destaque IA Marketing */}
               <div className="mb-8">
