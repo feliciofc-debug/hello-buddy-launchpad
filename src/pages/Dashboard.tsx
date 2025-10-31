@@ -15,6 +15,7 @@ const Dashboard = () => {
   const [searchParams] = useSearchParams();
   const { theme, setTheme } = useTheme();
   const [user, setUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -151,6 +152,19 @@ const Dashboard = () => {
         return;
       }
       
+      // Buscar perfil do usuário
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError) {
+        console.error('Erro ao buscar perfil:', profileError);
+      } else {
+        setUserProfile(profile);
+      }
+      
       // Exceção para admin - não precisa de assinatura
       if (session.user.email !== 'admin@amzofertas.com') {
         // Verificar se o usuário tem assinatura ativa
@@ -232,17 +246,32 @@ const Dashboard = () => {
             <CreditCard size={20} />
             Planos
           </a>
-          <a
-            href="/produtos"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/produtos' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <Package size={20} />
-            Produtos
-          </a>
+          {userProfile?.tipo === 'empresa' && (
+            <a
+              href="/produtos"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/produtos' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Package size={20} />
+              Upload Produtos
+            </a>
+          )}
+          {userProfile?.tipo === 'afiliado' && (
+            <a
+              href="/produtos"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/produtos' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Package size={20} />
+              Produtos Afiliados
+            </a>
+          )}
           <a
             href="/ia-marketing"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -276,17 +305,19 @@ const Dashboard = () => {
             <BookOpen size={20} />
             Biblioteca
           </a>
-          <a
-            href="/campanhas"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/campanhas' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <Megaphone size={20} />
-            Campanhas
-          </a>
+          {userProfile?.tipo === 'empresa' && (
+            <a
+              href="/campanhas"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/campanhas' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Megaphone size={20} />
+              Campanhas Google Ads
+            </a>
+          )}
           <a
             href="/marketplace"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -379,13 +410,47 @@ const Dashboard = () => {
         {/* Content */}
         <main className="flex-1 bg-gray-50 dark:bg-gray-900 overflow-auto">
           <div className="p-6">
+              {/* Banner Personalizado por Plano */}
+              {userProfile && (
+                <div className={`mb-8 rounded-xl p-6 ${
+                  userProfile.plano === 'premium' 
+                    ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-purple-600' 
+                    : userProfile.plano === 'empresas'
+                    ? 'bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-600'
+                    : 'bg-gradient-to-r from-green-600 via-emerald-600 to-green-600'
+                }`}>
+                  <div className="flex items-center justify-between text-white">
+                    <div>
+                      <h2 className="text-2xl font-bold mb-2">
+                        {userProfile.plano === 'premium' && '🏭 Plano Indústria - Recursos Ilimitados'}
+                        {userProfile.plano === 'empresas' && '🏪 Plano Empresas - Postagens Ilimitadas'}
+                        {userProfile.plano === 'free' && '💰 Plano Afiliado - Ganhe Comissões'}
+                      </h2>
+                      <p className="text-white/90">
+                        {userProfile.tipo === 'afiliado' 
+                          ? 'Continue promovendo produtos e aumentando suas comissões'
+                          : 'Maximize suas vendas com todas as ferramentas disponíveis'}
+                      </p>
+                    </div>
+                    {userProfile.valor_plano > 0 && (
+                      <div className="text-right">
+                        <div className="text-3xl font-bold">R$ {userProfile.valor_plano}</div>
+                        <div className="text-sm opacity-90">/mês</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Welcome Message */}
               <div className="mb-8">
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
                   Bem-vindo de volta! 👋
                 </h1>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Aqui está um resumo do seu desempenho como afiliado
+                  {userProfile?.tipo === 'afiliado' 
+                    ? 'Aqui está um resumo do seu desempenho como afiliado'
+                    : 'Aqui está um resumo do desempenho da sua empresa'}
                 </p>
               </div>
 
@@ -406,7 +471,7 @@ const Dashboard = () => {
                   <p className="text-xs opacity-70 mt-2">{metrics.soldProducts} vendas realizadas</p>
                 </div>
 
-                {/* Comissões Ganhas */}
+                {/* Comissões Ganhas (Afiliado) ou Vendas (Empresa) */}
                 <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
                   <div className="flex items-center justify-between mb-4">
                     <TrendingUp className="w-10 h-10 opacity-80" />
@@ -414,9 +479,13 @@ const Dashboard = () => {
                       {((metrics.totalCommissions / metrics.totalRevenue) * 100).toFixed(1)}%
                     </span>
                   </div>
-                  <p className="text-sm opacity-80 mb-1">Comissões Ganhas</p>
+                  <p className="text-sm opacity-80 mb-1">
+                    {userProfile?.tipo === 'afiliado' ? 'Comissões Ganhas' : 'Vendas Totais'}
+                  </p>
                   <p className="text-3xl font-bold">R$ {metrics.totalCommissions.toFixed(2)}</p>
-                  <p className="text-xs opacity-70 mt-2">Total de todos os marketplaces</p>
+                  <p className="text-xs opacity-70 mt-2">
+                    {userProfile?.tipo === 'afiliado' ? 'Total de todos os marketplaces' : 'Total de vendas realizadas'}
+                  </p>
                 </div>
 
                 {/* Lucro Real */}
