@@ -247,6 +247,32 @@ const Dashboard = () => {
             <CreditCard size={20} />
             Planos
           </a>
+          {userProfile?.tipo === 'fabrica' && (
+            <>
+              <a
+                href="/catalogos"
+                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                  window.location.pathname === '/catalogos' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <BookOpen size={20} />
+                Catálogos
+              </a>
+              <a
+                href="/vendedores"
+                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                  window.location.pathname === '/vendedores' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <UserCircle size={20} />
+                Vendedores
+              </a>
+            </>
+          )}
           {userProfile?.tipo === 'empresa' && (
             <a
               href="/produtos"
