@@ -26,6 +26,9 @@ export const VideoGenerator = ({ productImage, productName }: VideoGeneratorProp
   ];
 
   const templates = [
+    { id: "tiktok", name: "TikTok Viral", description: "Formato vertical otimizado" },
+    { id: "reels", name: "Instagram Reels", description: "Efeitos modernos" },
+    { id: "stories", name: "Stories", description: "Dinâmico e rápido" },
     { id: "ecommerce", name: "E-commerce", description: "Produto girando 360°" },
     { id: "flash-sale", name: "Oferta Relâmpago", description: "Countdown timer" },
     { id: "storytelling", name: "Storytelling", description: "Antes/depois" },
@@ -64,8 +67,11 @@ export const VideoGenerator = ({ productImage, productName }: VideoGeneratorProp
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Play className="w-5 h-5" />
-          🎬 Gerar Vídeos para Redes Sociais
+          🎬 Gerar Vídeos para TikTok, Reels e Stories
         </CardTitle>
+        <p className="text-sm text-muted-foreground mt-2">
+          Crie vídeos virais otimizados para TikTok, Instagram Reels e Stories em segundos
+        </p>
       </CardHeader>
       <CardContent className="space-y-6">
         {/* Preview da Imagem */}
@@ -125,10 +131,10 @@ export const VideoGenerator = ({ productImage, productName }: VideoGeneratorProp
           {isGenerating ? (
             <>
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              Gerando vídeo...
+              Gerando vídeo viral...
             </>
           ) : (
-            "🎬 GERAR VÍDEO (15-30s)"
+            "🎬 GERAR VÍDEO VIRAL (15-60s)"
           )}
         </Button>
 
@@ -148,12 +154,17 @@ export const VideoGenerator = ({ productImage, productName }: VideoGeneratorProp
 
         {/* Info */}
         <div className="text-xs text-muted-foreground bg-muted p-4 rounded-lg">
-          <p className="font-semibold mb-2">ℹ️ Formatos disponíveis:</p>
+          <p className="font-semibold mb-2">📱 Formatos disponíveis:</p>
           <ul className="list-disc list-inside space-y-1">
-            <li>TikTok / Reels / Stories: 1080x1920 (vertical)</li>
+            <li>TikTok: 1080x1920 (vertical) - Formato otimizado</li>
+            <li>Instagram Reels: 1080x1920 (vertical)</li>
+            <li>Stories: 1080x1920 (vertical)</li>
             <li>Feed Instagram: 1080x1080 (quadrado)</li>
             <li>YouTube Shorts: 1080x1920 (vertical)</li>
           </ul>
+          <p className="mt-3 text-xs opacity-80">
+            ✨ Todos os vídeos são otimizados para máximo engajamento
+          </p>
         </div>
       </CardContent>
     </Card>
