@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import NotificationCenter from '@/components/NotificationCenter';
 import ShopeeSearchComponent from '@/components/ShopeeSearchComponent';
+import UserTypeSelector from '@/components/UserTypeSelector';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -423,6 +424,9 @@ const Dashboard = () => {
         {/* Content */}
         <main className="flex-1 bg-gray-50 dark:bg-gray-900 overflow-auto">
           <div className="p-6">
+              {/* Seletor de Tipo de Usuário (apenas para admin) */}
+              <UserTypeSelector />
+              
               {/* Banner Personalizado por Plano */}
               {userProfile && (
                 <div className={`mb-8 rounded-xl p-6 ${
