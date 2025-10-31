@@ -54,21 +54,28 @@ export default function UserTypeSelector() {
     
     setLoading(true);
     try {
-      const { error } = await supabase
+      console.log('Alterando tipo para:', newType);
+      
+      const { data, error } = await supabase
         .from('profiles')
         .update({ tipo: newType })
-        .eq('id', userId);
+        .eq('id', userId)
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Erro do Supabase:', error);
+        throw error;
+      }
 
+      console.log('Tipo atualizado com sucesso:', data);
       setCurrentType(newType);
-      toast.success(`Tipo alterado para ${newType.toUpperCase()}`);
+      toast.success(`Modo alterado para ${newType.toUpperCase()}`);
       
       // Recarregar a página para atualizar todas as funcionalidades
       setTimeout(() => window.location.reload(), 1000);
     } catch (error: any) {
       console.error('Erro ao alterar tipo:', error);
-      toast.error('Erro ao alterar tipo de usuário');
+      toast.error(`Erro ao alterar modo: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setLoading(false);
     }
