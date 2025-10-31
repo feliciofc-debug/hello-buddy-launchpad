@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { SchedulePostsModal } from "@/components/SchedulePostsModal";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { VideoGenerator } from "@/components/VideoGenerator";
 
 interface ProductAnalysis {
   produto: {
@@ -953,6 +954,14 @@ const IAMarketing = () => {
                   </div>
                 </CardContent>
                   </Card>
+                </div>
+
+                {/* Gerador de Vídeos */}
+                <div className="max-w-3xl mx-auto mt-8">
+                  <VideoGenerator 
+                    productImage={resultado.produto.imagem}
+                    productName={resultado.produto.titulo}
+                  />
                 </div>
               </>
             )}

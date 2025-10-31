@@ -25,6 +25,8 @@ import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
 import Campanhas from "./pages/Campanhas";
 import Marketplace from "./pages/Marketplace";
+import GoogleAds from "./pages/GoogleAds";
+import Analytics from "./pages/Analytics";
 
 const queryClient = new QueryClient();
 
@@ -54,6 +56,8 @@ const App = () => (
           <Route path="/configuracoes/redes-sociais" element={<RedesSociais />} />
           <Route path="/biblioteca" element={<Biblioteca />} />
           <Route path="/campanhas" element={<Campanhas />} />
+          <Route path="/campanhas/google-ads" element={<GoogleAds />} />
+          <Route path="/analytics" element={<Analytics />} />
           <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/reviewer" element={<ReviewerLogin />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

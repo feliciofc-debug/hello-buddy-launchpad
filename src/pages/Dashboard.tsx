@@ -318,6 +318,19 @@ const Dashboard = () => {
               Campanhas Google Ads
             </a>
           )}
+          {userProfile?.tipo === 'empresa' && (
+            <a
+              href="/analytics"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/analytics' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <BarChart3 size={20} />
+              Analytics
+            </a>
+          )}
           <a
             href="/marketplace"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${

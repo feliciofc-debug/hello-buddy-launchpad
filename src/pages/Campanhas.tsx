@@ -483,10 +483,15 @@ const Campanhas = () => {
                   Passo {currentStep} de 4
                 </p>
               </div>
-              <Button onClick={() => setCurrentStep(1)}>
-                <Rocket className="mr-2" />
-                Nova Campanha
-              </Button>
+              <div className="flex gap-2">
+                <Button onClick={() => navigate('/campanhas/google-ads')} variant="outline">
+                  🎯 Criar com Google Ads
+                </Button>
+                <Button onClick={() => setCurrentStep(1)}>
+                  <Rocket className="mr-2" />
+                  Nova Campanha
+                </Button>
+              </div>
             </div>
             
             {/* Progress Bar */}
