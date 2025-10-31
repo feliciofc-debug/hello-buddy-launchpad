@@ -464,7 +464,7 @@ const Dashboard = () => {
               {/* ═══════════════════════════════════════════════════════════ */}
               {/* DASHBOARD INDÚSTRIA - PLANO PREMIUM */}
               {/* ═══════════════════════════════════════════════════════════ */}
-              {userProfile?.plano === 'premium' && (
+              {userProfile?.tipo === 'fabrica' && (
                 <div className="space-y-8">
                   {/* Header Banner Indústria */}
                   <div className="bg-gradient-to-r from-purple-600 via-purple-700 to-indigo-700 rounded-xl shadow-2xl p-8 text-white">
@@ -918,7 +918,7 @@ const Dashboard = () => {
               {/* FIM DO DASHBOARD INDÚSTRIA */}
               {/* ═══════════════════════════════════════════════════════════ */}
               
-              {userProfile?.plano !== 'premium' && (
+              {userProfile?.tipo !== 'fabrica' && (
                 <>
 
               {/* Welcome Message */}
