@@ -76,6 +76,9 @@ export default function Cadastro() {
   const handleCNPJBlur = async () => {
     const cnpj = formData.cnpj.replace(/\D/g, '');
     
+    console.log('🔍 CNPJ digitado:', formData.cnpj);
+    console.log('🔍 CNPJ limpo:', cnpj);
+    
     if (cnpj.length !== 14) {
       toast.error('CNPJ deve ter 14 dígitos');
       return;
@@ -84,13 +87,19 @@ export default function Cadastro() {
     setIsLoadingCNPJ(true);
     
     try {
+      console.log('📡 Consultando Brasil API para CNPJ:', cnpj);
       const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
       
+      console.log('📡 Status da resposta:', response.status);
+      
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Erro da API:', errorText);
         throw new Error('CNPJ inválido');
       }
 
       const data = await response.json();
+      console.log('✅ Dados recebidos da API:', data);
       
       setFormData(prev => ({
         ...prev,
@@ -113,8 +122,9 @@ export default function Cadastro() {
       detectPlan(data.cnae_fiscal);
       
       toast.success('Empresa encontrada!');
-    } catch (error) {
-      toast.error('CNPJ inválido ou não encontrado');
+    } catch (error: any) {
+      console.error('❌ Erro ao buscar CNPJ:', error);
+      toast.error(error.message || 'CNPJ inválido ou não encontrado');
     } finally {
       setIsLoadingCNPJ(false);
     }
