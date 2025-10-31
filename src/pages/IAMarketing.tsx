@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, Instagram, Smartphone, MessageCircle, ArrowLeft, AlertCircle, Calendar as CalendarIcon, Download, Trash2, Search } from "lucide-react";
+import { Loader2, Instagram, Smartphone, MessageCircle, ArrowLeft, AlertCircle, Calendar as CalendarIcon, Download, Trash2, Search, Upload, Link as LinkIcon, X, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -17,6 +17,8 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { SchedulePostsModal } from "@/components/SchedulePostsModal";
+import { supabase } from "@/integrations/supabase/client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ProductAnalysis {
   produto: {
@@ -57,6 +59,7 @@ const IAMarketing = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   
   // Estados para permitir edição dos posts
   const [editableInstagram, setEditableInstagram] = useState("");
@@ -79,6 +82,33 @@ const IAMarketing = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyFilter, setHistoryFilter] = useState<'todos' | 'agendado' | 'postado' | 'rascunho'>('todos');
   const [historySearch, setHistorySearch] = useState("");
+
+  // Estados para Upload (apenas empresas)
+  const [uploadMode, setUploadMode] = useState<'link' | 'upload'>('link');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadPreview, setUploadPreview] = useState<string>("");
+  const [productData, setProductData] = useState({
+    nome: "",
+    preco: "",
+    descricao: "",
+    categoria: ""
+  });
+
+  // Carregar perfil do usuário
+  useEffect(() => {
+    const fetchProfile = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        setUserProfile(profile);
+      }
+    };
+    fetchProfile();
+  }, []);
 
   // Carregar histórico do localStorage
   useEffect(() => {
@@ -267,6 +297,83 @@ const IAMarketing = () => {
     return score >= 8 ? "✅ Produto recomendado para divulgação" : "⚠️ Revise antes de divulgar";
   };
 
+  // Handlers para Upload
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validar tipo de arquivo
+    const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4'];
+    if (!validTypes.includes(file.type)) {
+      toast.error('Formato não suportado. Use JPG, PNG, WEBP ou MP4');
+      return;
+    }
+
+    // Validar tamanho (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error('Arquivo muito grande. Máximo 50MB');
+      return;
+    }
+
+    setUploadedFile(file);
+    
+    // Criar preview
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setUploadPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+    
+    toast.success('Arquivo carregado!');
+  };
+
+  const handleGenerateFromUpload = async () => {
+    if (!uploadedFile) {
+      toast.error('Faça upload de uma imagem ou vídeo');
+      return;
+    }
+
+    if (!productData.nome || !productData.preco || !productData.descricao) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    setLoading(true);
+    toast.info('Gerando campanha com IA... Aguarde');
+
+    // TODO: Implementar edge function para processar upload
+    // Por enquanto, simular resultado
+    setTimeout(() => {
+      const mockResult: ProductAnalysis = {
+        produto: {
+          titulo: productData.nome,
+          preco: parseFloat(productData.preco),
+          imagem: uploadPreview,
+          score: 9,
+          recomendacao: 'Produto próprio - altamente recomendado'
+        },
+        posts: {
+          instagram: `🔥 ${productData.nome}\n\n${productData.descricao}\n\n💰 Apenas R$ ${productData.preco}\n\n✨ Compre agora e aproveite!\n\n#produto #oferta #promoção`,
+          stories: `⚡ NOVO!\n\n${productData.nome}\n\nR$ ${productData.preco}\n\n👆 Deslize para cima!`,
+          whatsapp: `Olá! 👋\n\nConheça nosso ${productData.nome}!\n\n${productData.descricao}\n\n💰 Preço: R$ ${productData.preco}\n\nInteressado? Entre em contato!`
+        }
+      };
+
+      setResultado(mockResult);
+      setEditableInstagram(mockResult.posts.instagram);
+      setEditableStories(mockResult.posts.stories);
+      setEditableWhatsApp(mockResult.posts.whatsapp);
+      setLoading(false);
+      toast.success('Campanha gerada com sucesso!');
+    }, 2000);
+  };
+
+  const clearUpload = () => {
+    setUploadedFile(null);
+    setUploadPreview('');
+    setProductData({ nome: '', preco: '', descricao: '', categoria: '' });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
@@ -301,56 +408,258 @@ const IAMarketing = () => {
             {/* Seção de Análise do Produto */}
             <Card className="max-w-3xl mx-auto mb-8 shadow-lg">
               <CardContent className="pt-6 space-y-4">
-                <div className="flex items-center justify-between mb-4">
-                  <Label htmlFor="bulk-mode" className="text-base font-semibold">Analisar múltiplos links</Label>
-                  <Switch id="bulk-mode" checked={bulkMode} onCheckedChange={setBulkMode} />
-                </div>
+                {/* Tabs Analisar Link / Upload (apenas para empresas) */}
+                {userProfile?.tipo === 'empresa' ? (
+                  <Tabs value={uploadMode} onValueChange={(v) => setUploadMode(v as 'link' | 'upload')} className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 mb-6">
+                      <TabsTrigger value="link" className="flex items-center gap-2">
+                        <LinkIcon className="w-4 h-4" />
+                        🔗 ANALISAR LINK
+                      </TabsTrigger>
+                      <TabsTrigger value="upload" className="flex items-center gap-2">
+                        <Upload className="w-4 h-4" />
+                        📤 UPLOAD MEU PRODUTO
+                      </TabsTrigger>
+                    </TabsList>
 
-                {!bulkMode ? (
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Cole o link do produto que você quer promover:
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="https://shopee.com.br/produto... ou qualquer link de afiliado"
-                      value={url}
-                      onChange={(e) => setUrl(e.target.value)}
-                      className="h-12 text-base"
-                      disabled={loading}
-                    />
-                  </div>
+                    {/* Tab: Analisar Link */}
+                    <TabsContent value="link" className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="bulk-mode" className="text-base font-semibold">Analisar múltiplos links</Label>
+                        <Switch id="bulk-mode" checked={bulkMode} onCheckedChange={setBulkMode} />
+                      </div>
+
+                      {!bulkMode ? (
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">
+                            Cole o link do produto que você quer promover:
+                          </label>
+                          <Input
+                            type="text"
+                            placeholder="https://shopee.com.br/produto... ou qualquer link de afiliado"
+                            value={url}
+                            onChange={(e) => setUrl(e.target.value)}
+                            className="h-12 text-base"
+                            disabled={loading}
+                          />
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">
+                            Cole até 10 links, um por linha:
+                          </label>
+                          <Textarea
+                            placeholder="https://shopee.com.br/produto1&#10;https://shopee.com.br/produto2&#10;https://shopee.com.br/produto3"
+                            value={bulkUrls}
+                            onChange={(e) => setBulkUrls(e.target.value)}
+                            className="min-h-[200px] text-base"
+                            disabled={bulkLoading}
+                          />
+                        </div>
+                      )}
+                      
+                      <Button
+                        onClick={bulkMode ? handleBulkAnalyze : handleAnalyze}
+                        disabled={loading || bulkLoading}
+                        className="w-full h-14 text-lg font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg"
+                      >
+                        {(loading || bulkLoading) ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            🔍 Analisando produto... Aguarde 10-20 segundos
+                          </>
+                        ) : bulkMode ? (
+                          `✨ ANALISAR TODOS (${bulkUrls.split('\n').filter(u => u.trim()).length}/10)`
+                        ) : (
+                          "✨ ANALISAR COM IA"
+                        )}
+                      </Button>
+                    </TabsContent>
+
+                    {/* Tab: Upload */}
+                    <TabsContent value="upload" className="space-y-6">
+                      {/* Upload Zone */}
+                      {!uploadedFile ? (
+                        <div>
+                          <label className="block text-sm font-medium mb-2">
+                            Upload de Imagem ou Vídeo *
+                          </label>
+                          <div className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-8 text-center hover:border-purple-500 transition-colors cursor-pointer">
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp,video/mp4"
+                              onChange={handleFileUpload}
+                              className="hidden"
+                              id="file-upload"
+                            />
+                            <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-4">
+                              <Upload className="w-12 h-12 text-muted-foreground" />
+                              <div>
+                                <p className="text-lg font-semibold mb-1">
+                                  Clique para fazer upload ou arraste o arquivo
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  JPG, PNG, WEBP ou MP4 (máx. 50MB)
+                                </p>
+                              </div>
+                            </label>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* Preview */}
+                          <div className="relative">
+                            <label className="block text-sm font-medium mb-2">
+                              Preview
+                            </label>
+                            <div className="relative rounded-lg overflow-hidden border border-muted">
+                              {uploadedFile.type.startsWith('image/') ? (
+                                <img src={uploadPreview} alt="Preview" className="w-full h-64 object-cover" />
+                              ) : (
+                                <video src={uploadPreview} className="w-full h-64 object-cover" controls />
+                              )}
+                              <Button
+                                onClick={clearUpload}
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-2 right-2"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Formulário de Dados do Produto */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                          <Label htmlFor="nome">Nome do Produto *</Label>
+                          <Input
+                            id="nome"
+                            value={productData.nome}
+                            onChange={(e) => setProductData(prev => ({ ...prev, nome: e.target.value }))}
+                            placeholder="Ex: Tênis Esportivo Premium"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="preco">Preço (R$) *</Label>
+                          <Input
+                            id="preco"
+                            type="number"
+                            step="0.01"
+                            value={productData.preco}
+                            onChange={(e) => setProductData(prev => ({ ...prev, preco: e.target.value }))}
+                            placeholder="199.90"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="categoria">Categoria</Label>
+                          <Select 
+                            value={productData.categoria}
+                            onValueChange={(value) => setProductData(prev => ({ ...prev, categoria: value }))}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="moda">Moda</SelectItem>
+                              <SelectItem value="eletronicos">Eletrônicos</SelectItem>
+                              <SelectItem value="casa">Casa e Decoração</SelectItem>
+                              <SelectItem value="beleza">Beleza</SelectItem>
+                              <SelectItem value="esportes">Esportes</SelectItem>
+                              <SelectItem value="livros">Livros</SelectItem>
+                              <SelectItem value="alimentos">Alimentos</SelectItem>
+                              <SelectItem value="outros">Outros</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="col-span-2">
+                          <Label htmlFor="descricao">Descrição Curta *</Label>
+                          <Textarea
+                            id="descricao"
+                            value={productData.descricao}
+                            onChange={(e) => setProductData(prev => ({ ...prev, descricao: e.target.value }))}
+                            placeholder="Descreva as principais características do produto..."
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+
+                      <Button
+                        onClick={handleGenerateFromUpload}
+                        disabled={loading || !uploadedFile}
+                        className="w-full h-14 text-lg font-bold bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg"
+                      >
+                        {loading ? (
+                          <>
+                            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                            Gerando campanha...
+                          </>
+                        ) : (
+                          "✨ GERAR CAMPANHA COM IA"
+                        )}
+                      </Button>
+                    </TabsContent>
+                  </Tabs>
                 ) : (
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Cole até 10 links, um por linha:
-                    </label>
-                    <Textarea
-                      placeholder="https://shopee.com.br/produto1&#10;https://shopee.com.br/produto2&#10;https://shopee.com.br/produto3"
-                      value={bulkUrls}
-                      onChange={(e) => setBulkUrls(e.target.value)}
-                      className="min-h-[200px] text-base"
-                      disabled={bulkLoading}
-                    />
-                  </div>
+                  // Para afiliados, mostrar apenas análise de link
+                  <>
+                    <div className="flex items-center justify-between mb-4">
+                      <Label htmlFor="bulk-mode" className="text-base font-semibold">Analisar múltiplos links</Label>
+                      <Switch id="bulk-mode" checked={bulkMode} onCheckedChange={setBulkMode} />
+                    </div>
+
+                    {!bulkMode ? (
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">
+                          Cole o link do produto que você quer promover:
+                        </label>
+                        <Input
+                          type="text"
+                          placeholder="https://shopee.com.br/produto... ou qualquer link de afiliado"
+                          value={url}
+                          onChange={(e) => setUrl(e.target.value)}
+                          className="h-12 text-base"
+                          disabled={loading}
+                        />
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-sm font-medium mb-2 block">
+                          Cole até 10 links, um por linha:
+                        </label>
+                        <Textarea
+                          placeholder="https://shopee.com.br/produto1&#10;https://shopee.com.br/produto2&#10;https://shopee.com.br/produto3"
+                          value={bulkUrls}
+                          onChange={(e) => setBulkUrls(e.target.value)}
+                          className="min-h-[200px] text-base"
+                          disabled={bulkLoading}
+                        />
+                      </div>
+                    )}
+                    
+                    <Button
+                      onClick={bulkMode ? handleBulkAnalyze : handleAnalyze}
+                      disabled={loading || bulkLoading}
+                      className="w-full h-14 text-lg font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg"
+                    >
+                      {(loading || bulkLoading) ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          🔍 Analisando produto... Aguarde 10-20 segundos
+                        </>
+                      ) : bulkMode ? (
+                        `✨ ANALISAR TODOS (${bulkUrls.split('\n').filter(u => u.trim()).length}/10)`
+                      ) : (
+                        "✨ ANALISAR COM IA"
+                      )}
+                    </Button>
+                  </>
                 )}
-                
-                <Button
-                  onClick={bulkMode ? handleBulkAnalyze : handleAnalyze}
-                  disabled={loading || bulkLoading}
-                  className="w-full h-14 text-lg font-bold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg"
-                >
-                  {(loading || bulkLoading) ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      🔍 Analisando produto... Aguarde 10-20 segundos
-                    </>
-                  ) : bulkMode ? (
-                    `✨ ANALISAR TODOS (${bulkUrls.split('\n').filter(u => u.trim()).length}/10)`
-                  ) : (
-                    "✨ ANALISAR COM IA"
-                  )}
-                </Button>
               </CardContent>
             </Card>
 
