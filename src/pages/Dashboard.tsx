@@ -919,26 +919,355 @@ const Dashboard = () => {
               {/* FIM DO DASHBOARD INDÚSTRIA */}
               {/* ═══════════════════════════════════════════════════════════ */}
               
-              {userProfile?.tipo !== 'fabrica' && (
-                <>
+              {/* ═══════════════════════════════════════════════════════════ */}
+              {/* DASHBOARD EMPRESA */}
+              {/* ═══════════════════════════════════════════════════════════ */}
+              {userProfile?.tipo === 'empresa' && (
+                <div className="space-y-8">
+                  {/* Header Banner Empresa */}
+                  <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-green-600 rounded-xl shadow-2xl p-8 text-white">
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="text-4xl">🏢</div>
+                      <h1 className="text-3xl font-bold">Dashboard da Empresa - Marketing Local</h1>
+                    </div>
+                    <p className="text-xl text-blue-100">
+                      Acompanhe suas postagens e engajamento nas redes sociais
+                    </p>
+                  </div>
 
-              {/* Welcome Message */}
-              <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                  {userProfile?.tipo === 'afiliado' ? '📈 Dashboard do Afiliado' : 'Bem-vindo de volta! 👋'}
-                </h1>
-                <p className="text-gray-600 dark:text-gray-400">
-                  {userProfile?.tipo === 'afiliado' 
-                    ? 'Acompanhe suas métricas de engajamento e desempenho'
-                    : 'Aqui está um resumo do desempenho da sua empresa'}
-                </p>
-              </div>
+                  {/* Cards Principais - Grid 4 Colunas */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Postagens */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-t-4 border-blue-500 hover:shadow-xl transition-shadow">
+                      <div className="flex items-center justify-between mb-4">
+                        <MessageCircle className="w-10 h-10 text-blue-500" />
+                        <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700">+23%</span>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">📱 POSTAGENS</p>
+                      <p className="text-4xl font-bold text-gray-900 dark:text-white mb-1">127</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">este mês</p>
+                      <p className="text-xs text-green-600 mt-2">+23% vs anterior</p>
+                    </div>
 
-              {/* Main Metrics - 4 Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                {userProfile?.tipo === 'afiliado' ? (
-                  <>
-                    {/* AFILIADO - Posts Criados */}
+                    {/* Alcance */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-t-4 border-purple-500 hover:shadow-xl transition-shadow">
+                      <div className="flex items-center justify-between mb-4">
+                        <Eye className="w-10 h-10 text-purple-500" />
+                        <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700">+18%</span>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">👥 ALCANCE</p>
+                      <p className="text-4xl font-bold text-gray-900 dark:text-white mb-1">45.2K</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">pessoas</p>
+                      <p className="text-xs text-green-600 mt-2">+18% vs anterior</p>
+                    </div>
+
+                    {/* Vendas */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-t-4 border-green-500 hover:shadow-xl transition-shadow">
+                      <div className="flex items-center justify-between mb-4">
+                        <DollarSign className="w-10 h-10 text-green-500" />
+                        <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700">+31%</span>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">💰 VENDAS</p>
+                      <p className="text-3xl font-bold text-gray-900 dark:text-white mb-1">R$ 12.450</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">este mês</p>
+                      <p className="text-xs text-green-600 mt-2">+31% vs anterior</p>
+                    </div>
+
+                    {/* Engajamento */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border-t-4 border-orange-500 hover:shadow-xl transition-shadow">
+                      <div className="flex items-center justify-between mb-4">
+                        <TrendingUp className="w-10 h-10 text-orange-500" />
+                        <span className="text-xs font-semibold px-2 py-1 rounded bg-green-100 text-green-700">+12%</span>
+                      </div>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">📈 ENGAJAMENTO</p>
+                      <p className="text-4xl font-bold text-gray-900 dark:text-white mb-1">8.5%</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">taxa média</p>
+                      <p className="text-xs text-green-600 mt-2">+12% vs anterior</p>
+                    </div>
+                  </div>
+
+                  {/* Gráfico Principal */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                      <BarChart3 className="w-6 h-6 text-blue-500" />
+                      📊 Desempenho dos Últimos 30 Dias
+                    </h3>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={[
+                          { dia: 'Dia 1', postagens: 3, alcance: 890, vendas: 245 },
+                          { dia: 'Dia 5', postagens: 15, alcance: 4200, vendas: 1120 },
+                          { dia: 'Dia 10', postagens: 32, alcance: 9800, vendas: 2450 },
+                          { dia: 'Dia 15', postagens: 56, alcance: 18500, vendas: 4890 },
+                          { dia: 'Dia 20', postagens: 82, alcance: 28300, vendas: 7650 },
+                          { dia: 'Dia 25', postagens: 105, alcance: 38700, vendas: 10200 },
+                          { dia: 'Dia 30', postagens: 127, alcance: 45200, vendas: 12450 },
+                        ]}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="dia" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line type="monotone" dataKey="postagens" stroke="#3b82f6" name="Postagens" />
+                          <Line type="monotone" dataKey="alcance" stroke="#8b5cf6" name="Alcance" />
+                          <Line type="monotone" dataKey="vendas" stroke="#10b981" name="Vendas (R$)" />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Redes Sociais */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Instagram */}
+                    <div className="bg-gradient-to-br from-pink-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Instagram className="w-8 h-8" />
+                        <h4 className="text-lg font-bold">Instagram</h4>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <p><span className="font-semibold">23.5K</span> seguidores</p>
+                        <p><span className="font-semibold">45</span> posts</p>
+                        <p><span className="font-semibold">4.2%</span> engajamento</p>
+                      </div>
+                    </div>
+
+                    {/* Facebook */}
+                    <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl shadow-lg p-6 text-white">
+                      <div className="flex items-center gap-3 mb-4">
+                        <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                        <h4 className="text-lg font-bold">Facebook</h4>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <p><span className="font-semibold">15.2K</span> curtidas</p>
+                        <p><span className="font-semibold">32</span> posts</p>
+                        <p><span className="font-semibold">3.8%</span> engajamento</p>
+                      </div>
+                    </div>
+
+                    {/* TikTok */}
+                    <div className="bg-gradient-to-br from-gray-800 to-black rounded-xl shadow-lg p-6 text-white">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Video className="w-8 h-8" />
+                        <h4 className="text-lg font-bold">TikTok</h4>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <p><span className="font-semibold">8.1K</span> views</p>
+                        <p><span className="font-semibold">18</span> vídeos</p>
+                        <p><span className="font-semibold">12%</span> engajamento</p>
+                      </div>
+                    </div>
+
+                    {/* WhatsApp */}
+                    <div className="bg-gradient-to-br from-green-500 to-green-700 rounded-xl shadow-lg p-6 text-white">
+                      <div className="flex items-center gap-3 mb-4">
+                        <MessageCircle className="w-8 h-8" />
+                        <h4 className="text-lg font-bold">WhatsApp</h4>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <p><span className="font-semibold">450</span> contatos</p>
+                        <p><span className="font-semibold">89</span> envios</p>
+                        <p><span className="font-semibold">67%</span> abertura</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="bg-gradient-to-r from-blue-100 to-green-100 dark:from-blue-900/30 dark:to-green-900/30 rounded-xl p-6">
+                    <p className="text-center font-semibold text-gray-700 dark:text-gray-300 mb-4">Ações Rápidas</p>
+                    <div className="flex flex-wrap gap-3 justify-center">
+                      <button
+                        onClick={() => navigate('/ia-marketing')}
+                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all hover:scale-105 shadow-lg flex items-center gap-2"
+                      >
+                        <Plus className="w-5 h-5" />
+                        ➕ Novo Post
+                      </button>
+                      <button
+                        onClick={() => navigate('/biblioteca')}
+                        className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-all hover:scale-105 shadow-lg flex items-center gap-2"
+                      >
+                        <Calendar className="w-5 h-5" />
+                        📅 Agendar
+                      </button>
+                      <button
+                        onClick={() => navigate('/produtos')}
+                        className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-all hover:scale-105 shadow-lg flex items-center gap-2"
+                      >
+                        <Package className="w-5 h-5" />
+                        📤 Upload Produto
+                      </button>
+                      <button
+                        onClick={() => navigate('/ia-marketing')}
+                        className="px-6 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-medium transition-all hover:scale-105 shadow-lg flex items-center gap-2"
+                      >
+                        <Video className="w-5 h-5" />
+                        🎬 Criar Vídeo
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Top 5 Posts da Semana */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                      <Star className="w-6 h-6 text-yellow-500" />
+                      🔥 TOP 5 POSTS DA SEMANA
+                    </h3>
+                    <div className="space-y-3">
+                      {[
+                        { titulo: 'Promoção Dia das Mães', curtidas: '2.3K', rede: 'Instagram' },
+                        { titulo: 'Novo cardápio', curtidas: '1.8K', rede: 'Facebook' },
+                        { titulo: 'Behind the scenes', curtidas: '4.5K', rede: 'TikTok' },
+                        { titulo: 'Novidades da semana', curtidas: '1.2K', rede: 'Instagram' },
+                        { titulo: 'Depoimentos clientes', curtidas: '980', rede: 'Facebook' },
+                      ].map((post, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{idx + 1}. {post.titulo}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{post.rede}</p>
+                          </div>
+                          <span className="text-sm font-bold text-blue-600">{post.curtidas} curtidas</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Próximos Agendamentos */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                      <Calendar className="w-6 h-6 text-purple-500" />
+                      📅 PRÓXIMOS AGENDAMENTOS
+                    </h3>
+                    <div className="space-y-3">
+                      {[
+                        { time: 'Hoje 18:00', rede: 'Instagram Feed', titulo: 'Promoção fim de semana' },
+                        { time: 'Amanhã 10:00', rede: 'Facebook', titulo: 'Bom dia clientes' },
+                        { time: 'Amanhã 14:00', rede: 'TikTok', titulo: 'Vídeo produto novo' },
+                        { time: '15/11 09:00', rede: 'Instagram Stories', titulo: 'Bastidores' },
+                        { time: '16/11 19:00', rede: 'Facebook', titulo: 'Depoimento cliente' },
+                      ].map((agendamento, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{agendamento.time} - {agendamento.rede}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">"{agendamento.titulo}"</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => navigate('/biblioteca')}
+                      className="w-full mt-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors font-medium"
+                    >
+                      VER TODAS
+                    </button>
+                  </div>
+
+                  {/* Google Ads + Analytics */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Google Ads */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <Target className="w-6 h-6 text-red-500" />
+                        🎯 GOOGLE ADS
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Campanhas Ativas:</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">3</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">CPC Médio:</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">R$ 0,85</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">CTR:</span>
+                          <span className="text-sm font-bold text-green-600">4.2%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Budget:</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">R$ 1.500/mês (68%)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">ROI:</span>
+                          <span className="text-sm font-bold text-purple-600">3.8x</span>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          onClick={() => navigate('/campanhas')}
+                          className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                          VER CAMPANHAS
+                        </button>
+                        <button
+                          onClick={() => navigate('/campanhas')}
+                          className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          CRIAR NOVA
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Google Analytics */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                        <BarChart3 className="w-6 h-6 text-blue-500" />
+                        📊 GOOGLE ANALYTICS
+                      </h3>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Visitas (mês):</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">12.458</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Taxa Conversão:</span>
+                          <span className="text-sm font-bold text-green-600">2.8%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Tempo Médio:</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">3m 42s</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Taxa Rejeição:</span>
+                          <span className="text-sm font-bold text-orange-600">38.5%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600 dark:text-gray-400">Páginas/Visita:</span>
+                          <span className="text-sm font-bold text-gray-900 dark:text-white">4.2</span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => navigate('/analytics')}
+                        className="w-full mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        RELATÓRIO COMPLETO
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* ═══════════════════════════════════════════════════════════ */}
+              {/* FIM DO DASHBOARD EMPRESA */}
+              {/* ═══════════════════════════════════════════════════════════ */}
+              
+              {/* ═══════════════════════════════════════════════════════════ */}
+              {/* DASHBOARD AFILIADO */}
+              {/* ═══════════════════════════════════════════════════════════ */}
+              {userProfile?.tipo === 'afiliado' && (
+                <div className="space-y-8">
+                  {/* Header Banner Afiliado */}
+                  <div className="bg-gradient-to-r from-purple-500 via-purple-600 to-pink-600 rounded-xl shadow-2xl p-8 text-white">
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="text-4xl">📈</div>
+                      <h1 className="text-3xl font-bold">Dashboard do Afiliado</h1>
+                    </div>
+                    <p className="text-xl text-purple-100">
+                      Acompanhe suas métricas de engajamento e desempenho
+                    </p>
+                  </div>
+
+                  {/* Cards Principais - Grid 4 Colunas */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {/* Posts Criados */}
                     <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
                       <div className="flex items-center justify-between mb-4">
                         <MessageCircle className="w-10 h-10 opacity-80" />
@@ -951,7 +1280,7 @@ const Dashboard = () => {
                       <p className="text-xs opacity-70 mt-2">este mês</p>
                     </div>
 
-                    {/* AFILIADO - Visualizações */}
+                    {/* Visualizações */}
                     <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
                       <div className="flex items-center justify-between mb-4">
                         <Eye className="w-10 h-10 opacity-80" />
@@ -964,10 +1293,10 @@ const Dashboard = () => {
                       <p className="text-xs opacity-70 mt-2">total</p>
                     </div>
 
-                    {/* AFILIADO - Cliques */}
+                    {/* Cliques */}
                     <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
                       <div className="flex items-center justify-between mb-4">
-                        <Target className="w-10 h-10 opacity-80" />
+                        <Link2 className="w-10 h-10 opacity-80" />
                         <span className="text-sm font-semibold px-2 py-1 rounded bg-white/20">
                           +22%
                         </span>
@@ -977,10 +1306,10 @@ const Dashboard = () => {
                       <p className="text-xs opacity-70 mt-2">nos links</p>
                     </div>
 
-                    {/* AFILIADO - Mensagens WhatsApp */}
+                    {/* Mensagens */}
                     <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
                       <div className="flex items-center justify-between mb-4">
-                        <MessageCircle className="w-10 h-10 opacity-80" />
+                        <Send className="w-10 h-10 opacity-80" />
                         <span className="text-sm font-semibold px-2 py-1 rounded bg-white/20">
                           +45%
                         </span>
@@ -989,13 +1318,8 @@ const Dashboard = () => {
                       <p className="text-3xl font-bold">134</p>
                       <p className="text-xs opacity-70 mt-2">WhatsApp</p>
                     </div>
-                  </>
-                ) : null}
-              </div>
+                  </div>
 
-              {/* Conteúdo Específico do Afiliado */}
-              {userProfile?.tipo === 'afiliado' && (
-                <div className="space-y-8">
                   {/* Gráfico de Desempenho */}
                   <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
@@ -1439,8 +1763,6 @@ const Dashboard = () => {
                     </div>
                   </div>
                 </div>
-              )}
-                </>
               )}
 
             </div>
