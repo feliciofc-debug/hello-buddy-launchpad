@@ -49,14 +49,18 @@ serve(async (req) => {
     const lomadeeToken = integration.lomadee_app_token;
     const sourceId = integration.lomadee_source_id;
 
-    // Buscar produtos via BuscaPé API
-    const buscapeUrl = `https://sandbox.buscape.com/service/findProductList/lomadee/${lomadeeToken}/${sourceId}/?keyword=${encodeURIComponent(keyword)}&format=json`;
+    // Buscar produtos via BuscaPé API (PRODUÇÃO)
+    // Usar apenas os primeiros source IDs para evitar URL muito longa
+    const firstSourceId = sourceId ? sourceId.split(',')[0] : sourceId;
+    
+    const buscapeUrl = `http://bws.buscape.com.br/service/findProductList/lomadee/${lomadeeToken}/${firstSourceId}/?keyword=${encodeURIComponent(keyword)}&format=json`;
     
     console.log("[BUSCAPE] Chamando API:", buscapeUrl);
 
     const response = await fetch(buscapeUrl, {
       headers: {
         'Accept': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
       }
     });
 
