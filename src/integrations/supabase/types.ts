@@ -20,6 +20,7 @@ export type Database = {
           created_at: string | null
           id: string
           is_active: boolean | null
+          lomadee_affiliate_id: string | null
           lomadee_app_token: string | null
           lomadee_connected_at: string | null
           lomadee_source_id: string | null
@@ -37,6 +38,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          lomadee_affiliate_id?: string | null
           lomadee_app_token?: string | null
           lomadee_connected_at?: string | null
           lomadee_source_id?: string | null
@@ -54,6 +56,7 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_active?: boolean | null
+          lomadee_affiliate_id?: string | null
           lomadee_app_token?: string | null
           lomadee_connected_at?: string | null
           lomadee_source_id?: string | null
