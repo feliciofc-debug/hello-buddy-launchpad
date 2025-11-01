@@ -42,13 +42,12 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Buscar produtos quando o modal abrir
+  // Buscar canais/links da loja quando o modal abrir
   useEffect(() => {
     if (open && store) {
-      const fetchProducts = async () => {
+      const fetchStoreChannels = async () => {
         setIsLoading(true);
         try {
-          // Buscar APP_TOKEN do banco
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) throw new Error('Usuário não autenticado');
 
@@ -64,61 +63,64 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
             throw new Error('Configure sua integração Lomadee');
           }
 
-          // Usar sourceId da loja ou fallback para nome
           const brandSlug = (store as any).sourceId || store.name.toLowerCase().replace(/\s+/g, '-');
+          
+          console.log('Buscando canais da loja:', brandSlug);
 
-          console.log('Buscando produtos da loja:', brandSlug);
-
-          const { data, error } = await supabase.functions.invoke('buscar-produtos-lomadee-brand', {
-            body: { 
-              appToken: integration.lomadee_app_token,
-              brandSlug,
-              page: 1,
-              limit: 50
+          // Buscar detalhes da loja da API Lomadee
+          const response = await fetch(`https://api-beta.lomadee.com.br/affiliate/brands`, {
+            headers: {
+              'x-api-key': integration.lomadee_app_token,
+              'Content-Type': 'application/json'
             }
           });
 
-          if (error) throw error;
-
-          if (!data.success) {
-            throw new Error(data.error || 'Erro ao buscar produtos');
+          if (!response.ok) {
+            throw new Error('Erro ao buscar dados da loja');
           }
 
-          const transformedProducts: Product[] = (data.products || []).map((produto: any) => ({
-            id: produto.id,
-            title: produto.name,
-            description: produto.name,
-            price: produto.price,
-            commission: produto.commission,
-            commissionPercent: produto.commission,
-            marketplace: 'lomadee' as const,
-            category: produto.category,
-            imageUrl: produto.image,
-            affiliateLink: produto.url,
-            rating: 0,
-            reviews: 0,
-            sales: 0,
-            createdAt: new Date(),
-            bsr: 0,
-            bsrCategory: 'Business'
-          }));
-
-          setProducts(transformedProducts);
+          const data = await response.json();
           
-          if (transformedProducts.length > 0) {
-            toast.success(`${transformedProducts.length} produtos encontrados!`);
+          // Encontrar a loja específica
+          const lojaEncontrada = data.data?.find((b: any) => b.slug === brandSlug);
+          
+          if (lojaEncontrada?.channels && lojaEncontrada.channels.length > 0) {
+            // Criar "produtos" fictícios a partir dos canais
+            const channelProducts = lojaEncontrada.channels.flatMap((channel: any, idx: number) => {
+              return (channel.shortUrls || []).map((url: string, urlIdx: number) => ({
+                id: `${brandSlug}-${idx}-${urlIdx}`,
+                title: `${channel.name || 'Canal'} - Link de Afiliado`,
+                description: `Acesse a loja ${store.name} através deste link de afiliado`,
+                price: 0,
+                commission: lojaEncontrada.commission?.value || 10,
+                commissionPercent: lojaEncontrada.commission?.value || 10,
+                marketplace: 'lomadee' as const,
+                category: '🏪 Link de Loja',
+                imageUrl: store.logo,
+                affiliateLink: url,
+                rating: 0,
+                reviews: 0,
+                sales: 0,
+                createdAt: new Date(),
+                bsr: 0,
+                bsrCategory: 'Store'
+              }));
+            });
+
+            setProducts(channelProducts);
+            toast.success(`${channelProducts.length} links de afiliado disponíveis!`);
           } else {
-            toast.warning('Nenhum produto encontrado nesta loja');
+            toast.warning('Nenhum canal/link disponível para esta loja');
           }
         } catch (err: any) {
-          console.error('Erro ao buscar produtos:', err);
-          toast.error(err.message || 'Erro ao carregar produtos da loja');
+          console.error('Erro ao buscar canais:', err);
+          toast.error(err.message || 'Erro ao carregar links da loja');
         } finally {
           setIsLoading(false);
         }
       };
 
-      fetchProducts();
+      fetchStoreChannels();
     }
   }, [open, store]);
 
