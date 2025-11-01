@@ -15,6 +15,7 @@ interface ProductAnalysis {
     titulo: string;
     preco: string;
     url: string;
+    originalUrl: string;
   };
   posts: {
     instagram: string;
@@ -69,13 +70,13 @@ const IAMarketing = () => {
   };
 
   const handleCopy = (text: string, type: string) => {
-    const fullText = `${text}\n\n🔗 ${resultado?.produto?.url || url}`;
+    const fullText = `${text}\n\n🔗 ${resultado?.produto?.originalUrl || url}`;
     navigator.clipboard.writeText(fullText);
     toast.success(`${type} copiado com link!`);
   };
 
   const handleWhatsAppSend = (text: string) => {
-    const fullText = `${text}\n\n🔗 ${resultado?.produto?.url || url}`;
+    const fullText = `${text}\n\n🔗 ${resultado?.produto?.originalUrl || url}`;
     const encodedText = encodeURIComponent(fullText);
     window.open(`https://web.whatsapp.com/send?text=${encodedText}`, "_blank");
   };

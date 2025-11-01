@@ -222,7 +222,8 @@ Máximo 200 caracteres.`;
         produto: {
           titulo: titulo || 'Produto',
           preco: preco || '0.00',
-          url: finalUrl
+          url: finalUrl,
+          originalUrl: url  // Link original de afiliado
         },
         posts: {
           instagram: textoInsta,
