@@ -76,8 +76,9 @@ const ProductsPage: React.FC = () => {
     setSelectedStore({
       name: loja.name,
       logo: loja.logo,
-      commission: `até ${loja.commission}%`
-    });
+      commission: `até ${loja.commission}%`,
+      sourceId: loja.sourceId
+    } as any);
     setIsStoreModalOpen(true);
   };
 

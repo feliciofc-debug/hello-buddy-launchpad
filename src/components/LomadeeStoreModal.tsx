@@ -22,6 +22,7 @@ interface Store {
   name: string;
   logo: string;
   commission: string;
+  sourceId?: string;
 }
 
 interface LomadeeStoreModalProps {
@@ -47,35 +48,71 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
       const fetchProducts = async () => {
         setIsLoading(true);
         try {
-          const { data, error } = await supabase.functions.invoke('buscar-produtos-lomadee', {
-            body: { searchTerm: store.name, limit: 50, offset: 0 }
+          // Buscar APP_TOKEN do banco
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) throw new Error('Usuário não autenticado');
+
+          const { data: integration } = await supabase
+            .from('integrations')
+            .select('lomadee_app_token')
+            .eq('user_id', user.id)
+            .eq('platform', 'lomadee')
+            .eq('is_active', true)
+            .single();
+
+          if (!integration?.lomadee_app_token) {
+            throw new Error('Configure sua integração Lomadee');
+          }
+
+          // Usar sourceId da loja ou fallback para nome
+          const brandSlug = (store as any).sourceId || store.name.toLowerCase().replace(/\s+/g, '-');
+
+          console.log('Buscando produtos da loja:', brandSlug);
+
+          const { data, error } = await supabase.functions.invoke('buscar-produtos-lomadee-brand', {
+            body: { 
+              appToken: integration.lomadee_app_token,
+              brandSlug,
+              page: 1,
+              limit: 50
+            }
           });
 
           if (error) throw error;
 
-          const transformedProducts: Product[] = (data.produtos || []).map((produto: any) => ({
+          if (!data.success) {
+            throw new Error(data.error || 'Erro ao buscar produtos');
+          }
+
+          const transformedProducts: Product[] = (data.products || []).map((produto: any) => ({
             id: produto.id,
-            title: produto.nome,
-            description: produto.nome,
-            price: produto.preco,
-            commission: produto.comissao,
-            commissionPercent: produto.comissaoPercentual,
+            title: produto.name,
+            description: produto.name,
+            price: produto.price,
+            commission: produto.commission,
+            commissionPercent: produto.commission,
             marketplace: 'lomadee' as const,
-            category: produto.categoria,
-            imageUrl: produto.imagem,
+            category: produto.category,
+            imageUrl: produto.image,
             affiliateLink: produto.url,
-            rating: produto.rating || 0,
-            reviews: produto.reviews || 0,
-            sales: produto.demandaMensal || 0,
-            createdAt: new Date(produto.dataCadastro || Date.now()),
+            rating: 0,
+            reviews: 0,
+            sales: 0,
+            createdAt: new Date(),
             bsr: 0,
             bsrCategory: 'Business'
           }));
 
           setProducts(transformedProducts);
-        } catch (err) {
+          
+          if (transformedProducts.length > 0) {
+            toast.success(`${transformedProducts.length} produtos encontrados!`);
+          } else {
+            toast.warning('Nenhum produto encontrado nesta loja');
+          }
+        } catch (err: any) {
           console.error('Erro ao buscar produtos:', err);
-          toast.error('Erro ao carregar produtos da loja');
+          toast.error(err.message || 'Erro ao carregar produtos da loja');
         } finally {
           setIsLoading(false);
         }
