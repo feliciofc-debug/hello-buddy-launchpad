@@ -40,21 +40,31 @@ serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log('[LOMADEE-STORES] Resposta recebida');
+    console.log('[LOMADEE-STORES] Resposta completa:', JSON.stringify(data).substring(0, 500));
 
     // Extrair lojas dos brands
     const stores: any[] = [];
 
-    if (Array.isArray(data)) {
-      data.forEach((item: any) => {
-        if (item.data) {
+    // A resposta pode ser um objeto com data.data ou direto um array
+    const brandsArray = data.data || data;
+
+    if (Array.isArray(brandsArray)) {
+      console.log(`[LOMADEE-STORES] Encontrados ${brandsArray.length} brands`);
+      
+      brandsArray.forEach((brand: any) => {
+        // Pode vir como { data: {...} } ou direto {...}
+        const brandData = brand.data || brand;
+        
+        if (brandData && brandData.name) {
           stores.push({
-            sourceId: item.data.slug,
-            name: item.data.name,
-            thumbnail: item.data.logo || null
+            sourceId: brandData.slug || brandData.id,
+            name: brandData.name,
+            thumbnail: brandData.logo || null
           });
         }
       });
+    } else {
+      console.log('[LOMADEE-STORES] Resposta não é um array:', typeof brandsArray);
     }
     
     console.log(`[LOMADEE-STORES] Total de lojas encontradas: ${stores.length}`);
