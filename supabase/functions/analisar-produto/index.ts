@@ -42,9 +42,9 @@ serve(async (req) => {
         console.log('✅ URL final:', finalUrl);
       }
 
-      // USAR SCRAPER API PARA OBTER HTML REAL
-      const scraperUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true`;
-      console.log('🔍 Buscando dados do produto via ScraperAPI...');
+      // USAR SCRAPER API COM ULTRA PREMIUM PARA SHOPEE
+      const scraperUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true&ultra_premium=true`;
+      console.log('🔍 Buscando dados via ScraperAPI Ultra Premium...');
       
       const response = await fetch(scraperUrl, {
         headers: {
