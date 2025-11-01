@@ -26,49 +26,40 @@ serve(async (req) => {
 
     // Seguir redirect se for link curto
     let finalUrl = url;
-    if (url.includes('shope.ee') || url.includes('amzn.to')) {
+    if (url.includes('shope.ee') || url.includes('amzn.to') || url.includes('s.shopee')) {
       console.log('🔗 Link curto detectado, seguindo redirect...');
-      const redirectResponse = await fetch(url, { redirect: 'follow' });
-      finalUrl = redirectResponse.url;
-      console.log('📍 URL final:', finalUrl);
+      try {
+        const redirectResponse = await fetch(url, { 
+          redirect: 'follow',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          }
+        });
+        finalUrl = redirectResponse.url;
+        console.log('📍 URL final:', finalUrl);
+      } catch (e) {
+        console.log('⚠️ Erro ao seguir redirect, usando URL original');
+      }
     }
 
-    let html = '';
-    
-    // Tentar fetch direto primeiro
-    try {
-      console.log('🌐 Tentando fetch direto...');
-      const directResponse = await fetch(finalUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-      });
-      
-      if (directResponse.ok) {
-        html = await directResponse.text();
-        console.log('✅ Fetch direto bem-sucedido, tamanho:', html.length);
-      } else {
-        throw new Error(`Fetch direto falhou: ${directResponse.status}`);
-      }
-    } catch (directError) {
-      console.log('⚠️ Fetch direto falhou, tentando ScraperAPI...');
-      
-      // Fallback para ScraperAPI
-      const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
-      if (SCRAPER_API_KEY) {
-        const scraperUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}`;
-        const scraperResponse = await fetch(scraperUrl);
-        
-        if (!scraperResponse.ok) {
-          throw new Error(`ScraperAPI falhou: ${scraperResponse.status}. Verifique seus créditos em scraperapi.com`);
-        }
-        
-        html = await scraperResponse.text();
-        console.log('✅ ScraperAPI bem-sucedido, tamanho:', html.length);
-      } else {
-        throw new Error('Não foi possível acessar a página. Configure SCRAPER_API_KEY para sites protegidos.');
-      }
+    // Usar APENAS ScraperAPI para garantir scraping bem-sucedido
+    const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
+    if (!SCRAPER_API_KEY) {
+      throw new Error('SCRAPER_API_KEY não configurada. Configure em Settings > Secrets');
     }
+
+    console.log('🌐 Fazendo scraping com ScraperAPI...');
+    const scraperUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true`;
+    const scraperResponse = await fetch(scraperUrl);
+    
+    if (!scraperResponse.ok) {
+      const errorText = await scraperResponse.text();
+      console.error('❌ Erro ScraperAPI:', scraperResponse.status, errorText);
+      throw new Error(`Erro ao acessar produto (${scraperResponse.status}). Verifique seus créditos em scraperapi.com`);
+    }
+    
+    const html = await scraperResponse.text();
+    console.log('✅ Scraping bem-sucedido, tamanho HTML:', html.length);
 
     // Extrair título e preço com regex melhorados
     let titulo = '';
@@ -138,26 +129,40 @@ serve(async (req) => {
 
     console.log('📊 Dados extraídos - Título:', titulo, '| Preço:', preco);
 
-    // Gerar posts com IA usando os dados reais
-    const promptInsta = `Crie um post vendedor para Instagram sobre este produto:
-Produto: ${titulo || 'Produto incrível'}
-Preço: R$ ${preco || 'XX,XX'}
+    // Validar dados extraídos
+    if (!titulo || !preco) {
+      console.warn('⚠️ Extração incompleta - Título:', titulo, '| Preço:', preco);
+    }
 
-Use linguagem urgente, emojis relevantes e call-to-action forte.
+    // Gerar posts com IA usando os dados REAIS do produto
+    const nomeProduto = titulo || 'este produto incrível';
+    const precoProduto = preco ? `R$ ${preco}` : 'preço promocional';
+
+    const promptInsta = `Crie um post ESPECÍFICO para Instagram sobre este produto REAL:
+
+PRODUTO: ${nomeProduto}
+PREÇO: ${precoProduto}
+
+IMPORTANTE: Use o NOME EXATO e o PREÇO REAL do produto no texto.
+Seja persuasivo, use emojis relevantes e call-to-action forte.
 Máximo 150 caracteres.`;
 
-    const promptStory = `Crie um texto curto e impactante para story do Instagram:
-Produto: ${titulo || 'Produto incrível'}
-Preço: R$ ${preco || 'XX,XX'}
+    const promptStory = `Crie um story ESPECÍFICO para Instagram sobre este produto REAL:
 
+PRODUTO: ${nomeProduto}
+PREÇO: ${precoProduto}
+
+IMPORTANTE: Mencione o produto pelo NOME e PREÇO reais.
 Use senso de urgência e escassez.
 Máximo 80 caracteres.`;
 
-    const promptWhats = `Crie uma mensagem amigável para WhatsApp:
-Produto: ${titulo || 'Produto incrível'}
-Preço: R$ ${preco || 'XX,XX'}
+    const promptWhats = `Crie uma mensagem ESPECÍFICA para WhatsApp sobre este produto REAL:
 
-Tom informal como se fosse um amigo indicando.
+PRODUTO: ${nomeProduto}
+PREÇO: ${precoProduto}
+
+IMPORTANTE: Fale especificamente sobre este produto usando seu NOME e PREÇO reais.
+Tom informal como se fosse um amigo recomendando.
 Máximo 200 caracteres.`;
 
     const generateText = async (prompt: string) => {
