@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { X, Search, Sparkles, Loader2 } from "lucide-react";
+import { X, Search, Sparkles } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import type { Product } from '@/types/product';
 import {
   Select,
   SelectContent,
@@ -16,21 +17,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-interface Product {
-  id: number;
-  titulo: string;
-  imagem: string;
-  preco: number;
-  comissao_percent: number;
-  comissao_valor: number;
-  link_afiliado: string;
-  loja: string;
-}
-
 interface Store {
   name: string;
   logo: string;
   commission: string;
+  products: Product[];
 }
 
 interface LomadeeStoreModalProps {
@@ -39,30 +30,6 @@ interface LomadeeStoreModalProps {
   onClose: () => void;
 }
 
-// Mock data - 20 produtos por loja
-const generateMockProducts = (storeName: string, count: number = 20): Product[] => {
-  const categories = ["Eletrônicos", "Casa e Jardim", "Moda", "Esportes", "Livros"];
-  const products = [];
-  
-  for (let i = 1; i <= count; i++) {
-    const preco = Math.random() * 1000 + 100;
-    const comissao_percent = parseInt(storeName.match(/\d+/)?.[0] || "12");
-    const comissao_valor = (preco * comissao_percent) / 100;
-    
-    products.push({
-      id: i,
-      titulo: `Produto ${storeName} - Item ${i}`,
-      imagem: `https://images.unsplash.com/photo-${1580000000000 + i}?w=300&h=300&fit=crop`,
-      preco: parseFloat(preco.toFixed(2)),
-      comissao_percent,
-      comissao_valor: parseFloat(comissao_valor.toFixed(2)),
-      link_afiliado: `https://lomadee.com/${storeName.toLowerCase().replace(/\s/g, '-')}/produto-${i}`,
-      loja: storeName,
-    });
-  }
-  
-  return products;
-};
 
 export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalProps) => {
   const navigate = useNavigate();
@@ -70,26 +37,26 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
-  const [selectedProducts, setSelectedProducts] = useState<Set<number>>(new Set());
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   
   if (!store) return null;
 
-  const products = generateMockProducts(store.name, 20);
-  const categories = ["all", "Eletrônicos", "Casa e Jardim", "Moda", "Esportes", "Livros"];
+  const products = store.products;
+  const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
 
   // Filtrar produtos
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
-      const matchesSearch = product.titulo.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === "all" || product.titulo.includes(selectedCategory);
-      const matchesMinPrice = !minPrice || product.preco >= parseFloat(minPrice);
-      const matchesMaxPrice = !maxPrice || product.preco <= parseFloat(maxPrice);
+      const matchesSearch = product.title.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
+      const matchesMinPrice = !minPrice || product.price >= parseFloat(minPrice);
+      const matchesMaxPrice = !maxPrice || product.price <= parseFloat(maxPrice);
       
       return matchesSearch && matchesCategory && matchesMinPrice && matchesMaxPrice;
     });
   }, [searchTerm, selectedCategory, minPrice, maxPrice, products]);
 
-  const toggleProductSelection = (productId: number) => {
+  const toggleProductSelection = (productId: string) => {
     const newSelection = new Set(selectedProducts);
     if (newSelection.has(productId)) {
       newSelection.delete(productId);
@@ -106,7 +73,7 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
     }
 
     const selectedProductsData = products.filter(p => selectedProducts.has(p.id));
-    const productUrls = selectedProductsData.map(p => p.link_afiliado).join(',');
+    const productUrls = selectedProductsData.map(p => p.affiliateLink).join(',');
     
     // Redirecionar para IA Marketing com produtos selecionados
     navigate(`/ia-marketing?produtos=${encodeURIComponent(productUrls)}`);
@@ -219,15 +186,15 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
                   {/* Badge de comissão */}
                   <div className="absolute top-2 right-2 z-10">
                     <Badge className="bg-green-600 hover:bg-green-700">
-                      {product.comissao_percent}%
+                      {product.commissionPercent?.toFixed(1) || 0}%
                     </Badge>
                   </div>
 
                   {/* Imagem */}
                   <div className="aspect-square overflow-hidden bg-gray-100">
                     <img
-                      src={product.imagem}
-                      alt={product.titulo}
+                      src={product.imageUrl}
+                      alt={product.title}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                       onError={(e) => {
                         e.currentTarget.src = 'https://via.placeholder.com/300?text=Produto';
@@ -238,16 +205,16 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
                   {/* Informações */}
                   <div className="p-3 space-y-2">
                     <h3 className="font-semibold text-sm line-clamp-2 min-h-[2.5rem]">
-                      {product.titulo}
+                      {product.title}
                     </h3>
                     
                     <div className="space-y-1">
                       <p className="text-lg font-bold text-primary">
-                        R$ {product.preco.toFixed(2)}
+                        R$ {product.price.toFixed(2)}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         Comissão: <span className="font-semibold text-green-600">
-                          R$ {product.comissao_valor.toFixed(2)}
+                          R$ {product.commission.toFixed(2)}
                         </span>
                       </p>
                     </div>
