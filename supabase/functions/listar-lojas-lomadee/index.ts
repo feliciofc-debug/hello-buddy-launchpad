@@ -20,14 +20,15 @@ serve(async (req) => {
 
     console.log('[LOMADEE-STORES] Buscando lojas aprovadas...');
 
-    // Chamar API da Lomadee para listar ofertas/lojas
-    const lomadeeUrl = `https://api.lomadee.com/v3/${appToken}/offer/_search?size=100`;
+    // Chamar API da Lomadee para listar brands/lojas
+    const lomadeeUrl = 'https://api-beta.lomadee.com.br/affiliate/brands';
     
     console.log('[LOMADEE-STORES] URL:', lomadeeUrl);
 
     const response = await fetch(lomadeeUrl, {
       method: 'GET',
       headers: {
+        'x-api-key': appToken,
         'Content-Type': 'application/json'
       }
     });
@@ -41,22 +42,20 @@ serve(async (req) => {
     const data = await response.json();
     console.log('[LOMADEE-STORES] Resposta recebida');
 
-    // Extrair lojas únicas das ofertas
-    const storesMap = new Map();
+    // Extrair lojas dos brands
+    const stores: any[] = [];
 
-    if (data.offers && Array.isArray(data.offers)) {
-      data.offers.forEach((offer: any) => {
-        if (offer.store && offer.store.id) {
-          storesMap.set(offer.store.id, {
-            sourceId: offer.store.id,
-            name: offer.store.name || `Loja ${offer.store.id}`,
-            thumbnail: offer.store.thumbnail || null
+    if (Array.isArray(data)) {
+      data.forEach((item: any) => {
+        if (item.data) {
+          stores.push({
+            sourceId: item.data.slug,
+            name: item.data.name,
+            thumbnail: item.data.logo || null
           });
         }
       });
     }
-
-    const stores = Array.from(storesMap.values());
     
     console.log(`[LOMADEE-STORES] Total de lojas encontradas: ${stores.length}`);
 
