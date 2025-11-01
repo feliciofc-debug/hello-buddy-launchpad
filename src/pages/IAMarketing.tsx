@@ -31,11 +31,24 @@ const IAMarketing = () => {
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState<string>("");
 
   // Estados editáveis
   const [editableInstagram, setEditableInstagram] = useState("");
   const [editableStories, setEditableStories] = useState("");
   const [editableWhatsApp, setEditableWhatsApp] = useState("");
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUploadedImage(reader.result as string);
+        toast.success("Imagem carregada!");
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleAnalyze = async () => {
     if (!url.trim()) {
@@ -48,7 +61,7 @@ const IAMarketing = () => {
     
     try {
       const { data, error } = await supabase.functions.invoke('analisar-produto', {
-        body: { url: url.trim() }
+        body: { url: url.trim(), uploadedImage }
       });
 
       if (error) throw error;
@@ -130,7 +143,29 @@ const IAMarketing = () => {
                     disabled={loading}
                   />
                   
-                  <Button 
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <label className="block text-sm text-muted-foreground mb-2">
+                        📸 Ou faça upload da imagem do produto (opcional)
+                      </label>
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={loading}
+                        className="cursor-pointer"
+                      />
+                    </div>
+                    {uploadedImage && (
+                      <img 
+                        src={uploadedImage} 
+                        alt="Preview" 
+                        className="h-20 w-20 object-cover rounded-lg border-2 border-green-500"
+                      />
+                    )}
+                  </div>
+                  
+                  <Button
                     onClick={handleAnalyze}
                     disabled={loading || !url.trim()}
                     size="lg"

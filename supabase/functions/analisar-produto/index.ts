@@ -5,13 +5,74 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function extrairImagem(html: string, url: string): string {
+  const urlObj = new URL(url);
+  const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
+  
+  // PRIORIDADE 1: Open Graph Image
+  const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+  if (ogMatch && isValidProductImage(ogMatch[1])) {
+    return completeUrl(ogMatch[1], baseUrl);
+  }
+  
+  // PRIORIDADE 2: Twitter Card
+  const twitterMatch = html.match(/<meta\s+name="twitter:image"\s+content="([^"]+)"/i);
+  if (twitterMatch && isValidProductImage(twitterMatch[1])) {
+    return completeUrl(twitterMatch[1], baseUrl);
+  }
+  
+  // PRIORIDADE 3: Procurar por imagens grandes no HTML
+  const imgMatches = html.match(/<img[^>]+src="([^"]+)"[^>]*>/gi) || [];
+  for (const imgTag of imgMatches) {
+    const srcMatch = imgTag.match(/src="([^"]+)"/i);
+    if (srcMatch && isValidProductImage(srcMatch[1])) {
+      return completeUrl(srcMatch[1], baseUrl);
+    }
+  }
+  
+  // FALLBACK: Placeholder
+  return 'https://via.placeholder.com/400x400/6366f1/FFFFFF?text=Produto';
+}
+
+function isValidProductImage(url: string): boolean {
+  const lower = url.toLowerCase();
+  
+  // Excluir logos, ícones, sprites
+  const excludePatterns = ['logo', 'icon', 'sprite', 'avatar', 'button', 'banner'];
+  if (excludePatterns.some(pattern => lower.includes(pattern))) {
+    return false;
+  }
+  
+  // Priorizar URLs com palavras-chave de produto
+  const productPatterns = ['product', 'item', 'images', 'media', 'catalog', 'goods'];
+  if (productPatterns.some(pattern => lower.includes(pattern))) {
+    return true;
+  }
+  
+  // Aceitar se for imagem comum e não estiver na lista de exclusão
+  return lower.match(/\.(jpg|jpeg|png|webp)/) !== null;
+}
+
+function completeUrl(imageUrl: string, baseUrl: string): string {
+  if (imageUrl.startsWith('http')) {
+    return imageUrl;
+  }
+  if (imageUrl.startsWith('//')) {
+    return `https:${imageUrl}`;
+  }
+  if (imageUrl.startsWith('/')) {
+    return `${baseUrl}${imageUrl}`;
+  }
+  return imageUrl;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { url } = await req.json();
+    const { url, uploadedImage } = await req.json();
     console.log('Analisando URL:', url);
 
     if (!url) {
@@ -21,7 +82,7 @@ serve(async (req) => {
     // 1. BUSCAR DADOS DO PRODUTO
     let titulo = 'Produto em Oferta';
     let preco = '99.90';
-    let imagem = '';
+    let imagem = uploadedImage || '';
 
     try {
       const response = await fetch(url, {
@@ -44,20 +105,14 @@ serve(async (req) => {
         preco = precoMatch[1].replace('.', '').replace(',', '.');
       }
 
-      // Extrair imagem - tentar múltiplas estratégias
-      let imgMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
-      if (!imgMatch) {
-        imgMatch = html.match(/<meta\s+name="twitter:image"\s+content="([^"]+)"/i);
-      }
-      if (!imgMatch) {
-        imgMatch = html.match(/<img[^>]+src="([^"]+)"[^>]*>/i);
-      }
-      if (imgMatch) {
-        imagem = imgMatch[1];
-        // Se a URL for relativa, tentar completar com o domínio
-        if (imagem.startsWith('/')) {
-          const urlObj = new URL(url);
-          imagem = `${urlObj.protocol}//${urlObj.host}${imagem}`;
+      // Extrair imagem apenas se não foi feito upload
+      if (!uploadedImage) {
+        // Links curtos Amazon não têm HTML rico
+        if (url.includes('amzn.to') || url.includes('a.co')) {
+          console.log('Link curto Amazon detectado - usando placeholder');
+          imagem = 'https://via.placeholder.com/400x400/FF9900/FFFFFF?text=Amazon+Product';
+        } else {
+          imagem = extrairImagem(html, url);
         }
       }
 
