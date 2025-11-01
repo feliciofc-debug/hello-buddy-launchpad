@@ -26,65 +26,160 @@ const ProductsPage: React.FC = () => {
   const [selectedStore, setSelectedStore] = useState<{ name: string; logo: string; commission: string } | null>(null);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
 
-  // Carrega produtos reais da Lomadee ao montar o componente
+  // Lista de lojas fixas com logos
+  const lojasMock: Product[] = [
+    {
+      id: '1',
+      title: "Magazine Luiza",
+      imageUrl: "https://logodownload.org/wp-content/uploads/2014/05/magazine-luiza-logo.png",
+      commissionPercent: 12,
+      marketplace: 'lomadee',
+      category: '💼 Negócios',
+      description: "Magazine Luiza",
+      price: 0,
+      commission: 12,
+      affiliateLink: "#",
+      rating: 0,
+      reviews: 0,
+      sales: 0,
+      createdAt: new Date(),
+      bsr: 0,
+      bsrCategory: 'Business'
+    },
+    {
+      id: '2',
+      title: "Americanas",
+      imageUrl: "https://logodownload.org/wp-content/uploads/2014/09/americanas-logo.png",
+      commissionPercent: 10,
+      marketplace: 'lomadee',
+      category: '💼 Negócios',
+      description: "Americanas",
+      price: 0,
+      commission: 10,
+      affiliateLink: "#",
+      rating: 0,
+      reviews: 0,
+      sales: 0,
+      createdAt: new Date(),
+      bsr: 0,
+      bsrCategory: 'Business'
+    },
+    {
+      id: '3',
+      title: "Casas Bahia",
+      imageUrl: "https://logodownload.org/wp-content/uploads/2020/04/casas-bahia-logo.png",
+      commissionPercent: 11,
+      marketplace: 'lomadee',
+      category: '💼 Negócios',
+      description: "Casas Bahia",
+      price: 0,
+      commission: 11,
+      affiliateLink: "#",
+      rating: 0,
+      reviews: 0,
+      sales: 0,
+      createdAt: new Date(),
+      bsr: 0,
+      bsrCategory: 'Business'
+    },
+    {
+      id: '4',
+      title: "Shoptime",
+      imageUrl: "https://logodownload.org/wp-content/uploads/2014/09/shoptime-logo.png",
+      commissionPercent: 9,
+      marketplace: 'lomadee',
+      category: '💼 Negócios',
+      description: "Shoptime",
+      price: 0,
+      commission: 9,
+      affiliateLink: "#",
+      rating: 0,
+      reviews: 0,
+      sales: 0,
+      createdAt: new Date(),
+      bsr: 0,
+      bsrCategory: 'Business'
+    },
+    {
+      id: '5',
+      title: "Submarino",
+      imageUrl: "https://logodownload.org/wp-content/uploads/2014/09/submarino-logo.png",
+      commissionPercent: 8,
+      marketplace: 'lomadee',
+      category: '💼 Negócios',
+      description: "Submarino",
+      price: 0,
+      commission: 8,
+      affiliateLink: "#",
+      rating: 0,
+      reviews: 0,
+      sales: 0,
+      createdAt: new Date(),
+      bsr: 0,
+      bsrCategory: 'Business'
+    },
+    {
+      id: '6',
+      title: "Extra",
+      imageUrl: "https://logodownload.org/wp-content/uploads/2019/01/extra-logo.png",
+      commissionPercent: 10,
+      marketplace: 'lomadee',
+      category: '💼 Negócios',
+      description: "Extra",
+      price: 0,
+      commission: 10,
+      affiliateLink: "#",
+      rating: 0,
+      reviews: 0,
+      sales: 0,
+      createdAt: new Date(),
+      bsr: 0,
+      bsrCategory: 'Business'
+    },
+    {
+      id: '7',
+      title: "Ponto Frio",
+      imageUrl: "https://logodownload.org/wp-content/uploads/2014/09/ponto-frio-logo.png",
+      commissionPercent: 9,
+      marketplace: 'lomadee',
+      category: '💼 Negócios',
+      description: "Ponto Frio",
+      price: 0,
+      commission: 9,
+      affiliateLink: "#",
+      rating: 0,
+      reviews: 0,
+      sales: 0,
+      createdAt: new Date(),
+      bsr: 0,
+      bsrCategory: 'Business'
+    },
+    {
+      id: '8',
+      title: "Netshoes",
+      imageUrl: "https://logodownload.org/wp-content/uploads/2014/04/netshoes-logo.png",
+      commissionPercent: 7,
+      marketplace: 'lomadee',
+      category: '💼 Negócios',
+      description: "Netshoes",
+      price: 0,
+      commission: 7,
+      affiliateLink: "#",
+      rating: 0,
+      reviews: 0,
+      sales: 0,
+      createdAt: new Date(),
+      bsr: 0,
+      bsrCategory: 'Business'
+    }
+  ];
+
+  // Carrega lojas mock ao mudar para aba Lomadee
   useEffect(() => {
     if (activeTab === 'lomadee') {
-      fetchLomadeeProducts();
+      setLomadeeProducts(lojasMock);
     }
   }, [activeTab]);
-
-  const fetchLomadeeProducts = async () => {
-    setIsLoading(true);
-    setError('');
-    setLomadeeProducts([]);
-
-    try {
-      console.log('[LOMADEE] Carregando ofertas reais...');
-      const response = await fetch('https://amz-ofertas-robo.onrender.com/scrape/lomadee?limit=50');
-      
-      if (!response.ok) {
-        throw new Error('Erro ao conectar com a API de ofertas');
-      }
-
-      const data = await response.json();
-
-      if (data.success && data.produtos && data.produtos.length > 0) {
-        console.log(`[LOMADEE] ✅ ${data.produtos.length} ofertas carregadas`);
-        
-        const formattedProducts: Product[] = data.produtos.map((item: any, index: number) => ({
-          id: `lomadee-${index}`,
-          title: item.titulo || 'Loja sem nome',
-          description: item.titulo || '',
-          price: 0, // API não retorna preço
-          commission: item.comissao || 0,
-          commissionPercent: item.comissao || 0,
-          marketplace: 'lomadee',
-          category: '💼 Negócios',
-          imageUrl: item.imagem_url || 'https://via.placeholder.com/200',
-          affiliateLink: item.produto_url || '#',
-          rating: 0,
-          reviews: 0,
-          sales: 0,
-          createdAt: new Date(),
-          bsr: 0,
-          bsrCategory: 'Business'
-        }));
-        
-        // Ordenar por maior comissão
-        const sortedProducts = formattedProducts.sort((a, b) => b.commissionPercent - a.commissionPercent);
-        
-        setLomadeeProducts(sortedProducts);
-      } else {
-        throw new Error('Nenhuma oferta encontrada');
-      }
-    } catch (error) {
-      console.error('[LOMADEE] ❌ Erro:', error);
-      setError(error instanceof Error ? error.message : 'Erro ao conectar com a API de ofertas');
-      setLomadeeProducts([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const fetchShopeeProducts = async (query: string) => {
     setIsLoading(true);
@@ -375,84 +470,47 @@ const ProductsPage: React.FC = () => {
 
         {activeTab === 'lomadee' && (
           <div className="space-y-6">
-            {/* Loading */}
-            {isLoading && (
-              <div className="flex flex-col justify-center items-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-4" />
-                <p className="text-muted-foreground">Carregando ofertas reais...</p>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && !isLoading && (
-              <div className="bg-destructive/10 border border-destructive rounded-lg p-6 text-center">
-                <p className="text-destructive font-medium">{error}</p>
+            {/* Banner IA Marketing */}
+            <div className="sticky top-0 z-10 mb-8 p-6 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-2xl border-2 border-purple-400">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <p className="text-center md:text-left text-lg font-semibold text-white">
+                  💡 Clique em uma loja para ver produtos e criar campanha com IA!
+                </p>
                 <button
-                  onClick={fetchLomadeeProducts}
-                  className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  onClick={() => navigate('/ia-marketing')}
+                  className="whitespace-nowrap px-8 py-3 bg-white text-purple-600 rounded-lg font-bold hover:bg-purple-50 transition-colors shadow-lg hover:shadow-xl"
                 >
-                  Tentar novamente
+                  USAR IA MARKETING ➡️
                 </button>
               </div>
-            )}
-
-            {/* Banner IA Marketing */}
-            {!isLoading && !error && lomadeeProducts.length > 0 && (
-              <div className="sticky top-0 z-10 mb-8 p-6 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-2xl border-2 border-purple-400">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                  <p className="text-center md:text-left text-lg font-semibold text-white">
-                    💡 Já escolheu seu produto? Copie o link e use nossa ferramenta de IA para criar posts virais!
-                  </p>
-                  <button
-                    onClick={() => navigate('/ia-marketing')}
-                    className="whitespace-nowrap px-8 py-3 bg-white text-purple-600 rounded-lg font-bold hover:bg-purple-50 transition-colors shadow-lg hover:shadow-xl"
-                  >
-                    USAR IA MARKETING ➡️
-                  </button>
-                </div>
-              </div>
-            )}
+            </div>
 
             {/* Contador de Lojas */}
-            {!isLoading && !error && lomadeeProducts.length > 0 && (
-              <div className="mb-6">
-                <p className="text-center text-lg font-semibold text-gray-700 dark:text-gray-300">
-                  Exibindo <span className="text-green-600 dark:text-green-400 font-bold">{lomadeeProducts.length}</span> lojas com as melhores comissões
-                </p>
-              </div>
-            )}
+            <div className="mb-6">
+              <p className="text-center text-lg font-semibold text-gray-700 dark:text-gray-300">
+                Exibindo <span className="text-green-600 dark:text-green-400 font-bold">{lomadeeProducts.length}</span> lojas parceiras
+              </p>
+            </div>
 
             {/* Products Grid - Cards de Lojas Clicáveis */}
-            {!isLoading && !error && lomadeeProducts.length > 0 && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                {lomadeeProducts.map((product) => (
-                  <div
-                    key={product.id}
-                    onClick={() => {
-                      setSelectedStore({
-                        name: product.title,
-                        logo: product.imageUrl,
-                        commission: `até ${product.commissionPercent}%`
-                      });
-                      setIsStoreModalOpen(true);
-                    }}
-                    className="cursor-pointer"
-                  >
-                    <ProductCard product={product} />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Empty State */}
-            {!isLoading && !error && lomadeeProducts.length === 0 && (
-              <div className="bg-card rounded-lg shadow-sm p-12 text-center border">
-                <Package className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground text-lg">
-                  Nenhuma oferta disponível no momento
-                </p>
-              </div>
-            )}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+              {lomadeeProducts.map((product) => (
+                <div
+                  key={product.id}
+                  onClick={() => {
+                    setSelectedStore({
+                      name: product.title,
+                      logo: product.imageUrl,
+                      commission: `até ${product.commissionPercent}%`
+                    });
+                    setIsStoreModalOpen(true);
+                  }}
+                  className="cursor-pointer"
+                >
+                  <ProductCard product={product} />
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

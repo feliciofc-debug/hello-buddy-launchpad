@@ -168,15 +168,12 @@ const ProductCard = ({ product, onGenerateContent }: ProductCardProps) => {
             </div>
           </div>
 
-          {/* Botão Principal */}
-          <a
-            href={product.affiliateLink}
-            target="_blank"
-            rel="noopener noreferrer"
+          {/* Botão Principal - SEM LINK EXTERNO */}
+          <button
             className="w-full flex items-center justify-center gap-2 py-4 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-bold text-center shadow-lg hover:shadow-xl"
           >
-            🛍️ ESCOLHER PRODUTOS
-          </a>
+            🛍️ VER PRODUTOS
+          </button>
         </div>
       </div>
     );
