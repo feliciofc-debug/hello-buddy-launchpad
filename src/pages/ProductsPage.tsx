@@ -1,90 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ShoppingBag, Loader2 } from 'lucide-react';
+import { ArrowLeft, ShoppingBag } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { LomadeeStoreModal } from '@/components/LomadeeStoreModal';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
-import type { Product } from '@/types/product';
 
 const ProductsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [selectedStore, setSelectedStore] = useState<{ name: string; logo: string; commission: string; products: Product[] } | null>(null);
+  const [selectedStore, setSelectedStore] = useState<{ name: string; logo: string; commission: string } | null>(null);
   const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Buscar produtos da Lomadee
-  useEffect(() => {
-    const fetchProducts = async () => {
-      setIsLoading(true);
-      try {
-        const { data, error } = await supabase.functions.invoke('buscar-produtos-lomadee', {
-          body: { searchTerm: '', limit: 100, offset: 0 }
-        });
-
-        if (error) throw error;
-
-        const transformedProducts: Product[] = (data.produtos || []).map((produto: any) => ({
-          id: produto.id,
-          title: produto.nome,
-          description: produto.nome,
-          price: produto.preco,
-          commission: produto.comissao,
-          commissionPercent: produto.comissaoPercentual,
-          marketplace: 'lomadee' as const,
-          category: produto.categoria,
-          imageUrl: produto.imagem,
-          affiliateLink: produto.url,
-          rating: produto.rating || 0,
-          reviews: produto.reviews || 0,
-          sales: produto.demandaMensal || 0,
-          createdAt: new Date(produto.dataCadastro || Date.now()),
-          bsr: 0,
-          bsrCategory: 'Business',
-          loja: produto.loja || 'Loja Parceira'
-        }));
-
-        setProducts(transformedProducts);
-      } catch (err) {
-        console.error('Erro ao buscar produtos:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchProducts();
-  }, []);
-
-  // Agrupar produtos por loja
-  const lojaGroups = products.reduce((acc, product) => {
-    const lojaName = (product as any).loja || 'Loja Parceira';
-    if (!acc[lojaName]) {
-      acc[lojaName] = [];
-    }
-    acc[lojaName].push(product);
-    return acc;
-  }, {} as Record<string, Product[]>);
-
-  // Lista de lojas com logos
+  // Lista de lojas fixas com logos
   const lojas = [
-    { name: "Magazine Luiza", logo: "https://logodownload.org/wp-content/uploads/2014/05/magazine-luiza-logo.png", commission: 12 },
-    { name: "Americanas", logo: "https://logodownload.org/wp-content/uploads/2014/09/americanas-logo.png", commission: 10 },
-    { name: "Casas Bahia", logo: "https://logodownload.org/wp-content/uploads/2020/04/casas-bahia-logo.png", commission: 11 },
-    { name: "Submarino", logo: "https://logodownload.org/wp-content/uploads/2014/09/submarino-logo.png", commission: 9 },
-    { name: "Extra", logo: "https://logodownload.org/wp-content/uploads/2019/01/extra-logo.png", commission: 10 },
-    { name: "Ponto Frio", logo: "https://logodownload.org/wp-content/uploads/2014/09/ponto-frio-logo.png", commission: 9 }
+    { name: "Magazine Luiza", logo: "https://logodownload.org/wp-content/uploads/2014/05/magazine-luiza-logo.png", commission: 12, produtos: 2500 },
+    { name: "Americanas", logo: "https://logodownload.org/wp-content/uploads/2014/09/americanas-logo.png", commission: 10, produtos: 1800 },
+    { name: "Casas Bahia", logo: "https://logodownload.org/wp-content/uploads/2020/04/casas-bahia-logo.png", commission: 11, produtos: 3200 },
+    { name: "Submarino", logo: "https://logodownload.org/wp-content/uploads/2014/09/submarino-logo.png", commission: 9, produtos: 1500 },
+    { name: "Extra", logo: "https://logodownload.org/wp-content/uploads/2019/01/extra-logo.png", commission: 10, produtos: 2100 },
+    { name: "Ponto Frio", logo: "https://logodownload.org/wp-content/uploads/2014/09/ponto-frio-logo.png", commission: 9, produtos: 1900 },
+    { name: "Shoptime", logo: "https://logodownload.org/wp-content/uploads/2019/11/shoptime-logo.png", commission: 11, produtos: 2300 },
+    { name: "Netshoes", logo: "https://logodownload.org/wp-content/uploads/2019/11/netshoes-logo.png", commission: 8, produtos: 1600 },
+    { name: "Centauro", logo: "https://logodownload.org/wp-content/uploads/2020/09/centauro-logo.png", commission: 9, produtos: 1400 },
+    { name: "Dafiti", logo: "https://logodownload.org/wp-content/uploads/2020/04/dafiti-logo.png", commission: 10, produtos: 1700 },
+    { name: "Zattini", logo: "https://logodownload.org/wp-content/uploads/2020/11/zattini-logo.png", commission: 9, produtos: 1500 },
+    { name: "Tricae", logo: "https://logodownload.org/wp-content/uploads/2020/11/tricae-logo.png", commission: 11, produtos: 1200 },
+    { name: "Kanui", logo: "https://logodownload.org/wp-content/uploads/2020/11/kanui-logo.png", commission: 10, produtos: 1300 },
+    { name: "Beleza na Web", logo: "https://logodownload.org/wp-content/uploads/2020/11/beleza-na-web-logo.png", commission: 12, produtos: 1800 },
+    { name: "Época Cosméticos", logo: "https://logodownload.org/wp-content/uploads/2019/11/epoca-cosmeticos-logo.png", commission: 10, produtos: 1600 },
+    { name: "Polishop", logo: "https://logodownload.org/wp-content/uploads/2020/11/polishop-logo.png", commission: 11, produtos: 1400 },
+    { name: "Fast Shop", logo: "https://logodownload.org/wp-content/uploads/2014/09/fast-shop-logo.png", commission: 9, produtos: 1900 },
+    { name: "Kabum", logo: "https://logodownload.org/wp-content/uploads/2020/11/kabum-logo.png", commission: 8, produtos: 2200 },
+    { name: "Pichau", logo: "https://logodownload.org/wp-content/uploads/2020/11/pichau-logo.png", commission: 9, produtos: 1500 },
+    { name: "Terabyte Shop", logo: "https://logodownload.org/wp-content/uploads/2020/11/terabyteshop-logo.png", commission: 8, produtos: 1300 }
   ];
 
   const handleOpenStore = (loja: { name: string; logo: string; commission: number }) => {
-    const storeProducts = lojaGroups[loja.name] || [];
     setSelectedStore({
       name: loja.name,
       logo: loja.logo,
-      commission: `até ${loja.commission}%`,
-      products: storeProducts
+      commission: `até ${loja.commission}%`
     });
     setIsStoreModalOpen(true);
   };
@@ -134,54 +90,44 @@ const ProductsPage: React.FC = () => {
         </div>
 
         {/* Grid de Lojas */}
-        {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-            <p className="text-muted-foreground">Carregando lojas...</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {lojas.map((loja) => {
-              const productCount = lojaGroups[loja.name]?.length || 0;
-              return (
-                <Card 
-                  key={loja.name}
-                  className="hover:shadow-xl cursor-pointer transition-all duration-300 border-2 hover:border-primary"
-                  onClick={() => handleOpenStore(loja)}
-                >
-                  <CardContent className="p-6 flex flex-col items-center text-center">
-                    <div className="w-full h-24 flex items-center justify-center mb-4 bg-white rounded-lg p-4">
-                      <img
-                        src={loja.logo}
-                        alt={loja.name}
-                        className="max-h-16 max-w-full object-contain"
-                        onError={(e) => {
-                          e.currentTarget.src = 'https://via.placeholder.com/200x80?text=' + loja.name;
-                        }}
-                      />
-                    </div>
-                    
-                    <h3 className="text-xl font-bold text-foreground mb-2">
-                      {loja.name}
-                    </h3>
-                    
-                    <p className="text-sm text-muted-foreground mb-4">
-                      {productCount} produtos disponíveis
-                    </p>
-                    
-                    <Badge className="mb-4 bg-green-600 hover:bg-green-700 text-white">
-                      Até {loja.commission}% de comissão
-                    </Badge>
-                    
-                    <Button className="w-full mt-auto bg-primary hover:bg-primary/90">
-                      Ver Produtos
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {lojas.map((loja) => (
+            <Card 
+              key={loja.name}
+              className="hover:shadow-xl cursor-pointer transition-all duration-300 border-2 hover:border-primary"
+              onClick={() => handleOpenStore(loja)}
+            >
+              <CardContent className="p-6 flex flex-col items-center text-center">
+                <div className="w-full h-24 flex items-center justify-center mb-4 bg-white rounded-lg p-4">
+                  <img
+                    src={loja.logo}
+                    alt={loja.name}
+                    className="max-h-16 max-w-full object-contain"
+                    onError={(e) => {
+                      e.currentTarget.src = 'https://via.placeholder.com/200x80?text=' + loja.name;
+                    }}
+                  />
+                </div>
+                
+                <h3 className="text-xl font-bold text-foreground mb-2">
+                  {loja.name}
+                </h3>
+                
+                <p className="text-sm text-muted-foreground mb-4">
+                  {loja.produtos.toLocaleString()} produtos disponíveis
+                </p>
+                
+                <Badge className="mb-4 bg-green-600 hover:bg-green-700 text-white">
+                  Até {loja.commission}% de comissão
+                </Badge>
+                
+                <Button className="w-full mt-auto bg-primary hover:bg-primary/90">
+                  Ver Produtos
+                </Button>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
 
       {/* Modal de Produtos da Loja */}

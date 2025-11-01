@@ -1,13 +1,14 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { X, Search, Sparkles } from "lucide-react";
+import { X, Search, Sparkles, Loader2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { supabase } from '@/integrations/supabase/client';
 import type { Product } from '@/types/product';
 import {
   Select,
@@ -21,7 +22,6 @@ interface Store {
   name: string;
   logo: string;
   commission: string;
-  products: Product[];
 }
 
 interface LomadeeStoreModalProps {
@@ -38,10 +38,55 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   
+  // Buscar produtos quando o modal abrir
+  useEffect(() => {
+    if (open && store) {
+      const fetchProducts = async () => {
+        setIsLoading(true);
+        try {
+          const { data, error } = await supabase.functions.invoke('buscar-produtos-lomadee', {
+            body: { searchTerm: store.name, limit: 50, offset: 0 }
+          });
+
+          if (error) throw error;
+
+          const transformedProducts: Product[] = (data.produtos || []).map((produto: any) => ({
+            id: produto.id,
+            title: produto.nome,
+            description: produto.nome,
+            price: produto.preco,
+            commission: produto.comissao,
+            commissionPercent: produto.comissaoPercentual,
+            marketplace: 'lomadee' as const,
+            category: produto.categoria,
+            imageUrl: produto.imagem,
+            affiliateLink: produto.url,
+            rating: produto.rating || 0,
+            reviews: produto.reviews || 0,
+            sales: produto.demandaMensal || 0,
+            createdAt: new Date(produto.dataCadastro || Date.now()),
+            bsr: 0,
+            bsrCategory: 'Business'
+          }));
+
+          setProducts(transformedProducts);
+        } catch (err) {
+          console.error('Erro ao buscar produtos:', err);
+          toast.error('Erro ao carregar produtos da loja');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      fetchProducts();
+    }
+  }, [open, store]);
+
   if (!store) return null;
 
-  const products = store.products;
   const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
 
   // Filtrar produtos
@@ -162,74 +207,83 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
 
         {/* Grid de Produtos */}
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredProducts.map((product) => {
-              const isSelected = selectedProducts.has(product.id);
-              
-              return (
-                <Card
-                  key={product.id}
-                  className={`relative overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer group ${
-                    isSelected ? 'ring-2 ring-primary shadow-lg' : ''
-                  }`}
-                  onClick={() => toggleProductSelection(product.id)}
-                >
-                  {/* Checkbox */}
-                  <div className="absolute top-2 left-2 z-10">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center ${
-                      isSelected ? 'bg-primary' : 'bg-white border-2 border-gray-300'
-                    }`}>
-                      {isSelected && <Checkbox checked className="pointer-events-none" />}
-                    </div>
-                  </div>
-
-                  {/* Badge de comissão */}
-                  <div className="absolute top-2 right-2 z-10">
-                    <Badge className="bg-green-600 hover:bg-green-700">
-                      {product.commissionPercent?.toFixed(1) || 0}%
-                    </Badge>
-                  </div>
-
-                  {/* Imagem */}
-                  <div className="aspect-square overflow-hidden bg-gray-100">
-                    <img
-                      src={product.imageUrl}
-                      alt={product.title}
-                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                      onError={(e) => {
-                        e.currentTarget.src = 'https://via.placeholder.com/300?text=Produto';
-                      }}
-                    />
-                  </div>
-
-                  {/* Informações */}
-                  <div className="p-3 space-y-2">
-                    <h3 className="font-semibold text-sm line-clamp-2 min-h-[2.5rem]">
-                      {product.title}
-                    </h3>
-                    
-                    <div className="space-y-1">
-                      <p className="text-lg font-bold text-primary">
-                        R$ {product.price.toFixed(2)}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Comissão: <span className="font-semibold text-green-600">
-                          R$ {product.commission.toFixed(2)}
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-
-          {filteredProducts.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground text-lg">
-                Nenhum produto encontrado com os filtros aplicados
-              </p>
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
+              <p className="text-muted-foreground">Carregando produtos...</p>
             </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {filteredProducts.map((product) => {
+                  const isSelected = selectedProducts.has(product.id);
+                  
+                  return (
+                    <Card
+                      key={product.id}
+                      className={`relative overflow-hidden transition-all duration-200 hover:shadow-lg cursor-pointer group ${
+                        isSelected ? 'ring-2 ring-primary shadow-lg' : ''
+                      }`}
+                      onClick={() => toggleProductSelection(product.id)}
+                    >
+                      {/* Checkbox */}
+                      <div className="absolute top-2 left-2 z-10">
+                        <div className={`w-6 h-6 rounded flex items-center justify-center ${
+                          isSelected ? 'bg-primary' : 'bg-white border-2 border-gray-300'
+                        }`}>
+                          {isSelected && <Checkbox checked className="pointer-events-none" />}
+                        </div>
+                      </div>
+
+                      {/* Badge de comissão */}
+                      <div className="absolute top-2 right-2 z-10">
+                        <Badge className="bg-green-600 hover:bg-green-700">
+                          {product.commissionPercent?.toFixed(1) || 0}%
+                        </Badge>
+                      </div>
+
+                      {/* Imagem */}
+                      <div className="aspect-square overflow-hidden bg-gray-100">
+                        <img
+                          src={product.imageUrl}
+                          alt={product.title}
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                          onError={(e) => {
+                            e.currentTarget.src = 'https://via.placeholder.com/300?text=Produto';
+                          }}
+                        />
+                      </div>
+
+                      {/* Informações */}
+                      <div className="p-3 space-y-2">
+                        <h3 className="font-semibold text-sm line-clamp-2 min-h-[2.5rem]">
+                          {product.title}
+                        </h3>
+                        
+                        <div className="space-y-1">
+                          <p className="text-lg font-bold text-primary">
+                            R$ {product.price.toFixed(2)}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Comissão: <span className="font-semibold text-green-600">
+                              R$ {product.commission.toFixed(2)}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              {filteredProducts.length === 0 && !isLoading && (
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground text-lg">
+                    Nenhum produto encontrado com os filtros aplicados
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
 
