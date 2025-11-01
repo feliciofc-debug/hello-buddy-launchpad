@@ -5,66 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-function extrairImagem(html: string, url: string): string {
-  const urlObj = new URL(url);
-  const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
-  
-  // PRIORIDADE 1: Open Graph Image
-  const ogMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
-  if (ogMatch && isValidProductImage(ogMatch[1])) {
-    return completeUrl(ogMatch[1], baseUrl);
-  }
-  
-  // PRIORIDADE 2: Twitter Card
-  const twitterMatch = html.match(/<meta\s+name="twitter:image"\s+content="([^"]+)"/i);
-  if (twitterMatch && isValidProductImage(twitterMatch[1])) {
-    return completeUrl(twitterMatch[1], baseUrl);
-  }
-  
-  // PRIORIDADE 3: Procurar por imagens grandes no HTML
-  const imgMatches = html.match(/<img[^>]+src="([^"]+)"[^>]*>/gi) || [];
-  for (const imgTag of imgMatches) {
-    const srcMatch = imgTag.match(/src="([^"]+)"/i);
-    if (srcMatch && isValidProductImage(srcMatch[1])) {
-      return completeUrl(srcMatch[1], baseUrl);
-    }
-  }
-  
-  // FALLBACK: Placeholder
-  return 'https://via.placeholder.com/400x400/6366f1/FFFFFF?text=Produto';
-}
-
-function isValidProductImage(url: string): boolean {
-  const lower = url.toLowerCase();
-  
-  // Excluir logos, ícones, sprites
-  const excludePatterns = ['logo', 'icon', 'sprite', 'avatar', 'button', 'banner'];
-  if (excludePatterns.some(pattern => lower.includes(pattern))) {
-    return false;
-  }
-  
-  // Priorizar URLs com palavras-chave de produto
-  const productPatterns = ['product', 'item', 'images', 'media', 'catalog', 'goods'];
-  if (productPatterns.some(pattern => lower.includes(pattern))) {
-    return true;
-  }
-  
-  // Aceitar se for imagem comum e não estiver na lista de exclusão
-  return lower.match(/\.(jpg|jpeg|png|webp)/) !== null;
-}
-
-function completeUrl(imageUrl: string, baseUrl: string): string {
-  if (imageUrl.startsWith('http')) {
-    return imageUrl;
-  }
-  if (imageUrl.startsWith('//')) {
-    return `https:${imageUrl}`;
-  }
-  if (imageUrl.startsWith('/')) {
-    return `${baseUrl}${imageUrl}`;
-  }
-  return imageUrl;
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -82,7 +22,6 @@ serve(async (req) => {
     // 1. BUSCAR DADOS DO PRODUTO
     let titulo = 'Produto em Oferta';
     let preco = '99.90';
-    let imagem = '';
     let finalUrl = url;
 
     try {
@@ -167,10 +106,7 @@ serve(async (req) => {
         }
       }
 
-      // Extrair imagem do HTML completo
-      imagem = extrairImagem(html, finalUrl);
-
-      console.log('Dados finais extraídos:', { titulo, preco, imagem, url: finalUrl });
+      console.log('Dados finais extraídos:', { titulo, preco, url: finalUrl });
     } catch (error) {
       console.log('Erro ao parsear, usando dados genéricos:', error);
     }
@@ -237,7 +173,6 @@ Crie uma mensagem para WhatsApp como se fosse um amigo indicando o produto. Seja
         produto: {
           titulo,
           preco,
-          imagem,
           url
         },
         posts: {

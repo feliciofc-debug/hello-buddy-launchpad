@@ -13,15 +13,12 @@ import { supabase } from "@/integrations/supabase/client";
 interface ProductAnalysis {
   produto: {
     titulo: string;
-    preco?: number;
-    imagem: string;
+    preco: string;
     url: string;
-    score: number;
-    recomendacao: string;
   };
   posts: {
     instagram: string;
-    stories: string;
+    story: string;
     whatsapp: string;
   };
 }
@@ -180,26 +177,10 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
-                        <div className="relative group">
-                          <img 
-                            src={resultado.produto.imagem} 
-                            alt={resultado.produto.titulo}
-                            className="w-full h-64 object-contain bg-white rounded-lg shadow-md border"
-                          />
-                          <a 
-                            href={resultado.produto.imagem} 
-                            download="produto.jpg"
-                            className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            💾 Baixar
-                          </a>
-                        </div>
-                      ) : (
-                        <div className="w-full h-64 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
-                          📸 Imagem não disponível<br />Use o link completo do produto
-                        </div>
-                      )}
+                      <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
+                        <p className="text-sm font-medium line-clamp-2">{resultado.produto.titulo}</p>
+                        <p className="text-lg font-bold text-primary">R$ {resultado.produto.preco}</p>
+                      </div>
                       <Textarea
                         value={editableInstagram}
                         onChange={(e) => setEditableInstagram(e.target.value)}
@@ -227,26 +208,10 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
-                        <div className="relative group">
-                          <img 
-                            src={resultado.produto.imagem} 
-                            alt={resultado.produto.titulo}
-                            className="w-full h-64 object-contain bg-white rounded-lg shadow-md border"
-                          />
-                          <a 
-                            href={resultado.produto.imagem} 
-                            download="produto.jpg"
-                            className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            💾 Baixar
-                          </a>
-                        </div>
-                      ) : (
-                        <div className="w-full h-64 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
-                          📸 Imagem não disponível<br />Use o link completo do produto
-                        </div>
-                      )}
+                      <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
+                        <p className="text-sm font-medium line-clamp-2">{resultado.produto.titulo}</p>
+                        <p className="text-lg font-bold text-primary">R$ {resultado.produto.preco}</p>
+                      </div>
                       <Textarea
                         value={editableStories}
                         onChange={(e) => setEditableStories(e.target.value)}
@@ -274,26 +239,10 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
-                        <div className="relative group">
-                          <img 
-                            src={resultado.produto.imagem} 
-                            alt={resultado.produto.titulo}
-                            className="w-full h-64 object-contain bg-white rounded-lg shadow-md border"
-                          />
-                          <a 
-                            href={resultado.produto.imagem} 
-                            download="produto.jpg"
-                            className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            💾 Baixar
-                          </a>
-                        </div>
-                      ) : (
-                        <div className="w-full h-64 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
-                          📸 Imagem não disponível<br />Use o link completo do produto
-                        </div>
-                      )}
+                      <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
+                        <p className="text-sm font-medium line-clamp-2">{resultado.produto.titulo}</p>
+                        <p className="text-lg font-bold text-primary">R$ {resultado.produto.preco}</p>
+                      </div>
                       <Textarea
                         value={editableWhatsApp}
                         onChange={(e) => setEditableWhatsApp(e.target.value)}
