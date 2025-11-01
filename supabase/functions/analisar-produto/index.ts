@@ -83,9 +83,24 @@ serve(async (req) => {
     let titulo = 'Produto em Oferta';
     let preco = '99.90';
     let imagem = '';
+    let finalUrl = url;
 
     try {
-      const response = await fetch(url, {
+      // Se for link curto, seguir redirecionamento
+      if (url.includes('amzn.to') || url.includes('a.co')) {
+        console.log('Link curto detectado - seguindo redirecionamento...');
+        const redirectResponse = await fetch(url, {
+          method: 'HEAD',
+          redirect: 'follow',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+          }
+        });
+        finalUrl = redirectResponse.url;
+        console.log('URL final:', finalUrl);
+      }
+
+      const response = await fetch(finalUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
@@ -105,15 +120,10 @@ serve(async (req) => {
         preco = precoMatch[1].replace('.', '').replace(',', '.');
       }
 
-      // Extrair imagem
-      if (url.includes('amzn.to') || url.includes('a.co')) {
-        console.log('Link curto Amazon detectado - usando placeholder');
-        imagem = 'https://via.placeholder.com/400x400/FF9900/FFFFFF?text=Amazon+Product';
-      } else {
-        imagem = extrairImagem(html, url);
-      }
+      // Extrair imagem do HTML completo
+      imagem = extrairImagem(html, finalUrl);
 
-      console.log('Dados extraídos:', { titulo, preco, imagem, url });
+      console.log('Dados extraídos:', { titulo, preco, imagem, url: finalUrl });
     } catch (error) {
       console.log('Erro ao parsear, usando dados genéricos:', error);
     }
