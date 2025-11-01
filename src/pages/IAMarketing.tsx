@@ -15,6 +15,7 @@ interface ProductAnalysis {
     titulo: string;
     preco?: number;
     imagem: string;
+    url: string;
     score: number;
     recomendacao: string;
   };
@@ -71,12 +72,14 @@ const IAMarketing = () => {
   };
 
   const handleCopy = (text: string, type: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(`${type} copiado!`);
+    const fullText = `${text}\n\n🔗 ${resultado?.produto?.url || url}`;
+    navigator.clipboard.writeText(fullText);
+    toast.success(`${type} copiado com link!`);
   };
 
   const handleWhatsAppSend = (text: string) => {
-    const encodedText = encodeURIComponent(text);
+    const fullText = `${text}\n\n🔗 ${resultado?.produto?.url || url}`;
+    const encodedText = encodeURIComponent(fullText);
     window.open(`https://web.whatsapp.com/send?text=${encodedText}`, "_blank");
   };
 
@@ -178,13 +181,22 @@ const IAMarketing = () => {
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
                       {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
-                        <img 
-                          src={resultado.produto.imagem} 
-                          alt={resultado.produto.titulo}
-                          className="w-full h-48 object-cover rounded-lg shadow-md"
-                        />
+                        <div className="relative group">
+                          <img 
+                            src={resultado.produto.imagem} 
+                            alt={resultado.produto.titulo}
+                            className="w-full h-64 object-contain bg-white rounded-lg shadow-md border"
+                          />
+                          <a 
+                            href={resultado.produto.imagem} 
+                            download="produto.jpg"
+                            className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            💾 Baixar
+                          </a>
+                        </div>
                       ) : (
-                        <div className="w-full h-48 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
+                        <div className="w-full h-64 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
                           📸 Imagem não disponível<br />Use o link completo do produto
                         </div>
                       )}
@@ -216,13 +228,22 @@ const IAMarketing = () => {
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
                       {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
-                        <img 
-                          src={resultado.produto.imagem} 
-                          alt={resultado.produto.titulo}
-                          className="w-full h-48 object-cover rounded-lg shadow-md"
-                        />
+                        <div className="relative group">
+                          <img 
+                            src={resultado.produto.imagem} 
+                            alt={resultado.produto.titulo}
+                            className="w-full h-64 object-contain bg-white rounded-lg shadow-md border"
+                          />
+                          <a 
+                            href={resultado.produto.imagem} 
+                            download="produto.jpg"
+                            className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            💾 Baixar
+                          </a>
+                        </div>
                       ) : (
-                        <div className="w-full h-48 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
+                        <div className="w-full h-64 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
                           📸 Imagem não disponível<br />Use o link completo do produto
                         </div>
                       )}
@@ -254,13 +275,22 @@ const IAMarketing = () => {
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
                       {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
-                        <img 
-                          src={resultado.produto.imagem} 
-                          alt={resultado.produto.titulo}
-                          className="w-full h-48 object-cover rounded-lg shadow-md"
-                        />
+                        <div className="relative group">
+                          <img 
+                            src={resultado.produto.imagem} 
+                            alt={resultado.produto.titulo}
+                            className="w-full h-64 object-contain bg-white rounded-lg shadow-md border"
+                          />
+                          <a 
+                            href={resultado.produto.imagem} 
+                            download="produto.jpg"
+                            className="absolute bottom-2 right-2 bg-black/70 text-white px-3 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            💾 Baixar
+                          </a>
+                        </div>
                       ) : (
-                        <div className="w-full h-48 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
+                        <div className="w-full h-64 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
                           📸 Imagem não disponível<br />Use o link completo do produto
                         </div>
                       )}
