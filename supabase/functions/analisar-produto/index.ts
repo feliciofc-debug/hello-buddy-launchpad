@@ -42,24 +42,43 @@ serve(async (req) => {
       }
     }
 
-    // Usar APENAS ScraperAPI para garantir scraping bem-sucedido
-    const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
-    if (!SCRAPER_API_KEY) {
-      throw new Error('SCRAPER_API_KEY não configurada. Configure em Settings > Secrets');
-    }
+    let html = '';
+    
+    // TENTAR FETCH DIRETO PRIMEIRO (funciona na maioria dos casos)
+    try {
+      console.log('🌐 Tentando acesso direto...');
+      const directResponse = await fetch(finalUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+      
+      if (directResponse.ok) {
+        html = await directResponse.text();
+        console.log('✅ Acesso direto OK, HTML:', html.length, 'bytes');
+      } else {
+        throw new Error(`Acesso direto bloqueado: ${directResponse.status}`);
+      }
+    } catch (directError) {
+      console.log('⚠️ Acesso direto falhou, usando ScraperAPI...');
+      
+      const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
+      if (!SCRAPER_API_KEY) {
+        throw new Error('Não foi possível acessar este produto. Configure SCRAPER_API_KEY.');
+      }
 
-    console.log('🌐 Fazendo scraping com ScraperAPI...');
-    const scraperUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true`;
-    const scraperResponse = await fetch(scraperUrl);
-    
-    if (!scraperResponse.ok) {
-      const errorText = await scraperResponse.text();
-      console.error('❌ Erro ScraperAPI:', scraperResponse.status, errorText);
-      throw new Error(`Erro ao acessar produto (${scraperResponse.status}). Verifique seus créditos em scraperapi.com`);
+      const scraperUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true&ultra_premium=true`;
+      const scraperResponse = await fetch(scraperUrl);
+      
+      if (!scraperResponse.ok) {
+        const errorText = await scraperResponse.text();
+        console.error('❌ ScraperAPI erro:', errorText);
+        throw new Error(`Produto protegido (${scraperResponse.status}). Tente outro link.`);
+      }
+      
+      html = await scraperResponse.text();
+      console.log('✅ ScraperAPI OK, HTML:', html.length, 'bytes');
     }
-    
-    const html = await scraperResponse.text();
-    console.log('✅ Scraping bem-sucedido, tamanho HTML:', html.length);
 
     // Extrair título e preço com regex melhorados
     let titulo = '';
