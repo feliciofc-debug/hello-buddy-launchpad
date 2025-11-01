@@ -1,14 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Instagram, MessageCircle, ArrowLeft, Copy, Calendar as CalendarIcon, Send } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SchedulePostsModal } from "@/components/SchedulePostsModal";
 import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ProductAnalysis {
   produto: {
@@ -47,34 +47,23 @@ const IAMarketing = () => {
     setResultado(null);
     
     try {
-      const response = await axios.post(
-        "https://amz-ofertas-robo.onrender.com/analisar-produto",
-        { 
-          url: url.trim(),
-          usuario_id: 'user123'
-        },
-        { 
-          timeout: 30000,
-          headers: { 'Content-Type': 'application/json' }
-        }
-      );
+      const { data, error } = await supabase.functions.invoke('analisar-produto', {
+        body: { url: url.trim() }
+      });
 
-      if (response.data.success) {
-        setResultado(response.data);
-        setEditableInstagram(response.data.posts.instagram);
-        setEditableStories(response.data.posts.stories);
-        setEditableWhatsApp(response.data.posts.whatsapp);
-        toast.success("✅ Posts gerados pela IA!");
-      } else {
-        toast.error(response.data.error || 'Erro ao analisar');
+      if (error) throw error;
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao analisar produto');
       }
+
+      setResultado(data);
+      setEditableInstagram(data.posts.instagram);
+      setEditableStories(data.posts.story);
+      setEditableWhatsApp(data.posts.whatsapp);
+      toast.success("✅ Posts gerados pela IA!");
     } catch (err: any) {
-      let errorMessage = 'Erro ao analisar produto';
-      if (err.code === 'ECONNABORTED') {
-        errorMessage = 'Tempo esgotado';
-      } else if (err.response) {
-        errorMessage = err.response.data?.error || 'Erro no servidor';
-      }
+      const errorMessage = err.message || 'Erro ao analisar produto';
       toast.error(errorMessage);
     } finally {
       setLoading(false);

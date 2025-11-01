@@ -1,5 +1,8 @@
 project_id = "jibpvpqgplmahjhswiza"
 
+[functions.analisar-produto]
+verify_jwt = false
+
 [functions.meta-auth-callback]
 verify_jwt = false
 
