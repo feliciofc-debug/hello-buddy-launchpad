@@ -107,23 +107,70 @@ serve(async (req) => {
       });
       const html = await response.text();
 
-      // Extrair título
-      const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i) || 
-                        html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-      if (titleMatch) {
-        titulo = titleMatch[1].trim().substring(0, 100);
+      // PRIORIDADE 1: Tentar extrair de meta tags Open Graph
+      const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
+      const ogPrice = html.match(/<meta\s+property="product:price:amount"\s+content="([^"]+)"/i);
+      
+      if (ogTitle) {
+        titulo = ogTitle[1].trim().substring(0, 100);
+        console.log('Título extraído de og:title:', titulo);
       }
 
-      // Extrair preço
-      const precoMatch = html.match(/R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/);
-      if (precoMatch) {
-        preco = precoMatch[1].replace('.', '').replace(',', '.');
+      if (ogPrice) {
+        preco = ogPrice[1];
+        console.log('Preço extraído de product:price:', preco);
+      }
+
+      // PRIORIDADE 2: Tentar extrair de JSON-LD (comum no Shopee)
+      const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/is);
+      if (jsonLdMatch) {
+        try {
+          const jsonData = JSON.parse(jsonLdMatch[1]);
+          if (jsonData.name && !ogTitle) {
+            titulo = jsonData.name.substring(0, 100);
+            console.log('Título extraído de JSON-LD:', titulo);
+          }
+          if (jsonData.offers?.price && !ogPrice) {
+            preco = jsonData.offers.price.toString();
+            console.log('Preço extraído de JSON-LD:', preco);
+          }
+        } catch (e) {
+          console.log('Erro ao parsear JSON-LD:', e);
+        }
+      }
+
+      // PRIORIDADE 3: Fallback para métodos tradicionais
+      if (titulo === 'Produto em Oferta') {
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i) || 
+                          html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+        if (titleMatch) {
+          titulo = titleMatch[1].trim().substring(0, 100);
+          console.log('Título extraído de title/h1:', titulo);
+        }
+      }
+
+      if (preco === '99.90') {
+        // Tentar vários padrões de preço
+        const patterns = [
+          /R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/,
+          /"price":\s*"?(\d+(?:\.\d{2})?)"?/,
+          /data-price="(\d+(?:\.\d{2})?)"/,
+        ];
+        
+        for (const pattern of patterns) {
+          const match = html.match(pattern);
+          if (match) {
+            preco = match[1].replace('.', '').replace(',', '.');
+            console.log('Preço extraído com padrão:', preco);
+            break;
+          }
+        }
       }
 
       // Extrair imagem do HTML completo
       imagem = extrairImagem(html, finalUrl);
 
-      console.log('Dados extraídos:', { titulo, preco, imagem, url: finalUrl });
+      console.log('Dados finais extraídos:', { titulo, preco, imagem, url: finalUrl });
     } catch (error) {
       console.log('Erro ao parsear, usando dados genéricos:', error);
     }
