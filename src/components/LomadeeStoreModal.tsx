@@ -173,6 +173,14 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b bg-card">
           <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              className="mr-2"
+            >
+              ← Voltar para Lojas
+            </Button>
             <img 
               src={store.logo} 
               alt={store.name} 
