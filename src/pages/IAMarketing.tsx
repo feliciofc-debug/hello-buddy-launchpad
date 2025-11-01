@@ -154,34 +154,6 @@ const IAMarketing = () => {
             {/* Resultados */}
             {resultado && (
               <div className="max-w-6xl mx-auto space-y-6">
-                {/* Informações do Produto */}
-                {resultado.produto && (
-                  <Card className="shadow-xl border-2">
-                    <CardContent className="pt-6">
-                      <div className="flex flex-col md:flex-row gap-6 items-center">
-                        {resultado.produto.imagem && (
-                          <img 
-                            src={resultado.produto.imagem} 
-                            alt={resultado.produto.titulo}
-                            className="w-full md:w-48 h-48 object-cover rounded-lg shadow-lg"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                            }}
-                          />
-                        )}
-                        <div className="flex-1 space-y-2">
-                          <h3 className="text-2xl font-bold">{resultado.produto.titulo}</h3>
-                          {resultado.produto.preco && (
-                            <p className="text-3xl font-bold text-green-600">
-                              R$ {resultado.produto.preco}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
                 {/* Botão Agendar Todos */}
                 <div className="flex justify-center">
                   <Button
@@ -205,6 +177,16 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
+                      {resultado.produto?.imagem && (
+                        <img 
+                          src={resultado.produto.imagem} 
+                          alt={resultado.produto.titulo}
+                          className="w-full h-48 object-cover rounded-lg shadow-md"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      )}
                       <Textarea
                         value={editableInstagram}
                         onChange={(e) => setEditableInstagram(e.target.value)}
@@ -232,6 +214,16 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
+                      {resultado.produto?.imagem && (
+                        <img 
+                          src={resultado.produto.imagem} 
+                          alt={resultado.produto.titulo}
+                          className="w-full h-48 object-cover rounded-lg shadow-md"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      )}
                       <Textarea
                         value={editableStories}
                         onChange={(e) => setEditableStories(e.target.value)}
@@ -259,6 +251,16 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
+                      {resultado.produto?.imagem && (
+                        <img 
+                          src={resultado.produto.imagem} 
+                          alt={resultado.produto.titulo}
+                          className="w-full h-48 object-cover rounded-lg shadow-md"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      )}
                       <Textarea
                         value={editableWhatsApp}
                         onChange={(e) => setEditableWhatsApp(e.target.value)}
