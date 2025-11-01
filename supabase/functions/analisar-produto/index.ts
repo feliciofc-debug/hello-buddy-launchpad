@@ -19,11 +19,6 @@ serve(async (req) => {
       throw new Error('URL não fornecida');
     }
 
-    const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
-    if (!SCRAPER_API_KEY) {
-      throw new Error('SCRAPER_API_KEY não configurada');
-    }
-
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY não configurada');
@@ -38,17 +33,42 @@ serve(async (req) => {
       console.log('📍 URL final:', finalUrl);
     }
 
-    // Fazer scraping com ScraperAPI
-    const scraperUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true`;
-    console.log('🌐 Fazendo scraping...');
+    let html = '';
     
-    const scraperResponse = await fetch(scraperUrl);
-    if (!scraperResponse.ok) {
-      throw new Error(`Erro no scraping: ${scraperResponse.status}`);
+    // Tentar fetch direto primeiro
+    try {
+      console.log('🌐 Tentando fetch direto...');
+      const directResponse = await fetch(finalUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+      
+      if (directResponse.ok) {
+        html = await directResponse.text();
+        console.log('✅ Fetch direto bem-sucedido, tamanho:', html.length);
+      } else {
+        throw new Error(`Fetch direto falhou: ${directResponse.status}`);
+      }
+    } catch (directError) {
+      console.log('⚠️ Fetch direto falhou, tentando ScraperAPI...');
+      
+      // Fallback para ScraperAPI
+      const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
+      if (SCRAPER_API_KEY) {
+        const scraperUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}`;
+        const scraperResponse = await fetch(scraperUrl);
+        
+        if (!scraperResponse.ok) {
+          throw new Error(`ScraperAPI falhou: ${scraperResponse.status}. Verifique seus créditos em scraperapi.com`);
+        }
+        
+        html = await scraperResponse.text();
+        console.log('✅ ScraperAPI bem-sucedido, tamanho:', html.length);
+      } else {
+        throw new Error('Não foi possível acessar a página. Configure SCRAPER_API_KEY para sites protegidos.');
+      }
     }
-
-    const html = await scraperResponse.text();
-    console.log('✅ HTML obtido, tamanho:', html.length);
 
     // Extrair título e preço com regex melhorados
     let titulo = '';
@@ -70,11 +90,9 @@ serve(async (req) => {
     if (finalUrl.includes('shopee.com')) {
       console.log('🛍️ Detectado: Shopee');
       
-      // Tentar várias formas de extrair preço do Shopee
-      let precoMatch = html.match(/₫\s*([0-9.,]+)/);
+      let precoMatch = html.match(/"price_min"\s*:\s*([0-9]+)/);
       if (!precoMatch) precoMatch = html.match(/"price"\s*:\s*([0-9]+)/);
       if (!precoMatch) precoMatch = html.match(/R\$\s*([0-9.,]+)/);
-      if (!precoMatch) precoMatch = html.match(/price_min"\s*:\s*([0-9]+)/);
       
       if (precoMatch) {
         let precoRaw = precoMatch[1].replace(/[.,]/g, '');
@@ -86,9 +104,8 @@ serve(async (req) => {
     } else if (finalUrl.includes('amazon.com')) {
       console.log('📦 Detectado: Amazon');
       
-      // Regex para Amazon
-      let precoMatch = html.match(/R\$\s*([0-9.,]+)/);
-      if (!precoMatch) precoMatch = html.match(/"price"\s*:\s*"R?\$?\s*([0-9.,]+)"/);
+      let precoMatch = html.match(/"price"\s*:\s*"?R?\$?\s*([0-9.,]+)"?/);
+      if (!precoMatch) precoMatch = html.match(/R\$\s*([0-9.,]+)/);
       if (!precoMatch) precoMatch = html.match(/priceAmount[^>]*>R?\$?\s*([0-9.,]+)/);
       
       if (precoMatch) {
@@ -99,8 +116,8 @@ serve(async (req) => {
     } else if (finalUrl.includes('mercadolivre.com') || finalUrl.includes('mercadolibre.com')) {
       console.log('🏪 Detectado: Mercado Livre');
       
-      let precoMatch = html.match(/R\$\s*([0-9.,]+)/);
-      if (!precoMatch) precoMatch = html.match(/"price"\s*:\s*([0-9.]+)/);
+      let precoMatch = html.match(/"price"\s*:\s*([0-9.]+)/);
+      if (!precoMatch) precoMatch = html.match(/R\$\s*([0-9.,]+)/);
       
       if (precoMatch) {
         preco = precoMatch[1].replace('.', '').replace(',', '.');
@@ -110,9 +127,8 @@ serve(async (req) => {
     } else {
       console.log('🌐 Marketplace genérico');
       
-      // Regex genérico para outros sites
-      let precoMatch = html.match(/R\$\s*([0-9.,]+)/);
-      if (!precoMatch) precoMatch = html.match(/"price"\s*:\s*"?([0-9.,]+)"?/);
+      let precoMatch = html.match(/"price"\s*:\s*"?([0-9.,]+)"?/);
+      if (!precoMatch) precoMatch = html.match(/R\$\s*([0-9.,]+)/);
       
       if (precoMatch) {
         preco = precoMatch[1].replace('.', '').replace(',', '.');
@@ -124,22 +140,22 @@ serve(async (req) => {
 
     // Gerar posts com IA usando os dados reais
     const promptInsta = `Crie um post vendedor para Instagram sobre este produto:
-Produto: ${titulo}
-Preço: R$ ${preco}
+Produto: ${titulo || 'Produto incrível'}
+Preço: R$ ${preco || 'XX,XX'}
 
 Use linguagem urgente, emojis relevantes e call-to-action forte.
 Máximo 150 caracteres.`;
 
     const promptStory = `Crie um texto curto e impactante para story do Instagram:
-Produto: ${titulo}
-Preço: R$ ${preco}
+Produto: ${titulo || 'Produto incrível'}
+Preço: R$ ${preco || 'XX,XX'}
 
 Use senso de urgência e escassez.
 Máximo 80 caracteres.`;
 
     const promptWhats = `Crie uma mensagem amigável para WhatsApp:
-Produto: ${titulo}
-Preço: R$ ${preco}
+Produto: ${titulo || 'Produto incrível'}
+Preço: R$ ${preco || 'XX,XX'}
 
 Tom informal como se fosse um amigo indicando.
 Máximo 200 caracteres.`;
@@ -180,8 +196,8 @@ Máximo 200 caracteres.`;
       JSON.stringify({
         success: true,
         produto: {
-          titulo,
-          preco,
+          titulo: titulo || 'Produto',
+          preco: preco || '0.00',
           url: finalUrl
         },
         posts: {
