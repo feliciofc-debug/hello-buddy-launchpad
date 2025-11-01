@@ -122,8 +122,7 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
     }
   }, [open, store]);
 
-  if (!store) return null;
-
+  // IMPORTANTE: useMemo deve vir ANTES de qualquer early return para manter ordem dos hooks
   const categories = useMemo(() => {
     if (!products || products.length === 0) return ["all"];
     return ["all", ...Array.from(new Set(products.map(p => p.category)))];
@@ -141,6 +140,8 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
       return matchesSearch && matchesCategory && matchesMinPrice && matchesMaxPrice;
     });
   }, [searchTerm, selectedCategory, minPrice, maxPrice, products]);
+
+  if (!store) return null;
 
   const toggleProductSelection = (productId: string) => {
     const newSelection = new Set(selectedProducts);
