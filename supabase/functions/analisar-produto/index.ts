@@ -13,127 +13,35 @@ serve(async (req) => {
 
   try {
     const { url } = await req.json();
-    console.log('Analisando URL:', url);
+    console.log('📝 Gerando posts genéricos para:', url);
 
     if (!url) {
       throw new Error('URL não fornecida');
     }
 
-    // 1. BUSCAR DADOS REAIS DO PRODUTO
-    let titulo = 'Produto em Oferta';
-    let preco = '99.90';
-    let finalUrl = url;
-
-    const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
-    if (!SCRAPER_API_KEY) {
-      console.error('❌ SCRAPER_API_KEY não configurada');
-      throw new Error('Configuração de scraping não disponível');
-    }
-
-    try {
-      // Seguir redirecionamento se for link curto
-      if (url.includes('amzn.to') || url.includes('a.co') || url.includes('s.shopee.com.br') || url.includes('shp.ee')) {
-        console.log('🔗 Link curto - seguindo redirecionamento...');
-        const redirectResponse = await fetch(url, {
-          method: 'HEAD',
-          redirect: 'follow'
-        });
-        finalUrl = redirectResponse.url;
-        console.log('✅ URL final:', finalUrl);
-      }
-
-      // USAR SCRAPER API COM ULTRA PREMIUM PARA SHOPEE
-      const scraperUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true&ultra_premium=true`;
-      console.log('🔍 Buscando dados via ScraperAPI Ultra Premium...');
-      
-      const response = await fetch(scraperUrl, {
-        headers: {
-          'Accept': 'text/html',
-        }
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Erro ScraperAPI:', response.status, errorText);
-        throw new Error(`Erro ao acessar produto: ${response.status}`);
-      }
-
-      const html = await response.text();
-      console.log('✅ HTML recebido, tamanho:', html.length);
-
-      // EXTRAIR TÍTULO
-      const titlePatterns = [
-        /<meta\s+property="og:title"\s+content="([^"]+)"/i,
-        /<title[^>]*>([^<]+)<\/title>/i,
-        /<h1[^>]*>([^<]+)<\/h1>/i,
-      ];
-
-      for (const pattern of titlePatterns) {
-        const match = html.match(pattern);
-        if (match && match[1]) {
-          titulo = match[1].trim().substring(0, 100);
-          console.log('✅ Título encontrado:', titulo);
-          break;
-        }
-      }
-
-      // EXTRAIR PREÇO - SHOPEE USA CENTAVOS EM JSON
-      const pricePatterns = [
-        // Shopee: "price":8000 (80.00 reais em centavos)
-        /"price":(\d+)/,
-        // Shopee: "priceMin":8000
-        /"priceMin":(\d+)/,
-        // Open Graph
-        /<meta\s+property="product:price:amount"\s+content="([^"]+)"/i,
-        // Padrão brasileiro R$
-        /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/,
-      ];
-
-      for (const pattern of pricePatterns) {
-        const match = html.match(pattern);
-        if (match && match[1]) {
-          let precoStr = match[1];
-          
-          // Se for número puro grande (Shopee em centavos)
-          if (/^\d+$/.test(precoStr) && precoStr.length > 3) {
-            preco = (parseInt(precoStr) / 100).toFixed(2);
-            console.log('✅ Preço extraído (centavos):', precoStr, '=', preco);
-          } 
-          // Se for formato brasileiro R$ 80,00
-          else if (precoStr.includes(',')) {
-            preco = precoStr.replace(/\./g, '').replace(',', '.');
-            console.log('✅ Preço extraído (BR):', preco);
-          }
-          // Já está em formato correto
-          else {
-            preco = precoStr;
-            console.log('✅ Preço extraído:', preco);
-          }
-          break;
-        }
-      }
-
-      console.log('📊 DADOS FINAIS:', { titulo, preco, url: finalUrl });
-
-    } catch (error) {
-      console.error('❌ ERRO ao buscar dados:', error);
-      throw new Error('Não foi possível analisar o produto. Tente outro link.');
-    }
-
-    // 2. GERAR POSTS COM LOVABLE AI
+    // GERAR POSTS GENÉRICOS COM IA - SEM SCRAPING
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY não configurada');
     }
 
-    const promptInsta = `Produto: ${titulo}, Preço: R$${preco}. 
-Crie um post para Instagram (máximo 150 caracteres) com linguagem vendedora, emojis relevantes e call-to-action forte. Seja persuasivo e urgente.`;
+    const promptInsta = `Crie um post vendedor para Instagram sobre um produto em promoção.
+Use linguagem urgente, emojis relevantes e call-to-action forte.
+Deixe placeholders [NOME DO PRODUTO] e [PREÇO] para o usuário preencher.
+Máximo 150 caracteres.
+Exemplo: "🔥 OFERTA RELÂMPAGO! [NOME DO PRODUTO] por apenas [PREÇO]! Poucas unidades! 😱 Compre agora!"`;
 
-    const promptStory = `Produto: ${titulo}, R$${preco}. 
-Crie um texto para story do Instagram (máximo 80 caracteres) com senso de urgência e escassez. Use emojis e seja direto.`;
+    const promptStory = `Crie um texto curto e impactante para story do Instagram sobre produto em oferta.
+Use senso de urgência e escassez.
+Deixe placeholders [NOME DO PRODUTO] e [PREÇO].
+Máximo 80 caracteres.
+Exemplo: "🚨 SÓ HOJE! [NOME DO PRODUTO] - [PREÇO]! Corre! ⏰"`;
 
-    const promptWhats = `Produto: ${titulo}, R$${preco}. 
-Crie uma mensagem para WhatsApp como se fosse um amigo indicando o produto. Seja informal, amigável e convincente (máximo 200 caracteres).`;
+    const promptWhats = `Crie uma mensagem amigável para WhatsApp recomendando um produto.
+Tom informal como se fosse um amigo indicando.
+Deixe placeholders [NOME DO PRODUTO] e [PREÇO].
+Máximo 200 caracteres.
+Exemplo: "Opa! 👋 Achei essa oferta INCRÍVEL! [NOME DO PRODUTO] por só [PREÇO]! Tá muito barato, vale a pena!"`;
 
     const generateText = async (prompt: string) => {
       const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -145,7 +53,7 @@ Crie uma mensagem para WhatsApp como se fosse um amigo indicando o produto. Seja
         body: JSON.stringify({
           model: 'google/gemini-2.5-flash',
           messages: [
-            { role: 'system', content: 'Você é um especialista em copywriting para afiliados. Crie textos persuasivos e vendedores.' },
+            { role: 'system', content: 'Você é um especialista em copywriting para afiliados. Crie textos persuasivos com placeholders para o usuário personalizar.' },
             { role: 'user', content: prompt }
           ],
         }),
@@ -173,15 +81,14 @@ Crie uma mensagem para WhatsApp como se fosse um amigo indicando o produto. Seja
       generateText(promptWhats)
     ]);
 
-    console.log('Posts gerados com sucesso');
+    console.log('✅ Posts genéricos gerados com sucesso');
 
-    // 3. RETORNAR
     return new Response(
       JSON.stringify({
         success: true,
         produto: {
-          titulo,
-          preco,
+          titulo: '[NOME DO PRODUTO]',
+          preco: '[PREÇO]',
           url
         },
         posts: {
@@ -197,7 +104,7 @@ Crie uma mensagem para WhatsApp como se fosse um amigo indicando o produto. Seja
     );
 
   } catch (error) {
-    console.error('Erro na função analisar-produto:', error);
+    console.error('❌ Erro na função analisar-produto:', error);
     return new Response(
       JSON.stringify({ 
         success: false,

@@ -111,7 +111,10 @@ const IAMarketing = () => {
                   ✨ IA Marketing
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground">
-                  Cole qualquer link de produto e receba posts prontos
+                  Cole o link e receba posts prontos para personalizar
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  💡 Dica: Edite [NOME DO PRODUTO] e [PREÇO] antes de postar
                 </p>
               </div>
             </div>
