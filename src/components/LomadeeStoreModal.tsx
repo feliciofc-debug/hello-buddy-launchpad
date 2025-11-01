@@ -41,101 +41,47 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [productSearchTerm, setProductSearchTerm] = useState("");
   
-  // Buscar links de afiliado da loja
-  useEffect(() => {
-    if (open && store) {
-      const fetchStoreLinks = async () => {
-        setIsLoading(true);
-        try {
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) throw new Error('Usuário não autenticado');
-
-          const { data: integration } = await supabase
-            .from('integrations')
-            .select('lomadee_app_token')
-            .eq('user_id', user.id)
-            .eq('platform', 'lomadee')
-            .eq('is_active', true)
-            .single();
-
-          if (!integration?.lomadee_app_token) {
-            throw new Error('Configure sua integração Lomadee');
-          }
-
-          const brandSlug = (store as any).sourceId || store.name.toLowerCase().replace(/\s+/g, '-');
-          
-          console.log('Buscando links da loja:', brandSlug);
-
-          // Buscar detalhes da loja
-          const response = await fetch(`https://api-beta.lomadee.com.br/affiliate/brands`, {
-            headers: {
-              'x-api-key': integration.lomadee_app_token,
-              'Content-Type': 'application/json'
-            }
-          });
-
-          if (!response.ok) {
-            throw new Error('Erro ao buscar dados da loja');
-          }
-
-          const data = await response.json();
-          const lojaEncontrada = data.data?.find((b: any) => b.slug === brandSlug);
-          
-          if (!lojaEncontrada) {
-            throw new Error('Loja não encontrada');
-          }
-
-          // Criar "produtos" a partir dos links disponíveis
-          const linkProducts: Product[] = [];
-          
-          if (lojaEncontrada.channels && lojaEncontrada.channels.length > 0) {
-            lojaEncontrada.channels.forEach((channel: any) => {
-              if (channel.shortUrls && channel.shortUrls.length > 0) {
-                channel.shortUrls.forEach((url: string, idx: number) => {
-                  linkProducts.push({
-                    id: `${brandSlug}-${channel.id}-${idx}`,
-                    title: `🛍️ Visitar Loja ${store.name}`,
-                    description: `Link de afiliado para o canal: ${channel.name}. Comissão de ${lojaEncontrada.commission?.value || 0}%`,
-                    price: 0,
-                    commission: lojaEncontrada.commission?.value || 10,
-                    commissionPercent: lojaEncontrada.commission?.value || 10,
-                    marketplace: 'lomadee' as const,
-                    category: '🏠 Casa e Cozinha',
-                    imageUrl: store.logo,
-                    affiliateLink: url,
-                    rating: 5,
-                    reviews: 0,
-                    sales: 0,
-                    createdAt: new Date(),
-                    bsr: 0,
-                    bsrCategory: 'Store'
-                  });
-                });
-              }
-            });
-          }
-
-          if (linkProducts.length > 0) {
-            setProducts(linkProducts);
-            toast.success(`${linkProducts.length} link(s) de afiliado disponível!`, {
-              description: `Compartilhe esse link para divulgar os produtos da ${store.name}`
-            });
-          } else {
-            toast.warning('Nenhum link disponível para esta loja');
-          }
-          
-        } catch (err: any) {
-          console.error('Erro ao buscar links:', err);
-          toast.error(err.message || 'Erro ao carregar links da loja');
-        } finally {
-          setIsLoading(false);
-        }
-      };
-
-      fetchStoreLinks();
+  // Buscar produtos via BuscaPé API
+  const searchProducts = async () => {
+    if (!productSearchTerm.trim()) {
+      toast.error("Digite um termo de busca para encontrar produtos");
+      return;
     }
-  }, [open, store]);
+
+    setIsLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Usuário não autenticado');
+
+      console.log('Buscando produtos:', productSearchTerm);
+
+      const { data, error } = await supabase.functions.invoke('buscar-produtos-buscape', {
+        body: { 
+          keyword: productSearchTerm,
+          storeName: store?.name 
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.products && data.products.length > 0) {
+        setProducts(data.products);
+        toast.success(`${data.products.length} produto(s) encontrado(s)!`);
+      } else {
+        setProducts([]);
+        toast.warning('Nenhum produto encontrado para este termo');
+      }
+      
+    } catch (err: any) {
+      console.error('Erro ao buscar produtos:', err);
+      toast.error(err.message || 'Erro ao buscar produtos');
+      setProducts([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // IMPORTANTE: useMemo deve vir ANTES de qualquer early return para manter ordem dos hooks
   const categories = useMemo(() => {
@@ -223,6 +169,42 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
           </Button>
         </div>
 
+        {/* Busca de Produtos */}
+        <div className="p-6 border-b bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/20 dark:to-indigo-950/20">
+          <div className="max-w-4xl mx-auto">
+            <h3 className="text-lg font-semibold mb-3">🔍 Buscar Produtos na Loja</h3>
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                <Input
+                  placeholder="Ex: smartphone, notebook, geladeira..."
+                  value={productSearchTerm}
+                  onChange={(e) => setProductSearchTerm(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && searchProducts()}
+                  className="pl-10 h-12 text-base"
+                />
+              </div>
+              <Button 
+                onClick={searchProducts}
+                disabled={isLoading || !productSearchTerm.trim()}
+                className="h-12 px-8 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <Search className="w-5 h-5 mr-2" />
+                    Buscar
+                  </>
+                )}
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground mt-2">
+              💡 Digite o que procura e clique em Buscar para encontrar produtos da {store?.name}
+            </p>
+          </div>
+        </div>
+
         {/* Filtros */}
         <div className="p-6 border-b bg-muted/30 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -230,7 +212,7 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar produtos..."
+                  placeholder="Filtrar produtos exibidos..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -275,7 +257,16 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-              <p className="text-muted-foreground">Carregando produtos...</p>
+              <p className="text-muted-foreground">Buscando produtos...</p>
+            </div>
+          ) : products.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Search className="w-16 h-16 text-muted-foreground mb-4" />
+              <h3 className="text-xl font-semibold mb-2">Nenhum produto carregado</h3>
+              <p className="text-muted-foreground text-center max-w-md">
+                Use o campo de busca acima para encontrar produtos da {store?.name}. 
+                Digite o que procura e clique em "Buscar".
+              </p>
             </div>
           ) : (
             <>
