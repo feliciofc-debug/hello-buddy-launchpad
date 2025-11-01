@@ -9,6 +9,7 @@ import { Loader2, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 
 export const LomadeeSettings = () => {
   const [appToken, setAppToken] = useState('');
+  const [affiliateId, setAffiliateId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -25,7 +26,7 @@ export const LomadeeSettings = () => {
 
       const { data, error } = await supabase
         .from('integrations')
-        .select('lomadee_app_token, lomadee_source_id, is_active')
+        .select('lomadee_app_token, lomadee_source_id, lomadee_affiliate_id, is_active')
         .eq('user_id', user.id)
         .eq('platform', 'lomadee')
         .maybeSingle();
@@ -34,6 +35,7 @@ export const LomadeeSettings = () => {
 
       if (data) {
         setAppToken(data.lomadee_app_token || '');
+        setAffiliateId(data.lomadee_affiliate_id || '');
         setIsConnected(data.is_active || false);
         if (data.lomadee_source_id) {
           setApprovedStores(data.lomadee_source_id.split(',').filter(Boolean));
@@ -50,19 +52,25 @@ export const LomadeeSettings = () => {
       return;
     }
 
+    if (!affiliateId.trim()) {
+      toast.error('Por favor, insira seu ID de Afiliado da Lomadee');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // Salvar APP_TOKEN no banco
+      // Salvar APP_TOKEN e Affiliate ID no banco
       const { error: upsertError } = await supabase
         .from('integrations')
         .upsert({
           user_id: user.id,
           platform: 'lomadee',
           lomadee_app_token: appToken,
+          lomadee_affiliate_id: affiliateId,
           is_active: true,
           access_token: appToken, // Campo obrigatório
           updated_at: new Date().toISOString()
@@ -186,6 +194,22 @@ export const LomadeeSettings = () => {
               onChange={(e) => setAppToken(e.target.value)}
               disabled={isConnected}
             />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Encontre seu APP_TOKEN em: Painel Lomadee → Configurações → API
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium">ID de Afiliado (sourceId)</label>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="37698997"
+              value={affiliateId}
+              onChange={(e) => setAffiliateId(e.target.value)}
+              disabled={isConnected}
+            />
             {!isConnected ? (
               <Button onClick={handleConnect} disabled={isLoading}>
                 {isLoading ? (
@@ -204,7 +228,7 @@ export const LomadeeSettings = () => {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Encontre seu APP_TOKEN em: Painel Lomadee → Configurações → API
+            Seu ID aparece nos links de afiliado
           </p>
         </div>
 
