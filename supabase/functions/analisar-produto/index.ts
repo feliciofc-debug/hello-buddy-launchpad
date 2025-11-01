@@ -86,8 +86,8 @@ serve(async (req) => {
     let finalUrl = url;
 
     try {
-      // Se for link curto, seguir redirecionamento
-      if (url.includes('amzn.to') || url.includes('a.co')) {
+      // Se for link curto (Amazon ou Shopee), seguir redirecionamento
+      if (url.includes('amzn.to') || url.includes('a.co') || url.includes('s.shopee.com.br') || url.includes('shp.ee')) {
         console.log('Link curto detectado - seguindo redirecionamento...');
         const redirectResponse = await fetch(url, {
           method: 'HEAD',
