@@ -72,7 +72,7 @@ serve(async (req) => {
   }
 
   try {
-    const { url, uploadedImage } = await req.json();
+    const { url } = await req.json();
     console.log('Analisando URL:', url);
 
     if (!url) {
@@ -82,7 +82,7 @@ serve(async (req) => {
     // 1. BUSCAR DADOS DO PRODUTO
     let titulo = 'Produto em Oferta';
     let preco = '99.90';
-    let imagem = uploadedImage || '';
+    let imagem = '';
 
     try {
       const response = await fetch(url, {
@@ -105,15 +105,12 @@ serve(async (req) => {
         preco = precoMatch[1].replace('.', '').replace(',', '.');
       }
 
-      // Extrair imagem apenas se não foi feito upload
-      if (!uploadedImage) {
-        // Links curtos Amazon não têm HTML rico
-        if (url.includes('amzn.to') || url.includes('a.co')) {
-          console.log('Link curto Amazon detectado - usando placeholder');
-          imagem = 'https://via.placeholder.com/400x400/FF9900/FFFFFF?text=Amazon+Product';
-        } else {
-          imagem = extrairImagem(html, url);
-        }
+      // Extrair imagem
+      if (url.includes('amzn.to') || url.includes('a.co')) {
+        console.log('Link curto Amazon detectado - usando placeholder');
+        imagem = 'https://via.placeholder.com/400x400/FF9900/FFFFFF?text=Amazon+Product';
+      } else {
+        imagem = extrairImagem(html, url);
       }
 
       console.log('Dados extraídos:', { titulo, preco, imagem, url });
