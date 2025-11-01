@@ -177,15 +177,16 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      {resultado.produto?.imagem && (
+                      {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
                         <img 
                           src={resultado.produto.imagem} 
                           alt={resultado.produto.titulo}
                           className="w-full h-48 object-cover rounded-lg shadow-md"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                          }}
                         />
+                      ) : (
+                        <div className="w-full h-48 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
+                          📸 Imagem não disponível<br />Use o link completo do produto
+                        </div>
                       )}
                       <Textarea
                         value={editableInstagram}
@@ -214,15 +215,16 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      {resultado.produto?.imagem && (
+                      {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
                         <img 
                           src={resultado.produto.imagem} 
                           alt={resultado.produto.titulo}
                           className="w-full h-48 object-cover rounded-lg shadow-md"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                          }}
                         />
+                      ) : (
+                        <div className="w-full h-48 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
+                          📸 Imagem não disponível<br />Use o link completo do produto
+                        </div>
                       )}
                       <Textarea
                         value={editableStories}
@@ -251,15 +253,16 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      {resultado.produto?.imagem && (
+                      {resultado.produto?.imagem && !resultado.produto.imagem.includes('placeholder') ? (
                         <img 
                           src={resultado.produto.imagem} 
                           alt={resultado.produto.titulo}
                           className="w-full h-48 object-cover rounded-lg shadow-md"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                          }}
                         />
+                      ) : (
+                        <div className="w-full h-48 bg-muted rounded-lg shadow-md flex items-center justify-center text-muted-foreground text-sm text-center p-4">
+                          📸 Imagem não disponível<br />Use o link completo do produto
+                        </div>
                       )}
                       <Textarea
                         value={editableWhatsApp}
