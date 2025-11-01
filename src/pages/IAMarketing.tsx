@@ -62,6 +62,9 @@ const IAMarketing = () => {
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   
+  // Estado para múltiplos produtos (Lomadee)
+  const [multipleProducts, setMultipleProducts] = useState<string[]>([]);
+  
   // Estados para permitir edição dos posts
   const [editableInstagram, setEditableInstagram] = useState("");
   const [editableStories, setEditableStories] = useState("");
@@ -110,6 +113,53 @@ const IAMarketing = () => {
     };
     fetchProfile();
   }, []);
+
+  // Detectar múltiplos produtos via query params
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const produtosParam = searchParams.get('produtos');
+    
+    if (produtosParam) {
+      const urls = produtosParam.split(',').filter(u => u.trim());
+      if (urls.length > 0) {
+        setMultipleProducts(urls);
+        // Automaticamente iniciar análise em massa
+        analyzeMutlipleFromLomadee(urls);
+      }
+    }
+  }, []);
+
+  // Função para analisar múltiplos produtos do Lomadee
+  const analyzeMutlipleFromLomadee = async (urls: string[]) => {
+    setBulkMode(true);
+    setBulkLoading(true);
+    setBulkResults([]);
+    
+    for (const singleUrl of urls) {
+      try {
+        const response = await axios.post(
+          "https://amz-ofertas-robo.onrender.com/analisar-produto",
+          { 
+            url: singleUrl.trim(),
+            usuario_id: 'user123'
+          },
+          { 
+            timeout: 30000,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+
+        if (response.data.success) {
+          setBulkResults(prev => [...prev, { ...response.data, url: singleUrl, selected: false }]);
+        }
+      } catch (err) {
+        console.error('Erro ao analisar:', singleUrl, err);
+      }
+    }
+    
+    setBulkLoading(false);
+    toast.success(`${urls.length} produtos analisados!`);
+  };
 
   // Carregar histórico do localStorage
   useEffect(() => {

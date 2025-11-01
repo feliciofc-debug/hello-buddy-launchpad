@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import ProductCard from '@/components/ProductCard';
+import { LomadeeStoreModal } from '@/components/LomadeeStoreModal';
 import type { Product } from '@/data/mockData';
 
 const ProductsPage: React.FC = () => {
@@ -22,6 +23,8 @@ const ProductsPage: React.FC = () => {
   const [shopeeProducts, setShopeeProducts] = useState<Product[]>([]);
   const [lomadeeProducts, setLomadeeProducts] = useState<Product[]>([]);
   const [error, setError] = useState('');
+  const [selectedStore, setSelectedStore] = useState<{ name: string; logo: string; commission: string } | null>(null);
+  const [isStoreModalOpen, setIsStoreModalOpen] = useState(false);
 
   // Carrega produtos reais da Lomadee ao montar o componente
   useEffect(() => {
@@ -419,11 +422,24 @@ const ProductsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Products Grid */}
+            {/* Products Grid - Cards de Lojas Clicáveis */}
             {!isLoading && !error && lomadeeProducts.length > 0 && (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                 {lomadeeProducts.map((product) => (
-                  <ProductCard key={product.id} product={product} />
+                  <div
+                    key={product.id}
+                    onClick={() => {
+                      setSelectedStore({
+                        name: product.title,
+                        logo: product.imageUrl,
+                        commission: `até ${product.commissionPercent}%`
+                      });
+                      setIsStoreModalOpen(true);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <ProductCard product={product} />
+                  </div>
                 ))}
               </div>
             )}
@@ -440,6 +456,16 @@ const ProductsPage: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Modal de Produtos da Loja */}
+      <LomadeeStoreModal
+        store={selectedStore}
+        open={isStoreModalOpen}
+        onClose={() => {
+          setIsStoreModalOpen(false);
+          setSelectedStore(null);
+        }}
+      />
     </div>
   );
 };
