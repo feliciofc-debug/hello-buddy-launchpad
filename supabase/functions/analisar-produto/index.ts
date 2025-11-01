@@ -44,13 +44,24 @@ serve(async (req) => {
         preco = precoMatch[1].replace('.', '').replace(',', '.');
       }
 
-      // Extrair imagem
-      const imgMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+      // Extrair imagem - tentar múltiplas estratégias
+      let imgMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);
+      if (!imgMatch) {
+        imgMatch = html.match(/<meta\s+name="twitter:image"\s+content="([^"]+)"/i);
+      }
+      if (!imgMatch) {
+        imgMatch = html.match(/<img[^>]+src="([^"]+)"[^>]*>/i);
+      }
       if (imgMatch) {
         imagem = imgMatch[1];
+        // Se a URL for relativa, tentar completar com o domínio
+        if (imagem.startsWith('/')) {
+          const urlObj = new URL(url);
+          imagem = `${urlObj.protocol}//${urlObj.host}${imagem}`;
+        }
       }
 
-      console.log('Dados extraídos:', { titulo, preco, imagem });
+      console.log('Dados extraídos:', { titulo, preco, imagem, url });
     } catch (error) {
       console.log('Erro ao parsear, usando dados genéricos:', error);
     }
