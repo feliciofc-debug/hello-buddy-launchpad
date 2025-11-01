@@ -124,10 +124,14 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
 
   if (!store) return null;
 
-  const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
+  const categories = useMemo(() => {
+    if (!products || products.length === 0) return ["all"];
+    return ["all", ...Array.from(new Set(products.map(p => p.category)))];
+  }, [products]);
 
   // Filtrar produtos
   const filteredProducts = useMemo(() => {
+    if (!products || products.length === 0) return [];
     return products.filter((product) => {
       const matchesSearch = product.title.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
