@@ -42,10 +42,10 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Buscar produtos fazendo scraping dos links de afiliado
+  // Buscar links de afiliado da loja
   useEffect(() => {
     if (open && store) {
-      const fetchStoreProducts = async () => {
+      const fetchStoreLinks = async () => {
         setIsLoading(true);
         try {
           const { data: { user } } = await supabase.auth.getUser();
@@ -65,9 +65,9 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
 
           const brandSlug = (store as any).sourceId || store.name.toLowerCase().replace(/\s+/g, '-');
           
-          console.log('Buscando produtos reais da loja:', brandSlug);
+          console.log('Buscando links da loja:', brandSlug);
 
-          // Primeiro buscar os canais da loja
+          // Buscar detalhes da loja
           const response = await fetch(`https://api-beta.lomadee.com.br/affiliate/brands`, {
             headers: {
               'x-api-key': integration.lomadee_app_token,
@@ -82,87 +82,58 @@ export const LomadeeStoreModal = ({ store, open, onClose }: LomadeeStoreModalPro
           const data = await response.json();
           const lojaEncontrada = data.data?.find((b: any) => b.slug === brandSlug);
           
-          if (!lojaEncontrada?.channels || lojaEncontrada.channels.length === 0) {
-            throw new Error('Nenhum canal disponível para esta loja');
+          if (!lojaEncontrada) {
+            throw new Error('Loja não encontrada');
           }
 
-          // Pegar o primeiro link de afiliado disponível
-          const firstChannel = lojaEncontrada.channels[0];
-          const affiliateUrl = firstChannel.shortUrls?.[0];
-
-          if (!affiliateUrl) {
-            throw new Error('Link de afiliado não encontrado');
+          // Criar "produtos" a partir dos links disponíveis
+          const linkProducts: Product[] = [];
+          
+          if (lojaEncontrada.channels && lojaEncontrada.channels.length > 0) {
+            lojaEncontrada.channels.forEach((channel: any) => {
+              if (channel.shortUrls && channel.shortUrls.length > 0) {
+                channel.shortUrls.forEach((url: string, idx: number) => {
+                  linkProducts.push({
+                    id: `${brandSlug}-${channel.id}-${idx}`,
+                    title: `🛍️ Visitar Loja ${store.name}`,
+                    description: `Link de afiliado para o canal: ${channel.name}. Comissão de ${lojaEncontrada.commission?.value || 0}%`,
+                    price: 0,
+                    commission: lojaEncontrada.commission?.value || 10,
+                    commissionPercent: lojaEncontrada.commission?.value || 10,
+                    marketplace: 'lomadee' as const,
+                    category: '🏠 Casa e Cozinha',
+                    imageUrl: store.logo,
+                    affiliateLink: url,
+                    rating: 5,
+                    reviews: 0,
+                    sales: 0,
+                    createdAt: new Date(),
+                    bsr: 0,
+                    bsrCategory: 'Store'
+                  });
+                });
+              }
+            });
           }
 
-          console.log('Fazendo scraping do link:', affiliateUrl);
-
-          // Fazer scraping da loja
-          const { data: scrapedData, error: scrapeError } = await supabase.functions.invoke('scrape-lomadee-store', {
-            body: { 
-              affiliateUrl
-            }
-          });
-
-          if (scrapeError) throw scrapeError;
-
-          if (!scrapedData.success || !scrapedData.products || scrapedData.products.length === 0) {
-            // Fallback: mostrar o link direto se não conseguir fazer scraping
-            const fallbackProduct: Product = {
-              id: `${brandSlug}-direct`,
-              title: `Visite a Loja ${store.name}`,
-              description: `Acesse todos os produtos da loja ${store.name}`,
-              price: 0,
-              commission: lojaEncontrada.commission?.value || 10,
-              commissionPercent: lojaEncontrada.commission?.value || 10,
-              marketplace: 'lomadee' as const,
-              category: '🏠 Casa e Cozinha',
-              imageUrl: store.logo,
-              affiliateLink: affiliateUrl,
-              rating: 0,
-              reviews: 0,
-              sales: 0,
-              createdAt: new Date(),
-              bsr: 0,
-              bsrCategory: 'Store'
-            };
-            
-            setProducts([fallbackProduct]);
-            toast.warning('Não foi possível extrair produtos. Use o link direto da loja.');
-            return;
+          if (linkProducts.length > 0) {
+            setProducts(linkProducts);
+            toast.success(`${linkProducts.length} link(s) de afiliado disponível!`, {
+              description: `Compartilhe esse link para divulgar os produtos da ${store.name}`
+            });
+          } else {
+            toast.warning('Nenhum link disponível para esta loja');
           }
-
-          // Transformar produtos extraídos
-          const transformedProducts: Product[] = scrapedData.products.map((produto: any, idx: number) => ({
-            id: produto.id || `${brandSlug}-${idx}`,
-            title: produto.name || 'Produto',
-            description: produto.name || 'Produto da loja',
-            price: produto.price || 0,
-            commission: (produto.price || 0) * (lojaEncontrada.commission?.value || 10) / 100,
-            commissionPercent: lojaEncontrada.commission?.value || 10,
-            marketplace: 'lomadee' as const,
-            category: '👗 Moda',
-            imageUrl: produto.image || store.logo,
-            affiliateLink: produto.url || affiliateUrl,
-            rating: 0,
-            reviews: 0,
-            sales: 0,
-            createdAt: new Date(),
-            bsr: 0,
-            bsrCategory: 'Products'
-          }));
-
-          setProducts(transformedProducts);
-          toast.success(`${transformedProducts.length} produtos encontrados!`);
           
         } catch (err: any) {
-          console.error('Erro ao buscar produtos:', err);
-          toast.error(err.message || 'Erro ao carregar produtos da loja');
+          console.error('Erro ao buscar links:', err);
+          toast.error(err.message || 'Erro ao carregar links da loja');
         } finally {
           setIsLoading(false);
         }
       };
 
-      fetchStoreProducts();
+      fetchStoreLinks();
     }
   }, [open, store]);
 
