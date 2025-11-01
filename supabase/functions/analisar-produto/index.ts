@@ -162,27 +162,33 @@ serve(async (req) => {
 PRODUTO: ${nomeProduto}
 PREÇO: ${precoProduto}
 
-IMPORTANTE: Use o NOME EXATO e o PREÇO REAL do produto no texto.
-Seja persuasivo, use emojis relevantes e call-to-action forte.
-Máximo 150 caracteres.`;
+IMPORTANTE: 
+- Use o NOME EXATO e o PREÇO REAL do produto no texto
+- Seja persuasivo, use emojis relevantes e call-to-action forte
+- SEMPRE termine com "🔗 Link nos comentários!" ou "🔗 Link na bio!"
+- Máximo 150 caracteres`;
 
     const promptStory = `Crie um story ESPECÍFICO para Instagram sobre este produto REAL:
 
 PRODUTO: ${nomeProduto}
 PREÇO: ${precoProduto}
 
-IMPORTANTE: Mencione o produto pelo NOME e PREÇO reais.
-Use senso de urgência e escassez.
-Máximo 80 caracteres.`;
+IMPORTANTE: 
+- Mencione o produto pelo NOME e PREÇO reais
+- Use senso de urgência e escassez
+- SEMPRE inclua "🔗 Arrasta pra cima!" ou "Link abaixo!"
+- Máximo 80 caracteres`;
 
     const promptWhats = `Crie uma mensagem ESPECÍFICA para WhatsApp sobre este produto REAL:
 
 PRODUTO: ${nomeProduto}
 PREÇO: ${precoProduto}
 
-IMPORTANTE: Fale especificamente sobre este produto usando seu NOME e PREÇO reais.
-Tom informal como se fosse um amigo recomendando.
-Máximo 200 caracteres.`;
+IMPORTANTE: 
+- Fale especificamente sobre este produto usando seu NOME e PREÇO reais
+- Tom informal como se fosse um amigo recomendando
+- NÃO mencione link (será adicionado automaticamente)
+- Máximo 200 caracteres`;
 
     const generateText = async (prompt: string) => {
       const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
