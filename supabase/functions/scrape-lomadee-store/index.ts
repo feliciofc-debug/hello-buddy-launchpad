@@ -24,21 +24,47 @@ serve(async (req) => {
 
     console.log('[SCRAPE-LOMADEE] Iniciando scraping de:', affiliateUrl);
 
-    // Usar ScraperAPI para evitar bloqueios
-    const scraperUrl = `https://api.scraperapi.com/?api_key=${scraperApiKey}&url=${encodeURIComponent(affiliateUrl)}&render=true`;
-    
-    const response = await fetch(scraperUrl, {
-      headers: {
-        'Content-Type': 'text/html',
+    // Tentar primeiro sem ScraperAPI para economizar créditos
+    let html = '';
+    let usedScraper = false;
+
+    try {
+      console.log('[SCRAPE-LOMADEE] Tentando acesso direto...');
+      const directResponse = await fetch(affiliateUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        },
+        redirect: 'follow'
+      });
+
+      if (directResponse.ok) {
+        html = await directResponse.text();
+        console.log('[SCRAPE-LOMADEE] Acesso direto bem-sucedido, tamanho:', html.length);
+      } else {
+        throw new Error('Acesso direto falhou');
       }
-    });
+    } catch (directError) {
+      console.log('[SCRAPE-LOMADEE] Acesso direto falhou, tentando ScraperAPI...');
+      
+      // Fallback para ScraperAPI
+      if (scraperApiKey) {
+        const scraperUrl = `https://api.scraperapi.com/?api_key=${scraperApiKey}&url=${encodeURIComponent(affiliateUrl)}&follow_redirect=true`;
+        
+        const scraperResponse = await fetch(scraperUrl);
 
-    if (!response.ok) {
-      throw new Error(`Erro ao fazer scraping: ${response.status}`);
+        if (!scraperResponse.ok) {
+          throw new Error(`ScraperAPI retornou erro: ${scraperResponse.status}`);
+        }
+
+        html = await scraperResponse.text();
+        usedScraper = true;
+        console.log('[SCRAPE-LOMADEE] ScraperAPI bem-sucedido, tamanho:', html.length);
+      } else {
+        throw new Error('ScraperAPI não configurada e acesso direto falhou');
+      }
     }
-
-    const html = await response.text();
-    console.log('[SCRAPE-LOMADEE] HTML recebido, tamanho:', html.length);
 
     // Parser genérico de produtos (tenta identificar padrões comuns)
     const products: any[] = [];
