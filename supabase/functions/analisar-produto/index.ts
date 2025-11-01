@@ -19,124 +19,105 @@ serve(async (req) => {
       throw new Error('URL não fornecida');
     }
 
-    // 1. BUSCAR DADOS DO PRODUTO USANDO SCRAPER API
+    // 1. BUSCAR DADOS REAIS DO PRODUTO
     let titulo = 'Produto em Oferta';
     let preco = '99.90';
     let finalUrl = url;
 
-    try {
-      // Usar ScraperAPI para bypass de proteções e scraping confiável
-      const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
-      
-      if (!SCRAPER_API_KEY) {
-        console.error('SCRAPER_API_KEY não configurada');
-        throw new Error('Configuração de scraping não disponível');
-      }
+    const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
+    if (!SCRAPER_API_KEY) {
+      console.error('❌ SCRAPER_API_KEY não configurada');
+      throw new Error('Configuração de scraping não disponível');
+    }
 
-      // Se for link curto, seguir redirecionamento primeiro
+    try {
+      // Seguir redirecionamento se for link curto
       if (url.includes('amzn.to') || url.includes('a.co') || url.includes('s.shopee.com.br') || url.includes('shp.ee')) {
-        console.log('Link curto detectado - seguindo redirecionamento...');
+        console.log('🔗 Link curto - seguindo redirecionamento...');
         const redirectResponse = await fetch(url, {
           method: 'HEAD',
-          redirect: 'follow',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          }
+          redirect: 'follow'
         });
         finalUrl = redirectResponse.url;
-        console.log('URL final após redirecionamento:', finalUrl);
+        console.log('✅ URL final:', finalUrl);
       }
 
-      // Usar ScraperAPI para obter o HTML
-      const scraperUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}`;
-      console.log('Fazendo scraping da URL:', finalUrl);
+      // USAR SCRAPER API PARA OBTER HTML REAL
+      const scraperUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true`;
+      console.log('🔍 Buscando dados do produto via ScraperAPI...');
       
-      const response = await fetch(scraperUrl);
-      
+      const response = await fetch(scraperUrl, {
+        headers: {
+          'Accept': 'text/html',
+        }
+      });
+
       if (!response.ok) {
-        console.error('Erro ao fazer scraping:', response.status, await response.text());
-        throw new Error('Erro ao acessar página do produto');
+        const errorText = await response.text();
+        console.error('❌ Erro ScraperAPI:', response.status, errorText);
+        throw new Error(`Erro ao acessar produto: ${response.status}`);
       }
-      
+
       const html = await response.text();
+      console.log('✅ HTML recebido, tamanho:', html.length);
 
-      // PRIORIDADE 1: Tentar extrair de meta tags Open Graph
-      const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i);
-      const ogPrice = html.match(/<meta\s+property="product:price:amount"\s+content="([^"]+)"/i);
-      
-      if (ogTitle) {
-        titulo = ogTitle[1].trim().substring(0, 100);
-        console.log('Título extraído de og:title:', titulo);
-      }
+      // EXTRAIR TÍTULO
+      const titlePatterns = [
+        /<meta\s+property="og:title"\s+content="([^"]+)"/i,
+        /<title[^>]*>([^<]+)<\/title>/i,
+        /<h1[^>]*>([^<]+)<\/h1>/i,
+      ];
 
-      if (ogPrice) {
-        preco = ogPrice[1];
-        console.log('Preço extraído de product:price:', preco);
-      }
-
-      // PRIORIDADE 2: Tentar extrair de JSON-LD (comum no Shopee)
-      const jsonLdMatch = html.match(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/is);
-      if (jsonLdMatch) {
-        try {
-          const jsonData = JSON.parse(jsonLdMatch[1]);
-          if (jsonData.name && !ogTitle) {
-            titulo = jsonData.name.substring(0, 100);
-            console.log('Título extraído de JSON-LD:', titulo);
-          }
-          if (jsonData.offers?.price && !ogPrice) {
-            preco = jsonData.offers.price.toString();
-            console.log('Preço extraído de JSON-LD:', preco);
-          }
-        } catch (e) {
-          console.log('Erro ao parsear JSON-LD:', e);
+      for (const pattern of titlePatterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+          titulo = match[1].trim().substring(0, 100);
+          console.log('✅ Título encontrado:', titulo);
+          break;
         }
       }
 
-      // PRIORIDADE 3: Fallback para métodos tradicionais
-      if (titulo === 'Produto em Oferta') {
-        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i) || 
-                          html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
-        if (titleMatch) {
-          titulo = titleMatch[1].trim().substring(0, 100);
-          console.log('Título extraído de title/h1:', titulo);
-        }
-      }
+      // EXTRAIR PREÇO - SHOPEE USA CENTAVOS EM JSON
+      const pricePatterns = [
+        // Shopee: "price":8000 (80.00 reais em centavos)
+        /"price":(\d+)/,
+        // Shopee: "priceMin":8000
+        /"priceMin":(\d+)/,
+        // Open Graph
+        /<meta\s+property="product:price:amount"\s+content="([^"]+)"/i,
+        // Padrão brasileiro R$
+        /R\$\s*(\d{1,3}(?:\.\d{3})*,\d{2})/,
+      ];
 
-      if (preco === '99.90') {
-        // Tentar vários padrões de preço - mais específicos para Shopee
-        const patterns = [
-          // Shopee: price em centavos no HTML
-          /"price":(\d+)/,
-          // Shopee: priceMin/priceMax
-          /"priceMin":(\d+)/,
-          // Padrão BR com R$
-          /R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/,
-          // Preço em JSON
-          /"price":\s*"?(\d+(?:\.\d{2})?)"?/,
-          // Data attributes
-          /data-price="(\d+(?:\.\d{2})?)"/,
-        ];
-        
-        for (const pattern of patterns) {
-          const match = html.match(pattern);
-          if (match) {
-            let precoStr = match[1];
-            // Se for Shopee (número grande sem pontos/vírgulas), converter de centavos
-            if (pattern.source.includes('"price"') && precoStr.length > 4 && !precoStr.includes('.') && !precoStr.includes(',')) {
-              preco = (parseInt(precoStr) / 100).toFixed(2);
-              console.log('Preço extraído de centavos (Shopee):', preco);
-            } else {
-              preco = precoStr.replace('.', '').replace(',', '.');
-              console.log('Preço extraído com padrão:', preco);
-            }
-            break;
+      for (const pattern of pricePatterns) {
+        const match = html.match(pattern);
+        if (match && match[1]) {
+          let precoStr = match[1];
+          
+          // Se for número puro grande (Shopee em centavos)
+          if (/^\d+$/.test(precoStr) && precoStr.length > 3) {
+            preco = (parseInt(precoStr) / 100).toFixed(2);
+            console.log('✅ Preço extraído (centavos):', precoStr, '=', preco);
+          } 
+          // Se for formato brasileiro R$ 80,00
+          else if (precoStr.includes(',')) {
+            preco = precoStr.replace(/\./g, '').replace(',', '.');
+            console.log('✅ Preço extraído (BR):', preco);
           }
+          // Já está em formato correto
+          else {
+            preco = precoStr;
+            console.log('✅ Preço extraído:', preco);
+          }
+          break;
         }
       }
 
-      console.log('Dados finais extraídos:', { titulo, preco, url: finalUrl });
+      console.log('📊 DADOS FINAIS:', { titulo, preco, url: finalUrl });
+
     } catch (error) {
-      console.log('Erro ao parsear, usando dados genéricos:', error);
+      console.error('❌ ERRO ao buscar dados:', error);
+      throw new Error('Não foi possível analisar o produto. Tente outro link.');
     }
 
     // 2. GERAR POSTS COM LOVABLE AI
