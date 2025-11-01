@@ -177,10 +177,6 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
-                        <p className="text-sm font-medium line-clamp-2">{resultado.produto.titulo}</p>
-                        <p className="text-lg font-bold text-primary">R$ {resultado.produto.preco}</p>
-                      </div>
                       <Textarea
                         value={editableInstagram}
                         onChange={(e) => setEditableInstagram(e.target.value)}
@@ -208,10 +204,6 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
-                        <p className="text-sm font-medium line-clamp-2">{resultado.produto.titulo}</p>
-                        <p className="text-lg font-bold text-primary">R$ {resultado.produto.preco}</p>
-                      </div>
                       <Textarea
                         value={editableStories}
                         onChange={(e) => setEditableStories(e.target.value)}
@@ -239,10 +231,6 @@ const IAMarketing = () => {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
-                      <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
-                        <p className="text-sm font-medium line-clamp-2">{resultado.produto.titulo}</p>
-                        <p className="text-lg font-bold text-primary">R$ {resultado.produto.preco}</p>
-                      </div>
                       <Textarea
                         value={editableWhatsApp}
                         onChange={(e) => setEditableWhatsApp(e.target.value)}

@@ -19,31 +19,45 @@ serve(async (req) => {
       throw new Error('URL não fornecida');
     }
 
-    // 1. BUSCAR DADOS DO PRODUTO
+    // 1. BUSCAR DADOS DO PRODUTO USANDO SCRAPER API
     let titulo = 'Produto em Oferta';
     let preco = '99.90';
     let finalUrl = url;
 
     try {
-      // Se for link curto (Amazon ou Shopee), seguir redirecionamento
+      // Usar ScraperAPI para bypass de proteções e scraping confiável
+      const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
+      
+      if (!SCRAPER_API_KEY) {
+        console.error('SCRAPER_API_KEY não configurada');
+        throw new Error('Configuração de scraping não disponível');
+      }
+
+      // Se for link curto, seguir redirecionamento primeiro
       if (url.includes('amzn.to') || url.includes('a.co') || url.includes('s.shopee.com.br') || url.includes('shp.ee')) {
         console.log('Link curto detectado - seguindo redirecionamento...');
         const redirectResponse = await fetch(url, {
           method: 'HEAD',
           redirect: 'follow',
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
           }
         });
         finalUrl = redirectResponse.url;
-        console.log('URL final:', finalUrl);
+        console.log('URL final após redirecionamento:', finalUrl);
       }
 
-      const response = await fetch(finalUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-      });
+      // Usar ScraperAPI para obter o HTML
+      const scraperUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}`;
+      console.log('Fazendo scraping da URL:', finalUrl);
+      
+      const response = await fetch(scraperUrl);
+      
+      if (!response.ok) {
+        console.error('Erro ao fazer scraping:', response.status, await response.text());
+        throw new Error('Erro ao acessar página do produto');
+      }
+      
       const html = await response.text();
 
       // PRIORIDADE 1: Tentar extrair de meta tags Open Graph
@@ -89,18 +103,32 @@ serve(async (req) => {
       }
 
       if (preco === '99.90') {
-        // Tentar vários padrões de preço
+        // Tentar vários padrões de preço - mais específicos para Shopee
         const patterns = [
+          // Shopee: price em centavos no HTML
+          /"price":(\d+)/,
+          // Shopee: priceMin/priceMax
+          /"priceMin":(\d+)/,
+          // Padrão BR com R$
           /R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/,
+          // Preço em JSON
           /"price":\s*"?(\d+(?:\.\d{2})?)"?/,
+          // Data attributes
           /data-price="(\d+(?:\.\d{2})?)"/,
         ];
         
         for (const pattern of patterns) {
           const match = html.match(pattern);
           if (match) {
-            preco = match[1].replace('.', '').replace(',', '.');
-            console.log('Preço extraído com padrão:', preco);
+            let precoStr = match[1];
+            // Se for Shopee (número grande sem pontos/vírgulas), converter de centavos
+            if (pattern.source.includes('"price"') && precoStr.length > 4 && !precoStr.includes('.') && !precoStr.includes(',')) {
+              preco = (parseInt(precoStr) / 100).toFixed(2);
+              console.log('Preço extraído de centavos (Shopee):', preco);
+            } else {
+              preco = precoStr.replace('.', '').replace(',', '.');
+              console.log('Preço extraído com padrão:', preco);
+            }
             break;
           }
         }
