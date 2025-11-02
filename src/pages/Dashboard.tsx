@@ -1636,13 +1636,6 @@ const Dashboard = () => {
                           <p className="text-sm font-semibold text-gray-900 dark:text-white">Criar Link</p>
                         </button>
                         <button
-                          onClick={() => navigate('/whatsapp')}
-                          className="p-4 bg-white dark:bg-gray-800 rounded-lg hover:shadow-lg transition-all hover:scale-105 text-left"
-                        >
-                          <Send className="w-6 h-6 text-orange-600 mb-2" />
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">WhatsApp</p>
-                        </button>
-                        <button
                           onClick={() => navigate('/meus-produtos')}
                           className="p-4 bg-white dark:bg-gray-800 rounded-lg hover:shadow-lg transition-all hover:scale-105 text-left col-span-2"
                         >
