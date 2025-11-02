@@ -10,8 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Search, Filter, TrendingUp, CheckCircle, Clock, XCircle, Users, ShoppingBag, ArrowLeft, Sun, Moon } from 'lucide-react';
+import { Store, Search, Filter, TrendingUp, CheckCircle, Clock, XCircle, Users, ShoppingBag, ArrowLeft, Sun, Moon, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import ImportCSVModal from '@/components/ImportCSVModal';
 
 interface Offer {
   id: string;
@@ -184,6 +185,7 @@ export default function Marketplace() {
   const { theme, setTheme } = useTheme();
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
   const [applications, setApplications] = useState<Application[]>(mockApplications);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -276,6 +278,13 @@ export default function Marketplace() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <Button
+                onClick={() => setIsImportCSVOpen(true)}
+                className="gap-2"
+              >
+                <Upload className="w-4 h-4" />
+                Importar CSV
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => navigate('/dashboard')}
@@ -580,6 +589,15 @@ export default function Marketplace() {
             )}
           </DialogContent>
         </Dialog>
+
+        <ImportCSVModal
+          isOpen={isImportCSVOpen}
+          onClose={() => setIsImportCSVOpen(false)}
+          onSuccess={() => {
+            toast.success('Produtos importados! Atualize a página para visualizá-los.');
+            setIsImportCSVOpen(false);
+          }}
+        />
       </div>
     </div>
   );

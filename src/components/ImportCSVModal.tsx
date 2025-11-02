@@ -106,7 +106,7 @@ Produto Exemplo 2,Descrição do produto 2,149.90,Roupas,SKU002,https://exemplo.
 
       for (const product of products) {
         try {
-          const { error } = await supabase
+          const { error } = await (supabase as any)
             .from('produtos')
             .insert({
               user_id: user.id,
