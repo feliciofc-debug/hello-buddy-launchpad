@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.generate-tesmann-content]
 verify_jwt = false
+
+[functions.create-empresa-user]
+verify_jwt = false
