@@ -66,11 +66,12 @@ const SettingsPage = () => {
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">Configurações de Integração</h1>
 
         <Tabs defaultValue="lomadee" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-8">
+          <TabsList className="grid w-full grid-cols-5 mb-8">
             <TabsTrigger value="lomadee">Lomadee</TabsTrigger>
             <TabsTrigger value="hotmart">Hotmart</TabsTrigger>
             <TabsTrigger value="shopee">Shopee</TabsTrigger>
             <TabsTrigger value="meta">Meta</TabsTrigger>
+            <TabsTrigger value="tiktok">TikTok</TabsTrigger>
           </TabsList>
 
           <TabsContent value="lomadee">
@@ -121,9 +122,9 @@ const SettingsPage = () => {
 
           <TabsContent value="meta">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Meta (Facebook / Instagram)</h2>
+              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">Meta para Empresas (Facebook / Instagram)</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Conecte sua conta do Facebook e Instagram para automatizar suas postagens de produtos.
+                Conecte sua conta comercial do Facebook e Instagram para automatizar suas postagens de produtos e gerenciar campanhas publicitárias.
               </p>
               <button
                 onClick={async () => {
@@ -137,7 +138,11 @@ const SettingsPage = () => {
                   const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta';
                   const permissions = [
                     'public_profile',
-                    'email'
+                    'email',
+                    'pages_show_list',
+                    'pages_read_engagement',
+                    'pages_manage_posts',
+                    'business_management'
                   ].join(',');
                   const encodedRedirectUri = encodeURIComponent(REDIRECT_URI);
                   const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodedRedirectUri}&scope=${permissions}&response_type=code&state=${user.id}`;
@@ -146,8 +151,26 @@ const SettingsPage = () => {
                 }}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
               >
-                Conectar com Facebook / Instagram
+                Conectar com Meta Business
               </button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="tiktok">
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">TikTok para Empresas</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Conecte sua conta empresarial do TikTok para automatizar suas postagens e gerenciar campanhas publicitárias.
+              </p>
+              <button
+                disabled
+                className="bg-gray-400 text-white font-bold py-2 px-4 rounded cursor-not-allowed"
+              >
+                Em Breve
+              </button>
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                A integração com TikTok for Business estará disponível em breve.
+              </p>
             </div>
           </TabsContent>
         </Tabs>

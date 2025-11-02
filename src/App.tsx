@@ -21,7 +21,6 @@ import ReviewerLogin from "./pages/ReviewerLogin";
 import AuthCallbackMetaPage from "./pages/AuthCallbackMetaPage";
 import LomadeeFinder from "./pages/LomadeeFinder";
 import IAMarketing from "./pages/IAMarketing";
-import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
 import Campanhas from "./pages/Campanhas";
 import MeusProdutos from "./pages/MeusProdutos";
@@ -56,8 +55,7 @@ const App = () => (
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
             <Route path="/lomadee" element={<LomadeeFinder />} />
             <Route path="/ia-marketing" element={<IAMarketing />} />
-          <Route path="/configuracoes/redes-sociais" element={<RedesSociais />} />
-          <Route path="/biblioteca" element={<Biblioteca />} />
+            <Route path="/biblioteca" element={<Biblioteca />} />
           <Route path="/campanhas" element={<Campanhas />} />
           <Route path="/campanhas/google-ads" element={<GoogleAds />} />
           <Route path="/analytics" element={<Analytics />} />
