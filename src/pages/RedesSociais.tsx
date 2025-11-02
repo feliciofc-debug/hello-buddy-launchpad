@@ -44,14 +44,6 @@ const RedesSociais = () => {
       color: "bg-black",
       connected: false,
     },
-    {
-      id: "whatsapp",
-      name: "WhatsApp Business",
-      icon: MessageCircle,
-      color: "bg-green-600",
-      connected: false,
-      status: "Offline 🔴",
-    },
   ]);
 
   useEffect(() => {
@@ -86,8 +78,6 @@ const RedesSociais = () => {
       window.location.href = authUrl;
     } else if (networkId === "tiktok") {
       toast.info("Integração TikTok em breve!");
-    } else if (networkId === "whatsapp") {
-      toast.info("Integração WhatsApp Business em breve!");
     }
   };
 
