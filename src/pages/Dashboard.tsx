@@ -1033,7 +1033,7 @@ const Dashboard = () => {
                   </div>
 
                   {/* Redes Sociais */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {/* Instagram */}
                     <div className="bg-gradient-to-br from-pink-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
                       <div className="flex items-center gap-3 mb-4">
@@ -1070,19 +1070,6 @@ const Dashboard = () => {
                         <p><span className="font-semibold">8.1K</span> views</p>
                         <p><span className="font-semibold">18</span> vídeos</p>
                         <p><span className="font-semibold">12%</span> engajamento</p>
-                      </div>
-                    </div>
-
-                    {/* WhatsApp */}
-                    <div className="bg-gradient-to-br from-green-500 to-green-700 rounded-xl shadow-lg p-6 text-white">
-                      <div className="flex items-center gap-3 mb-4">
-                        <MessageCircle className="w-8 h-8" />
-                        <h4 className="text-lg font-bold">WhatsApp</h4>
-                      </div>
-                      <div className="space-y-2 text-sm">
-                        <p><span className="font-semibold">450</span> contatos</p>
-                        <p><span className="font-semibold">89</span> envios</p>
-                        <p><span className="font-semibold">67%</span> abertura</p>
                       </div>
                     </div>
                   </div>
