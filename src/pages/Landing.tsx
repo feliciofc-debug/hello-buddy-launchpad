@@ -59,9 +59,8 @@ function Landing() {
                 </Button>
                 <Button 
                   size="lg" 
-                  variant="outline"
                   onClick={() => scrollToSection('como-funciona')} 
-                  className="border-2 border-white/30 hover:bg-white/10 text-lg px-8 py-6 h-auto"
+                  className="bg-white/10 border-2 border-white hover:bg-white hover:text-slate-900 text-white text-lg px-8 py-6 h-auto backdrop-blur-sm"
                 >
                   Ver Como Funciona
                 </Button>
