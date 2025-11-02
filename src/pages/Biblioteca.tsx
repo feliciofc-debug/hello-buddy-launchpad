@@ -116,10 +116,26 @@ const Biblioteca = () => {
     }
   };
 
-  const handleDelete = (id: string) => {
-    setContents(prev => prev.filter(c => c.id !== id));
-    setSelectedItems(prev => prev.filter(i => i !== id));
-    toast.success("Conteúdo deletado!");
+  const handleDelete = async (id: string) => {
+    if (!confirm('Tem certeza que deseja deletar este conteúdo? Esta ação não pode ser desfeita.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setContents(prev => prev.filter(c => c.id !== id));
+      setSelectedItems(prev => prev.filter(i => i !== id));
+      toast.success("Conteúdo deletado permanentemente!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao deletar conteúdo");
+    }
   };
 
   const handleScheduleSelected = () => {
@@ -134,14 +150,31 @@ const Biblioteca = () => {
     toast.info("Exportação em desenvolvimento");
   };
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedItems.length === 0) {
       toast.error("Selecione pelo menos um conteúdo!");
       return;
     }
-    setContents(prev => prev.filter(c => !selectedItems.includes(c.id)));
-    setSelectedItems([]);
-    toast.success(`${selectedItems.length} conteúdos deletados!`);
+
+    if (!confirm(`Tem certeza que deseja deletar ${selectedItems.length} conteúdo(s)? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .in('id', selectedItems);
+
+      if (error) throw error;
+
+      setContents(prev => prev.filter(c => !selectedItems.includes(c.id)));
+      setSelectedItems([]);
+      toast.success(`${selectedItems.length} conteúdo(s) deletado(s) permanentemente!`);
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao deletar conteúdos");
+    }
   };
 
   const getStatusColor = (status: string) => {

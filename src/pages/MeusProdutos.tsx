@@ -158,7 +158,7 @@ export default function MeusProdutos() {
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    if (!confirm('Tem certeza que deseja excluir este produto?')) return;
+    if (!confirm('Tem certeza que deseja deletar este produto? Esta ação não pode ser desfeita.')) return;
 
     try {
       const { error } = await (supabase as any)
@@ -168,7 +168,7 @@ export default function MeusProdutos() {
 
       if (error) throw error;
 
-      toast.success('Produto excluído com sucesso!');
+      toast.success('Produto deletado permanentemente!');
       fetchProducts();
     } catch (error) {
       console.error('Erro ao excluir produto:', error);
