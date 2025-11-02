@@ -1,5 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Button } from "@/components/ui/button";
 
 function Landing() {
   const navigate = useNavigate();
@@ -22,11 +24,11 @@ function Landing() {
             </div>
             <div>
               <h1 className="text-2xl font-bold">AMZ Ofertas</h1>
-              <p className="text-xs text-orange-300">Hub Completo para Afiliados</p>
+              <p className="text-xs text-orange-300">Marketing Digital com IA</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/planos')} className="text-orange-300 hover:text-white transition">
+            <button onClick={() => scrollToSection('planos')} className="text-orange-300 hover:text-white transition">
               Planos
             </button>
             <button onClick={() => navigate('/login')} className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition">
@@ -41,22 +43,28 @@ function Landing() {
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <div className="inline-block bg-orange-500/20 border border-orange-500 rounded-full px-4 py-2 mb-6">
-                <span className="text-orange-300 font-semibold">🔥 +1.000 Produtos Disponíveis</span>
-              </div>
               <h2 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
-                Encontre os Produtos <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-pink-500">Mais Lucrativos</span>
+                Transforme Suas Redes Sociais com <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-pink-500">Inteligência Artificial</span>
               </h2>
               <p className="text-xl text-purple-200 mb-8">
-                IA + Dados em Tempo Real = Suas Vendas nas Alturas 🚀
+                Plataforma completa de marketing digital para pequenas e médias empresas. Crie, agende e publique conteúdo profissional em minutos.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <button onClick={() => navigate('/cadastro')} className="bg-gradient-to-r from-green-500 to-emerald-500 px-8 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transition transform hover:scale-105 text-center">
-                  🎁 COMEÇAR GRÁTIS - 7 DIAS
-                </button>
-                <button onClick={() => scrollToSection('como-funciona')} className="border-2 border-white/30 px-8 py-4 rounded-xl font-semibold hover:bg-white/10 transition text-center">
+                <Button 
+                  size="lg" 
+                  onClick={() => navigate('/cadastro')} 
+                  className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-lg px-8 py-6 h-auto"
+                >
+                  Começar Agora - 7 Dias Grátis
+                </Button>
+                <Button 
+                  size="lg" 
+                  variant="outline"
+                  onClick={() => scrollToSection('como-funciona')} 
+                  className="border-2 border-white/30 hover:bg-white/10 text-lg px-8 py-6 h-auto"
+                >
                   Ver Como Funciona
-                </button>
+                </Button>
               </div>
               <div className="flex items-center gap-8 text-sm">
                 <div className="flex items-center gap-2">
@@ -69,32 +77,44 @@ function Landing() {
                 </div>
               </div>
             </div>
-            <div className="animate-pulse">
+            <div className="relative">
               <div className="bg-slate-800/50 backdrop-blur-lg border-2 border-purple-500/30 rounded-2xl p-8 shadow-2xl">
                 <div className="mb-6">
                   <div className="flex items-center justify-between mb-4">
-                    <span className="text-orange-300 font-semibold">Produto Exemplo:</span>
-                    <span className="bg-green-500 text-xs px-3 py-1 rounded-full font-bold">ALTA DEMANDA</span>
+                    <span className="text-orange-300 font-semibold">Dashboard</span>
+                    <span className="bg-green-500 text-xs px-3 py-1 rounded-full font-bold">ATIVO</span>
                   </div>
-                  <h3 className="text-2xl font-bold mb-2">Air Fryer Premium 5L</h3>
-                  <div className="flex items-center gap-4 mb-4">
-                    <span className="text-3xl font-bold text-green-400">R$ 349,90</span>
-                    <span className="text-lg">⭐ 4.8 (2.341 reviews)</span>
+                  <h3 className="text-xl font-bold mb-4">Posts Agendados</h3>
+                  <div className="space-y-3">
+                    <div className="bg-purple-500/20 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm">📱 Instagram Feed</span>
+                        <span className="text-xs text-purple-300">Hoje 14h</span>
+                      </div>
+                      <p className="text-xs text-slate-300">Promoção especial...</p>
+                    </div>
+                    <div className="bg-blue-500/20 p-3 rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm">📘 Facebook</span>
+                        <span className="text-xs text-blue-300">Amanhã 10h</span>
+                      </div>
+                      <p className="text-xs text-slate-300">Novidades chegando...</p>
+                    </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3 mb-6">
-                  <div className="bg-purple-500/20 p-3 rounded-lg">
-                    <p className="text-xs text-purple-300">Comissão</p>
-                    <p className="text-xl font-bold text-green-400">R$ 34,99</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-pink-500/20 p-3 rounded-lg text-center">
+                    <p className="text-xs text-pink-300">Posts</p>
+                    <p className="text-xl font-bold">42</p>
                   </div>
-                  <div className="bg-orange-500/20 p-3 rounded-lg">
-                    <p className="text-xs text-orange-300">Demanda/mês</p>
-                    <p className="text-xl font-bold">8.542</p>
+                  <div className="bg-green-500/20 p-3 rounded-lg text-center">
+                    <p className="text-xs text-green-300">Alcance</p>
+                    <p className="text-xl font-bold">8.5k</p>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <button className="flex-1 bg-blue-500 py-3 rounded-lg font-semibold text-sm">🔗 Copiar Link</button>
-                  <button className="flex-1 bg-purple-500 py-3 rounded-lg font-semibold text-sm">📱 WhatsApp</button>
+                  <div className="bg-orange-500/20 p-3 rounded-lg text-center">
+                    <p className="text-xs text-orange-300">Engage</p>
+                    <p className="text-xl font-bold">12%</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -102,105 +122,184 @@ function Landing() {
         </div>
       </section>
 
-      {/* PROBLEMAS/SOLUÇÕES */}
-      <section className="py-20 px-6 bg-slate-900">
+      {/* COMO FUNCIONA */}
+      <section id="como-funciona" className="py-20 px-6 bg-slate-900">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Pare de <span className="text-red-500">Perder Tempo e Dinheiro</span>
-            </h2>
-            <p className="text-xl text-purple-300">Problemas que todo afiliado enfrenta (e que resolvemos!)</p>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">Como Funciona</h2>
+            <p className="text-xl text-purple-300">3 passos simples para transformar seu marketing</p>
           </div>
           
           <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                problema: "Não sabe quais produtos têm alta demanda e boas comissões?",
-                solucao: "1000+ produtos pré-selecionados com dados de demanda e comissão em tempo real!"
-              },
-              {
-                problema: "Perde HORAS criando posts e legendas para redes sociais?",
-                solucao: "IA gera 3 posts profissionais em 10 segundos! Instagram, WhatsApp e Stories."
-              },
-              {
-                problema: "Gasta em tráfego pago sem saber se vai ter retorno?",
-                solucao: "Calculadora ROI + rastreamento de conversões! Saiba EXATAMENTE o lucro antes de investir."
-              }
-            ].map((item, index) => (
-              <div key={index} className="bg-gradient-to-br from-slate-800 to-slate-900 border border-red-500/30 rounded-2xl p-8">
-                <div className="text-5xl mb-4">❌</div>
-                <h3 className="text-2xl font-bold mb-4 text-red-400">O Problema</h3>
-                <p className="text-slate-300 mb-6">{item.problema}</p>
-                <div className="border-t border-green-500/30 pt-6">
-                  <div className="text-5xl mb-4">✅</div>
-                  <h4 className="text-xl font-bold mb-2 text-green-400">Nossa Solução</h4>
-                  <p className="text-slate-300">{item.solucao}</p>
-                </div>
-              </div>
-            ))}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-purple-500/30 rounded-2xl p-8 text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">1</div>
+              <div className="text-5xl mb-4">📸</div>
+              <h3 className="text-2xl font-bold mb-4">Adicione Seus Produtos</h3>
+              <p className="text-slate-300">Faça upload de fotos ou cole links dos seus produtos. Nossa IA analisa e entende automaticamente.</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-orange-500/30 rounded-2xl p-8 text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">2</div>
+              <div className="text-5xl mb-4">🤖</div>
+              <h3 className="text-2xl font-bold mb-4">IA Cria Conteúdo Profissional</h3>
+              <p className="text-slate-300">Em segundos, receba posts otimizados para Instagram e Facebook. 3 opções de texto para cada rede social.</p>
+            </div>
+
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border border-green-500/30 rounded-2xl p-8 text-center">
+              <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">3</div>
+              <div className="text-5xl mb-4">📅</div>
+              <h3 className="text-2xl font-bold mb-4">Agende e Publique</h3>
+              <p className="text-slate-300">Escolha datas, horários e redes. Suas postagens saem automaticamente no melhor momento.</p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* FUNCIONALIDADES */}
-      <section id="como-funciona" className="py-20 px-6 bg-gradient-to-b from-slate-900 to-purple-900">
+      {/* BENEFÍCIOS */}
+      <section className="py-20 px-6 bg-gradient-to-b from-slate-900 to-purple-900">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Tudo que Você Precisa em <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-pink-500">Uma Plataforma</span>
+              Tudo Que Sua Empresa Precisa
             </h2>
+            <p className="text-xl text-purple-300">Ferramentas profissionais em uma plataforma simples</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              { icon: "🔍", title: "1000+ Produtos", desc: "Produtos com alta demanda, boas comissões e frete grátis. Amazon, Shopee, AliExpress, TikTok Shop, Lomadee, Hotmart, Eduzz, Monetizze e Mercado Livre!" },
-              { icon: "🤖", title: "Posts com IA", desc: "IA gera posts profissionais em segundos! Copiar e colar nunca foi tão fácil." },
-              { icon: "📊", title: "Calculadora ROI", desc: "Calcule lucro, break-even e ROI antes de investir em tráfego pago!" },
-              { icon: "📱", title: "WhatsApp em Massa", desc: "Envie ofertas para sua lista de clientes automaticamente!" },
-              { icon: "🎯", title: "Gerador de Anúncios", desc: "Crie anúncios para Meta e Google Ads com copy otimizado pela IA!" },
-              { icon: "📈", title: "Rastreamento", desc: "Pixel de conversão! Veja quais produtos vendem mais e otimize suas campanhas." }
-            ].map((feature, index) => (
-              <div key={index} className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-8 hover:border-purple-500 transition">
-                <div className="text-5xl mb-4">{feature.icon}</div>
-                <h3 className="text-2xl font-bold mb-3">{feature.title}</h3>
-                <p className="text-slate-300">{feature.desc}</p>
+            <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-8 hover:border-purple-500 transition">
+              <div className="text-5xl mb-4">📱</div>
+              <h3 className="text-2xl font-bold mb-3">Conteúdo Profissional</h3>
+              <p className="text-slate-300">IA cria textos persuasivos e otimizados para cada rede social. Sempre alinhados com sua marca.</p>
+            </div>
+
+            <div className="bg-slate-800/50 backdrop-blur-lg border border-orange-500/30 rounded-2xl p-8 hover:border-orange-500 transition">
+              <div className="text-5xl mb-4">📅</div>
+              <h3 className="text-2xl font-bold mb-3">Agendamento Inteligente</h3>
+              <p className="text-slate-300">Programe posts com antecedência. Diário, semanal ou personalizado. Sua empresa sempre presente nas redes.</p>
+            </div>
+
+            <div className="bg-slate-800/50 backdrop-blur-lg border border-green-500/30 rounded-2xl p-8 hover:border-green-500 transition">
+              <div className="text-5xl mb-4">📊</div>
+              <h3 className="text-2xl font-bold mb-3">Organização Total</h3>
+              <p className="text-slate-300">Catálogo de produtos, biblioteca de posts e histórico completo. Tudo em um só lugar.</p>
+            </div>
+
+            <div className="bg-slate-800/50 backdrop-blur-lg border border-blue-500/30 rounded-2xl p-8 hover:border-blue-500 transition">
+              <div className="text-5xl mb-4">🎯</div>
+              <h3 className="text-2xl font-bold mb-3">Múltiplas Redes</h3>
+              <p className="text-slate-300">Publique simultaneamente no Instagram Feed, Stories e Facebook. Economize tempo e amplie alcance.</p>
+            </div>
+
+            <div className="bg-slate-800/50 backdrop-blur-lg border border-pink-500/30 rounded-2xl p-8 hover:border-pink-500 transition">
+              <div className="text-5xl mb-4">📈</div>
+              <h3 className="text-2xl font-bold mb-3">Análise de Resultados</h3>
+              <p className="text-slate-300">Acompanhe métricas, engajamento e desempenho. Decisões baseadas em dados reais.</p>
+            </div>
+
+            <div className="bg-slate-800/50 backdrop-blur-lg border border-yellow-500/30 rounded-2xl p-8 hover:border-yellow-500 transition">
+              <div className="text-5xl mb-4">⚡</div>
+              <h3 className="text-2xl font-bold mb-3">Rápido e Simples</h3>
+              <p className="text-slate-300">Interface intuitiva. Sem complicação. Do produto ao post em menos de 2 minutos.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* PLANO */}
+      <section id="planos" className="py-20 px-6 bg-slate-900">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">
+              Plano Ideal Para Sua Empresa
+            </h2>
+            <p className="text-xl text-purple-300">Tudo que você precisa para dominar as redes sociais</p>
+          </div>
+
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-orange-500 rounded-3xl p-10 shadow-2xl relative">
+              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-500 px-6 py-2 rounded-full text-sm font-bold">
+                MAIS POPULAR
               </div>
-            ))}
+              
+              <div className="text-center mb-8">
+                <div className="text-6xl mb-4">🏢</div>
+                <h3 className="text-3xl font-bold mb-4">PLANO EMPRESAS</h3>
+                <div className="mb-6">
+                  <div className="text-5xl font-bold text-green-400 mb-2">
+                    R$ 447<span className="text-xl text-gray-400">/mês</span>
+                  </div>
+                  <p className="text-purple-300">ou R$ 4.470/ano (2 meses grátis)</p>
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4 mb-8">
+                {[
+                  "Postagens Ilimitadas",
+                  "IA Avançada (Gemini)",
+                  "Instagram + Facebook",
+                  "Agendamento Automático",
+                  "Biblioteca de Conteúdo",
+                  "Catálogo de Produtos",
+                  "Análise de Desempenho",
+                  "Suporte Prioritário",
+                  "Atualizações Gratuitas",
+                  "7 Dias Grátis (Sem Cartão)"
+                ].map((feature, index) => (
+                  <div key={index} className="flex items-center gap-3">
+                    <span className="text-green-400 text-xl">✅</span>
+                    <span className="text-lg">{feature}</span>
+                  </div>
+                ))}
+              </div>
+
+              <Button 
+                size="lg" 
+                onClick={() => navigate('/cadastro')}
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-xl py-8 h-auto font-bold"
+              >
+                COMEÇAR TESTE GRÁTIS
+              </Button>
+
+              <p className="text-center mt-6 text-sm text-slate-400">
+                💳 Sem compromisso. Cancele quando quiser. Sem taxa de setup.
+              </p>
+            </div>
+
+            <p className="text-center mt-8 text-lg text-purple-300">
+              ✨ Mais de 500 empresas já confiam na AMZ Ofertas
+            </p>
           </div>
         </div>
       </section>
 
       {/* DEPOIMENTOS */}
-      <section className="py-20 px-6 bg-slate-900">
+      <section className="py-20 px-6 bg-gradient-to-b from-slate-900 to-purple-900">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              O Que Nossos <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500">Afiliados Dizem</span>
+              O Que Nossos Clientes Dizem
             </h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             {[
               {
-                stars: 5,
-                text: "Antes eu passava 3 horas criando posts. Agora a IA faz em 10 segundos! Triplicou minhas vendas!",
-                name: "Mariana Silva",
-                role: "Afiliada há 2 anos",
+                text: "Economizamos 15 horas por semana em criação de conteúdo. A IA da AMZ é incrível!",
+                name: "João Silva",
+                empresa: "Padaria do Bairro",
                 color: "from-purple-500 to-pink-500"
               },
               {
-                stars: 5,
-                text: "A calculadora de ROI salvou meu negócio! Parei de queimar dinheiro em tráfego que não converte.",
-                name: "Carlos Mendes",
-                role: "Afiliado iniciante",
-                color: "from-blue-500 to-cyan-500"
+                text: "Triplicamos nosso engajamento no Instagram em apenas 2 meses. Resultados impressionantes!",
+                name: "Maria Santos",
+                empresa: "Boutique Fashion",
+                color: "from-orange-500 to-red-500"
               },
               {
-                stars: 5,
-                text: "Sistema completo! Tudo em um lugar só. Economizei R$ 500/mês em outras ferramentas!",
-                name: "Ana Paula",
-                role: "Afiliada profissional",
-                color: "from-orange-500 to-red-500"
+                text: "Plataforma completa e fácil de usar. Nossa presença digital nunca foi tão forte!",
+                name: "Carlos Mendes",
+                empresa: "Pet Shop Central",
+                color: "from-blue-500 to-cyan-500"
               }
             ].map((testimonial, index) => (
               <div key={index} className="bg-gradient-to-br from-slate-800 to-slate-900 border border-green-500/30 rounded-2xl p-8">
@@ -209,128 +308,17 @@ function Landing() {
                 </div>
                 <p className="text-lg mb-6 italic">"{testimonial.text}"</p>
                 <div className="flex items-center gap-3">
-                  <div className={`w-12 h-12 bg-gradient-to-r ${testimonial.color} rounded-full`}></div>
+                  <div className={`w-12 h-12 bg-gradient-to-r ${testimonial.color} rounded-full flex items-center justify-center text-xl font-bold`}>
+                    {testimonial.name.charAt(0)}
+                  </div>
                   <div>
                     <p className="font-bold">{testimonial.name}</p>
-                    <p className="text-sm text-slate-400">{testimonial.role}</p>
+                    <p className="text-sm text-slate-400">{testimonial.empresa}</p>
+                    <p className="text-xs text-green-400">Cliente desde 2024</p>
                   </div>
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PREÇOS - Preview Planos */}
-      <section id="precos" className="py-20 px-6 bg-gradient-to-b from-slate-900 to-purple-900">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <div className="inline-block bg-green-500/20 border border-green-500 rounded-full px-4 py-2 mb-6">
-              <span className="text-green-300 font-semibold">💳 PLANOS PARA TODOS OS PERFIS</span>
-            </div>
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Escolha o <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500">Plano Ideal</span> para Você
-            </h2>
-            <p className="text-xl text-purple-300">Afiliados, empresas, indústrias e agências</p>
-          </div>
-
-          {/* Preview dos 3 Cards Principais */}
-          <div className="grid md:grid-cols-3 gap-8 mb-12">
-            {/* Card Afiliados */}
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-purple-500 rounded-2xl p-8 hover:scale-105 transition-transform">
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">💰</div>
-                <h3 className="text-2xl font-bold mb-2">AFILIADO</h3>
-                <div className="text-3xl font-bold text-green-400">
-                  R$ 147<span className="text-sm text-gray-400">/mês</span>
-                </div>
-              </div>
-              <div className="space-y-3 mb-6">
-                {[
-                  "IA gera posts virais",
-                  "Análise de produtos",
-                  "Agendamento automático",
-                  "Múltiplas redes sociais",
-                  "WhatsApp (envio individual)",
-                  "Marketplace (candidatar-se a ofertas)"
-                ].map((feature, index) => (
-                  <div key={index} className="flex items-center gap-2 text-sm">
-                    <span className="text-green-400">✅</span>
-                    <span>{feature}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Card Empresas */}
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-orange-500 rounded-2xl p-8 hover:scale-105 transition-transform relative">
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-500 px-4 py-1 rounded-full text-xs font-bold">
-                MAIS POPULAR
-              </div>
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">🏪</div>
-                <h3 className="text-2xl font-bold mb-2">EMPRESAS</h3>
-                <div className="text-3xl font-bold text-green-400">
-                  R$ 447<span className="text-sm text-gray-400">/mês</span>
-                </div>
-              </div>
-              <div className="space-y-3 mb-6">
-                {[
-                  "Upload fotos",
-                  "IA gera posts",
-                  "Cria vídeos",
-                  "Google Ads",
-                  "Analytics avançado",
-                  "WhatsApp em Massa (até 1000/dia)",
-                  "Marketplace (criar ofertas)"
-                ].map((feature, index) => (
-                  <div key={index} className="flex items-center gap-2 text-sm">
-                    <span className="text-green-400">✅</span>
-                    <span>{feature}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Card Indústria */}
-            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-blue-500 rounded-2xl p-8 hover:scale-105 transition-transform">
-              <div className="text-center mb-6">
-                <div className="text-5xl mb-3">🏭</div>
-                <h3 className="text-2xl font-bold mb-2">INDÚSTRIA</h3>
-                <div className="text-3xl font-bold text-green-400">
-                  R$ 947<span className="text-sm text-gray-400">/mês</span>
-                </div>
-              </div>
-              <div className="space-y-3 mb-6">
-                {[
-                  "Catálogo produtos",
-                  "Rede de vendas",
-                  "Marketplace afiliados",
-                  "Suporte prioritário",
-                  "Onboarding dedicado",
-                  "WhatsApp em Massa (ilimitado)",
-                  "Marketplace (publicar + recrutar afiliados)"
-                ].map((feature, index) => (
-                  <div key={index} className="flex items-center gap-2 text-sm">
-                    <span className="text-green-400">✅</span>
-                    <span>{feature}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* CTA Ver Todos os Planos */}
-          <div className="text-center">
-            <button 
-              onClick={() => navigate('/planos')} 
-              className="inline-block bg-gradient-to-r from-purple-500 to-pink-500 px-12 py-5 rounded-xl font-bold text-xl text-white hover:shadow-2xl transition transform hover:scale-105"
-            >
-              Ver Todos os Planos
-            </button>
-            <p className="mt-4 text-purple-200">
-              ✅ 7 dias grátis • ✅ Cancele quando quiser
-            </p>
           </div>
         </div>
       </section>
@@ -340,86 +328,136 @@ function Landing() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Perguntas <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-pink-500">Frequentes</span>
+              Perguntas Frequentes
             </h2>
           </div>
 
-          <div className="space-y-6">
-            {[
-              { q: "❓ Preciso ter experiência como afiliado?", a: "Não! O sistema é perfeito para iniciantes. Guiamos você passo a passo!" },
-              { q: "❓ Funciona com quais plataformas?", a: "Amazon (Muito Alta), Shopee (Alta), Lomadee (Muito Alta - 1M+ produtos), AliExpress (Muito Alta - Dropshipping), TikTok Shop (Alta), Hotmart (Média), Eduzz (Média), Monetizze (Média) e Mercado Livre!" },
-              { q: "❓ Posso cancelar quando quiser?", a: "Sim! Sem fidelidade. Cancele com 1 clique no painel." },
-              { q: "❓ Como funciona o teste grátis?", a: "7 dias de acesso completo sem pagar nada. Sem cartão de crédito!" },
-              { q: "❓ Tem suporte?", a: "Sim! Suporte via WhatsApp de segunda a sexta, 9h às 18h." }
-            ].map((faq, index) => (
-              <div key={index} className="bg-slate-800/50 border border-purple-500/30 rounded-2xl p-6">
-                <h3 className="text-xl font-bold mb-3">{faq.q}</h3>
-                <p className="text-slate-300">{faq.a}</p>
-              </div>
-            ))}
-          </div>
+          <Accordion type="single" collapsible className="space-y-4">
+            <AccordionItem value="item-1" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
+              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
+                Como funciona o teste grátis?
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-300">
+                Você tem 7 dias completos para testar todas as funcionalidades da plataforma sem precisar cadastrar cartão de crédito. Se gostar, basta escolher um plano para continuar usando.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-2" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
+              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
+                Posso cancelar a qualquer momento?
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-300">
+                Sim! Não há fidelidade ou taxas de cancelamento. Você pode cancelar sua assinatura quando quiser através do painel de configurações.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-3" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
+              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
+                Quais redes sociais são suportadas?
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-300">
+                Atualmente suportamos Instagram (Feed e Stories) e Facebook. Estamos trabalhando para adicionar TikTok e LinkedIn em breve.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-4" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
+              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
+                A IA cria as imagens também?
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-300">
+                A IA cria textos otimizados para suas postagens. Você faz upload das fotos dos seus produtos e nossa IA gera legendas persuasivas e hashtags relevantes automaticamente.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-5" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
+              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
+                Preciso de conhecimento técnico?
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-300">
+                Não! A plataforma foi desenvolvida para ser extremamente intuitiva. Se você sabe usar Instagram e Facebook, já sabe usar a AMZ Ofertas. Tudo é visual e simples.
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="item-6" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
+              <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
+                Como funciona o agendamento?
+              </AccordionTrigger>
+              <AccordionContent className="text-slate-300">
+                Você escolhe data, horário e em qual rede quer publicar. Pode agendar posts únicos ou criar um calendário semanal/mensal. A plataforma publica automaticamente no horário programado.
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </div>
       </section>
 
-      {/* CTA FINAL */}
-      <section className="py-20 px-6 bg-gradient-to-r from-purple-600 via-pink-600 to-orange-600">
+      {/* FOOTER CTA */}
+      <section className="py-20 px-6 bg-gradient-to-br from-purple-900 via-slate-900 to-slate-900">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl md:text-6xl font-bold mb-6">
-            Pronto para <span className="text-white">10x Suas Vendas?</span>
+          <h2 className="text-4xl md:text-5xl font-bold mb-6">
+            Pronto Para Transformar Suas Redes Sociais?
           </h2>
-          <p className="text-2xl mb-10 text-purple-100">
-            Junte-se a centenas de afiliados que já estão lucrando!
+          <p className="text-xl text-purple-300 mb-8">
+            Junte-se a centenas de empresas que já estão crescendo com a AMZ Ofertas
           </p>
-          <button onClick={() => navigate('/cadastro')} className="inline-block bg-white text-purple-900 px-12 py-6 rounded-2xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 mb-6">
-            🎁 COMEÇAR GRÁTIS - 7 DIAS
-          </button>
-          <p className="text-purple-100">
-            ✅ 7 dias grátis • ✅ Sem cartão • ✅ Cancele quando quiser
+          <Button 
+            size="lg" 
+            onClick={() => navigate('/cadastro')}
+            className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-xl px-12 py-8 h-auto font-bold"
+          >
+            Começar Teste Grátis
+          </Button>
+          <p className="mt-6 text-slate-400">
+            7 dias grátis • Sem cartão de crédito • Cancele quando quiser
           </p>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer className="bg-slate-950 py-12 px-6 border-t border-purple-500/20">
+      <footer className="py-12 px-6 bg-slate-950 border-t border-purple-500/20">
         <div className="max-w-7xl mx-auto">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-1.5 rounded-lg">
-                <svg className="w-5 h-5" fill="white" viewBox="0 0 24 24">
-                  <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
-                </svg>
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-2 rounded-lg">
+                  <svg className="w-6 h-6" fill="white" viewBox="0 0 24 24">
+                    <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold">AMZ Ofertas</h3>
               </div>
-              <h4 className="font-bold text-orange-400">AMZ Ofertas</h4>
+              <p className="text-sm text-slate-400">
+                Plataforma SaaS de gestão de marketing digital com inteligência artificial.
+              </p>
             </div>
-            <p className="text-sm text-slate-400">Plataforma completa para afiliados de sucesso.</p>
-          </div>
+
             <div>
               <h4 className="font-bold mb-4">Produto</h4>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li><a href="#" className="hover:text-white">Funcionalidades</a></li>
-                <li><a href="#" className="hover:text-white">Preços</a></li>
-                <li><a href="#" className="hover:text-white">FAQ</a></li>
+                <li><button onClick={() => scrollToSection('como-funciona')} className="hover:text-white transition">Como Funciona</button></li>
+                <li><button onClick={() => scrollToSection('planos')} className="hover:text-white transition">Planos</button></li>
+                <li><button onClick={() => navigate('/cadastro')} className="hover:text-white transition">Teste Grátis</button></li>
               </ul>
             </div>
+
             <div>
               <h4 className="font-bold mb-4">Empresa</h4>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li><a href="#" className="hover:text-white">Sobre</a></li>
-                <li><a href="#" className="hover:text-white">Blog</a></li>
-                <li><a href="#" className="hover:text-white">Contato</a></li>
+                <li><button onClick={() => navigate('/terms')} className="hover:text-white transition">Termos de Uso</button></li>
+                <li><button onClick={() => navigate('/privacy')} className="hover:text-white transition">Privacidade</button></li>
               </ul>
             </div>
+
             <div>
-              <h4 className="font-bold mb-4">Legal</h4>
+              <h4 className="font-bold mb-4">Suporte</h4>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li><a href="#" className="hover:text-white">Termos de Uso</a></li>
-                <li><a href="#" className="hover:text-white">Privacidade</a></li>
+                <li><a href="mailto:suporte@amzofertas.com" className="hover:text-white transition">suporte@amzofertas.com</a></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-slate-800 pt-8 text-center text-sm text-slate-500">
-            <p>© 2025 AMZ Ofertas. Todos os direitos reservados.</p>
+
+          <div className="border-t border-slate-800 pt-8 text-center text-sm text-slate-400">
+            <p>&copy; 2024 AMZ Ofertas. Todos os direitos reservados.</p>
+            <p className="mt-2">CNPJ: XX.XXX.XXX/XXXX-XX</p>
           </div>
         </div>
       </footer>
