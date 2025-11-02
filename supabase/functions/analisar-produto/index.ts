@@ -161,23 +161,28 @@ serve(async (req) => {
 
 Produto: ${nomeProduto}
 Preço: ${precoProduto}
+Link: ${url}
 
 Gere 9 variações de posts, 3 para cada tipo:
 
 INSTAGRAM (3 variações):
-- Opção A: Estilo direto/urgente com call-to-action forte
-- Opção B: Estilo storytelling, conte uma história
-- Opção C: Estilo educativo, ensine algo relacionado ao produto
+- Opção A: Estilo direto/urgente com call-to-action forte. SEMPRE termine com "🔗 Link na bio!" ou "🔗 Link nos comentários!"
+- Opção B: Estilo storytelling, conte uma história. SEMPRE termine com "🔗 Link na bio!" ou "🔗 Link nos comentários!"
+- Opção C: Estilo educativo, ensine algo relacionado ao produto. SEMPRE termine com "🔗 Link na bio!" ou "🔗 Link nos comentários!"
 
 FACEBOOK (3 variações):
-- Opção A: Casual/amigável, tom de conversa
-- Opção B: Profissional/informativo com dados e benefícios
-- Opção C: Promocional/vendedor com senso de urgência
+- Opção A: Casual/amigável, tom de conversa. SEMPRE inclua o link completo no final: ${url}
+- Opção B: Profissional/informativo com dados e benefícios. SEMPRE inclua o link completo no final: ${url}
+- Opção C: Promocional/vendedor com senso de urgência. SEMPRE inclua o link completo no final: ${url}
 
 STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
-- Opção A: Curto e impactante com emoji
-- Opção B: Pergunta interativa para engajamento
-- Opção C: Contagem regressiva ou urgência
+- Opção A: Curto e impactante com emoji. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
+- Opção B: Pergunta interativa para engajamento. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
+- Opção C: Contagem regressiva ou urgência. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
+
+IMPORTANTE: 
+- Instagram e Story: NÃO incluir o link no texto (apenas mencionar "link na bio")
+- Facebook: SEMPRE incluir o link completo no final do texto
 
 Retorne APENAS um JSON válido no formato:
 {
@@ -187,9 +192,9 @@ Retorne APENAS um JSON válido no formato:
     "opcaoC": "texto aqui"
   },
   "facebook": {
-    "opcaoA": "texto aqui",
-    "opcaoB": "texto aqui",
-    "opcaoC": "texto aqui"
+    "opcaoA": "texto aqui + ${url}",
+    "opcaoB": "texto aqui + ${url}",
+    "opcaoC": "texto aqui + ${url}"
   },
   "story": {
     "opcaoA": "texto curto aqui (max 80 chars)",
