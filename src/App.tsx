@@ -24,7 +24,7 @@ import IAMarketing from "./pages/IAMarketing";
 import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
 import Campanhas from "./pages/Campanhas";
-import Marketplace from "./pages/Marketplace";
+import MeusProdutos from "./pages/MeusProdutos";
 import GoogleAds from "./pages/GoogleAds";
 import Analytics from "./pages/Analytics";
 import Terms from "./pages/Terms";
@@ -61,7 +61,7 @@ const App = () => (
           <Route path="/campanhas" element={<Campanhas />} />
           <Route path="/campanhas/google-ads" element={<GoogleAds />} />
           <Route path="/analytics" element={<Analytics />} />
-          <Route path="/marketplace" element={<Marketplace />} />
+          <Route path="/meus-produtos" element={<MeusProdutos />} />
             <Route path="/reviewer" element={<ReviewerLogin />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
