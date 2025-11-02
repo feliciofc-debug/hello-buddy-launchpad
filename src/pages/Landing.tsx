@@ -456,7 +456,18 @@ function Landing() {
 
           <div className="border-t border-slate-800 pt-8 text-center text-sm text-slate-400">
             <p>&copy; 2024 AMZ Ofertas. Todos os direitos reservados.</p>
-            <p className="mt-2">CNPJ: XX.XXX.XXX/XXXX-XX</p>
+            <p className="mt-3">
+              Plataforma proprietária e desenvolvida por{' '}
+              <a 
+                href="https://atombrasildigital.com" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300 transition font-semibold"
+              >
+                ATOM BRASIL DIGITAL LTDA
+              </a>
+            </p>
+            <p className="mt-1">CNPJ: 22.003.550/0001-05</p>
           </div>
         </div>
       </footer>
