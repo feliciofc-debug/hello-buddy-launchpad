@@ -96,13 +96,23 @@ const IAMarketing = () => {
         throw new Error(data.error || 'Erro ao analisar produto');
       }
 
-      setResultado(data);
+      console.log('✅ Dados recebidos:', data);
+
+      // Criar estrutura de análise com os dados corretos
+      const analysisResult: ProductAnalysis = {
+        produto: data.produto || { titulo: "Produto", preco: "0", url: url, originalUrl: url },
+        instagram: data.instagram || { opcaoA: '', opcaoB: '', opcaoC: '' },
+        facebook: data.facebook || { opcaoA: '', opcaoB: '', opcaoC: '' },
+        story: data.story || { opcaoA: '', opcaoB: '', opcaoC: '' }
+      };
+
+      setResultado(analysisResult);
       
       // Inicializar textos editáveis
       setEditableTexts({
-        instagram: data.instagram,
-        facebook: data.facebook,
-        story: data.story
+        instagram: analysisResult.instagram,
+        facebook: analysisResult.facebook,
+        story: analysisResult.story
       });
 
       // Salvar no banco
@@ -110,18 +120,19 @@ const IAMarketing = () => {
         .from('posts')
         .insert({
           user_id: userData.user.id,
-          titulo: data.produto?.titulo || "Produto Analisado",
-          link_produto: data.produto?.originalUrl || url,
-          link_afiliado: data.produto?.url || url,
-          texto_instagram: JSON.stringify(data.instagram),
-          texto_story: JSON.stringify(data.story),
-          texto_facebook: JSON.stringify(data.facebook),
+          titulo: analysisResult.produto.titulo,
+          link_produto: analysisResult.produto.originalUrl,
+          link_afiliado: analysisResult.produto.url,
+          texto_instagram: JSON.stringify(analysisResult.instagram),
+          texto_story: JSON.stringify(analysisResult.story),
+          texto_facebook: JSON.stringify(analysisResult.facebook),
           status: 'rascunho'
         });
 
       if (insertError) {
         console.error("Erro ao salvar:", insertError);
       }
+
 
       toast.success("✅ Posts gerados e salvos!");
     } catch (err: any) {

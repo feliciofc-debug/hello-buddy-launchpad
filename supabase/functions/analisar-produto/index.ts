@@ -19,9 +19,9 @@ serve(async (req) => {
       throw new Error('URL não fornecida');
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY não configurada');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY não configurada');
     }
 
     // Seguir redirect se for link curto
@@ -153,72 +153,86 @@ serve(async (req) => {
       console.warn('⚠️ Extração incompleta - Título:', titulo, '| Preço:', preco);
     }
 
-    // Gerar posts com IA usando os dados REAIS do produto
+    // Gerar posts com IA usando Gemini
     const nomeProduto = titulo || 'este produto incrível';
     const precoProduto = preco ? `R$ ${preco}` : 'preço promocional';
 
-    const promptInsta = `Crie um post ESPECÍFICO para Instagram sobre este produto REAL:
+    const prompt = `Crie posts promocionais para o seguinte produto:
 
-PRODUTO: ${nomeProduto}
-PREÇO: ${precoProduto}
+Produto: ${nomeProduto}
+Preço: ${precoProduto}
 
-IMPORTANTE: 
-- Use o NOME EXATO e o PREÇO REAL do produto no texto
-- Seja persuasivo, use emojis relevantes e call-to-action forte
-- SEMPRE termine com "🔗 Link nos comentários!" ou "🔗 Link na bio!"
-- Máximo 150 caracteres`;
+Gere 9 variações de posts, 3 para cada tipo:
 
-    const promptStory = `Crie um story ESPECÍFICO para Instagram sobre este produto REAL:
+INSTAGRAM (3 variações):
+- Opção A: Estilo direto/urgente com call-to-action forte
+- Opção B: Estilo storytelling, conte uma história
+- Opção C: Estilo educativo, ensine algo relacionado ao produto
 
-PRODUTO: ${nomeProduto}
-PREÇO: ${precoProduto}
+FACEBOOK (3 variações):
+- Opção A: Casual/amigável, tom de conversa
+- Opção B: Profissional/informativo com dados e benefícios
+- Opção C: Promocional/vendedor com senso de urgência
 
-IMPORTANTE: 
-- Mencione o produto pelo NOME e PREÇO reais
-- Use senso de urgência e escassez
-- SEMPRE inclua "🔗 Arrasta pra cima!" ou "Link abaixo!"
-- Máximo 80 caracteres`;
+STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
+- Opção A: Curto e impactante com emoji
+- Opção B: Pergunta interativa para engajamento
+- Opção C: Contagem regressiva ou urgência
 
-    const promptWhats = `Crie uma mensagem ESPECÍFICA para WhatsApp sobre este produto REAL:
+Retorne APENAS um JSON válido no formato:
+{
+  "instagram": {
+    "opcaoA": "texto aqui",
+    "opcaoB": "texto aqui",
+    "opcaoC": "texto aqui"
+  },
+  "facebook": {
+    "opcaoA": "texto aqui",
+    "opcaoB": "texto aqui",
+    "opcaoC": "texto aqui"
+  },
+  "story": {
+    "opcaoA": "texto curto aqui (max 80 chars)",
+    "opcaoB": "texto curto aqui (max 80 chars)",
+    "opcaoC": "texto curto aqui (max 80 chars)"
+  }
+}`;
 
-PRODUTO: ${nomeProduto}
-PREÇO: ${precoProduto}
-
-IMPORTANTE: 
-- Fale especificamente sobre este produto usando seu NOME e PREÇO reais
-- Tom informal como se fosse um amigo recomendando
-- NÃO mencione link (será adicionado automaticamente)
-- Máximo 200 caracteres`;
-
-    const generateText = async (prompt: string) => {
-      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: [
-            { role: 'system', content: 'Você é um especialista em copywriting para afiliados. Crie textos persuasivos e atrativos.' },
-            { role: 'user', content: prompt }
-          ],
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Erro ao gerar conteúdo com IA');
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            temperature: 0.9,
+            maxOutputTokens: 2000,
+          }
+        })
       }
+    );
 
-      const data = await response.json();
-      return data.choices[0].message.content;
-    };
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Erro na API Gemini:', response.status, errorText);
+      throw new Error(`Erro na API Gemini: ${response.status}`);
+    }
 
-    const [textoInsta, textoStory, textoWhats] = await Promise.all([
-      generateText(promptInsta),
-      generateText(promptStory),
-      generateText(promptWhats)
-    ]);
+    const data = await response.json();
+    const texto = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    console.log('Resposta do Gemini:', texto);
+
+    // Extrair JSON da resposta
+    const jsonMatch = texto.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error('Resposta da IA não contém JSON válido');
+    }
+
+    const posts = JSON.parse(jsonMatch[0]);
 
     console.log('✅ Posts gerados com sucesso');
 
@@ -231,11 +245,9 @@ IMPORTANTE:
           url: finalUrl,
           originalUrl: url  // Link original de afiliado
         },
-        posts: {
-          instagram: textoInsta,
-          story: textoStory,
-          whatsapp: textoWhats
-        }
+        instagram: posts.instagram,
+        facebook: posts.facebook,
+        story: posts.story
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
