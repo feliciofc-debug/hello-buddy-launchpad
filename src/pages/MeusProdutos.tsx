@@ -14,6 +14,7 @@ import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Up
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import ImportCSVModal from '@/components/ImportCSVModal';
+import CreateCampaignModal from '@/components/CreateCampaignModal';
 
 interface Product {
   id: string;
@@ -39,6 +40,7 @@ export default function MeusProdutos() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
+  const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
 
@@ -175,17 +177,8 @@ export default function MeusProdutos() {
   };
 
   const handleCreateCampaign = (product: Product) => {
-    // Navigate to IA Marketing with product data pre-filled
-    navigate('/ia-marketing', { 
-      state: { 
-        productData: {
-          nome: product.nome,
-          descricao: product.descricao,
-          preco: product.preco,
-          link: product.link
-        }
-      }
-    });
+    setSelectedProduct(product);
+    setIsCampaignModalOpen(true);
   };
 
   const openAddModal = () => {
@@ -559,6 +552,16 @@ export default function MeusProdutos() {
             setIsImportCSVOpen(false);
             fetchProducts();
           }}
+        />
+
+        {/* Create Campaign Modal */}
+        <CreateCampaignModal
+          isOpen={isCampaignModalOpen}
+          onClose={() => {
+            setIsCampaignModalOpen(false);
+            setSelectedProduct(null);
+          }}
+          product={selectedProduct}
         />
       </div>
     </div>
