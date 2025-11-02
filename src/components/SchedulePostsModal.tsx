@@ -12,6 +12,7 @@ import { CalendarIcon, Plus, X, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ScheduledPost {
   id: string;
@@ -214,17 +215,49 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
       return;
     }
 
-    // Aqui você chamaria sua API de agendamento
     try {
-      // const response = await fetch('/api/agendar-posts', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ posts: scheduledPosts })
-      // });
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.error("Você precisa estar logado");
+        return;
+      }
+
+      // Salvar post
+      const { data: postData, error: postError } = await supabase
+        .from('posts')
+        .insert({
+          user_id: userData.user.id,
+          titulo: postContent.instagram?.substring(0, 100) || "Post agendado",
+          texto_instagram: postContent.instagram,
+          texto_story: postContent.stories,
+          texto_whatsapp: postContent.whatsapp,
+          status: 'agendado'
+        })
+        .select()
+        .single();
+
+      if (postError) throw postError;
+
+      // Salvar agendamentos
+      const agendamentos = scheduledPosts.map(post => ({
+        post_id: postData.id,
+        user_id: userData.user.id,
+        data: post.data.split('/').reverse().join('-'),
+        hora: post.hora,
+        redes: post.redes,
+        status: 'agendado'
+      }));
+
+      const { error: scheduleError } = await supabase
+        .from('scheduled_posts')
+        .insert(agendamentos);
+
+      if (scheduleError) throw scheduleError;
       
       toast.success(`✅ ${scheduledPosts.length} postagens agendadas com sucesso!`);
       onOpenChange(false);
     } catch (error) {
+      console.error(error);
       toast.error("Erro ao agendar postagens!");
     }
   };

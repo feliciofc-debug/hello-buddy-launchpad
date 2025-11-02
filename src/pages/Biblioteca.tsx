@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Search, Edit, Copy, Trash2, Download, Instagram, Facebook, Calendar } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Content {
   id: string;
@@ -28,27 +29,43 @@ const Biblioteca = () => {
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [contents, setContents] = useState<Content[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadContents();
   }, []);
 
-  const loadContents = () => {
-    // Carregar do localStorage (histórico de IA Marketing)
-    const history = localStorage.getItem('ia-marketing-history');
-    if (history) {
-      const historyData = JSON.parse(history);
-      const mappedContents: Content[] = historyData.map((item: any) => ({
-        id: item.id,
-        thumbnail: "/placeholder.svg",
-        titulo: item.produto,
+  const loadContents = async () => {
+    try {
+      setLoading(true);
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) return;
+
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', userData.user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const mappedContents: Content[] = data.map(post => ({
+        id: post.id,
+        thumbnail: post.imagem_url || "/placeholder.svg",
+        titulo: post.titulo,
         tipo: "Post",
         redes: ["Instagram", "WhatsApp"],
-        dataCriacao: new Date(item.date).toLocaleDateString('pt-BR'),
-        status: item.status === 'agendado' ? 'Agendado' : item.status === 'postado' ? 'Postado' : 'Rascunho',
-        texto: item.posts.instagram
+        dataCriacao: new Date(post.created_at).toLocaleDateString('pt-BR'),
+        status: post.status === 'agendado' ? 'Agendado' : post.status === 'postado' ? 'Postado' : 'Rascunho',
+        texto: post.texto_instagram
       }));
+
       setContents(mappedContents);
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao carregar posts");
+    } finally {
+      setLoading(false);
     }
   };
 

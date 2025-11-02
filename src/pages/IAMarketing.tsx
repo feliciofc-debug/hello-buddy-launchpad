@@ -67,6 +67,12 @@ const IAMarketing = () => {
     setResultado(null);
     
     try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.error("Você precisa estar logado");
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('analisar-produto', {
         body: { url: url.trim() }
       });
@@ -81,7 +87,26 @@ const IAMarketing = () => {
       setEditableInstagram(data.posts.instagram);
       setEditableStories(data.posts.story);
       setEditableWhatsApp(data.posts.whatsapp);
-      toast.success("✅ Posts gerados pela IA!");
+
+      // Salvar no banco
+      const { error: insertError } = await supabase
+        .from('posts')
+        .insert({
+          user_id: userData.user.id,
+          titulo: data.produto?.titulo || "Produto Analisado",
+          link_produto: data.produto?.originalUrl || url,
+          link_afiliado: data.produto?.url || url,
+          texto_instagram: data.posts.instagram,
+          texto_story: data.posts.story,
+          texto_whatsapp: data.posts.whatsapp,
+          status: 'rascunho'
+        });
+
+      if (insertError) {
+        console.error("Erro ao salvar:", insertError);
+      }
+
+      toast.success("✅ Posts gerados e salvos!");
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao analisar produto';
       toast.error(errorMessage);

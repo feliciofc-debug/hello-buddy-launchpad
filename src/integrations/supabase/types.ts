@@ -14,6 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
+      campanhas: {
+        Row: {
+          created_at: string
+          data_fim: string | null
+          data_inicio: string | null
+          id: string
+          metricas: Json | null
+          nome: string
+          orcamento: number | null
+          plataforma: string
+          posts_ids: Json
+          publico: Json | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
+          id?: string
+          metricas?: Json | null
+          nome: string
+          orcamento?: number | null
+          plataforma: string
+          posts_ids?: Json
+          publico?: Json | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data_fim?: string | null
+          data_inicio?: string | null
+          id?: string
+          metricas?: Json | null
+          nome?: string
+          orcamento?: number | null
+          plataforma?: string
+          posts_ids?: Json
+          publico?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           access_token: string
@@ -67,6 +115,54 @@ export type Database = {
           refresh_token?: string | null
           token_expires_at?: string | null
           updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      posts: {
+        Row: {
+          created_at: string
+          id: string
+          imagem_url: string | null
+          link_afiliado: string | null
+          link_produto: string | null
+          status: string
+          texto_facebook: string | null
+          texto_instagram: string | null
+          texto_story: string | null
+          texto_whatsapp: string | null
+          titulo: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          imagem_url?: string | null
+          link_afiliado?: string | null
+          link_produto?: string | null
+          status?: string
+          texto_facebook?: string | null
+          texto_instagram?: string | null
+          texto_story?: string | null
+          texto_whatsapp?: string | null
+          titulo: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          imagem_url?: string | null
+          link_afiliado?: string | null
+          link_produto?: string | null
+          status?: string
+          texto_facebook?: string | null
+          texto_instagram?: string | null
+          texto_story?: string | null
+          texto_whatsapp?: string | null
+          titulo?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -139,6 +235,50 @@ export type Database = {
           whatsapp?: string
         }
         Relationships: []
+      }
+      scheduled_posts: {
+        Row: {
+          created_at: string
+          data: string
+          hora: string
+          id: string
+          post_id: string
+          redes: Json
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          data: string
+          hora: string
+          id?: string
+          post_id: string
+          redes?: Json
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data?: string
+          hora?: string
+          id?: string
+          post_id?: string
+          redes?: Json
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_posts_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {

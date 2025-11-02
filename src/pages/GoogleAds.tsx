@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,10 +8,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Megaphone, DollarSign, Target, Globe, Calendar, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function GoogleAds() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState(1);
+  const [selectedPostIds, setSelectedPostIds] = useState<string[]>(location.state?.selectedPosts || []);
   const [campaignData, setCampaignData] = useState({
     nome: "",
     objetivo: "",
@@ -41,9 +44,39 @@ export default function GoogleAds() {
     if (step > 1) setStep(step - 1);
   };
 
-  const handleSubmit = () => {
-    toast.success("Campanha criada! (Integração Google Ads em desenvolvimento)");
-    navigate('/dashboard');
+  const handleSubmit = async () => {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.error("Você precisa estar logado");
+        return;
+      }
+
+      const { error } = await supabase
+        .from('campanhas')
+        .insert({
+          user_id: userData.user.id,
+          nome: campaignData.nome,
+          plataforma: 'google_ads',
+          posts_ids: selectedPostIds,
+          publico: {
+            localizacao: campaignData.publico.localizacao,
+            idade: campaignData.publico.idade,
+            genero: campaignData.publico.genero,
+            interesses: campaignData.publico.interesses
+          },
+          orcamento: parseFloat(campaignData.orcamentoDiario),
+          status: 'ativa'
+        });
+
+      if (error) throw error;
+
+      toast.success(`✅ Campanha criada com ${selectedPostIds.length} post(s)!`);
+      navigate('/campanhas');
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao criar campanha. Tente novamente.");
+    }
   };
 
   return (
