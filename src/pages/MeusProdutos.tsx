@@ -37,12 +37,15 @@ export default function MeusProdutos() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [lojaFilter, setLojaFilter] = useState('all');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
   const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [lojas, setLojas] = useState<any[]>([]);
+  const [showLojasManager, setShowLojasManager] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -76,7 +79,7 @@ export default function MeusProdutos() {
       setIsLoading(true);
       const { data, error } = await (supabase as any)
         .from('produtos')
-        .select('*')
+        .select('*, lojas(nome)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -86,6 +89,24 @@ export default function MeusProdutos() {
       toast.error('Erro ao carregar produtos');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchLojas = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('lojas')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('nome', { ascending: true });
+
+      if (error) throw error;
+      setLojas(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar lojas:', error);
     }
   };
 
