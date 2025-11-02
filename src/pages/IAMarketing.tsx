@@ -2,13 +2,21 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Instagram, MessageCircle, ArrowLeft, Copy, Calendar as CalendarIcon, Send, Upload, Image, Video } from "lucide-react";
+import { Loader2, Instagram, MessageCircle, ArrowLeft, Copy, Calendar as CalendarIcon, Upload, Video, Facebook, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SchedulePostsModal } from "@/components/SchedulePostsModal";
 import { Textarea } from "@/components/ui/textarea";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+
+interface PostVariations {
+  opcaoA: string;
+  opcaoB: string;
+  opcaoC: string;
+}
 
 interface ProductAnalysis {
   produto: {
@@ -17,11 +25,9 @@ interface ProductAnalysis {
     url: string;
     originalUrl: string;
   };
-  posts: {
-    instagram: string;
-    story: string;
-    whatsapp: string;
-  };
+  instagram: PostVariations;
+  facebook: PostVariations;
+  story: PostVariations;
 }
 
 const IAMarketing = () => {
@@ -30,13 +36,20 @@ const IAMarketing = () => {
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [userType, setUserType] = useState<string>('afiliado');
+  const [userType, setUserType] = useState<string>('empresa');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [selectedVariations, setSelectedVariations] = useState({
+    instagram: 'opcaoA' as keyof PostVariations,
+    facebook: 'opcaoA' as keyof PostVariations,
+    story: 'opcaoA' as keyof PostVariations
+  });
 
-  // Estados editáveis
-  const [editableInstagram, setEditableInstagram] = useState("");
-  const [editableStories, setEditableStories] = useState("");
-  const [editableWhatsApp, setEditableWhatsApp] = useState("");
+  // Estados editáveis para cada variação
+  const [editableTexts, setEditableTexts] = useState({
+    instagram: { opcaoA: '', opcaoB: '', opcaoC: '' },
+    facebook: { opcaoA: '', opcaoB: '', opcaoC: '' },
+    story: { opcaoA: '', opcaoB: '', opcaoC: '' }
+  });
 
   // Carregar tipo do usuário
   useState(() => {
@@ -84,9 +97,13 @@ const IAMarketing = () => {
       }
 
       setResultado(data);
-      setEditableInstagram(data.posts.instagram);
-      setEditableStories(data.posts.story);
-      setEditableWhatsApp(data.posts.whatsapp);
+      
+      // Inicializar textos editáveis
+      setEditableTexts({
+        instagram: data.instagram,
+        facebook: data.facebook,
+        story: data.story
+      });
 
       // Salvar no banco
       const { error: insertError } = await supabase
@@ -96,9 +113,9 @@ const IAMarketing = () => {
           titulo: data.produto?.titulo || "Produto Analisado",
           link_produto: data.produto?.originalUrl || url,
           link_afiliado: data.produto?.url || url,
-          texto_instagram: data.posts.instagram,
-          texto_story: data.posts.story,
-          texto_whatsapp: data.posts.whatsapp,
+          texto_instagram: JSON.stringify(data.instagram),
+          texto_story: JSON.stringify(data.story),
+          texto_facebook: JSON.stringify(data.facebook),
           status: 'rascunho'
         });
 
@@ -143,15 +160,19 @@ const IAMarketing = () => {
     toast.success(`${type} copiado com link!`);
   };
 
-  const handleWhatsAppSend = (text: string) => {
-    const fullText = `${text}\n\n🔗 ${resultado?.produto?.originalUrl || url}`;
-    const encodedText = encodeURIComponent(fullText);
-    window.open(`https://web.whatsapp.com/send?text=${encodedText}`, "_blank");
-  };
-
   const handleScheduleAll = () => {
     if (!resultado) return;
     setShowScheduleModal(true);
+  };
+
+  const updateText = (platform: 'instagram' | 'facebook' | 'story', variation: keyof PostVariations, text: string) => {
+    setEditableTexts(prev => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        [variation]: text
+      }
+    }));
   };
 
   return (
@@ -180,10 +201,7 @@ const IAMarketing = () => {
                   ✨ IA Marketing
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground">
-                  Cole o link e receba posts prontos para personalizar
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  💡 Dica: Edite [NOME DO PRODUTO] e [PREÇO] antes de postar
+                  Cole o link e receba 3 variações de posts para cada plataforma
                 </p>
               </div>
             </div>
@@ -197,11 +215,7 @@ const IAMarketing = () => {
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleAnalyze()}
-                    placeholder={
-                      userType === 'empresa' 
-                        ? "Cole aqui o link do seu produto" 
-                        : "Cole aqui o link do seu produto (Shopee, Amazon, Magazine, etc)"
-                    }
+                    placeholder="Cole aqui o link do seu produto"
                     className="text-lg p-6 h-auto"
                     disabled={loading}
                   />
@@ -275,38 +289,45 @@ const IAMarketing = () => {
 
             {/* Resultados */}
             {resultado && (
-              <div className="max-w-6xl mx-auto space-y-6">
-                {/* Botão Agendar Todos */}
-                <div className="flex justify-center">
-                  <Button
-                    onClick={handleScheduleAll}
-                    size="lg"
-                    className="bg-green-600 hover:bg-green-700 text-lg px-8"
-                  >
-                    <CalendarIcon className="mr-2 h-5 w-5" />
-                    📅 AGENDAR TODOS
-                  </Button>
-                </div>
-
-                {/* Grid de Cards */}
-                <div className={`grid grid-cols-1 ${userType === 'empresa' ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-6`}>
-                  {/* Post Instagram */}
-                  <Card className="shadow-xl border-2 hover:border-purple-500 transition-colors">
-                    <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+              <div className="max-w-7xl mx-auto space-y-6">
+                {/* Grid de Cards - 3 colunas */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Card Instagram */}
+                  <Card className="shadow-xl border-2 hover:border-pink-500 transition-colors">
+                    <CardHeader className="bg-gradient-to-r from-pink-500 to-purple-500 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Instagram className="h-5 w-5" />
-                        Post Instagram
+                        📱 Post Instagram
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
+                      <RadioGroup
+                        value={selectedVariations.instagram}
+                        onValueChange={(value) => setSelectedVariations({ ...selectedVariations, instagram: value as keyof PostVariations })}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoA" id="inst-a" />
+                          <Label htmlFor="inst-a" className="cursor-pointer">Opção A: Direto/Urgente</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoB" id="inst-b" />
+                          <Label htmlFor="inst-b" className="cursor-pointer">Opção B: Storytelling</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoC" id="inst-c" />
+                          <Label htmlFor="inst-c" className="cursor-pointer">Opção C: Educativo</Label>
+                        </div>
+                      </RadioGroup>
+
                       <Textarea
-                        value={editableInstagram}
-                        onChange={(e) => setEditableInstagram(e.target.value)}
+                        value={editableTexts.instagram[selectedVariations.instagram]}
+                        onChange={(e) => updateText('instagram', selectedVariations.instagram, e.target.value)}
                         className="min-h-[200px] text-sm"
                       />
+
                       <div className="flex gap-2">
                         <Button
-                          onClick={() => handleCopy(editableInstagram, 'Post Instagram')}
+                          onClick={() => handleCopy(editableTexts.instagram[selectedVariations.instagram], 'Instagram')}
                           variant="outline"
                           className="flex-1"
                         >
@@ -317,23 +338,92 @@ const IAMarketing = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Story Instagram */}
+                  {/* Card Facebook */}
+                  <Card className="shadow-xl border-2 hover:border-blue-500 transition-colors">
+                    <CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
+                      <CardTitle className="flex items-center gap-2">
+                        <Facebook className="h-5 w-5" />
+                        📘 Post Facebook
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                      <RadioGroup
+                        value={selectedVariations.facebook}
+                        onValueChange={(value) => setSelectedVariations({ ...selectedVariations, facebook: value as keyof PostVariations })}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoA" id="fb-a" />
+                          <Label htmlFor="fb-a" className="cursor-pointer">Opção A: Casual/Amigável</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoB" id="fb-b" />
+                          <Label htmlFor="fb-b" className="cursor-pointer">Opção B: Profissional</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoC" id="fb-c" />
+                          <Label htmlFor="fb-c" className="cursor-pointer">Opção C: Promocional</Label>
+                        </div>
+                      </RadioGroup>
+
+                      <Textarea
+                        value={editableTexts.facebook[selectedVariations.facebook]}
+                        onChange={(e) => updateText('facebook', selectedVariations.facebook, e.target.value)}
+                        className="min-h-[200px] text-sm"
+                      />
+
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => handleCopy(editableTexts.facebook[selectedVariations.facebook], 'Facebook')}
+                          variant="outline"
+                          className="flex-1"
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copiar
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Card Story */}
                   <Card className="shadow-xl border-2 hover:border-orange-500 transition-colors">
                     <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white">
                       <CardTitle className="flex items-center gap-2">
-                        <Instagram className="h-5 w-5" />
-                        Story Instagram
+                        <Sparkles className="h-5 w-5" />
+                        📖 Story Instagram
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
+                      <RadioGroup
+                        value={selectedVariations.story}
+                        onValueChange={(value) => setSelectedVariations({ ...selectedVariations, story: value as keyof PostVariations })}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoA" id="story-a" />
+                          <Label htmlFor="story-a" className="cursor-pointer">Opção A: Curto/Impactante</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoB" id="story-b" />
+                          <Label htmlFor="story-b" className="cursor-pointer">Opção B: Pergunta Interativa</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoC" id="story-c" />
+                          <Label htmlFor="story-c" className="cursor-pointer">Opção C: Contagem Regressiva</Label>
+                        </div>
+                      </RadioGroup>
+
                       <Textarea
-                        value={editableStories}
-                        onChange={(e) => setEditableStories(e.target.value)}
-                        className="min-h-[200px] text-sm"
+                        value={editableTexts.story[selectedVariations.story]}
+                        onChange={(e) => updateText('story', selectedVariations.story, e.target.value)}
+                        className="min-h-[150px] text-sm"
+                        maxLength={80}
                       />
+                      <p className="text-xs text-muted-foreground text-right">
+                        {editableTexts.story[selectedVariations.story].length}/80 caracteres
+                      </p>
+
                       <div className="flex gap-2">
                         <Button
-                          onClick={() => handleCopy(editableStories, 'Story')}
+                          onClick={() => handleCopy(editableTexts.story[selectedVariations.story], 'Story')}
                           variant="outline"
                           className="flex-1"
                         >
@@ -343,42 +433,18 @@ const IAMarketing = () => {
                       </div>
                     </CardContent>
                   </Card>
+                </div>
 
-                  {/* WhatsApp - Apenas para afiliados */}
-                  {userType === 'afiliado' && (
-                    <Card className="shadow-xl border-2 hover:border-green-500 transition-colors">
-                      <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-500 text-white">
-                        <CardTitle className="flex items-center gap-2">
-                          <MessageCircle className="h-5 w-5" />
-                          WhatsApp
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="pt-6 space-y-4">
-                        <Textarea
-                          value={editableWhatsApp}
-                          onChange={(e) => setEditableWhatsApp(e.target.value)}
-                          className="min-h-[200px] text-sm"
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            onClick={() => handleCopy(editableWhatsApp, 'WhatsApp')}
-                            variant="outline"
-                            className="flex-1"
-                          >
-                            <Copy className="mr-2 h-4 w-4" />
-                            Copiar
-                          </Button>
-                          <Button
-                            onClick={() => handleWhatsAppSend(editableWhatsApp)}
-                            className="flex-1 bg-green-600 hover:bg-green-700"
-                          >
-                            <Send className="mr-2 h-4 w-4" />
-                            Enviar
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                {/* Botão Principal - Rodapé */}
+                <div className="flex justify-center pt-4">
+                  <Button
+                    onClick={handleScheduleAll}
+                    size="lg"
+                    className="bg-green-600 hover:bg-green-700 text-lg px-12 py-6"
+                  >
+                    <CalendarIcon className="mr-2 h-6 w-6" />
+                    📅 AGENDAR TODOS OS SELECIONADOS
+                  </Button>
                 </div>
               </div>
             )}
@@ -405,9 +471,9 @@ const IAMarketing = () => {
           open={showScheduleModal}
           onOpenChange={setShowScheduleModal}
           postContent={{
-            instagram: editableInstagram,
-            stories: editableStories,
-            whatsapp: editableWhatsApp
+            instagram: editableTexts.instagram[selectedVariations.instagram],
+            facebook: editableTexts.facebook[selectedVariations.facebook],
+            story: editableTexts.story[selectedVariations.story]
           }}
           userType={userType}
         />

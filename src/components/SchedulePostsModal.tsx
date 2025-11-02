@@ -27,8 +27,8 @@ interface SchedulePostsModalProps {
   onOpenChange: (open: boolean) => void;
   postContent: {
     instagram: string;
-    stories: string;
-    whatsapp: string;
+    facebook: string;
+    story: string;
   };
   userType?: string;
 }
@@ -229,8 +229,8 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
           user_id: userData.user.id,
           titulo: postContent.instagram?.substring(0, 100) || "Post agendado",
           texto_instagram: postContent.instagram,
-          texto_story: postContent.stories,
-          texto_whatsapp: postContent.whatsapp,
+          texto_story: postContent.story,
+          texto_facebook: postContent.facebook,
           status: 'agendado'
         })
         .select()

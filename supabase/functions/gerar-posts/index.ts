@@ -20,25 +20,47 @@ serve(async (req) => {
 
     console.log(`Gerando posts para produto: ${produto.nome}`);
 
-    const prompt = `Crie 3 posts promocionais para o seguinte produto da Amazon:
+    const prompt = `Crie posts promocionais para o seguinte produto:
 
 Produto: ${produto.nome}
 Preço: R$ ${produto.preco}
-Avaliação: ${produto.rating} estrelas (${produto.reviews} reviews)
-Comissão: R$ ${produto.comissao}
+${produto.rating ? `Avaliação: ${produto.rating} estrelas (${produto.reviews} reviews)` : ''}
+${produto.comissao ? `Comissão: R$ ${produto.comissao}` : ''}
 
-Gere 3 posts no seguinte formato JSON:
-1. Um post para Instagram (curto, com emojis, chamativo)
-2. Um post para WhatsApp (direto, com link de compra)
-3. Um script de vendedor (persuasivo, destaca benefícios)
+Gere 9 variações de posts, 3 para cada tipo:
+
+INSTAGRAM (3 variações):
+- Opção A: Estilo direto/urgente com call-to-action forte
+- Opção B: Estilo storytelling, conte uma história
+- Opção C: Estilo educativo, ensine algo relacionado ao produto
+
+FACEBOOK (3 variações):
+- Opção A: Casual/amigável, tom de conversa
+- Opção B: Profissional/informativo com dados e benefícios
+- Opção C: Promocional/vendedor com senso de urgência
+
+STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
+- Opção A: Curto e impactante com emoji
+- Opção B: Pergunta interativa para engajamento
+- Opção C: Contagem regressiva ou urgência
 
 Retorne APENAS um JSON válido no formato:
 {
-  "posts": [
-    {"tipo": "Instagram", "conteudo": "texto aqui"},
-    {"tipo": "WhatsApp", "conteudo": "texto aqui"},
-    {"tipo": "Vendedor", "conteudo": "texto aqui"}
-  ]
+  "instagram": {
+    "opcaoA": "texto aqui",
+    "opcaoB": "texto aqui",
+    "opcaoC": "texto aqui"
+  },
+  "facebook": {
+    "opcaoA": "texto aqui",
+    "opcaoB": "texto aqui",
+    "opcaoC": "texto aqui"
+  },
+  "story": {
+    "opcaoA": "texto curto aqui (max 80 chars)",
+    "opcaoB": "texto curto aqui (max 80 chars)",
+    "opcaoC": "texto curto aqui (max 80 chars)"
+  }
 }`;
 
     const response = await fetch(
@@ -77,17 +99,10 @@ Retorne APENAS um JSON válido no formato:
 
     const resultado = JSON.parse(jsonMatch[0]);
     
-    const posts = resultado.posts.map((post: any, index: number) => ({
-      id: `post_${Date.now()}_${index}`,
-      tipo: post.tipo,
-      conteudo: post.conteudo,
-      produtoId: produto.id
-    }));
-
-    console.log(`Posts gerados com sucesso: ${posts.length}`);
+    console.log(`Posts gerados com sucesso para 3 plataformas`);
 
     return new Response(
-      JSON.stringify({ posts }),
+      JSON.stringify(resultado),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
