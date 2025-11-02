@@ -51,7 +51,7 @@ export default function GoogleAds() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <Button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => step === 1 ? navigate('/dashboard') : handleBack()}
           variant="ghost"
           className="mb-6"
         >
