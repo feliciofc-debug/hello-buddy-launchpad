@@ -29,9 +29,10 @@ interface SchedulePostsModalProps {
     stories: string;
     whatsapp: string;
   };
+  userType?: string;
 }
 
-export function SchedulePostsModal({ open, onOpenChange, postContent }: SchedulePostsModalProps) {
+export function SchedulePostsModal({ open, onOpenChange, postContent, userType = 'afiliado' }: SchedulePostsModalProps) {
   const [frequency, setFrequency] = useState<'now' | 'once' | 'daily' | 'weekly' | 'custom'>('once');
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTime, setSelectedTime] = useState("10:00");
@@ -388,10 +389,12 @@ export function SchedulePostsModal({ open, onOpenChange, postContent }: Schedule
                 <Checkbox id="tiktok" checked={networks.tiktok} onCheckedChange={() => toggleNetwork('tiktok')} />
                 <Label htmlFor="tiktok" className="cursor-pointer">🎵 TikTok</Label>
               </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="whatsapp" checked={networks.whatsapp} onCheckedChange={() => toggleNetwork('whatsapp')} />
-                <Label htmlFor="whatsapp" className="cursor-pointer">💬 WhatsApp</Label>
-              </div>
+              {userType === 'afiliado' && (
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="whatsapp" checked={networks.whatsapp} onCheckedChange={() => toggleNetwork('whatsapp')} />
+                  <Label htmlFor="whatsapp" className="cursor-pointer">💬 WhatsApp</Label>
+                </div>
+              )}
             </div>
           </div>
 

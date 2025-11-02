@@ -30,11 +30,31 @@ const IAMarketing = () => {
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [userType, setUserType] = useState<string>('afiliado');
 
   // Estados editáveis
   const [editableInstagram, setEditableInstagram] = useState("");
   const [editableStories, setEditableStories] = useState("");
   const [editableWhatsApp, setEditableWhatsApp] = useState("");
+
+  // Carregar tipo do usuário
+  useState(() => {
+    const loadUserType = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tipo')
+          .eq('id', user.id)
+          .single();
+        
+        if (profile?.tipo) {
+          setUserType(profile.tipo);
+        }
+      }
+    };
+    loadUserType();
+  });
 
   const handleAnalyze = async () => {
     if (!url.trim()) {
@@ -171,7 +191,7 @@ const IAMarketing = () => {
                 </div>
 
                 {/* Grid de Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className={`grid grid-cols-1 ${userType === 'empresa' ? 'md:grid-cols-2' : 'md:grid-cols-3'} gap-6`}>
                   {/* Post Instagram */}
                   <Card className="shadow-xl border-2 hover:border-purple-500 transition-colors">
                     <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
@@ -226,39 +246,41 @@ const IAMarketing = () => {
                     </CardContent>
                   </Card>
 
-                  {/* WhatsApp */}
-                  <Card className="shadow-xl border-2 hover:border-green-500 transition-colors">
-                    <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-500 text-white">
-                      <CardTitle className="flex items-center gap-2">
-                        <MessageCircle className="h-5 w-5" />
-                        WhatsApp
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-6 space-y-4">
-                      <Textarea
-                        value={editableWhatsApp}
-                        onChange={(e) => setEditableWhatsApp(e.target.value)}
-                        className="min-h-[200px] text-sm"
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          onClick={() => handleCopy(editableWhatsApp, 'WhatsApp')}
-                          variant="outline"
-                          className="flex-1"
-                        >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copiar
-                        </Button>
-                        <Button
-                          onClick={() => handleWhatsAppSend(editableWhatsApp)}
-                          className="flex-1 bg-green-600 hover:bg-green-700"
-                        >
-                          <Send className="mr-2 h-4 w-4" />
-                          Enviar
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  {/* WhatsApp - Apenas para afiliados */}
+                  {userType === 'afiliado' && (
+                    <Card className="shadow-xl border-2 hover:border-green-500 transition-colors">
+                      <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-500 text-white">
+                        <CardTitle className="flex items-center gap-2">
+                          <MessageCircle className="h-5 w-5" />
+                          WhatsApp
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="pt-6 space-y-4">
+                        <Textarea
+                          value={editableWhatsApp}
+                          onChange={(e) => setEditableWhatsApp(e.target.value)}
+                          className="min-h-[200px] text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => handleCopy(editableWhatsApp, 'WhatsApp')}
+                            variant="outline"
+                            className="flex-1"
+                          >
+                            <Copy className="mr-2 h-4 w-4" />
+                            Copiar
+                          </Button>
+                          <Button
+                            onClick={() => handleWhatsAppSend(editableWhatsApp)}
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                          >
+                            <Send className="mr-2 h-4 w-4" />
+                            Enviar
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </div>
             )}
@@ -289,6 +311,7 @@ const IAMarketing = () => {
             stories: editableStories,
             whatsapp: editableWhatsApp
           }}
+          userType={userType}
         />
       )}
     </div>
