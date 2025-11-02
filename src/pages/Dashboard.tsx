@@ -202,9 +202,9 @@ const Dashboard = () => {
         }
       }
       
-      // Exceção para admin - não precisa de assinatura
-      if (session.user.email !== 'admin@amzofertas.com') {
-        // Verificar se o usuário tem assinatura ativa
+      // Usuários tipo 'empresa' e 'fabrica' têm acesso direto (cortesia)
+      // Afiliados precisam de assinatura ativa
+      if (profile?.tipo === 'afiliado' || !profile?.tipo) {
         const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
         
         console.log('Verificação de assinatura:', subscriptionCheck);
@@ -215,6 +215,8 @@ const Dashboard = () => {
           navigate('/planos');
           return;
         }
+      } else {
+        console.log('✅ Acesso liberado (cortesia) para tipo:', profile?.tipo);
       }
       
       setUser(session.user);
