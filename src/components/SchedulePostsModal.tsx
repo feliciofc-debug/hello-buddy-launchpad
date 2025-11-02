@@ -340,9 +340,12 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
                     {dayNames.map((day, index) => (
                       <Button
                         key={index}
-                        variant={selectedDays.includes(index) ? "default" : "outline"}
+                        variant="outline"
                         size="sm"
                         onClick={() => toggleDay(index)}
+                        className={selectedDays.includes(index) 
+                          ? "bg-green-600 hover:bg-green-700 text-white border-green-600" 
+                          : "bg-red-600 hover:bg-red-700 text-white border-red-600"}
                       >
                         {day}
                       </Button>
