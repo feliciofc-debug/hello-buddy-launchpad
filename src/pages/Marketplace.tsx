@@ -273,7 +273,7 @@ export default function Marketplace() {
                 <Store className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold text-foreground">🏪 Marketplace de Produtos</h1>
+                <h1 className="text-4xl font-bold text-foreground">🏪 Catálogo de Produtos</h1>
                 <p className="text-muted-foreground mt-1">Conecte-se com marcas e ganhe comissões exclusivas</p>
               </div>
             </div>
