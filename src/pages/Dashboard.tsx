@@ -312,19 +312,6 @@ const Dashboard = () => {
               </a>
             </>
           )}
-          {userProfile?.tipo === 'empresa' && (
-            <a
-              href="/produtos"
-              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                window.location.pathname === '/produtos' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Package size={20} />
-              Upload Produtos
-            </a>
-          )}
           {userProfile?.tipo === 'afiliado' && (
             <a
               href="/produtos"
