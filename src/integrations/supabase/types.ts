@@ -62,6 +62,60 @@ export type Database = {
         }
         Relationships: []
       }
+      clientes: {
+        Row: {
+          ativo: boolean | null
+          contato: string | null
+          cor_marca: string | null
+          created_at: string
+          descricao: string | null
+          email: string | null
+          facebook: string | null
+          id: string
+          instagram: string | null
+          logo_url: string | null
+          nome: string
+          telefone: string | null
+          tipo_negocio: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          contato?: string | null
+          cor_marca?: string | null
+          created_at?: string
+          descricao?: string | null
+          email?: string | null
+          facebook?: string | null
+          id?: string
+          instagram?: string | null
+          logo_url?: string | null
+          nome: string
+          telefone?: string | null
+          tipo_negocio?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          contato?: string | null
+          cor_marca?: string | null
+          created_at?: string
+          descricao?: string | null
+          email?: string | null
+          facebook?: string | null
+          id?: string
+          instagram?: string | null
+          logo_url?: string | null
+          nome?: string
+          telefone?: string | null
+          tipo_negocio?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           access_token: string
@@ -119,45 +173,6 @@ export type Database = {
         }
         Relationships: []
       }
-      lojas: {
-        Row: {
-          ativo: boolean | null
-          contato: string | null
-          created_at: string
-          descricao: string | null
-          email: string | null
-          id: string
-          nome: string
-          telefone: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          ativo?: boolean | null
-          contato?: string | null
-          created_at?: string
-          descricao?: string | null
-          email?: string | null
-          id?: string
-          nome: string
-          telefone?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          ativo?: boolean | null
-          contato?: string | null
-          created_at?: string
-          descricao?: string | null
-          email?: string | null
-          id?: string
-          nome?: string
-          telefone?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       posts: {
         Row: {
           created_at: string
@@ -210,12 +225,12 @@ export type Database = {
         Row: {
           ativo: boolean | null
           categoria: string
+          cliente_id: string | null
           created_at: string
           descricao: string | null
           id: string
           imagem_url: string | null
           link: string | null
-          loja_id: string | null
           nome: string
           preco: number | null
           sku: string | null
@@ -226,12 +241,12 @@ export type Database = {
         Insert: {
           ativo?: boolean | null
           categoria: string
+          cliente_id?: string | null
           created_at?: string
           descricao?: string | null
           id?: string
           imagem_url?: string | null
           link?: string | null
-          loja_id?: string | null
           nome: string
           preco?: number | null
           sku?: string | null
@@ -242,12 +257,12 @@ export type Database = {
         Update: {
           ativo?: boolean | null
           categoria?: string
+          cliente_id?: string | null
           created_at?: string
           descricao?: string | null
           id?: string
           imagem_url?: string | null
           link?: string | null
-          loja_id?: string | null
           nome?: string
           preco?: number | null
           sku?: string | null
@@ -257,10 +272,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "produtos_loja_id_fkey"
-            columns: ["loja_id"]
+            foreignKeyName: "produtos_cliente_id_fkey"
+            columns: ["cliente_id"]
             isOneToOne: false
-            referencedRelation: "lojas"
+            referencedRelation: "clientes"
             referencedColumns: ["id"]
           },
         ]
