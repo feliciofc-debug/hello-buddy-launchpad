@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Instagram, MessageCircle, ArrowLeft, Copy, Calendar as CalendarIcon, Send } from "lucide-react";
+import { Loader2, Instagram, MessageCircle, ArrowLeft, Copy, Calendar as CalendarIcon, Send, Upload, Image, Video } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,6 +31,7 @@ const IAMarketing = () => {
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [userType, setUserType] = useState<string>('afiliado');
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 
   // Estados editáveis
   const [editableInstagram, setEditableInstagram] = useState("");
@@ -87,6 +88,28 @@ const IAMarketing = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newFiles = Array.from(files).filter(file => {
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      if (!isImage && !isVideo) {
+        toast.error(`${file.name} não é uma imagem ou vídeo válido`);
+        return false;
+      }
+      return true;
+    });
+
+    setUploadedFiles(prev => [...prev, ...newFiles]);
+    toast.success(`${newFiles.length} arquivo(s) adicionado(s)`);
+  };
+
+  const removeFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleCopy = (text: string, type: string) => {
@@ -149,10 +172,60 @@ const IAMarketing = () => {
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     onKeyPress={(e) => e.key === 'Enter' && handleAnalyze()}
-                    placeholder="Cole aqui o link do seu produto (Shopee, Amazon, Magazine, etc)"
+                    placeholder={
+                      userType === 'empresa' 
+                        ? "Cole aqui o link do seu produto" 
+                        : "Cole aqui o link do seu produto (Shopee, Amazon, Magazine, etc)"
+                    }
                     className="text-lg p-6 h-auto"
                     disabled={loading}
                   />
+                  
+                  {/* Upload de Arquivos */}
+                  <div className="border-2 border-dashed rounded-lg p-6 space-y-4">
+                    <div className="flex items-center justify-center gap-4">
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,video/*"
+                          onChange={handleFileUpload}
+                          className="hidden"
+                        />
+                        <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors">
+                          <Upload className="h-5 w-5" />
+                          <span className="font-medium">Upload Fotos/Vídeos</span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {uploadedFiles.length > 0 && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        {uploadedFiles.map((file, index) => (
+                          <div key={index} className="relative group">
+                            <div className="aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                              {file.type.startsWith('image/') ? (
+                                <img 
+                                  src={URL.createObjectURL(file)} 
+                                  alt={file.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <Video className="h-8 w-8 text-muted-foreground" />
+                              )}
+                            </div>
+                            <button
+                              onClick={() => removeFile(index)}
+                              className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              ✕
+                            </button>
+                            <p className="text-xs text-center mt-1 truncate">{file.name}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   
                   <Button
                     onClick={handleAnalyze}
