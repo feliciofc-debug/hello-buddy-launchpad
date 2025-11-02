@@ -62,6 +62,7 @@ export default function MeusProdutos() {
 
   useEffect(() => {
     fetchProducts();
+    fetchLojas();
   }, []);
 
   useEffect(() => {

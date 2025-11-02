@@ -119,6 +119,45 @@ export type Database = {
         }
         Relationships: []
       }
+      lojas: {
+        Row: {
+          ativo: boolean | null
+          contato: string | null
+          created_at: string
+          descricao: string | null
+          email: string | null
+          id: string
+          nome: string
+          telefone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          contato?: string | null
+          created_at?: string
+          descricao?: string | null
+          email?: string | null
+          id?: string
+          nome: string
+          telefone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          contato?: string | null
+          created_at?: string
+          descricao?: string | null
+          email?: string | null
+          id?: string
+          nome?: string
+          telefone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       posts: {
         Row: {
           created_at: string
@@ -166,6 +205,65 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      produtos: {
+        Row: {
+          ativo: boolean | null
+          categoria: string
+          created_at: string
+          descricao: string | null
+          id: string
+          imagem_url: string | null
+          link: string | null
+          loja_id: string | null
+          nome: string
+          preco: number | null
+          sku: string | null
+          tags: string[] | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          categoria: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          link?: string | null
+          loja_id?: string | null
+          nome: string
+          preco?: number | null
+          sku?: string | null
+          tags?: string[] | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          categoria?: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          link?: string | null
+          loja_id?: string | null
+          nome?: string
+          preco?: number | null
+          sku?: string | null
+          tags?: string[] | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produtos_loja_id_fkey"
+            columns: ["loja_id"]
+            isOneToOne: false
+            referencedRelation: "lojas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
