@@ -202,21 +202,20 @@ const Dashboard = () => {
         }
       }
       
-      // Usuários tipo 'empresa' e 'fabrica' têm acesso direto (cortesia)
-      // Afiliados precisam de assinatura ativa
-      if (profile?.tipo === 'afiliado' || !profile?.tipo) {
+      // Acesso direto APENAS para expo@atombrasildigital.com (dono)
+      if (session.user.email !== 'expo@atombrasildigital.com') {
+        // Todos os outros usuários precisam de assinatura ativa
         const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
         
         console.log('Verificação de assinatura:', subscriptionCheck);
         
-        // Se não tiver assinatura ativa, redireciona para planos
         if (!subscriptionCheck?.hasActiveSubscription) {
           toast.error('Você precisa de uma assinatura ativa para acessar o dashboard');
           navigate('/planos');
           return;
         }
       } else {
-        console.log('✅ Acesso liberado (cortesia) para tipo:', profile?.tipo);
+        console.log('✅ Dono da plataforma - acesso liberado');
       }
       
       setUser(session.user);

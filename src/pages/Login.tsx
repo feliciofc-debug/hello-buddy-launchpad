@@ -27,23 +27,14 @@ export default function Login() {
 
       toast.success('Login realizado com sucesso!');
       
-      // Buscar perfil do usuário
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tipo')
-        .eq('id', data.user.id)
-        .single();
-      
-      console.log('Perfil do usuário:', profile);
-      
-      // Usuários tipo 'empresa' e 'fabrica' têm acesso direto (cortesia)
-      if (profile?.tipo === 'empresa' || profile?.tipo === 'fabrica') {
-        console.log('✅ Acesso direto (cortesia) - indo para dashboard');
+      // Acesso direto APENAS para expo@atombrasildigital.com (dono)
+      if (data.user.email === 'expo@atombrasildigital.com') {
+        console.log('✅ Dono da plataforma - acesso direto ao dashboard');
         navigate('/dashboard');
         return;
       }
       
-      // Afiliados precisam verificar assinatura
+      // Todos os outros usuários precisam verificar assinatura
       console.log('Verificando assinatura...');
       const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
       
