@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Phone, Lock, CreditCard, ArrowLeft, Building2, UserCircle, Loader2, BadgeCheck } from 'lucide-react';
+import { User, Mail, Phone, Lock, ArrowLeft, Building2, Loader2, BadgeCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
 
 export default function Cadastro() {
   const navigate = useNavigate();
-  const [userType, setUserType] = useState<'afiliado' | 'empresa'>('afiliado');
+  const userType = 'empresa'; // Sempre empresa
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingCNPJ, setIsLoadingCNPJ] = useState(false);
   const [suggestedPlan, setSuggestedPlan] = useState<{
@@ -17,17 +17,12 @@ export default function Cadastro() {
   } | null>(null);
 
   const [formData, setFormData] = useState({
-    // Comum
+    // Dados da empresa
     nome: '',
     email: '',
     senha: '',
     telefone: '',
     aceitoTermos: false,
-
-    // Afiliado
-    cpf: '',
-
-    // Empresa
     cnpj: '',
     razaoSocial: '',
     nomeFantasia: '',
@@ -45,15 +40,6 @@ export default function Cadastro() {
   });
 
   // Máscaras
-  const maskCPF = (value: string) => {
-    return value
-      .replace(/\D/g, '')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})/, '$1-$2')
-      .replace(/(-\d{2})\d+?$/, '$1');
-  };
-
   const maskCNPJ = (value: string) => {
     return value
       .replace(/\D/g, '')
@@ -189,8 +175,7 @@ export default function Cadastro() {
           data: {
             nome: formData.nome,
             whatsapp: formData.telefone,
-            cpf: userType === 'afiliado' ? formData.cpf : '',
-            tipo: userType
+            tipo: 'empresa'
           },
           emailRedirectTo: `${window.location.origin}/`
         }
@@ -199,21 +184,18 @@ export default function Cadastro() {
       if (authError) throw authError;
 
       if (authData.user) {
-        // Atualizar perfil com dados específicos
+        // Atualizar perfil com dados da empresa
         const profileUpdate: any = {
-          tipo: userType,
-          cpf_cnpj: userType === 'afiliado' ? formData.cpf : formData.cnpj,
-          plano: userType === 'afiliado' ? 'free' : (suggestedPlan?.plano || 'empresas'),
-          valor_plano: userType === 'afiliado' ? 147.00 : (suggestedPlan?.valor || 447.00)
+          tipo: 'empresa',
+          cpf_cnpj: formData.cnpj,
+          plano: suggestedPlan?.plano || 'empresas',
+          valor_plano: suggestedPlan?.valor || 447.00,
+          razao_social: formData.razaoSocial,
+          nome_fantasia: formData.nomeFantasia,
+          cnae: formData.cnae,
+          cnae_descricao: formData.cnaeDescricao,
+          endereco: formData.endereco
         };
-
-        if (userType === 'empresa') {
-          profileUpdate.razao_social = formData.razaoSocial;
-          profileUpdate.nome_fantasia = formData.nomeFantasia;
-          profileUpdate.cnae = formData.cnae;
-          profileUpdate.cnae_descricao = formData.cnaeDescricao;
-          profileUpdate.endereco = formData.endereco;
-        }
 
         const { error: profileError } = await supabase
           .from('profiles')
@@ -256,161 +238,11 @@ export default function Cadastro() {
               </svg>
             </div>
             <h1 className="text-3xl font-bold text-white mb-2">Criar Conta</h1>
-            <p className="text-purple-300">Escolha o tipo de cadastro</p>
+            <p className="text-purple-300">Cadastro para empresas em geral</p>
           </div>
 
-          {/* Tabs Afiliado/Empresa */}
-          <Tabs value={userType} onValueChange={(v) => setUserType(v as 'afiliado' | 'empresa')} className="mb-8">
-            <TabsList className="grid w-full grid-cols-2 h-auto p-1 bg-slate-700/50">
-              <TabsTrigger 
-                value="afiliado" 
-                className="flex items-center gap-3 py-4 data-[state=active]:bg-purple-500 data-[state=active]:text-white"
-              >
-                <UserCircle className="w-6 h-6" />
-                <div className="text-left">
-                  <div className="font-bold">👤 SOU AFILIADO</div>
-                  <div className="text-xs opacity-80">CPF</div>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger 
-                value="empresa" 
-                className="flex items-center gap-3 py-4 data-[state=active]:bg-purple-500 data-[state=active]:text-white"
-              >
-                <Building2 className="w-6 h-6" />
-                <div className="text-left">
-                  <div className="font-bold">🏢 SOU EMPRESA</div>
-                  <div className="text-xs opacity-80">CNPJ</div>
-                </div>
-              </TabsTrigger>
-            </TabsList>
-
-            {/* Form Afiliado */}
-            <TabsContent value="afiliado" className="mt-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Nome Completo */}
-                <div>
-                  <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Nome Completo *
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
-                    <input
-                      type="text"
-                      required
-                      value={formData.nome}
-                      onChange={(e) => setFormData({...formData, nome: e.target.value})}
-                      className="w-full bg-slate-700/50 text-white pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                      placeholder="João Silva"
-                    />
-                  </div>
-                </div>
-
-                {/* CPF */}
-                <div>
-                  <label className="block text-sm font-medium text-purple-300 mb-2">
-                    CPF *
-                  </label>
-                  <div className="relative">
-                    <CreditCard className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
-                    <input
-                      type="text"
-                      required
-                      value={formData.cpf}
-                      onChange={(e) => setFormData({...formData, cpf: maskCPF(e.target.value)})}
-                      className="w-full bg-slate-700/50 text-white pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                      placeholder="000.000.000-00"
-                      maxLength={14}
-                    />
-                  </div>
-                </div>
-
-                {/* Email */}
-                <div>
-                  <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Email *
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
-                    <input
-                      type="email"
-                      required
-                      value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      className="w-full bg-slate-700/50 text-white pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                      placeholder="seu@email.com"
-                    />
-                  </div>
-                </div>
-
-                {/* Senha */}
-                <div>
-                  <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Senha *
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
-                    <input
-                      type="password"
-                      required
-                      value={formData.senha}
-                      onChange={(e) => setFormData({...formData, senha: e.target.value})}
-                      className="w-full bg-slate-700/50 text-white pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                      placeholder="••••••••"
-                    />
-                  </div>
-                </div>
-
-                {/* Telefone/WhatsApp */}
-                <div>
-                  <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Telefone/WhatsApp *
-                  </label>
-                  <div className="relative">
-                    <Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
-                    <input
-                      type="tel"
-                      required
-                      value={formData.telefone}
-                      onChange={(e) => setFormData({...formData, telefone: maskPhone(e.target.value)})}
-                      className="w-full bg-slate-700/50 text-white pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                      placeholder="(11) 99999-9999"
-                    />
-                  </div>
-                </div>
-
-                {/* Termos */}
-                <div className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    required
-                    checked={formData.aceitoTermos}
-                    onChange={(e) => setFormData({...formData, aceitoTermos: e.target.checked})}
-                    className="mt-1 w-5 h-5 text-purple-500 bg-slate-700 border-purple-500/30 rounded focus:ring-purple-500"
-                  />
-                  <label className="text-sm text-slate-300">
-                    Li e aceito os termos de uso e política de privacidade
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-4 rounded-lg font-bold text-lg hover:shadow-lg transition disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Criando conta...
-                    </>
-                  ) : (
-                    'CRIAR CONTA AFILIADO'
-                  )}
-                </button>
-              </form>
-            </TabsContent>
-
-            {/* Form Empresa */}
-            <TabsContent value="empresa" className="mt-6">
+          {/* Formulário Empresa */}
+          <div className="mt-6">
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* CNPJ */}
                 <div>
@@ -597,9 +429,9 @@ export default function Cadastro() {
                           <span>✅</span>
                           <span>Analytics completo</span>
                         </div>
-                        <div className="flex items-center gap-2 text-green-400">
+                         <div className="flex items-center gap-2 text-green-400">
                           <span>✅</span>
-                          <span>WhatsApp em massa</span>
+                          <span>Agendamento automático</span>
                         </div>
                       </div>
                     </div>
@@ -635,8 +467,7 @@ export default function Cadastro() {
                   )}
                 </button>
               </form>
-            </TabsContent>
-          </Tabs>
+          </div>
 
           {/* Login Link */}
           <div className="text-center mt-6">
