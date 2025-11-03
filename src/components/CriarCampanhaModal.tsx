@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Loader2, Copy, Calendar, Rocket, ImageIcon } from 'lucide-react';
+import { Loader2, Copy, Calendar, Rocket, ImageIcon, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -42,6 +42,7 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
   const [instagramSelecionado, setInstagramSelecionado] = useState('A');
   const [facebookSelecionado, setFacebookSelecionado] = useState('A');
   const [storySelecionado, setStorySelecionado] = useState('A');
+  const [uploadedImages, setUploadedImages] = useState<File[]>([]);
 
   const gerarPostsComIA = async () => {
     setLoading(true);
@@ -93,6 +94,42 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
     toast.info('Funcionalidade de publicação em desenvolvimento');
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    
+    if (imageFiles.length !== files.length) {
+      toast.error('Apenas imagens são permitidas');
+      return;
+    }
+    
+    setUploadedImages(prev => [...prev, ...imageFiles]);
+    toast.success(`${imageFiles.length} imagem(ns) adicionada(s)`);
+  };
+
+  const removeImage = (index: number) => {
+    setUploadedImages(prev => prev.filter((_, i) => i !== index));
+    toast.success('Imagem removida');
+  };
+
+  // Auto-gerar posts quando o modal abre
+  useEffect(() => {
+    if (isOpen && !postsGerados && !loading) {
+      gerarPostsComIA();
+    }
+  }, [isOpen]);
+
+  // Limpar estado quando o modal fecha
+  useEffect(() => {
+    if (!isOpen) {
+      setPostsGerados(null);
+      setUploadedImages([]);
+      setInstagramSelecionado('A');
+      setFacebookSelecionado('A');
+      setStorySelecionado('A');
+    }
+  }, [isOpen]);
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -131,25 +168,66 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
           </div>
         </div>
 
-        {!postsGerados ? (
-          <div className="text-center py-12">
-            <Button 
-              size="lg" 
-              onClick={gerarPostsComIA}
-              disabled={loading}
-              className="gap-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Gerando Posts com IA...
-                </>
-              ) : (
-                <>✨ GERAR POSTS COM IA</>
+        {/* Upload de Fotos */}
+        <Card className="mb-4">
+          <CardHeader>
+            <h4 className="font-semibold flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              Fotos do Produto
+            </h4>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <Label 
+                  htmlFor="image-upload" 
+                  className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  Adicionar Fotos
+                </Label>
+                <input
+                  id="image-upload"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+              </div>
+
+              {uploadedImages.length > 0 && (
+                <div className="grid grid-cols-4 gap-3">
+                  {uploadedImages.map((file, index) => (
+                    <div key={index} className="relative group">
+                      <img
+                        src={URL.createObjectURL(file)}
+                        alt={`Upload ${index + 1}`}
+                        className="w-full h-24 object-cover rounded border"
+                      />
+                      <button
+                        onClick={() => removeImage(index)}
+                        className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
-            </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {loading ? (
+          <div className="text-center py-12">
+            <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-lg font-medium">Gerando Posts com IA...</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Criando 3 opções para Instagram, Facebook e Stories
+            </p>
           </div>
-        ) : (
+        ) : postsGerados ? (
           <>
             {/* Posts Gerados */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -259,6 +337,12 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
               </Button>
             </div>
           </>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">
+              Aguarde enquanto geramos os posts...
+            </p>
+          </div>
         )}
 
         <DialogFooter>
