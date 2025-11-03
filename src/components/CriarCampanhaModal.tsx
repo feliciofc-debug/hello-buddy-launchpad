@@ -104,47 +104,68 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
       return;
     }
 
+    if (imageFiles.length === 0) return;
+
     // Upload das imagens para o Supabase Storage
+    toast.loading('Enviando imagem...');
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Usuário não autenticado');
-
-      for (const file of imageFiles) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${produto.id}-${Date.now()}.${fileExt}`;
-        const filePath = `${user.id}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('produtos')
-          .upload(filePath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (uploadError) throw uploadError;
-
-        // Obter URL pública da imagem
-        const { data: { publicUrl } } = supabase.storage
-          .from('produtos')
-          .getPublicUrl(filePath);
-
-        // Atualizar produto com a nova imagem
-        const { error: updateError } = await supabase
-          .from('produtos')
-          .update({ imagem_url: publicUrl })
-          .eq('id', produto.id);
-
-        if (updateError) throw updateError;
-
-        // Atualizar a imagem exibida
-        setImagemAtual(publicUrl);
+      if (!user) {
+        console.error('Usuário não autenticado');
+        throw new Error('Usuário não autenticado');
       }
 
-      setUploadedImages(prev => [...prev, ...imageFiles]);
-      toast.success(`${imageFiles.length} imagem(ns) enviada(s) e salva(s)!`);
+      const file = imageFiles[0]; // Pegar apenas a primeira imagem
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${produto.id}-${Date.now()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      console.log('Iniciando upload:', { fileName, filePath });
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('produtos')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Erro no upload:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('Upload concluído:', uploadData);
+
+      // Obter URL pública da imagem
+      const { data: { publicUrl } } = supabase.storage
+        .from('produtos')
+        .getPublicUrl(filePath);
+
+      console.log('URL pública gerada:', publicUrl);
+
+      // Atualizar produto com a nova imagem
+      const { error: updateError } = await supabase
+        .from('produtos')
+        .update({ imagem_url: publicUrl })
+        .eq('id', produto.id);
+
+      if (updateError) {
+        console.error('Erro ao atualizar produto:', updateError);
+        throw updateError;
+      }
+
+      console.log('Produto atualizado com sucesso');
+
+      // Atualizar a imagem exibida imediatamente
+      setImagemAtual(publicUrl);
+      setUploadedImages([file]);
+      
+      toast.dismiss();
+      toast.success('Imagem enviada e salva com sucesso!');
     } catch (error) {
       console.error('Erro ao fazer upload:', error);
-      toast.error('Erro ao enviar imagens');
+      toast.dismiss();
+      toast.error(`Erro ao enviar imagem: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
   };
 
