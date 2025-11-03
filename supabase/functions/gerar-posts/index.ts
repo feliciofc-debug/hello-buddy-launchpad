@@ -107,12 +107,20 @@ Retorne APENAS um JSON válido no formato:
     console.log('Resposta da Lovable AI:', texto);
 
     // Extrair JSON da resposta
-    const jsonMatch = texto.match(/\{[\s\S]*\}/);
+    let jsonMatch = texto.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('Resposta da IA não contém JSON válido');
     }
 
-    const resultado = JSON.parse(jsonMatch[0]);
+    // Remover vírgulas extras antes de fechar chaves/colchetes (trailing commas)
+    let jsonStr = jsonMatch[0]
+      .replace(/,(\s*[}\]])/g, '$1')  // Remove trailing commas
+      .replace(/[\u201C\u201D]/g, '"') // Substitui aspas curvas por aspas normais
+      .trim();
+    
+    console.log('JSON limpo para parse:', jsonStr);
+
+    const resultado = JSON.parse(jsonStr);
     
     console.log(`Posts gerados com sucesso para 3 plataformas`);
 
