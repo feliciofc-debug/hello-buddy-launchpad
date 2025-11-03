@@ -62,13 +62,13 @@ const RedesSociais = () => {
     if (networkId === "instagram") {
       const META_APP_ID = import.meta.env.VITE_META_APP_ID;
       const redirectUri = `${window.location.origin}/auth/callback/meta`;
-      const scope = 'pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement,business_management';
+      const scope = 'email,public_profile';
       const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${userId}`;
       window.location.href = authUrl;
     } else if (networkId === "facebook") {
       const META_APP_ID = import.meta.env.VITE_META_APP_ID;
       const redirectUri = `${window.location.origin}/auth/callback/meta`;
-      const scope = 'pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement,business_management';
+      const scope = 'email,public_profile';
       const authUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${userId}`;
       window.location.href = authUrl;
     }

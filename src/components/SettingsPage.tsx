@@ -45,12 +45,8 @@ const SettingsPage = () => {
                   const META_APP_ID = import.meta.env.VITE_META_APP_ID;
                   const REDIRECT_URI = 'https://amzofertas.com.br/auth/callback/meta';
                   const permissions = [
-                    'public_profile',
                     'email',
-                    'pages_show_list',
-                    'pages_read_engagement',
-                    'pages_manage_posts',
-                    'business_management'
+                    'public_profile'
                   ].join(',');
                   const encodedRedirectUri = encodeURIComponent(REDIRECT_URI);
                   const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodedRedirectUri}&scope=${permissions}&response_type=code&state=${user.id}`;
