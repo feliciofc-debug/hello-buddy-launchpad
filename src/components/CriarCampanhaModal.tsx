@@ -43,6 +43,7 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
   const [facebookSelecionado, setFacebookSelecionado] = useState('A');
   const [storySelecionado, setStorySelecionado] = useState('A');
   const [uploadedImages, setUploadedImages] = useState<File[]>([]);
+  const [imagemAtual, setImagemAtual] = useState<string | null>(produto.imagem_url);
 
   const gerarPostsComIA = async () => {
     setLoading(true);
@@ -135,8 +136,8 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
 
         if (updateError) throw updateError;
 
-        // Atualizar o produto localmente
-        produto.imagem_url = publicUrl;
+        // Atualizar a imagem exibida
+        setImagemAtual(publicUrl);
       }
 
       setUploadedImages(prev => [...prev, ...imageFiles]);
@@ -167,8 +168,10 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
       setInstagramSelecionado('A');
       setFacebookSelecionado('A');
       setStorySelecionado('A');
+    } else {
+      setImagemAtual(produto.imagem_url);
     }
-  }, [isOpen]);
+  }, [isOpen, produto.imagem_url]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -185,9 +188,9 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
         {/* Preview do Produto */}
         <div className="bg-accent/50 p-4 rounded-lg mb-4">
           <div className="flex gap-4">
-            {produto.imagem_url ? (
+            {imagemAtual ? (
               <img 
-                src={produto.imagem_url} 
+                src={imagemAtual} 
                 alt={produto.nome}
                 className="w-32 h-32 object-cover rounded"
               />
