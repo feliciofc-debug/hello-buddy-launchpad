@@ -102,12 +102,17 @@ Retorne APENAS um JSON válido no formato:
     }
 
     const data = await response.json();
-    const texto = data.choices[0].message.content;
+    let texto = data.choices[0].message.content;
     
     console.log('Resposta da Lovable AI:', texto);
 
+    // Remover marcadores de código markdown (```json e ```)
+    texto = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    
+    console.log('Texto após remover markdown:', texto);
+
     // Extrair JSON da resposta
-    let jsonMatch = texto.match(/\{[\s\S]*\}/);
+    const jsonMatch = texto.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('Resposta da IA não contém JSON válido');
     }
@@ -116,6 +121,7 @@ Retorne APENAS um JSON válido no formato:
     let jsonStr = jsonMatch[0]
       .replace(/,(\s*[}\]])/g, '$1')  // Remove trailing commas
       .replace(/[\u201C\u201D]/g, '"') // Substitui aspas curvas por aspas normais
+      .replace(/[\u2018\u2019]/g, "'") // Substitui aspas simples curvas
       .trim();
     
     console.log('JSON limpo para parse:', jsonStr);
@@ -125,7 +131,7 @@ Retorne APENAS um JSON válido no formato:
     console.log(`Posts gerados com sucesso para 3 plataformas`);
 
     return new Response(
-      JSON.stringify(resultado),
+      JSON.stringify({ posts: resultado }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

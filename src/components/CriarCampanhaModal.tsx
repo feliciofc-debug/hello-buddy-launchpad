@@ -94,7 +94,7 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
     toast.info('Funcionalidade de publicação em desenvolvimento');
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     const imageFiles = files.filter(file => file.type.startsWith('image/'));
     
@@ -102,9 +102,49 @@ export function CriarCampanhaModal({ isOpen, onClose, produto, cliente }: CriarC
       toast.error('Apenas imagens são permitidas');
       return;
     }
-    
-    setUploadedImages(prev => [...prev, ...imageFiles]);
-    toast.success(`${imageFiles.length} imagem(ns) adicionada(s)`);
+
+    // Upload das imagens para o Supabase Storage
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      for (const file of imageFiles) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${produto.id}-${Date.now()}.${fileExt}`;
+        const filePath = `${user.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('produtos')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) throw uploadError;
+
+        // Obter URL pública da imagem
+        const { data: { publicUrl } } = supabase.storage
+          .from('produtos')
+          .getPublicUrl(filePath);
+
+        // Atualizar produto com a nova imagem
+        const { error: updateError } = await supabase
+          .from('produtos')
+          .update({ imagem_url: publicUrl })
+          .eq('id', produto.id);
+
+        if (updateError) throw updateError;
+
+        // Atualizar o produto localmente
+        produto.imagem_url = publicUrl;
+      }
+
+      setUploadedImages(prev => [...prev, ...imageFiles]);
+      toast.success(`${imageFiles.length} imagem(ns) enviada(s) e salva(s)!`);
+    } catch (error) {
+      console.error('Erro ao fazer upload:', error);
+      toast.error('Erro ao enviar imagens');
+    }
   };
 
   const removeImage = (index: number) => {
