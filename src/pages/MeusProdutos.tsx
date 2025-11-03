@@ -40,6 +40,195 @@ interface Cliente {
   tipo_negocio: string | null;
 }
 
+interface ProductFormProps {
+  formData: {
+    nome: string;
+    descricao: string;
+    preco: string;
+    categoria: string;
+    sku: string;
+    link: string;
+    tags: string;
+    ativo: boolean;
+    tipo_produto: string;
+    cliente_id: string | null;
+  };
+  setFormData: (data: any) => void;
+  clientes: Cliente[];
+  onSubmit: () => void;
+  submitLabel: string;
+  setIsClientesManagerOpen: (open: boolean) => void;
+  setIsAddModalOpen: (open: boolean) => void;
+  setIsEditModalOpen: (open: boolean) => void;
+}
+
+const ProductForm = ({ 
+  formData, 
+  setFormData, 
+  clientes, 
+  onSubmit, 
+  submitLabel,
+  setIsClientesManagerOpen,
+  setIsAddModalOpen,
+  setIsEditModalOpen
+}: ProductFormProps) => (
+  <div className="space-y-4">
+    <div className="space-y-2">
+      <Label>Este produto é de:</Label>
+      <RadioGroup 
+        value={formData.tipo_produto} 
+        onValueChange={(v) => setFormData({ ...formData, tipo_produto: v, cliente_id: null })}
+      >
+        <div className="flex items-center space-x-2">
+          <RadioGroupItem value="minha-empresa" id="minha" />
+          <Label htmlFor="minha">🏢 Minha Empresa</Label>
+        </div>
+        <div className="flex items-center space-x-2">
+          <RadioGroupItem value="cliente" id="cliente" />
+          <Label htmlFor="cliente">👤 Um Cliente Meu</Label>
+        </div>
+      </RadioGroup>
+    </div>
+
+    {formData.tipo_produto === 'cliente' && (
+      <div className="space-y-2">
+        <Label htmlFor="cliente_select">Selecione o Cliente *</Label>
+        <Select 
+          value={formData.cliente_id || ''} 
+          onValueChange={(v) => setFormData({ ...formData, cliente_id: v })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Escolha um cliente..." />
+          </SelectTrigger>
+          <SelectContent>
+            {clientes.map((c) => (
+              <SelectItem key={c.id} value={c.id}>
+                {c.nome} {c.tipo_negocio && `- ${c.tipo_negocio}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {clientes.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Você ainda não tem clientes cadastrados.{' '}
+            <Button 
+              variant="link" 
+              className="p-0 h-auto"
+              onClick={() => setIsClientesManagerOpen(true)}
+            >
+              Adicionar cliente
+            </Button>
+          </p>
+        )}
+      </div>
+    )}
+
+    <div className="space-y-2">
+      <Label htmlFor="nome">Nome do Produto *</Label>
+      <Input
+        id="nome"
+        value={formData.nome}
+        onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
+        placeholder="Ex: Smartphone Galaxy S21"
+      />
+    </div>
+
+    <div className="space-y-2">
+      <Label htmlFor="descricao">Descrição</Label>
+      <Textarea
+        id="descricao"
+        value={formData.descricao}
+        onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+        placeholder="Descrição detalhada do produto..."
+        rows={3}
+      />
+    </div>
+
+    <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Label htmlFor="preco">Preço (R$)</Label>
+        <Input
+          id="preco"
+          type="number"
+          step="0.01"
+          value={formData.preco}
+          onChange={(e) => setFormData({ ...formData, preco: e.target.value })}
+          placeholder="0.00"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="sku">SKU/Código</Label>
+        <Input
+          id="sku"
+          value={formData.sku}
+          onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+          placeholder="Ex: PROD-001"
+        />
+      </div>
+    </div>
+
+    <div className="space-y-2">
+      <Label htmlFor="categoria">Categoria *</Label>
+      <Input
+        id="categoria"
+        value={formData.categoria}
+        onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+        placeholder="Ex: Eletrônicos, Roupas, Alimentos..."
+      />
+    </div>
+
+    <div className="space-y-2">
+      <Label htmlFor="link">Link do Produto</Label>
+      <Input
+        id="link"
+        type="url"
+        value={formData.link}
+        onChange={(e) => setFormData({ ...formData, link: e.target.value })}
+        placeholder="https://..."
+      />
+    </div>
+
+    <div className="space-y-2">
+      <Label htmlFor="tags">Tags (separadas por vírgula)</Label>
+      <Input
+        id="tags"
+        value={formData.tags}
+        onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+        placeholder="Ex: promoção, novo, destaque"
+      />
+    </div>
+
+    <div className="flex items-center gap-3">
+      <Label htmlFor="ativo">Status:</Label>
+      <Select 
+        value={formData.ativo ? 'true' : 'false'} 
+        onValueChange={(v) => setFormData({ ...formData, ativo: v === 'true' })}
+      >
+        <SelectTrigger className="w-32">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="true">Ativo</SelectItem>
+          <SelectItem value="false">Pausado</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+
+    <div className="flex gap-3 justify-end pt-4">
+      <Button variant="outline" onClick={() => {
+        setIsAddModalOpen(false);
+        setIsEditModalOpen(false);
+      }}>
+        Cancelar
+      </Button>
+      <Button onClick={onSubmit}>
+        {submitLabel}
+      </Button>
+    </div>
+  </div>
+);
+
 export default function MeusProdutos() {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
@@ -278,164 +467,6 @@ export default function MeusProdutos() {
 
   const filteredProducts = getFilteredProducts();
 
-  const ProductForm = ({ onSubmit, submitLabel }: { onSubmit: () => void; submitLabel: string }) => (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label>Este produto é de:</Label>
-        <RadioGroup 
-          value={formData.tipo_produto} 
-          onValueChange={(v) => setFormData({ ...formData, tipo_produto: v, cliente_id: null })}
-        >
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="minha-empresa" id="minha" />
-            <Label htmlFor="minha">🏢 Minha Empresa</Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="cliente" id="cliente" />
-            <Label htmlFor="cliente">👤 Um Cliente Meu</Label>
-          </div>
-        </RadioGroup>
-      </div>
-
-      {formData.tipo_produto === 'cliente' && (
-        <div className="space-y-2">
-          <Label htmlFor="cliente_select">Selecione o Cliente *</Label>
-          <Select 
-            value={formData.cliente_id || ''} 
-            onValueChange={(v) => setFormData({ ...formData, cliente_id: v })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Escolha um cliente..." />
-            </SelectTrigger>
-            <SelectContent>
-              {clientes.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.nome} {c.tipo_negocio && `- ${c.tipo_negocio}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {clientes.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Você ainda não tem clientes cadastrados.{' '}
-              <Button 
-                variant="link" 
-                className="p-0 h-auto"
-                onClick={() => setIsClientesManagerOpen(true)}
-              >
-                Adicionar cliente
-              </Button>
-            </p>
-          )}
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <Label htmlFor="nome">Nome do Produto *</Label>
-        <Input
-          id="nome"
-          value={formData.nome}
-          onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-          placeholder="Ex: Smartphone Galaxy S21"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="descricao">Descrição</Label>
-        <Textarea
-          id="descricao"
-          value={formData.descricao}
-          onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-          placeholder="Descrição detalhada do produto..."
-          rows={3}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="preco">Preço (R$)</Label>
-          <Input
-            id="preco"
-            type="number"
-            step="0.01"
-            value={formData.preco}
-            onChange={(e) => setFormData({ ...formData, preco: e.target.value })}
-            placeholder="0.00"
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="sku">SKU/Código</Label>
-          <Input
-            id="sku"
-            value={formData.sku}
-            onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-            placeholder="Ex: PROD-001"
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="categoria">Categoria *</Label>
-        <Input
-          id="categoria"
-          value={formData.categoria}
-          onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-          placeholder="Ex: Eletrônicos, Roupas, Alimentos..."
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="link">Link do Produto</Label>
-        <Input
-          id="link"
-          type="url"
-          value={formData.link}
-          onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-          placeholder="https://..."
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="tags">Tags (separadas por vírgula)</Label>
-        <Input
-          id="tags"
-          value={formData.tags}
-          onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-          placeholder="Ex: promoção, novo, destaque"
-        />
-      </div>
-
-      <div className="flex items-center gap-3">
-        <Label htmlFor="ativo">Status:</Label>
-        <Select 
-          value={formData.ativo ? 'true' : 'false'} 
-          onValueChange={(v) => setFormData({ ...formData, ativo: v === 'true' })}
-        >
-          <SelectTrigger className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="true">Ativo</SelectItem>
-            <SelectItem value="false">Pausado</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex gap-3 justify-end pt-4">
-        <Button variant="outline" onClick={() => {
-          setIsAddModalOpen(false);
-          setIsEditModalOpen(false);
-        }}>
-          Cancelar
-        </Button>
-        <Button onClick={onSubmit}>
-          {submitLabel}
-        </Button>
-      </div>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto p-6 space-y-8">
@@ -641,7 +672,16 @@ export default function MeusProdutos() {
             <DialogTitle>Adicionar Produto</DialogTitle>
             <DialogDescription>Preencha os dados do novo produto</DialogDescription>
           </DialogHeader>
-          <ProductForm onSubmit={handleAddProduct} submitLabel="Adicionar Produto" />
+          <ProductForm 
+            formData={formData}
+            setFormData={setFormData}
+            clientes={clientes}
+            onSubmit={handleAddProduct}
+            submitLabel="Adicionar Produto"
+            setIsClientesManagerOpen={setIsClientesManagerOpen}
+            setIsAddModalOpen={setIsAddModalOpen}
+            setIsEditModalOpen={setIsEditModalOpen}
+          />
         </DialogContent>
       </Dialog>
 
@@ -651,7 +691,16 @@ export default function MeusProdutos() {
             <DialogTitle>Editar Produto</DialogTitle>
             <DialogDescription>Atualize as informações do produto</DialogDescription>
           </DialogHeader>
-          <ProductForm onSubmit={handleEditProduct} submitLabel="Salvar Alterações" />
+          <ProductForm 
+            formData={formData}
+            setFormData={setFormData}
+            clientes={clientes}
+            onSubmit={handleEditProduct}
+            submitLabel="Salvar Alterações"
+            setIsClientesManagerOpen={setIsClientesManagerOpen}
+            setIsAddModalOpen={setIsAddModalOpen}
+            setIsEditModalOpen={setIsEditModalOpen}
+          />
         </DialogContent>
       </Dialog>
 
