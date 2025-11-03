@@ -433,9 +433,17 @@ export default function MeusProdutos() {
 
   const uploadImage = async (file: File, productId: string): Promise<string | null> => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        return null;
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${productId}-${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      console.log('📤 Iniciando upload:', { fileName, filePath, fileSize: file.size });
 
       const { error: uploadError, data } = await supabase.storage
         .from('produtos')
@@ -444,15 +452,22 @@ export default function MeusProdutos() {
           upsert: false
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('❌ Erro no upload:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('✅ Upload concluído:', data);
 
       const { data: { publicUrl } } = supabase.storage
         .from('produtos')
         .getPublicUrl(filePath);
 
+      console.log('🔗 URL pública gerada:', publicUrl);
+
       return publicUrl;
     } catch (error) {
-      console.error('Erro ao fazer upload da imagem:', error);
+      console.error('❌ Erro ao fazer upload da imagem:', error);
       toast.error('Erro ao fazer upload da imagem');
       return null;
     }
@@ -470,6 +485,9 @@ export default function MeusProdutos() {
         toast.error('Usuário não autenticado');
         return;
       }
+
+      console.log('➕ Adicionando produto:', formData);
+      console.log('📷 Imagem selecionada:', imageFile ? 'Sim' : 'Não');
 
       // Primeiro insere o produto sem a imagem
       const { data: newProduct, error } = await supabase
@@ -491,18 +509,26 @@ export default function MeusProdutos() {
         .single();
 
       if (error) throw error;
+      console.log('✅ Produto criado:', newProduct);
 
       // Se tem imagem, faz upload e atualiza o produto
       if (imageFile && newProduct) {
+        toast.loading('Enviando imagem...');
         const imageUrl = await uploadImage(imageFile, newProduct.id);
+        
         if (imageUrl) {
+          console.log('🔄 Atualizando produto com URL da imagem...');
           const { error: updateError } = await supabase
             .from('produtos')
             .update({ imagem_url: imageUrl })
             .eq('id', newProduct.id);
 
           if (updateError) {
-            console.error('Erro ao atualizar URL da imagem:', updateError);
+            console.error('❌ Erro ao atualizar URL da imagem:', updateError);
+            toast.error('Erro ao salvar URL da imagem');
+          } else {
+            console.log('✅ Produto atualizado com imagem');
+            toast.dismiss();
           }
         }
       }
@@ -512,7 +538,8 @@ export default function MeusProdutos() {
       resetForm();
       fetchProducts();
     } catch (error) {
-      console.error('Erro ao adicionar produto:', error);
+      console.error('❌ Erro ao adicionar produto:', error);
+      toast.dismiss();
       toast.error('Erro ao adicionar produto');
     }
   };
@@ -521,6 +548,27 @@ export default function MeusProdutos() {
     if (!selectedProduct) return;
 
     try {
+      console.log('✏️ Editando produto:', selectedProduct.id);
+      console.log('📷 Nova imagem selecionada:', imageFile ? 'Sim' : 'Não');
+
+      let imagemUrl = currentImageUrl;
+
+      // Se foi selecionada uma nova imagem, faz o upload
+      if (imageFile) {
+        toast.loading('Enviando nova imagem...');
+        imagemUrl = await uploadImage(imageFile, selectedProduct.id);
+        
+        if (!imagemUrl) {
+          toast.dismiss();
+          toast.error('Erro ao fazer upload da nova imagem');
+          return;
+        }
+        
+        console.log('✅ Nova imagem enviada:', imagemUrl);
+        toast.dismiss();
+      }
+
+      // Atualiza o produto com todos os dados, incluindo a nova URL da imagem se houver
       const { error } = await supabase
         .from('produtos')
         .update({
@@ -532,18 +580,21 @@ export default function MeusProdutos() {
           link: formData.link || null,
           tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : null,
           ativo: formData.ativo,
-          cliente_id: formData.tipo_produto === 'cliente' ? formData.cliente_id : null
+          cliente_id: formData.tipo_produto === 'cliente' ? formData.cliente_id : null,
+          imagem_url: imagemUrl
         })
         .eq('id', selectedProduct.id);
 
       if (error) throw error;
 
+      console.log('✅ Produto atualizado com sucesso');
       toast.success('Produto atualizado com sucesso!');
       setIsEditModalOpen(false);
       resetForm();
       fetchProducts();
     } catch (error) {
-      console.error('Erro ao atualizar produto:', error);
+      console.error('❌ Erro ao atualizar produto:', error);
+      toast.dismiss();
       toast.error('Erro ao atualizar produto');
     }
   };
