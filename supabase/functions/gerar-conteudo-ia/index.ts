@@ -14,11 +14,11 @@ serve(async (req) => {
   try {
     const { productTitle, productPrice, productRating, productLink, platform } = await req.json();
     
-    console.log('Gerando conteúdo com Gemini para:', { productTitle, platform });
+    console.log('Gerando conteúdo com Lovable AI para:', { productTitle, platform });
 
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY não configurada');
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY não configurada');
     }
 
     // Criar prompt específico para cada plataforma
@@ -83,40 +83,48 @@ O email deve incluir:
 - Link: ${productLink}`;
     }
 
-    // Chamar Google Gemini API diretamente
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.9,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 2048,
+    // Chamar Lovable AI Gateway
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'system',
+            content: 'Você é um especialista em marketing digital e copywriting. Crie conteúdos atrativos e persuasivos.'
+          },
+          {
+            role: 'user',
+            content: prompt
           }
-        }),
-      }
-    );
+        ],
+        temperature: 0.9,
+        max_tokens: 2048
+      }),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erro na API Gemini:', response.status, errorText);
+      console.error('Erro na Lovable AI:', response.status, errorText);
+      
+      if (response.status === 429) {
+        throw new Error('Limite de requisições excedido. Tente novamente em alguns instantes.');
+      }
+      if (response.status === 402) {
+        throw new Error('Créditos insuficientes. Por favor, adicione créditos ao workspace.');
+      }
+      
       throw new Error(`Erro ao gerar conteúdo: ${response.status}`);
     }
 
     const data = await response.json();
-    const generatedContent = data.candidates[0].content.parts[0].text;
+    const generatedContent = data.choices[0].message.content;
 
-    console.log('Conteúdo gerado com sucesso via Gemini');
+    console.log('Conteúdo gerado com sucesso via Lovable AI');
 
     return new Response(
       JSON.stringify({ 
