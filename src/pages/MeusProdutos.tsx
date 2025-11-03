@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, Users, Store } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, Users, Store, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import ImportCSVModal from '@/components/ImportCSVModal';
@@ -60,6 +60,10 @@ interface ProductFormProps {
   setIsClientesManagerOpen: (open: boolean) => void;
   setIsAddModalOpen: (open: boolean) => void;
   setIsEditModalOpen: (open: boolean) => void;
+  imageFile: File | null;
+  setImageFile: (file: File | null) => void;
+  previewImage: string | null;
+  currentImageUrl?: string | null;
 }
 
 const ProductForm = ({ 
@@ -70,8 +74,32 @@ const ProductForm = ({
   submitLabel,
   setIsClientesManagerOpen,
   setIsAddModalOpen,
-  setIsEditModalOpen
-}: ProductFormProps) => (
+  setIsEditModalOpen,
+  imageFile,
+  setImageFile,
+  previewImage,
+  currentImageUrl
+}: ProductFormProps) => {
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        toast.error('Apenas imagens são permitidas');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Imagem muito grande. Máximo 5MB');
+        return;
+      }
+      setImageFile(file);
+    }
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+  };
+
+  return (
   <div className="space-y-4">
     <div className="space-y-2">
       <Label>Este produto é de:</Label>
@@ -142,6 +170,83 @@ const ProductForm = ({
         placeholder="Descrição detalhada do produto..."
         rows={3}
       />
+    </div>
+
+    {/* Upload de Imagem */}
+    <div className="space-y-2">
+      <Label>Imagem do Produto</Label>
+      <div className="border-2 border-dashed rounded-lg p-4">
+        {(previewImage || currentImageUrl) && !imageFile && currentImageUrl ? (
+          <div className="relative">
+            <img 
+              src={currentImageUrl} 
+              alt="Produto atual" 
+              className="w-full h-48 object-cover rounded"
+            />
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Imagem atual do produto
+            </p>
+          </div>
+        ) : previewImage ? (
+          <div className="relative">
+            <img 
+              src={previewImage} 
+              alt="Preview" 
+              className="w-full h-48 object-cover rounded"
+            />
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="absolute top-2 right-2"
+              onClick={removeImage}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+            <p className="text-xs text-muted-foreground mt-2 text-center">
+              Nova imagem selecionada
+            </p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
+            <Label 
+              htmlFor="image-upload" 
+              className="cursor-pointer text-primary hover:underline"
+            >
+              Clique para selecionar uma imagem
+            </Label>
+            <input
+              id="image-upload"
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="hidden"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              PNG, JPG ou WEBP (máx. 5MB)
+            </p>
+          </div>
+        )}
+        {(previewImage || (currentImageUrl && !previewImage)) && (
+          <div className="mt-3">
+            <Label 
+              htmlFor="image-upload-change" 
+              className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm"
+            >
+              <Upload className="w-4 h-4" />
+              Alterar Imagem
+            </Label>
+            <input
+              id="image-upload-change"
+              type="file"
+              accept="image/*"
+              onChange={handleImageChange}
+              className="hidden"
+            />
+          </div>
+        )}
+      </div>
     </div>
 
     <div className="grid grid-cols-2 gap-4">
@@ -227,7 +332,8 @@ const ProductForm = ({
       </Button>
     </div>
   </div>
-);
+  );
+};
 
 export default function MeusProdutos() {
   const navigate = useNavigate();
@@ -259,6 +365,20 @@ export default function MeusProdutos() {
     tipo_produto: 'minha-empresa',
     cliente_id: null as string | null
   });
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+
+  // Preview da imagem quando selecionada
+  useEffect(() => {
+    if (imageFile) {
+      const objectUrl = URL.createObjectURL(imageFile);
+      setPreviewImage(objectUrl);
+      return () => URL.revokeObjectURL(objectUrl);
+    } else {
+      setPreviewImage(null);
+    }
+  }, [imageFile]);
 
   const toggleDarkMode = () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
@@ -311,6 +431,33 @@ export default function MeusProdutos() {
     }
   };
 
+  const uploadImage = async (file: File, productId: string): Promise<string | null> => {
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${productId}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError, data } = await supabase.storage
+        .from('produtos')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('produtos')
+        .getPublicUrl(filePath);
+
+      return publicUrl;
+    } catch (error) {
+      console.error('Erro ao fazer upload da imagem:', error);
+      toast.error('Erro ao fazer upload da imagem');
+      return null;
+    }
+  };
+
   const handleAddProduct = async () => {
     if (!formData.nome || !formData.categoria) {
       toast.error('Nome e categoria são obrigatórios');
@@ -324,7 +471,8 @@ export default function MeusProdutos() {
         return;
       }
 
-      const { error } = await supabase
+      // Primeiro insere o produto sem a imagem
+      const { data: newProduct, error } = await supabase
         .from('produtos')
         .insert({
           user_id: user.id,
@@ -336,10 +484,28 @@ export default function MeusProdutos() {
           link: formData.link || null,
           tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : null,
           ativo: formData.ativo,
-          cliente_id: formData.tipo_produto === 'cliente' ? formData.cliente_id : null
-        });
+          cliente_id: formData.tipo_produto === 'cliente' ? formData.cliente_id : null,
+          imagem_url: null
+        })
+        .select()
+        .single();
 
       if (error) throw error;
+
+      // Se tem imagem, faz upload e atualiza o produto
+      if (imageFile && newProduct) {
+        const imageUrl = await uploadImage(imageFile, newProduct.id);
+        if (imageUrl) {
+          const { error: updateError } = await supabase
+            .from('produtos')
+            .update({ imagem_url: imageUrl })
+            .eq('id', newProduct.id);
+
+          if (updateError) {
+            console.error('Erro ao atualizar URL da imagem:', updateError);
+          }
+        }
+      }
 
       toast.success('Produto adicionado com sucesso!');
       setIsAddModalOpen(false);
@@ -425,6 +591,8 @@ export default function MeusProdutos() {
       tipo_produto: product.cliente_id ? 'cliente' : 'minha-empresa',
       cliente_id: product.cliente_id
     });
+    setCurrentImageUrl(product.imagem_url);
+    setImageFile(null);
     setIsEditModalOpen(true);
   };
 
@@ -442,6 +610,8 @@ export default function MeusProdutos() {
       cliente_id: null
     });
     setSelectedProduct(null);
+    setImageFile(null);
+    setCurrentImageUrl(null);
   };
 
   const getFilteredProducts = () => {
@@ -681,6 +851,10 @@ export default function MeusProdutos() {
             setIsClientesManagerOpen={setIsClientesManagerOpen}
             setIsAddModalOpen={setIsAddModalOpen}
             setIsEditModalOpen={setIsEditModalOpen}
+            imageFile={imageFile}
+            setImageFile={setImageFile}
+            previewImage={previewImage}
+            currentImageUrl={null}
           />
         </DialogContent>
       </Dialog>
@@ -700,6 +874,10 @@ export default function MeusProdutos() {
             setIsClientesManagerOpen={setIsClientesManagerOpen}
             setIsAddModalOpen={setIsAddModalOpen}
             setIsEditModalOpen={setIsEditModalOpen}
+            imageFile={imageFile}
+            setImageFile={setImageFile}
+            previewImage={previewImage}
+            currentImageUrl={currentImageUrl}
           />
         </DialogContent>
       </Dialog>
