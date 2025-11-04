@@ -52,8 +52,7 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
     instagramFeed: true,
     instagramStories: true,
     facebook: false,
-    tiktok: false,
-    whatsapp: true,
+    tiktok: false
   });
 
   // Preview de postagens
@@ -102,7 +101,6 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
         if (key === 'instagramStories') return 'Instagram Stories';
         if (key === 'facebook') return 'Facebook';
         if (key === 'tiktok') return 'TikTok';
-        if (key === 'whatsapp') return 'WhatsApp';
         return key;
       });
 
@@ -425,12 +423,6 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
                 <Checkbox id="tiktok" checked={networks.tiktok} onCheckedChange={() => toggleNetwork('tiktok')} />
                 <Label htmlFor="tiktok" className="cursor-pointer">🎵 TikTok</Label>
               </div>
-              {userType === 'afiliado' && (
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="whatsapp" checked={networks.whatsapp} onCheckedChange={() => toggleNetwork('whatsapp')} />
-                  <Label htmlFor="whatsapp" className="cursor-pointer">💬 WhatsApp</Label>
-                </div>
-              )}
             </div>
           </div>
 
