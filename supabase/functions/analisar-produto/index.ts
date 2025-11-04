@@ -19,9 +19,9 @@ serve(async (req) => {
       throw new Error('URL não fornecida');
     }
 
-    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-    if (!GEMINI_API_KEY) {
-      throw new Error('GEMINI_API_KEY não configurada');
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      throw new Error('LOVABLE_API_KEY não configurada');
     }
 
     // Seguir redirect se for link curto
@@ -204,40 +204,57 @@ Retorne APENAS um JSON válido no formato:
 }`;
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      'https://ai.gateway.lovable.dev/v1/chat/completions',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`
+        },
         body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }],
-          generationConfig: {
-            temperature: 0.9,
-            maxOutputTokens: 2000,
-          }
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: 'Você é um especialista em marketing digital. Gere posts promocionais criativos em português brasileiro.' },
+            { role: 'user', content: prompt }
+          ]
         })
       }
     );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Erro na API Gemini:', response.status, errorText);
-      throw new Error(`Erro na API Gemini: ${response.status}`);
+      console.error('Erro na Lovable AI:', response.status, errorText);
+      
+      if (response.status === 429) {
+        throw new Error('Limite de requisições atingido. Aguarde alguns segundos e tente novamente.');
+      }
+      if (response.status === 402) {
+        throw new Error('Créditos insuficientes. Adicione créditos em Settings -> Workspace -> Usage.');
+      }
+      
+      throw new Error(`Erro na IA: ${response.status}`);
     }
 
     const data = await response.json();
-    const texto = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const texto = data.choices?.[0]?.message?.content || '';
     
-    console.log('Resposta do Gemini:', texto);
+    console.log('Resposta da Lovable AI:', texto);
+
+    // Remover markdown code blocks se houver
+    let textoLimpo = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+    console.log('Texto após remover markdown:', textoLimpo);
 
     // Extrair JSON da resposta
-    const jsonMatch = texto.match(/\{[\s\S]*\}/);
+    const jsonMatch = textoLimpo.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('Resposta da IA não contém JSON válido');
     }
 
-    const posts = JSON.parse(jsonMatch[0]);
+    // Remover vírgulas antes de chaves de fechamento
+    let jsonString = jsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
+    console.log('JSON limpo para parse:', jsonString);
+
+    const posts = JSON.parse(jsonString);
 
     console.log('✅ Posts gerados com sucesso');
 
