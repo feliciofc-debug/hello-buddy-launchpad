@@ -72,7 +72,7 @@ const IAMarketing = () => {
 
   const handleAnalyze = async () => {
     if (!url.trim()) {
-      toast.error("Cole um link de produto");
+      toast.error("Digite uma descrição ou cole um link");
       return;
     }
 
@@ -86,8 +86,24 @@ const IAMarketing = () => {
         return;
       }
 
+      // Converter imagens para base64
+      const imagesBase64: string[] = [];
+      for (const file of uploadedFiles) {
+        if (file.type.startsWith('image/')) {
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+          imagesBase64.push(base64);
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('analisar-produto', {
-        body: { url: url.trim() }
+        body: { 
+          url: url.trim(),
+          images: imagesBase64
+        }
       });
 
       if (error) throw error;
@@ -212,7 +228,7 @@ const IAMarketing = () => {
                   ✨ IA Marketing
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground">
-                  Cole o link e receba 3 variações de posts para cada plataforma
+                  Cole um link OU envie fotos + descrição para receber 3 variações de posts
                 </p>
               </div>
             </div>
@@ -221,13 +237,11 @@ const IAMarketing = () => {
             <Card className="max-w-4xl mx-auto mb-8 shadow-2xl border-2">
               <CardContent className="pt-8 space-y-6">
                 <div className="space-y-4">
-                  <Input
-                    type="text"
+                  <Textarea
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleAnalyze()}
-                    placeholder="Cole aqui o link do seu produto"
-                    className="text-lg p-6 h-auto"
+                    placeholder="Cole um link OU escreva uma descrição (ex: 'crie posts para minha marca de lubrificantes automotivos')"
+                    className="text-lg p-6 min-h-[100px]"
                     disabled={loading}
                   />
                   

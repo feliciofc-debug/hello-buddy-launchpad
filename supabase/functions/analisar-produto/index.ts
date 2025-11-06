@@ -12,16 +12,154 @@ serve(async (req) => {
   }
 
   try {
-    const { url } = await req.json();
-    console.log('🔍 Analisando produto:', url);
+    const { url, images } = await req.json();
+    console.log('🔍 Analisando:', url);
 
     if (!url) {
-      throw new Error('URL não fornecida');
+      throw new Error('Texto ou URL não fornecido');
     }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY não configurada');
+    }
+
+    // Verificar se é uma URL válida ou apenas um prompt de texto
+    const isUrl = url.match(/^https?:\/\//i);
+    
+    // Se não for URL e tiver imagens, usar análise direta de imagem
+    if (!isUrl && images && images.length > 0) {
+      console.log('📸 Modo análise de imagem com prompt:', url);
+      
+      const prompt = `Analise esta imagem e crie posts promocionais baseados neste contexto: "${url}"
+
+Gere 9 variações de posts, 3 para cada tipo:
+
+INSTAGRAM (3 variações):
+- Opção A: Estilo direto/urgente com call-to-action forte. SEMPRE termine com "🔗 Link na bio!" ou "🔗 Link nos comentários!"
+- Opção B: Estilo storytelling, conte uma história. SEMPRE termine com "🔗 Link na bio!" ou "🔗 Link nos comentários!"
+- Opção C: Estilo educativo, ensine algo relacionado ao produto. SEMPRE termine com "🔗 Link na bio!" ou "🔗 Link nos comentários!"
+
+FACEBOOK (3 variações):
+- Opção A: Casual/amigável, tom de conversa
+- Opção B: Profissional/informativo com dados e benefícios
+- Opção C: Promocional/vendedor com senso de urgência
+
+STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
+- Opção A: Curto e impactante com emoji. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
+- Opção B: Pergunta interativa para engajamento. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
+- Opção C: Contagem regressiva ou urgência. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
+
+Retorne APENAS um JSON válido no formato:
+{
+  "instagram": {
+    "opcaoA": "texto aqui",
+    "opcaoB": "texto aqui",
+    "opcaoC": "texto aqui"
+  },
+  "facebook": {
+    "opcaoA": "texto aqui",
+    "opcaoB": "texto aqui",
+    "opcaoC": "texto aqui"
+  },
+  "story": {
+    "opcaoA": "texto curto aqui (max 80 chars)",
+    "opcaoB": "texto curto aqui (max 80 chars)",
+    "opcaoC": "texto curto aqui (max 80 chars)"
+  }
+}`;
+
+      const messages: any[] = [
+        { 
+          role: 'system', 
+          content: 'Você é um especialista em marketing digital e branding. Analise imagens e crie posts promocionais criativos em português brasileiro.' 
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: {
+                url: images[0] // Primeira imagem
+              }
+            },
+            {
+              type: 'text',
+              text: prompt
+            }
+          ]
+        }
+      ];
+
+      const response = await fetch(
+        'https://ai.gateway.lovable.dev/v1/chat/completions',
+        {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${LOVABLE_API_KEY}`
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Erro na Lovable AI:', response.status, errorText);
+        
+        if (response.status === 429) {
+          throw new Error('Limite de requisições atingido. Aguarde alguns segundos e tente novamente.');
+        }
+        if (response.status === 402) {
+          throw new Error('Créditos insuficientes. Adicione créditos em Settings -> Workspace -> Usage.');
+        }
+        
+        throw new Error(`Erro na IA: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const texto = data.choices?.[0]?.message?.content || '';
+      
+      console.log('Resposta da Lovable AI:', texto);
+
+      // Remover markdown code blocks se houver
+      let textoLimpo = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+      console.log('Texto após remover markdown:', textoLimpo);
+
+      // Extrair JSON da resposta
+      const jsonMatch = textoLimpo.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Resposta da IA não contém JSON válido');
+      }
+
+      let jsonString = jsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
+      console.log('JSON limpo para parse:', jsonString);
+
+      const posts = JSON.parse(jsonString);
+
+      console.log('✅ Posts gerados com sucesso via análise de imagem');
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          produto: {
+            titulo: 'Análise de Imagem',
+            preco: '',
+            url: '',
+            originalUrl: url
+          },
+          instagram: posts.instagram,
+          facebook: posts.facebook,
+          story: posts.story
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200
+        }
+      );
     }
 
     // Seguir redirect se for link curto
