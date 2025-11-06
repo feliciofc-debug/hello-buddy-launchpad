@@ -28,6 +28,7 @@ interface ProductAnalysis {
   instagram: PostVariations;
   facebook: PostVariations;
   story: PostVariations;
+  generatedImage?: string | null;
 }
 
 const IAMarketing = () => {
@@ -119,10 +120,16 @@ const IAMarketing = () => {
         produto: data.produto || { titulo: "Produto", preco: "0", url: url, originalUrl: url },
         instagram: data.instagram || { opcaoA: '', opcaoB: '', opcaoC: '' },
         facebook: data.facebook || { opcaoA: '', opcaoB: '', opcaoC: '' },
-        story: data.story || { opcaoA: '', opcaoB: '', opcaoC: '' }
+        story: data.story || { opcaoA: '', opcaoB: '', opcaoC: '' },
+        generatedImage: data.generatedImage || null
       };
 
       setResultado(analysisResult);
+      
+      // Se uma imagem foi gerada, mostrar para o usuário
+      if (data.generatedImage) {
+        toast.success("🎨 Imagem gerada com IA!");
+      }
       
       // Inicializar textos editáveis
       setEditableTexts({
@@ -315,6 +322,25 @@ const IAMarketing = () => {
             {/* Resultados */}
             {resultado && (
               <div className="max-w-7xl mx-auto space-y-6">
+                {/* Imagem Gerada */}
+                {resultado.generatedImage && (
+                  <Card className="shadow-xl border-2 border-purple-500">
+                    <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                      <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5" />
+                        🎨 Imagem Gerada com IA
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6">
+                      <img 
+                        src={resultado.generatedImage} 
+                        alt="Imagem gerada"
+                        className="w-full rounded-lg shadow-lg"
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+                
                 {/* Grid de Cards - 3 colunas */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {/* Card Instagram */}

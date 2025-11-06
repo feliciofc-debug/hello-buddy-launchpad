@@ -12,8 +12,8 @@ serve(async (req) => {
   }
 
   try {
-    const { url, images } = await req.json();
-    console.log('🔍 Analisando:', url);
+    const { url, images = [] } = await req.json();
+    console.log('🔍 Analisando:', url, '| Imagens enviadas:', images.length);
 
     if (!url) {
       throw new Error('Texto ou URL não fornecido');
@@ -24,11 +24,62 @@ serve(async (req) => {
       throw new Error('LOVABLE_API_KEY não configurada');
     }
 
+    let finalImages = images;
+    let generatedImage: string | null = null;
+
     // Verificar se é uma URL válida ou apenas um prompt de texto
     const isUrl = url.match(/^https?:\/\//i);
     
-    // Se não for URL e tiver imagens, usar análise direta de imagem
-    if (!isUrl && images && images.length > 0) {
+    // Se não for URL e NÃO tiver imagens, GERAR a imagem com IA
+    if (!isUrl && images.length === 0) {
+      console.log('🎨 Nenhuma imagem fornecida, gerando imagem com IA...');
+      
+      const imageGenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-image-preview",
+          messages: [
+            {
+              role: "user",
+              content: `Crie uma imagem profissional e atraente para marketing de redes sociais baseada nesta descrição: ${url}. A imagem deve ser visualmente impactante e adequada para posts de Instagram e Facebook.`
+            }
+          ],
+          modalities: ["image", "text"]
+        }),
+      });
+
+      if (!imageGenResponse.ok) {
+        const errorText = await imageGenResponse.text();
+        console.error('❌ Erro ao gerar imagem:', errorText);
+        
+        if (imageGenResponse.status === 429) {
+          throw new Error('Limite de geração de imagens atingido. Aguarde alguns segundos.');
+        }
+        if (imageGenResponse.status === 402) {
+          throw new Error('Créditos insuficientes para gerar imagem. Adicione créditos em Settings -> Workspace -> Usage.');
+        }
+        
+        throw new Error(`Erro ao gerar imagem: ${imageGenResponse.status}`);
+      }
+
+      const imageGenData = await imageGenResponse.json();
+      console.log('✅ Imagem gerada com sucesso');
+      
+      // Extrair a imagem gerada (base64)
+      const generatedImageUrl = imageGenData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+      if (generatedImageUrl) {
+        finalImages = [generatedImageUrl];
+        generatedImage = generatedImageUrl;
+        console.log('🖼️ Imagem gerada adicionada para análise');
+      }
+    }
+    
+    // Se não for URL e tiver imagens (enviadas ou geradas), usar análise direta de imagem
+    if (!isUrl && finalImages.length > 0) {
       console.log('📸 Modo análise de imagem com prompt:', url);
       
       const prompt = `Analise esta imagem e crie posts promocionais baseados neste contexto: "${url}"
@@ -80,7 +131,7 @@ Retorne APENAS um JSON válido no formato:
             {
               type: 'image_url',
               image_url: {
-                url: images[0] // Primeira imagem
+                url: finalImages[0] // Primeira imagem (gerada ou enviada)
               }
             },
             {
@@ -153,7 +204,8 @@ Retorne APENAS um JSON válido no formato:
           },
           instagram: posts.instagram,
           facebook: posts.facebook,
-          story: posts.story
+          story: posts.story,
+          generatedImage: generatedImage // Incluir imagem gerada se houver
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
