@@ -49,7 +49,12 @@ serve(async (req) => {
       console.log('🌐 Tentando acesso direto...');
       const directResponse = await fetch(finalUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
         }
       });
       
@@ -67,13 +72,14 @@ serve(async (req) => {
         throw new Error('Não foi possível acessar este produto. Configure SCRAPER_API_KEY.');
       }
 
-      const scraperUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true&ultra_premium=true`;
+      // Usar ScraperAPI sem ultra_premium (que requer plano premium)
+      const scraperUrl = `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true`;
       const scraperResponse = await fetch(scraperUrl);
       
       if (!scraperResponse.ok) {
         const errorText = await scraperResponse.text();
         console.error('❌ ScraperAPI erro:', errorText);
-        throw new Error(`Produto protegido (${scraperResponse.status}). Tente outro link.`);
+        throw new Error(`Não foi possível acessar este produto (${scraperResponse.status}). Tente outro link ou atualize seu plano do ScraperAPI.`);
       }
       
       html = await scraperResponse.text();
