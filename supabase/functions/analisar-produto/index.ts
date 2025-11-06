@@ -214,6 +214,11 @@ Retorne APENAS um JSON válido no formato:
       );
     }
 
+    // Se chegou aqui, é uma URL de produto - fazer scraping
+    if (!isUrl) {
+      throw new Error('Por favor, forneça um link de produto válido ou uma imagem para análise.');
+    }
+
     // Seguir redirect se for link curto
     let finalUrl = url;
     if (url.includes('shope.ee') || url.includes('amzn.to') || url.includes('s.shopee')) {
