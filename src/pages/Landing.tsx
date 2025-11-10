@@ -448,6 +448,20 @@ function Landing() {
             </div>
 
             <div>
+              <h4 className="font-bold mb-4">Segurança</h4>
+              <ul className="space-y-2 text-sm text-slate-400">
+                <li>
+                  <button onClick={() => navigate('/security')} className="hover:text-white transition flex items-center gap-2">
+                    🔒 Reportar Vulnerabilidade
+                  </button>
+                </li>
+                <li><a href="mailto:contato@atombrasildigital.com" className="hover:text-white transition">contato@atombrasildigital.com</a></li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 mb-8">
+            <div>
               <h4 className="font-bold mb-4">Suporte</h4>
               <ul className="space-y-2 text-sm text-slate-400">
                 <li><a href="mailto:suporte@amzofertas.com" className="hover:text-white transition">suporte@amzofertas.com</a></li>

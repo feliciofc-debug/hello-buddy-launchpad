@@ -426,6 +426,51 @@ export type Database = {
           },
         ]
       }
+      security_reports: {
+        Row: {
+          created_at: string | null
+          description: string
+          disclosed_publicly: boolean | null
+          id: string
+          notes: string | null
+          reporter_email: string
+          reporter_name: string | null
+          resolved_at: string | null
+          severity: string
+          status: string | null
+          steps_to_reproduce: string | null
+          vulnerability_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          description: string
+          disclosed_publicly?: boolean | null
+          id?: string
+          notes?: string | null
+          reporter_email: string
+          reporter_name?: string | null
+          resolved_at?: string | null
+          severity: string
+          status?: string | null
+          steps_to_reproduce?: string | null
+          vulnerability_type: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string
+          disclosed_publicly?: boolean | null
+          id?: string
+          notes?: string | null
+          reporter_email?: string
+          reporter_name?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string | null
+          steps_to_reproduce?: string | null
+          vulnerability_type?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           amount: number
