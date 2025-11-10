@@ -116,6 +116,39 @@ export type Database = {
         }
         Relationships: []
       }
+      deletion_requests: {
+        Row: {
+          completed_at: string | null
+          email: string
+          error_message: string | null
+          id: string
+          reason: string | null
+          requested_at: string
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          email: string
+          error_message?: string | null
+          id?: string
+          reason?: string | null
+          requested_at?: string
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          email?: string
+          error_message?: string | null
+          id?: string
+          reason?: string | null
+          requested_at?: string
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           access_token: string
