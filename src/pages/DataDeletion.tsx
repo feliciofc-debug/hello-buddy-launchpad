@@ -53,7 +53,7 @@ const DataDeletion = () => {
       console.error("Erro ao enviar solicitação:", error);
       toast({
         title: "Erro ao processar solicitação",
-        description: "Tente novamente ou entre em contato: suporte@amzofertas.com.br",
+        description: "Tente novamente ou entre em contato: contato@atombrasildigital.com",
         variant: "destructive",
       });
     } finally {
@@ -211,10 +211,10 @@ const DataDeletion = () => {
                 <p className="text-sm text-muted-foreground ml-7">
                   Entre em contato: {" "}
                   <a 
-                    href="mailto:suporte@amzofertas.com.br?subject=Dúvida sobre Exclusão de Dados"
+                    href="mailto:contato@atombrasildigital.com?subject=Dúvida sobre Exclusão de Dados"
                     className="text-primary hover:underline font-semibold"
                   >
-                    suporte@amzofertas.com.br
+                    contato@atombrasildigital.com
                   </a>
                 </p>
               </div>
