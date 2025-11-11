@@ -29,6 +29,7 @@ interface SchedulePostsModalProps {
     instagram: string;
     facebook: string;
     story: string;
+    whatsapp?: string;
   };
   userType?: string;
 }

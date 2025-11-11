@@ -28,6 +28,7 @@ interface ProductAnalysis {
   instagram: PostVariations;
   facebook: PostVariations;
   story: PostVariations;
+  whatsapp: PostVariations;
   generatedImage?: string | null;
 }
 
@@ -42,14 +43,16 @@ const IAMarketing = () => {
   const [selectedVariations, setSelectedVariations] = useState({
     instagram: 'opcaoA' as keyof PostVariations,
     facebook: 'opcaoA' as keyof PostVariations,
-    story: 'opcaoA' as keyof PostVariations
+    story: 'opcaoA' as keyof PostVariations,
+    whatsapp: 'opcaoA' as keyof PostVariations
   });
 
   // Estados editáveis para cada variação
   const [editableTexts, setEditableTexts] = useState({
     instagram: { opcaoA: '', opcaoB: '', opcaoC: '' },
     facebook: { opcaoA: '', opcaoB: '', opcaoC: '' },
-    story: { opcaoA: '', opcaoB: '', opcaoC: '' }
+    story: { opcaoA: '', opcaoB: '', opcaoC: '' },
+    whatsapp: { opcaoA: '', opcaoB: '', opcaoC: '' }
   });
 
   // Carregar tipo do usuário
@@ -121,6 +124,7 @@ const IAMarketing = () => {
         instagram: data.instagram || { opcaoA: '', opcaoB: '', opcaoC: '' },
         facebook: data.facebook || { opcaoA: '', opcaoB: '', opcaoC: '' },
         story: data.story || { opcaoA: '', opcaoB: '', opcaoC: '' },
+        whatsapp: data.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' },
         generatedImage: data.generatedImage || null
       };
 
@@ -135,7 +139,8 @@ const IAMarketing = () => {
       setEditableTexts({
         instagram: analysisResult.instagram,
         facebook: analysisResult.facebook,
-        story: analysisResult.story
+        story: analysisResult.story,
+        whatsapp: analysisResult.whatsapp
       });
 
       // Salvar no banco
@@ -149,6 +154,7 @@ const IAMarketing = () => {
           texto_instagram: JSON.stringify(analysisResult.instagram),
           texto_story: JSON.stringify(analysisResult.story),
           texto_facebook: JSON.stringify(analysisResult.facebook),
+          texto_whatsapp: JSON.stringify(analysisResult.whatsapp),
           status: 'rascunho'
         });
 
@@ -199,7 +205,7 @@ const IAMarketing = () => {
     setShowScheduleModal(true);
   };
 
-  const updateText = (platform: 'instagram' | 'facebook' | 'story', variation: keyof PostVariations, text: string) => {
+  const updateText = (platform: 'instagram' | 'facebook' | 'story' | 'whatsapp', variation: keyof PostVariations, text: string) => {
     setEditableTexts(prev => ({
       ...prev,
       [platform]: {
@@ -341,8 +347,8 @@ const IAMarketing = () => {
                   </Card>
                 )}
                 
-                {/* Grid de Cards - 3 colunas */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Grid de Cards - 4 colunas (Instagram, Facebook, Story, WhatsApp) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {/* Card Instagram */}
                   <Card className="shadow-xl border-2 hover:border-pink-500 transition-colors">
                     <CardHeader className="bg-gradient-to-r from-pink-500 to-purple-500 text-white">
@@ -484,6 +490,62 @@ const IAMarketing = () => {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* Card WhatsApp */}
+                  <Card className="shadow-xl border-2 hover:border-green-500 transition-colors">
+                    <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+                      <CardTitle className="flex items-center gap-2">
+                        <MessageCircle className="h-5 w-5" />
+                        💬 Mensagem WhatsApp
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="pt-6 space-y-4">
+                      <RadioGroup
+                        value={selectedVariations.whatsapp}
+                        onValueChange={(value) => setSelectedVariations({ ...selectedVariations, whatsapp: value as keyof PostVariations })}
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoA" id="wpp-a" />
+                          <Label htmlFor="wpp-a" className="cursor-pointer">Opção A: Curto e Direto</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoB" id="wpp-b" />
+                          <Label htmlFor="wpp-b" className="cursor-pointer">Opção B: Amigável</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="opcaoC" id="wpp-c" />
+                          <Label htmlFor="wpp-c" className="cursor-pointer">Opção C: Com Call-to-Action</Label>
+                        </div>
+                      </RadioGroup>
+
+                      <Textarea
+                        value={editableTexts.whatsapp[selectedVariations.whatsapp]}
+                        onChange={(e) => updateText('whatsapp', selectedVariations.whatsapp, e.target.value)}
+                        className="min-h-[200px] text-sm"
+                      />
+
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => handleCopy(editableTexts.whatsapp[selectedVariations.whatsapp], 'WhatsApp')}
+                          variant="outline"
+                          className="flex-1"
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copiar
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            const msg = encodeURIComponent(editableTexts.whatsapp[selectedVariations.whatsapp] + '\n\n🔗 ' + (resultado?.produto?.originalUrl || url));
+                            window.open(`https://wa.me/?text=${msg}`, '_blank');
+                          }}
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                        >
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                          Enviar
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
 
                 {/* Botão Principal - Rodapé */}
@@ -524,7 +586,8 @@ const IAMarketing = () => {
           postContent={{
             instagram: editableTexts.instagram[selectedVariations.instagram],
             facebook: editableTexts.facebook[selectedVariations.facebook],
-            story: editableTexts.story[selectedVariations.story]
+            story: editableTexts.story[selectedVariations.story],
+            whatsapp: editableTexts.whatsapp[selectedVariations.whatsapp]
           }}
           userType={userType}
         />
