@@ -53,3 +53,6 @@ verify_jwt = false
 
 [functions.create-empresa-user]
 verify_jwt = false
+
+[functions.discovery-cnpj]
+verify_jwt = false
