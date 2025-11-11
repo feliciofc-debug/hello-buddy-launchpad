@@ -382,6 +382,51 @@ export type Database = {
         }
         Relationships: []
       }
+      prospects_qualificados: {
+        Row: {
+          created_at: string | null
+          enviado_em: string | null
+          enviado_whatsapp: boolean | null
+          id: string
+          insights: Json | null
+          justificativa: string | null
+          mensagem_selecionada: string | null
+          mensagens_geradas: Json | null
+          score: number
+          socio_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          enviado_em?: string | null
+          enviado_whatsapp?: boolean | null
+          id?: string
+          insights?: Json | null
+          justificativa?: string | null
+          mensagem_selecionada?: string | null
+          mensagens_geradas?: Json | null
+          score?: number
+          socio_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          enviado_em?: string | null
+          enviado_whatsapp?: boolean | null
+          id?: string
+          insights?: Json | null
+          justificativa?: string | null
+          mensagem_selecionada?: string | null
+          mensagens_geradas?: Json | null
+          score?: number
+          socio_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       scheduled_posts: {
         Row: {
           created_at: string
