@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.generate-message]
 verify_jwt = false
+
+[functions.export-zapi]
+verify_jwt = false
