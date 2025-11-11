@@ -1,42 +1,15 @@
+// ============================================
+// EDGE FUNCTION: discovery-cnpj
+// Busca empresas via Brasil API e salva no DB
+// VERSÃO CORRIGIDA - Trata resposta completa
+// ============================================
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-interface BrasilAPIResponse {
-  cnpj: string
-  razao_social: string
-  nome_fantasia: string
-  capital_social: number
-  porte: string
-  natureza_juridica?: string
-  descricao_situacao_cadastral?: string
-  cnae_fiscal: number
-  cnae_fiscal_descricao: string
-  cnaes_secundarios?: Array<{
-    codigo: number
-    descricao: string
-  }>
-  data_inicio_atividade: string
-  ddd_telefone_1: string
-  email: string
-  cep: string
-  logradouro: string
-  numero: string
-  complemento: string
-  bairro: string
-  municipio: string
-  uf: string
-  qsa: Array<{
-    nome_socio: string
-    cpf_cnpj_socio: string
-    qualificacao_socio: string
-    percentual_capital_social: number
-    data_entrada_sociedade: string
-  }>
 }
 
 serve(async (req) => {
@@ -46,7 +19,7 @@ serve(async (req) => {
   }
 
   try {
-    // Create Supabase client
+    // Create Supabase client with user auth
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -57,125 +30,189 @@ serve(async (req) => {
       }
     )
 
-    // Get request body
-    const { cnpj, concessionaria_id } = await req.json()
-
-    if (!cnpj) {
-      throw new Error('CNPJ is required')
+    // Get authenticated user
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    
+    if (userError || !user) {
+      throw new Error('Usuário não autenticado')
     }
 
-    console.log(`🔍 Searching CNPJ: ${cnpj}`)
+    const { cnpj } = await req.json()
 
-    // Clean CNPJ
+    if (!cnpj) {
+      throw new Error('CNPJ é obrigatório')
+    }
+
+    console.log(`🔍 Buscando CNPJ: ${cnpj}`)
+
+    // Limpar CNPJ (remover caracteres especiais)
     const cleanCNPJ = cnpj.replace(/\D/g, '')
 
-    // Check if already exists
+    if (cleanCNPJ.length !== 14) {
+      throw new Error('CNPJ deve ter 14 dígitos')
+    }
+
+    // Verificar se empresa já existe
     const { data: existing } = await supabaseClient
       .from('empresas')
-      .select('id')
+      .select('id, razao_social')
       .eq('cnpj', cleanCNPJ)
       .maybeSingle()
 
     if (existing) {
+      console.log(`⚠️ Empresa já existe: ${existing.razao_social}`)
       return new Response(
-        JSON.stringify({ message: 'Company already exists', empresa_id: existing.id }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({
+          success: false,
+          message: 'Empresa já cadastrada',
+          empresa: existing
+        }),
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
       )
     }
 
-    // Fetch from Brasil API
-    const brasilApiResponse = await fetch(
-      `https://brasilapi.com.br/api/cnpj/v1/${cleanCNPJ}`
-    )
+    // Buscar dados na Brasil API
+    console.log(`📡 Consultando Brasil API: ${cleanCNPJ}`)
+    
+    const brasilApiUrl = `https://brasilapi.com.br/api/cnpj/v1/${cleanCNPJ}`
+    const brasilApiResponse = await fetch(brasilApiUrl)
 
     if (!brasilApiResponse.ok) {
-      throw new Error(`Brasil API error: ${brasilApiResponse.status}`)
+      const errorText = await brasilApiResponse.text()
+      console.error(`❌ Brasil API Error: ${brasilApiResponse.status}`, errorText)
+      throw new Error(`CNPJ não encontrado ou inválido (${brasilApiResponse.status})`)
     }
 
-    const empresaData: BrasilAPIResponse = await brasilApiResponse.json()
+    const empresaData = await brasilApiResponse.json()
 
-    // Save empresa
+    console.log(`📊 Dados recebidos:`, {
+      razao_social: empresaData.razao_social,
+      cnpj: empresaData.cnpj,
+      qsa_length: empresaData.qsa?.length
+    })
+
+    // Validar dados essenciais
+    if (!empresaData.cnpj || !empresaData.razao_social) {
+      console.error('❌ Dados incompletos:', empresaData)
+      throw new Error('Dados da empresa incompletos na resposta da API')
+    }
+
+    // Preparar endereço
+    const endereco = {
+      cep: empresaData.cep || null,
+      logradouro: empresaData.logradouro || empresaData.descricao_tipo_logradouro || null,
+      numero: empresaData.numero || null,
+      complemento: empresaData.complemento || null,
+      bairro: empresaData.bairro || null,
+      municipio: empresaData.municipio || null,
+      uf: empresaData.uf || null
+    }
+
+    // Preparar atividade principal
+    const atividadePrincipal = empresaData.cnae_fiscal ? {
+      codigo: empresaData.cnae_fiscal.toString(),
+      descricao: empresaData.cnae_fiscal_descricao || null
+    } : null
+
+    // Preparar atividades secundárias
+    const atividadesSecundarias = empresaData.cnaes_secundarios || []
+
+    // Inserir empresa
+    console.log(`💾 Salvando empresa: ${empresaData.razao_social}`)
+    
     const { data: empresa, error: empresaError } = await supabaseClient
       .from('empresas')
       .insert({
         cnpj: cleanCNPJ,
         razao_social: empresaData.razao_social,
-        nome_fantasia: empresaData.nome_fantasia,
-        capital_social: empresaData.capital_social,
-        porte: empresaData.porte,
-        natureza_juridica: empresaData.natureza_juridica,
-        data_abertura: empresaData.data_inicio_atividade,
-        telefone: empresaData.ddd_telefone_1,
-        email: empresaData.email,
-        situacao_cadastral: empresaData.descricao_situacao_cadastral,
-        endereco: {
-          cep: empresaData.cep,
-          logradouro: empresaData.logradouro,
-          numero: empresaData.numero,
-          complemento: empresaData.complemento,
-          bairro: empresaData.bairro,
-          municipio: empresaData.municipio,
-          uf: empresaData.uf,
-        },
-        atividade_principal: {
-          codigo: empresaData.cnae_fiscal?.toString(),
-          descricao: empresaData.cnae_fiscal_descricao,
-        },
-        atividades_secundarias: empresaData.cnaes_secundarios || [],
+        nome_fantasia: empresaData.nome_fantasia || empresaData.razao_social,
+        capital_social: empresaData.capital_social || 0,
+        porte: empresaData.porte || empresaData.descricao_porte || null,
+        natureza_juridica: empresaData.natureza_juridica || null,
+        data_abertura: empresaData.data_inicio_atividade || empresaData.data_abertura || null,
+        telefone: empresaData.ddd_telefone_1 || null,
+        email: empresaData.email || null,
+        situacao_cadastral: empresaData.descricao_situacao_cadastral || null,
+        endereco: endereco,
+        atividade_principal: atividadePrincipal,
+        atividades_secundarias: atividadesSecundarias
       })
       .select()
       .single()
 
     if (empresaError) {
-      console.error('❌ Error saving empresa:', empresaError);
-      throw empresaError;
+      console.error('❌ Erro ao salvar empresa:', empresaError)
+      throw new Error(`Erro ao salvar empresa: ${empresaError.message}`)
     }
 
-    if (!empresa) {
-      console.error('❌ No empresa returned from insert');
-      throw new Error('Failed to save company data');
-    }
+    console.log(`✅ Empresa salva: ${empresa.id}`)
 
-    console.log(`✅ Company saved:`, JSON.stringify(empresa, null, 2));
+    // Extrair e salvar sócios
+    const qsa = empresaData.qsa || []
+    console.log(`👥 Processando ${qsa.length} sócios...`)
 
-    // Extract and save socios
-    const socios = empresaData.qsa || []
-    const sociosRelevantes = socios.filter((s) =>
-      s.qualificacao_socio?.includes('Administrador') ||
-      s.qualificacao_socio?.includes('Diretor') ||
-      s.qualificacao_socio?.includes('Presidente')
-    )
+    // Filtrar sócios relevantes (decisores)
+    const sociosRelevantes = qsa.filter((s: any) => {
+      const qualificacao = s.qualificacao_socio || s.qualificacao || ''
+      return (
+        qualificacao.toLowerCase().includes('administrador') ||
+        qualificacao.toLowerCase().includes('diretor') ||
+        qualificacao.toLowerCase().includes('presidente') ||
+        qualificacao.toLowerCase().includes('sócio')
+      )
+    })
 
-    const sociosInserted = []
+    console.log(`🎯 ${sociosRelevantes.length} sócios decisores encontrados`)
 
-    for (const socio of sociosRelevantes) {
-      const { data: socioData, error: socioError } = await supabaseClient
-        .from('socios')
-        .insert({
-          empresa_id: empresa.id,
-          nome: socio.nome_socio,
-          cpf: socio.cpf_cnpj_socio,
-          qualificacao: socio.qualificacao_socio,
-          percentual_capital: socio.percentual_capital_social,
-          data_entrada: socio.data_entrada_sociedade,
-        })
-        .select()
-        .single()
+    const sociosInseridos = []
 
-      if (!socioError && socioData) {
-        sociosInserted.push(socioData)
+    for (const socioData of sociosRelevantes) {
+      try {
+        const { data: socio, error: socioError } = await supabaseClient
+          .from('socios')
+          .insert({
+            empresa_id: empresa.id,
+            nome: socioData.nome_socio || socioData.nome,
+            cpf: socioData.cpf_cnpj_socio || null,
+            qualificacao: socioData.qualificacao_socio || socioData.qualificacao,
+            percentual_capital: socioData.percentual_capital_social || 0,
+            data_entrada: socioData.data_entrada_sociedade || null
+          })
+          .select()
+          .single()
+
+        if (socioError) {
+          console.error(`⚠️ Erro ao salvar sócio:`, socioError)
+          continue
+        }
+
+        sociosInseridos.push(socio)
+        console.log(`✅ Sócio salvo: ${socio.nome}`)
+
+      } catch (error) {
+        console.error(`⚠️ Erro ao processar sócio:`, error)
       }
     }
 
-    console.log(`✅ ${sociosInserted.length} socios saved`)
+    console.log(`✅ ${sociosInseridos.length} sócios salvos com sucesso`)
 
+    // Retornar resposta de sucesso
     const response = {
       success: true,
+      message: 'Empresa e sócios cadastrados com sucesso',
       empresa: empresa,
-      socios: sociosInserted,
-    };
+      socios: sociosInseridos
+    }
 
-    console.log('📤 Returning response:', JSON.stringify(response, null, 2));
+    console.log('📤 Retornando resposta:', {
+      success: response.success,
+      empresa_id: empresa.id,
+      razao_social: empresa.razao_social,
+      socios_count: sociosInseridos.length
+    })
 
     return new Response(
       JSON.stringify(response),
@@ -183,21 +220,22 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
+
   } catch (error: any) {
-    console.error('❌ Error:', error);
+    console.error('❌ Error:', error)
     
-    let errorMessage = 'Unknown error';
+    let errorMessage = 'Erro desconhecido'
     if (error instanceof Error) {
-      errorMessage = error.message;
+      errorMessage = error.message
     } else if (error.message) {
-      errorMessage = error.message;
+      errorMessage = error.message
     }
     
     return new Response(
       JSON.stringify({ 
+        success: false,
         error: errorMessage,
-        details: error.details || null,
-        hint: 'Verifique se o CNPJ está correto e tente novamente'
+        details: error.details || null
       }),
       {
         status: 400,
