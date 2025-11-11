@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2 } from 'lucide-react';
+import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2, Briefcase, Heart, Zap, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -41,6 +41,7 @@ export default function Prospects() {
   const [messageDialogOpen, setMessageDialogOpen] = useState(false);
   const [currentProspectMessages, setCurrentProspectMessages] = useState<any>(null);
   const [selectedMessageType, setSelectedMessageType] = useState<string>('professional');
+  const [processingStage, setProcessingStage] = useState<string>('');
 
   // ============================================
   // BUSCAR CNPJ (Discovery)
@@ -179,6 +180,104 @@ export default function Prospects() {
   useEffect(() => {
     loadProspects();
   }, []);
+
+  // ============================================
+  // PROCESSAR PROSPECT COMPLETO (Pipeline)
+  // ============================================
+  const processarProspect = async (socioId: string, socioNome: string) => {
+    setLoading(true);
+    setProcessingStage('Iniciando...');
+    
+    try {
+      toast({
+        title: 'Iniciando processamento...',
+        description: `Processando ${socioNome}. Isso pode levar 2-5 minutos.`,
+      });
+
+      // ETAPA 1: Enriquecer dados
+      console.log('🔍 Etapa 1/3: Enriquecendo dados...');
+      setProcessingStage('Etapa 1/3: Buscando LinkedIn, Instagram e notícias...');
+      toast({
+        title: 'Etapa 1/3',
+        description: 'Buscando dados no LinkedIn, Instagram e notícias...',
+      });
+
+      const { data: enrichData, error: enrichError } = await supabase.functions.invoke(
+        'enrich-socio',
+        { body: { socio_id: socioId } }
+      );
+
+      if (enrichError) throw new Error(`Erro no enriquecimento: ${enrichError.message}`);
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // ETAPA 2: Qualificar com IA
+      console.log('🤖 Etapa 2/3: Qualificando com IA...');
+      setProcessingStage('Etapa 2/3: IA analisando perfil e calculando score...');
+      toast({
+        title: 'Etapa 2/3',
+        description: 'IA analisando perfil e calculando score...',
+      });
+
+      const { data: qualifyData, error: qualifyError } = await supabase.functions.invoke(
+        'qualify-prospect',
+        { body: { socio_id: socioId } }
+      );
+
+      if (qualifyError) throw new Error(`Erro na qualificação: ${qualifyError.message}`);
+
+      const prospectId = qualifyData.qualification?.id;
+      const score = qualifyData.qualification?.score || 0;
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // ETAPA 3: Gerar mensagem personalizada
+      console.log('✍️ Etapa 3/3: Gerando mensagens personalizadas...');
+      setProcessingStage('Etapa 3/3: IA criando 3 variações de mensagem...');
+      toast({
+        title: 'Etapa 3/3',
+        description: 'IA criando 3 variações de mensagem...',
+      });
+
+      const { data: messageData, error: messageError } = await supabase.functions.invoke(
+        'generate-message',
+        { body: { prospect_id: prospectId } }
+      );
+
+      if (messageError) throw new Error(`Erro ao gerar mensagens: ${messageError.message}`);
+
+      // SUCESSO COMPLETO!
+      setProcessingStage('');
+      toast({
+        title: '🎉 Processamento Concluído!',
+        description: `Score: ${score}/100 - Mensagens prontas para envio!`,
+      });
+
+      // Abrir modal com as mensagens geradas
+      setCurrentProspectMessages({
+        prospectId,
+        socioId,
+        socioNome,
+        messages: messageData.messages,
+        score
+      });
+      setMessageDialogOpen(true);
+
+      // Recarregar lista
+      await loadProspects();
+
+    } catch (error: any) {
+      console.error('❌ Erro no processamento:', error);
+      setProcessingStage('');
+      toast({
+        title: 'Erro no processamento',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ============================================
   // GERAR MENSAGENS
@@ -530,7 +629,7 @@ export default function Prospects() {
               <Card className="bg-primary/5 border-primary/20">
                 <CardHeader>
                   <div className="flex justify-between items-start">
-                    <div>
+                    <div className="flex-1">
                       <CardTitle className="text-lg flex items-center gap-2">
                         {empresaEncontrada.jaExistia && (
                           <Badge variant="outline" className="text-yellow-600 border-yellow-600">
@@ -542,11 +641,18 @@ export default function Prospects() {
                       <CardDescription className="mt-1">
                         {empresaEncontrada.empresa.nome_fantasia}
                       </CardDescription>
+                      {processingStage && (
+                        <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          {processingStage}
+                        </div>
+                      )}
                     </div>
                     <Button 
                       variant="ghost" 
                       size="icon"
                       onClick={() => setEmpresaEncontrada(null)}
+                      disabled={loading}
                     >
                       <X className="h-4 w-4" />
                     </Button>
@@ -614,16 +720,32 @@ export default function Prospects() {
                       </Label>
                       <div className="space-y-2">
                         {empresaEncontrada.socios.map((socio: any, idx: number) => (
-                          <div key={idx} className="flex justify-between items-start p-3 bg-background rounded-lg border">
+                          <div key={idx} className="flex justify-between items-center p-3 bg-background rounded-lg border">
                             <div>
                               <p className="font-medium">{socio.nome}</p>
                               <p className="text-xs text-muted-foreground">{socio.qualificacao}</p>
                             </div>
-                            {socio.participacao_capital && (
-                              <Badge variant="secondary">
-                                {socio.participacao_capital}% do capital
-                              </Badge>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {socio.percentual_capital && (
+                                <Badge variant="secondary">
+                                  {socio.percentual_capital}% do capital
+                                </Badge>
+                              )}
+                              <Button
+                                size="sm"
+                                onClick={() => processarProspect(socio.id, socio.nome)}
+                                disabled={loading}
+                              >
+                                {loading ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Sparkles className="mr-1 h-3 w-3" />
+                                    Processar
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -632,6 +754,155 @@ export default function Prospects() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Modal com as 3 variações de mensagem */}
+            <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Mensagens Personalizadas Geradas</DialogTitle>
+                  <DialogDescription>
+                    Escolha a melhor variação para {currentProspectMessages?.socioNome}
+                  </DialogDescription>
+                </DialogHeader>
+
+                {currentProspectMessages && (
+                  <div className="space-y-6">
+                    {/* Score Badge */}
+                    <div className="flex items-center justify-center gap-2">
+                      <Badge variant="outline" className="text-lg px-4 py-2">
+                        Score: <span className="font-bold ml-2">{currentProspectMessages.score}/100</span>
+                      </Badge>
+                      {currentProspectMessages.score >= 80 && (
+                        <Badge className="bg-green-600">🔥 Lead Quente!</Badge>
+                      )}
+                      {currentProspectMessages.score >= 60 && currentProspectMessages.score < 80 && (
+                        <Badge className="bg-yellow-600">⚡ Lead Morno</Badge>
+                      )}
+                    </div>
+
+                    {/* 3 Variações lado a lado */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Variação 1: Professional */}
+                      <Card 
+                        className={`cursor-pointer transition-all ${
+                          selectedMessageType === 'professional' 
+                            ? 'ring-2 ring-blue-500 shadow-lg' 
+                            : 'hover:shadow-md'
+                        }`}
+                        onClick={() => setSelectedMessageType('professional')}
+                      >
+                        <CardHeader>
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <Briefcase className="h-4 w-4" />
+                            Profissional
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="bg-slate-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
+                            {currentProspectMessages.messages.professional}
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {currentProspectMessages.messages.professional.length} caracteres
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Variação 2: Friendly */}
+                      <Card 
+                        className={`cursor-pointer transition-all ${
+                          selectedMessageType === 'friendly' 
+                            ? 'ring-2 ring-green-500 shadow-lg' 
+                            : 'hover:shadow-md'
+                        }`}
+                        onClick={() => setSelectedMessageType('friendly')}
+                      >
+                        <CardHeader>
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <Heart className="h-4 w-4" />
+                            Amigável
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="bg-green-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
+                            {currentProspectMessages.messages.friendly}
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {currentProspectMessages.messages.friendly.length} caracteres
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Variação 3: Enthusiast */}
+                      <Card 
+                        className={`cursor-pointer transition-all ${
+                          selectedMessageType === 'enthusiast' 
+                            ? 'ring-2 ring-purple-500 shadow-lg' 
+                            : 'hover:shadow-md'
+                        }`}
+                        onClick={() => setSelectedMessageType('enthusiast')}
+                      >
+                        <CardHeader>
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <Zap className="h-4 w-4" />
+                            Entusiasta
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="bg-purple-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
+                            {currentProspectMessages.messages.enthusiast}
+                          </div>
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            {currentProspectMessages.messages.enthusiast.length} caracteres
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Preview WhatsApp */}
+                    <div className="border-t pt-4">
+                      <Label className="text-sm font-medium mb-2 block">
+                        Preview WhatsApp:
+                      </Label>
+                      <div className="bg-[#075e54] p-4 rounded-lg">
+                        <div className="bg-white rounded-lg p-3 shadow-sm max-w-md">
+                          <div className="text-sm text-gray-800 whitespace-pre-wrap">
+                            {currentProspectMessages.messages[selectedMessageType]}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-2 text-right">
+                            {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Botões de ação */}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setMessageDialogOpen(false)}
+                        className="flex-1"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          await handleSaveSelectedMessage();
+                          setMessageDialogOpen(false);
+                          toast({
+                            title: 'Mensagem salva!',
+                            description: 'Mensagem pronta para envio via WhatsApp',
+                          });
+                        }}
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                      >
+                        <Send className="mr-2 h-4 w-4" />
+                        Salvar e Preparar Envio
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
 
             <div className="pt-4 border-t">
               <h4 className="font-semibold mb-3">Ou configure a busca automática:</h4>
