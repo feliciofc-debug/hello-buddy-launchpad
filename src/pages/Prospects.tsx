@@ -95,8 +95,7 @@ export default function Prospects() {
           *,
           socio:socios(
             *,
-            empresa:empresas(*),
-            enrichment:socios_enriquecidos(*)
+            empresa:empresas(*)
           )
         `)
         .order('score', { ascending: false });
