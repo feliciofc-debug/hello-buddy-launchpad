@@ -55,40 +55,49 @@ export default function Prospects() {
     }
 
     setLoading(true);
-  try {
-    const { data, error } = await supabase.functions.invoke('discovery-cnpj', {
-      body: {
-        cnpj,
-        concessionaria_id: 'default',
-      },
-    });
+    try {
+      console.log('🔍 Calling discovery-cnpj with:', cnpj);
+      
+      const { data, error } = await supabase.functions.invoke('discovery-cnpj', {
+        body: {
+          cnpj,
+          concessionaria_id: 'default',
+        },
+      });
 
-    if (error) {
-      console.error('Function error:', error);
-      throw new Error(error.message || 'Erro ao buscar CNPJ');
+      console.log('📥 Function response:', { data, error });
+
+      if (error) {
+        console.error('Function error:', error);
+        throw new Error(error.message || 'Erro ao buscar CNPJ');
+      }
+
+      if (!data) {
+        throw new Error('Nenhum dado retornado da função');
+      }
+
+      if (!data.empresa) {
+        console.error('Data received but no empresa:', data);
+        throw new Error('Dados da empresa não encontrados na resposta');
+      }
+
+      toast({
+        title: 'Sucesso!',
+        description: `Empresa: ${data.empresa.razao_social}. ${data.socios?.length || 0} sócios encontrados.`,
+      });
+
+      setCnpj('');
+      await loadProspects();
+    } catch (error: any) {
+      console.error('Discovery error:', error);
+      toast({
+        title: 'Erro ao buscar CNPJ',
+        description: error.message || 'Erro desconhecido. Verifique o CNPJ e tente novamente.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
     }
-
-    if (!data || !data.empresa) {
-      throw new Error('Dados da empresa não encontrados');
-    }
-
-    toast({
-      title: 'Sucesso!',
-      description: `Empresa: ${data.empresa.razao_social}. ${data.socios?.length || 0} sócios encontrados.`,
-    });
-
-    setCnpj('');
-    await loadProspects();
-  } catch (error: any) {
-    console.error('Discovery error:', error);
-    toast({
-      title: 'Erro ao buscar CNPJ',
-      description: error.message || 'Erro desconhecido. Verifique o CNPJ e tente novamente.',
-      variant: 'destructive',
-    });
-  } finally {
-    setLoading(false);
-  }
   };
 
   // ============================================

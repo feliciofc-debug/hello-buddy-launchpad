@@ -126,9 +126,17 @@ serve(async (req) => {
       .select()
       .single()
 
-    if (empresaError) throw empresaError
+    if (empresaError) {
+      console.error('❌ Error saving empresa:', empresaError);
+      throw empresaError;
+    }
 
-    console.log(`✅ Company saved: ${empresa.id}`)
+    if (!empresa) {
+      console.error('❌ No empresa returned from insert');
+      throw new Error('Failed to save company data');
+    }
+
+    console.log(`✅ Company saved:`, JSON.stringify(empresa, null, 2));
 
     // Extract and save socios
     const socios = empresaData.qsa || []
@@ -159,14 +167,18 @@ serve(async (req) => {
       }
     }
 
-    console.log(`✅ ${sociosInserted.length} socios saved and queued for enrichment`)
+    console.log(`✅ ${sociosInserted.length} socios saved`)
+
+    const response = {
+      success: true,
+      empresa: empresa,
+      socios: sociosInserted,
+    };
+
+    console.log('📤 Returning response:', JSON.stringify(response, null, 2));
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        empresa,
-        socios: sociosInserted,
-      }),
+      JSON.stringify(response),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
