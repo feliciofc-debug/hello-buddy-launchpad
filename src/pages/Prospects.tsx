@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -32,6 +34,12 @@ export default function Prospects() {
     recomendacao: 'TODOS'
   });
   const [showFilters, setShowFilters] = useState(false);
+
+  // Estados para mensagens WhatsApp
+  const [selectedProspects, setSelectedProspects] = useState<string[]>([]);
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [currentProspectMessages, setCurrentProspectMessages] = useState<any>(null);
+  const [selectedMessageType, setSelectedMessageType] = useState<string>('professional');
 
   // ============================================
   // BUSCAR CNPJ (Discovery)
@@ -165,7 +173,16 @@ export default function Prospects() {
         description: '3 variações criadas com sucesso.',
       });
 
-      loadProspects();
+      // Atualizar lista de prospects
+      await loadProspects();
+      
+      // Abrir dialog com as mensagens
+      setCurrentProspectMessages({
+        prospectId,
+        messages: data.messages
+      });
+      setMessageDialogOpen(true);
+
     } catch (error: any) {
       toast({
         title: 'Erro ao gerar mensagens',
@@ -174,6 +191,132 @@ export default function Prospects() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ============================================
+  // ENVIAR PARA WHATSAPP BULK
+  // ============================================
+  const handleSendToWhatsApp = async () => {
+    if (selectedProspects.length === 0) {
+      toast({
+        title: 'Nenhum prospect selecionado',
+        description: 'Selecione pelo menos um prospect para enviar',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Preparar mensagens para envio
+      const contactsToSend = [];
+
+      for (const prospectId of selectedProspects) {
+        const prospect = prospects.find(p => p.id === prospectId);
+        if (!prospect) continue;
+
+        const mensagens = prospect.mensagens_geradas;
+        if (!mensagens) {
+          toast({
+            title: 'Mensagens não geradas',
+            description: `Gere mensagens para ${prospect.socio.nome} primeiro`,
+            variant: 'destructive',
+          });
+          continue;
+        }
+
+        // Pegar mensagem selecionada ou usar professional como default
+        const messageType = prospect.mensagem_selecionada || 'professional';
+        const message = mensagens[messageType];
+
+        contactsToSend.push({
+          phone: prospect.socio.empresa.telefone,
+          name: prospect.socio.nome,
+          message: message,
+          customFields: {
+            prospectId: prospect.id,
+            score: prospect.score,
+            empresa: prospect.socio.empresa.nome_fantasia
+          }
+        });
+      }
+
+      if (contactsToSend.length === 0) {
+        throw new Error('Nenhum contato válido para envio');
+      }
+
+      // Enviar para função whatsapp-bulk-send
+      const { data, error } = await supabase.functions.invoke('whatsapp-bulk-send', {
+        body: { 
+          campaignName: `Prospects - ${new Date().toLocaleDateString()}`,
+          messageTemplate: 'Mensagem personalizada por prospect',
+          contacts: contactsToSend 
+        },
+      });
+
+      if (error) throw error;
+
+      // Atualizar prospects como enviados
+      for (const prospectId of selectedProspects) {
+        await supabase
+          .from('prospects_qualificados')
+          .update({
+            enviado_whatsapp: true,
+            enviado_em: new Date().toISOString()
+          })
+          .eq('id', prospectId);
+      }
+
+      toast({
+        title: 'Enviado com sucesso!',
+        description: `${contactsToSend.length} mensagens adicionadas à campanha WhatsApp`,
+      });
+
+      setSelectedProspects([]);
+      await loadProspects();
+
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao enviar',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============================================
+  // SALVAR MENSAGEM SELECIONADA
+  // ============================================
+  const handleSaveSelectedMessage = async () => {
+    if (!currentProspectMessages) return;
+
+    try {
+      const { error } = await supabase
+        .from('prospects_qualificados')
+        .update({
+          mensagem_selecionada: selectedMessageType
+        })
+        .eq('id', currentProspectMessages.prospectId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Mensagem salva!',
+        description: 'A variação selecionada foi salva.',
+      });
+
+      setMessageDialogOpen(false);
+      await loadProspects();
+
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao salvar',
+        description: error.message,
+        variant: 'destructive',
+      });
     }
   };
 
@@ -228,10 +371,16 @@ export default function Prospects() {
             <p className="text-muted-foreground">Sistema inteligente de qualificação e abordagem de leads premium</p>
           </div>
         </div>
-        <Button onClick={handleExportZAPI} disabled={loading}>
-          <Download className="mr-2 h-4 w-4" />
-          Exportar para ZAPI
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleSendToWhatsApp} disabled={loading || selectedProspects.length === 0}>
+            <Send className="mr-2 h-4 w-4" />
+            Enviar Selecionados ({selectedProspects.length})
+          </Button>
+          <Button onClick={handleExportZAPI} disabled={loading} variant="outline">
+            <Download className="mr-2 h-4 w-4" />
+            Exportar para ZAPI
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -534,18 +683,47 @@ export default function Prospects() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-12">
+                        <input
+                          type="checkbox"
+                          checked={selectedProspects.length === filteredProspects.length}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedProspects(filteredProspects.map(p => p.id));
+                            } else {
+                              setSelectedProspects([]);
+                            }
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                      </TableHead>
                       <TableHead>Score</TableHead>
                       <TableHead>Nome</TableHead>
                       <TableHead>Cargo</TableHead>
                       <TableHead>Empresa</TableHead>
                       <TableHead>Patrimônio Est.</TableHead>
                       <TableHead>Recomendação</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredProspects.map((prospect) => (
                       <TableRow key={prospect.id}>
+                        <TableCell>
+                          <input
+                            type="checkbox"
+                            checked={selectedProspects.includes(prospect.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedProspects([...selectedProspects, prospect.id]);
+                              } else {
+                                setSelectedProspects(selectedProspects.filter(id => id !== prospect.id));
+                              }
+                            }}
+                            className="rounded border-gray-300"
+                          />
+                        </TableCell>
                         <TableCell>
                           <Badge 
                             variant={prospect.score >= 80 ? 'default' : prospect.score >= 60 ? 'secondary' : 'outline'}
@@ -571,6 +749,18 @@ export default function Prospects() {
                             {prospect.recomendacao === 'contatar_agora' ? 'Contatar Agora' :
                              prospect.recomendacao === 'aguardar' ? 'Aguardar' : 'Descartar'}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {prospect.enviado_whatsapp ? (
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                              Enviado
+                            </Badge>
+                          ) : prospect.mensagens_geradas ? (
+                            <Badge variant="outline">Mensagens OK</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-gray-500">Pendente</Badge>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Dialog>
@@ -705,6 +895,79 @@ export default function Prospects() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Dialog de Mensagens Geradas */}
+      <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Mensagens Geradas - 3 Variações</DialogTitle>
+            <DialogDescription>
+              Escolha a melhor abordagem para este prospect
+            </DialogDescription>
+          </DialogHeader>
+          
+          {currentProspectMessages && (
+            <div className="space-y-4">
+              <RadioGroup value={selectedMessageType} onValueChange={setSelectedMessageType}>
+                {/* Professional */}
+                <div className="space-y-2 p-4 border rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="professional" id="professional" />
+                    <Label htmlFor="professional" className="font-semibold text-lg cursor-pointer">
+                      🎯 Tom Profissional
+                    </Label>
+                  </div>
+                  <Textarea 
+                    value={currentProspectMessages.messages.professional}
+                    readOnly
+                    className="min-h-[120px] bg-slate-50"
+                  />
+                </div>
+
+                {/* Friendly */}
+                <div className="space-y-2 p-4 border rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="friendly" id="friendly" />
+                    <Label htmlFor="friendly" className="font-semibold text-lg cursor-pointer">
+                      😊 Tom Amigável
+                    </Label>
+                  </div>
+                  <Textarea 
+                    value={currentProspectMessages.messages.friendly}
+                    readOnly
+                    className="min-h-[120px] bg-slate-50"
+                  />
+                </div>
+
+                {/* Enthusiast */}
+                <div className="space-y-2 p-4 border rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="enthusiast" id="enthusiast" />
+                    <Label htmlFor="enthusiast" className="font-semibold text-lg cursor-pointer">
+                      🚀 Tom Entusiasta
+                    </Label>
+                  </div>
+                  <Textarea 
+                    value={currentProspectMessages.messages.enthusiast}
+                    readOnly
+                    className="min-h-[120px] bg-slate-50"
+                  />
+                </div>
+              </RadioGroup>
+
+              <div className="flex gap-2 pt-4">
+                <Button onClick={handleSaveSelectedMessage} className="flex-1">
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Salvar Variação Selecionada
+                </Button>
+                <Button variant="outline" onClick={() => setMessageDialogOpen(false)}>
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
