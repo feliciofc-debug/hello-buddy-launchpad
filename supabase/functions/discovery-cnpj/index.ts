@@ -34,21 +34,50 @@ interface BrasilAPIResponse {
 }
 
 serve(async (req) => {
+  // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    // Create Supabase client
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
+      }
+    )
+
+    // Get request body
     const { cnpj, concessionaria_id } = await req.json()
 
-    if (!cnpj || !concessionaria_id) {
-      throw new Error('CNPJ and concessionaria_id are required')
+    if (!cnpj) {
+      throw new Error('CNPJ is required')
     }
 
-    console.log(`🔍 Discovering CNPJ: ${cnpj}`)
+    console.log(`🔍 Searching CNPJ: ${cnpj}`)
+
+    // Clean CNPJ
+    const cleanCNPJ = cnpj.replace(/\D/g, '')
+
+    // Check if already exists
+    const { data: existing } = await supabaseClient
+      .from('empresas')
+      .select('id')
+      .eq('cnpj', cleanCNPJ)
+      .single()
+
+    if (existing) {
+      return new Response(
+        JSON.stringify({ message: 'Company already exists', empresa_id: existing.id }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Fetch from Brasil API
-    const cleanCNPJ = cnpj.replace(/\D/g, '')
     const brasilApiResponse = await fetch(
       `https://brasilapi.com.br/api/cnpj/v1/${cleanCNPJ}`
     )
@@ -58,19 +87,13 @@ serve(async (req) => {
     }
 
     const empresaData: BrasilAPIResponse = await brasilApiResponse.json()
-    console.log(`✅ Found: ${empresaData.nome_fantasia}`)
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Save empresa
-    const { data: empresa, error: empresaError } = await supabase
+    const { data: empresa, error: empresaError } = await supabaseClient
       .from('empresas')
-      .upsert({
+      .insert({
         concessionaria_id,
-        cnpj: empresaData.cnpj,
+        cnpj: cleanCNPJ,
         razao_social: empresaData.razao_social,
         nome_fantasia: empresaData.nome_fantasia,
         capital_social: empresaData.capital_social,
@@ -94,58 +117,64 @@ serve(async (req) => {
 
     if (empresaError) throw empresaError
 
-    console.log(`💾 Empresa saved: ${empresa.id}`)
+    console.log(`✅ Company saved: ${empresa.id}`)
 
-    // Filter and save qualified socios (decision makers only)
-    const qualifiedSocios = (empresaData.qsa || []).filter((s) =>
+    // Extract and save socios
+    const socios = empresaData.qsa || []
+    const sociosRelevantes = socios.filter((s) =>
       s.qualificacao_socio?.includes('Administrador') ||
       s.qualificacao_socio?.includes('Diretor') ||
-      s.qualificacao_socio?.includes('Presidente') ||
-      s.qualificacao_socio?.includes('Sócio')
+      s.qualificacao_socio?.includes('Presidente')
     )
 
-    const sociosToInsert = qualifiedSocios.map((s) => ({
-      empresa_id: empresa.id,
-      nome: s.nome_socio,
-      cpf_parcial: s.cpf_cnpj_socio,
-      qualificacao: s.qualificacao_socio,
-      participacao_capital: s.percentual_capital_social || 0,
-      data_entrada_sociedade: s.data_entrada_sociedade,
-      patrimonio_estimado: (empresaData.capital_social * (s.percentual_capital_social || 0)) / 100,
-    }))
+    const sociosInserted = []
 
-    let socios = []
-    if (sociosToInsert.length > 0) {
-      const { data: savedSocios, error: sociosError } = await supabase
+    for (const socio of sociosRelevantes) {
+      const patrimonio = (empresaData.capital_social * (socio.percentual_capital_social || 0)) / 100
+
+      const { data: socioData, error: socioError } = await supabaseClient
         .from('socios')
-        .upsert(sociosToInsert, { onConflict: 'empresa_id,nome' })
+        .insert({
+          empresa_id: empresa.id,
+          nome: socio.nome_socio,
+          cpf_parcial: socio.cpf_cnpj_socio,
+          qualificacao: socio.qualificacao_socio,
+          participacao_capital: socio.percentual_capital_social,
+          data_entrada_sociedade: socio.data_entrada_sociedade,
+          patrimonio_estimado: patrimonio,
+        })
         .select()
+        .single()
 
-      if (sociosError) throw sociosError
-      socios = savedSocios
-      console.log(`👥 Saved ${socios.length} decision makers`)
+      if (!socioError && socioData) {
+        sociosInserted.push(socioData)
+
+        // Add to enrichment queue
+        await supabaseClient.from('enrichment_queue').insert({
+          socio_id: socioData.id,
+          status: 'pending',
+        })
+      }
     }
+
+    console.log(`✅ ${sociosInserted.length} socios saved and queued for enrichment`)
 
     return new Response(
       JSON.stringify({
         success: true,
         empresa,
-        socios,
-        socios_count: socios.length,
+        socios: sociosInserted,
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
   } catch (error) {
-    console.error('❌ Discovery error:', error)
+    console.error('❌ Error:', error)
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       {
-        status: 500,
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
