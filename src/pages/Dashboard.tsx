@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart as RechartsBarChart, Bar, Legend } from 'recharts';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from 'next-themes';
@@ -398,19 +398,30 @@ const Dashboard = () => {
             📦 Meus Produtos
           </a>
           {userProfile?.tipo === 'afiliado' && (
-            <a
-              href="/whatsapp"
-              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                window.location.pathname === '/whatsapp' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              WhatsApp
-            </a>
+            <>
+              <a
+                href="/whatsapp"
+                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                  window.location.pathname === '/whatsapp' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <MessageCircle size={20} />
+                WhatsApp
+              </a>
+              <a
+                href="/prospects"
+                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                  window.location.pathname === '/prospects' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <Building2 size={20} />
+                Leads Qualificados
+              </a>
+            </>
           )}
           <a
             href="/perfil"

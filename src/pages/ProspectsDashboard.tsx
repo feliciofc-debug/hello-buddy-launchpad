@@ -1,12 +1,8 @@
-import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import DiscoveryCNPJ from "@/components/DiscoveryCNPJ";
-import ProspectsTable from "@/components/ProspectsTable";
-import MessagesReview from "@/components/MessagesReview";
 import { Building2, MessageSquare, TrendingUp } from "lucide-react";
+import { Card } from "@/components/ui/card";
 
 export default function ProspectsDashboard() {
-  // Em produção, pegar do contexto/auth
   const concessionariaId = "temp-uuid-here";
 
   return (
@@ -18,34 +14,12 @@ export default function ProspectsDashboard() {
         </p>
       </div>
 
-      <Tabs defaultValue="discover" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="discover" className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
-            Descobrir
-          </TabsTrigger>
-          <TabsTrigger value="prospects" className="flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Prospects
-          </TabsTrigger>
-          <TabsTrigger value="messages" className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4" />
-            Mensagens
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="discover">
-          <DiscoveryCNPJ concessionariaId={concessionariaId} />
-        </TabsContent>
-
-        <TabsContent value="prospects">
-          <ProspectsTable concessionariaId={concessionariaId} />
-        </TabsContent>
-
-        <TabsContent value="messages">
-          <MessagesReview concessionariaId={concessionariaId} />
-        </TabsContent>
-      </Tabs>
+      <Card className="p-6">
+        <p className="text-muted-foreground">
+          As tabelas do banco de dados precisam ser criadas primeiro. 
+          Entre em contato com o suporte para configurar o sistema.
+        </p>
+      </Card>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import TestPayment from "./pages/TestPayment";
 import NotFound from "./pages/NotFound";
 import ProductsPage from "./pages/ProductsPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
+import ProspectsDashboard from "./pages/ProspectsDashboard";
 import AffiliateProfile from "./components/AffiliateProfile";
 import SettingsPage from "./components/SettingsPage";
 import ShopeeCallback from "./pages/ShopeeCallback";
@@ -52,6 +53,7 @@ const App = () => (
             <Route path="/perfil" element={<AffiliateProfile />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
             <Route path="/whatsapp" element={<WhatsAppPage />} />
+            <Route path="/prospects" element={<ProspectsDashboard />} />
             <Route path="/shopee-callback" element={<ShopeeCallback />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
             <Route path="/lomadee" element={<LomadeeFinder />} />
