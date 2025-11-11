@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.discovery-cnpj]
 verify_jwt = false
+
+[functions.enrich-socio]
+verify_jwt = false
