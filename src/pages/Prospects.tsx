@@ -55,32 +55,40 @@ export default function Prospects() {
     }
 
     setLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('discovery-cnpj', {
-        body: {
-          cnpj,
-          concessionaria_id: 'default', // Substituir por ID real
-        },
-      });
+  try {
+    const { data, error } = await supabase.functions.invoke('discovery-cnpj', {
+      body: {
+        cnpj,
+        concessionaria_id: 'default',
+      },
+    });
 
-      if (error) throw error;
-
-      toast({
-        title: 'Sucesso!',
-        description: `Empresa encontrada: ${data.empresa.razao_social}. ${data.socios.length} sócios adicionados à fila de enriquecimento.`,
-      });
-
-      setCnpj('');
-      loadProspects();
-    } catch (error: any) {
-      toast({
-        title: 'Erro ao buscar CNPJ',
-        description: error.message,
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
+    if (error) {
+      console.error('Function error:', error);
+      throw new Error(error.message || 'Erro ao buscar CNPJ');
     }
+
+    if (!data || !data.empresa) {
+      throw new Error('Dados da empresa não encontrados');
+    }
+
+    toast({
+      title: 'Sucesso!',
+      description: `Empresa: ${data.empresa.razao_social}. ${data.socios?.length || 0} sócios encontrados.`,
+    });
+
+    setCnpj('');
+    await loadProspects();
+  } catch (error: any) {
+    console.error('Discovery error:', error);
+    toast({
+      title: 'Erro ao buscar CNPJ',
+      description: error.message || 'Erro desconhecido. Verifique o CNPJ e tente novamente.',
+      variant: 'destructive',
+    });
+  } finally {
+    setLoading(false);
+  }
   };
 
   // ============================================
