@@ -59,13 +59,10 @@ export default function Prospects() {
       console.log('🔍 Calling discovery-cnpj with:', cnpj);
       
       const { data, error } = await supabase.functions.invoke('discovery-cnpj', {
-        body: {
-          cnpj,
-          concessionaria_id: 'default',
-        },
+        body: { cnpj },
       });
 
-      console.log('📥 Function response:', { data, error });
+      console.log('📥 Raw response:', JSON.stringify({ data, error }, null, 2));
 
       if (error) {
         console.error('Function error:', error);
@@ -73,17 +70,32 @@ export default function Prospects() {
       }
 
       if (!data) {
+        console.error('No data returned');
         throw new Error('Nenhum dado retornado da função');
       }
 
+      // Verificar se retornou sucesso false (empresa já existe)
+      if (data.success === false) {
+        toast({
+          title: 'Aviso',
+          description: data.message || 'Empresa já cadastrada',
+          variant: 'default',
+        });
+        setCnpj('');
+        await loadProspects();
+        return;
+      }
+
+      // Verificar se tem empresa na resposta
       if (!data.empresa) {
-        console.error('Data received but no empresa:', data);
-        throw new Error('Dados da empresa não encontrados na resposta');
+        console.error('Data structure:', Object.keys(data));
+        console.error('Full data:', JSON.stringify(data, null, 2));
+        throw new Error('Dados da empresa não encontrados na resposta. Estrutura: ' + Object.keys(data).join(', '));
       }
 
       toast({
         title: 'Sucesso!',
-        description: `Empresa: ${data.empresa.razao_social}. ${data.socios?.length || 0} sócios encontrados.`,
+        description: `${data.empresa.razao_social} cadastrada. ${data.socios?.length || 0} sócios encontrados.`,
       });
 
       setCnpj('');
