@@ -273,19 +273,6 @@ const Dashboard = () => {
             <BarChart3 size={20} />
             Dashboard
           </a>
-          {userProfile?.tipo !== 'empresa' && (
-            <a
-              href="/planos"
-              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                window.location.pathname === '/planos' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <CreditCard size={20} />
-              Planos
-            </a>
-          )}
           {userProfile?.tipo === 'fabrica' && (
             <>
               <a
@@ -311,19 +298,6 @@ const Dashboard = () => {
                 Vendedores
               </a>
             </>
-          )}
-          {userProfile?.tipo === 'afiliado' && (
-            <a
-              href="/produtos"
-              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                window.location.pathname === '/produtos' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Package size={20} />
-              Produtos Afiliados
-            </a>
           )}
           <a
             href="/ia-marketing"
@@ -397,7 +371,7 @@ const Dashboard = () => {
             </svg>
             📦 Meus Produtos
           </a>
-          {userProfile?.tipo === 'afiliado' && (
+          {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') && (
             <>
               <a
                 href="/whatsapp"
