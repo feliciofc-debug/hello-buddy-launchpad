@@ -425,6 +425,17 @@ const Dashboard = () => {
                 <Building2 size={20} />
                 Leads Qualificados
               </a>
+              <a
+                href="/configuracoes-icp"
+                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                  window.location.pathname === '/configuracoes-icp' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <Target size={20} />
+                Configurar ICP
+              </a>
             </>
           )}
           <a
