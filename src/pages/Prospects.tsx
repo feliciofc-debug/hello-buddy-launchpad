@@ -23,6 +23,7 @@ export default function Prospects() {
   const [prospects, setProspects] = useState<any[]>([]);
   const [filteredProspects, setFilteredProspects] = useState<any[]>([]);
   const [selectedProspect, setSelectedProspect] = useState<any>(null);
+  const [empresaEncontrada, setEmpresaEncontrada] = useState<any>(null);
   const { toast } = useToast();
 
   // Filtros
@@ -74,18 +75,6 @@ export default function Prospects() {
         throw new Error('Nenhum dado retornado da função');
       }
 
-      // Verificar se retornou sucesso false (empresa já existe)
-      if (data.success === false) {
-        toast({
-          title: 'Aviso',
-          description: data.message || 'Empresa já cadastrada',
-          variant: 'default',
-        });
-        setCnpj('');
-        await loadProspects();
-        return;
-      }
-
       // Verificar se tem empresa na resposta
       if (!data.empresa) {
         console.error('Data structure:', Object.keys(data));
@@ -93,9 +82,16 @@ export default function Prospects() {
         throw new Error('Dados da empresa não encontrados na resposta. Estrutura: ' + Object.keys(data).join(', '));
       }
 
+      // SEMPRE exibir os dados da empresa
+      setEmpresaEncontrada({
+        empresa: data.empresa,
+        socios: data.socios || [],
+        jaExistia: data.success === false
+      });
+
       toast({
-        title: 'Sucesso!',
-        description: `${data.empresa.razao_social} cadastrada. ${data.socios?.length || 0} sócios encontrados.`,
+        title: data.success === false ? 'Empresa já cadastrada' : 'Empresa encontrada!',
+        description: `${data.empresa.razao_social} - ${data.socios?.length || 0} sócios encontrados.`,
       });
 
       setCnpj('');
@@ -528,6 +524,114 @@ export default function Prospects() {
                 Você será notificado quando estiver pronto.
               </AlertDescription>
             </Alert>
+
+            {/* DADOS DA EMPRESA ENCONTRADA */}
+            {empresaEncontrada && (
+              <Card className="bg-primary/5 border-primary/20">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        {empresaEncontrada.jaExistia && (
+                          <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                            Já Cadastrada
+                          </Badge>
+                        )}
+                        {empresaEncontrada.empresa.razao_social}
+                      </CardTitle>
+                      <CardDescription className="mt-1">
+                        {empresaEncontrada.empresa.nome_fantasia}
+                      </CardDescription>
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon"
+                      onClick={() => setEmpresaEncontrada(null)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Dados principais */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <Label className="text-muted-foreground">CNPJ</Label>
+                      <p className="font-medium">{empresaEncontrada.empresa.cnpj}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">Situação</Label>
+                      <p className="font-medium">{empresaEncontrada.empresa.situacao_cadastral || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-muted-foreground">Porte</Label>
+                      <p className="font-medium">{empresaEncontrada.empresa.porte || 'N/A'}</p>
+                    </div>
+                    {empresaEncontrada.empresa.capital_social && (
+                      <div>
+                        <Label className="text-muted-foreground">Capital Social</Label>
+                        <p className="font-medium">
+                          R$ {Number(empresaEncontrada.empresa.capital_social).toLocaleString('pt-BR')}
+                        </p>
+                      </div>
+                    )}
+                    {empresaEncontrada.empresa.telefone && (
+                      <div>
+                        <Label className="text-muted-foreground">Telefone</Label>
+                        <p className="font-medium">{empresaEncontrada.empresa.telefone}</p>
+                      </div>
+                    )}
+                    {empresaEncontrada.empresa.email && (
+                      <div>
+                        <Label className="text-muted-foreground">Email</Label>
+                        <p className="font-medium">{empresaEncontrada.empresa.email}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Endereço */}
+                  {empresaEncontrada.empresa.endereco && (
+                    <div className="pt-2 border-t">
+                      <Label className="text-muted-foreground">Endereço</Label>
+                      <p className="text-sm">
+                        {empresaEncontrada.empresa.endereco.logradouro}, 
+                        {empresaEncontrada.empresa.endereco.numero} 
+                        {empresaEncontrada.empresa.endereco.complemento && ` - ${empresaEncontrada.empresa.endereco.complemento}`}
+                        <br />
+                        {empresaEncontrada.empresa.endereco.bairro} - 
+                        {empresaEncontrada.empresa.endereco.municipio}/{empresaEncontrada.empresa.endereco.uf}
+                        <br />
+                        CEP: {empresaEncontrada.empresa.endereco.cep}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Sócios */}
+                  {empresaEncontrada.socios && empresaEncontrada.socios.length > 0 && (
+                    <div className="pt-2 border-t">
+                      <Label className="text-muted-foreground mb-2 block">
+                        Sócios Decisores ({empresaEncontrada.socios.length})
+                      </Label>
+                      <div className="space-y-2">
+                        {empresaEncontrada.socios.map((socio: any, idx: number) => (
+                          <div key={idx} className="flex justify-between items-start p-3 bg-background rounded-lg border">
+                            <div>
+                              <p className="font-medium">{socio.nome}</p>
+                              <p className="text-xs text-muted-foreground">{socio.qualificacao}</p>
+                            </div>
+                            {socio.participacao_capital && (
+                              <Badge variant="secondary">
+                                {socio.participacao_capital}% do capital
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <div className="pt-4 border-t">
               <h4 className="font-semibold mb-3">Ou configure a busca automática:</h4>

@@ -55,17 +55,23 @@ serve(async (req) => {
     // Verificar se empresa já existe
     const { data: existing } = await supabaseClient
       .from('empresas')
-      .select('id, razao_social')
+      .select(`
+        *,
+        socios:socios(*)
+      `)
       .eq('cnpj', cleanCNPJ)
       .maybeSingle()
 
     if (existing) {
       console.log(`⚠️ Empresa já existe: ${existing.razao_social}`)
+      
+      // Retornar dados completos da empresa existente
       return new Response(
         JSON.stringify({
           success: false,
           message: 'Empresa já cadastrada',
-          empresa: existing
+          empresa: existing,
+          socios: existing.socios || []
         }),
         { 
           status: 200,
