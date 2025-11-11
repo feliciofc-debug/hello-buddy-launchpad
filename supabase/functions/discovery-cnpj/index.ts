@@ -12,8 +12,14 @@ interface BrasilAPIResponse {
   nome_fantasia: string
   capital_social: number
   porte: string
+  natureza_juridica?: string
+  descricao_situacao_cadastral?: string
   cnae_fiscal: number
   cnae_fiscal_descricao: string
+  cnaes_secundarios?: Array<{
+    codigo: number
+    descricao: string
+  }>
   data_inicio_atividade: string
   ddd_telefone_1: string
   email: string
@@ -68,7 +74,7 @@ serve(async (req) => {
       .from('empresas')
       .select('id')
       .eq('cnpj', cleanCNPJ)
-      .single()
+      .maybeSingle()
 
     if (existing) {
       return new Response(
@@ -92,25 +98,30 @@ serve(async (req) => {
     const { data: empresa, error: empresaError } = await supabaseClient
       .from('empresas')
       .insert({
-        concessionaria_id,
         cnpj: cleanCNPJ,
         razao_social: empresaData.razao_social,
         nome_fantasia: empresaData.nome_fantasia,
         capital_social: empresaData.capital_social,
         porte: empresaData.porte,
-        cnae_principal: empresaData.cnae_fiscal?.toString(),
-        descricao_cnae: empresaData.cnae_fiscal_descricao,
+        natureza_juridica: empresaData.natureza_juridica,
         data_abertura: empresaData.data_inicio_atividade,
         telefone: empresaData.ddd_telefone_1,
         email: empresaData.email,
-        cep: empresaData.cep,
-        logradouro: empresaData.logradouro,
-        numero: empresaData.numero,
-        complemento: empresaData.complemento,
-        bairro: empresaData.bairro,
-        municipio: empresaData.municipio,
-        uf: empresaData.uf,
-        dados_completos: empresaData,
+        situacao_cadastral: empresaData.descricao_situacao_cadastral,
+        endereco: {
+          cep: empresaData.cep,
+          logradouro: empresaData.logradouro,
+          numero: empresaData.numero,
+          complemento: empresaData.complemento,
+          bairro: empresaData.bairro,
+          municipio: empresaData.municipio,
+          uf: empresaData.uf,
+        },
+        atividade_principal: {
+          codigo: empresaData.cnae_fiscal?.toString(),
+          descricao: empresaData.cnae_fiscal_descricao,
+        },
+        atividades_secundarias: empresaData.cnaes_secundarios || [],
       })
       .select()
       .single()
@@ -130,30 +141,21 @@ serve(async (req) => {
     const sociosInserted = []
 
     for (const socio of sociosRelevantes) {
-      const patrimonio = (empresaData.capital_social * (socio.percentual_capital_social || 0)) / 100
-
       const { data: socioData, error: socioError } = await supabaseClient
         .from('socios')
         .insert({
           empresa_id: empresa.id,
           nome: socio.nome_socio,
-          cpf_parcial: socio.cpf_cnpj_socio,
+          cpf: socio.cpf_cnpj_socio,
           qualificacao: socio.qualificacao_socio,
-          participacao_capital: socio.percentual_capital_social,
-          data_entrada_sociedade: socio.data_entrada_sociedade,
-          patrimonio_estimado: patrimonio,
+          percentual_capital: socio.percentual_capital_social,
+          data_entrada: socio.data_entrada_sociedade,
         })
         .select()
         .single()
 
       if (!socioError && socioData) {
         sociosInserted.push(socioData)
-
-        // Add to enrichment queue
-        await supabaseClient.from('enrichment_queue').insert({
-          socio_id: socioData.id,
-          status: 'pending',
-        })
       }
     }
 
