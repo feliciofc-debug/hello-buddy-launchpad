@@ -1,22 +1,37 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock } from 'lucide-react';
+import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Prospects() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [cnpj, setCnpj] = useState('');
   const [prospects, setProspects] = useState<any[]>([]);
+  const [filteredProspects, setFilteredProspects] = useState<any[]>([]);
   const [selectedProspect, setSelectedProspect] = useState<any>(null);
   const { toast } = useToast();
+
+  // Filtros
+  const [filters, setFilters] = useState({
+    scoreMinimo: 0,
+    setor: 'TODOS',
+    estado: 'TODOS',
+    patrimonio: 0,
+    recomendacao: 'TODOS'
+  });
+  const [showFilters, setShowFilters] = useState(false);
 
   // ============================================
   // BUSCAR CNPJ (Discovery)
@@ -80,6 +95,7 @@ export default function Prospects() {
 
       if (error) throw error;
       setProspects(data || []);
+      setFilteredProspects(data || []);
     } catch (error: any) {
       toast({
         title: 'Erro ao carregar prospects',
@@ -90,6 +106,47 @@ export default function Prospects() {
       setLoading(false);
     }
   };
+
+  // ============================================
+  // APLICAR FILTROS
+  // ============================================
+  useEffect(() => {
+    if (!prospects.length) return;
+
+    let filtered = [...prospects];
+
+    // Filtro por score mínimo
+    if (filters.scoreMinimo > 0) {
+      filtered = filtered.filter(p => p.score >= filters.scoreMinimo);
+    }
+
+    // Filtro por setor
+    if (filters.setor !== 'TODOS') {
+      filtered = filtered.filter(p => p.socio?.empresa?.cnae?.includes(filters.setor));
+    }
+
+    // Filtro por estado
+    if (filters.estado !== 'TODOS') {
+      filtered = filtered.filter(p => p.socio?.empresa?.endereco?.uf === filters.estado);
+    }
+
+    // Filtro por patrimônio mínimo
+    if (filters.patrimonio > 0) {
+      filtered = filtered.filter(p => p.socio?.patrimonio_estimado >= filters.patrimonio);
+    }
+
+    // Filtro por recomendação
+    if (filters.recomendacao !== 'TODOS') {
+      filtered = filtered.filter(p => p.recomendacao === filters.recomendacao);
+    }
+
+    setFilteredProspects(filtered);
+  }, [filters, prospects]);
+
+  // Carregar na montagem
+  useEffect(() => {
+    loadProspects();
+  }, []);
 
   // ============================================
   // GERAR MENSAGENS
@@ -162,9 +219,14 @@ export default function Prospects() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard de Prospects</h1>
-          <p className="text-muted-foreground">Sistema inteligente de qualificação e abordagem de leads premium</p>
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" onClick={() => navigate('/dashboard')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">Dashboard de Prospects</h1>
+            <p className="text-muted-foreground">Sistema inteligente de qualificação e abordagem de leads premium</p>
+          </div>
         </div>
         <Button onClick={handleExportZAPI} disabled={loading}>
           <Download className="mr-2 h-4 w-4" />
@@ -259,37 +321,54 @@ export default function Prospects() {
                 </ul>
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="00.000.000/0000-00"
-                  value={cnpj}
-                  onChange={(e) => setCnpj(e.target.value)}
-                  className="max-w-xs"
-                />
-                <Button onClick={handleDiscoverCNPJ} disabled={loading}>
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processando...
-                    </>
-                  ) : (
-                    <>
-                      <Search className="mr-2 h-4 w-4" />
-                      Buscar
-                    </>
-                  )}
-                </Button>
-              </div>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="00.000.000/0000-00"
+                value={cnpj}
+                onChange={(e) => setCnpj(e.target.value)}
+                className="max-w-xs"
+              />
+              <Button onClick={handleDiscoverCNPJ} disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <Search className="mr-2 h-4 w-4" />
+                    Buscar
+                  </>
+                )}
+              </Button>
+            </div>
 
-              <Alert className="mt-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  O processamento completo (enriquecimento + qualificação) leva de 2-5 minutos por sócio.
-                  Você será notificado quando estiver pronto.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                O processamento completo (enriquecimento + qualificação) leva de 2-5 minutos por sócio.
+                Você será notificado quando estiver pronto.
+              </AlertDescription>
+            </Alert>
+
+            <div className="pt-4 border-t">
+              <h4 className="font-semibold mb-3">Ou configure a busca automática:</h4>
+              <div className="space-y-3">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  onClick={() => navigate('/configuracoes-icp')}
+                >
+                  <Target className="mr-2 h-4 w-4" />
+                  Configurar ICP e Automação
+                </Button>
+                <p className="text-sm text-muted-foreground">
+                  Configure seu perfil de cliente ideal (ICP) e ative a busca automática de prospects que atendem seus critérios.
+                </p>
+              </div>
+            </div>
+          </CardContent>
           </Card>
         </TabsContent>
 
@@ -297,20 +376,158 @@ export default function Prospects() {
         <TabsContent value="prospects" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Prospects Qualificados</CardTitle>
-              <CardDescription>
-                Lista de todos os prospects analisados pela IA, ordenados por score
-              </CardDescription>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle>Prospects Qualificados</CardTitle>
+                  <CardDescription>
+                    Lista de todos os prospects analisados pela IA, ordenados por score
+                  </CardDescription>
+                </div>
+                <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
+                  <Filter className="mr-2 h-4 w-4" />
+                  {showFilters ? 'Ocultar Filtros' : 'Filtros'}
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Filtros */}
+              {showFilters && (
+                <Card className="bg-muted/50">
+                  <CardContent className="pt-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="font-semibold">Filtros de Busca</h4>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => setFilters({
+                          scoreMinimo: 0,
+                          setor: 'TODOS',
+                          estado: 'TODOS',
+                          patrimonio: 0,
+                          recomendacao: 'TODOS'
+                        })}
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Limpar Filtros
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <div className="space-y-2">
+                        <Label>Score Mínimo</Label>
+                        <Select 
+                          value={filters.scoreMinimo.toString()} 
+                          onValueChange={(v) => setFilters({...filters, scoreMinimo: Number(v)})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">Todos</SelectItem>
+                            <SelectItem value="60">60+</SelectItem>
+                            <SelectItem value="70">70+</SelectItem>
+                            <SelectItem value="80">80+</SelectItem>
+                            <SelectItem value="90">90+ (Quentes)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Setor</Label>
+                        <Select 
+                          value={filters.setor} 
+                          onValueChange={(v) => setFilters({...filters, setor: v})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TODOS">Todos</SelectItem>
+                            <SelectItem value="TECNOLOGIA">Tecnologia</SelectItem>
+                            <SelectItem value="FINANCAS">Finanças</SelectItem>
+                            <SelectItem value="SAUDE">Saúde</SelectItem>
+                            <SelectItem value="VAREJO">Varejo</SelectItem>
+                            <SelectItem value="INDUSTRIA">Indústria</SelectItem>
+                            <SelectItem value="SERVICOS">Serviços</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Estado</Label>
+                        <Select 
+                          value={filters.estado} 
+                          onValueChange={(v) => setFilters({...filters, estado: v})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TODOS">Todos</SelectItem>
+                            <SelectItem value="SP">São Paulo</SelectItem>
+                            <SelectItem value="RJ">Rio de Janeiro</SelectItem>
+                            <SelectItem value="MG">Minas Gerais</SelectItem>
+                            <SelectItem value="RS">Rio Grande do Sul</SelectItem>
+                            <SelectItem value="PR">Paraná</SelectItem>
+                            <SelectItem value="SC">Santa Catarina</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Patrimônio Mínimo</Label>
+                        <Select 
+                          value={filters.patrimonio.toString()} 
+                          onValueChange={(v) => setFilters({...filters, patrimonio: Number(v)})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="0">Todos</SelectItem>
+                            <SelectItem value="500000">R$ 500K+</SelectItem>
+                            <SelectItem value="1000000">R$ 1M+</SelectItem>
+                            <SelectItem value="5000000">R$ 5M+</SelectItem>
+                            <SelectItem value="10000000">R$ 10M+</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Recomendação</Label>
+                        <Select 
+                          value={filters.recomendacao} 
+                          onValueChange={(v) => setFilters({...filters, recomendacao: v})}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="TODOS">Todos</SelectItem>
+                            <SelectItem value="contatar_agora">Contatar Agora</SelectItem>
+                            <SelectItem value="aguardar">Aguardar</SelectItem>
+                            <SelectItem value="descartar">Descartar</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="mt-4 text-sm text-muted-foreground">
+                      Mostrando {filteredProspects.length} de {prospects.length} prospects
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Tabela */}
               {loading ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
-              ) : prospects.length === 0 ? (
+              ) : filteredProspects.length === 0 ? (
                 <Alert>
                   <AlertDescription>
-                    Nenhum prospect encontrado. Use a aba "Descobrir CNPJ" para começar.
+                    {prospects.length === 0 
+                      ? 'Nenhum prospect encontrado. Use a aba "Descobrir CNPJ" para começar.'
+                      : 'Nenhum prospect corresponde aos filtros selecionados. Ajuste os filtros acima.'}
                   </AlertDescription>
                 </Alert>
               ) : (
@@ -327,7 +544,7 @@ export default function Prospects() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {prospects.map((prospect) => (
+                    {filteredProspects.map((prospect) => (
                       <TableRow key={prospect.id}>
                         <TableCell>
                           <Badge 
