@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Save, Settings, Target, MessageSquare, Clock, DollarSign, MapPin, Briefcase, TrendingUp } from 'lucide-react';
+import { Loader2, Save, Settings, Target, MessageSquare, Clock, DollarSign, MapPin, Briefcase, TrendingUp, ArrowLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -55,6 +56,7 @@ const CARGOS = [
 ];
 
 export default function Configuracoes() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
@@ -293,9 +295,14 @@ Abs,
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">Configurações do Sistema</h1>
-          <p className="text-muted-foreground">Configure o perfil do seu negócio e critérios de qualificação</p>
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" onClick={() => navigate('/dashboard')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">Configurações do Sistema</h1>
+            <p className="text-muted-foreground">Configure o perfil do seu negócio e critérios de qualificação</p>
+          </div>
         </div>
         <Button onClick={saveConfig} disabled={saving}>
           {saving ? (
