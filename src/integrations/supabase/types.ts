@@ -149,6 +149,63 @@ export type Database = {
         }
         Relationships: []
       }
+      empresas: {
+        Row: {
+          atividade_principal: Json | null
+          atividades_secundarias: Json | null
+          capital_social: number | null
+          cnpj: string
+          created_at: string | null
+          data_abertura: string | null
+          email: string | null
+          endereco: Json | null
+          id: string
+          natureza_juridica: string | null
+          nome_fantasia: string | null
+          porte: string | null
+          razao_social: string
+          situacao_cadastral: string | null
+          telefone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          atividade_principal?: Json | null
+          atividades_secundarias?: Json | null
+          capital_social?: number | null
+          cnpj: string
+          created_at?: string | null
+          data_abertura?: string | null
+          email?: string | null
+          endereco?: Json | null
+          id?: string
+          natureza_juridica?: string | null
+          nome_fantasia?: string | null
+          porte?: string | null
+          razao_social: string
+          situacao_cadastral?: string | null
+          telefone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          atividade_principal?: Json | null
+          atividades_secundarias?: Json | null
+          capital_social?: number | null
+          cnpj?: string
+          created_at?: string | null
+          data_abertura?: string | null
+          email?: string | null
+          endereco?: Json | null
+          id?: string
+          natureza_juridica?: string | null
+          nome_fantasia?: string | null
+          porte?: string | null
+          razao_social?: string
+          situacao_cadastral?: string | null
+          telefone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           access_token: string
@@ -425,7 +482,15 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "prospects_qualificados_socio_id_fkey"
+            columns: ["socio_id"]
+            isOneToOne: false
+            referencedRelation: "socios"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scheduled_posts: {
         Row: {
@@ -515,6 +580,50 @@ export type Database = {
           vulnerability_type?: string
         }
         Relationships: []
+      }
+      socios: {
+        Row: {
+          cpf: string | null
+          created_at: string | null
+          data_entrada: string | null
+          empresa_id: string
+          id: string
+          nome: string
+          percentual_capital: number | null
+          qualificacao: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cpf?: string | null
+          created_at?: string | null
+          data_entrada?: string | null
+          empresa_id: string
+          id?: string
+          nome: string
+          percentual_capital?: number | null
+          qualificacao?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cpf?: string | null
+          created_at?: string | null
+          data_entrada?: string | null
+          empresa_id?: string
+          id?: string
+          nome?: string
+          percentual_capital?: number | null
+          qualificacao?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socios_empresa_id_fkey"
+            columns: ["empresa_id"]
+            isOneToOne: false
+            referencedRelation: "empresas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subscriptions: {
         Row: {
