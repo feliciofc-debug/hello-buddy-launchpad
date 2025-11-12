@@ -24,16 +24,16 @@ serve(async (req) => {
     // LOG 2: Verificar credenciais
     console.log("🔑 Verificando credenciais...");
     console.log("SUPABASE_URL:", Deno.env.get("SUPABASE_URL") ? "✅" : "❌");
-    console.log("SUPABASE_ANON_KEY:", Deno.env.get("SUPABASE_ANON_KEY") ? "✅" : "❌");
+    console.log("SUPABASE_SERVICE_ROLE_KEY:", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ? "✅" : "❌");
     console.log("GOOGLE_API_KEY:", Deno.env.get("GOOGLE_API_KEY") ? "✅" : "❌");
     console.log("GOOGLE_CX:", Deno.env.get("GOOGLE_CX") ? "✅" : "❌");
 
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    console.log("✅ Supabase client criado");
+    console.log("✅ Supabase client criado com SERVICE_ROLE");
 
     // Buscar campanha com logs detalhados
     console.log("📋 Buscando campanha...");
