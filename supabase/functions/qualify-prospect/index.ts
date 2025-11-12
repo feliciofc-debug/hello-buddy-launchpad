@@ -41,6 +41,31 @@ serve(async (req) => {
     const enrichment = socio.enrichment_data || {}
     const empresa = socio.empresa
 
+    // CRITICAL: Verificar se há dados enriquecidos
+    const temEnriquecimento = enrichment.linkedin_url || enrichment.instagram_username || 
+                              (enrichment.news_mentions && enrichment.news_mentions.length > 0)
+    
+    if (!temEnriquecimento) {
+      console.error('❌ Sem dados de enriquecimento. Qualificação impossível.')
+      
+      await supabaseClient
+        .from('qualification_queue')
+        .update({ 
+          status: 'failed', 
+          processed_at: new Date().toISOString(),
+          error_message: 'Dados de enriquecimento insuficientes para qualificação'
+        })
+        .eq('socio_id', socio_id)
+
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Enriquecimento falhou. Não é possível qualificar sem dados das redes sociais.' 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Get user_id from auth
     const authHeader = req.headers.get('Authorization')
     const token = authHeader?.replace('Bearer ', '')

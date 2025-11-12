@@ -38,6 +38,22 @@ serve(async (req) => {
     const empresa = socio.empresa
     const enrichment = socio.enrichment_data || {}
 
+    // CRITICAL: Verificar se há dados enriquecidos
+    const temEnriquecimento = enrichment.linkedin_url || enrichment.instagram_username || 
+                              (enrichment.news_mentions && enrichment.news_mentions.length > 0)
+    
+    if (!temEnriquecimento) {
+      console.error('❌ Sem dados de enriquecimento. Geração de mensagens impossível.')
+      
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Enriquecimento falhou. Não é possível gerar mensagens personalizadas sem dados reais das redes sociais.' 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     console.log(`✍️ Gerando mensagens para: ${socio.nome}`)
 
     // Preparar contexto para a IA

@@ -41,32 +41,22 @@ serve(async (req) => {
     const GOOGLE_CX = Deno.env.get('GOOGLE_CX')
 
     if (!GOOGLE_API_KEY || !GOOGLE_CX) {
-      console.warn('⚠️ Google API não configurada, usando dados mockados')
+      console.error('❌ Google API não configurada')
       
-      const enrichmentData = {
-        linkedin_url: null,
-        instagram_username: null,
-        news_mentions: [],
-        diario_oficial: [],
-        enriched_at: new Date().toISOString()
-      }
-
-      await supabaseClient
-        .from('socios')
-        .update({ enrichment_data: enrichmentData })
-        .eq('id', socio_id)
-
       await supabaseClient
         .from('enrichment_queue')
-        .update({ status: 'completed', processed_at: new Date().toISOString() })
+        .update({ 
+          status: 'failed', 
+          processed_at: new Date().toISOString(),
+          error_message: 'Google API não configurada. Configure GOOGLE_API_KEY e GOOGLE_CX.'
+        })
         .eq('socio_id', socio_id)
 
-      await supabaseClient
-        .from('qualification_queue')
-        .insert({ socio_id, status: 'pending' })
-
       return new Response(
-        JSON.stringify({ success: true, message: 'Enriquecimento sem Google API' }),
+        JSON.stringify({ 
+          success: false, 
+          error: 'Google API não configurada. Enriquecimento impossível sem credenciais válidas.' 
+        }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -75,97 +65,129 @@ serve(async (req) => {
     const googleSearch = async (query: string) => {
       try {
         const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}`
+        console.log(`🔍 Google Search: ${query}`)
         const response = await fetch(url)
         
         if (!response.ok) {
-          console.error(`Google Search error: ${response.status}`)
-          return { items: [] }
+          const errorText = await response.text()
+          console.error(`❌ Google Search error ${response.status}:`, errorText)
+          throw new Error(`Google API error ${response.status}: ${errorText}`)
         }
         
-        return await response.json()
+        const data = await response.json()
+        console.log(`✅ Google Search OK: ${data.items?.length || 0} resultados`)
+        return data
       } catch (error) {
-        console.error('Google Search failed:', error)
-        return { items: [] }
+        console.error('❌ Google Search failed:', error)
+        throw error
       }
     }
 
-    console.log('🔍 Buscando LinkedIn...')
-    const linkedinResults = await googleSearch(
-      `${socio.nome} ${socio.empresa.nome_fantasia} site:linkedin.com/in/`
-    )
-    const linkedinUrl = linkedinResults.items?.[0]?.link || null
-    const linkedinSnippet = linkedinResults.items?.[0]?.snippet || null
+    try {
+      console.log('🔍 Buscando LinkedIn...')
+      const linkedinResults = await googleSearch(
+        `${socio.nome} ${socio.empresa.nome_fantasia} site:linkedin.com/in/`
+      )
+      const linkedinUrl = linkedinResults.items?.[0]?.link || null
+      const linkedinSnippet = linkedinResults.items?.[0]?.snippet || null
 
-    console.log('📸 Buscando Instagram...')
-    const instagramResults = await googleSearch(
-      `${socio.nome} instagram`
-    )
-    let instagramUsername = null
-    for (const item of instagramResults.items || []) {
-      const match = item.link?.match(/instagram\.com\/([^\/\?]+)/)
-      if (match && match[1] !== 'p') {
-        instagramUsername = match[1]
-        break
+      console.log('📸 Buscando Instagram...')
+      const instagramResults = await googleSearch(
+        `${socio.nome} instagram`
+      )
+      let instagramUsername = null
+      for (const item of instagramResults.items || []) {
+        const match = item.link?.match(/instagram\.com\/([^\/\?]+)/)
+        if (match && match[1] !== 'p') {
+          instagramUsername = match[1]
+          break
+        }
       }
+
+      console.log('📰 Buscando notícias...')
+      const newsResults = await googleSearch(
+        `${socio.nome} ${socio.empresa.razao_social} -faleceu -morreu`
+      )
+      const newsMentions = (newsResults.items || []).slice(0, 5).map((item: any) => ({
+        titulo: item.title,
+        snippet: item.snippet,
+        url: item.link,
+        data: item.pagemap?.metatags?.[0]?.['article:published_time']
+      }))
+
+      console.log('🏛️ Buscando Diário Oficial...')
+      const diarioResults = await googleSearch(
+        `${socio.empresa.razao_social} site:in.gov.br OR site:imprensaoficial.com.br`
+      )
+      const diarioOficial = (diarioResults.items || []).slice(0, 3).map((item: any) => ({
+        titulo: item.title,
+        snippet: item.snippet,
+        url: item.link
+      }))
+
+      const enrichmentData = {
+        linkedin_url: linkedinUrl,
+        linkedin_snippet: linkedinSnippet,
+        instagram_username: instagramUsername,
+        news_mentions: newsMentions,
+        diario_oficial: diarioOficial,
+        enriched_at: new Date().toISOString()
+      }
+
+      console.log('💾 Salvando dados enriquecidos...')
+      console.log('LinkedIn:', linkedinUrl)
+      console.log('Instagram:', instagramUsername)
+      console.log('Notícias:', newsMentions.length)
+
+      // Verificar se encontrou ALGUM dado relevante
+      const temDados = linkedinUrl || instagramUsername || newsMentions.length > 0
+      
+      if (!temDados) {
+        console.warn('⚠️ Nenhum dado relevante encontrado no Google')
+      }
+
+      await supabaseClient
+        .from('socios')
+        .update({ enrichment_data: enrichmentData })
+        .eq('id', socio_id)
+
+      // Atualizar queue
+      await supabaseClient
+        .from('enrichment_queue')
+        .update({ status: 'completed', processed_at: new Date().toISOString() })
+        .eq('socio_id', socio_id)
+
+      // Adicionar na qualification_queue
+      await supabaseClient
+        .from('qualification_queue')
+        .insert({ socio_id, status: 'pending' })
+
+      console.log('✅ Enriquecimento completo!')
+
+      return new Response(
+        JSON.stringify({ success: true, enrichment: enrichmentData }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    } catch (searchError: any) {
+      console.error('❌ Erro no Google Search:', searchError)
+      
+      await supabaseClient
+        .from('enrichment_queue')
+        .update({ 
+          status: 'failed', 
+          processed_at: new Date().toISOString(),
+          error_message: `Google Search falhou: ${searchError.message}`
+        })
+        .eq('socio_id', socio_id)
+
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Google Search falhou: ${searchError.message}` 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
-
-    console.log('📰 Buscando notícias...')
-    const newsResults = await googleSearch(
-      `${socio.nome} ${socio.empresa.razao_social} -faleceu -morreu`
-    )
-    const newsMentions = (newsResults.items || []).slice(0, 5).map((item: any) => ({
-      titulo: item.title,
-      snippet: item.snippet,
-      url: item.link,
-      data: item.pagemap?.metatags?.[0]?.['article:published_time']
-    }))
-
-    console.log('🏛️ Buscando Diário Oficial...')
-    const diarioResults = await googleSearch(
-      `${socio.empresa.razao_social} site:in.gov.br OR site:imprensaoficial.com.br`
-    )
-    const diarioOficial = (diarioResults.items || []).slice(0, 3).map((item: any) => ({
-      titulo: item.title,
-      snippet: item.snippet,
-      url: item.link
-    }))
-
-    const enrichmentData = {
-      linkedin_url: linkedinUrl,
-      linkedin_snippet: linkedinSnippet,
-      instagram_username: instagramUsername,
-      news_mentions: newsMentions,
-      diario_oficial: diarioOficial,
-      enriched_at: new Date().toISOString()
-    }
-
-    console.log('💾 Salvando dados enriquecidos...')
-    console.log('LinkedIn:', linkedinUrl)
-    console.log('Instagram:', instagramUsername)
-    console.log('Notícias:', newsMentions.length)
-
-    await supabaseClient
-      .from('socios')
-      .update({ enrichment_data: enrichmentData })
-      .eq('id', socio_id)
-
-    // Atualizar queue
-    await supabaseClient
-      .from('enrichment_queue')
-      .update({ status: 'completed', processed_at: new Date().toISOString() })
-      .eq('socio_id', socio_id)
-
-    // Adicionar na qualification_queue
-    await supabaseClient
-      .from('qualification_queue')
-      .insert({ socio_id, status: 'pending' })
-
-    console.log('✅ Enriquecimento completo!')
-
-    return new Response(
-      JSON.stringify({ success: true, enrichment: enrichmentData }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
 
   } catch (error: any) {
     console.error('❌ ERRO:', error)
