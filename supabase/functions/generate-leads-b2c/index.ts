@@ -11,9 +11,29 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  console.log("🚀 === GENERATE-LEADS-B2C INICIADO ===");
+
   try {
+    // LOG 1: Body recebido
+    const body = await req.json();
+    console.log("📦 Body:", JSON.stringify(body, null, 2));
+
+    const { campanha_id, icp_config_id, limite = 50 } = body;
+    console.log(`✅ Params extraídos:`, { campanha_id, icp_config_id, limite });
+
+    // LOG 2: Verificar credenciais
+    console.log("🔑 Verificando credenciais...");
+    console.log("SUPABASE_URL:", Deno.env.get("SUPABASE_URL") ? "✅" : "❌");
+    console.log("SUPABASE_ANON_KEY:", Deno.env.get("SUPABASE_ANON_KEY") ? "✅" : "❌");
+    console.log("GOOGLE_API_KEY:", Deno.env.get("GOOGLE_API_KEY") ? "✅" : "❌");
+    console.log("GOOGLE_CX:", Deno.env.get("GOOGLE_CX") ? "✅" : "❌");
+
     const authHeader = req.headers.get("authorization");
-    if (!authHeader) throw new Error("Não autenticado");
+    console.log("Authorization header:", authHeader ? "✅ Presente" : "❌ Ausente");
+
+    if (!authHeader) {
+      throw new Error("Não autenticado - Header Authorization ausente");
+    }
 
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -21,27 +41,55 @@ serve(async (req) => {
       { global: { headers: { authorization: authHeader } } }
     );
 
+    console.log("✅ Supabase client criado");
+
+    // LOG 3: Verificar usuário
+    console.log("👤 Verificando usuário...");
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) throw new Error("Não autenticado");
+    
+    if (userError) {
+      console.error("❌ Erro ao buscar usuário:", userError);
+      throw new Error(`Erro de autenticação: ${userError.message}`);
+    }
+    
+    if (!user) {
+      console.error("❌ Usuário não encontrado");
+      throw new Error("Usuário não autenticado");
+    }
 
-    const { campanha_id, limite = 50 } = await req.json();
+    console.log("✅ Usuário autenticado:", user.id);
 
-    console.log(`[GENERATE-LEADS-B2C] Iniciando para campanha ${campanha_id}`);
-
-    // Buscar campanha e ICP
+    // LOG 4: Buscar campanha
+    console.log("📋 Buscando campanha...");
     const { data: campanha, error: campanhaError } = await supabaseClient
       .from('campanhas_prospeccao')
       .select('*, icp_configs(*)')
       .eq('id', campanha_id)
       .single();
 
-    if (campanhaError) throw campanhaError;
-    if (!campanha.icp_configs) throw new Error("ICP não encontrado");
+    if (campanhaError) {
+      console.error("❌ Erro ao buscar campanha:", campanhaError);
+      throw new Error(`Erro ao buscar campanha: ${campanhaError.message}`);
+    }
+
+    if (!campanha) {
+      console.error("❌ Campanha não encontrada");
+      throw new Error("Campanha não encontrada");
+    }
+
+    console.log("✅ Campanha encontrada:", campanha.nome);
+
+    if (!campanha.icp_configs) {
+      console.error("❌ ICP não encontrado na campanha");
+      throw new Error("ICP não encontrado");
+    }
 
     const icp = campanha.icp_configs;
     const b2cConfig = icp.b2c_config as any;
 
-    console.log("[GENERATE-LEADS-B2C] ICP Config:", b2cConfig);
+    console.log("✅ ICP carregado:", icp.nome);
+    console.log("📊 ICP tipo:", icp.tipo);
+    console.log("📊 B2C config:", JSON.stringify(b2cConfig, null, 2));
 
     // Criar execução
     const { data: execucao } = await supabaseClient
@@ -193,13 +241,21 @@ serve(async (req) => {
       status: 200,
     });
 
-  } catch (error) {
-    console.error("[GENERATE-LEADS-B2C] Erro:", error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : String(error)
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500,
-    });
+  } catch (error: any) {
+    console.error("❌ === ERRO FATAL ===");
+    console.error("Mensagem:", error.message);
+    console.error("Stack:", error.stack);
+    
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error.message,
+        stack: error.stack
+      }),
+      { 
+        status: 200, // Retornar 200 para não quebrar o frontend
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      }
+    );
   }
 });

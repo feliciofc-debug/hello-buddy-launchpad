@@ -248,6 +248,102 @@ export default function CampanhasProspeccao() {
     }
   };
 
+  const handleCriarLeadsTeste = async (campanhaId: string) => {
+    try {
+      toast.info("🧪 Criando leads de teste...");
+
+      const leadsMockados = [
+        {
+          campanha_id: campanhaId,
+          tipo: 'b2c',
+          nome_profissional: 'Dr. João Silva',
+          profissao: 'Médico',
+          especialidade: 'Cardiologista',
+          cidade: 'Rio de Janeiro',
+          estado: 'RJ',
+          fonte: 'teste',
+          status: 'descoberto'
+        },
+        {
+          campanha_id: campanhaId,
+          tipo: 'b2c',
+          nome_profissional: 'Dra. Maria Santos',
+          profissao: 'Médico',
+          especialidade: 'Ortopedista',
+          cidade: 'Rio de Janeiro',
+          estado: 'RJ',
+          fonte: 'teste',
+          status: 'descoberto'
+        },
+        {
+          campanha_id: campanhaId,
+          tipo: 'b2c',
+          nome_profissional: 'Dr. Pedro Costa',
+          profissao: 'Médico',
+          especialidade: 'Dermatologista',
+          cidade: 'Rio de Janeiro',
+          estado: 'RJ',
+          fonte: 'teste',
+          status: 'descoberto'
+        },
+        {
+          campanha_id: campanhaId,
+          tipo: 'b2c',
+          nome_profissional: 'Dra. Ana Oliveira',
+          profissao: 'Médico',
+          especialidade: 'Pediatra',
+          cidade: 'Rio de Janeiro',
+          estado: 'RJ',
+          fonte: 'teste',
+          status: 'descoberto'
+        },
+        {
+          campanha_id: campanhaId,
+          tipo: 'b2c',
+          nome_profissional: 'Dr. Carlos Mendes',
+          profissao: 'Médico',
+          especialidade: 'Neurologista',
+          cidade: 'Rio de Janeiro',
+          estado: 'RJ',
+          fonte: 'teste',
+          status: 'descoberto'
+        }
+      ];
+
+      const { error: insertError } = await supabase
+        .from('leads_descobertos')
+        .insert(leadsMockados);
+
+      if (insertError) throw insertError;
+
+      // Atualizar stats
+      const { error: updateError } = await supabase
+        .from('campanhas_prospeccao')
+        .update({
+          stats: {
+            descobertos: 5,
+            enriquecidos: 0,
+            qualificados: 0,
+            mensagens_geradas: 0,
+            mensagens_enviadas: 0,
+            respostas: 0,
+            conversoes: 0
+          },
+          status: 'ativa'
+        })
+        .eq('id', campanhaId);
+
+      if (updateError) throw updateError;
+
+      await loadData();
+
+      toast.success("✅ 5 leads de teste criados!");
+    } catch (error: any) {
+      console.error("Erro ao criar leads teste:", error);
+      toast.error(`Erro: ${error.message}`);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants: Record<string, any> = {
       rascunho: { variant: "secondary", label: "Rascunho" },
@@ -417,23 +513,35 @@ export default function CampanhasProspeccao() {
                         Pausar
                       </Button>
                     ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => handleIniciarCampanha(campanha.id)}
-                        disabled={processing === campanha.id}
-                      >
-                        {processing === campanha.id ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Iniciando...
-                          </>
-                        ) : (
-                          <>
-                            <Play className="mr-2 h-4 w-4" />
-                            Iniciar
-                          </>
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => handleIniciarCampanha(campanha.id)}
+                          disabled={processing === campanha.id}
+                        >
+                          {processing === campanha.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Iniciando...
+                            </>
+                          ) : (
+                            <>
+                              <Play className="mr-2 h-4 w-4" />
+                              Iniciar
+                            </>
+                          )}
+                        </Button>
+                        
+                        {campanha.status === 'rascunho' && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => handleCriarLeadsTeste(campanha.id)}
+                          >
+                            🧪 Teste
+                          </Button>
                         )}
-                      </Button>
+                      </>
                     )}
 
                     <Button
