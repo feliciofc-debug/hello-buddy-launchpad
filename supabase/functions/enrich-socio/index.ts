@@ -152,16 +152,21 @@ serve(async (req) => {
     }
 
     try {
+      // Usar razão_social (ATOM BRASIL DIGITAL) ao invés de nome_fantasia (ATACADISTA DIGITAL)
+      const empresaNome = socio.empresa.razao_social.replace(' LTDA', '').trim()
+      
       console.log('🔍 Buscando LinkedIn...')
+      console.log(`Query: ${socio.nome} ${empresaNome} site:linkedin.com/in/`)
       const linkedinResults = await googleSearch(
-        `${socio.nome} ${socio.empresa.nome_fantasia} site:linkedin.com/in/`
+        `${socio.nome} ${empresaNome} site:linkedin.com/in/`
       )
       const linkedinUrl = linkedinResults.items?.[0]?.link || null
       const linkedinSnippet = linkedinResults.items?.[0]?.snippet || null
 
       console.log('📸 Buscando Instagram...')
+      console.log(`Query: ${socio.nome} ${empresaNome} instagram`)
       const instagramResults = await googleSearch(
-        `${socio.nome} instagram`
+        `${socio.nome} ${empresaNome} instagram`
       )
       let instagramUsername = null
       for (const item of instagramResults.items || []) {
@@ -173,8 +178,9 @@ serve(async (req) => {
       }
 
       console.log('📰 Buscando notícias...')
+      console.log(`Query: ${socio.nome} ${empresaNome} -faleceu -morreu`)
       const newsResults = await googleSearch(
-        `${socio.nome} ${socio.empresa.razao_social} -faleceu -morreu`
+        `${socio.nome} ${empresaNome} -faleceu -morreu`
       )
       const newsMentions = (newsResults.items || []).slice(0, 5).map((item: any) => ({
         titulo: item.title,
