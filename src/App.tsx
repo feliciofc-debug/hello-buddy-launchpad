@@ -55,7 +55,6 @@ const App = () => (
             <Route path="/test-payment" element={<TestPayment />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/produtos" element={<ProductsPage />} />
-            <Route path="/perfil" element={<AffiliateProfile />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
             <Route path="/configuracoes-icp" element={<ConfigurarICP />} />
             <Route path="/configurar-icp" element={<ConfigurarICP />} />
