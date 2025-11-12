@@ -64,17 +64,17 @@ ${enrichment.news_mentions && enrichment.news_mentions.length > 0 ?
 
     const firstName = socio.nome.split(' ')[0]
 
-    // OpenAI API
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')
+    // Lovable AI
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
 
-    if (!OPENAI_API_KEY) {
-      console.warn('⚠️ OpenAI não configurada, usando templates simples')
+    if (!LOVABLE_API_KEY) {
+      console.warn('⚠️ Lovable AI não disponível, usando templates simples')
       
       // Fallback sem IA
       const messages = {
-        professional: `Oi ${firstName}!\n\nVi que você é ${socio.qualificacao} na ${empresa.nome_fantasia}. Parabéns pela trajetória!\n\nTenho uma proposta que pode agregar valor ao seu negócio.\n\nPodemos agendar uma conversa?\n\nAbs,\nJoão - AMZ`,
-        friendly: `E aí ${firstName}!\n\nAchei seu perfil da ${empresa.nome_fantasia}!\n\nTenho algo interessante pra te mostrar.\n\nBora trocar uma ideia? 😊\n\nAbs,\nJoão`,
-        enthusiast: `${firstName}! 🚀\n\nSua empresa ${empresa.nome_fantasia} está no caminho certo!\n\nQuero te apresentar algo especial.\n\nTopa?\n\nAbs,\nJoão`,
+        professional: `Oi ${firstName}!\n\nVi que você é ${socio.qualificacao} na ${empresa.nome_fantasia || empresa.razao_social}. Parabéns pela trajetória!\n\nTenho uma proposta que pode agregar valor ao seu negócio.\n\nPodemos agendar uma conversa?\n\nAbs,\nJoão - AMZ`,
+        friendly: `E aí ${firstName}!\n\nAchei seu perfil da ${empresa.nome_fantasia || empresa.razao_social}!\n\nTenho algo interessante pra te mostrar.\n\nBora trocar uma ideia? 😊\n\nAbs,\nJoão`,
+        enthusiast: `${firstName}! 🚀\n\nSua empresa ${empresa.nome_fantasia || empresa.razao_social} está no caminho certo!\n\nQuero te apresentar algo especial.\n\nTopa?\n\nAbs,\nJoão`,
         generated_at: new Date().toISOString()
       }
 
@@ -89,7 +89,7 @@ ${enrichment.news_mentions && enrichment.news_mentions.length > 0 ?
       )
     }
 
-    // Helper: Gerar mensagem com OpenAI
+    // Helper: Gerar mensagem com Lovable AI
     const generateMessage = async (tone: string) => {
       const tonePrompts = {
         professional: 'Tom profissional e respeitoso. Mencione conquistas empresariais específicas se houver.',
@@ -116,14 +116,14 @@ TOM: ${tonePrompts[tone as keyof typeof tonePrompts]}
 
 IMPORTANTE: Escreva APENAS o texto da mensagem, sem formatação markdown, sem aspas. Texto puro pronto para enviar no WhatsApp.`
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'google/gemini-2.5-flash',
           messages: [
             {
               role: 'system',
@@ -134,20 +134,19 @@ IMPORTANTE: Escreva APENAS o texto da mensagem, sem formatação markdown, sem a
               content: prompt
             }
           ],
-          max_tokens: 300,
           temperature: 0.8,
         }),
       })
 
       if (!response.ok) {
-        throw new Error(`OpenAI error: ${response.status}`)
+        throw new Error(`Lovable AI error: ${response.status}`)
       }
 
       const data = await response.json()
       return data.choices[0].message.content.trim()
     }
 
-    console.log('🤖 Gerando 3 variações com OpenAI...')
+    console.log('🤖 Gerando 3 variações com Lovable AI...')
     
     const [professional, friendly, enthusiast] = await Promise.all([
       generateMessage('professional'),

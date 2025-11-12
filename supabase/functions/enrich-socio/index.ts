@@ -43,18 +43,27 @@ serve(async (req) => {
     if (!GOOGLE_API_KEY || !GOOGLE_CX) {
       console.warn('⚠️ Google API não configurada, usando dados mockados')
       
-      // Fallback sem Google
+      const enrichmentData = {
+        linkedin_url: null,
+        instagram_username: null,
+        news_mentions: [],
+        diario_oficial: [],
+        enriched_at: new Date().toISOString()
+      }
+
       await supabaseClient
         .from('socios')
-        .update({ 
-          enrichment_data: {
-            linkedin_url: null,
-            instagram_username: null,
-            news_mentions: [],
-            enriched_at: new Date().toISOString()
-          }
-        })
+        .update({ enrichment_data: enrichmentData })
         .eq('id', socio_id)
+
+      await supabaseClient
+        .from('enrichment_queue')
+        .update({ status: 'completed', processed_at: new Date().toISOString() })
+        .eq('socio_id', socio_id)
+
+      await supabaseClient
+        .from('qualification_queue')
+        .insert({ socio_id, status: 'pending' })
 
       return new Response(
         JSON.stringify({ success: true, message: 'Enriquecimento sem Google API' }),

@@ -11,7 +11,7 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  console.log('🤖 qualify-prospect INICIADO')
+  console.log('🤖 qualify-prospect INICIADO (Lovable AI)')
 
   try {
     const supabaseClient = createClient(
@@ -20,73 +20,189 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     )
 
-    const body = await req.json()
-    console.log('📦 Body recebido:', body)
-
-    const { socio_id } = body
-
-    if (!socio_id) {
-      console.error('❌ socio_id não fornecido')
-      throw new Error('socio_id é obrigatório')
-    }
+    const { socio_id } = await req.json()
+    if (!socio_id) throw new Error('socio_id é obrigatório')
 
     console.log(`🤖 Buscando sócio: ${socio_id}`)
 
-    // Buscar sócio
+    // Buscar sócio completo
     const { data: socio, error: socioError } = await supabaseClient
       .from('socios')
       .select('*, empresa:empresas(*)')
       .eq('id', socio_id)
       .single()
 
-    if (socioError) {
-      console.error('❌ Erro ao buscar sócio:', socioError)
-      throw new Error(`Erro ao buscar sócio: ${socioError.message}`)
+    if (socioError || !socio) {
+      throw new Error(`Erro ao buscar sócio: ${socioError?.message || 'Não encontrado'}`)
     }
 
-    if (!socio) {
-      console.error('❌ Sócio não encontrado')
-      throw new Error('Sócio não encontrado')
-    }
+    console.log(`✅ Sócio: ${socio.nome}`)
 
-    console.log(`✅ Sócio encontrado: ${socio.nome}`)
-
-    // Calcular score simples
-    let score = 60
-
-    if (socio.patrimonio_estimado > 5000000) score += 20
-    else if (socio.patrimonio_estimado > 1000000) score += 10
-
-    const cargo = (socio.qualificacao || '').toLowerCase()
-    if (cargo.includes('administrador') || cargo.includes('diretor')) score += 15
-
-    if (socio.empresa.capital_social > 1000000) score += 5
-
-    score = Math.min(100, Math.max(0, score))
-
-    const qualificationData = {
-      socio_id,
-      score,
-      justificativa: `${socio.qualificacao} na ${socio.empresa.nome_fantasia}. Capital social de R$ ${(socio.empresa.capital_social || 0).toLocaleString('pt-BR')}.`,
-      insights: [
-        `Cargo: ${socio.qualificacao}`,
-        `Empresa: ${socio.empresa.nome_fantasia}`,
-        `Capital: R$ ${(socio.empresa.capital_social || 0).toLocaleString('pt-BR')}`
-      ]
-    }
-
-    console.log(`💾 Salvando qualificação (Score: ${score})...`)
+    const enrichment = socio.enrichment_data || {}
+    const empresa = socio.empresa
 
     // Get user_id from auth
     const authHeader = req.headers.get('Authorization')
     const token = authHeader?.replace('Bearer ', '')
     const { data: { user } } = await supabaseClient.auth.getUser(token)
     
-    if (!user) {
-      throw new Error('User not authenticated')
+    if (!user) throw new Error('User not authenticated')
+
+    // Preparar contexto para IA
+    const contexto = `
+PROSPECT:
+Nome: ${socio.nome}
+Cargo: ${socio.qualificacao}
+Patrimônio Estimado: R$ ${(socio.patrimonio_estimado || 0).toLocaleString('pt-BR')}
+
+EMPRESA:
+Razão Social: ${empresa.razao_social}
+Nome Fantasia: ${empresa.nome_fantasia || 'N/A'}
+Capital Social: R$ ${(empresa.capital_social || 0).toLocaleString('pt-BR')}
+Porte: ${empresa.porte || 'N/A'}
+Localização: ${empresa.endereco?.municipio || 'N/A'}, ${empresa.endereco?.uf || 'N/A'}
+Situação: ${empresa.situacao_cadastral || 'N/A'}
+
+DADOS ENRIQUECIDOS:
+LinkedIn: ${enrichment.linkedin_url || 'Não encontrado'}
+${enrichment.linkedin_snippet ? `Bio: ${enrichment.linkedin_snippet}` : ''}
+Instagram: ${enrichment.instagram_username ? `@${enrichment.instagram_username}` : 'Não encontrado'}
+
+${enrichment.news_mentions && enrichment.news_mentions.length > 0 ? 
+  `NOTÍCIAS RECENTES:\n${enrichment.news_mentions.map((n: any) => `- ${n.titulo}`).join('\n')}` : 
+  'Sem notícias recentes'}
+`.trim()
+
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
+
+    if (!LOVABLE_API_KEY) {
+      console.warn('⚠️ Lovable AI não disponível, usando cálculo simples')
+      
+      // Fallback simples
+      let score = 60
+      if (socio.patrimonio_estimado > 5000000) score += 20
+      else if (socio.patrimonio_estimado > 1000000) score += 10
+      const cargo = (socio.qualificacao || '').toLowerCase()
+      if (cargo.includes('administrador') || cargo.includes('diretor')) score += 15
+      if (empresa.capital_social > 1000000) score += 5
+      score = Math.min(100, Math.max(0, score))
+
+      const qualificationData = {
+        socio_id,
+        score,
+        justificativa: `${socio.qualificacao} na ${empresa.nome_fantasia || empresa.razao_social}. Capital social de R$ ${(empresa.capital_social || 0).toLocaleString('pt-BR')}.`,
+        insights: [
+          `Cargo: ${socio.qualificacao}`,
+          `Empresa: ${empresa.nome_fantasia || empresa.razao_social}`,
+          `Capital: R$ ${(empresa.capital_social || 0).toLocaleString('pt-BR')}`
+        ]
+      }
+
+      const { data: existing } = await supabaseClient
+        .from('prospects_qualificados')
+        .select('id')
+        .eq('socio_id', socio_id)
+        .maybeSingle()
+
+      let qualified
+      if (existing) {
+        const { data } = await supabaseClient
+          .from('prospects_qualificados')
+          .update(qualificationData)
+          .eq('id', existing.id)
+          .select()
+          .single()
+        qualified = data
+      } else {
+        const { data } = await supabaseClient
+          .from('prospects_qualificados')
+          .insert({ ...qualificationData, user_id: user.id })
+          .select()
+          .single()
+        qualified = data
+      }
+
+      await supabaseClient
+        .from('qualification_queue')
+        .update({ status: 'completed', processed_at: new Date().toISOString() })
+        .eq('socio_id', socio_id)
+
+      return new Response(
+        JSON.stringify({ success: true, qualification: qualified, message: 'Qualificação simples' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // Verificar se já existe
+    // Usar Lovable AI para qualificação
+    console.log('🤖 Qualificando com Lovable AI...')
+
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'system',
+            content: `Você é um especialista em qualificação de prospects B2B de alto valor.
+
+Sua tarefa é analisar perfis e retornar um JSON com:
+{
+  "score": 0-100,
+  "poder_aquisitivo": 0-25,
+  "momento_certo": 0-25,
+  "fit_produto": 0-25,
+  "sinais_compra": 0-25,
+  "justificativa": "texto em português, 2-3 frases",
+  "insights": ["insight 1", "insight 2", "insight 3"],
+  "recomendacao": "contatar_agora" | "aguardar" | "descartar"
+}
+
+Critérios de pontuação:
+- Poder Aquisitivo (25pts): Capital social, patrimônio, porte empresa
+- Momento Certo (25pts): Situação cadastral, notícias recentes, crescimento
+- Fit Produto (25pts): Setor, cargo, perfil LinkedIn
+- Sinais de Compra (25pts): Presença digital, notícias, expansão
+
+Retorne APENAS o JSON, sem markdown.`
+          },
+          {
+            role: 'user',
+            content: `Analise este prospect:\n\n${contexto}`
+          }
+        ],
+        temperature: 0.7,
+      })
+    })
+
+    if (!aiResponse.ok) {
+      throw new Error(`Lovable AI error: ${aiResponse.status}`)
+    }
+
+    const aiData = await aiResponse.json()
+    const aiContent = aiData.choices[0].message.content.trim()
+    
+    // Parse JSON da resposta
+    let analysis
+    try {
+      const jsonMatch = aiContent.match(/\{[\s\S]*\}/)
+      analysis = JSON.parse(jsonMatch ? jsonMatch[0] : aiContent)
+    } catch {
+      throw new Error('Falha ao parsear resposta da IA')
+    }
+
+    const qualificationData = {
+      socio_id,
+      score: analysis.score || 50,
+      justificativa: analysis.justificativa || 'Análise gerada por IA',
+      insights: analysis.insights || []
+    }
+
+    console.log(`💾 Salvando qualificação (Score: ${qualificationData.score})...`)
+
     const { data: existing } = await supabaseClient
       .from('prospects_qualificados')
       .select('id')
@@ -94,65 +210,40 @@ serve(async (req) => {
       .maybeSingle()
 
     let qualified
-
     if (existing) {
-      // Atualizar
-      const { data, error } = await supabaseClient
+      const { data } = await supabaseClient
         .from('prospects_qualificados')
         .update(qualificationData)
         .eq('id', existing.id)
         .select()
         .single()
-
-      if (error) throw error
       qualified = data
     } else {
-      // Inserir
-      const { data, error } = await supabaseClient
+      const { data } = await supabaseClient
         .from('prospects_qualificados')
         .insert({ ...qualificationData, user_id: user.id })
         .select()
         .single()
-
-      if (error) throw error
       qualified = data
     }
 
-    console.log('✅ Qualificação salva!')
-
-    // Atualizar queue
     await supabaseClient
       .from('qualification_queue')
       .update({ status: 'completed', processed_at: new Date().toISOString() })
       .eq('socio_id', socio_id)
 
-    console.log('✅ Queue atualizada!')
+    console.log('✅ Qualificação com IA completa!')
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        qualification: qualified,
-        message: 'Qualificação concluída (cálculo simples)'
-      }),
-      { 
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: true, qualification: qualified, analysis }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error: any) {
-    console.error('❌ ERRO GERAL:', error)
-    
+    console.error('❌ ERRO:', error)
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message,
-        stack: error.stack
-      }),
-      { 
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
