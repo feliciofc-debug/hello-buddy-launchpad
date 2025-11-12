@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      campanha_execucoes: {
+        Row: {
+          campanha_id: string | null
+          concluida_em: string | null
+          erro_mensagem: string | null
+          erros: number | null
+          id: string
+          iniciada_em: string | null
+          log: Json | null
+          processados: number | null
+          status: string | null
+          sucesso: number | null
+          tipo: string
+          total_items: number | null
+        }
+        Insert: {
+          campanha_id?: string | null
+          concluida_em?: string | null
+          erro_mensagem?: string | null
+          erros?: number | null
+          id?: string
+          iniciada_em?: string | null
+          log?: Json | null
+          processados?: number | null
+          status?: string | null
+          sucesso?: number | null
+          tipo: string
+          total_items?: number | null
+        }
+        Update: {
+          campanha_id?: string | null
+          concluida_em?: string | null
+          erro_mensagem?: string | null
+          erros?: number | null
+          id?: string
+          iniciada_em?: string | null
+          log?: Json | null
+          processados?: number | null
+          status?: string | null
+          sucesso?: number | null
+          tipo?: string
+          total_items?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanha_execucoes_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campanhas: {
         Row: {
           created_at: string
@@ -61,6 +114,80 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      campanhas_prospeccao: {
+        Row: {
+          automatica: boolean | null
+          concluida_em: string | null
+          created_at: string | null
+          descricao: string | null
+          distribuicao: Json | null
+          frequencia: string | null
+          icp_config_id: string | null
+          id: string
+          iniciada_em: string | null
+          meta_leads_por_dia: number | null
+          meta_leads_qualificados: number | null
+          meta_leads_total: number | null
+          nome: string
+          proxima_execucao: string | null
+          stats: Json | null
+          status: string | null
+          tipo: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          automatica?: boolean | null
+          concluida_em?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          distribuicao?: Json | null
+          frequencia?: string | null
+          icp_config_id?: string | null
+          id?: string
+          iniciada_em?: string | null
+          meta_leads_por_dia?: number | null
+          meta_leads_qualificados?: number | null
+          meta_leads_total?: number | null
+          nome: string
+          proxima_execucao?: string | null
+          stats?: Json | null
+          status?: string | null
+          tipo: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          automatica?: boolean | null
+          concluida_em?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          distribuicao?: Json | null
+          frequencia?: string | null
+          icp_config_id?: string | null
+          id?: string
+          iniciada_em?: string | null
+          meta_leads_por_dia?: number | null
+          meta_leads_qualificados?: number | null
+          meta_leads_total?: number | null
+          nome?: string
+          proxima_execucao?: string | null
+          stats?: Json | null
+          status?: string | null
+          tipo?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanhas_prospeccao_icp_config_id_fkey"
+            columns: ["icp_config_id"]
+            isOneToOne: false
+            referencedRelation: "icp_configs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       clientes: {
         Row: {
@@ -244,6 +371,48 @@ export type Database = {
           },
         ]
       }
+      icp_configs: {
+        Row: {
+          ativo: boolean | null
+          b2b_config: Json | null
+          b2c_config: Json | null
+          created_at: string | null
+          descricao: string | null
+          id: string
+          nome: string
+          score_minimo: number | null
+          tipo: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          b2b_config?: Json | null
+          b2c_config?: Json | null
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          nome: string
+          score_minimo?: number | null
+          tipo: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          b2b_config?: Json | null
+          b2c_config?: Json | null
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          nome?: string
+          score_minimo?: number | null
+          tipo?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           access_token: string
@@ -300,6 +469,140 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      leads_descobertos: {
+        Row: {
+          campanha_id: string | null
+          cidade: string | null
+          cnpj: string | null
+          converteu_em: string | null
+          created_at: string | null
+          email: string | null
+          enriched_at: string | null
+          enrichment_data: Json | null
+          enviado_em: string | null
+          enviado_para: string | null
+          especialidade: string | null
+          estado: string | null
+          facebook_url: string | null
+          fonte: string | null
+          fonte_snippet: string | null
+          fonte_url: string | null
+          id: string
+          insights: string[] | null
+          instagram_username: string | null
+          justificativa: string | null
+          linkedin_url: string | null
+          mensagem_selecionada: string | null
+          mensagens_geradas: Json | null
+          messages_generated_at: string | null
+          nome_fantasia: string | null
+          nome_profissional: string | null
+          profissao: string | null
+          qualified_at: string | null
+          query_usada: string | null
+          razao_social: string | null
+          recomendacao: string | null
+          respondeu_em: string | null
+          score: number | null
+          score_breakdown: Json | null
+          status: string | null
+          telefone: string | null
+          tipo: string
+          user_id: string
+          whatsapp_status: string | null
+        }
+        Insert: {
+          campanha_id?: string | null
+          cidade?: string | null
+          cnpj?: string | null
+          converteu_em?: string | null
+          created_at?: string | null
+          email?: string | null
+          enriched_at?: string | null
+          enrichment_data?: Json | null
+          enviado_em?: string | null
+          enviado_para?: string | null
+          especialidade?: string | null
+          estado?: string | null
+          facebook_url?: string | null
+          fonte?: string | null
+          fonte_snippet?: string | null
+          fonte_url?: string | null
+          id?: string
+          insights?: string[] | null
+          instagram_username?: string | null
+          justificativa?: string | null
+          linkedin_url?: string | null
+          mensagem_selecionada?: string | null
+          mensagens_geradas?: Json | null
+          messages_generated_at?: string | null
+          nome_fantasia?: string | null
+          nome_profissional?: string | null
+          profissao?: string | null
+          qualified_at?: string | null
+          query_usada?: string | null
+          razao_social?: string | null
+          recomendacao?: string | null
+          respondeu_em?: string | null
+          score?: number | null
+          score_breakdown?: Json | null
+          status?: string | null
+          telefone?: string | null
+          tipo: string
+          user_id: string
+          whatsapp_status?: string | null
+        }
+        Update: {
+          campanha_id?: string | null
+          cidade?: string | null
+          cnpj?: string | null
+          converteu_em?: string | null
+          created_at?: string | null
+          email?: string | null
+          enriched_at?: string | null
+          enrichment_data?: Json | null
+          enviado_em?: string | null
+          enviado_para?: string | null
+          especialidade?: string | null
+          estado?: string | null
+          facebook_url?: string | null
+          fonte?: string | null
+          fonte_snippet?: string | null
+          fonte_url?: string | null
+          id?: string
+          insights?: string[] | null
+          instagram_username?: string | null
+          justificativa?: string | null
+          linkedin_url?: string | null
+          mensagem_selecionada?: string | null
+          mensagens_geradas?: Json | null
+          messages_generated_at?: string | null
+          nome_fantasia?: string | null
+          nome_profissional?: string | null
+          profissao?: string | null
+          qualified_at?: string | null
+          query_usada?: string | null
+          razao_social?: string | null
+          recomendacao?: string | null
+          respondeu_em?: string | null
+          score?: number | null
+          score_breakdown?: Json | null
+          status?: string | null
+          telefone?: string | null
+          tipo?: string
+          user_id?: string
+          whatsapp_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_descobertos_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       posts: {
         Row: {

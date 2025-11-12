@@ -33,6 +33,8 @@ import Privacy from "./pages/Privacy";
 import DataDeletion from "./pages/DataDeletion";
 import Security from "./pages/Security";
 import Admin from "./pages/Admin";
+import ConfigurarICP from "./pages/ConfigurarICP";
+import CampanhasProspeccao from "./pages/CampanhasProspeccao";
 
 const queryClient = new QueryClient();
 
@@ -56,6 +58,8 @@ const App = () => (
             <Route path="/configuracoes-icp" element={<Configuracoes />} />
             <Route path="/whatsapp" element={<WhatsAppPage />} />
             <Route path="/prospects" element={<Prospects />} />
+            <Route path="/configurar-icp" element={<ConfigurarICP />} />
+            <Route path="/campanhas-prospeccao" element={<CampanhasProspeccao />} />
             <Route path="/shopee-callback" element={<ShopeeCallback />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
             <Route path="/lomadee" element={<LomadeeFinder />} />

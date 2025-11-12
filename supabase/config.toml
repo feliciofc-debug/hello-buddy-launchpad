@@ -68,3 +68,12 @@ verify_jwt = false
 
 [functions.export-zapi]
 verify_jwt = false
+
+[functions.generate-leads-b2c]
+verify_jwt = false
+
+[functions.generate-leads-b2b]
+verify_jwt = false
+
+[functions.enrich-lead-bulk]
+verify_jwt = false
