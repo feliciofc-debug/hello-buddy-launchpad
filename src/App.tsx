@@ -55,10 +55,10 @@ const App = () => (
             <Route path="/produtos" element={<ProductsPage />} />
             <Route path="/perfil" element={<AffiliateProfile />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
-            <Route path="/configuracoes-icp" element={<Configuracoes />} />
+            <Route path="/configuracoes-icp" element={<ConfigurarICP />} />
+            <Route path="/configurar-icp" element={<ConfigurarICP />} />
             <Route path="/whatsapp" element={<WhatsAppPage />} />
             <Route path="/prospects" element={<Prospects />} />
-            <Route path="/configurar-icp" element={<ConfigurarICP />} />
             <Route path="/campanhas-prospeccao" element={<CampanhasProspeccao />} />
             <Route path="/shopee-callback" element={<ShopeeCallback />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />

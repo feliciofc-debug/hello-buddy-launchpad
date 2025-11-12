@@ -183,7 +183,7 @@ Abs,
     setLoading(true);
     try {
       const { data, error } = await (supabase as any)
-        .from('icp_config')
+        .from('icp_configs')
         .select('*')
         .maybeSingle();
 
@@ -241,7 +241,7 @@ Abs,
     setSaving(true);
     try {
       const { error } = await (supabase as any)
-        .from('icp_config')
+        .from('icp_configs')
         .upsert({
           concessionaria_id: 'default', // Substituir por ID real
           estados: icp.estados,
