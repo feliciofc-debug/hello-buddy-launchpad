@@ -15,159 +15,66 @@ serve(async (req) => {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
+      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     )
 
     const { prospect_id } = await req.json()
-
-    if (!prospect_id) {
-      throw new Error('prospect_id is required')
-    }
+    if (!prospect_id) throw new Error('prospect_id required')
 
     console.log(`✍️ Generating messages for prospect: ${prospect_id}`)
 
-    // Fetch prospect with full context
-    const { data: prospect, error: prospectError } = await supabaseClient
+    // Buscar prospect
+    const { data: prospect } = await supabaseClient
       .from('prospects_qualificados')
-      .select(`
-        *,
-        socio:socios(*, empresa:empresas(*)),
-        enrichment:socios_enriquecidos(*)
-      `)
+      .select('*, socio:socios(*, empresa:empresas(*))')
       .eq('id', prospect_id)
       .single()
 
-    if (prospectError || !prospect) throw new Error('Prospect not found')
+    if (!prospect) throw new Error('Prospect not found')
 
     const firstName = prospect.socio.nome.split(' ')[0]
+    const empresa = prospect.socio.empresa.nome_fantasia || prospect.socio.empresa.razao_social
 
-    // Call Lovable AI (uses built-in LOVABLE_API_KEY)
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
-    
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured')
+    const messages = {
+      professional: `Oi ${firstName}!\n\nVi que você é ${prospect.socio.qualificacao} na ${empresa}. Parabéns!\n\nTenho uma proposta que pode interessar.\n\nPodemos conversar?\n\nAbs,\nJoão - AMZ`,
+      friendly: `E aí ${firstName}!\n\nAchei seu perfil da ${empresa}!\n\nTenho algo legal pra te mostrar.\n\nBora trocar uma ideia? 😊\n\nAbs,\nJoão`,
+      enthusiast: `${firstName}! 🚀\n\nSua empresa ${empresa} está incrível!\n\nQuero te apresentar algo especial.\n\nTopa?\n\nAbs,\nJoão`,
+      generated_at: new Date().toISOString()
     }
 
-    // Helper function to generate message
-    const generateMessage = async (tone: string) => {
-      const prompt = `Write a WhatsApp message for Porsche dealership.
+    console.log(`💾 Salvando mensagens...`)
 
-PROSPECT: ${prospect.socio.nome}, ${prospect.socio.qualificacao} at ${prospect.socio.empresa.nome_fantasia}
-SCORE: ${prospect.score}/100
-INSIGHTS: ${prospect.insights?.join(', ') || 'None'}
-TONE: ${tone}
-
-RULES:
-1. Start with "Oi ${firstName}!"
-2. Mention something SPECIFIC about them (recent achievement, company, etc)
-3. 100-150 words in Brazilian Portuguese
-4. Natural, conversational - NOT salesy
-5. Clear but soft CTA (test drive or meeting)
-6. Use 1-2 emojis maximum
-7. Sign off with "Porsche São Paulo" or similar
-
-TONE GUIDELINES:
-- professional: Business-like but warm, mention business achievements
-- friendly: More casual, conversational, lifestyle focus
-- enthusiast: Focus on car passion, performance, driving experience
-
-Write ONLY the message text, no formatting, no code blocks.`
-
-      const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: [
-            { role: 'user', content: prompt }
-          ],
-        }),
-      })
-
-      if (!response.ok) {
-        if (response.status === 429) {
-          throw new Error('Rate limit exceeded. Please try again later.')
-        }
-        if (response.status === 402) {
-          throw new Error('AI credits depleted. Please add credits to continue.')
-        }
-        throw new Error(`Lovable AI error: ${response.status}`)
-      }
-
-      const data = await response.json()
-      return data.choices[0].message.content.trim()
-    }
-
-    // Generate all 3 variations in parallel
-    const [professional, friendly, enthusiast] = await Promise.all([
-      generateMessage('professional'),
-      generateMessage('friendly'),
-      generateMessage('enthusiast'),
-    ])
-
-    // Calculate optimal send time
-    const calculateOptimalTime = () => {
-      const now = new Date()
-      const optimal = new Date(now)
-      
-      // Next business day at 10 AM
-      optimal.setDate(optimal.getDate() + 1)
-      optimal.setHours(10, 0, 0, 0)
-      
-      // Skip weekends
-      const day = optimal.getDay()
-      if (day === 0) optimal.setDate(optimal.getDate() + 1) // Sunday → Monday
-      if (day === 6) optimal.setDate(optimal.getDate() + 2) // Saturday → Monday
-      
-      return optimal.toISOString()
-    }
-
-    // Save messages
-    const { data: messages, error: messagesError } = await supabaseClient
-      .from('mensagens_personalizadas')
-      .insert({
-        prospect_id,
-        concessionaria_id: prospect.concessionaria_id,
-        mensagem_professional: professional,
-        mensagem_friendly: friendly,
-        mensagem_enthusiast: enthusiast,
-        agendado_para: calculateOptimalTime(),
-      })
-      .select()
-      .single()
-
-    if (messagesError) throw messagesError
+    // Salvar
+    await supabaseClient
+      .from('prospects_qualificados')
+      .update({ mensagens_geradas: messages })
+      .eq('id', prospect_id)
 
     console.log(`✅ Messages generated for: ${prospect.socio.nome}`)
 
     return new Response(
       JSON.stringify({
         success: true,
-        messages: {
-          professional,
-          friendly,
-          enthusiast,
-        },
-        scheduled_for: calculateOptimalTime(),
+        messages,
+        prospect: {
+          id: prospect_id,
+          nome: prospect.socio.nome,
+          score: prospect.score
+        }
       }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      { 
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     )
-  } catch (error) {
+
+  } catch (error: any) {
     console.error('❌ Error:', error)
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      JSON.stringify({ success: false, error: error.message }),
+      { 
+        status: 200, // Retornar 200 mesmo com erro
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     )
   }
