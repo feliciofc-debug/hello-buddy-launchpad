@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket, ArrowLeft, Eye, Loader2 } from "lucide-react";
+import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket, ArrowLeft, Eye, Loader2, Trash2 } from "lucide-react";
 
 export default function CampanhasProspeccao() {
   const navigate = useNavigate();
@@ -119,13 +119,18 @@ export default function CampanhasProspeccao() {
       toast.info("🚀 Campanha iniciada - Buscando leads...");
 
       // 1. Atualizar status da campanha
-      await supabase
+      const { error: updateError } = await supabase
         .from('campanhas_prospeccao')
         .update({
           status: 'ativa',
           iniciada_em: new Date().toISOString()
         })
         .eq('id', campanhaId);
+
+      if (updateError) {
+        console.error("❌ Erro ao atualizar status:", updateError);
+        throw updateError;
+      }
 
       // 2. Chamar edge function
       const funcao = campanha.tipo === 'b2b' ? 'generate-leads-b2b' : 'generate-leads-b2c';
@@ -136,13 +141,13 @@ export default function CampanhasProspeccao() {
         body: {
           campanha_id: campanhaId,
           icp_config_id: campanha.icp_config_id,
-          limite: 50
+          limite: campanha.meta_leads_total || 50
         }
       });
 
       if (error) {
         console.error("❌ Erro na edge function:", error);
-        throw error;
+        throw new Error(`Edge function error: ${error.message}`);
       }
 
       console.log("✅ Resultado edge function:", data);
@@ -196,7 +201,50 @@ export default function CampanhasProspeccao() {
     } catch (error: any) {
       console.error("❌ Erro ao iniciar campanha:", error);
       setProcessing(null);
+      
+      // Reverter status em caso de erro
+      await supabase
+        .from('campanhas_prospeccao')
+        .update({ status: 'rascunho' })
+        .eq('id', campanhaId);
+        
       toast.error(`Erro: ${error.message}`);
+    }
+  };
+
+  const handlePausarCampanha = async (campanhaId: string) => {
+    try {
+      const { error } = await supabase
+        .from('campanhas_prospeccao')
+        .update({ status: 'pausada' })
+        .eq('id', campanhaId);
+
+      if (error) throw error;
+
+      toast.success("⏸️ Campanha pausada");
+      loadData();
+    } catch (error: any) {
+      toast.error(`Erro ao pausar: ${error.message}`);
+    }
+  };
+
+  const handleDeletarCampanha = async (campanhaId: string) => {
+    if (!confirm('Tem certeza? Isso deletará todos os leads desta campanha.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('campanhas_prospeccao')
+        .delete()
+        .eq('id', campanhaId);
+
+      if (error) throw error;
+
+      toast.success("🗑️ Campanha deletada");
+      loadData();
+    } catch (error: any) {
+      toast.error(`Erro ao deletar: ${error.message}`);
     }
   };
 
@@ -335,7 +383,7 @@ export default function CampanhasProspeccao() {
                       <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/campanhas/${campanha.id}`)}>
                         <Eye className="mr-2 h-4 w-4" />
                         Ver Detalhes
                       </Button>
@@ -359,9 +407,22 @@ export default function CampanhasProspeccao() {
                         </Button>
                       )}
                       {campanha.status === 'ativa' && (
-                        <Button size="sm" variant="outline">
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handlePausarCampanha(campanha.id)}
+                        >
                           <Pause className="mr-2 h-4 w-4" />
                           Pausar
+                        </Button>
+                      )}
+                      {(campanha.status === 'rascunho' || campanha.status === 'pausada') && (
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => handleDeletarCampanha(campanha.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       )}
                     </div>
