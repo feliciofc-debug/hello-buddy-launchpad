@@ -166,12 +166,18 @@ export default function CampanhasProspeccao() {
         throw updateError;
       }
 
-      // 2. Chamar edge function
+      // 2. Chamar edge function com timeout
       const funcao = campanha.tipo === 'b2b' ? 'generate-leads-b2b' : 'generate-leads-b2c';
       
       console.log(`🔍 Chamando ${funcao} para campanha ${campanhaId}`);
+      toast.loading('🔍 Buscando leads...', { id: 'descoberta' });
 
-      const { data, error } = await supabase.functions.invoke(funcao, {
+      // Timeout de 45 segundos
+      const timeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout: A busca está demorando muito. Os leads já descobertos foram salvos.')), 45000)
+      );
+      
+      const request = supabase.functions.invoke(funcao, {
         body: {
           campanha_id: campanhaId,
           icp_config_id: campanha.icp_config_id,
@@ -179,12 +185,16 @@ export default function CampanhasProspeccao() {
         }
       });
 
+      const { data, error } = await Promise.race([request, timeout]) as any;
+
       if (error) {
         console.error("❌ Erro na edge function:", error);
+        toast.error(`Erro: ${error.message}`, { id: 'descoberta' });
         throw new Error(`Edge function error: ${error.message}`);
       }
 
       console.log("✅ Resultado edge function:", data);
+      toast.success(`✅ ${data?.total_encontrados || 0} leads descobertos!`, { id: 'descoberta' });
 
       // 3. Polling para atualizar stats em tempo real
       let pollCount = 0;

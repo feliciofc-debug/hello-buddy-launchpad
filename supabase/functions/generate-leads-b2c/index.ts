@@ -109,8 +109,12 @@ serve(async (req) => {
       
       if (LOVABLE_API_KEY) {
         try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 8000); // 8s timeout para IA
+          
           const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
             method: "POST",
+            signal: controller.signal,
             headers: {
               "Authorization": `Bearer ${LOVABLE_API_KEY}`,
               "Content-Type": "application/json",
@@ -159,6 +163,7 @@ Retorne APENAS um JSON array com as queries, sem explicações:
             })
           });
 
+          clearTimeout(timeout);
           const aiData = await aiResponse.json();
           console.log("[GENERATE-LEADS-B2C] 🤖 Resposta da IA:", JSON.stringify(aiData));
           
@@ -214,8 +219,18 @@ Retorne APENAS um JSON array com as queries, sem explicações:
 
     const googleSearch = async (query: string) => {
       const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}`;
-      const response = await fetch(url);
-      return await response.json();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      
+      try {
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        return await response.json();
+      } catch (error) {
+        clearTimeout(timeout);
+        console.error(`[GENERATE-LEADS-B2C] Erro no Google Search para "${query}":`, error);
+        return { items: [] };
+      }
     };
 
     // Extrair informações de profissional do resultado
@@ -311,9 +326,9 @@ Retorne APENAS um JSON array com as queries, sem explicações:
     let totalEncontrados = 0;
     const leadsCriados = [];
 
-    // Executar no máximo 10 queries ou todas as queries disponíveis
-    const maxQueries = Math.min(10, queries.length);
-    console.log(`[GENERATE-LEADS-B2C] Executando ${maxQueries} queries`);
+    // Executar no máximo 5 queries para acelerar
+    const maxQueries = Math.min(5, queries.length);
+    console.log(`[GENERATE-LEADS-B2C] Executando ${maxQueries} queries de ${queries.length} totais`);
 
     for (const query of queries.slice(0, maxQueries)) {
       console.log(`[GENERATE-LEADS-B2C] Buscando: ${query}`);
@@ -391,8 +406,8 @@ Retorne APENAS um JSON array com as queries, sem explicações:
         // Parar queries se já atingiu o limite
         if (totalEncontrados >= limite) break;
 
-        // Delay entre queries para não estourar rate limit
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Delay menor entre queries (500ms)
+        await new Promise(resolve => setTimeout(resolve, 500));
       } catch (error) {
         console.error(`[GENERATE-LEADS-B2C] Erro na query "${query}":`, error);
       }
