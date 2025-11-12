@@ -11,7 +11,7 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  console.log('🔍 enrich-socio INICIADO')
+  console.log('🔍 enrich-socio INICIADO (VERSÃO COMPLETA)')
 
   try {
     const supabaseClient = createClient(
@@ -20,60 +20,125 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     )
 
-    const body = await req.json()
-    console.log('📦 Body recebido:', body)
-
-    const { socio_id } = body
-
-    if (!socio_id) {
-      console.error('❌ socio_id não fornecido')
-      throw new Error('socio_id é obrigatório')
-    }
+    const { socio_id } = await req.json()
+    if (!socio_id) throw new Error('socio_id required')
 
     console.log(`🔍 Buscando sócio: ${socio_id}`)
 
     // Buscar sócio
-    const { data: socio, error: socioError } = await supabaseClient
+    const { data: socio } = await supabaseClient
       .from('socios')
       .select('*, empresa:empresas(*)')
       .eq('id', socio_id)
       .single()
 
-    if (socioError) {
-      console.error('❌ Erro ao buscar sócio:', socioError)
-      throw new Error(`Erro ao buscar sócio: ${socioError.message}`)
+    if (!socio) throw new Error('Sócio não encontrado')
+
+    console.log(`✅ Sócio: ${socio.nome}`)
+
+    // Google API
+    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY')
+    const GOOGLE_CX = Deno.env.get('GOOGLE_CX')
+
+    if (!GOOGLE_API_KEY || !GOOGLE_CX) {
+      console.warn('⚠️ Google API não configurada, usando dados mockados')
+      
+      // Fallback sem Google
+      await supabaseClient
+        .from('socios')
+        .update({ 
+          enrichment_data: {
+            linkedin_url: null,
+            instagram_username: null,
+            news_mentions: [],
+            enriched_at: new Date().toISOString()
+          }
+        })
+        .eq('id', socio_id)
+
+      return new Response(
+        JSON.stringify({ success: true, message: 'Enriquecimento sem Google API' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    if (!socio) {
-      console.error('❌ Sócio não encontrado')
-      throw new Error('Sócio não encontrado')
+    // Helper: Google Custom Search
+    const googleSearch = async (query: string) => {
+      try {
+        const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}`
+        const response = await fetch(url)
+        
+        if (!response.ok) {
+          console.error(`Google Search error: ${response.status}`)
+          return { items: [] }
+        }
+        
+        return await response.json()
+      } catch (error) {
+        console.error('Google Search failed:', error)
+        return { items: [] }
+      }
     }
 
-    console.log(`✅ Sócio encontrado: ${socio.nome}`)
+    console.log('🔍 Buscando LinkedIn...')
+    const linkedinResults = await googleSearch(
+      `${socio.nome} ${socio.empresa.nome_fantasia} site:linkedin.com/in/`
+    )
+    const linkedinUrl = linkedinResults.items?.[0]?.link || null
+    const linkedinSnippet = linkedinResults.items?.[0]?.snippet || null
 
-    // Dados mockados (sem chamar Google API por enquanto)
+    console.log('📸 Buscando Instagram...')
+    const instagramResults = await googleSearch(
+      `${socio.nome} instagram`
+    )
+    let instagramUsername = null
+    for (const item of instagramResults.items || []) {
+      const match = item.link?.match(/instagram\.com\/([^\/\?]+)/)
+      if (match && match[1] !== 'p') {
+        instagramUsername = match[1]
+        break
+      }
+    }
+
+    console.log('📰 Buscando notícias...')
+    const newsResults = await googleSearch(
+      `${socio.nome} ${socio.empresa.razao_social} -faleceu -morreu`
+    )
+    const newsMentions = (newsResults.items || []).slice(0, 5).map((item: any) => ({
+      titulo: item.title,
+      snippet: item.snippet,
+      url: item.link,
+      data: item.pagemap?.metatags?.[0]?.['article:published_time']
+    }))
+
+    console.log('🏛️ Buscando Diário Oficial...')
+    const diarioResults = await googleSearch(
+      `${socio.empresa.razao_social} site:in.gov.br OR site:imprensaoficial.com.br`
+    )
+    const diarioOficial = (diarioResults.items || []).slice(0, 3).map((item: any) => ({
+      titulo: item.title,
+      snippet: item.snippet,
+      url: item.link
+    }))
+
     const enrichmentData = {
-      linkedin_url: null,
-      linkedin_snippet: null,
-      instagram_username: null,
-      news_mentions: [],
+      linkedin_url: linkedinUrl,
+      linkedin_snippet: linkedinSnippet,
+      instagram_username: instagramUsername,
+      news_mentions: newsMentions,
+      diario_oficial: diarioOficial,
       enriched_at: new Date().toISOString()
     }
 
-    console.log('💾 Salvando enrichment_data...')
+    console.log('💾 Salvando dados enriquecidos...')
+    console.log('LinkedIn:', linkedinUrl)
+    console.log('Instagram:', instagramUsername)
+    console.log('Notícias:', newsMentions.length)
 
-    // Salvar
-    const { error: updateError } = await supabaseClient
+    await supabaseClient
       .from('socios')
       .update({ enrichment_data: enrichmentData })
       .eq('id', socio_id)
-
-    if (updateError) {
-      console.error('❌ Erro ao salvar:', updateError)
-      throw new Error(`Erro ao salvar: ${updateError.message}`)
-    }
-
-    console.log('✅ enrichment_data salvo!')
 
     // Atualizar queue
     await supabaseClient
@@ -86,35 +151,18 @@ serve(async (req) => {
       .from('qualification_queue')
       .insert({ socio_id, status: 'pending' })
 
-    console.log('✅ Queues atualizadas!')
+    console.log('✅ Enriquecimento completo!')
 
-    // Retornar sucesso
     return new Response(
-      JSON.stringify({
-        success: true,
-        enrichment: enrichmentData,
-        message: 'Enriquecimento concluído (dados mockados)'
-      }),
-      { 
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: true, enrichment: enrichmentData }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error: any) {
-    console.error('❌ ERRO GERAL:', error)
-    
-    // Retornar erro como 200 para não quebrar
+    console.error('❌ ERRO:', error)
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message,
-        stack: error.stack
-      }),
-      { 
-        status: 200, // IMPORTANTE: retornar 200 mesmo com erro
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
