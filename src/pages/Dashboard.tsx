@@ -436,6 +436,17 @@ const Dashboard = () => {
                 <Target size={20} />
                 Configurar ICP
               </a>
+              <a
+                href="/campanhas-prospeccao"
+                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                  window.location.pathname === '/campanhas-prospeccao' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                <Users size={20} />
+                Campanhas Ativas
+              </a>
             </>
           )}
           <a
