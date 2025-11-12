@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Pause, Play, Loader2, TrendingUp, Users, MessageSquare, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Pause, Play, Loader2, TrendingUp, Users, MessageSquare, CheckCircle2, Clock, AlertCircle, Sparkles } from 'lucide-react';
 
 export default function CampanhaDetalhes() {
   const { id } = useParams();
@@ -16,6 +16,9 @@ export default function CampanhaDetalhes() {
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [qualifying, setQualifying] = useState(false);
+  const [generatingMessages, setGeneratingMessages] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -82,6 +85,69 @@ export default function CampanhaDetalhes() {
       toast.error(`Erro: ${error.message}`);
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const handleEnriquecerLeads = async () => {
+    if (!id) return;
+    
+    setEnriching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-lead-bulk', {
+        body: { campanha_id: id }
+      });
+
+      if (error) throw error;
+
+      toast.success(`✨ ${data.processados} leads enriquecidos com sucesso!`);
+      loadData();
+    } catch (error: any) {
+      console.error('Erro ao enriquecer leads:', error);
+      toast.error('Erro ao enriquecer leads: ' + error.message);
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const handleQualificarLeads = async () => {
+    if (!id) return;
+    
+    setQualifying(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('qualify-prospect', {
+        body: { campanha_id: id }
+      });
+
+      if (error) throw error;
+
+      toast.success(`🎯 ${data.processados || 0} leads qualificados!`);
+      loadData();
+    } catch (error: any) {
+      console.error('Erro ao qualificar leads:', error);
+      toast.error('Erro ao qualificar leads: ' + error.message);
+    } finally {
+      setQualifying(false);
+    }
+  };
+
+  const handleGerarMensagens = async () => {
+    if (!id) return;
+    
+    setGeneratingMessages(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-message', {
+        body: { campanha_id: id }
+      });
+
+      if (error) throw error;
+
+      toast.success(`💬 ${data.processados || 0} mensagens geradas!`);
+      loadData();
+    } catch (error: any) {
+      console.error('Erro ao gerar mensagens:', error);
+      toast.error('Erro ao gerar mensagens: ' + error.message);
+    } finally {
+      setGeneratingMessages(false);
     }
   };
 
@@ -303,15 +369,72 @@ export default function CampanhaDetalhes() {
                         />
                       )}
                     </div>
-                    <Badge variant={
-                      stage.status === 'completed' ? 'default' :
-                      stage.status === 'in-progress' ? 'secondary' :
-                      'outline'
-                    }>
-                      {stage.status === 'completed' ? '✅ Concluído' :
-                       stage.status === 'in-progress' ? '⏳ Em progresso' :
-                       '⏸️ Aguardando'}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={
+                        stage.status === 'completed' ? 'default' :
+                        stage.status === 'in-progress' ? 'secondary' :
+                        'outline'
+                      }>
+                        {stage.status === 'completed' ? '✅ Concluído' :
+                         stage.status === 'in-progress' ? '⏳ Em progresso' :
+                         '⏸️ Aguardando'}
+                      </Badge>
+                      
+                      {/* Botão de ação para cada estágio */}
+                      {stage.label === 'Enriquecimento' && stage.total > stage.value && (
+                        <Button 
+                          size="sm" 
+                          onClick={handleEnriquecerLeads}
+                          disabled={enriching || stage.total === 0}
+                          className="ml-2"
+                        >
+                          {enriching ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Sparkles className="mr-2 h-4 w-4" />
+                              Enriquecer
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      
+                      {stage.label === 'Qualificação' && stage.total > stage.value && (
+                        <Button 
+                          size="sm" 
+                          onClick={handleQualificarLeads}
+                          disabled={qualifying || stage.total === 0}
+                          className="ml-2"
+                        >
+                          {qualifying ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Sparkles className="mr-2 h-4 w-4" />
+                              Qualificar
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      
+                      {stage.label === 'Mensagens' && stage.total > stage.value && (
+                        <Button 
+                          size="sm" 
+                          onClick={handleGerarMensagens}
+                          disabled={generatingMessages || stage.total === 0}
+                          className="ml-2"
+                        >
+                          {generatingMessages ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <>
+                              <Sparkles className="mr-2 h-4 w-4" />
+                              Gerar
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
