@@ -89,12 +89,20 @@ serve(async (req) => {
     // Gerar queries de busca usando IA se os campos estiverem vazios
     let queries: string[] = [];
     
+    console.log("[GENERATE-LEADS-B2C] 🔍 Verificando dados estruturados...");
+    console.log("[GENERATE-LEADS-B2C]   - profissoes:", b2cConfig.profissoes);
+    console.log("[GENERATE-LEADS-B2C]   - cidades:", b2cConfig.cidades);
+    console.log("[GENERATE-LEADS-B2C]   - descricao ICP:", icp.descricao);
+    
     const hasDadosEstruturados = 
       (b2cConfig.profissoes?.length > 0) && 
       (b2cConfig.cidades?.length > 0);
 
+    console.log("[GENERATE-LEADS-B2C]   - hasDadosEstruturados:", hasDadosEstruturados);
+    console.log("[GENERATE-LEADS-B2C]   - Vai usar IA?", !hasDadosEstruturados && icp.descricao);
+
     if (!hasDadosEstruturados && icp.descricao) {
-      console.log(`[GENERATE-LEADS-B2C] 🤖 Usando IA para gerar queries da descrição`);
+      console.log(`[GENERATE-LEADS-B2C] 🤖 Usando IA para gerar queries da descrição: "${icp.descricao}"`);
       
       // Usar IA para extrair informações e gerar queries
       const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
