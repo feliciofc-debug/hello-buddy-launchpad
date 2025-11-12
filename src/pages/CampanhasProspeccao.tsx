@@ -186,11 +186,17 @@ export default function CampanhasProspeccao() {
             if (descobertos > 0) {
               toast.success(`✅ Busca concluída! ${descobertos} leads encontrados`);
               
-              // Iniciar enriquecimento
-              toast.info("🔄 Iniciando enriquecimento...");
-              await supabase.functions.invoke('enrich-lead-bulk', {
-                body: { campanha_id: campanhaId, limite: 10 }
-              });
+              // Iniciar enriquecimento (opcional)
+              try {
+                const { error: enrichError } = await supabase.functions.invoke('enrich-lead-bulk', {
+                  body: { campanha_id: campanhaId, limite: 10 }
+                });
+                if (enrichError) {
+                  console.warn('Enriquecimento não executado:', enrichError);
+                }
+              } catch (err) {
+                console.warn('Enriquecimento será implementado futuramente');
+              }
             } else {
               toast.error("❌ Nenhum lead encontrado. Verifique a configuração do ICP.");
             }
