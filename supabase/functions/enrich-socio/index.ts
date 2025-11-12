@@ -151,17 +151,50 @@ serve(async (req) => {
       }
     }
 
+    // Helper: Gerar variações do nome (nome completo -> primeiros 2 nomes -> primeiro + último)
+    const getNameVariations = (fullName: string): string[] => {
+      const parts = fullName.split(' ').filter(p => p.length > 0)
+      const variations = [
+        fullName, // "FELICIO FRAUCHES CAREGA"
+      ]
+      
+      if (parts.length >= 2) {
+        variations.push(`${parts[0]} ${parts[1]}`) // "FELICIO FRAUCHES"
+      }
+      
+      if (parts.length >= 3) {
+        variations.push(`${parts[0]} ${parts[parts.length - 1]}`) // "FELICIO CAREGA"
+      }
+      
+      return variations
+    }
+
     try {
       // Usar razão_social (ATOM BRASIL DIGITAL) ao invés de nome_fantasia (ATACADISTA DIGITAL)
       const empresaNome = socio.empresa.razao_social.replace(' LTDA', '').trim()
+      const nameVariations = getNameVariations(socio.nome)
       
-      console.log('🔍 Buscando LinkedIn...')
-      console.log(`Query: ${socio.nome} ${empresaNome} site:linkedin.com/in/`)
-      const linkedinResults = await googleSearch(
-        `${socio.nome} ${empresaNome} site:linkedin.com/in/`
-      )
-      const linkedinUrl = linkedinResults.items?.[0]?.link || null
-      const linkedinSnippet = linkedinResults.items?.[0]?.snippet || null
+      // Buscar LinkedIn testando variações do nome
+      console.log('🔍 Buscando LinkedIn com variações do nome...')
+      let linkedinUrl = null
+      let linkedinSnippet = null
+      
+      for (const nameVariation of nameVariations) {
+        const query = `${nameVariation} ${empresaNome} site:linkedin.com/in/`
+        console.log(`   Tentando: ${query}`)
+        const results = await googleSearch(query)
+        
+        if (results.items && results.items.length > 0) {
+          linkedinUrl = results.items[0].link
+          linkedinSnippet = results.items[0].snippet
+          console.log(`   ✅ LinkedIn encontrado com: ${nameVariation}`)
+          break
+        }
+      }
+      
+      if (!linkedinUrl) {
+        console.log('   ⚠️ LinkedIn não encontrado com nenhuma variação')
+      }
 
       console.log('📸 Buscando Instagram...')
       console.log(`Query: ${socio.nome} ${empresaNome} instagram`)
