@@ -618,10 +618,18 @@ export default function CampanhasProspeccao() {
 
                         <Button
                           size="sm"
+                          variant="default"
+                          onClick={() => navigate(`/campanhas/${campanha.id}/leads-descobertos`)}
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver Todos os Leads
+                        </Button>
+
+                        <Button
+                          size="sm"
                           variant="outline"
                           onClick={() => navigate(`/campanhas/${campanha.id}`)}
                         >
-                          <Eye className="mr-2 h-4 w-4" />
                           Ver Detalhes
                         </Button>
                       </div>

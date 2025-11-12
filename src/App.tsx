@@ -37,6 +37,7 @@ import ConfigurarICP from "./pages/ConfigurarICP";
 import CampanhasProspeccao from "./pages/CampanhasProspeccao";
 import CampanhaDetalhes from "./pages/CampanhaDetalhes";
 import CampanhaLeads from "./pages/CampanhaLeads";
+import LeadsDescobertos from "./pages/LeadsDescobertos";
 
 const queryClient = new QueryClient();
 
@@ -63,6 +64,7 @@ const App = () => (
             <Route path="/campanhas-prospeccao" element={<CampanhasProspeccao />} />
             <Route path="/campanhas/:id" element={<CampanhaDetalhes />} />
             <Route path="/campanhas/:id/leads" element={<CampanhaLeads />} />
+            <Route path="/campanhas/:campanhaId/leads-descobertos" element={<LeadsDescobertos />} />
             <Route path="/shopee-callback" element={<ShopeeCallback />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
             <Route path="/lomadee" element={<LomadeeFinder />} />
