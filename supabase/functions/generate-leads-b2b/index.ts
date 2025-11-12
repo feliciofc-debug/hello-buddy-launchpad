@@ -107,11 +107,11 @@ serve(async (req) => {
 
             // Verificar se já existe
             const { data: existente } = await supabaseClient
-              .from('leads_descobertos')
+              .from('leads_b2b')
               .select('id')
               .eq('cnpj', cnpj)
               .eq('user_id', user.id)
-              .single();
+              .maybeSingle();
 
             if (!existente) {
               // Buscar dados da empresa na Brasil API
@@ -130,11 +130,10 @@ serve(async (req) => {
 
                   if (matchesICP) {
                     const { data: lead } = await supabaseClient
-                      .from('leads_descobertos')
+                      .from('leads_b2b')
                       .insert({
                         campanha_id,
                         user_id: user.id,
-                        tipo: 'b2b',
                         cnpj,
                         razao_social: empresaData.razao_social,
                         nome_fantasia: empresaData.nome_fantasia,
@@ -144,7 +143,7 @@ serve(async (req) => {
                         fonte_url: item.link,
                         fonte_snippet: item.snippet,
                         query_usada: query,
-                        status: 'descoberto'
+                        pipeline_status: 'descoberto'
                       })
                       .select()
                       .single();

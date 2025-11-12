@@ -40,9 +40,10 @@ export default function LeadsDescobertos() {
       if (campanhaError) throw campanhaError;
       setCampanha(campanhaData);
 
-      // Carregar leads
+      // Carregar leads da tabela correta
+      const tabela = campanhaData.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
       const { data: leadsData, error: leadsError } = await supabase
-        .from('leads_descobertos')
+        .from(tabela)
         .select('*')
         .eq('campanha_id', campanhaId)
         .order('created_at', { ascending: false });
@@ -60,12 +61,13 @@ export default function LeadsDescobertos() {
 
   const filteredLeads = leads.filter(lead => {
     const matchesSearch = 
+      lead.nome_completo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       lead.nome_profissional?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       lead.profissao?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       lead.cidade?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       lead.razao_social?.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesStatus = statusFilter === "todos" || lead.status === statusFilter;
+    const matchesStatus = statusFilter === "todos" || lead.pipeline_status === statusFilter;
 
     return matchesSearch && matchesStatus;
   });
@@ -75,8 +77,10 @@ export default function LeadsDescobertos() {
       descoberto: { variant: "secondary", label: "Descoberto" },
       enriquecido: { variant: "default", label: "Enriquecido" },
       qualificado: { variant: "default", label: "Qualificado" },
-      mensagem_gerada: { variant: "default", label: "Mensagem Gerada" },
+      quente: { variant: "default", label: "Quente" },
       enviado: { variant: "default", label: "Enviado" },
+      respondeu: { variant: "default", label: "Respondeu" },
+      convertido: { variant: "default", label: "Convertido" },
     };
     const config = variants[status] || variants.descoberto;
     return <Badge variant={config.variant}>{config.label}</Badge>;
@@ -127,7 +131,10 @@ export default function LeadsDescobertos() {
                   <SelectItem value="descoberto">Descoberto</SelectItem>
                   <SelectItem value="enriquecido">Enriquecido</SelectItem>
                   <SelectItem value="qualificado">Qualificado</SelectItem>
+                  <SelectItem value="quente">Quente</SelectItem>
                   <SelectItem value="enviado">Enviado</SelectItem>
+                  <SelectItem value="respondeu">Respondeu</SelectItem>
+                  <SelectItem value="convertido">Convertido</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -148,11 +155,11 @@ export default function LeadsDescobertos() {
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2">
                         <CardTitle className="text-xl">
-                          {lead.nome_profissional || lead.razao_social || "Nome não informado"}
+                          {lead.nome_completo || lead.nome_profissional || lead.razao_social || "Nome não informado"}
                         </CardTitle>
-                        {getStatusBadge(lead.status)}
+                        {getStatusBadge(lead.pipeline_status)}
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground">

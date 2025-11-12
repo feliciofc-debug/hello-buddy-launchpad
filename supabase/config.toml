@@ -77,3 +77,9 @@ verify_jwt = false
 
 [functions.enrich-lead-bulk]
 verify_jwt = false
+
+[functions.validate-and-classify-lead]
+verify_jwt = false
+
+[functions.calculate-lead-score]
+verify_jwt = false

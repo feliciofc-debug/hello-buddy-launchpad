@@ -45,12 +45,13 @@ export default function CampanhaDetalhes() {
       if (campanhaError) throw campanhaError;
       setCampanha(campanhaData);
 
-      // Carregar alguns leads (top qualificados)
+      // Carregar alguns leads (top qualificados) da tabela correta
+      const tabela = campanhaData.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
       const { data: leadsData, error: leadsError } = await supabase
-        .from('leads_descobertos')
+        .from(tabela)
         .select('*')
         .eq('campanha_id', id)
-        .eq('status', 'qualificado')
+        .eq('pipeline_status', 'qualificado')
         .order('score', { ascending: false })
         .limit(5);
 

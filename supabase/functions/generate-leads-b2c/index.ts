@@ -389,9 +389,9 @@ Retorne APENAS um JSON array com as queries, sem explicações:
             
             // Verificar se já existe (por nome E cidade para evitar falsos positivos)
             const { data: existente } = await supabaseClient
-              .from('leads_descobertos')
+              .from('leads_b2c')
               .select('id')
-              .eq('nome_profissional', leadInfo.nome)
+              .eq('nome_completo', leadInfo.nome)
               .eq('cidade', leadInfo.cidade || 'Rio de Janeiro')
               .eq('user_id', campanha.user_id)
               .maybeSingle();
@@ -403,8 +403,7 @@ Retorne APENAS um JSON array com as queries, sem explicações:
               const leadData: any = {
                 campanha_id,
                 user_id: campanha.user_id,
-                tipo: 'b2c',
-                nome_profissional: leadInfo.nome,
+                nome_completo: leadInfo.nome,
                 profissao: b2cConfig.profissoes?.[0] || 'Profissional',
                 especialidade: leadInfo.especialidade,
                 cidade: leadInfo.cidade,
@@ -414,7 +413,7 @@ Retorne APENAS um JSON array com as queries, sem explicações:
                 fonte_url: leadInfo.link,
                 fonte_snippet: item.snippet,
                 query_usada: query,
-                status: 'descoberto'
+                pipeline_status: 'descoberto'
               };
               
               console.log(`[GENERATE-LEADS-B2C] 💾 Salvando lead: ${leadInfo.nome}`);
@@ -429,7 +428,7 @@ Retorne APENAS um JSON array com as queries, sem explicações:
               }
 
               const { data: lead } = await supabaseClient
-                .from('leads_descobertos')
+                .from('leads_b2c')
                 .insert(leadData)
                 .select()
                 .single();

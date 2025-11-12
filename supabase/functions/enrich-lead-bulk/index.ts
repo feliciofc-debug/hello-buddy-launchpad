@@ -25,12 +25,24 @@ serve(async (req) => {
 
     console.log(`[ENRICH-BULK] Iniciando para campanha ${campanha_id}`);
 
+    // Buscar campanha para saber o tipo
+    const { data: campanha } = await supabaseClient
+      .from('campanhas_prospeccao')
+      .select('tipo')
+      .eq('id', campanha_id)
+      .single();
+
+    if (!campanha) throw new Error('Campanha não encontrada');
+
+    const tabela = campanha.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+    const campoNome = campanha.tipo === 'b2c' ? 'nome_completo' : 'razao_social';
+
     // Buscar leads descobertos que ainda não foram enriquecidos
     const { data: leads, error: leadsError } = await supabaseClient
-      .from('leads_descobertos')
+      .from(tabela)
       .select('*')
       .eq('campanha_id', campanha_id)
-      .eq('status', 'descoberto')
+      .eq('pipeline_status', 'descoberto')
       .limit(limite);
 
     if (leadsError) throw leadsError;
@@ -71,11 +83,11 @@ serve(async (req) => {
     for (const lead of leads) {
       try {
         await supabaseClient
-          .from('leads_descobertos')
-          .update({ status: 'enriquecendo' })
+          .from(tabela)
+          .update({ pipeline_status: 'enriquecendo' })
           .eq('id', lead.id);
 
-        const nome = lead.tipo === 'b2b' ? lead.razao_social : lead.nome_profissional;
+        const nome = lead[campoNome];
         const nameVariations = getNameVariations(nome);
 
         let linkedinUrl = null;
@@ -104,7 +116,7 @@ serve(async (req) => {
 
         // Atualizar lead
         await supabaseClient
-          .from('leads_descobertos')
+          .from(tabela)
           .update({
             linkedin_url: linkedinUrl,
             instagram_username: instagramUsername,
@@ -113,7 +125,7 @@ serve(async (req) => {
               instagram: instagramUsername ? { username: instagramUsername } : null
             },
             enriched_at: new Date().toISOString(),
-            status: 'enriquecido'
+            pipeline_status: 'enriquecido'
           })
           .eq('id', lead.id);
 
@@ -129,14 +141,14 @@ serve(async (req) => {
     }
 
     // Atualizar stats da campanha
-    const { data: campanha } = await supabaseClient
+    const { data: campanhaStats } = await supabaseClient
       .from('campanhas_prospeccao')
       .select('stats')
       .eq('id', campanha_id)
       .single();
 
-    if (campanha) {
-      const stats = campanha.stats as any;
+    if (campanhaStats) {
+      const stats = campanhaStats.stats as any;
       await supabaseClient
         .from('campanhas_prospeccao')
         .update({
