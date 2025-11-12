@@ -19,6 +19,10 @@ serve(async (req) => {
 
     const { campanha_id, limite = 10 } = await req.json();
 
+    if (!campanha_id) {
+      throw new Error('campanha_id é obrigatório');
+    }
+
     console.log(`[ENRICH-BULK] Iniciando para campanha ${campanha_id}`);
 
     // Buscar leads descobertos que ainda não foram enriquecidos
