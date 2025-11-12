@@ -244,24 +244,47 @@ export default function Prospects() {
         { body: { prospect_id: prospectId } }
       );
 
-      if (messageError) throw new Error(`Erro ao gerar mensagens: ${messageError.message}`);
+      console.log('📦 Resposta generate-message COMPLETA:', JSON.stringify(messageData, null, 2));
 
-      // SUCESSO COMPLETO!
-      setProcessingStage('');
-      toast({
-        title: '🎉 Processamento Concluído!',
-        description: `Score: ${score}/100 - Mensagens prontas para envio!`,
-      });
+      if (messageError) {
+        console.error('❌ Erro ao gerar mensagens:', messageError);
+        throw new Error(`Erro ao gerar mensagens: ${messageError.message}`);
+      }
 
-      // Abrir modal com as mensagens geradas
-      setCurrentProspectMessages({
-        prospectId,
-        socioId,
-        socioNome,
-        messages: messageData.messages,
-        score
-      });
-      setMessageDialogOpen(true);
+      if (messageData && messageData.success) {
+        console.log('✅ Success true');
+        console.log('📝 Messages objeto:', messageData.messages);
+        
+        if (messageData.messages) {
+          console.log('✅ Messages existe!');
+          console.log('Professional:', messageData.messages.professional);
+          console.log('Friendly:', messageData.messages.friendly);
+          console.log('Enthusiast:', messageData.messages.enthusiast);
+
+          // SUCESSO COMPLETO!
+          setProcessingStage('');
+          toast({
+            title: '🎉 Processamento Concluído!',
+            description: `Score: ${score}/100 - Mensagens prontas para envio!`,
+          });
+
+          // Abrir modal com as mensagens geradas
+          setCurrentProspectMessages({
+            prospectId,
+            socioId,
+            messages: messageData.messages,
+            score
+          });
+          setMessageDialogOpen(true);
+          console.log('🎭 Modal aberto com dados:', { prospectId, socioId, score });
+        } else {
+          console.error('❌ Messages é undefined!');
+          throw new Error('Mensagens não foram geradas corretamente');
+        }
+      } else {
+        console.error('❌ Resposta inválida:', messageData);
+        throw new Error(messageData?.error || 'Erro ao gerar mensagens');
+      }
 
       // Recarregar lista
       await loadProspects();
@@ -1299,9 +1322,7 @@ export default function Prospects() {
         </TabsContent>
       </Tabs>
 
-      {/* ============================================ */}
       {/* MODAL COM AS 3 VARIAÇÕES DE MENSAGEM */}
-      {/* ============================================ */}
       <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -1311,14 +1332,14 @@ export default function Prospects() {
             </DialogDescription>
           </DialogHeader>
 
-          {currentProspectMessages && (
+          {currentProspectMessages?.messages ? (
             <div className="space-y-6">
               {/* Score Badge */}
               <div className="flex items-center justify-center gap-2">
                 <Badge variant="outline" className="text-lg px-4 py-2">
-                  Score: <span className="font-bold ml-2">{currentProspectMessages.score}/100</span>
+                  Score: <span className="font-bold ml-2">{currentProspectMessages.score || 0}/100</span>
                 </Badge>
-                {currentProspectMessages.score >= 80 && (
+                {(currentProspectMessages.score || 0) >= 80 && (
                   <Badge className="bg-green-600">🔥 Lead Quente!</Badge>
                 )}
               </div>
@@ -1342,10 +1363,10 @@ export default function Prospects() {
                   </CardHeader>
                   <CardContent>
                     <div className="bg-slate-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
-                      {currentProspectMessages.messages.professional}
+                      {currentProspectMessages.messages.professional || 'Mensagem não disponível'}
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
-                      {currentProspectMessages.messages.professional.length} caracteres
+                      {(currentProspectMessages.messages.professional || '').length} caracteres
                     </div>
                   </CardContent>
                 </Card>
@@ -1367,10 +1388,10 @@ export default function Prospects() {
                   </CardHeader>
                   <CardContent>
                     <div className="bg-green-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
-                      {currentProspectMessages.messages.friendly}
+                      {currentProspectMessages.messages.friendly || 'Mensagem não disponível'}
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
-                      {currentProspectMessages.messages.friendly.length} caracteres
+                      {(currentProspectMessages.messages.friendly || '').length} caracteres
                     </div>
                   </CardContent>
                 </Card>
@@ -1392,10 +1413,10 @@ export default function Prospects() {
                   </CardHeader>
                   <CardContent>
                     <div className="bg-purple-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
-                      {currentProspectMessages.messages.enthusiast}
+                      {currentProspectMessages.messages.enthusiast || 'Mensagem não disponível'}
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
-                      {currentProspectMessages.messages.enthusiast.length} caracteres
+                      {(currentProspectMessages.messages.enthusiast || '').length} caracteres
                     </div>
                   </CardContent>
                 </Card>
@@ -1403,13 +1424,11 @@ export default function Prospects() {
 
               {/* Preview WhatsApp */}
               <div className="border-t pt-4">
-                <Label className="text-sm font-medium mb-2 block">
-                  Preview WhatsApp:
-                </Label>
+                <p className="text-sm font-medium mb-2">Preview WhatsApp:</p>
                 <div className="bg-[#075e54] p-4 rounded-lg">
                   <div className="bg-white rounded-lg p-3 shadow-sm max-w-md">
                     <div className="text-sm text-gray-800 whitespace-pre-wrap">
-                      {currentProspectMessages.messages[selectedMessageType]}
+                      {currentProspectMessages.messages[selectedMessageType] || 'Selecione uma mensagem'}
                     </div>
                     <div className="text-xs text-gray-400 mt-2 text-right">
                       {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -1461,6 +1480,10 @@ export default function Prospects() {
                   Enviar WhatsApp
                 </Button>
               </div>
+            </div>
+          ) : (
+            <div className="p-8 text-center">
+              <p className="text-muted-foreground">Carregando mensagens...</p>
             </div>
           )}
         </DialogContent>
