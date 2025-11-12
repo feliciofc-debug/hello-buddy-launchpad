@@ -439,17 +439,6 @@ const Dashboard = () => {
             </>
           )}
           <a
-            href="/perfil"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/perfil' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <UserCircle size={20} />
-            Meu Perfil
-          </a>
-          <a
             href="/configuracoes"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
               window.location.pathname === '/configuracoes' 
