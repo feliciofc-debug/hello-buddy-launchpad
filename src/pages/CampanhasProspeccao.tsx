@@ -250,62 +250,85 @@ export default function CampanhasProspeccao() {
 
   const handleCriarLeadsTeste = async (campanhaId: string) => {
     try {
-      toast.info("🧪 Criando leads de teste...");
+      const campanha = campanhas.find(c => c.id === campanhaId);
+      if (!campanha) return;
+
+      toast.info("🧪 Criando +5 leads de teste...");
+
+      // Buscar stats atuais
+      const statsAtuais = campanha.stats || {
+        descobertos: 0,
+        enriquecidos: 0,
+        qualificados: 0,
+        mensagens_geradas: 0,
+        mensagens_enviadas: 0,
+        respostas: 0,
+        conversoes: 0
+      };
+
+      // Buscar user_id
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
 
       const leadsMockados = [
         {
           campanha_id: campanhaId,
+          user_id: user.id,
           tipo: 'b2c',
-          nome_profissional: 'Dr. João Silva',
+          nome_profissional: `Dr. Teste ${Date.now()}`,
           profissao: 'Médico',
           especialidade: 'Cardiologista',
           cidade: 'Rio de Janeiro',
           estado: 'RJ',
-          fonte: 'teste',
+          fonte: 'teste_mockado',
           status: 'descoberto'
         },
         {
           campanha_id: campanhaId,
+          user_id: user.id,
           tipo: 'b2c',
-          nome_profissional: 'Dra. Maria Santos',
+          nome_profissional: `Dra. Teste ${Date.now() + 1}`,
           profissao: 'Médico',
           especialidade: 'Ortopedista',
           cidade: 'Rio de Janeiro',
           estado: 'RJ',
-          fonte: 'teste',
+          fonte: 'teste_mockado',
           status: 'descoberto'
         },
         {
           campanha_id: campanhaId,
+          user_id: user.id,
           tipo: 'b2c',
-          nome_profissional: 'Dr. Pedro Costa',
+          nome_profissional: `Dr. Teste ${Date.now() + 2}`,
           profissao: 'Médico',
           especialidade: 'Dermatologista',
           cidade: 'Rio de Janeiro',
           estado: 'RJ',
-          fonte: 'teste',
+          fonte: 'teste_mockado',
           status: 'descoberto'
         },
         {
           campanha_id: campanhaId,
+          user_id: user.id,
           tipo: 'b2c',
-          nome_profissional: 'Dra. Ana Oliveira',
+          nome_profissional: `Dra. Teste ${Date.now() + 3}`,
           profissao: 'Médico',
           especialidade: 'Pediatra',
           cidade: 'Rio de Janeiro',
           estado: 'RJ',
-          fonte: 'teste',
+          fonte: 'teste_mockado',
           status: 'descoberto'
         },
         {
           campanha_id: campanhaId,
+          user_id: user.id,
           tipo: 'b2c',
-          nome_profissional: 'Dr. Carlos Mendes',
+          nome_profissional: `Dr. Teste ${Date.now() + 4}`,
           profissao: 'Médico',
-          especialidade: 'Neurologista',
+          especialidade: 'Oftalmologista',
           cidade: 'Rio de Janeiro',
           estado: 'RJ',
-          fonte: 'teste',
+          fonte: 'teste_mockado',
           status: 'descoberto'
         }
       ];
@@ -316,20 +339,18 @@ export default function CampanhasProspeccao() {
 
       if (insertError) throw insertError;
 
-      // Atualizar stats
+      // Atualizar stats SOMANDO aos existentes
+      const novoTotal = statsAtuais.descobertos + leadsMockados.length;
+
       const { error: updateError } = await supabase
         .from('campanhas_prospeccao')
         .update({
           stats: {
-            descobertos: 5,
-            enriquecidos: 0,
-            qualificados: 0,
-            mensagens_geradas: 0,
-            mensagens_enviadas: 0,
-            respostas: 0,
-            conversoes: 0
+            ...statsAtuais,
+            descobertos: novoTotal
           },
-          status: 'ativa'
+          // Só mudar para ativa se ainda não estiver
+          ...(campanha.status === 'rascunho' && { status: 'ativa' })
         })
         .eq('id', campanhaId);
 
@@ -337,7 +358,7 @@ export default function CampanhasProspeccao() {
 
       await loadData();
 
-      toast.success("✅ 5 leads de teste criados!");
+      toast.success(`✅ Leads criados! (+5, total: ${novoTotal})`);
     } catch (error: any) {
       console.error("Erro ao criar leads teste:", error);
       toast.error(`Erro: ${error.message}`);
@@ -513,36 +534,33 @@ export default function CampanhasProspeccao() {
                         Pausar
                       </Button>
                     ) : (
-                      <>
-                        <Button
-                          size="sm"
-                          onClick={() => handleIniciarCampanha(campanha.id)}
-                          disabled={processing === campanha.id}
-                        >
-                          {processing === campanha.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Iniciando...
-                            </>
-                          ) : (
-                            <>
-                              <Play className="mr-2 h-4 w-4" />
-                              Iniciar
-                            </>
-                          )}
-                        </Button>
-                        
-                        {campanha.status === 'rascunho' && (
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => handleCriarLeadsTeste(campanha.id)}
-                          >
-                            🧪 Teste
-                          </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleIniciarCampanha(campanha.id)}
+                        disabled={processing === campanha.id}
+                      >
+                        {processing === campanha.id ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Iniciando...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="mr-2 h-4 w-4" />
+                            Iniciar
+                          </>
                         )}
-                      </>
+                      </Button>
                     )}
+
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handleCriarLeadsTeste(campanha.id)}
+                      title="Adicionar mais 5 leads de teste"
+                    >
+                      🧪 +5 Leads
+                    </Button>
 
                     <Button
                       size="sm"
