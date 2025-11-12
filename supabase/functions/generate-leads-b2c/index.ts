@@ -86,18 +86,115 @@ serve(async (req) => {
       .select()
       .single();
 
-    // Gerar queries de busca
-    const queries: string[] = [];
+    // Gerar queries de busca usando IA se os campos estiverem vazios
+    let queries: string[] = [];
     
-    for (const profissao of b2cConfig.profissoes || []) {
-      for (const cidade of b2cConfig.cidades || []) {
-        for (const sinal of b2cConfig.sinais_poder_aquisitivo || []) {
-          queries.push(`${profissao} ${cidade} ${sinal}`);
+    const hasDadosEstruturados = 
+      (b2cConfig.profissoes?.length > 0) && 
+      (b2cConfig.cidades?.length > 0);
+
+    if (!hasDadosEstruturados && icp.descricao) {
+      console.log(`[GENERATE-LEADS-B2C] 🤖 Usando IA para gerar queries da descrição`);
+      
+      // Usar IA para extrair informações e gerar queries
+      const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+      
+      if (LOVABLE_API_KEY) {
+        try {
+          const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                {
+                  role: "system",
+                  content: "Você é um assistente especializado em gerar queries de busca para encontrar profissionais. Extraia informações da descrição e gere 5-8 queries de busca eficientes para Google Search."
+                },
+                {
+                  role: "user",
+                  content: `Descrição do público-alvo: "${icp.descricao}"
+                  
+Gere queries de busca para encontrar esses profissionais no Google. Inclua:
+- Profissão + cidade
+- Profissão + bairro + cidade
+- Profissão + especialidade + cidade
+- Redes sociais (LinkedIn, Instagram)
+- Diretórios profissionais
+
+Retorne APENAS um JSON array com as queries, sem explicações:
+["query1", "query2", ...]`
+                }
+              ],
+              tools: [{
+                type: "function",
+                function: {
+                  name: "generate_queries",
+                  description: "Gera queries de busca",
+                  parameters: {
+                    type: "object",
+                    properties: {
+                      queries: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "Lista de queries de busca"
+                      }
+                    },
+                    required: ["queries"]
+                  }
+                }
+              }],
+              tool_choice: { type: "function", function: { name: "generate_queries" } }
+            })
+          });
+
+          const aiData = await aiResponse.json();
+          console.log("[GENERATE-LEADS-B2C] 🤖 Resposta da IA:", JSON.stringify(aiData));
+          
+          if (aiData.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments) {
+            const args = JSON.parse(aiData.choices[0].message.tool_calls[0].function.arguments);
+            queries = args.queries || [];
+            console.log(`[GENERATE-LEADS-B2C] 🤖 ${queries.length} queries geradas pela IA`);
+          }
+        } catch (aiError) {
+          console.error("[GENERATE-LEADS-B2C] ⚠️ Erro na IA, usando fallback:", aiError);
+        }
+      }
+      
+      // Fallback: queries básicas baseadas na descrição
+      if (queries.length === 0) {
+        const descricao = icp.descricao.toLowerCase();
+        const profissoes = ["médico", "medico", "dr", "dra"];
+        const cidades = ["rio de janeiro", "rj"];
+        
+        for (const prof of profissoes) {
+          if (descricao.includes(prof)) {
+            queries.push(`${prof} rio de janeiro linkedin`);
+            queries.push(`${prof} zona sul rio de janeiro`);
+            queries.push(`${prof} consultório rio de janeiro`);
+            queries.push(`${prof} CRM rio de janeiro`);
+            break;
+          }
+        }
+      }
+    } else {
+      // Usar dados estruturados
+      for (const profissao of b2cConfig.profissoes || []) {
+        for (const cidade of b2cConfig.cidades || []) {
+          queries.push(`${profissao} ${cidade} linkedin`);
+          queries.push(`${profissao} ${cidade} consultório`);
+          
+          for (const sinal of b2cConfig.sinais_poder_aquisitivo || []) {
+            queries.push(`${profissao} ${cidade} ${sinal}`);
+          }
         }
       }
     }
 
-    console.log(`[GENERATE-LEADS-B2C] ${queries.length} queries geradas`);
+    console.log(`[GENERATE-LEADS-B2C] 📝 ${queries.length} queries geradas:`, queries);
 
     // Buscar no Google
     const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
