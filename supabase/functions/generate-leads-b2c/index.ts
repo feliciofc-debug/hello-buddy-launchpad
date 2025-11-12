@@ -282,14 +282,14 @@ Retorne APENAS um JSON array com as queries, sem explicações:
         const results = await googleSearch(query);
         
         for (const item of results.items || []) {
-          const nome = extractNome(item.title, item.snippet);
+          const leadInfo = extractLeadInfo(item.title, item.snippet, item.link);
           
-          if (nome) {
+          if (leadInfo && leadInfo.nome) {
             // Verificar se já existe
             const { data: existente } = await supabaseClient
               .from('leads_descobertos')
               .select('id')
-              .eq('nome_profissional', nome)
+              .eq('nome_profissional', leadInfo.nome)
               .eq('user_id', campanha.user_id)
               .maybeSingle();
 
@@ -300,12 +300,15 @@ Retorne APENAS um JSON array com as queries, sem explicações:
                   campanha_id,
                   user_id: campanha.user_id,
                   tipo: 'b2c',
-                  nome_profissional: nome,
-                  profissao: b2cConfig.profissoes[0],
-                  cidade: b2cConfig.cidades[0],
-                  estado: b2cConfig.estados[0],
+                  nome_profissional: leadInfo.nome,
+                  profissao: b2cConfig.profissoes?.[0] || 'Médico',
+                  especialidade: leadInfo.especialidade,
+                  cidade: leadInfo.cidade,
+                  estado: 'RJ',
+                  telefone: leadInfo.telefone,
+                  rede_social: leadInfo.redeSocial,
                   fonte: 'google_search',
-                  fonte_url: item.link,
+                  fonte_url: leadInfo.link,
                   fonte_snippet: item.snippet,
                   query_usada: query,
                   status: 'descoberto'
@@ -316,7 +319,7 @@ Retorne APENAS um JSON array com as queries, sem explicações:
               if (lead) {
                 leadsCriados.push(lead);
                 totalEncontrados++;
-                console.log(`[GENERATE-LEADS-B2C] ✅ Lead criado: ${nome}`);
+                console.log(`[GENERATE-LEADS-B2C] ✅ Lead criado: ${leadInfo.nome}`);
               }
             }
           }
