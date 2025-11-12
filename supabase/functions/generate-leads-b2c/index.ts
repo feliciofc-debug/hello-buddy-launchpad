@@ -28,36 +28,12 @@ serve(async (req) => {
     console.log("GOOGLE_API_KEY:", Deno.env.get("GOOGLE_API_KEY") ? "✅" : "❌");
     console.log("GOOGLE_CX:", Deno.env.get("GOOGLE_CX") ? "✅" : "❌");
 
-    const authHeader = req.headers.get("authorization");
-    console.log("Authorization header:", authHeader ? "✅ Presente" : "❌ Ausente");
-
-    if (!authHeader) {
-      throw new Error("Não autenticado - Header Authorization ausente");
-    }
-
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { authorization: authHeader } } }
+      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
     console.log("✅ Supabase client criado");
-
-    // LOG 3: Verificar usuário
-    console.log("👤 Verificando usuário...");
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    
-    if (userError) {
-      console.error("❌ Erro ao buscar usuário:", userError);
-      throw new Error(`Erro de autenticação: ${userError.message}`);
-    }
-    
-    if (!user) {
-      console.error("❌ Usuário não encontrado");
-      throw new Error("Usuário não autenticado");
-    }
-
-    console.log("✅ Usuário autenticado:", user.id);
 
     // LOG 4: Buscar campanha
     console.log("📋 Buscando campanha...");
@@ -166,15 +142,15 @@ serve(async (req) => {
               .from('leads_descobertos')
               .select('id')
               .eq('nome_profissional', nome)
-              .eq('user_id', user.id)
-              .single();
+              .eq('user_id', campanha.user_id)
+              .maybeSingle();
 
             if (!existente) {
               const { data: lead } = await supabaseClient
                 .from('leads_descobertos')
                 .insert({
                   campanha_id,
-                  user_id: user.id,
+                  user_id: campanha.user_id,
                   tipo: 'b2c',
                   nome_profissional: nome,
                   profissao: b2cConfig.profissoes[0],
