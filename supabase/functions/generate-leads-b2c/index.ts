@@ -210,23 +210,66 @@ Retorne APENAS um JSON array com as queries, sem explicações:
       return await response.json();
     };
 
-    // Extrair nome de profissional do snippet/title
-    const extractNome = (title: string, snippet: string): string | null => {
+    // Extrair informações de profissional do resultado
+    const extractLeadInfo = (title: string, snippet: string, link: string) => {
       const text = `${title} ${snippet}`;
       
-      // Procurar padrões: Dr. João Silva, Dra. Maria, etc
-      const patterns = [
+      // Procurar padrões de nome
+      const nomePatterns = [
         /Dr\.?\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)+)/,
         /Dra\.?\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)+)/,
-        /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+-\s+(?:Médico|Advogado|Dentista)/i
+        /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+-\s+(?:Médico|Médica|Dr|Dra|CRM)/i,
+        /(?:médico|médica)\s+([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+)/i,
       ];
 
-      for (const pattern of patterns) {
+      let nome = null;
+      for (const pattern of nomePatterns) {
         const match = text.match(pattern);
-        if (match) return match[1];
+        if (match) {
+          nome = match[1].trim();
+          break;
+        }
       }
 
-      return null;
+      if (!nome) return null;
+
+      // Extrair especialidade
+      const especialidadePatterns = [
+        /(?:especialidade|especialista|especializado)\s+em\s+([a-zà-ú]+(?:\s+[a-zà-ú]+)?)/i,
+        /(cardiologi|dermatologi|ortopedi|pediatr|ginecologi|oftalmologi|psiquiatr|neurologis|urologis)[a-z]*/i,
+      ];
+
+      let especialidade = null;
+      for (const pattern of especialidadePatterns) {
+        const match = text.match(pattern);
+        if (match) {
+          especialidade = match[1] || match[0];
+          break;
+        }
+      }
+
+      // Extrair telefone
+      const telefoneMatch = text.match(/(?:\+55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}[-\s]?\d{4}/);
+      const telefone = telefoneMatch ? telefoneMatch[0] : null;
+
+      // Extrair cidade
+      const cidadeMatch = text.match(/(?:Rio de Janeiro|RJ|Barra da Tijuca|Copacabana|Ipanema|Leblon|Botafogo)/i);
+      const cidade = cidadeMatch ? cidadeMatch[0] : "Rio de Janeiro";
+
+      // Detectar rede social
+      let redeSocial = null;
+      if (link.includes('linkedin.com')) redeSocial = 'linkedin';
+      else if (link.includes('instagram.com')) redeSocial = 'instagram';
+      else if (link.includes('facebook.com')) redeSocial = 'facebook';
+
+      return {
+        nome,
+        especialidade,
+        telefone,
+        cidade,
+        redeSocial,
+        link
+      };
     };
 
     let totalEncontrados = 0;
