@@ -206,6 +206,44 @@ export type Database = {
         }
         Relationships: []
       }
+      enrichment_queue: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string
+          processed_at: string | null
+          socio_id: string | null
+          status: string | null
+          tentativas: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          processed_at?: string | null
+          socio_id?: string | null
+          status?: string | null
+          tentativas?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          processed_at?: string | null
+          socio_id?: string | null
+          status?: string | null
+          tentativas?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrichment_queue_socio_id_fkey"
+            columns: ["socio_id"]
+            isOneToOne: false
+            referencedRelation: "socios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integrations: {
         Row: {
           access_token: string
@@ -492,6 +530,44 @@ export type Database = {
           },
         ]
       }
+      qualification_queue: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string
+          processed_at: string | null
+          socio_id: string | null
+          status: string | null
+          tentativas: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          processed_at?: string | null
+          socio_id?: string | null
+          status?: string | null
+          tentativas?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          processed_at?: string | null
+          socio_id?: string | null
+          status?: string | null
+          tentativas?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qualification_queue_socio_id_fkey"
+            columns: ["socio_id"]
+            isOneToOne: false
+            referencedRelation: "socios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_posts: {
         Row: {
           created_at: string
@@ -587,8 +663,10 @@ export type Database = {
           created_at: string | null
           data_entrada: string | null
           empresa_id: string
+          enrichment_data: Json | null
           id: string
           nome: string
+          patrimonio_estimado: number | null
           percentual_capital: number | null
           qualificacao: string | null
           updated_at: string | null
@@ -598,8 +676,10 @@ export type Database = {
           created_at?: string | null
           data_entrada?: string | null
           empresa_id: string
+          enrichment_data?: Json | null
           id?: string
           nome: string
+          patrimonio_estimado?: number | null
           percentual_capital?: number | null
           qualificacao?: string | null
           updated_at?: string | null
@@ -609,8 +689,10 @@ export type Database = {
           created_at?: string | null
           data_entrada?: string | null
           empresa_id?: string
+          enrichment_data?: Json | null
           id?: string
           nome?: string
+          patrimonio_estimado?: number | null
           percentual_capital?: number | null
           qualificacao?: string | null
           updated_at?: string | null
