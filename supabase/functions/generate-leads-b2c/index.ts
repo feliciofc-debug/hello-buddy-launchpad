@@ -35,13 +35,13 @@ serve(async (req) => {
 
     console.log("✅ Supabase client criado");
 
-    // LOG 4: Buscar campanha
+    // Buscar campanha
     console.log("📋 Buscando campanha...");
     const { data: campanha, error: campanhaError } = await supabaseClient
       .from('campanhas_prospeccao')
       .select('*, icp_configs(*)')
       .eq('id', campanha_id)
-      .single();
+      .maybeSingle();
 
     if (campanhaError) {
       console.error("❌ Erro ao buscar campanha:", campanhaError);
