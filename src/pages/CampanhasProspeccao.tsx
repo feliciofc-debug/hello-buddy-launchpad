@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket } from "lucide-react";
+import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket, ArrowLeft, Eye } from "lucide-react";
 
 export default function CampanhasProspeccao() {
   const navigate = useNavigate();
@@ -167,6 +167,13 @@ export default function CampanhasProspeccao() {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
+        <div className="mb-6">
+          <Button variant="ghost" onClick={() => navigate('/dashboard')} className="mb-4">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Voltar
+          </Button>
+        </div>
+        
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold">Campanhas de Prospecção</h1>
@@ -277,6 +284,10 @@ export default function CampanhasProspeccao() {
                       <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
                     </div>
                     <div className="flex gap-2">
+                      <Button size="sm" variant="outline">
+                        <Eye className="mr-2 h-4 w-4" />
+                        Ver Detalhes
+                      </Button>
                       {campanha.status === 'rascunho' && (
                         <Button
                           size="sm"
