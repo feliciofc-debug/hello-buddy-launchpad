@@ -15,7 +15,7 @@ import ProductsPage from "./pages/ProductsPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
 import Prospects from "./pages/Prospects";
 import Configuracoes from "./pages/Configuracoes";
-import AffiliateProfile from "./components/AffiliateProfile";
+
 import SettingsPage from "./components/SettingsPage";
 import ShopeeCallback from "./pages/ShopeeCallback";
 import ReviewerLogin from "./pages/ReviewerLogin";
@@ -55,7 +55,6 @@ const App = () => (
             <Route path="/test-payment" element={<TestPayment />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/produtos" element={<ProductsPage />} />
-            <Route path="/perfil" element={<AffiliateProfile />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
             <Route path="/configuracoes-icp" element={<ConfigurarICP />} />
             <Route path="/configurar-icp" element={<ConfigurarICP />} />
