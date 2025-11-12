@@ -19,6 +19,8 @@ export default function CampanhasProspeccao() {
   const [loading, setLoading] = useState(true);
   const [criandoCampanha, setCriandoCampanha] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
+  const [selectedCampanhaId, setSelectedCampanhaId] = useState<string | null>(null);
+  const [leads, setLeads] = useState<any[]>([]);
   
   // Filtros
   const [statusFilter, setStatusFilter] = useState<string>('todas');
@@ -62,6 +64,12 @@ export default function CampanhasProspeccao() {
       if (campanhasError) throw campanhasError;
       setCampanhas(campanhasData || []);
 
+      // Se há campanha ativa, selecionar a primeira automaticamente
+      const ativas = campanhasData?.filter((c: any) => c.status === 'ativa') || [];
+      if (ativas.length > 0 && !selectedCampanhaId) {
+        setSelectedCampanhaId(ativas[0].id);
+      }
+
     } catch (error: any) {
       console.error("Erro ao carregar dados:", error);
       toast.error(error.message);
@@ -69,6 +77,28 @@ export default function CampanhasProspeccao() {
       setLoading(false);
     }
   };
+
+  const loadLeads = async (campanhaId: string) => {
+    try {
+      const { data: leadsData, error: leadsError } = await supabase
+        .from('leads_descobertos')
+        .select('*')
+        .eq('campanha_id', campanhaId)
+        .order('created_at', { ascending: false });
+
+      if (leadsError) throw leadsError;
+      setLeads(leadsData || []);
+    } catch (error: any) {
+      console.error("Erro ao carregar leads:", error);
+      toast.error(error.message);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedCampanhaId) {
+      loadLeads(selectedCampanhaId);
+    }
+  }, [selectedCampanhaId]);
 
   const handleCriarCampanha = async () => {
     if (!nome.trim() || !icpId) {
@@ -618,11 +648,11 @@ export default function CampanhasProspeccao() {
 
                         <Button
                           size="sm"
-                          variant="default"
-                          onClick={() => navigate(`/campanhas/${campanha.id}/leads-descobertos`)}
+                          variant={selectedCampanhaId === campanha.id ? "default" : "outline"}
+                          onClick={() => setSelectedCampanhaId(campanha.id)}
                         >
                           <Eye className="mr-2 h-4 w-4" />
-                          Ver Todos os Leads
+                          Ver Leads
                         </Button>
 
                         <Button
@@ -821,6 +851,83 @@ export default function CampanhasProspeccao() {
               </p>
             </CardContent>
           </Card>
+        )}
+
+        {/* Dashboard de Leads da Campanha Selecionada */}
+        {selectedCampanhaId && leads.length > 0 && (
+          <div className="mt-8">
+            <Card className="mb-6 bg-primary/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Leads Descobertos - {campanhas.find(c => c.id === selectedCampanhaId)?.nome}
+                </CardTitle>
+                <CardDescription>
+                  Total de {leads.length} leads encontrados nesta campanha
+                </CardDescription>
+              </CardHeader>
+            </Card>
+
+            <div className="grid gap-4">
+              {leads.slice(0, 10).map((lead) => (
+                <Card key={lead.id} className="hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <CardTitle className="text-lg">
+                            {lead.nome_profissional || lead.razao_social || "Nome não informado"}
+                          </CardTitle>
+                          <Badge variant={lead.status === "descoberto" ? "secondary" : "default"}>
+                            {lead.status === "descoberto" ? "Novo" : lead.status}
+                          </Badge>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground mt-2">
+                          {lead.profissao && (
+                            <div className="flex items-center gap-2">
+                              <Users className="h-4 w-4" />
+                              <span>{lead.profissao}</span>
+                              {lead.especialidade && <span className="text-xs">• {lead.especialidade}</span>}
+                            </div>
+                          )}
+                          
+                          {(lead.cidade || lead.estado) && (
+                            <div className="flex items-center gap-2">
+                              <MessageSquare className="h-4 w-4" />
+                              <span>{lead.cidade || ""} {lead.estado || ""}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  {lead.fonte && (
+                    <CardContent className="pt-0">
+                      <div className="text-xs text-muted-foreground pt-2 border-t">
+                        Fonte: <span className="font-medium">{lead.fonte}</span>
+                        {lead.query_usada && <span className="ml-2">• Query: "{lead.query_usada}"</span>}
+                      </div>
+                    </CardContent>
+                  )}
+                </Card>
+              ))}
+            </div>
+
+            {leads.length > 10 && (
+              <Card className="mt-6">
+                <CardContent className="py-4 text-center">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => navigate(`/campanhas/${selectedCampanhaId}/leads-descobertos`)}
+                  >
+                    Ver Todos os {leads.length} Leads
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         )}
       </div>
     </div>
