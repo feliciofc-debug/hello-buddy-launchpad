@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2, Briefcase, Heart, Zap, Sparkles } from 'lucide-react';
+import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2, Briefcase, Heart, Zap, Sparkles, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -1299,72 +1299,166 @@ export default function Prospects() {
         </TabsContent>
       </Tabs>
 
-      {/* Dialog de Mensagens Geradas */}
+      {/* ============================================ */}
+      {/* MODAL COM AS 3 VARIAÇÕES DE MENSAGEM */}
+      {/* ============================================ */}
       <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Mensagens Geradas - 3 Variações</DialogTitle>
+            <DialogTitle>Mensagens Personalizadas Geradas</DialogTitle>
             <DialogDescription>
-              Escolha a melhor abordagem para este prospect
+              Escolha a melhor variação para enviar via WhatsApp
             </DialogDescription>
           </DialogHeader>
-          
+
           {currentProspectMessages && (
-            <div className="space-y-4">
-              <RadioGroup value={selectedMessageType} onValueChange={setSelectedMessageType}>
-                {/* Professional */}
-                <div className="space-y-2 p-4 border rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="professional" id="professional" />
-                    <Label htmlFor="professional" className="font-semibold text-lg cursor-pointer">
-                      🎯 Tom Profissional
-                    </Label>
-                  </div>
-                  <Textarea 
-                    value={currentProspectMessages.messages.professional}
-                    readOnly
-                    className="min-h-[120px] bg-slate-50"
-                  />
-                </div>
+            <div className="space-y-6">
+              {/* Score Badge */}
+              <div className="flex items-center justify-center gap-2">
+                <Badge variant="outline" className="text-lg px-4 py-2">
+                  Score: <span className="font-bold ml-2">{currentProspectMessages.score}/100</span>
+                </Badge>
+                {currentProspectMessages.score >= 80 && (
+                  <Badge className="bg-green-600">🔥 Lead Quente!</Badge>
+                )}
+              </div>
 
-                {/* Friendly */}
-                <div className="space-y-2 p-4 border rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="friendly" id="friendly" />
-                    <Label htmlFor="friendly" className="font-semibold text-lg cursor-pointer">
-                      😊 Tom Amigável
-                    </Label>
-                  </div>
-                  <Textarea 
-                    value={currentProspectMessages.messages.friendly}
-                    readOnly
-                    className="min-h-[120px] bg-slate-50"
-                  />
-                </div>
+              {/* 3 Variações lado a lado */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Variação 1: Professional */}
+                <Card 
+                  className={`cursor-pointer transition-all ${
+                    selectedMessageType === 'professional' 
+                      ? 'ring-2 ring-blue-500 shadow-lg' 
+                      : 'hover:shadow-md'
+                  }`}
+                  onClick={() => setSelectedMessageType('professional')}
+                >
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Briefcase className="h-4 w-4" />
+                      Profissional
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="bg-slate-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
+                      {currentProspectMessages.messages.professional}
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {currentProspectMessages.messages.professional.length} caracteres
+                    </div>
+                  </CardContent>
+                </Card>
 
-                {/* Enthusiast */}
-                <div className="space-y-2 p-4 border rounded-lg">
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="enthusiast" id="enthusiast" />
-                    <Label htmlFor="enthusiast" className="font-semibold text-lg cursor-pointer">
-                      🚀 Tom Entusiasta
-                    </Label>
-                  </div>
-                  <Textarea 
-                    value={currentProspectMessages.messages.enthusiast}
-                    readOnly
-                    className="min-h-[120px] bg-slate-50"
-                  />
-                </div>
-              </RadioGroup>
+                {/* Variação 2: Friendly */}
+                <Card 
+                  className={`cursor-pointer transition-all ${
+                    selectedMessageType === 'friendly' 
+                      ? 'ring-2 ring-green-500 shadow-lg' 
+                      : 'hover:shadow-md'
+                  }`}
+                  onClick={() => setSelectedMessageType('friendly')}
+                >
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Heart className="h-4 w-4" />
+                      Amigável
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="bg-green-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
+                      {currentProspectMessages.messages.friendly}
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {currentProspectMessages.messages.friendly.length} caracteres
+                    </div>
+                  </CardContent>
+                </Card>
 
-              <div className="flex gap-2 pt-4">
-                <Button onClick={handleSaveSelectedMessage} className="flex-1">
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  Salvar Variação Selecionada
-                </Button>
-                <Button variant="outline" onClick={() => setMessageDialogOpen(false)}>
+                {/* Variação 3: Enthusiast */}
+                <Card 
+                  className={`cursor-pointer transition-all ${
+                    selectedMessageType === 'enthusiast' 
+                      ? 'ring-2 ring-purple-500 shadow-lg' 
+                      : 'hover:shadow-md'
+                  }`}
+                  onClick={() => setSelectedMessageType('enthusiast')}
+                >
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Entusiasta
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="bg-purple-50 p-4 rounded-lg text-sm whitespace-pre-wrap min-h-[200px]">
+                      {currentProspectMessages.messages.enthusiast}
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {currentProspectMessages.messages.enthusiast.length} caracteres
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Preview WhatsApp */}
+              <div className="border-t pt-4">
+                <Label className="text-sm font-medium mb-2 block">
+                  Preview WhatsApp:
+                </Label>
+                <div className="bg-[#075e54] p-4 rounded-lg">
+                  <div className="bg-white rounded-lg p-3 shadow-sm max-w-md">
+                    <div className="text-sm text-gray-800 whitespace-pre-wrap">
+                      {currentProspectMessages.messages[selectedMessageType]}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-2 text-right">
+                      {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Botões de ação */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setMessageDialogOpen(false)}
+                  className="flex-1"
+                >
                   Fechar
+                </Button>
+                <Button
+                  onClick={async () => {
+                    // Salvar mensagem selecionada
+                    await supabase
+                      .from('prospects_qualificados')
+                      .update({ mensagem_selecionada: selectedMessageType })
+                      .eq('id', currentProspectMessages.prospectId);
+
+                    toast({
+                      title: 'Mensagem salva!',
+                      description: `Variação "${selectedMessageType}" selecionada.`,
+                    });
+
+                    setMessageDialogOpen(false);
+                  }}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  Salvar Escolha
+                </Button>
+                <Button
+                  onClick={async () => {
+                    // Enviar para WhatsApp (implementar depois)
+                    toast({
+                      title: 'Em breve!',
+                      description: 'Integração WhatsApp em desenvolvimento',
+                    });
+                  }}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Enviar WhatsApp
                 </Button>
               </div>
             </div>
