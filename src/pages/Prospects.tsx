@@ -1398,13 +1398,25 @@ export default function Prospects() {
 
       {/* MODAL COM AS 3 VARIAÇÕES DE MENSAGEM */}
       <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Mensagens Personalizadas Geradas</DialogTitle>
-            <DialogDescription>
-              Escolha a melhor variação para enviar via WhatsApp
-            </DialogDescription>
-          </DialogHeader>
+      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setMessageDialogOpen(false)}
+              className="h-8 w-8"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <DialogTitle>Mensagens Personalizadas Geradas</DialogTitle>
+              <DialogDescription>
+                Escolha a melhor variação para enviar via WhatsApp
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
 
           {currentProspectMessages?.messages ? (
             <div className="space-y-6">
