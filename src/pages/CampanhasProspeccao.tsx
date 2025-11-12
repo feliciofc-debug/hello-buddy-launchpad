@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket, ArrowLeft, Eye, Loader2, Trash2 } from "lucide-react";
+import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket, ArrowLeft, Eye, Loader2, Trash2, Phone, Mail, Linkedin, Instagram } from "lucide-react";
 
 export default function CampanhasProspeccao() {
   const navigate = useNavigate();
@@ -912,6 +912,51 @@ export default function CampanhasProspeccao() {
                             <div className="flex items-center gap-2">
                               <MessageSquare className="h-4 w-4" />
                               <span>{lead.cidade || ""} {lead.estado || ""}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Informações de Contato */}
+                        <div className="grid grid-cols-1 gap-2 text-sm mt-3 pt-3 border-t">
+                          {lead.telefone && (
+                            <div className="flex items-center gap-2">
+                              <Phone className="h-4 w-4 text-green-600" />
+                              <span className="font-medium">{lead.telefone}</span>
+                            </div>
+                          )}
+                          
+                          {lead.email && (
+                            <div className="flex items-center gap-2">
+                              <Mail className="h-4 w-4 text-blue-600" />
+                              <span className="font-medium">{lead.email}</span>
+                            </div>
+                          )}
+                          
+                          {lead.linkedin && (
+                            <div className="flex items-center gap-2">
+                              <Linkedin className="h-4 w-4 text-blue-700" />
+                              <a 
+                                href={lead.linkedin} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline"
+                              >
+                                LinkedIn
+                              </a>
+                            </div>
+                          )}
+                          
+                          {lead.instagram && (
+                            <div className="flex items-center gap-2">
+                              <Instagram className="h-4 w-4 text-pink-600" />
+                              <a 
+                                href={`https://instagram.com/${lead.instagram.replace('@', '')}`}
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-pink-600 hover:underline"
+                              >
+                                {lead.instagram}
+                              </a>
                             </div>
                           )}
                         </div>
