@@ -35,13 +35,19 @@ serve(async (req) => {
 
     console.log("✅ Supabase client criado");
 
-    // Buscar campanha
+    // Buscar campanha com logs detalhados
     console.log("📋 Buscando campanha...");
+    console.log("🔍 campanha_id:", campanha_id);
+    
     const { data: campanha, error: campanhaError } = await supabaseClient
       .from('campanhas_prospeccao')
       .select('*, icp_configs(*)')
       .eq('id', campanha_id)
       .maybeSingle();
+
+    console.log("📊 Resultado da query:");
+    console.log("  - Error:", campanhaError);
+    console.log("  - Data:", campanha);
 
     if (campanhaError) {
       console.error("❌ Erro ao buscar campanha:", campanhaError);
@@ -49,11 +55,13 @@ serve(async (req) => {
     }
 
     if (!campanha) {
-      console.error("❌ Campanha não encontrada");
+      console.error("❌ Campanha não encontrada no banco");
+      console.error("❌ ID buscado:", campanha_id);
       throw new Error("Campanha não encontrada");
     }
 
     console.log("✅ Campanha encontrada:", campanha.nome);
+    console.log("✅ user_id da campanha:", campanha.user_id);
 
     if (!campanha.icp_configs) {
       console.error("❌ ICP não encontrado na campanha");
