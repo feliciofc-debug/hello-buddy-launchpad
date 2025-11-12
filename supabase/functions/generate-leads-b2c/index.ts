@@ -222,23 +222,51 @@ Retorne APENAS um JSON array com as queries, sem explicações:
     const extractLeadInfo = (title: string, snippet: string, link: string) => {
       const text = `${title} ${snippet}`;
       
-      // Procurar padrões de nome
+      // Palavras a ignorar (não são leads válidos)
+      const palavrasIgnorar = ['clínica', 'clinica', 'hospital', 'laboratório', 'laboratorio', 'farmácia', 'farmacia', 'centro', 'instituto'];
+      const textoLower = text.toLowerCase();
+      
+      // Se contém palavras a ignorar e NÃO contém nome de pessoa, ignorar
+      const temPalavraIgnorar = palavrasIgnorar.some(palavra => textoLower.includes(palavra));
+      
+      // Procurar padrões de nome (ampliado para diferentes profissões)
       const nomePatterns = [
-        /Dr\.?\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)+)/,
-        /Dra\.?\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)+)/,
-        /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+-\s+(?:Médico|Médica|Dr|Dra|CRM)/i,
-        /(?:médico|médica)\s+([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+)/i,
+        // Padrões com título profissional
+        /(?:Dr\.?|Dra\.?)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)+)/,
+        /(?:Eng\.?|Arq\.?|Adv\.?|Prof\.?)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)+)/,
+        // Nome + hífen + profissão
+        /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+-\s+(?:Médico|Médica|Engenheiro|Arquiteto|Advogado|Professor|CRM|OAB|CREA|CAU)/i,
+        // Profissão + nome
+        /(?:médico|médica|engenheiro|arquiteto|advogado|professor)\s+([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)/i,
+        // LinkedIn pattern: "Nome Sobrenome | Profissão"
+        /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+\|/,
+        // Nome completo (mínimo 2 palavras, máximo 4)
+        /\b([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){0,2})\b/,
       ];
 
       let nome = null;
       for (const pattern of nomePatterns) {
         const match = text.match(pattern);
         if (match) {
-          nome = match[1].trim();
-          break;
+          const possibleNome = match[1].trim();
+          
+          // Validar se é um nome válido (não é uma palavra isolada a ignorar)
+          const nomeValido = !palavrasIgnorar.some(palavra => 
+            possibleNome.toLowerCase() === palavra || 
+            possibleNome.toLowerCase().includes(palavra) && possibleNome.split(' ').length === 1
+          );
+          
+          // Verificar se tem pelo menos 2 palavras
+          if (nomeValido && possibleNome.split(' ').length >= 2) {
+            nome = possibleNome;
+            break;
+          }
         }
       }
 
+      // Se achou palavras a ignorar mas não achou nome, retornar null
+      if (temPalavraIgnorar && !nome) return null;
+      
       if (!nome) return null;
 
       // Extrair especialidade
@@ -283,7 +311,11 @@ Retorne APENAS um JSON array com as queries, sem explicações:
     let totalEncontrados = 0;
     const leadsCriados = [];
 
-    for (const query of queries.slice(0, Math.min(limite / 10, queries.length))) {
+    // Executar no máximo 10 queries ou todas as queries disponíveis
+    const maxQueries = Math.min(10, queries.length);
+    console.log(`[GENERATE-LEADS-B2C] Executando ${maxQueries} queries`);
+
+    for (const query of queries.slice(0, maxQueries)) {
       console.log(`[GENERATE-LEADS-B2C] Buscando: ${query}`);
       
       try {
@@ -293,6 +325,7 @@ Retorne APENAS um JSON array com as queries, sem explicações:
           const leadInfo = extractLeadInfo(item.title, item.snippet, item.link);
           
           if (leadInfo && leadInfo.nome) {
+            console.log(`[GENERATE-LEADS-B2C] 👤 Lead extraído: ${leadInfo.nome}`);
             // Verificar se já existe
             const { data: existente } = await supabaseClient
               .from('leads_descobertos')
@@ -307,7 +340,7 @@ Retorne APENAS um JSON array com as queries, sem explicações:
                 user_id: campanha.user_id,
                 tipo: 'b2c',
                 nome_profissional: leadInfo.nome,
-                profissao: b2cConfig.profissoes?.[0] || 'Médico',
+                profissao: b2cConfig.profissoes?.[0] || 'Profissional',
                 especialidade: leadInfo.especialidade,
                 cidade: leadInfo.cidade,
                 estado: 'RJ',
@@ -318,6 +351,8 @@ Retorne APENAS um JSON array com as queries, sem explicações:
                 query_usada: query,
                 status: 'descoberto'
               };
+              
+              console.log(`[GENERATE-LEADS-B2C] 💾 Salvando lead: ${leadInfo.nome}`);
 
               // Adicionar URL da rede social no campo correto
               if (leadInfo.redeSocial === 'linkedin') {
@@ -337,11 +372,24 @@ Retorne APENAS um JSON array com as queries, sem explicações:
               if (lead) {
                 leadsCriados.push(lead);
                 totalEncontrados++;
-                console.log(`[GENERATE-LEADS-B2C] ✅ Lead criado: ${leadInfo.nome}`);
+                console.log(`[GENERATE-LEADS-B2C] ✅ Lead ${totalEncontrados} criado: ${leadInfo.nome}`);
               }
+            } else {
+              console.log(`[GENERATE-LEADS-B2C] ⏭️ Lead já existe: ${leadInfo.nome}`);
             }
+            
+            // Parar se atingir o limite
+            if (totalEncontrados >= limite) {
+              console.log(`[GENERATE-LEADS-B2C] 🎯 Limite de ${limite} leads atingido!`);
+              break;
+            }
+          } else {
+            console.log(`[GENERATE-LEADS-B2C] ❌ Não foi possível extrair info de: ${item.title}`);
           }
         }
+        
+        // Parar queries se já atingiu o limite
+        if (totalEncontrados >= limite) break;
 
         // Delay entre queries para não estourar rate limit
         await new Promise(resolve => setTimeout(resolve, 1000));
