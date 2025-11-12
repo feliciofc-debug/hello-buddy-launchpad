@@ -742,106 +742,93 @@ export default function CampanhasProspeccao() {
             <h2 className="text-2xl font-bold mb-4">RASCUNHOS ({campanhasRascunho.length})</h2>
             <div className="grid gap-6">
               {campanhasRascunho.map((campanha) => {
-            const stats = campanha.stats || {};
-            return (
-              <Card key={campanha.id}>
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <CardTitle>{campanha.nome}</CardTitle>
-                        {getStatusBadge(campanha.status)}
-                        <Badge variant="outline">{campanha.tipo.toUpperCase()}</Badge>
+                const stats = campanha.stats || {};
+                return (
+                  <Card key={campanha.id}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <CardTitle>{campanha.nome}</CardTitle>
+                            {getStatusBadge(campanha.status)}
+                            <Badge variant="outline">{campanha.tipo.toUpperCase()}</Badge>
+                          </div>
+                          <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
+                        </div>
                       </div>
-                      <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-4 gap-4 mb-4">
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Descobertos</p>
-                      <p className="text-2xl font-bold">{stats.descobertos || 0}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Enriquecidos</p>
-                      <p className="text-2xl font-bold">{stats.enriquecidos || 0}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Qualificados</p>
-                      <p className="text-2xl font-bold">{stats.qualificados || 0}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Mensagens</p>
-                      <p className="text-2xl font-bold">{stats.mensagens_geradas || 0}</p>
-                    </div>
-                  </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-4 gap-4 mb-4">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Descobertos</p>
+                          <p className="text-2xl font-bold">{stats.descobertos || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Enriquecidos</p>
+                          <p className="text-2xl font-bold">{stats.enriquecidos || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Qualificados</p>
+                          <p className="text-2xl font-bold">{stats.qualificados || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Mensagens</p>
+                          <p className="text-2xl font-bold">{stats.mensagens_geradas || 0}</p>
+                        </div>
+                      </div>
 
-                  {/* Botões de ação */}
-                  <div className="flex gap-2 pt-4 border-t">
-                    {campanha.status === 'ativa' ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handlePausarCampanha(campanha.id)}
-                        disabled={processing === campanha.id}
-                      >
-                        <Pause className="mr-2 h-4 w-4" />
-                        Pausar
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => handleIniciarCampanha(campanha.id)}
-                        disabled={processing === campanha.id}
-                      >
-                        {processing === campanha.id ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Iniciando...
-                          </>
-                        ) : (
-                          <>
-                            <Play className="mr-2 h-4 w-4" />
-                            Iniciar
-                          </>
-                        )}
-                      </Button>
-                    )}
+                      <div className="flex gap-2 pt-4 border-t">
+                        <Button
+                          size="sm"
+                          onClick={() => handleIniciarCampanha(campanha.id)}
+                          disabled={processing === campanha.id}
+                        >
+                          {processing === campanha.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Iniciando...
+                            </>
+                          ) : (
+                            <>
+                              <Play className="mr-2 h-4 w-4" />
+                              Iniciar
+                            </>
+                          )}
+                        </Button>
 
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => handleCriarLeadsTeste(campanha.id)}
-                      title="Adicionar mais 5 leads de teste"
-                    >
-                      🧪 +5 Leads
-                    </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleCriarLeadsTeste(campanha.id)}
+                          title="Adicionar mais 5 leads de teste"
+                        >
+                          🧪 +5 Leads
+                        </Button>
 
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => navigate(`/campanhas/${campanha.id}`)}
-                    >
-                      <Eye className="mr-2 h-4 w-4" />
-                      Ver Detalhes
-                    </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigate(`/campanhas/${campanha.id}`)}
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver Detalhes
+                        </Button>
 
-                    {(campanha.status === 'rascunho' || campanha.status === 'pausada') && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDeletarCampanha(campanha.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeletarCampanha(campanha.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {campanhas.length === 0 && icps.length > 0 && (
           <Card className="border-dashed">
