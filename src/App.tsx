@@ -35,6 +35,7 @@ import Security from "./pages/Security";
 import Admin from "./pages/Admin";
 import ConfigurarICP from "./pages/ConfigurarICP";
 import CampanhasProspeccao from "./pages/CampanhasProspeccao";
+import CampanhaDetalhes from "./pages/CampanhaDetalhes";
 
 const queryClient = new QueryClient();
 
@@ -44,7 +45,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
@@ -60,6 +61,7 @@ const App = () => (
             <Route path="/whatsapp" element={<WhatsAppPage />} />
             <Route path="/prospects" element={<Prospects />} />
             <Route path="/campanhas-prospeccao" element={<CampanhasProspeccao />} />
+            <Route path="/campanhas/:id" element={<CampanhaDetalhes />} />
             <Route path="/shopee-callback" element={<ShopeeCallback />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
             <Route path="/lomadee" element={<LomadeeFinder />} />

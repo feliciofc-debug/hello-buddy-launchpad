@@ -382,54 +382,10 @@ export default function CampanhasProspeccao() {
                       </div>
                       <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => navigate(`/campanhas/${campanha.id}`)}>
-                        <Eye className="mr-2 h-4 w-4" />
-                        Ver Detalhes
-                      </Button>
-                      {campanha.status === 'rascunho' && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleIniciarCampanha(campanha.id)}
-                          disabled={processing === campanha.id}
-                        >
-                          {processing === campanha.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Buscando...
-                            </>
-                          ) : (
-                            <>
-                              <Play className="mr-2 h-4 w-4" />
-                              Iniciar
-                            </>
-                          )}
-                        </Button>
-                      )}
-                      {campanha.status === 'ativa' && (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handlePausarCampanha(campanha.id)}
-                        >
-                          <Pause className="mr-2 h-4 w-4" />
-                          Pausar
-                        </Button>
-                      )}
-                      {(campanha.status === 'rascunho' || campanha.status === 'pausada') && (
-                        <Button 
-                          size="sm" 
-                          variant="ghost"
-                          onClick={() => handleDeletarCampanha(campanha.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-4 gap-4 mb-4">
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground">Descobertos</p>
                       <p className="text-2xl font-bold">{stats.descobertos || 0}</p>
@@ -446,6 +402,58 @@ export default function CampanhasProspeccao() {
                       <p className="text-sm text-muted-foreground">Mensagens</p>
                       <p className="text-2xl font-bold">{stats.mensagens_geradas || 0}</p>
                     </div>
+                  </div>
+
+                  {/* Botões de ação */}
+                  <div className="flex gap-2 pt-4 border-t">
+                    {campanha.status === 'ativa' ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handlePausarCampanha(campanha.id)}
+                        disabled={processing === campanha.id}
+                      >
+                        <Pause className="mr-2 h-4 w-4" />
+                        Pausar
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => handleIniciarCampanha(campanha.id)}
+                        disabled={processing === campanha.id}
+                      >
+                        {processing === campanha.id ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Iniciando...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="mr-2 h-4 w-4" />
+                            Iniciar
+                          </>
+                        )}
+                      </Button>
+                    )}
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate(`/campanhas/${campanha.id}`)}
+                    >
+                      <Eye className="mr-2 h-4 w-4" />
+                      Ver Detalhes
+                    </Button>
+
+                    {(campanha.status === 'rascunho' || campanha.status === 'pausada') && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDeletarCampanha(campanha.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
