@@ -13,10 +13,12 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get("authorization");
+    if (!authHeader) throw new Error("Não autenticado");
+
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { global: { headers: { authorization: authHeader! } } }
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { authorization: authHeader } } }
     );
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
