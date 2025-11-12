@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Search, Loader2, Users, Copy, Send } from 'lucide-react';
+import { ArrowLeft, Search, Loader2, Users, Copy, Send, Sparkles } from 'lucide-react';
 
 export default function CampanhaLeads() {
   const { id } = useParams();
@@ -21,6 +21,7 @@ export default function CampanhaLeads() {
   const [statusFilter, setStatusFilter] = useState('todos');
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [showMensagensModal, setShowMensagensModal] = useState(false);
+  const [enriching, setEnriching] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -129,6 +130,27 @@ export default function CampanhaLeads() {
     return 'text-orange-500';
   };
 
+  const handleEnriquecerLeads = async () => {
+    if (!id) return;
+    
+    setEnriching(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('enrich-lead-bulk', {
+        body: { campanha_id: id, limite: 10 }
+      });
+
+      if (error) throw error;
+
+      toast.success(`${data.processados} leads enriquecidos com sucesso!`);
+      loadData(); // Recarregar dados
+    } catch (error: any) {
+      console.error('Erro ao enriquecer leads:', error);
+      toast.error('Erro ao enriquecer leads: ' + error.message);
+    } finally {
+      setEnriching(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -152,11 +174,32 @@ export default function CampanhaLeads() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold mb-2">Leads - {campanha?.nome}</h1>
-            <p className="text-muted-foreground">
-              {filteredLeads.length} leads encontrados
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">Leads - {campanha?.nome}</h1>
+              <p className="text-muted-foreground">
+                {filteredLeads.length} leads encontrados
+              </p>
+            </div>
+            {descobertosCont > 0 && (
+              <Button 
+                onClick={handleEnriquecerLeads} 
+                disabled={enriching}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+              >
+                {enriching ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enriquecendo...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Enriquecer Leads ({descobertosCont})
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
 
