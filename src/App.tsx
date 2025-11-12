@@ -15,7 +15,7 @@ import ProductsPage from "./pages/ProductsPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
 import Prospects from "./pages/Prospects";
 import Configuracoes from "./pages/Configuracoes";
-import AffiliateProfile from "./components/AffiliateProfile";
+
 import SettingsPage from "./components/SettingsPage";
 import ShopeeCallback from "./pages/ShopeeCallback";
 import ReviewerLogin from "./pages/ReviewerLogin";
