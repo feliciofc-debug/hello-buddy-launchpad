@@ -294,25 +294,35 @@ Retorne APENAS um JSON array com as queries, sem explicações:
               .maybeSingle();
 
             if (!existente) {
+              const leadData: any = {
+                campanha_id,
+                user_id: campanha.user_id,
+                tipo: 'b2c',
+                nome_profissional: leadInfo.nome,
+                profissao: b2cConfig.profissoes?.[0] || 'Médico',
+                especialidade: leadInfo.especialidade,
+                cidade: leadInfo.cidade,
+                estado: 'RJ',
+                telefone: leadInfo.telefone,
+                fonte: 'google_search',
+                fonte_url: leadInfo.link,
+                fonte_snippet: item.snippet,
+                query_usada: query,
+                status: 'descoberto'
+              };
+
+              // Adicionar URL da rede social no campo correto
+              if (leadInfo.redeSocial === 'linkedin') {
+                leadData.linkedin_url = leadInfo.link;
+              } else if (leadInfo.redeSocial === 'instagram') {
+                leadData.instagram_username = leadInfo.link.split('/').pop();
+              } else if (leadInfo.redeSocial === 'facebook') {
+                leadData.facebook_url = leadInfo.link;
+              }
+
               const { data: lead } = await supabaseClient
                 .from('leads_descobertos')
-                .insert({
-                  campanha_id,
-                  user_id: campanha.user_id,
-                  tipo: 'b2c',
-                  nome_profissional: leadInfo.nome,
-                  profissao: b2cConfig.profissoes?.[0] || 'Médico',
-                  especialidade: leadInfo.especialidade,
-                  cidade: leadInfo.cidade,
-                  estado: 'RJ',
-                  telefone: leadInfo.telefone,
-                  rede_social: leadInfo.redeSocial,
-                  fonte: 'google_search',
-                  fonte_url: leadInfo.link,
-                  fonte_snippet: item.snippet,
-                  query_usada: query,
-                  status: 'descoberto'
-                })
+                .insert(leadData)
                 .select()
                 .single();
 
