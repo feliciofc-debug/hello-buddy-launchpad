@@ -64,24 +64,15 @@ serve(async (req) => {
 
     score = Math.min(100, Math.max(0, score))
 
-    const recomendacao = score >= 80 ? 'contatar_agora' : score >= 60 ? 'aguardar' : 'descartar'
-
     const qualificationData = {
       socio_id,
       score,
-      score_breakdown: {
-        poder_aquisitivo: 20,
-        momento_certo: 15,
-        fit_produto: 15,
-        sinais_compra: 10
-      },
       justificativa: `${socio.qualificacao} na ${socio.empresa.nome_fantasia}. Capital social de R$ ${(socio.empresa.capital_social || 0).toLocaleString('pt-BR')}.`,
       insights: [
         `Cargo: ${socio.qualificacao}`,
         `Empresa: ${socio.empresa.nome_fantasia}`,
         `Capital: R$ ${(socio.empresa.capital_social || 0).toLocaleString('pt-BR')}`
-      ],
-      recomendacao
+      ]
     }
 
     console.log(`💾 Salvando qualificação (Score: ${score})...`)

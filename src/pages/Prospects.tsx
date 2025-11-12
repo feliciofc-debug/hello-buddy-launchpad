@@ -224,51 +224,129 @@ export default function Prospects() {
         { body: { socio_id: socioId } }
       );
 
-      if (qualifyError) throw new Error(`Erro na qualificação: ${qualifyError.message}`);
+      console.log('📦 Resposta qualify-prospect COMPLETA:', JSON.stringify(qualifyData, null, 2));
 
-      const prospectId = qualifyData.qualification?.id;
-      const score = qualifyData.qualification?.score || 0;
-
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // ETAPA 3: Gerar mensagem personalizada
-      console.log('✍️ Etapa 3/3: Gerando mensagens personalizadas...');
-      setProcessingStage('Etapa 3/3: IA criando 3 variações de mensagem...');
-      toast({
-        title: 'Etapa 3/3',
-        description: 'IA criando 3 variações de mensagem...',
-      });
-
-      const { data: messageData, error: messageError } = await supabase.functions.invoke(
-        'generate-message',
-        { body: { prospect_id: prospectId } }
-      );
-
-      console.log('📦 Resposta generate-message COMPLETA:', JSON.stringify(messageData, null, 2));
-
-      if (messageError) {
-        console.error('❌ Erro ao gerar mensagens:', messageError);
-        throw new Error(`Erro ao gerar mensagens: ${messageError.message}`);
+      if (qualifyError) {
+        console.error('❌ Erro na qualificação:', qualifyError);
+        throw new Error(`Erro na qualificação: ${qualifyError.message}`);
       }
 
-      if (messageData && messageData.success) {
-        console.log('✅ Success true');
-        console.log('📝 Messages objeto:', messageData.messages);
-        
-        if (messageData.messages) {
-          console.log('✅ Messages existe!');
-          console.log('Professional:', messageData.messages.professional);
-          console.log('Friendly:', messageData.messages.friendly);
-          console.log('Enthusiast:', messageData.messages.enthusiast);
+      if (qualifyData && !qualifyData.success) {
+        console.error('❌ qualify-prospect retornou success: false');
+        throw new Error(`Qualificação falhou: ${qualifyData.error}`);
+      }
 
-          // SUCESSO COMPLETO!
+      // Extrair prospectId e score
+      const prospectId = qualifyData?.qualification?.id;
+      const score = qualifyData?.qualification?.score || 0;
+
+      console.log('✅ prospectId extraído:', prospectId);
+      console.log('✅ score extraído:', score);
+
+      if (!prospectId) {
+        console.error('❌ prospectId está undefined!');
+        console.error('qualifyData completo:', JSON.stringify(qualifyData, null, 2));
+        
+        // Fallback: buscar no banco
+        console.warn('⚠️ Tentando buscar prospect_id no banco...');
+        const { data: foundProspect } = await supabase
+          .from('prospects_qualificados')
+          .select('id')
+          .eq('socio_id', socioId)
+          .single();
+        
+        if (!foundProspect) {
+          throw new Error('ID do prospect não foi retornado pela qualificação');
+        }
+        
+        console.log('✅ prospect_id encontrado no banco:', foundProspect.id);
+        const fallbackProspectId = foundProspect.id;
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // ETAPA 3: Gerar mensagem personalizada
+        console.log('✍️ Etapa 3/3: Gerando mensagens personalizadas...');
+        setProcessingStage('Etapa 3/3: IA criando 3 variações de mensagem...');
+        toast({
+          title: 'Etapa 3/3',
+          description: 'IA criando 3 variações de mensagem...',
+        });
+
+        console.log('✍️ Chamando generate-message com prospect_id:', fallbackProspectId);
+        const { data: messageData, error: messageError } = await supabase.functions.invoke(
+          'generate-message',
+          { body: { prospect_id: fallbackProspectId } }
+        );
+
+        console.log('📦 Resposta generate-message COMPLETA:', JSON.stringify(messageData, null, 2));
+
+        if (messageError) {
+          console.error('❌ Erro ao gerar mensagens:', messageError);
+          throw new Error(`Erro ao gerar mensagens: ${messageError.message}`);
+        }
+
+        if (messageData && !messageData.success) {
+          console.error('❌ generate-message retornou success: false');
+          throw new Error(`Erro ao gerar mensagens: ${messageData.error}`);
+        }
+
+        if (messageData && messageData.success && messageData.messages) {
+          console.log('✅ Mensagens recebidas com sucesso!');
           setProcessingStage('');
           toast({
             title: '🎉 Processamento Concluído!',
-            description: `Score: ${score}/100 - Mensagens prontas para envio!`,
+            description: `Score: ${score}/100 - 3 mensagens prontas!`,
           });
 
-          // Abrir modal com as mensagens geradas
+          setCurrentProspectMessages({
+            prospectId: fallbackProspectId,
+            socioId,
+            messages: messageData.messages,
+            score
+          });
+          setMessageDialogOpen(true);
+          console.log('🎭 Modal aberto com dados (fallback)');
+        } else {
+          throw new Error('Mensagens não foram geradas corretamente');
+        }
+      } else {
+        // prospectId existe
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // ETAPA 3: Gerar mensagem personalizada
+        console.log('✍️ Etapa 3/3: Gerando mensagens personalizadas...');
+        setProcessingStage('Etapa 3/3: IA criando 3 variações de mensagem...');
+        toast({
+          title: 'Etapa 3/3',
+          description: 'IA criando 3 variações de mensagem...',
+        });
+
+        console.log('✍️ Chamando generate-message com prospect_id:', prospectId);
+        const { data: messageData, error: messageError } = await supabase.functions.invoke(
+          'generate-message',
+          { body: { prospect_id: prospectId } }
+        );
+
+        console.log('📦 Resposta generate-message COMPLETA:', JSON.stringify(messageData, null, 2));
+
+        if (messageError) {
+          console.error('❌ Erro ao gerar mensagens:', messageError);
+          throw new Error(`Erro ao gerar mensagens: ${messageError.message}`);
+        }
+
+        if (messageData && !messageData.success) {
+          console.error('❌ generate-message retornou success: false');
+          throw new Error(`Erro ao gerar mensagens: ${messageData.error}`);
+        }
+
+        if (messageData && messageData.success && messageData.messages) {
+          console.log('✅ Mensagens recebidas com sucesso!');
+          setProcessingStage('');
+          toast({
+            title: '🎉 Processamento Concluído!',
+            description: `Score: ${score}/100 - 3 mensagens prontas!`,
+          });
+
           setCurrentProspectMessages({
             prospectId,
             socioId,
@@ -276,14 +354,10 @@ export default function Prospects() {
             score
           });
           setMessageDialogOpen(true);
-          console.log('🎭 Modal aberto com dados:', { prospectId, socioId, score });
+          console.log('🎭 Modal aberto com dados');
         } else {
-          console.error('❌ Messages é undefined!');
           throw new Error('Mensagens não foram geradas corretamente');
         }
-      } else {
-        console.error('❌ Resposta inválida:', messageData);
-        throw new Error(messageData?.error || 'Erro ao gerar mensagens');
       }
 
       // Recarregar lista
