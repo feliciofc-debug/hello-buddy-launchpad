@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket, ArrowLeft, Eye } from "lucide-react";
+import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket, ArrowLeft, Eye, Loader2 } from "lucide-react";
 
 export default function CampanhasProspeccao() {
   const navigate = useNavigate();
@@ -18,6 +18,7 @@ export default function CampanhasProspeccao() {
   const [icps, setIcps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [criandoCampanha, setCriandoCampanha] = useState(false);
+  const [processing, setProcessing] = useState<string | null>(null);
 
   // Form state
   const [nome, setNome] = useState("");
@@ -113,7 +114,11 @@ export default function CampanhasProspeccao() {
       const campanha = campanhas.find(c => c.id === campanhaId);
       if (!campanha) return;
 
-      // Atualizar status para "ativa"
+      setProcessing(campanhaId);
+      
+      toast.info("🚀 Campanha iniciada - Buscando leads...");
+
+      // 1. Atualizar status da campanha
       await supabase
         .from('campanhas_prospeccao')
         .update({
@@ -122,30 +127,76 @@ export default function CampanhasProspeccao() {
         })
         .eq('id', campanhaId);
 
-      // Chamar função de descoberta
+      // 2. Chamar edge function
       const funcao = campanha.tipo === 'b2b' ? 'generate-leads-b2b' : 'generate-leads-b2c';
       
-      toast.info(`Iniciando descoberta de leads ${campanha.tipo.toUpperCase()}...`);
+      console.log(`🔍 Chamando ${funcao} para campanha ${campanhaId}`);
 
       const { data, error } = await supabase.functions.invoke(funcao, {
-        body: { campanha_id: campanhaId, limite: 50 }
+        body: {
+          campanha_id: campanhaId,
+          icp_config_id: campanha.icp_config_id,
+          limite: 50
+        }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ Erro na edge function:", error);
+        throw error;
+      }
 
-      toast.success(`${data.total_encontrados} leads descobertos! Iniciando enriquecimento...`);
+      console.log("✅ Resultado edge function:", data);
 
-      // Chamar função de enriquecimento
-      await supabase.functions.invoke('enrich-lead-bulk', {
-        body: { campanha_id: campanhaId, limite: 10 }
-      });
+      // 3. Polling para atualizar stats em tempo real
+      let pollCount = 0;
+      const maxPolls = 40; // 40 x 3s = 2 minutos
+      
+      const pollInterval = setInterval(async () => {
+        pollCount++;
+        
+        const { data: campanhaAtualizada } = await supabase
+          .from('campanhas_prospeccao')
+          .select('stats, status')
+          .eq('id', campanhaId)
+          .single();
 
-      toast.success("Enriquecimento iniciado!");
-      loadData();
+        if (campanhaAtualizada) {
+          console.log(`📊 Poll ${pollCount}: Stats atualizados`, campanhaAtualizada.stats);
+          
+          // Atualizar UI
+          setCampanhas(prev => prev.map(c => 
+            c.id === campanhaId 
+              ? { ...c, stats: campanhaAtualizada.stats, status: campanhaAtualizada.status }
+              : c
+          ));
+
+          const stats = (campanhaAtualizada.stats || {}) as any;
+          const descobertos = stats.descobertos || 0;
+
+          // Se terminou descoberta, parar polling
+          if (descobertos > 0 || pollCount >= maxPolls) {
+            clearInterval(pollInterval);
+            setProcessing(null);
+            
+            if (descobertos > 0) {
+              toast.success(`✅ Busca concluída! ${descobertos} leads encontrados`);
+              
+              // Iniciar enriquecimento
+              toast.info("🔄 Iniciando enriquecimento...");
+              await supabase.functions.invoke('enrich-lead-bulk', {
+                body: { campanha_id: campanhaId, limite: 10 }
+              });
+            } else {
+              toast.error("❌ Nenhum lead encontrado. Verifique a configuração do ICP.");
+            }
+          }
+        }
+      }, 3000); // Poll a cada 3 segundos
 
     } catch (error: any) {
-      console.error("Erro ao iniciar campanha:", error);
-      toast.error(error.message);
+      console.error("❌ Erro ao iniciar campanha:", error);
+      setProcessing(null);
+      toast.error(`Erro: ${error.message}`);
     }
   };
 
@@ -292,9 +343,19 @@ export default function CampanhasProspeccao() {
                         <Button
                           size="sm"
                           onClick={() => handleIniciarCampanha(campanha.id)}
+                          disabled={processing === campanha.id}
                         >
-                          <Play className="mr-2 h-4 w-4" />
-                          Iniciar
+                          {processing === campanha.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Buscando...
+                            </>
+                          ) : (
+                            <>
+                              <Play className="mr-2 h-4 w-4" />
+                              Iniciar
+                            </>
+                          )}
                         </Button>
                       )}
                       {campanha.status === 'ativa' && (
