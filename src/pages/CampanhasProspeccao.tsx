@@ -19,6 +19,10 @@ export default function CampanhasProspeccao() {
   const [loading, setLoading] = useState(true);
   const [criandoCampanha, setCriandoCampanha] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
+  
+  // Filtros
+  const [statusFilter, setStatusFilter] = useState<string>('todas');
+  const [tipoFilter, setTipoFilter] = useState<string>('todos');
 
   // Form state
   const [nome, setNome] = useState("");
@@ -382,6 +386,16 @@ export default function CampanhasProspeccao() {
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
+  const filteredCampanhas = campanhas.filter(campanha => {
+    if (statusFilter !== 'todas' && campanha.status !== statusFilter) return false;
+    if (tipoFilter !== 'todos' && campanha.tipo !== tipoFilter) return false;
+    return true;
+  });
+
+  const campanhasAtivas = filteredCampanhas.filter(c => c.status === 'ativa');
+  const campanhasPausadas = filteredCampanhas.filter(c => c.status === 'pausada');
+  const campanhasRascunho = filteredCampanhas.filter(c => c.status === 'rascunho');
+
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen">Carregando...</div>;
   }
@@ -490,8 +504,244 @@ export default function CampanhasProspeccao() {
           </Card>
         )}
 
-        <div className="grid gap-6">
-          {campanhas.map((campanha) => {
+        {/* Filtros */}
+        {campanhas.length > 0 && (
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'todas' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('todas')}
+                >
+                  Todas ({campanhas.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'ativa' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('ativa')}
+                >
+                  Ativas ({campanhas.filter(c => c.status === 'ativa').length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'pausada' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('pausada')}
+                >
+                  Pausadas ({campanhas.filter(c => c.status === 'pausada').length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={statusFilter === 'concluida' ? 'default' : 'outline'}
+                  onClick={() => setStatusFilter('concluida')}
+                >
+                  Concluídas ({campanhas.filter(c => c.status === 'concluida').length})
+                </Button>
+                <div className="w-px h-8 bg-border mx-2" />
+                <Button
+                  size="sm"
+                  variant={tipoFilter === 'todos' ? 'default' : 'outline'}
+                  onClick={() => setTipoFilter('todos')}
+                >
+                  Todos
+                </Button>
+                <Button
+                  size="sm"
+                  variant={tipoFilter === 'b2b' ? 'default' : 'outline'}
+                  onClick={() => setTipoFilter('b2b')}
+                >
+                  B2B ({campanhas.filter(c => c.tipo === 'b2b').length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant={tipoFilter === 'b2c' ? 'default' : 'outline'}
+                  onClick={() => setTipoFilter('b2c')}
+                >
+                  B2C ({campanhas.filter(c => c.tipo === 'b2c').length})
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Campanhas Ativas */}
+        {campanhasAtivas.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold mb-4">CAMPANHAS ATIVAS ({campanhasAtivas.length})</h2>
+            <div className="grid gap-6">
+              {campanhasAtivas.map((campanha) => {
+                const stats = campanha.stats || {};
+                return (
+                  <Card key={campanha.id}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <CardTitle>{campanha.nome}</CardTitle>
+                            {getStatusBadge(campanha.status)}
+                            <Badge variant="outline">{campanha.tipo.toUpperCase()}</Badge>
+                          </div>
+                          <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-4 gap-4 mb-4">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Descobertos</p>
+                          <p className="text-2xl font-bold">{stats.descobertos || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Enriquecidos</p>
+                          <p className="text-2xl font-bold">{stats.enriquecidos || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Qualificados</p>
+                          <p className="text-2xl font-bold">{stats.qualificados || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Mensagens</p>
+                          <p className="text-2xl font-bold">{stats.mensagens_geradas || 0}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-4 border-t">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handlePausarCampanha(campanha.id)}
+                          disabled={processing === campanha.id}
+                        >
+                          <Pause className="mr-2 h-4 w-4" />
+                          Pausar
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleCriarLeadsTeste(campanha.id)}
+                          title="Adicionar mais 5 leads de teste"
+                        >
+                          🧪 +5 Leads
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigate(`/campanhas/${campanha.id}`)}
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver Detalhes
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Campanhas Pausadas */}
+        {campanhasPausadas.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold mb-4">CAMPANHAS PAUSADAS ({campanhasPausadas.length})</h2>
+            <div className="grid gap-6">
+              {campanhasPausadas.map((campanha) => {
+                const stats = campanha.stats || {};
+                return (
+                  <Card key={campanha.id}>
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <CardTitle>{campanha.nome}</CardTitle>
+                            {getStatusBadge(campanha.status)}
+                            <Badge variant="outline">{campanha.tipo.toUpperCase()}</Badge>
+                          </div>
+                          <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-4 gap-4 mb-4">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Descobertos</p>
+                          <p className="text-2xl font-bold">{stats.descobertos || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Enriquecidos</p>
+                          <p className="text-2xl font-bold">{stats.enriquecidos || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Qualificados</p>
+                          <p className="text-2xl font-bold">{stats.qualificados || 0}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Mensagens</p>
+                          <p className="text-2xl font-bold">{stats.mensagens_geradas || 0}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-4 border-t">
+                        <Button
+                          size="sm"
+                          onClick={() => handleIniciarCampanha(campanha.id)}
+                          disabled={processing === campanha.id}
+                        >
+                          {processing === campanha.id ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Iniciando...
+                            </>
+                          ) : (
+                            <>
+                              <Play className="mr-2 h-4 w-4" />
+                              Retomar
+                            </>
+                          )}
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleCriarLeadsTeste(campanha.id)}
+                          title="Adicionar mais 5 leads de teste"
+                        >
+                          🧪 +5 Leads
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigate(`/campanhas/${campanha.id}`)}
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          Ver Detalhes
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeletarCampanha(campanha.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Campanhas Rascunho */}
+        {campanhasRascunho.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold mb-4">RASCUNHOS ({campanhasRascunho.length})</h2>
+            <div className="grid gap-6">
+              {campanhasRascunho.map((campanha) => {
             const stats = campanha.stats || {};
             return (
               <Card key={campanha.id}>
