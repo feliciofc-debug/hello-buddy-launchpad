@@ -233,57 +233,102 @@ Retorne APENAS um JSON array com as queries, sem explicações:
       }
     };
 
-    // Extrair informações de profissional do resultado
+    // Extrair informações de profissional do resultado - VERSÃO RIGOROSA
     const extractLeadInfo = (title: string, snippet: string, link: string) => {
       const text = `${title} ${snippet}`;
-      
-      // Palavras a ignorar (não são leads válidos)
-      const palavrasIgnorar = ['clínica', 'clinica', 'hospital', 'laboratório', 'laboratorio', 'farmácia', 'farmacia', 'centro', 'instituto'];
       const textoLower = text.toLowerCase();
       
-      // Se contém palavras a ignorar e NÃO contém nome de pessoa, ignorar
-      const temPalavraIgnorar = palavrasIgnorar.some(palavra => textoLower.includes(palavra));
-      
-      // Procurar padrões de nome (ampliado para diferentes profissões)
-      const nomePatterns = [
-        // Padrões com título profissional
-        /(?:Dr\.?|Dra\.?)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)+)/,
-        /(?:Eng\.?|Arq\.?|Adv\.?|Prof\.?)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)+)/,
-        // Nome + hífen + profissão
-        /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+-\s+(?:Médico|Médica|Engenheiro|Arquiteto|Advogado|Professor|CRM|OAB|CREA|CAU)/i,
-        // Profissão + nome
-        /(?:médico|médica|engenheiro|arquiteto|advogado|professor)\s+([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)/i,
-        // LinkedIn pattern: "Nome Sobrenome | Profissão"
-        /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+\|/,
-        // Nome completo (mínimo 2 palavras, máximo 4)
-        /\b([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){0,2})\b/,
+      // ========== LISTA EXPANDIDA DE EXCLUSÃO ==========
+      const palavrasProibidas = [
+        // Estabelecimentos
+        'clínica', 'clinica', 'hospital', 'laboratório', 'laboratorio', 
+        'farmácia', 'farmacia', 'centro médico', 'centro', 'instituto',
+        'unidade', 'rede', 'grupo', 'complexo', 'policlínica', 'posto',
+        // Serviços
+        'atendimento', 'agendamento', 'consulta', 'consultório em',
+        'localiza', 'encontre', 'busca', 'procura', 'diretório',
+        // Localizações genéricas
+        'em rio', 'em são', 'em belo', 'na zona', 'no bairro',
+        'rio de janeiro', 'são paulo', 'belo horizonte',
+        // Termos comerciais
+        'ltda', 'sa', 's.a.', 'me', 'eireli', 'associação',
+        // Outros
+        'página', 'site', 'website', 'portal', 'plataforma'
       ];
-
+      
+      // Se contém qualquer palavra proibida, rejeitar imediatamente
+      const contemProibido = palavrasProibidas.some(palavra => textoLower.includes(palavra));
+      if (contemProibido) {
+        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (termo proibido): "${title.substring(0, 50)}..."`);
+        return null;
+      }
+      
+      // ========== EXTRAÇÃO DE NOME - APENAS PADRÕES CONFIÁVEIS ==========
       let nome = null;
-      for (const pattern of nomePatterns) {
-        const match = text.match(pattern);
-        if (match) {
-          const possibleNome = match[1].trim();
-          
-          // Validar se é um nome válido (não é uma palavra isolada a ignorar)
-          const nomeValido = !palavrasIgnorar.some(palavra => 
-            possibleNome.toLowerCase() === palavra || 
-            possibleNome.toLowerCase().includes(palavra) && possibleNome.split(' ').length === 1
-          );
-          
-          // Verificar se tem pelo menos 2 palavras
-          if (nomeValido && possibleNome.split(' ').length >= 2) {
-            nome = possibleNome;
-            break;
-          }
+      
+      // Padrão 1: Dr./Dra. + Nome Completo
+      const drPattern = /(?:Dr\.?|Dra\.?)\s+([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)/;
+      const drMatch = text.match(drPattern);
+      if (drMatch) {
+        nome = drMatch[1].trim();
+      }
+      
+      // Padrão 2: Nome Completo - Profissão | Especialidade
+      if (!nome) {
+        const linkedinPattern = /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+-\s+(?:Médico|Médica|Doutor|Doutora)/i;
+        const linkedinMatch = text.match(linkedinPattern);
+        if (linkedinMatch) {
+          nome = linkedinMatch[1].trim();
         }
       }
-
-      // Se achou palavras a ignorar mas não achou nome, retornar null
-      if (temPalavraIgnorar && !nome) return null;
       
-      if (!nome) return null;
-
+      // Padrão 3: CRM/CRP/OAB + Nome
+      if (!nome) {
+        const registroPattern = /(?:CRM|CRP|OAB|CREA|CAU)\s+\d+\s*[-:]\s*([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+)/i;
+        const registroMatch = text.match(registroPattern);
+        if (registroMatch) {
+          nome = registroMatch[1].trim();
+        }
+      }
+      
+      // Se não achou nome por padrões confiáveis, rejeitar
+      if (!nome) {
+        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (sem nome válido): "${title.substring(0, 50)}..."`);
+        return null;
+      }
+      
+      // ========== VALIDAÇÕES FINAIS DO NOME ==========
+      const palavrasNome = nome.split(' ');
+      
+      // Deve ter no mínimo 2 palavras (nome + sobrenome)
+      if (palavrasNome.length < 2) {
+        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (nome incompleto): "${nome}"`);
+        return null;
+      }
+      
+      // Não pode ter mais de 4 palavras (evita títulos longos)
+      if (palavrasNome.length > 4) {
+        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (nome muito longo): "${nome}"`);
+        return null;
+      }
+      
+      // Cada palavra deve começar com maiúscula
+      const todasMaiusculas = palavrasNome.every(p => /^[A-ZÀ-Ú]/.test(p));
+      if (!todasMaiusculas) {
+        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (capitalização inválida): "${nome}"`);
+        return null;
+      }
+      
+      // Não pode conter números
+      if (/\d/.test(nome)) {
+        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (contém números): "${nome}"`);
+        return null;
+      }
+      
+      console.log(`[GENERATE-LEADS-B2C] ✅ Nome válido extraído: "${nome}"`);
+      
+      // ========== EXTRAIR DADOS ADICIONAIS ==========
+      
       // Extrair especialidade
       const especialidadePatterns = [
         /(?:especialidade|especialista|especializado)\s+em\s+([a-zà-ú]+(?:\s+[a-zà-ú]+)?)/i,
@@ -340,16 +385,21 @@ Retorne APENAS um JSON array com as queries, sem explicações:
           const leadInfo = extractLeadInfo(item.title, item.snippet, item.link);
           
           if (leadInfo && leadInfo.nome) {
-            console.log(`[GENERATE-LEADS-B2C] 👤 Lead extraído: ${leadInfo.nome}`);
-            // Verificar se já existe
+            console.log(`[GENERATE-LEADS-B2C] 👤 Lead potencial: ${leadInfo.nome}`);
+            
+            // Verificar se já existe (por nome E cidade para evitar falsos positivos)
             const { data: existente } = await supabaseClient
               .from('leads_descobertos')
               .select('id')
               .eq('nome_profissional', leadInfo.nome)
+              .eq('cidade', leadInfo.cidade || 'Rio de Janeiro')
               .eq('user_id', campanha.user_id)
               .maybeSingle();
 
-            if (!existente) {
+            if (existente) {
+              console.log(`[GENERATE-LEADS-B2C] ⏭️ Lead já existe: ${leadInfo.nome} (${leadInfo.cidade})`);
+              continue;
+            }
               const leadData: any = {
                 campanha_id,
                 user_id: campanha.user_id,
@@ -389,9 +439,6 @@ Retorne APENAS um JSON array com as queries, sem explicações:
                 totalEncontrados++;
                 console.log(`[GENERATE-LEADS-B2C] ✅ Lead ${totalEncontrados} criado: ${leadInfo.nome}`);
               }
-            } else {
-              console.log(`[GENERATE-LEADS-B2C] ⏭️ Lead já existe: ${leadInfo.nome}`);
-            }
             
             // Parar se atingir o limite
             if (totalEncontrados >= limite) {
