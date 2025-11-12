@@ -48,15 +48,83 @@ serve(async (req) => {
         .update({ 
           status: 'failed', 
           processed_at: new Date().toISOString(),
-          error_message: 'Google API não configurada. Configure GOOGLE_API_KEY e GOOGLE_CX.'
+          error_message: 'Google API não configurada. Configure GOOGLE_API_KEY e GOOGLE_CX no backend.'
         })
         .eq('socio_id', socio_id)
 
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Google API não configurada. Enriquecimento impossível sem credenciais válidas.' 
+          error: 'ERRO: Credenciais Google não configuradas.\n\n🔧 Solução:\n1. Acesse: https://console.cloud.google.com/apis/credentials\n2. Crie uma API Key\n3. Ative "Custom Search API"\n4. Configure GOOGLE_API_KEY no backend\n5. Crie um Search Engine em: https://programmablesearchengine.google.com/\n6. Configure GOOGLE_CX com o ID do Search Engine' 
         }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validar formato das credenciais
+    console.log('🔐 Validando credenciais Google...')
+    console.log(`GOOGLE_API_KEY: ${GOOGLE_API_KEY.substring(0, 10)}...`)
+    console.log(`GOOGLE_CX: ${GOOGLE_CX}`)
+
+    // Teste simples da API
+    try {
+      const testUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=test`
+      const testResponse = await fetch(testUrl)
+      
+      if (!testResponse.ok) {
+        const errorData = await testResponse.json()
+        console.error('❌ Teste Google API falhou:', errorData)
+        
+        let errorMessage = 'ERRO: Credenciais Google inválidas.\n\n'
+        
+        if (testResponse.status === 400) {
+          errorMessage += '🔴 Erro 400: Parâmetros inválidos\n'
+          errorMessage += '• Verifique se o GOOGLE_CX está correto\n'
+          errorMessage += '• O CX deve estar no formato: 0123456789abcdefg:hijklmnop\n'
+          errorMessage += `• CX atual: ${GOOGLE_CX}\n\n`
+        } else if (testResponse.status === 403) {
+          errorMessage += '🔴 Erro 403: Acesso negado\n'
+          errorMessage += '• Verifique se a API Key está ativa\n'
+          errorMessage += '• Certifique-se que "Custom Search API" está habilitada\n\n'
+        } else if (testResponse.status === 429) {
+          errorMessage += '🔴 Erro 429: Cota excedida\n'
+          errorMessage += '• Você atingiu o limite de 100 buscas/dia (plano free)\n\n'
+        }
+        
+        errorMessage += `Detalhes técnicos: ${JSON.stringify(errorData, null, 2)}`
+        
+        await supabaseClient
+          .from('enrichment_queue')
+          .update({ 
+            status: 'failed', 
+            processed_at: new Date().toISOString(),
+            error_message: errorMessage
+          })
+          .eq('socio_id', socio_id)
+
+        return new Response(
+          JSON.stringify({ success: false, error: errorMessage }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      
+      console.log('✅ Credenciais Google validadas com sucesso!')
+    } catch (testError: any) {
+      console.error('❌ Erro ao testar Google API:', testError)
+      
+      const errorMessage = `ERRO: Não foi possível conectar ao Google API.\n\n${testError.message}`
+      
+      await supabaseClient
+        .from('enrichment_queue')
+        .update({ 
+          status: 'failed', 
+          processed_at: new Date().toISOString(),
+          error_message: errorMessage
+        })
+        .eq('socio_id', socio_id)
+
+      return new Response(
+        JSON.stringify({ success: false, error: errorMessage }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
