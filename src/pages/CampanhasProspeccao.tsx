@@ -618,15 +618,6 @@ export default function CampanhasProspeccao() {
 
                         <Button
                           size="sm"
-                          variant="secondary"
-                          onClick={() => handleCriarLeadsTeste(campanha.id)}
-                          title="Adicionar mais 5 leads de teste"
-                        >
-                          🧪 +5 Leads
-                        </Button>
-
-                        <Button
-                          size="sm"
                           variant="outline"
                           onClick={() => navigate(`/campanhas/${campanha.id}`)}
                         >
@@ -700,15 +691,6 @@ export default function CampanhasProspeccao() {
                               Retomar
                             </>
                           )}
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleCriarLeadsTeste(campanha.id)}
-                          title="Adicionar mais 5 leads de teste"
-                        >
-                          🧪 +5 Leads
                         </Button>
 
                         <Button
@@ -794,15 +776,6 @@ export default function CampanhasProspeccao() {
                               Iniciar
                             </>
                           )}
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => handleCriarLeadsTeste(campanha.id)}
-                          title="Adicionar mais 5 leads de teste"
-                        >
-                          🧪 +5 Leads
                         </Button>
 
                         <Button
