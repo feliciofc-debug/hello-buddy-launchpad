@@ -130,6 +130,7 @@ export type Database = {
           meta_leads_qualificados: number | null
           meta_leads_total: number | null
           nome: string
+          pipeline_config: Json | null
           proxima_execucao: string | null
           stats: Json | null
           status: string | null
@@ -151,6 +152,7 @@ export type Database = {
           meta_leads_qualificados?: number | null
           meta_leads_total?: number | null
           nome: string
+          pipeline_config?: Json | null
           proxima_execucao?: string | null
           stats?: Json | null
           status?: string | null
@@ -172,6 +174,7 @@ export type Database = {
           meta_leads_qualificados?: number | null
           meta_leads_total?: number | null
           nome?: string
+          pipeline_config?: Json | null
           proxima_execucao?: string | null
           stats?: Json | null
           status?: string | null
@@ -379,6 +382,8 @@ export type Database = {
           created_at: string | null
           descricao: string | null
           id: string
+          lead_count_b2b: number | null
+          lead_count_b2c: number | null
           nome: string
           score_minimo: number | null
           tipo: string
@@ -392,6 +397,8 @@ export type Database = {
           created_at?: string | null
           descricao?: string | null
           id?: string
+          lead_count_b2b?: number | null
+          lead_count_b2c?: number | null
           nome: string
           score_minimo?: number | null
           tipo: string
@@ -405,6 +412,8 @@ export type Database = {
           created_at?: string | null
           descricao?: string | null
           id?: string
+          lead_count_b2b?: number | null
+          lead_count_b2c?: number | null
           nome?: string
           score_minimo?: number | null
           tipo?: string
@@ -469,6 +478,346 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      lead_history: {
+        Row: {
+          created_at: string | null
+          dados_atualizados: Json | null
+          id: string
+          lead_id: string
+          lead_tipo: string
+          motivo: string | null
+          status_anterior: string | null
+          status_novo: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          dados_atualizados?: Json | null
+          id?: string
+          lead_id: string
+          lead_tipo: string
+          motivo?: string | null
+          status_anterior?: string | null
+          status_novo?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          dados_atualizados?: Json | null
+          id?: string
+          lead_id?: string
+          lead_tipo?: string
+          motivo?: string | null
+          status_anterior?: string | null
+          status_novo?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      leads_b2b: {
+        Row: {
+          campanha_id: string
+          capital_social: number | null
+          cidade: string
+          cnpj: string
+          contato_cargo: string | null
+          contato_email: string | null
+          contato_linkedin: string | null
+          contato_nome: string | null
+          converteu_em: string | null
+          created_at: string | null
+          data_constituicao: string | null
+          email: string | null
+          endereco: string | null
+          enriched_at: string | null
+          enrichment_data: Json | null
+          enviado_em: string | null
+          enviado_para: string | null
+          estado: string
+          facebook_url: string | null
+          fonte: string
+          fonte_snippet: string | null
+          fonte_url: string | null
+          icp_validado: boolean | null
+          id: string
+          insights: string[] | null
+          instagram_username: string | null
+          linkedin_url: string | null
+          mensagem_selecionada: string | null
+          mensagens_geradas: Json | null
+          natureza_juridica: string | null
+          nome_fantasia: string | null
+          pipeline_status: string
+          porte: string | null
+          qualificacao_motivo: string | null
+          qualified_at: string | null
+          query_usada: string | null
+          razao_social: string
+          recomendacao: string | null
+          respondeu_em: string | null
+          score: number | null
+          score_breakdown: Json | null
+          setor: string | null
+          situacao: string | null
+          telefone: string | null
+          updated_at: string | null
+          user_id: string
+          validacao_icp: Json | null
+          website: string | null
+        }
+        Insert: {
+          campanha_id: string
+          capital_social?: number | null
+          cidade: string
+          cnpj: string
+          contato_cargo?: string | null
+          contato_email?: string | null
+          contato_linkedin?: string | null
+          contato_nome?: string | null
+          converteu_em?: string | null
+          created_at?: string | null
+          data_constituicao?: string | null
+          email?: string | null
+          endereco?: string | null
+          enriched_at?: string | null
+          enrichment_data?: Json | null
+          enviado_em?: string | null
+          enviado_para?: string | null
+          estado: string
+          facebook_url?: string | null
+          fonte: string
+          fonte_snippet?: string | null
+          fonte_url?: string | null
+          icp_validado?: boolean | null
+          id?: string
+          insights?: string[] | null
+          instagram_username?: string | null
+          linkedin_url?: string | null
+          mensagem_selecionada?: string | null
+          mensagens_geradas?: Json | null
+          natureza_juridica?: string | null
+          nome_fantasia?: string | null
+          pipeline_status?: string
+          porte?: string | null
+          qualificacao_motivo?: string | null
+          qualified_at?: string | null
+          query_usada?: string | null
+          razao_social: string
+          recomendacao?: string | null
+          respondeu_em?: string | null
+          score?: number | null
+          score_breakdown?: Json | null
+          setor?: string | null
+          situacao?: string | null
+          telefone?: string | null
+          updated_at?: string | null
+          user_id: string
+          validacao_icp?: Json | null
+          website?: string | null
+        }
+        Update: {
+          campanha_id?: string
+          capital_social?: number | null
+          cidade?: string
+          cnpj?: string
+          contato_cargo?: string | null
+          contato_email?: string | null
+          contato_linkedin?: string | null
+          contato_nome?: string | null
+          converteu_em?: string | null
+          created_at?: string | null
+          data_constituicao?: string | null
+          email?: string | null
+          endereco?: string | null
+          enriched_at?: string | null
+          enrichment_data?: Json | null
+          enviado_em?: string | null
+          enviado_para?: string | null
+          estado?: string
+          facebook_url?: string | null
+          fonte?: string
+          fonte_snippet?: string | null
+          fonte_url?: string | null
+          icp_validado?: boolean | null
+          id?: string
+          insights?: string[] | null
+          instagram_username?: string | null
+          linkedin_url?: string | null
+          mensagem_selecionada?: string | null
+          mensagens_geradas?: Json | null
+          natureza_juridica?: string | null
+          nome_fantasia?: string | null
+          pipeline_status?: string
+          porte?: string | null
+          qualificacao_motivo?: string | null
+          qualified_at?: string | null
+          query_usada?: string | null
+          razao_social?: string
+          recomendacao?: string | null
+          respondeu_em?: string | null
+          score?: number | null
+          score_breakdown?: Json | null
+          setor?: string | null
+          situacao?: string | null
+          telefone?: string | null
+          updated_at?: string | null
+          user_id?: string
+          validacao_icp?: Json | null
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_b2b_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads_b2c: {
+        Row: {
+          bairro: string | null
+          campanha_id: string
+          cidade: string
+          converteu_em: string | null
+          created_at: string | null
+          email: string | null
+          endereco: string | null
+          enriched_at: string | null
+          enrichment_data: Json | null
+          enviado_em: string | null
+          enviado_para: string | null
+          especialidade: string | null
+          estado: string
+          facebook_url: string | null
+          fonte: string
+          fonte_snippet: string | null
+          fonte_url: string | null
+          id: string
+          insights: string[] | null
+          instagram_username: string | null
+          linkedin_id: string | null
+          linkedin_url: string | null
+          mensagem_selecionada: string | null
+          mensagens_geradas: Json | null
+          nome_completo: string
+          pipeline_status: string
+          profissao: string
+          qualificacao_motivo: string | null
+          qualified_at: string | null
+          query_usada: string | null
+          recomendacao: string | null
+          respondeu_em: string | null
+          score: number | null
+          score_breakdown: Json | null
+          sinais_poder_aquisitivo: string[] | null
+          telefone: string | null
+          tipo_validado: boolean | null
+          updated_at: string | null
+          user_id: string
+          validacao_resultado: Json | null
+          whatsapp: string | null
+          whatsapp_status: string | null
+        }
+        Insert: {
+          bairro?: string | null
+          campanha_id: string
+          cidade: string
+          converteu_em?: string | null
+          created_at?: string | null
+          email?: string | null
+          endereco?: string | null
+          enriched_at?: string | null
+          enrichment_data?: Json | null
+          enviado_em?: string | null
+          enviado_para?: string | null
+          especialidade?: string | null
+          estado: string
+          facebook_url?: string | null
+          fonte: string
+          fonte_snippet?: string | null
+          fonte_url?: string | null
+          id?: string
+          insights?: string[] | null
+          instagram_username?: string | null
+          linkedin_id?: string | null
+          linkedin_url?: string | null
+          mensagem_selecionada?: string | null
+          mensagens_geradas?: Json | null
+          nome_completo: string
+          pipeline_status?: string
+          profissao: string
+          qualificacao_motivo?: string | null
+          qualified_at?: string | null
+          query_usada?: string | null
+          recomendacao?: string | null
+          respondeu_em?: string | null
+          score?: number | null
+          score_breakdown?: Json | null
+          sinais_poder_aquisitivo?: string[] | null
+          telefone?: string | null
+          tipo_validado?: boolean | null
+          updated_at?: string | null
+          user_id: string
+          validacao_resultado?: Json | null
+          whatsapp?: string | null
+          whatsapp_status?: string | null
+        }
+        Update: {
+          bairro?: string | null
+          campanha_id?: string
+          cidade?: string
+          converteu_em?: string | null
+          created_at?: string | null
+          email?: string | null
+          endereco?: string | null
+          enriched_at?: string | null
+          enrichment_data?: Json | null
+          enviado_em?: string | null
+          enviado_para?: string | null
+          especialidade?: string | null
+          estado?: string
+          facebook_url?: string | null
+          fonte?: string
+          fonte_snippet?: string | null
+          fonte_url?: string | null
+          id?: string
+          insights?: string[] | null
+          instagram_username?: string | null
+          linkedin_id?: string | null
+          linkedin_url?: string | null
+          mensagem_selecionada?: string | null
+          mensagens_geradas?: Json | null
+          nome_completo?: string
+          pipeline_status?: string
+          profissao?: string
+          qualificacao_motivo?: string | null
+          qualified_at?: string | null
+          query_usada?: string | null
+          recomendacao?: string | null
+          respondeu_em?: string | null
+          score?: number | null
+          score_breakdown?: Json | null
+          sinais_poder_aquisitivo?: string[] | null
+          telefone?: string | null
+          tipo_validado?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+          validacao_resultado?: Json | null
+          whatsapp?: string | null
+          whatsapp_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_b2c_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       leads_descobertos: {
         Row: {
@@ -603,6 +952,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pipeline_stages: {
+        Row: {
+          created_at: string | null
+          descricao: string | null
+          fase: string
+          id: string
+          nome: string
+          ordem: number
+          requer_enriquecimento: boolean | null
+          requer_score: boolean | null
+          score_minimo: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          descricao?: string | null
+          fase: string
+          id?: string
+          nome: string
+          ordem: number
+          requer_enriquecimento?: boolean | null
+          requer_score?: boolean | null
+          score_minimo?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          descricao?: string | null
+          fase?: string
+          id?: string
+          nome?: string
+          ordem?: number
+          requer_enriquecimento?: boolean | null
+          requer_score?: boolean | null
+          score_minimo?: number | null
+        }
+        Relationships: []
       }
       posts: {
         Row: {
