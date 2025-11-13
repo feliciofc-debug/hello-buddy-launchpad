@@ -24,6 +24,12 @@ serve(async (req) => {
     const { campanha_id, icp_config_id } = await req.json();
     console.log("📋 IDs:", { campanha_id, icp_config_id });
     
+    // Validar API key
+    if (!SERPAPI_KEY) {
+      console.error("❌ SERPAPI_KEY não configurada");
+      throw new Error("SERPAPI_KEY não configurada. Configure em Settings > Secrets");
+    }
+    
     // 1. Buscar ICP
     const { data: icp, error: icpError } = await supabase
       .from("icp_configs")
@@ -54,14 +60,18 @@ serve(async (req) => {
     serpUrl.searchParams.append("hl", "pt-br");
 
     console.log("📡 Chamando SerpAPI...");
+    console.log("🔗 URL:", serpUrl.toString());
 
     const serpResponse = await fetch(serpUrl.toString());
 
     if (!serpResponse.ok) {
-      throw new Error(`SerpAPI error: ${serpResponse.status}`);
+      const errorText = await serpResponse.text();
+      console.error(`❌ SerpAPI error ${serpResponse.status}:`, errorText);
+      throw new Error(`SerpAPI error: ${serpResponse.status} - ${errorText}`);
     }
 
     const serpData = await serpResponse.json();
+    console.log("📦 SerpAPI response:", JSON.stringify(serpData, null, 2));
     const results = serpData.organic_results || [];
 
     console.log(`📊 SerpAPI retornou ${results.length} resultados`);
@@ -145,10 +155,14 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     console.error("❌ ERRO:", errorMessage);
+    console.error("❌ Stack:", error instanceof Error ? error.stack : '');
+    
     return new Response(
       JSON.stringify({
         success: false,
-        error: errorMessage
+        error: errorMessage,
+        details: error instanceof Error ? error.stack : '',
+        hint: "Verifique se a SERPAPI_KEY está configurada corretamente em Settings > Secrets"
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
