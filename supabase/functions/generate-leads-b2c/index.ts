@@ -273,69 +273,49 @@ Retorne APENAS um JSON array com as queries, sem explicações:
         return null;
       }
       
-      // ========== EXTRAÇÃO DE NOME - APENAS PADRÕES CONFIÁVEIS ==========
+      // ========== EXTRAÇÃO DE NOME - PADRÕES MAIS FLEXÍVEIS ==========
       let nome = null;
       
-      // Padrão 1: Dr./Dra. + Nome Completo
-      const drPattern = /(?:Dr\.?|Dra\.?)\s+([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)/;
+      // Padrão 1: Dr./Dra. + Nome Completo (mais flexível)
+      const drPattern = /(?:Dr\.?a?|Dra\.?)\s+([A-ZÀ-Úa-zà-ú\s]+?)(?:\s+-|\s+opiniões|\s+Médic|\s+,|$)/i;
       const drMatch = text.match(drPattern);
       if (drMatch) {
         nome = drMatch[1].trim();
+        console.log(`[GENERATE-LEADS-B2C] ✅ Nome extraído (padrão Dr): "${nome}"`);
       }
       
-      // Padrão 2: Nome Completo - Profissão | Especialidade
+      // Padrão 2: Nome no início do título (LinkedIn/Doctoralia)
       if (!nome) {
-        const linkedinPattern = /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)\s+-\s+(?:Médico|Médica|Doutor|Doutora)/i;
-        const linkedinMatch = text.match(linkedinPattern);
-        if (linkedinMatch) {
-          nome = linkedinMatch[1].trim();
+        const nomeInicioPattern = /^([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)?)/;
+        const nomeMatch = text.match(nomeInicioPattern);
+        if (nomeMatch) {
+          nome = nomeMatch[1].trim();
+          console.log(`[GENERATE-LEADS-B2C] ✅ Nome extraído (início): "${nome}"`);
         }
       }
       
-      // Padrão 3: CRM/CRP/OAB + Nome
+      // Se não achou nome, rejeitar
       if (!nome) {
-        const registroPattern = /(?:CRM|CRP|OAB|CREA|CAU)\s+\d+\s*[-:]\s*([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+)/i;
-        const registroMatch = text.match(registroPattern);
-        if (registroMatch) {
-          nome = registroMatch[1].trim();
-        }
-      }
-      
-      // Se não achou nome por padrões confiáveis, rejeitar
-      if (!nome) {
-        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (sem nome válido): "${title.substring(0, 50)}..."`);
+        console.log(`[GENERATE-LEADS-B2C] ❌ Não foi possível extrair nome de: "${title.substring(0, 60)}..."`);
         return null;
       }
       
-      // ========== VALIDAÇÕES FINAIS DO NOME ==========
-      const palavrasNome = nome.split(' ');
+      // ========== VALIDAÇÕES BÁSICAS DO NOME ==========
+      const palavrasNome = nome.split(' ').filter(p => p.length > 0);
       
-      // Deve ter no mínimo 2 palavras (nome + sobrenome)
+      // Deve ter no mínimo 2 palavras
       if (palavrasNome.length < 2) {
-        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (nome incompleto): "${nome}"`);
+        console.log(`[GENERATE-LEADS-B2C] ❌ Nome muito curto: "${nome}"`);
         return null;
       }
       
-      // Não pode ter mais de 4 palavras (evita títulos longos)
-      if (palavrasNome.length > 4) {
-        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (nome muito longo): "${nome}"`);
+      // Não pode ter mais de 5 palavras
+      if (palavrasNome.length > 5) {
+        console.log(`[GENERATE-LEADS-B2C] ❌ Nome muito longo: "${nome}"`);
         return null;
       }
       
-      // Cada palavra deve começar com maiúscula
-      const todasMaiusculas = palavrasNome.every(p => /^[A-ZÀ-Ú]/.test(p));
-      if (!todasMaiusculas) {
-        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (capitalização inválida): "${nome}"`);
-        return null;
-      }
-      
-      // Não pode conter números
-      if (/\d/.test(nome)) {
-        console.log(`[GENERATE-LEADS-B2C] ❌ Rejeitado (contém números): "${nome}"`);
-        return null;
-      }
-      
-      console.log(`[GENERATE-LEADS-B2C] ✅ Nome válido extraído: "${nome}"`);
+      console.log(`[GENERATE-LEADS-B2C] ✅ Nome válido: "${nome}"`);
       
       // ========== EXTRAIR DADOS ADICIONAIS ==========
       
