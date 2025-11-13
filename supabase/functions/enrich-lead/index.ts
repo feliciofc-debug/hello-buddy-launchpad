@@ -8,7 +8,7 @@ const corsHeaders = {
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") || "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+  Deno.env.get("SUPABASE_ANON_KEY") || ""
 );
 
 interface EnrichRequest {
@@ -336,9 +336,10 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("❌ Erro ao enriquecer lead:", error);
+    const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: errorMessage,
         status: "failed"
       }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
