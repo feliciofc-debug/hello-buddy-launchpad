@@ -238,22 +238,19 @@ Retorne APENAS um JSON array com as queries, sem explicações:
       const text = `${title} ${snippet}`;
       const textoLower = text.toLowerCase();
       
-      // ========== LISTA EXPANDIDA DE EXCLUSÃO ==========
+      // ========== LISTA DE EXCLUSÃO - APENAS TERMOS REALMENTE PROBLEMÁTICOS ==========
       const palavrasProibidas = [
-        // Estabelecimentos
-        'clínica', 'clinica', 'hospital', 'laboratório', 'laboratorio', 
-        'farmácia', 'farmacia', 'centro médico', 'centro', 'instituto',
-        'unidade', 'rede', 'grupo', 'complexo', 'policlínica', 'posto',
-        // Serviços
-        'atendimento', 'agendamento', 'consulta', 'consultório em',
-        'localiza', 'encontre', 'busca', 'procura', 'diretório',
-        // Localizações genéricas
-        'em rio', 'em são', 'em belo', 'na zona', 'no bairro',
-        'rio de janeiro', 'são paulo', 'belo horizonte',
-        // Termos comerciais
-        'ltda', 'sa', 's.a.', 'me', 'eireli', 'associação',
-        // Outros
-        'página', 'site', 'website', 'portal', 'plataforma'
+        // Serviços/Plataformas
+        'vagas', 'vaga de', 'emprego', 'trabalho', 'contratação', 'contratar',
+        'agendamento', 'agendar', 'marcar consulta',
+        'localiza', 'encontre', 'busca por', 'procura por', 'diretório de',
+        'lista de', 'guia de', 'cadastro de',
+        // Sites agregadores
+        'doctoralia', 'docway', 'bebee', 'jooble', 'indeed', 'catho',
+        'teledoc', 'telemedicina', 'consulta online',
+        // Termos muito genéricos
+        'os 10 médicos', 'os 20 médicos', 'melhores médicos',
+        'página', 'portal', 'plataforma web'
       ];
       
       // Se contém qualquer palavra proibida, rejeitar imediatamente
