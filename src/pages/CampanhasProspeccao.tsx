@@ -209,9 +209,25 @@ export default function CampanhasProspeccao() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Usuário não autenticado");
 
-      toast.loading("🗑️ Deletando todas as campanhas e leads...", { id: 'zerar' });
+      toast.loading("🗑️ Zerrando tudo...", { id: 'zerar' });
 
-      // 1. Deletar execuções de campanhas (foreign key constraint)
+      // 1. Resetar stats das campanhas
+      await supabase
+        .from('campanhas_prospeccao')
+        .update({
+          stats: {
+            descobertos: 0,
+            enriquecidos: 0,
+            qualificados: 0,
+            mensagens_geradas: 0,
+            mensagens_enviadas: 0,
+            respostas: 0,
+            conversoes: 0
+          }
+        })
+        .eq('user_id', user.id);
+
+      // 2. Deletar execuções de campanhas
       const { data: execucoes } = await supabase
         .from('campanha_execucoes')
         .select('id, campanha_id')
@@ -224,31 +240,25 @@ export default function CampanhasProspeccao() {
           .in('id', execucoes.map(e => e.id));
       }
 
-      // 2. Deletar leads descobertos (tabela antiga)
+      // 3. Deletar leads descobertos
       await supabase
         .from('leads_descobertos')
         .delete()
         .eq('user_id', user.id);
 
-      // 3. Deletar leads B2B
+      // 4. Deletar leads B2B
       await supabase
         .from('leads_b2b')
         .delete()
         .eq('user_id', user.id);
 
-      // 4. Deletar leads B2C
+      // 5. Deletar leads B2C
       await supabase
         .from('leads_b2c')
         .delete()
         .eq('user_id', user.id);
 
-      // 5. Deletar campanhas
-      await supabase
-        .from('campanhas_prospeccao')
-        .delete()
-        .eq('user_id', user.id);
-
-      toast.success("✅ Tudo zerado! Pronto para começar do zero.", { id: 'zerar' });
+      toast.success("✅ Tudo zerado!", { id: 'zerar' });
       loadData();
     } catch (error: any) {
       console.error("Erro ao zerar:", error);
