@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.calculate-lead-score]
 verify_jwt = false
+
+[functions.search-leads]
+verify_jwt = false
