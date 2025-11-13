@@ -53,7 +53,6 @@ serve(async (req) => {
         fonte_url: "https://linkedin.com/in/dr-carlos-santos",
         fonte_snippet: "Médico Cardiologista com mais de 15 anos de experiência",
         query_usada: "médico cardiologista Rio de Janeiro",
-        tipo: "b2c",
         pipeline_status: "descoberto"
       },
       {
@@ -71,7 +70,6 @@ serve(async (req) => {
         fonte_url: "https://instagram.com/draana",
         fonte_snippet: "Dermatologista especialista em estética",
         query_usada: "médico dermatologista Rio de Janeiro",
-        tipo: "b2c",
         pipeline_status: "descoberto"
       },
       {
@@ -87,7 +85,6 @@ serve(async (req) => {
         fonte_url: "https://linkedin.com/in/dr-roberto-mendes",
         fonte_snippet: "Ortopedista e Traumatologista - Consultório em Ipanema",
         query_usada: "médico ortopedista Rio de Janeiro",
-        tipo: "b2c",
         pipeline_status: "descoberto"
       },
       {
@@ -104,7 +101,6 @@ serve(async (req) => {
         fonte_url: "https://instagram.com/dramarina",
         fonte_snippet: "Pediatra dedicada ao cuidado infantil",
         query_usada: "médico pediatra Rio de Janeiro",
-        tipo: "b2c",
         pipeline_status: "descoberto"
       },
       {
@@ -121,7 +117,6 @@ serve(async (req) => {
         fonte_url: "https://linkedin.com/in/dr-fernando-pereira",
         fonte_snippet: "Neurologista - Especialista em doenças neurodegenerativas",
         query_usada: "médico neurologista Rio de Janeiro",
-        tipo: "b2c",
         pipeline_status: "descoberto"
       }
     ];
