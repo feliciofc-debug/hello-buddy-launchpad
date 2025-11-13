@@ -201,7 +201,7 @@ export default function CampanhasProspeccao() {
   };
 
   const handleZerarTudo = async () => {
-    if (!confirm('⚠️ ATENÇÃO: Isso deletará TODAS as campanhas e TODOS os leads B2B e B2C. Esta ação não pode ser desfeita. Continuar?')) {
+    if (!confirm('⚠️ ATENÇÃO: Isso deletará TODAS as campanhas e TODOS os leads. Esta ação não pode ser desfeita. Continuar?')) {
       return;
     }
 
@@ -210,6 +210,12 @@ export default function CampanhasProspeccao() {
       if (!user) throw new Error("Usuário não autenticado");
 
       toast.loading("🗑️ Deletando todas as campanhas e leads...", { id: 'zerar' });
+
+      // Deletar leads descobertos (tabela antiga)
+      await supabase
+        .from('leads_descobertos')
+        .delete()
+        .eq('user_id', user.id);
 
       // Deletar leads B2B
       await supabase
