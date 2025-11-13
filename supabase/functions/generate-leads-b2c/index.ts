@@ -220,15 +220,28 @@ Retorne APENAS um JSON array com as queries, sem explicações:
     const googleSearch = async (query: string) => {
       const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}`;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      
+      console.log(`[GENERATE-LEADS-B2C] 🔍 Google Search URL: ${url.substring(0, 100)}...`);
       
       try {
         const response = await fetch(url, { signal: controller.signal });
         clearTimeout(timeout);
-        return await response.json();
+        
+        console.log(`[GENERATE-LEADS-B2C] 📡 API Status: ${response.status}`);
+        
+        const data = await response.json();
+        
+        console.log(`[GENERATE-LEADS-B2C] 📊 API Response:`, {
+          totalResults: data.searchInformation?.totalResults,
+          itemsCount: data.items?.length || 0,
+          firstItemTitle: data.items?.[0]?.title
+        });
+        
+        return data;
       } catch (error) {
         clearTimeout(timeout);
-        console.error(`[GENERATE-LEADS-B2C] Erro no Google Search para "${query}":`, error);
+        console.error(`[GENERATE-LEADS-B2C] ❌ Erro no Google Search para "${query}":`, error);
         return { items: [] };
       }
     };
@@ -373,12 +386,15 @@ Retorne APENAS um JSON array com as queries, sem explicações:
     console.log(`[GENERATE-LEADS-B2C] Executando ${maxQueries} queries de ${queries.length} totais`);
 
     for (const query of queries.slice(0, maxQueries)) {
-      console.log(`[GENERATE-LEADS-B2C] Buscando: ${query}`);
+      console.log(`[GENERATE-LEADS-B2C] Buscando: "${query}"`);
       
       try {
         const results = await googleSearch(query);
         
+        console.log(`[GENERATE-LEADS-B2C] 📦 Resultados recebidos: ${results.items?.length || 0} items`);
+        
         for (const item of results.items || []) {
+          console.log(`[GENERATE-LEADS-B2C] 🔎 Processando: "${item.title.substring(0, 60)}..."`);
           const leadInfo = extractLeadInfo(item.title, item.snippet, item.link);
           
           if (leadInfo && leadInfo.nome) {
@@ -481,6 +497,11 @@ Retorne APENAS um JSON array com as queries, sem explicações:
       .eq('id', campanha_id);
 
     console.log(`[GENERATE-LEADS-B2C] ✅ Concluído! ${totalEncontrados} leads descobertos`);
+    console.log(`[GENERATE-LEADS-B2C] 📊 Resumo final:`, {
+      queriesExecutadas: maxQueries,
+      leadsEncontrados: totalEncontrados,
+      leadsCriados: leadsCriados.length
+    });
 
     return new Response(JSON.stringify({
       success: true,
