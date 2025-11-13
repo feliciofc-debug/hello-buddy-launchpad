@@ -211,25 +211,38 @@ export default function CampanhasProspeccao() {
 
       toast.loading("🗑️ Deletando todas as campanhas e leads...", { id: 'zerar' });
 
-      // Deletar leads descobertos (tabela antiga)
+      // 1. Deletar execuções de campanhas (foreign key constraint)
+      const { data: execucoes } = await supabase
+        .from('campanha_execucoes')
+        .select('id, campanha_id')
+        .in('campanha_id', campanhas.map(c => c.id));
+
+      if (execucoes && execucoes.length > 0) {
+        await supabase
+          .from('campanha_execucoes')
+          .delete()
+          .in('id', execucoes.map(e => e.id));
+      }
+
+      // 2. Deletar leads descobertos (tabela antiga)
       await supabase
         .from('leads_descobertos')
         .delete()
         .eq('user_id', user.id);
 
-      // Deletar leads B2B
+      // 3. Deletar leads B2B
       await supabase
         .from('leads_b2b')
         .delete()
         .eq('user_id', user.id);
 
-      // Deletar leads B2C
+      // 4. Deletar leads B2C
       await supabase
         .from('leads_b2c')
         .delete()
         .eq('user_id', user.id);
 
-      // Deletar campanhas
+      // 5. Deletar campanhas
       await supabase
         .from('campanhas_prospeccao')
         .delete()
