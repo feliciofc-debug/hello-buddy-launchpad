@@ -1,6 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.1";
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL") || "",
   Deno.env.get("SUPABASE_ANON_KEY") || ""
@@ -103,8 +108,13 @@ function extractLeadFromResult(result: any, query: string, location: string): an
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return new Response("Method not allowed", { status: 405, headers: corsHeaders });
   }
   
   try {
@@ -182,7 +192,7 @@ serve(async (req) => {
         message: `${leads.length} leads encontrados e salvos!`
       }),
       {
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200
       }
     );
@@ -195,7 +205,7 @@ serve(async (req) => {
         error: error instanceof Error ? error.message : "Erro desconhecido"
       }),
       {
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500
       }
     );
