@@ -35,110 +35,106 @@ serve(async (req) => {
     
     console.log("✅ ICP encontrado:", icp.nome);
     
-    // TEMPORÁRIO: Dados fake para teste rápido
-    console.log("⚠️ MODO TESTE - Gerando dados de exemplo");
-    
-    const leadsFake = [
-      {
-        campanha_id: campanha_id,
-        user_id: icp.user_id,
-        nome_completo: "Dr. Carlos Eduardo Santos",
-        profissao: "Médico Cardiologista",
-        cidade: "Rio de Janeiro",
-        estado: "RJ",
-        email: "carlos.santos@exemplo.com",
-        telefone: "(21) 98765-4321",
-        linkedin_url: "https://linkedin.com/in/dr-carlos-santos",
-        fonte: "serpapi_teste",
-        fonte_url: "https://linkedin.com/in/dr-carlos-santos",
-        fonte_snippet: "Médico Cardiologista com mais de 15 anos de experiência",
-        query_usada: "médico cardiologista Rio de Janeiro",
-        pipeline_status: "descoberto"
-      },
-      {
-        campanha_id: campanha_id,
-        user_id: icp.user_id,
-        nome_completo: "Dra. Ana Paula Oliveira",
-        profissao: "Médica Dermatologista",
-        cidade: "Rio de Janeiro",
-        estado: "RJ",
-        email: "ana.oliveira@exemplo.com",
-        telefone: "(21) 99876-5432",
-        linkedin_url: "https://linkedin.com/in/dra-ana-oliveira",
-        instagram_username: "draana",
-        fonte: "serpapi_teste",
-        fonte_url: "https://instagram.com/draana",
-        fonte_snippet: "Dermatologista especialista em estética",
-        query_usada: "médico dermatologista Rio de Janeiro",
-        pipeline_status: "descoberto"
-      },
-      {
-        campanha_id: campanha_id,
-        user_id: icp.user_id,
-        nome_completo: "Dr. Roberto Mendes Silva",
-        profissao: "Médico Ortopedista",
-        cidade: "Rio de Janeiro",
-        estado: "RJ",
-        telefone: "(21) 97654-3210",
-        linkedin_url: "https://linkedin.com/in/dr-roberto-mendes",
-        fonte: "serpapi_teste",
-        fonte_url: "https://linkedin.com/in/dr-roberto-mendes",
-        fonte_snippet: "Ortopedista e Traumatologista - Consultório em Ipanema",
-        query_usada: "médico ortopedista Rio de Janeiro",
-        pipeline_status: "descoberto"
-      },
-      {
-        campanha_id: campanha_id,
-        user_id: icp.user_id,
-        nome_completo: "Dra. Marina Costa Lima",
-        profissao: "Médica Pediatra",
-        cidade: "Rio de Janeiro",
-        estado: "RJ",
-        email: "marina.lima@exemplo.com",
-        telefone: "(21) 96543-2109",
-        instagram_username: "dramarina",
-        fonte: "serpapi_teste",
-        fonte_url: "https://instagram.com/dramarina",
-        fonte_snippet: "Pediatra dedicada ao cuidado infantil",
-        query_usada: "médico pediatra Rio de Janeiro",
-        pipeline_status: "descoberto"
-      },
-      {
-        campanha_id: campanha_id,
-        user_id: icp.user_id,
-        nome_completo: "Dr. Fernando Alves Pereira",
-        profissao: "Médico Neurologista",
-        cidade: "Rio de Janeiro",
-        estado: "RJ",
-        email: "fernando.pereira@exemplo.com",
-        telefone: "(21) 95432-1098",
-        linkedin_url: "https://linkedin.com/in/dr-fernando-pereira",
-        fonte: "serpapi_teste",
-        fonte_url: "https://linkedin.com/in/dr-fernando-pereira",
-        fonte_snippet: "Neurologista - Especialista em doenças neurodegenerativas",
-        query_usada: "médico neurologista Rio de Janeiro",
-        pipeline_status: "descoberto"
-      }
-    ];
-    
-    console.log(`💾 Salvando ${leadsFake.length} leads de teste...`);
-    
-    const { error: insertError } = await supabase
-      .from("leads_b2c")
-      .insert(leadsFake);
-    
-    if (insertError) {
-      console.error("❌ Erro ao salvar:", insertError);
-      throw insertError;
+    if (!icp) throw new Error("ICP não encontrado");
+
+    // Extrair dados do ICP
+    const profissao = icp.b2c_config?.profissoes?.[0] || "médico";
+    const cidade = icp.b2c_config?.cidades?.[0] || "Rio de Janeiro";
+    const estado = icp.b2c_config?.estados?.[0] || "RJ";
+
+    console.log("🔍 Buscando:", { profissao, cidade, estado });
+
+    // Buscar no SerpAPI
+    const serpUrl = new URL("https://serpapi.com/search");
+    serpUrl.searchParams.append("api_key", SERPAPI_KEY!);
+    serpUrl.searchParams.append("engine", "google");
+    serpUrl.searchParams.append("q", `${profissao} ${cidade} ${estado} site:linkedin.com/in`);
+    serpUrl.searchParams.append("num", "10");
+    serpUrl.searchParams.append("gl", "br");
+    serpUrl.searchParams.append("hl", "pt-br");
+
+    console.log("📡 Chamando SerpAPI...");
+
+    const serpResponse = await fetch(serpUrl.toString());
+
+    if (!serpResponse.ok) {
+      throw new Error(`SerpAPI error: ${serpResponse.status}`);
     }
-    
-    console.log(`🎉 Concluído! ${leadsFake.length} leads de teste salvos`);
-    
+
+    const serpData = await serpResponse.json();
+    const results = serpData.organic_results || [];
+
+    console.log(`📊 SerpAPI retornou ${results.length} resultados`);
+
+    // Processar resultados
+    const leads = [];
+
+    for (let i = 0; i < Math.min(results.length, 10); i++) {
+      const result = results[i];
+      
+      // Extrair nome do título
+      let nome = result.title;
+      
+      // Limpar nome (remover " - LinkedIn", " | LinkedIn", etc)
+      nome = nome.split('|')[0].split('-')[0].split('—')[0].trim();
+      
+      // Pular se for muito curto ou contém palavras inválidas
+      if (nome.length < 5) continue;
+      if (nome.toLowerCase().includes('vaga')) continue;
+      if (nome.toLowerCase().includes('linkedin')) continue;
+      
+      // Extrair profissão do snippet
+      let profissaoExtraida = profissao;
+      const profMatch = result.snippet?.match(/(Médico|Médica|Dentista|Advogado|Psicólogo|Nutricionista)[a-zà-ú\s]*/i);
+      if (profMatch) {
+        profissaoExtraida = profMatch[0].trim();
+      }
+      
+      // Extrair email e telefone do snippet
+      const emailMatch = result.snippet?.match(/[\w\.-]+@[\w\.-]+\.\w+/);
+      const telMatch = result.snippet?.match(/\(?\d{2}\)?\s*\d{4,5}-?\d{4}/);
+      
+      leads.push({
+        campanha_id,
+        user_id: icp.user_id,
+        nome_completo: nome,
+        profissao: profissaoExtraida,
+        cidade,
+        estado,
+        email: emailMatch ? emailMatch[0] : null,
+        telefone: telMatch ? telMatch[0] : null,
+        linkedin_url: result.link,
+        fonte: 'serpapi_linkedin',
+        fonte_url: result.link,
+        fonte_snippet: result.snippet?.substring(0, 200),
+        query_usada: `${profissao} ${cidade}`,
+        pipeline_status: 'descoberto'
+      });
+      
+      console.log(`✅ Lead ${i+1}: ${nome}`);
+    }
+
+    console.log(`💾 Salvando ${leads.length} leads...`);
+
+    // Salvar leads
+    if (leads.length > 0) {
+      const { error: insertError } = await supabase
+        .from("leads_b2c")
+        .insert(leads);
+      
+      if (insertError) {
+        console.error("❌ Erro ao salvar:", insertError);
+        throw insertError;
+      }
+    }
+
+    console.log(`🎉 Busca concluída: ${leads.length} leads salvos`);
+
     return new Response(
       JSON.stringify({
         success: true,
-        leads_encontrados: leadsFake.length,
-        message: `✅ ${leadsFake.length} leads de teste gerados! (Versão de demonstração)`
+        leads_encontrados: leads.length,
+        message: `${leads.length} leads REAIS encontrados!`
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
