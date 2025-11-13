@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Plus, Play, Pause, Users, Eye, Loader2, Trash2, ArrowLeft, Sparkles, Target } from "lucide-react";
+import { Plus, Play, Pause, Users, Eye, Loader2, Trash2, ArrowLeft, Sparkles, Target, RotateCcw } from "lucide-react";
 
 export default function CampanhasProspeccao() {
   const navigate = useNavigate();
@@ -200,6 +200,43 @@ export default function CampanhasProspeccao() {
     }
   };
 
+  const handleZerarTudo = async () => {
+    if (!confirm('⚠️ ATENÇÃO: Isso deletará TODAS as campanhas e TODOS os leads B2B e B2C. Esta ação não pode ser desfeita. Continuar?')) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      toast.loading("🗑️ Deletando todas as campanhas e leads...", { id: 'zerar' });
+
+      // Deletar leads B2B
+      await supabase
+        .from('leads_b2b')
+        .delete()
+        .eq('user_id', user.id);
+
+      // Deletar leads B2C
+      await supabase
+        .from('leads_b2c')
+        .delete()
+        .eq('user_id', user.id);
+
+      // Deletar campanhas
+      await supabase
+        .from('campanhas_prospeccao')
+        .delete()
+        .eq('user_id', user.id);
+
+      toast.success("✅ Tudo zerado! Pronto para começar do zero.", { id: 'zerar' });
+      loadData();
+    } catch (error: any) {
+      console.error("Erro ao zerar:", error);
+      toast.error(`❌ Erro: ${error.message}`, { id: 'zerar' });
+    }
+  };
+
   const CampanhaCard = ({ campanha }: { campanha: any }) => {
     const stats = campanha.stats || {
       descobertos: 0,
@@ -352,6 +389,12 @@ export default function CampanhasProspeccao() {
           </div>
           
           <div className="flex gap-2">
+            {campanhas.length > 0 && (
+              <Button variant="destructive" onClick={handleZerarTudo}>
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Zerar Tudo
+              </Button>
+            )}
             {icps.length === 0 ? (
               <Button onClick={() => navigate('/configurar-icp')}>
                 <Target className="mr-2 h-4 w-4" />
