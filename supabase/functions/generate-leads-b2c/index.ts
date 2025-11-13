@@ -256,6 +256,21 @@ Retorne APENAS um JSON array com as queries, sem explicações:
         
         console.log(`[GENERATE-LEADS-B2C] 📡 API Status: ${response.status}`);
         
+        // Tratar erro 429 (Rate Limit)
+        if (response.status === 429) {
+          console.error(`[GENERATE-LEADS-B2C] ⚠️ RATE LIMIT ATINGIDO! Google API bloqueou temporariamente.`);
+          return { 
+            items: [], 
+            error: 'rate_limit',
+            message: 'Limite de buscas do Google atingido. Aguarde alguns minutos ou configure uma API key com maior quota.' 
+          };
+        }
+        
+        if (!response.ok) {
+          console.error(`[GENERATE-LEADS-B2C] ❌ Erro HTTP ${response.status}:`, await response.text());
+          return { items: [], error: `http_${response.status}` };
+        }
+        
         const data = await response.json();
         
         // Filtrar resultados por domínio
@@ -408,6 +423,7 @@ Retorne APENAS um JSON array com as queries, sem explicações:
 
     let totalEncontrados = 0;
     const leadsCriados = [];
+    let rateLimitHit = false;
 
     // Executar no máximo 5 queries para acelerar
     const maxQueries = Math.min(5, queries.length);
@@ -418,6 +434,13 @@ Retorne APENAS um JSON array com as queries, sem explicações:
       
       try {
         const results = await googleSearch(query);
+        
+        // Verificar se atingiu rate limit
+        if (results.error === 'rate_limit') {
+          console.error(`[GENERATE-LEADS-B2C] ⚠️ Rate limit do Google atingido. Parando buscas.`);
+          rateLimitHit = true;
+          break;
+        }
         
         console.log(`[GENERATE-LEADS-B2C] 📦 Resultados recebidos: ${results.items?.length || 0} items`);
         
@@ -493,8 +516,8 @@ Retorne APENAS um JSON array com as queries, sem explicações:
         // Parar queries se já atingiu o limite
         if (totalEncontrados >= limite) break;
 
-        // Delay menor entre queries (500ms)
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Delay maior entre queries (2s) para evitar rate limit
+        await new Promise(resolve => setTimeout(resolve, 2000));
       } catch (error) {
         console.error(`[GENERATE-LEADS-B2C] Erro na query "${query}":`, error);
       }
@@ -528,14 +551,16 @@ Retorne APENAS um JSON array com as queries, sem explicações:
     console.log(`[GENERATE-LEADS-B2C] 📊 Resumo final:`, {
       queriesExecutadas: maxQueries,
       leadsEncontrados: totalEncontrados,
-      leadsCriados: leadsCriados.length
+      leadsCriados: leadsCriados.length,
+      rateLimitHit
     });
 
     return new Response(JSON.stringify({
       success: true,
       total_encontrados: totalEncontrados,
       leads: leadsCriados,
-      execucao_id: execucao.id
+      execucao_id: execucao.id,
+      rate_limit_warning: rateLimitHit ? 'Google API rate limit atingido. Configure uma API key com maior quota ou aguarde o reset diário.' : null
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
