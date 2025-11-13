@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Plus, Play, Pause, TrendingUp, Users, MessageSquare, Rocket, ArrowLeft, Eye, Loader2, Trash2, Phone, Mail, Linkedin, Instagram } from "lucide-react";
+import { Plus, Play, Pause, Users, Eye, Loader2, Trash2, ArrowLeft, Sparkles, Target } from "lucide-react";
 
 export default function CampanhasProspeccao() {
   const navigate = useNavigate();
@@ -19,18 +20,13 @@ export default function CampanhasProspeccao() {
   const [loading, setLoading] = useState(true);
   const [criandoCampanha, setCriandoCampanha] = useState(false);
   const [processing, setProcessing] = useState<string | null>(null);
-  const [selectedCampanhaId, setSelectedCampanhaId] = useState<string | null>(null);
-  const [leads, setLeads] = useState<any[]>([]);
-  
-  // Filtros
-  const [statusFilter, setStatusFilter] = useState<string>('todas');
-  const [tipoFilter, setTipoFilter] = useState<string>('todos');
 
   // Form state
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
   const [icpId, setIcpId] = useState("");
-  const [metaTotal, setMetaTotal] = useState("");
+  const [metaTotal, setMetaTotal] = useState("50");
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -45,30 +41,22 @@ export default function CampanhasProspeccao() {
       }
 
       // Carregar ICPs
-      const { data: icpsData, error: icpsError } = await supabase
+      const { data: icpsData } = await supabase
         .from('icp_configs')
         .select('*')
         .eq('user_id', user.id)
         .eq('ativo', true);
 
-      if (icpsError) throw icpsError;
       setIcps(icpsData || []);
 
       // Carregar campanhas
-      const { data: campanhasData, error: campanhasError } = await supabase
+      const { data: campanhasData } = await supabase
         .from('campanhas_prospeccao')
         .select('*, icp_configs(*)')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (campanhasError) throw campanhasError;
       setCampanhas(campanhasData || []);
-
-      // Se há campanha ativa, selecionar a primeira automaticamente
-      const ativas = campanhasData?.filter((c: any) => c.status === 'ativa') || [];
-      if (ativas.length > 0 && !selectedCampanhaId) {
-        setSelectedCampanhaId(ativas[0].id);
-      }
 
     } catch (error: any) {
       console.error("Erro ao carregar dados:", error);
@@ -77,28 +65,6 @@ export default function CampanhasProspeccao() {
       setLoading(false);
     }
   };
-
-  const loadLeads = async (campanhaId: string) => {
-    try {
-      const { data: leadsData, error: leadsError } = await supabase
-        .from('leads_descobertos')
-        .select('*')
-        .eq('campanha_id', campanhaId)
-        .order('created_at', { ascending: false });
-
-      if (leadsError) throw leadsError;
-      setLeads(leadsData || []);
-    } catch (error: any) {
-      console.error("Erro ao carregar leads:", error);
-      toast.error(error.message);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedCampanhaId) {
-      loadLeads(selectedCampanhaId);
-    }
-  }, [selectedCampanhaId]);
 
   const handleCriarCampanha = async () => {
     if (!nome.trim() || !icpId) {
@@ -122,17 +88,27 @@ export default function CampanhasProspeccao() {
           nome,
           descricao,
           tipo: icpSelecionado.tipo,
-          meta_leads_total: metaTotal ? parseInt(metaTotal) : null,
-          status: 'rascunho'
+          meta_leads_total: metaTotal ? parseInt(metaTotal) : 50,
+          status: 'rascunho',
+          stats: {
+            descobertos: 0,
+            enriquecidos: 0,
+            qualificados: 0,
+            mensagens_geradas: 0,
+            mensagens_enviadas: 0,
+            respostas: 0,
+            conversoes: 0
+          }
         });
 
       if (error) throw error;
 
-      toast.success("Campanha criada com sucesso!");
+      toast.success("✅ Campanha criada com sucesso!");
       setNome("");
       setDescricao("");
       setIcpId("");
-      setMetaTotal("");
+      setMetaTotal("50");
+      setDialogOpen(false);
       loadData();
 
     } catch (error: any) {
@@ -144,16 +120,16 @@ export default function CampanhasProspeccao() {
   };
 
   const handleIniciarCampanha = async (campanhaId: string) => {
+    const campanha = campanhas.find(c => c.id === campanhaId);
+    if (!campanha) return;
+
+    setProcessing(campanhaId);
+    
     try {
-      const campanha = campanhas.find(c => c.id === campanhaId);
-      if (!campanha) return;
+      toast.loading("🚀 Iniciando descoberta de leads...", { id: 'descoberta' });
 
-      setProcessing(campanhaId);
-      
-      toast.info("🚀 Campanha iniciada - Buscando leads...");
-
-      // 1. Atualizar status da campanha
-      const { error: updateError } = await supabase
+      // Atualizar status
+      await supabase
         .from('campanhas_prospeccao')
         .update({
           status: 'ativa',
@@ -161,23 +137,10 @@ export default function CampanhasProspeccao() {
         })
         .eq('id', campanhaId);
 
-      if (updateError) {
-        console.error("❌ Erro ao atualizar status:", updateError);
-        throw updateError;
-      }
-
-      // 2. Chamar edge function com timeout
+      // Chamar edge function
       const funcao = campanha.tipo === 'b2b' ? 'generate-leads-b2b' : 'generate-leads-b2c';
       
-      console.log(`🔍 Chamando ${funcao} para campanha ${campanhaId}`);
-      toast.loading('🔍 Buscando leads...', { id: 'descoberta' });
-
-      // Timeout de 45 segundos
-      const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout: A busca está demorando muito. Os leads já descobertos foram salvos.')), 45000)
-      );
-      
-      const request = supabase.functions.invoke(funcao, {
+      const { data, error } = await supabase.functions.invoke(funcao, {
         body: {
           campanha_id: campanhaId,
           icp_config_id: campanha.icp_config_id,
@@ -185,820 +148,393 @@ export default function CampanhasProspeccao() {
         }
       });
 
-      const { data, error } = await Promise.race([request, timeout]) as any;
+      if (error) throw error;
 
-      if (error) {
-        console.error("❌ Erro na edge function:", error);
-        toast.error(`Erro: ${error.message}`, { id: 'descoberta' });
-        throw new Error(`Edge function error: ${error.message}`);
-      }
-
-      console.log("✅ Resultado edge function:", data);
       toast.success(`✅ ${data?.total_encontrados || 0} leads descobertos!`, { id: 'descoberta' });
-
-      // 3. Polling para atualizar stats em tempo real
-      let pollCount = 0;
-      const maxPolls = 40; // 40 x 3s = 2 minutos
-      
-      const pollInterval = setInterval(async () => {
-        pollCount++;
-        
-        const { data: campanhaAtualizada } = await supabase
-          .from('campanhas_prospeccao')
-          .select('stats, status')
-          .eq('id', campanhaId)
-          .single();
-
-        if (campanhaAtualizada) {
-          console.log(`📊 Poll ${pollCount}: Stats atualizados`, campanhaAtualizada.stats);
-          
-          // Atualizar UI
-          setCampanhas(prev => prev.map(c => 
-            c.id === campanhaId 
-              ? { ...c, stats: campanhaAtualizada.stats, status: campanhaAtualizada.status }
-              : c
-          ));
-
-          const stats = (campanhaAtualizada.stats || {}) as any;
-          const descobertos = stats.descobertos || 0;
-
-          // Se terminou descoberta, parar polling
-          if (descobertos > 0 || pollCount >= maxPolls) {
-            clearInterval(pollInterval);
-            setProcessing(null);
-            
-            if (descobertos > 0) {
-              toast.success(`✅ Busca concluída! ${descobertos} leads encontrados`);
-              
-              // Iniciar enriquecimento (opcional)
-              try {
-                const { error: enrichError } = await supabase.functions.invoke('enrich-lead-bulk', {
-                  body: { campanha_id: campanhaId, limite: 10 }
-                });
-                if (enrichError) {
-                  console.warn('Enriquecimento não executado:', enrichError);
-                }
-              } catch (err) {
-                console.warn('Enriquecimento será implementado futuramente');
-              }
-            } else {
-              toast.error("❌ Nenhum lead encontrado. Verifique a configuração do ICP.");
-            }
-          }
-        }
-      }, 3000); // Poll a cada 3 segundos
+      loadData();
 
     } catch (error: any) {
-      console.error("❌ Erro ao iniciar campanha:", error);
-      setProcessing(null);
+      console.error("Erro ao iniciar campanha:", error);
+      toast.error(`❌ Erro: ${error.message}`, { id: 'descoberta' });
       
-      // Reverter status em caso de erro
+      // Reverter status
       await supabase
         .from('campanhas_prospeccao')
         .update({ status: 'rascunho' })
         .eq('id', campanhaId);
         
-      toast.error(`Erro: ${error.message}`);
+    } finally {
+      setProcessing(null);
     }
   };
 
   const handlePausarCampanha = async (campanhaId: string) => {
     try {
-      const { error } = await supabase
+      await supabase
         .from('campanhas_prospeccao')
         .update({ status: 'pausada' })
         .eq('id', campanhaId);
 
-      if (error) throw error;
-
       toast.success("⏸️ Campanha pausada");
       loadData();
     } catch (error: any) {
-      toast.error(`Erro ao pausar: ${error.message}`);
-    }
-  };
-
-  const handleDeletarCampanha = async (campanhaId: string) => {
-    if (!confirm('Tem certeza? Isso deletará todos os leads desta campanha.')) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('campanhas_prospeccao')
-        .delete()
-        .eq('id', campanhaId);
-
-      if (error) throw error;
-
-      toast.success("🗑️ Campanha deletada");
-      loadData();
-    } catch (error: any) {
-      toast.error(`Erro ao deletar: ${error.message}`);
-    }
-  };
-
-  const handleCriarLeadsTeste = async (campanhaId: string) => {
-    try {
-      const campanha = campanhas.find(c => c.id === campanhaId);
-      if (!campanha) return;
-
-      toast.info("🧪 Criando +5 leads de teste...");
-
-      // Buscar stats atuais
-      const statsAtuais = campanha.stats || {
-        descobertos: 0,
-        enriquecidos: 0,
-        qualificados: 0,
-        mensagens_geradas: 0,
-        mensagens_enviadas: 0,
-        respostas: 0,
-        conversoes: 0
-      };
-
-      // Buscar user_id
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Usuário não autenticado");
-
-      const leadsMockados = [
-        {
-          campanha_id: campanhaId,
-          user_id: user.id,
-          tipo: 'b2c',
-          nome_profissional: `Dr. Teste ${Date.now()}`,
-          profissao: 'Médico',
-          especialidade: 'Cardiologista',
-          cidade: 'Rio de Janeiro',
-          estado: 'RJ',
-          fonte: 'teste_mockado',
-          status: 'descoberto'
-        },
-        {
-          campanha_id: campanhaId,
-          user_id: user.id,
-          tipo: 'b2c',
-          nome_profissional: `Dra. Teste ${Date.now() + 1}`,
-          profissao: 'Médico',
-          especialidade: 'Ortopedista',
-          cidade: 'Rio de Janeiro',
-          estado: 'RJ',
-          fonte: 'teste_mockado',
-          status: 'descoberto'
-        },
-        {
-          campanha_id: campanhaId,
-          user_id: user.id,
-          tipo: 'b2c',
-          nome_profissional: `Dr. Teste ${Date.now() + 2}`,
-          profissao: 'Médico',
-          especialidade: 'Dermatologista',
-          cidade: 'Rio de Janeiro',
-          estado: 'RJ',
-          fonte: 'teste_mockado',
-          status: 'descoberto'
-        },
-        {
-          campanha_id: campanhaId,
-          user_id: user.id,
-          tipo: 'b2c',
-          nome_profissional: `Dra. Teste ${Date.now() + 3}`,
-          profissao: 'Médico',
-          especialidade: 'Pediatra',
-          cidade: 'Rio de Janeiro',
-          estado: 'RJ',
-          fonte: 'teste_mockado',
-          status: 'descoberto'
-        },
-        {
-          campanha_id: campanhaId,
-          user_id: user.id,
-          tipo: 'b2c',
-          nome_profissional: `Dr. Teste ${Date.now() + 4}`,
-          profissao: 'Médico',
-          especialidade: 'Oftalmologista',
-          cidade: 'Rio de Janeiro',
-          estado: 'RJ',
-          fonte: 'teste_mockado',
-          status: 'descoberto'
-        }
-      ];
-
-      const { error: insertError } = await supabase
-        .from('leads_descobertos')
-        .insert(leadsMockados);
-
-      if (insertError) throw insertError;
-
-      // Atualizar stats SOMANDO aos existentes
-      const novoTotal = statsAtuais.descobertos + leadsMockados.length;
-
-      const { error: updateError } = await supabase
-        .from('campanhas_prospeccao')
-        .update({
-          stats: {
-            ...statsAtuais,
-            descobertos: novoTotal
-          },
-          // Só mudar para ativa se ainda não estiver
-          ...(campanha.status === 'rascunho' && { status: 'ativa' })
-        })
-        .eq('id', campanhaId);
-
-      if (updateError) throw updateError;
-
-      await loadData();
-
-      toast.success(`✅ Leads criados! (+5, total: ${novoTotal})`);
-    } catch (error: any) {
-      console.error("Erro ao criar leads teste:", error);
       toast.error(`Erro: ${error.message}`);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
-      rascunho: { variant: "secondary", label: "Rascunho" },
-      ativa: { variant: "default", label: "Ativa" },
-      pausada: { variant: "outline", label: "Pausada" },
-      concluida: { variant: "secondary", label: "Concluída" }
-    };
-    const config = variants[status] || variants.rascunho;
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+  const handleDeletarCampanha = async (campanhaId: string) => {
+    if (!confirm('⚠️ Isso deletará todos os leads desta campanha. Continuar?')) {
+      return;
+    }
+
+    try {
+      await supabase
+        .from('campanhas_prospeccao')
+        .delete()
+        .eq('id', campanhaId);
+
+      toast.success("🗑️ Campanha deletada");
+      loadData();
+    } catch (error: any) {
+      toast.error(`Erro: ${error.message}`);
+    }
   };
 
-  const filteredCampanhas = campanhas.filter(campanha => {
-    if (statusFilter !== 'todas' && campanha.status !== statusFilter) return false;
-    if (tipoFilter !== 'todos' && campanha.tipo !== tipoFilter) return false;
-    return true;
-  });
+  const CampanhaCard = ({ campanha }: { campanha: any }) => {
+    const stats = campanha.stats || {
+      descobertos: 0,
+      enriquecidos: 0,
+      qualificados: 0
+    };
 
-  const campanhasAtivas = filteredCampanhas.filter(c => c.status === 'ativa');
-  const campanhasPausadas = filteredCampanhas.filter(c => c.status === 'pausada');
-  const campanhasRascunho = filteredCampanhas.filter(c => c.status === 'rascunho');
+    return (
+      <Card className="hover:shadow-lg transition-shadow">
+        <CardHeader>
+          <div className="flex justify-between items-start">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <CardTitle className="text-xl">{campanha.nome}</CardTitle>
+                <Badge variant={campanha.tipo === 'b2c' ? 'default' : 'secondary'}>
+                  {campanha.tipo?.toUpperCase()}
+                </Badge>
+                <Badge variant={
+                  campanha.status === 'ativa' ? 'default' :
+                  campanha.status === 'pausada' ? 'outline' :
+                  'secondary'
+                }>
+                  {campanha.status}
+                </Badge>
+              </div>
+              <CardDescription className="line-clamp-2">
+                {campanha.descricao || 'Sem descrição'}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="space-y-4">
+          {/* ICP Info */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Target className="h-4 w-4" />
+            <span>{campanha.icp_configs?.nome || 'ICP não configurado'}</span>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-3 bg-muted/50 rounded-lg">
+              <div className="text-2xl font-bold">{stats.descobertos || 0}</div>
+              <div className="text-xs text-muted-foreground">Descobertos</div>
+            </div>
+            <div className="text-center p-3 bg-blue-500/10 rounded-lg">
+              <div className="text-2xl font-bold text-blue-600">{stats.enriquecidos || 0}</div>
+              <div className="text-xs text-muted-foreground">Enriquecidos</div>
+            </div>
+            <div className="text-center p-3 bg-green-500/10 rounded-lg">
+              <div className="text-2xl font-bold text-green-600">{stats.qualificados || 0}</div>
+              <div className="text-xs text-muted-foreground">Qualificados</div>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-2 border-t">
+            {campanha.status === 'rascunho' && (
+              <Button 
+                size="sm" 
+                onClick={() => handleIniciarCampanha(campanha.id)}
+                disabled={processing === campanha.id}
+                className="flex-1"
+              >
+                {processing === campanha.id ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Iniciando...
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    Iniciar
+                  </>
+                )}
+              </Button>
+            )}
+
+            {campanha.status === 'ativa' && (
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => handlePausarCampanha(campanha.id)}
+                className="flex-1"
+              >
+                <Pause className="mr-2 h-4 w-4" />
+                Pausar
+              </Button>
+            )}
+
+            {campanha.status === 'pausada' && (
+              <Button 
+                size="sm"
+                onClick={() => handleIniciarCampanha(campanha.id)}
+                className="flex-1"
+              >
+                <Play className="mr-2 h-4 w-4" />
+                Retomar
+              </Button>
+            )}
+
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => navigate(`/campanhas/${campanha.id}/leads`)}
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              Ver Leads
+            </Button>
+
+            <Button 
+              size="sm" 
+              variant="ghost"
+              onClick={() => handleDeletarCampanha(campanha.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
 
   if (loading) {
-    return <div className="flex items-center justify-center min-h-screen">Carregando...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
   }
+
+  const ativas = campanhas.filter(c => c.status === 'ativa');
+  const pausadas = campanhas.filter(c => c.status === 'pausada');
+  const rascunhos = campanhas.filter(c => c.status === 'rascunho');
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <Button variant="ghost" onClick={() => navigate('/dashboard')} className="mb-4">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar
-          </Button>
-        </div>
-        
-        <div className="flex justify-between items-center mb-8">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold">Campanhas de Prospecção</h1>
-            <p className="text-muted-foreground mt-2">Geração automática de leads B2B e B2C</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate('/configurar-icp')}>
-              <Plus className="mr-2 h-4 w-4" />
-              Novo ICP
+            <Button variant="ghost" onClick={() => navigate('/dashboard')} className="mb-4">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Voltar
             </Button>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button>
-                  <Rocket className="mr-2 h-4 w-4" />
-                  Nova Campanha
+            <h1 className="text-4xl font-bold">Campanhas de Prospecção</h1>
+            <p className="text-muted-foreground mt-2">
+              Geração automática e inteligente de leads B2B e B2C
+            </p>
+          </div>
+          
+          <div className="flex gap-2">
+            {icps.length === 0 ? (
+              <Button onClick={() => navigate('/configurar-icp')}>
+                <Target className="mr-2 h-4 w-4" />
+                Criar Primeiro ICP
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => navigate('/configurar-icp')}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Novo ICP
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Criar Nova Campanha</DialogTitle>
-                  <DialogDescription>Configure uma campanha de prospecção automática</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 mt-4">
-                  <div>
-                    <Label htmlFor="nome">Nome da Campanha</Label>
-                    <Input
-                      id="nome"
-                      placeholder="Ex: Médicos RJ Q1 2025"
-                      value={nome}
-                      onChange={(e) => setNome(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="descricao">Descrição</Label>
-                    <Textarea
-                      id="descricao"
-                      placeholder="Descreva a campanha..."
-                      value={descricao}
-                      onChange={(e) => setDescricao(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label>Perfil Cliente Ideal (ICP)</Label>
-                    <Select value={icpId} onValueChange={setIcpId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um ICP" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {icps.map(icp => (
-                          <SelectItem key={icp.id} value={icp.id}>
-                            {icp.nome} ({icp.tipo.toUpperCase()})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="meta">Meta de Leads</Label>
-                    <Input
-                      id="meta"
-                      type="number"
-                      placeholder="500"
-                      value={metaTotal}
-                      onChange={(e) => setMetaTotal(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline">Cancelar</Button>
-                    <Button onClick={handleCriarCampanha} disabled={criandoCampanha}>
-                      {criandoCampanha ? "Criando..." : "Criar Campanha"}
+                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Nova Campanha
                     </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Criar Nova Campanha</DialogTitle>
+                      <DialogDescription>
+                        Configure uma campanha de descoberta automática de leads
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 mt-4">
+                      <div>
+                        <Label htmlFor="nome">Nome da Campanha *</Label>
+                        <Input
+                          id="nome"
+                          placeholder="Ex: Médicos RJ Q1 2025"
+                          value={nome}
+                          onChange={(e) => setNome(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="descricao">Descrição</Label>
+                        <Textarea
+                          id="descricao"
+                          placeholder="Descreva o objetivo da campanha..."
+                          value={descricao}
+                          onChange={(e) => setDescricao(e.target.value)}
+                          rows={3}
+                        />
+                      </div>
+                      <div>
+                        <Label>Perfil Cliente Ideal (ICP) *</Label>
+                        <Select value={icpId} onValueChange={setIcpId}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione um ICP" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {icps.map((icp) => (
+                              <SelectItem key={icp.id} value={icp.id}>
+                                {icp.nome} ({icp.tipo.toUpperCase()})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="meta">Meta de Leads</Label>
+                        <Input
+                          id="meta"
+                          type="number"
+                          placeholder="50"
+                          value={metaTotal}
+                          onChange={(e) => setMetaTotal(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Quantidade de leads que deseja descobrir
+                        </p>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-4">
+                        <Button 
+                          variant="outline" 
+                          onClick={() => setDialogOpen(false)}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button 
+                          onClick={handleCriarCampanha}
+                          disabled={criandoCampanha}
+                        >
+                          {criandoCampanha ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Criando...
+                            </>
+                          ) : (
+                            'Criar Campanha'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </>
+            )}
           </div>
         </div>
 
-        {icps.length === 0 && (
-          <Card className="mb-6 border-dashed">
-            <CardContent className="py-12 text-center">
-              <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Nenhum ICP configurado</h3>
+        {/* Empty State */}
+        {campanhas.length === 0 ? (
+          <Card className="py-12">
+            <CardContent className="text-center">
+              <Sparkles className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Nenhuma campanha criada</h3>
               <p className="text-muted-foreground mb-4">
-                Configure seu Perfil de Cliente Ideal antes de criar campanhas
+                {icps.length === 0 
+                  ? 'Crie um ICP primeiro para começar a descobrir leads'
+                  : 'Crie sua primeira campanha para descobrir leads automaticamente'}
               </p>
-              <Button onClick={() => navigate('/configurar-icp')}>
-                <Plus className="mr-2 h-4 w-4" />
-                Criar Primeiro ICP
+              <Button onClick={() => icps.length === 0 ? navigate('/configurar-icp') : setDialogOpen(true)}>
+                {icps.length === 0 ? 'Criar ICP' : 'Criar Campanha'}
               </Button>
             </CardContent>
           </Card>
-        )}
+        ) : (
+          <Tabs defaultValue="ativas" className="w-full">
+            <TabsList>
+              <TabsTrigger value="ativas">
+                <Play className="mr-2 h-4 w-4" />
+                Ativas ({ativas.length})
+              </TabsTrigger>
+              <TabsTrigger value="pausadas">
+                <Pause className="mr-2 h-4 w-4" />
+                Pausadas ({pausadas.length})
+              </TabsTrigger>
+              <TabsTrigger value="rascunhos">
+                <Users className="mr-2 h-4 w-4" />
+                Rascunhos ({rascunhos.length})
+              </TabsTrigger>
+            </TabsList>
 
-        {/* Filtros */}
-        {campanhas.length > 0 && (
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant={statusFilter === 'todas' ? 'default' : 'outline'}
-                  onClick={() => setStatusFilter('todas')}
-                >
-                  Todas ({campanhas.length})
-                </Button>
-                <Button
-                  size="sm"
-                  variant={statusFilter === 'ativa' ? 'default' : 'outline'}
-                  onClick={() => setStatusFilter('ativa')}
-                >
-                  Ativas ({campanhas.filter(c => c.status === 'ativa').length})
-                </Button>
-                <Button
-                  size="sm"
-                  variant={statusFilter === 'pausada' ? 'default' : 'outline'}
-                  onClick={() => setStatusFilter('pausada')}
-                >
-                  Pausadas ({campanhas.filter(c => c.status === 'pausada').length})
-                </Button>
-                <Button
-                  size="sm"
-                  variant={statusFilter === 'concluida' ? 'default' : 'outline'}
-                  onClick={() => setStatusFilter('concluida')}
-                >
-                  Concluídas ({campanhas.filter(c => c.status === 'concluida').length})
-                </Button>
-                <div className="w-px h-8 bg-border mx-2" />
-                <Button
-                  size="sm"
-                  variant={tipoFilter === 'todos' ? 'default' : 'outline'}
-                  onClick={() => setTipoFilter('todos')}
-                >
-                  Todos
-                </Button>
-                <Button
-                  size="sm"
-                  variant={tipoFilter === 'b2b' ? 'default' : 'outline'}
-                  onClick={() => setTipoFilter('b2b')}
-                >
-                  B2B ({campanhas.filter(c => c.tipo === 'b2b').length})
-                </Button>
-                <Button
-                  size="sm"
-                  variant={tipoFilter === 'b2c' ? 'default' : 'outline'}
-                  onClick={() => setTipoFilter('b2c')}
-                >
-                  B2C ({campanhas.filter(c => c.tipo === 'b2c').length})
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Campanhas Ativas */}
-        {campanhasAtivas.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold mb-4">CAMPANHAS ATIVAS ({campanhasAtivas.length})</h2>
-            <div className="grid gap-6">
-              {campanhasAtivas.map((campanha) => {
-                const stats = campanha.stats || {};
-                return (
-                  <Card key={campanha.id}>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <CardTitle>{campanha.nome}</CardTitle>
-                            {getStatusBadge(campanha.status)}
-                            <Badge variant="outline">{campanha.tipo.toUpperCase()}</Badge>
-                          </div>
-                          <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-4 gap-4 mb-4">
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Descobertos</p>
-                          <p className="text-2xl font-bold">{stats.descobertos || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Enriquecidos</p>
-                          <p className="text-2xl font-bold">{stats.enriquecidos || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Qualificados</p>
-                          <p className="text-2xl font-bold">{stats.qualificados || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Mensagens</p>
-                          <p className="text-2xl font-bold">{stats.mensagens_geradas || 0}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 pt-4 border-t">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handlePausarCampanha(campanha.id)}
-                          disabled={processing === campanha.id}
-                        >
-                          <Pause className="mr-2 h-4 w-4" />
-                          Pausar
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant={selectedCampanhaId === campanha.id ? "default" : "outline"}
-                          onClick={() => setSelectedCampanhaId(campanha.id)}
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          Ver Leads
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/campanhas/${campanha.id}`)}
-                        >
-                          Ver Detalhes
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Campanhas Pausadas */}
-        {campanhasPausadas.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold mb-4">CAMPANHAS PAUSADAS ({campanhasPausadas.length})</h2>
-            <div className="grid gap-6">
-              {campanhasPausadas.map((campanha) => {
-                const stats = campanha.stats || {};
-                return (
-                  <Card key={campanha.id}>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <CardTitle>{campanha.nome}</CardTitle>
-                            {getStatusBadge(campanha.status)}
-                            <Badge variant="outline">{campanha.tipo.toUpperCase()}</Badge>
-                          </div>
-                          <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-4 gap-4 mb-4">
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Descobertos</p>
-                          <p className="text-2xl font-bold">{stats.descobertos || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Enriquecidos</p>
-                          <p className="text-2xl font-bold">{stats.enriquecidos || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Qualificados</p>
-                          <p className="text-2xl font-bold">{stats.qualificados || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Mensagens</p>
-                          <p className="text-2xl font-bold">{stats.mensagens_geradas || 0}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 pt-4 border-t">
-                        <Button
-                          size="sm"
-                          onClick={() => handleIniciarCampanha(campanha.id)}
-                          disabled={processing === campanha.id}
-                        >
-                          {processing === campanha.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Iniciando...
-                            </>
-                          ) : (
-                            <>
-                              <Play className="mr-2 h-4 w-4" />
-                              Retomar
-                            </>
-                          )}
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant={selectedCampanhaId === campanha.id ? "default" : "outline"}
-                          onClick={() => setSelectedCampanhaId(campanha.id)}
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          Ver Leads
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/campanhas/${campanha.id}`)}
-                        >
-                          Ver Detalhes
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeletarCampanha(campanha.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Campanhas Rascunho */}
-        {campanhasRascunho.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold mb-4">RASCUNHOS ({campanhasRascunho.length})</h2>
-            <div className="grid gap-6">
-              {campanhasRascunho.map((campanha) => {
-                const stats = campanha.stats || {};
-                return (
-                  <Card key={campanha.id}>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <CardTitle>{campanha.nome}</CardTitle>
-                            {getStatusBadge(campanha.status)}
-                            <Badge variant="outline">{campanha.tipo.toUpperCase()}</Badge>
-                          </div>
-                          <CardDescription className="mt-2">{campanha.descricao}</CardDescription>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-4 gap-4 mb-4">
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Descobertos</p>
-                          <p className="text-2xl font-bold">{stats.descobertos || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Enriquecidos</p>
-                          <p className="text-2xl font-bold">{stats.enriquecidos || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Qualificados</p>
-                          <p className="text-2xl font-bold">{stats.qualificados || 0}</p>
-                        </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Mensagens</p>
-                          <p className="text-2xl font-bold">{stats.mensagens_geradas || 0}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 pt-4 border-t">
-                        <Button
-                          size="sm"
-                          onClick={() => handleIniciarCampanha(campanha.id)}
-                          disabled={processing === campanha.id}
-                        >
-                          {processing === campanha.id ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Iniciando...
-                            </>
-                          ) : (
-                            <>
-                              <Play className="mr-2 h-4 w-4" />
-                              Iniciar
-                            </>
-                          )}
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant={selectedCampanhaId === campanha.id ? "default" : "outline"}
-                          onClick={() => setSelectedCampanhaId(campanha.id)}
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          Ver Leads
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => navigate(`/campanhas/${campanha.id}`)}
-                        >
-                          Ver Detalhes
-                        </Button>
-
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeletarCampanha(campanha.id)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {campanhas.length === 0 && icps.length > 0 && (
-          <Card className="border-dashed">
-            <CardContent className="py-12 text-center">
-              <TrendingUp className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Nenhuma campanha criada</h3>
-              <p className="text-muted-foreground mb-4">
-                Crie sua primeira campanha de prospecção automática
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Dashboard de Leads da Campanha Selecionada */}
-        {selectedCampanhaId && leads.length > 0 && (
-          <div className="mt-8">
-            <Card className="mb-6 bg-primary/5">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Leads Descobertos - {campanhas.find(c => c.id === selectedCampanhaId)?.nome}
-                </CardTitle>
-                <CardDescription>
-                  Total de {leads.length} leads encontrados nesta campanha
-                </CardDescription>
-              </CardHeader>
-            </Card>
-
-            <div className="grid gap-4">
-              {leads.slice(0, 10).map((lead) => (
-                <Card key={lead.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <CardTitle className="text-lg">
-                            {lead.nome_profissional || lead.razao_social || "Nome não informado"}
-                          </CardTitle>
-                          <Badge variant={lead.status === "descoberto" ? "secondary" : "default"}>
-                            {lead.status === "descoberto" ? "Novo" : lead.status}
-                          </Badge>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-muted-foreground mt-2">
-                          {lead.profissao && (
-                            <div className="flex items-center gap-2">
-                              <Users className="h-4 w-4" />
-                              <span>{lead.profissao}</span>
-                              {lead.especialidade && <span className="text-xs">• {lead.especialidade}</span>}
-                            </div>
-                          )}
-                          
-                          {(lead.cidade || lead.estado) && (
-                            <div className="flex items-center gap-2">
-                              <MessageSquare className="h-4 w-4" />
-                              <span>{lead.cidade || ""} {lead.estado || ""}</span>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Informações de Contato */}
-                        <div className="grid grid-cols-1 gap-2 text-sm mt-3 pt-3 border-t">
-                          {lead.telefone && (
-                            <div className="flex items-center gap-2">
-                              <Phone className="h-4 w-4 text-green-600" />
-                              <span className="font-medium">{lead.telefone}</span>
-                            </div>
-                          )}
-                          
-                          {lead.email && (
-                            <div className="flex items-center gap-2">
-                              <Mail className="h-4 w-4 text-blue-600" />
-                              <span className="font-medium">{lead.email}</span>
-                            </div>
-                          )}
-                          
-                          {lead.linkedin && (
-                            <div className="flex items-center gap-2">
-                              <Linkedin className="h-4 w-4 text-blue-700" />
-                              <a 
-                                href={lead.linkedin} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline"
-                              >
-                                LinkedIn
-                              </a>
-                            </div>
-                          )}
-                          
-                          {lead.instagram && (
-                            <div className="flex items-center gap-2">
-                              <Instagram className="h-4 w-4 text-pink-600" />
-                              <a 
-                                href={`https://instagram.com/${lead.instagram.replace('@', '')}`}
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-pink-600 hover:underline"
-                              >
-                                {lead.instagram}
-                              </a>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-
-                  {lead.fonte && (
-                    <CardContent className="pt-0">
-                      <div className="text-xs text-muted-foreground pt-2 border-t">
-                        Fonte: <span className="font-medium">{lead.fonte}</span>
-                        {lead.query_usada && <span className="ml-2">• Query: "{lead.query_usada}"</span>}
-                      </div>
-                    </CardContent>
-                  )}
+            <TabsContent value="ativas" className="mt-6">
+              {ativas.length === 0 ? (
+                <Card className="py-8">
+                  <CardContent className="text-center text-muted-foreground">
+                    Nenhuma campanha ativa
+                  </CardContent>
                 </Card>
-              ))}
-            </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {ativas.map((campanha) => (
+                    <CampanhaCard key={campanha.id} campanha={campanha} />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
 
-            {leads.length > 10 && (
-              <Card className="mt-6">
-                <CardContent className="py-4 text-center">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => navigate(`/campanhas/${selectedCampanhaId}/leads-descobertos`)}
-                  >
-                    Ver Todos os {leads.length} Leads
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+            <TabsContent value="pausadas" className="mt-6">
+              {pausadas.length === 0 ? (
+                <Card className="py-8">
+                  <CardContent className="text-center text-muted-foreground">
+                    Nenhuma campanha pausada
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {pausadas.map((campanha) => (
+                    <CampanhaCard key={campanha.id} campanha={campanha} />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="rascunhos" className="mt-6">
+              {rascunhos.length === 0 ? (
+                <Card className="py-8">
+                  <CardContent className="text-center text-muted-foreground">
+                    Nenhum rascunho
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {rascunhos.map((campanha) => (
+                    <CampanhaCard key={campanha.id} campanha={campanha} />
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         )}
       </div>
     </div>
