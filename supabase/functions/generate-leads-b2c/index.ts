@@ -217,12 +217,38 @@ Retorne APENAS um JSON array com as queries, sem explicações:
       throw new Error("Google API não configurada");
     }
 
+    // Domínios confiáveis e bloqueados
+    const DOMINIOS_CONFIAVEIS = [
+      'linkedin.com/in',
+      'doctoralia.com.br',
+      'instagram.com',
+      'facebook.com',
+      'docdoc.com.br',
+      'mundodasaude.com.br'
+    ];
+
+    const DOMINIOS_BLOQUEADOS = [
+      'indeed.com',
+      'catho.com.br',
+      'infojobs.com.br',
+      'vagas.com.br',
+      'linkedin.com/jobs',
+      'glassdoor.com',
+      'bebee.com',
+      'jooble.com'
+    ];
+
     const googleSearch = async (query: string) => {
-      const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}`;
+      // Construir query otimizada com filtros diretos do Google
+      const sites = 'site:linkedin.com/in OR site:doctoralia.com.br OR site:instagram.com';
+      const exclude = '-vagas -emprego -"vaga de" -contratar -"oportunidade de" -"processo seletivo"';
+      const searchQuery = `${query} ${sites} ${exclude}`;
+      
+      const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(searchQuery)}&num=10`;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
       
-      console.log(`[GENERATE-LEADS-B2C] 🔍 Google Search URL: ${url.substring(0, 100)}...`);
+      console.log(`[GENERATE-LEADS-B2C] 🔍 Query otimizada: "${searchQuery}"`);
       
       try {
         const response = await fetch(url, { signal: controller.signal });
@@ -232,13 +258,35 @@ Retorne APENAS um JSON array com as queries, sem explicações:
         
         const data = await response.json();
         
-        console.log(`[GENERATE-LEADS-B2C] 📊 API Response:`, {
-          totalResults: data.searchInformation?.totalResults,
-          itemsCount: data.items?.length || 0,
-          firstItemTitle: data.items?.[0]?.title
+        // Filtrar resultados por domínio
+        const filteredItems = (data.items || []).filter((item: any) => {
+          const url = item.link.toLowerCase();
+          
+          // Se for de domínio bloqueado, rejeitar
+          if (DOMINIOS_BLOQUEADOS.some(d => url.includes(d))) {
+            console.log(`[GENERATE-LEADS-B2C] ❌ Domínio bloqueado: ${url}`);
+            return false;
+          }
+          
+          // Se for de domínio confiável, aceitar
+          if (DOMINIOS_CONFIAVEIS.some(d => url.includes(d))) {
+            console.log(`[GENERATE-LEADS-B2C] ✅ Domínio confiável: ${url}`);
+            return true;
+          }
+          
+          // Se não estiver em nenhuma lista, verificar texto
+          const texto = (item.title + ' ' + item.snippet).toLowerCase();
+          if (texto.match(/vagas?|emprego|contrata|processo seletivo|candidato/i)) {
+            console.log(`[GENERATE-LEADS-B2C] ❌ Texto parece vaga: ${item.title}`);
+            return false;
+          }
+          
+          return true;
         });
         
-        return data;
+        console.log(`[GENERATE-LEADS-B2C] 📊 Filtrados: ${data.items?.length || 0} → ${filteredItems.length}`);
+        
+        return { ...data, items: filteredItems };
       } catch (error) {
         clearTimeout(timeout);
         console.error(`[GENERATE-LEADS-B2C] ❌ Erro no Google Search para "${query}":`, error);
