@@ -137,14 +137,11 @@ export default function CampanhasProspeccao() {
         })
         .eq('id', campanhaId);
 
-      // Chamar edge function
-      const funcao = campanha.tipo === 'b2b' ? 'generate-leads-b2b' : 'generate-leads-b2c';
-      
-      const { data, error } = await supabase.functions.invoke(funcao, {
+      // Chamar edge function search-leads com SerpAPI
+      const { data, error } = await supabase.functions.invoke('search-leads', {
         body: {
           campanha_id: campanhaId,
-          icp_config_id: campanha.icp_config_id,
-          limite: campanha.meta_leads_total || 50
+          icp_config_id: campanha.icp_config_id
         }
       });
 
