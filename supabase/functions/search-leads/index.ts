@@ -121,6 +121,7 @@ serve(async (req) => {
     const { campanha_id, icp_config_id }: SearchRequest = await req.json();
     
     console.log("🚀 Iniciando busca de leads", { campanha_id, icp_config_id });
+    console.log("🔑 SERPAPI_KEY:", SERPAPI_KEY ? "✅ Configurada" : "❌ NÃO configurada");
     
     const { data: icpConfig, error: icpError } = await supabase
       .from("icp_configs")
@@ -128,9 +129,18 @@ serve(async (req) => {
       .eq("id", icp_config_id)
       .single();
     
-    if (icpError || !icpConfig) {
-      throw new Error("ICP config não encontrado");
+    console.log("📋 Resultado query ICP:", { icpConfig, icpError });
+    
+    if (icpError) {
+      console.error("❌ Erro ao buscar ICP:", icpError);
+      throw new Error(`ICP config não encontrado: ${icpError.message}`);
     }
+    
+    if (!icpConfig) {
+      throw new Error("ICP config não encontrado (retornou null)");
+    }
+    
+    console.log("✅ ICP encontrado:", icpConfig.nome);
     
     const profissao = icpConfig.b2c_config?.profissoes?.[0] || "médico";
     const cidade = icpConfig.b2c_config?.cidades?.[0] || "Rio de Janeiro";
