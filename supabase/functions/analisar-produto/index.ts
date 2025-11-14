@@ -47,37 +47,37 @@ serve(async (req) => {
     const detectedLanguage = detectLanguage(url);
     console.log('🌍 Idioma detectado:', detectedLanguage);
 
-    // NOVO: Se não for URL e NÃO tiver imagens, GERAR a imagem com IA
-    // OU se tiver imagens (logo), GERAR nova imagem COM a logo
+    // SEMPRE gera imagem quando não é URL (com ou sem logo)
     if (!isUrl) {
       let logoImage: string | null = null;
       
-      // Se tem imagens enviadas, a primeira pode ser uma logo
+      // Verificar se tem imagens (logo) enviadas
       if (images.length > 0) {
-        console.log('🎨 Logo detectada! Gerando imagem com a logo...');
-        logoImage = images[0];
+        console.log('🎨 Logo detectada! Gerando imagem COM a logo incorporada...');
+        logoImage = images[0]; // Primeira imagem é a logo
       } else {
-        console.log('🎨 Nenhuma imagem fornecida, gerando imagem com IA...');
+        console.log('🎨 Nenhuma imagem fornecida, gerando imagem do zero...');
       }
 
-      // PROMPT MELHORADO para geração de imagem
+      // SEMPRE gerar uma nova imagem (com ou sem logo)
       let imagePrompt = '';
       
       if (logoImage) {
-        // Se tem logo, criar imagem de produto COM a logo
+        // Prompt quando TEM logo - instruções mais específicas
         imagePrompt = `Create a professional, eye-catching social media marketing image based on this description: "${url}". 
 
 CRITICAL INSTRUCTIONS:
-1. Include the logo/brand mark from the reference image prominently in the final image
-2. The logo should be clearly visible and well-positioned (top corner or center)
-3. Create a modern, attractive product mockup or promotional banner
+1. INCORPORATE the logo/brand from the reference image into the final generated image
+2. The logo should be VISIBLE and well-positioned (corner, center, or watermark style)
+3. Create a beautiful, attractive composition (product display, banner, etc.)
 4. Use colors that complement the logo
-5. Make it suitable for Instagram, Facebook and social media posts
-6. Professional quality, high resolution
-7. Text on image should be in ${detectedLanguage}
-8. If including text/slogans, use ${detectedLanguage} language`;
+5. Make it suitable for Instagram, Facebook and social media
+6. Professional quality, modern design
+7. Any text/slogans on the image MUST be in ${detectedLanguage}
+8. DO NOT just return the logo - CREATE A NEW MARKETING IMAGE that includes the logo`;
+
       } else {
-        // Se não tem logo, gerar imagem normal
+        // Prompt quando NÃO tem logo
         imagePrompt = `Create a professional, eye-catching image for social media marketing based on this description: "${url}". 
 
 INSTRUCTIONS:
@@ -85,7 +85,7 @@ INSTRUCTIONS:
 2. Suitable for Instagram and Facebook posts
 3. Modern, clean design
 4. High quality, professional look
-5. Any text or slogans on the image MUST be in ${detectedLanguage}
+5. Any text or slogans MUST be in ${detectedLanguage}
 6. Focus on the product/concept described`;
       }
       
@@ -107,6 +107,9 @@ INSTRUCTIONS:
         }
       ];
       
+      console.log('🎨 Iniciando geração de imagem...', logoImage ? 'COM logo' : 'SEM logo');
+
+      // Chamar API de geração de imagem
       const imageGenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -128,21 +131,26 @@ INSTRUCTIONS:
           throw new Error('Limite de geração de imagens atingido. Aguarde alguns segundos.');
         }
         if (imageGenResponse.status === 402) {
-          throw new Error('Créditos insuficientes para gerar imagem. Adicione créditos em Settings -> Workspace -> Usage.');
+          throw new Error('Créditos insuficientes. Adicione créditos em Settings → Workspace → Usage.');
         }
         
         throw new Error(`Erro ao gerar imagem: ${imageGenResponse.status}`);
       }
 
       const imageGenData = await imageGenResponse.json();
-      console.log('✅ Imagem gerada com sucesso', logoImage ? 'COM logo' : 'sem logo');
+      console.log('✅ Imagem gerada com sucesso!');
+      console.log('🔍 Response da API:', JSON.stringify(imageGenData).substring(0, 200));
       
       // Extrair a imagem gerada (base64)
       const generatedImageUrl = imageGenData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
       if (generatedImageUrl) {
         finalImages = [generatedImageUrl];
         generatedImage = generatedImageUrl;
-        console.log('🖼️ Imagem gerada adicionada para análise');
+        console.log('🖼️ Imagem gerada adicionada:', generatedImage ? 'SIM' : 'NÃO');
+        console.log('📏 Tamanho da imagem base64:', generatedImageUrl.substring(0, 50) + '...');
+      } else {
+        console.warn('⚠️ API retornou sucesso mas sem imagem no response');
+        console.warn('⚠️ Estrutura do response:', JSON.stringify(imageGenData));
       }
     }
     
