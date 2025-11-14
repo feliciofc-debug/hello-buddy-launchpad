@@ -11,23 +11,23 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
 );
 
-// Mapa de DDDs por cidade
-const cityDDDs: Record<string, string[]> = {
-  'rio de janeiro': ['21', '22', '24'],
-  'são paulo': ['11', '12', '13', '14', '15', '16', '17', '18', '19'],
-  'belo horizonte': ['31', '32', '33', '34', '35', '37', '38'],
-  'brasília': ['61'],
-  'salvador': ['71', '73', '74', '75', '77'],
-  'fortaleza': ['85', '88'],
-  'recife': ['81', '87'],
-  'curitiba': ['41', '42', '43', '44', '45', '46'],
-  'porto alegre': ['51', '53', '54', '55'],
-  'manaus': ['92', '97'],
-  'belém': ['91', '93', '94'],
-  'goiânia': ['62', '64'],
-  'vitória': ['27', '28'],
-  'florianópolis': ['47', '48', '49']
-};
+// Função simplificada para obter DDD por localização
+function getDDDFromLocation(location: string): string {
+  const loc = location.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  
+  if (loc.includes('rio de janeiro') || loc.includes('rio') || loc.includes('rj')) return '21';
+  if (loc.includes('niteroi')) return '21';
+  if (loc.includes('sao paulo') || loc.includes('sp')) return '11';
+  if (loc.includes('belo horizonte') || loc.includes('mg')) return '31';
+  if (loc.includes('brasilia') || loc.includes('df')) return '61';
+  if (loc.includes('salvador') || loc.includes('ba')) return '71';
+  if (loc.includes('fortaleza') || loc.includes('ce')) return '85';
+  if (loc.includes('recife') || loc.includes('pe')) return '81';
+  if (loc.includes('curitiba') || loc.includes('pr')) return '41';
+  if (loc.includes('porto alegre') || loc.includes('rs')) return '51';
+  
+  return '21'; // Default
+}
 
 // Base de dados simulada de profissionais por categoria
 const professionalDatabase: Record<string, any> = {
@@ -144,17 +144,6 @@ function normalizeKeyword(keyword: string): string {
     .replace(/s$/i, ''); // Remove plural
 }
 
-function getDDDForLocation(location: string): string {
-  const normalizedLocation = location.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  
-  for (const [city, ddds] of Object.entries(cityDDDs)) {
-    if (normalizedLocation.includes(city)) {
-      return ddds[Math.floor(Math.random() * ddds.length)];
-    }
-  }
-  
-  return '21'; // Default para Rio de Janeiro
-}
 
 function surname(fullName: string): string {
   const parts = fullName.split(' ').filter(p => p.toLowerCase() !== 'dr.' && p.toLowerCase() !== 'dra.');
@@ -178,7 +167,9 @@ function generateRealisticLeads(profissao: string, cidade: string, estado: strin
   };
 
   const leads = [];
-  const ddd = getDDDForLocation(cidade);
+  const ddd = getDDDFromLocation(cidade);
+  
+  console.log(`🔍 Gerando leads com DDD ${ddd} para ${cidade}`);
   
   for (let i = 0; i < limit; i++) {
     const nameIndex = i % data.names.length;
@@ -250,7 +241,8 @@ serve(async (req) => {
     // Gerar leads realistas com DDD correto
     const leadsData = generateRealisticLeads(profissao, cidade, estado, 15);
     
-    console.log(`✅ ${leadsData.length} leads gerados com DDD ${getDDDForLocation(cidade)}`);
+    console.log(`✅ ${leadsData.length} leads gerados com DDD ${getDDDFromLocation(cidade)}`);
+    console.log(`📞 Exemplo de telefone: ${leadsData[0]?.telefone}`);
 
     // Adicionar campanha_id e user_id aos leads
     const leads = leadsData.map(lead => ({
