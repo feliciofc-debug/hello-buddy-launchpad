@@ -30,9 +30,82 @@ serve(async (req) => {
     // Verificar se é uma URL válida ou apenas um prompt de texto
     const isUrl = url.match(/^https?:\/\//i);
     
-    // Se não for URL e NÃO tiver imagens, GERAR a imagem com IA
-    if (!isUrl && images.length === 0) {
-      console.log('🎨 Nenhuma imagem fornecida, gerando imagem com IA...');
+    // DETECTAR IDIOMA DO PROMPT DO USUÁRIO
+    const detectLanguage = (text: string): string => {
+      const portugueseWords = /\b(produto|oferta|comprar|preço|promoção|desconto|grátis)\b/i;
+      const englishWords = /\b(product|offer|buy|price|promotion|discount|free)\b/i;
+      
+      if (portugueseWords.test(text)) return 'português brasileiro';
+      if (englishWords.test(text)) return 'english';
+      
+      // Detectar por acentuação/caracteres especiais
+      if (/[àáâãäçèéêëìíîïòóôõöùúûü]/i.test(text)) return 'português brasileiro';
+      
+      return 'português brasileiro'; // Default
+    };
+
+    const detectedLanguage = detectLanguage(url);
+    console.log('🌍 Idioma detectado:', detectedLanguage);
+
+    // NOVO: Se não for URL e NÃO tiver imagens, GERAR a imagem com IA
+    // OU se tiver imagens (logo), GERAR nova imagem COM a logo
+    if (!isUrl) {
+      let logoImage: string | null = null;
+      
+      // Se tem imagens enviadas, a primeira pode ser uma logo
+      if (images.length > 0) {
+        console.log('🎨 Logo detectada! Gerando imagem com a logo...');
+        logoImage = images[0];
+      } else {
+        console.log('🎨 Nenhuma imagem fornecida, gerando imagem com IA...');
+      }
+
+      // PROMPT MELHORADO para geração de imagem
+      let imagePrompt = '';
+      
+      if (logoImage) {
+        // Se tem logo, criar imagem de produto COM a logo
+        imagePrompt = `Create a professional, eye-catching social media marketing image based on this description: "${url}". 
+
+CRITICAL INSTRUCTIONS:
+1. Include the logo/brand mark from the reference image prominently in the final image
+2. The logo should be clearly visible and well-positioned (top corner or center)
+3. Create a modern, attractive product mockup or promotional banner
+4. Use colors that complement the logo
+5. Make it suitable for Instagram, Facebook and social media posts
+6. Professional quality, high resolution
+7. Text on image should be in ${detectedLanguage}
+8. If including text/slogans, use ${detectedLanguage} language`;
+      } else {
+        // Se não tem logo, gerar imagem normal
+        imagePrompt = `Create a professional, eye-catching image for social media marketing based on this description: "${url}". 
+
+INSTRUCTIONS:
+1. Make it visually impactful and attractive
+2. Suitable for Instagram and Facebook posts
+3. Modern, clean design
+4. High quality, professional look
+5. Any text or slogans on the image MUST be in ${detectedLanguage}
+6. Focus on the product/concept described`;
+      }
+      
+      const imageGenMessages: any[] = [
+        {
+          role: "user",
+          content: logoImage 
+            ? [
+                {
+                  type: 'image_url',
+                  image_url: { url: logoImage }
+                },
+                {
+                  type: 'text',
+                  text: imagePrompt
+                }
+              ]
+            : imagePrompt
+        }
+      ];
       
       const imageGenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
         method: "POST",
@@ -42,12 +115,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           model: "google/gemini-2.5-flash-image-preview",
-          messages: [
-            {
-              role: "user",
-              content: `Crie uma imagem profissional e atraente para marketing de redes sociais baseada nesta descrição: ${url}. A imagem deve ser visualmente impactante e adequada para posts de Instagram e Facebook.`
-            }
-          ],
+          messages: imageGenMessages,
           modalities: ["image", "text"]
         }),
       });
@@ -67,7 +135,7 @@ serve(async (req) => {
       }
 
       const imageGenData = await imageGenResponse.json();
-      console.log('✅ Imagem gerada com sucesso');
+      console.log('✅ Imagem gerada com sucesso', logoImage ? 'COM logo' : 'sem logo');
       
       // Extrair a imagem gerada (base64)
       const generatedImageUrl = imageGenData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
@@ -83,6 +151,8 @@ serve(async (req) => {
       console.log('📸 Modo análise de imagem com prompt:', url);
       
       const prompt = `Analise esta imagem e crie posts promocionais baseados neste contexto: "${url}"
+
+IDIOMA OBRIGATÓRIO: Todos os textos devem ser em ${detectedLanguage}
 
 Gere 9 variações de posts, 3 para cada tipo:
 
@@ -100,6 +170,11 @@ STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
 - Opção A: Curto e impactante com emoji. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
 - Opção B: Pergunta interativa para engajamento. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
 - Opção C: Contagem regressiva ou urgência. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
+
+IMPORTANTE: 
+- TODOS os textos devem estar em ${detectedLanguage}
+- Use emojis apropriados
+- Mantenha o tom adequado para cada rede social
 
 Retorne APENAS um JSON válido no formato:
 {
@@ -123,7 +198,7 @@ Retorne APENAS um JSON válido no formato:
       const messages: any[] = [
         { 
           role: 'system', 
-          content: 'Você é um especialista em marketing digital e branding. Analise imagens e crie posts promocionais criativos em português brasileiro.' 
+          content: `Você é um especialista em marketing digital e branding. Analise imagens e crie posts promocionais criativos EXCLUSIVAMENTE em ${detectedLanguage}.` 
         },
         {
           role: 'user',
@@ -364,6 +439,8 @@ Produto: ${nomeProduto}
 Preço: ${precoProduto}
 Link: ${url}
 
+IDIOMA OBRIGATÓRIO: Todos os textos devem ser em ${detectedLanguage}
+
 Gere 9 variações de posts, 3 para cada tipo:
 
 INSTAGRAM (3 variações):
@@ -382,6 +459,7 @@ STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
 - Opção C: Contagem regressiva ou urgência. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
 
 IMPORTANTE: 
+- TODOS os textos devem estar em ${detectedLanguage}
 - Instagram e Story: NÃO incluir o link no texto (apenas mencionar "link na bio")
 - Facebook: SEMPRE incluir o link completo no final do texto
 
@@ -415,7 +493,7 @@ Retorne APENAS um JSON válido no formato:
         body: JSON.stringify({
           model: 'google/gemini-2.5-flash',
           messages: [
-            { role: 'system', content: 'Você é um especialista em marketing digital. Gere posts promocionais criativos em português brasileiro.' },
+            { role: 'system', content: `Você é um especialista em marketing digital. Gere posts promocionais criativos EXCLUSIVAMENTE em ${detectedLanguage}.` },
             { role: 'user', content: prompt }
           ]
         })
