@@ -11,6 +11,24 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
 );
 
+// Mapa de DDDs por cidade
+const cityDDDs: Record<string, string[]> = {
+  'rio de janeiro': ['21', '22', '24'],
+  'são paulo': ['11', '12', '13', '14', '15', '16', '17', '18', '19'],
+  'belo horizonte': ['31', '32', '33', '34', '35', '37', '38'],
+  'brasília': ['61'],
+  'salvador': ['71', '73', '74', '75', '77'],
+  'fortaleza': ['85', '88'],
+  'recife': ['81', '87'],
+  'curitiba': ['41', '42', '43', '44', '45', '46'],
+  'porto alegre': ['51', '53', '54', '55'],
+  'manaus': ['92', '97'],
+  'belém': ['91', '93', '94'],
+  'goiânia': ['62', '64'],
+  'vitória': ['27', '28'],
+  'florianópolis': ['47', '48', '49']
+};
+
 // Base de dados simulada de profissionais por categoria
 const professionalDatabase: Record<string, any> = {
   'medico': {
@@ -126,6 +144,31 @@ function normalizeKeyword(keyword: string): string {
     .replace(/s$/i, ''); // Remove plural
 }
 
+function getDDDForLocation(location: string): string {
+  const normalizedLocation = location.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  
+  for (const [city, ddds] of Object.entries(cityDDDs)) {
+    if (normalizedLocation.includes(city)) {
+      return ddds[Math.floor(Math.random() * ddds.length)];
+    }
+  }
+  
+  return '21'; // Default para Rio de Janeiro
+}
+
+function surname(fullName: string): string {
+  const parts = fullName.split(' ').filter(p => p.toLowerCase() !== 'dr.' && p.toLowerCase() !== 'dra.');
+  return parts[parts.length - 1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function slugify(text: string): string {
+  return text.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '')
+    .replace(/^-+|-+$/g, '');
+}
+
 function generateRealisticLeads(profissao: string, cidade: string, estado: string, limit: number = 10) {
   const normalizedProf = normalizeKeyword(profissao);
   const data = professionalDatabase[normalizedProf] || {
@@ -135,6 +178,7 @@ function generateRealisticLeads(profissao: string, cidade: string, estado: strin
   };
 
   const leads = [];
+  const ddd = getDDDForLocation(cidade);
   
   for (let i = 0; i < limit; i++) {
     const nameIndex = i % data.names.length;
@@ -143,14 +187,13 @@ function generateRealisticLeads(profissao: string, cidade: string, estado: strin
     
     const name = data.names[nameIndex];
     const firstName = name.split(' ')[1] || name.split(' ')[0];
-    const lastName = name.split(' ').slice(-1)[0];
+    const lastName = surname(name);
     
     // Gerar email realista
     const emailDomain = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com.br'][i % 4];
-    const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}@${emailDomain}`;
+    const email = `${firstName.toLowerCase()}.${lastName}@${emailDomain}`;
     
-    // Gerar telefone realista
-    const ddd = ['21', '11', '27', '22', '31', '85'][i % 6];
+    // Gerar telefone com DDD correto da cidade
     const phone = `(${ddd}) 9${Math.floor(1000 + Math.random() * 8999)}-${Math.floor(1000 + Math.random() * 8999)}`;
     
     leads.push({
@@ -160,9 +203,9 @@ function generateRealisticLeads(profissao: string, cidade: string, estado: strin
       estado: estado,
       email: email,
       telefone: phone,
-      linkedin_url: `https://linkedin.com/in/${firstName.toLowerCase()}-${lastName.toLowerCase()}-${i}`,
+      linkedin_url: `https://linkedin.com/in/${firstName.toLowerCase()}-${lastName}-${i}`,
       fonte: 'database_simulado',
-      fonte_url: `https://linkedin.com/in/${firstName.toLowerCase()}-${lastName.toLowerCase()}-${i}`,
+      fonte_url: `https://linkedin.com/in/${firstName.toLowerCase()}-${lastName}-${i}`,
       fonte_snippet: `${data.specialties[specIndex]} em ${cidade}. Atendimento em ${data.clinics?.[clinicIndex] || data.companies?.[clinicIndex] || 'Consultório Particular'}.`,
       query_usada: `${profissao} ${cidade}`,
       pipeline_status: 'descoberto'
@@ -204,10 +247,10 @@ serve(async (req) => {
 
     console.log("🔍 Gerando leads para:", { profissao, cidade, estado });
 
-    // Gerar leads realistas
+    // Gerar leads realistas com DDD correto
     const leadsData = generateRealisticLeads(profissao, cidade, estado, 15);
     
-    console.log(`✅ ${leadsData.length} leads gerados`);
+    console.log(`✅ ${leadsData.length} leads gerados com DDD ${getDDDForLocation(cidade)}`);
 
     // Adicionar campanha_id e user_id aos leads
     const leads = leadsData.map(lead => ({
