@@ -263,6 +263,50 @@ export default function CampanhasProspeccao() {
     }
   };
 
+  const executarCampanha = async (icp: any) => {
+    try {
+      setLoading(true);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+
+      toast.info("🚀 Criando e executando campanha...");
+
+      // 1. Criar campanha
+      const { data: novaCampanha, error: campanhaError } = await supabase
+        .from('campanhas_prospeccao')
+        .insert({
+          user_id: user.id,
+          nome: `Campanha: ${icp.nome}`,
+          icp_config_id: icp.id,
+          tipo: icp.tipo,
+          status: 'executando',
+          meta_leads_total: 100
+        })
+        .select()
+        .single();
+
+      if (campanhaError) throw campanhaError;
+
+      // 2. Executar campanha
+      const { data: resultado, error: execError } = await supabase.functions.invoke('executar-campanha-completa', {
+        body: { campanhaId: novaCampanha.id }
+      });
+
+      if (execError) throw execError;
+
+      toast.success(`✅ ${resultado.message}`);
+      
+      // Recarregar
+      loadData();
+
+    } catch (error: any) {
+      toast.error("Erro: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const CampanhaCard = ({ campanha }: { campanha: any }) => {
     const stats = campanha.stats || {
       descobertos: 0,
@@ -522,6 +566,50 @@ export default function CampanhasProspeccao() {
             )}
           </div>
         </div>
+
+        {/* ICPs Configurados */}
+        {icps.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>ICPs Configurados</CardTitle>
+              <CardDescription>
+                Perfis de Cliente Ideal prontos para prospecção
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-4">
+                {icps.map((icp) => (
+                  <div key={icp.id} className="border rounded-lg p-4 hover:bg-muted/50 transition">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-lg mb-2">{icp.nome}</h3>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          <Badge variant="secondary">{icp.tipo === 'b2c' ? '👤 B2C' : '🏢 B2B'}</Badge>
+                          {icp.profissoes?.map((prof: string) => (
+                            <Badge key={prof} variant="outline">{prof}</Badge>
+                          ))}
+                          {icp.estados?.map((estado: string) => (
+                            <Badge key={estado} className="bg-blue-500/10 text-blue-700">{estado}</Badge>
+                          ))}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          <p>• {icp.fontes_habilitadas?.length || 0} fontes habilitadas</p>
+                          {icp.especialidades && icp.especialidades.length > 0 && (
+                            <p>• Especialidades: {icp.especialidades.join(', ')}</p>
+                          )}
+                        </div>
+                      </div>
+                      <Button size="sm" onClick={() => executarCampanha(icp)} disabled={loading}>
+                        <Play className="mr-2 h-4 w-4" />
+                        {loading ? 'Executando...' : 'Executar'}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Empty State */}
         {campanhas.length === 0 ? (
