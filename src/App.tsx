@@ -40,6 +40,7 @@ import CampanhaLeads from "./pages/CampanhaLeads";
 import LeadsDescobertos from "./pages/LeadsDescobertos";
 import Marketplace from "./pages/Marketplace";
 import MarketplaceProduto from "./pages/MarketplaceProduto";
+import MarketplacePublico from "./pages/MarketplacePublico";
 
 const queryClient = new QueryClient();
 
@@ -85,6 +86,7 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:slug" element={<MarketplaceProduto />} />
+            <Route path="/marketplace-publico" element={<MarketplacePublico />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
