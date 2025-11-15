@@ -9,6 +9,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { ArrowLeft, Search, MapPin, Briefcase, User, Phone, Mail, Linkedin, Instagram } from "lucide-react";
 
+const getScoreColor = (score: number) => {
+  if (score >= 80) return 'text-green-600 bg-green-50 dark:bg-green-950';
+  if (score >= 50) return 'text-yellow-600 bg-yellow-50 dark:bg-yellow-950';
+  return 'text-gray-600 bg-gray-50 dark:bg-gray-950';
+};
+
+const getScoreEmoji = (score: number) => {
+  if (score >= 80) return '🔥';
+  if (score >= 50) return '🟡';
+  return '❄️';
+};
+
 export default function LeadsDescobertos() {
   const navigate = useNavigate();
   const { campanhaId } = useParams();
@@ -228,9 +240,14 @@ export default function LeadsDescobertos() {
                     {lead.score && (
                       <div>
                         <p className="text-sm font-medium mb-2">Score de Qualificação:</p>
-                        <Badge variant="default" className="text-lg">
-                          {lead.score}/100
-                        </Badge>
+                        <div className="flex items-center gap-3">
+                          <Badge className={`text-lg font-bold ${getScoreColor(lead.score)}`}>
+                            {getScoreEmoji(lead.score)} {lead.score}/100
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {lead.score >= 80 ? 'Lead Quente' : lead.score >= 50 ? 'Lead Morno' : 'Lead Frio'}
+                          </span>
+                        </div>
                       </div>
                     )}
 
