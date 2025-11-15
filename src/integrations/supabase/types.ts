@@ -115,6 +115,56 @@ export type Database = {
         }
         Relationships: []
       }
+      campanhas_multiplas_fontes: {
+        Row: {
+          campanha_id: string | null
+          created_at: string | null
+          custo_total: number | null
+          executada_em: string | null
+          fonte: string
+          id: string
+          leads_descobertos: number | null
+          leads_enriquecidos: number | null
+          proxima_execucao: string | null
+          query_utilizada: string | null
+          status: string | null
+        }
+        Insert: {
+          campanha_id?: string | null
+          created_at?: string | null
+          custo_total?: number | null
+          executada_em?: string | null
+          fonte: string
+          id?: string
+          leads_descobertos?: number | null
+          leads_enriquecidos?: number | null
+          proxima_execucao?: string | null
+          query_utilizada?: string | null
+          status?: string | null
+        }
+        Update: {
+          campanha_id?: string | null
+          created_at?: string | null
+          custo_total?: number | null
+          executada_em?: string | null
+          fonte?: string
+          id?: string
+          leads_descobertos?: number | null
+          leads_enriquecidos?: number | null
+          proxima_execucao?: string | null
+          query_utilizada?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanhas_multiplas_fontes_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campanhas_prospeccao: {
         Row: {
           automatica: boolean | null
@@ -374,6 +424,42 @@ export type Database = {
           },
         ]
       }
+      fontes_dados: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          custo_por_lead: number | null
+          id: string
+          limite_diario: number | null
+          nome: string
+          requer_auth: boolean | null
+          tipo: string
+          url_base: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          custo_por_lead?: number | null
+          id?: string
+          limite_diario?: number | null
+          nome: string
+          requer_auth?: boolean | null
+          tipo: string
+          url_base?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          custo_por_lead?: number | null
+          id?: string
+          limite_diario?: number | null
+          nome?: string
+          requer_auth?: boolean | null
+          tipo?: string
+          url_base?: string | null
+        }
+        Relationships: []
+      }
       icp_configs: {
         Row: {
           ativo: boolean | null
@@ -381,6 +467,8 @@ export type Database = {
           b2c_config: Json | null
           created_at: string | null
           descricao: string | null
+          filtros_avancados: Json | null
+          fontes_habilitadas: Json | null
           id: string
           lead_count_b2b: number | null
           lead_count_b2c: number | null
@@ -396,6 +484,8 @@ export type Database = {
           b2c_config?: Json | null
           created_at?: string | null
           descricao?: string | null
+          filtros_avancados?: Json | null
+          fontes_habilitadas?: Json | null
           id?: string
           lead_count_b2b?: number | null
           lead_count_b2c?: number | null
@@ -411,6 +501,8 @@ export type Database = {
           b2c_config?: Json | null
           created_at?: string | null
           descricao?: string | null
+          filtros_avancados?: Json | null
+          fontes_habilitadas?: Json | null
           id?: string
           lead_count_b2b?: number | null
           lead_count_b2c?: number | null
@@ -527,7 +619,10 @@ export type Database = {
           contato_nome: string | null
           converteu_em: string | null
           created_at: string | null
+          dados_enriquecidos: Json | null
           data_constituicao: string | null
+          decisor_cargo: string | null
+          decisor_nome: string | null
           email: string | null
           endereco: string | null
           enriched_at: string | null
@@ -536,6 +631,7 @@ export type Database = {
           enviado_para: string | null
           estado: string
           facebook_url: string | null
+          faturamento_estimado: number | null
           fonte: string
           fonte_snippet: string | null
           fonte_url: string | null
@@ -548,6 +644,7 @@ export type Database = {
           mensagens_geradas: Json | null
           natureza_juridica: string | null
           nome_fantasia: string | null
+          num_funcionarios: number | null
           pipeline_status: string
           porte: string | null
           qualificacao_motivo: string | null
@@ -559,7 +656,9 @@ export type Database = {
           score: number | null
           score_breakdown: Json | null
           setor: string | null
+          site_url: string | null
           situacao: string | null
+          socios: Json | null
           telefone: string | null
           updated_at: string | null
           user_id: string
@@ -577,7 +676,10 @@ export type Database = {
           contato_nome?: string | null
           converteu_em?: string | null
           created_at?: string | null
+          dados_enriquecidos?: Json | null
           data_constituicao?: string | null
+          decisor_cargo?: string | null
+          decisor_nome?: string | null
           email?: string | null
           endereco?: string | null
           enriched_at?: string | null
@@ -586,6 +688,7 @@ export type Database = {
           enviado_para?: string | null
           estado: string
           facebook_url?: string | null
+          faturamento_estimado?: number | null
           fonte: string
           fonte_snippet?: string | null
           fonte_url?: string | null
@@ -598,6 +701,7 @@ export type Database = {
           mensagens_geradas?: Json | null
           natureza_juridica?: string | null
           nome_fantasia?: string | null
+          num_funcionarios?: number | null
           pipeline_status?: string
           porte?: string | null
           qualificacao_motivo?: string | null
@@ -609,7 +713,9 @@ export type Database = {
           score?: number | null
           score_breakdown?: Json | null
           setor?: string | null
+          site_url?: string | null
           situacao?: string | null
+          socios?: Json | null
           telefone?: string | null
           updated_at?: string | null
           user_id: string
@@ -627,7 +733,10 @@ export type Database = {
           contato_nome?: string | null
           converteu_em?: string | null
           created_at?: string | null
+          dados_enriquecidos?: Json | null
           data_constituicao?: string | null
+          decisor_cargo?: string | null
+          decisor_nome?: string | null
           email?: string | null
           endereco?: string | null
           enriched_at?: string | null
@@ -636,6 +745,7 @@ export type Database = {
           enviado_para?: string | null
           estado?: string
           facebook_url?: string | null
+          faturamento_estimado?: number | null
           fonte?: string
           fonte_snippet?: string | null
           fonte_url?: string | null
@@ -648,6 +758,7 @@ export type Database = {
           mensagens_geradas?: Json | null
           natureza_juridica?: string | null
           nome_fantasia?: string | null
+          num_funcionarios?: number | null
           pipeline_status?: string
           porte?: string | null
           qualificacao_motivo?: string | null
@@ -659,7 +770,9 @@ export type Database = {
           score?: number | null
           score_breakdown?: Json | null
           setor?: string | null
+          site_url?: string | null
           situacao?: string | null
+          socios?: Json | null
           telefone?: string | null
           updated_at?: string | null
           user_id?: string
@@ -678,11 +791,15 @@ export type Database = {
       }
       leads_b2c: {
         Row: {
+          anos_formado: number | null
           bairro: string | null
           campanha_id: string
           cidade: string
           converteu_em: string | null
+          crea: string | null
           created_at: string | null
+          crm: string | null
+          dados_enriquecidos: Json | null
           email: string | null
           endereco: string | null
           enriched_at: string | null
@@ -691,18 +808,21 @@ export type Database = {
           enviado_para: string | null
           especialidade: string | null
           estado: string
+          facebook_id: string | null
           facebook_url: string | null
           fonte: string
           fonte_snippet: string | null
           fonte_url: string | null
           id: string
           insights: string[] | null
+          instagram_seguidores: number | null
           instagram_username: string | null
           linkedin_id: string | null
           linkedin_url: string | null
           mensagem_selecionada: string | null
           mensagens_geradas: Json | null
           nome_completo: string
+          oab: string | null
           pipeline_status: string
           profissao: string
           qualificacao_motivo: string | null
@@ -713,7 +833,9 @@ export type Database = {
           score: number | null
           score_breakdown: Json | null
           sinais_poder_aquisitivo: string[] | null
+          site_url: string | null
           telefone: string | null
+          tem_consultorio: boolean | null
           tipo_validado: boolean | null
           updated_at: string | null
           user_id: string
@@ -722,11 +844,15 @@ export type Database = {
           whatsapp_status: string | null
         }
         Insert: {
+          anos_formado?: number | null
           bairro?: string | null
           campanha_id: string
           cidade: string
           converteu_em?: string | null
+          crea?: string | null
           created_at?: string | null
+          crm?: string | null
+          dados_enriquecidos?: Json | null
           email?: string | null
           endereco?: string | null
           enriched_at?: string | null
@@ -735,18 +861,21 @@ export type Database = {
           enviado_para?: string | null
           especialidade?: string | null
           estado: string
+          facebook_id?: string | null
           facebook_url?: string | null
           fonte: string
           fonte_snippet?: string | null
           fonte_url?: string | null
           id?: string
           insights?: string[] | null
+          instagram_seguidores?: number | null
           instagram_username?: string | null
           linkedin_id?: string | null
           linkedin_url?: string | null
           mensagem_selecionada?: string | null
           mensagens_geradas?: Json | null
           nome_completo: string
+          oab?: string | null
           pipeline_status?: string
           profissao: string
           qualificacao_motivo?: string | null
@@ -757,7 +886,9 @@ export type Database = {
           score?: number | null
           score_breakdown?: Json | null
           sinais_poder_aquisitivo?: string[] | null
+          site_url?: string | null
           telefone?: string | null
+          tem_consultorio?: boolean | null
           tipo_validado?: boolean | null
           updated_at?: string | null
           user_id: string
@@ -766,11 +897,15 @@ export type Database = {
           whatsapp_status?: string | null
         }
         Update: {
+          anos_formado?: number | null
           bairro?: string | null
           campanha_id?: string
           cidade?: string
           converteu_em?: string | null
+          crea?: string | null
           created_at?: string | null
+          crm?: string | null
+          dados_enriquecidos?: Json | null
           email?: string | null
           endereco?: string | null
           enriched_at?: string | null
@@ -779,18 +914,21 @@ export type Database = {
           enviado_para?: string | null
           especialidade?: string | null
           estado?: string
+          facebook_id?: string | null
           facebook_url?: string | null
           fonte?: string
           fonte_snippet?: string | null
           fonte_url?: string | null
           id?: string
           insights?: string[] | null
+          instagram_seguidores?: number | null
           instagram_username?: string | null
           linkedin_id?: string | null
           linkedin_url?: string | null
           mensagem_selecionada?: string | null
           mensagens_geradas?: Json | null
           nome_completo?: string
+          oab?: string | null
           pipeline_status?: string
           profissao?: string
           qualificacao_motivo?: string | null
@@ -801,7 +939,9 @@ export type Database = {
           score?: number | null
           score_breakdown?: Json | null
           sinais_poder_aquisitivo?: string[] | null
+          site_url?: string | null
           telefone?: string | null
+          tem_consultorio?: boolean | null
           tipo_validado?: boolean | null
           updated_at?: string | null
           user_id?: string
