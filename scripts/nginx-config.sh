@@ -5,7 +5,7 @@ echo "==============================================="
 
 # Substitua pelo seu domínio
 DOMAIN="api.amzofertas.com.br"
-EMAIL="contato@amzofertas.com.br"
+EMAIL="contato@atombrasildigital.com"
 
 echo ""
 echo "Criando configuração NGINX..."
