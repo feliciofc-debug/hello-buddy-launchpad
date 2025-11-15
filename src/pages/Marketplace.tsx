@@ -1,137 +1,85 @@
-import { useState } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Search, TrendingUp, Star, ExternalLink, Package, Tag, Zap, ShoppingCart } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Search, ShoppingBag, Gift, ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
 
-interface Product {
-  id: string;
-  title: string;
-  image: string;
-  price: number;
-  originalPrice?: number;
-  commission: number;
-  category: string;
-  rating: number;
-  sales: number;
-  affiliateLink: string;
-  badge?: string;
-  description: string;
-}
+export default function Marketplace() {
+  const navigate = useNavigate();
+  const [produtos, setProdutos] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoria, setCategoria] = useState("todos");
 
-const mockProducts: Product[] = [
-  {
-    id: '1',
-    brand: 'TechBrand',
-    logo: '🎧',
-    campaign: 'Headphones Premium 2025',
-    commission: 15,
-    type: 'Físico',
-    category: '📱 Eletrônicos',
-    description: 'Promova os melhores headphones do mercado com design premium e som de alta qualidade.',
-    requirements: {
-      followers: '5k+',
-      approval: 'Automática'
-    },
-    badge: 'Alta Demanda',
-    products: ['Headphone Pro X1', 'Headphone Wireless Z2', 'Earbuds Premium'],
-    materials: ['Banners HD', 'Vídeos promocionais', 'Copy pronta', 'Stories templates'],
-    terms: 'Comissão paga em até 30 dias. Cookie de 60 dias. Proibido spam.'
-  },
-  {
-    id: '2',
-    brand: 'BeautyLux',
-    logo: '💄',
-    campaign: 'Kit de Maquiagem Profissional',
-    commission: 20,
-    type: 'Físico',
-    category: '💄 Beleza',
-    description: 'Linha completa de cosméticos premium para maquiagem profissional.',
-    requirements: {
-      followers: '10k+',
-      approval: 'Manual'
-    },
-    badge: 'Exclusivo',
-    products: ['Kit Base + Corretivo', 'Paleta de Sombras 20 cores', 'Kit de Pincéis'],
-    materials: ['Fotos profissionais', 'Reels editados', 'Textos persuasivos'],
-    terms: 'Aprovação em até 48h. Comissão de 20% sobre vendas. Cookie de 45 dias.'
-  },
-  {
-    id: '3',
-    brand: 'FitLife',
-    logo: '💪',
-    campaign: 'Suplementos Fitness',
-    commission: 25,
-    type: 'Físico',
-    category: '💊 Saúde e Suplementos',
-    description: 'Suplementos de alta qualidade para ganho de massa e performance.',
-    requirements: {
-      followers: '3k+',
-      approval: 'Automática'
-    },
-    badge: 'Alta Demanda',
-    products: ['Whey Protein 900g', 'Creatina 300g', 'BCAA + Glutamina'],
-    materials: ['Guia de uso', 'Depoimentos reais', 'Estudos científicos', 'Posts prontos'],
-    terms: 'Comissão recorrente. Cookie de 90 dias. Suporte dedicado.'
-  },
-  {
-    id: '4',
-    brand: 'EduMaster',
-    logo: '📚',
-    campaign: 'Cursos Online Premium',
-    commission: 30,
-    type: 'Digital',
-    category: '📖 Educação',
-    description: 'Cursos completos de programação, design e marketing digital.',
-    requirements: {
-      followers: '2k+',
-      approval: 'Automática'
-    },
-    products: ['Curso Python Completo', 'Design UX/UI', 'Marketing Digital'],
-    materials: ['Webinars gravados', 'E-books gratuitos', 'Cupons de desconto'],
-    terms: 'Comissão vitalícia. 30% sobre todas as vendas. Suporte 24/7.'
-  },
-  {
-    id: '5',
-    brand: 'HomeSmart',
-    logo: '🏠',
-    campaign: 'Decoração Inteligente',
-    commission: 18,
-    type: 'Físico',
-    category: '🏠 Casa e Cozinha',
-    description: 'Produtos de decoração com tecnologia smart home integrada.',
-    requirements: {
-      followers: '8k+',
-      approval: 'Manual'
-    },
-    badge: 'Exclusivo',
-    products: ['Lâmpadas Smart RGB', 'Tomadas WiFi', 'Câmeras de Segurança'],
-    materials: ['Vídeos de instalação', 'Comparativos', 'Reviews técnicos'],
-    terms: 'Aprovação em 24h. Comissão de 18%. Frete grátis para afiliados.'
-  },
-  {
-    id: '6',
-    brand: 'PetCare',
-    logo: '🐶',
-    campaign: 'Produtos Pet Premium',
-    commission: 22,
-    type: 'Físico',
-    category: '🐶 Pet Shop',
-    description: 'Linha premium de alimentos e acessórios para pets.',
-    requirements: {
-      followers: '5k+',
-      approval: 'Automática'
-    },
-    badge: 'Alta Demanda',
-    products: ['Ração Super Premium', 'Brinquedos Interativos', 'Camas Ortopédicas'],
-    materials: ['Fotos profissionais', 'Vídeos com pets', 'Guias de cuidados'],
-    terms: 'Comissão de 22%. Cookie de 60 dias. Brindes para afiliados top.'
+  const categorias = [
+    "Beleza & Cosméticos",
+    "Suplementos & Vitaminas",
+    "Casa & Decoração",
+    "Eletrônicos",
+    "Moda & Acessórios",
+    "Saúde & Bem-estar"
+  ];
+
+  useEffect(() => {
+    loadProdutos();
+  }, []);
+
+  const loadProdutos = async () => {
+    try {
+      setLoading(true);
+      
+      let query = supabase
+        .from('produtos_marketplace')
+        .select('*')
+        .eq('ativo', true)
+        .order('created_at', { ascending: false });
+
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      setProdutos(data || []);
+
+    } catch (error: any) {
+      toast.error("Erro ao carregar produtos");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const produtosFiltrados = produtos.filter(p => {
+    const matchSearch = p.titulo.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchCategoria = categoria === "todos" || p.categoria === categoria;
+    return matchSearch && matchCategoria;
+  });
+
+  const getPlatformBadge = (plataforma: string) => {
+    const configs = {
+      shopee: { color: 'bg-orange-500', label: '🛍️ Shopee' },
+      amazon: { color: 'bg-yellow-600', label: '📦 Amazon' },
+      mercadolivre: { color: 'bg-yellow-500', label: '🛒 Mercado Livre' },
+      lomadee: { color: 'bg-blue-500', label: '🔗 Lomadee' },
+      outros: { color: 'bg-gray-500', label: '🏪 Outros' },
+    };
+    const config = configs[plataforma as keyof typeof configs] || configs.outros;
+    return <Badge className={`${config.color} text-white`}>{config.label}</Badge>;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Carregando produtos...</p>
+        </div>
+      </div>
+    );
   }
-];
-
-const mockApplications: Application[] = [
   {
     id: '1',
     offerId: '2',
