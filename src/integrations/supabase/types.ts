@@ -1236,6 +1236,69 @@ export type Database = {
           },
         ]
       }
+      produtos_marketplace: {
+        Row: {
+          ativo: boolean | null
+          categoria: string | null
+          cliques_afiliado: number | null
+          cliques_whatsapp: number | null
+          created_at: string | null
+          descricao: string | null
+          ebook_bonus: string | null
+          id: string
+          imagens: Json | null
+          link_afiliado: string
+          plataforma: string | null
+          preco: number
+          preco_original: number | null
+          slug: string | null
+          titulo: string
+          updated_at: string | null
+          user_id: string | null
+          visualizacoes: number | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          categoria?: string | null
+          cliques_afiliado?: number | null
+          cliques_whatsapp?: number | null
+          created_at?: string | null
+          descricao?: string | null
+          ebook_bonus?: string | null
+          id?: string
+          imagens?: Json | null
+          link_afiliado: string
+          plataforma?: string | null
+          preco: number
+          preco_original?: number | null
+          slug?: string | null
+          titulo: string
+          updated_at?: string | null
+          user_id?: string | null
+          visualizacoes?: number | null
+        }
+        Update: {
+          ativo?: boolean | null
+          categoria?: string | null
+          cliques_afiliado?: number | null
+          cliques_whatsapp?: number | null
+          created_at?: string | null
+          descricao?: string | null
+          ebook_bonus?: string | null
+          id?: string
+          imagens?: Json | null
+          link_afiliado?: string
+          plataforma?: string | null
+          preco?: number
+          preco_original?: number | null
+          slug?: string | null
+          titulo?: string
+          updated_at?: string | null
+          user_id?: string | null
+          visualizacoes?: number | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           amazon_id: string | null
