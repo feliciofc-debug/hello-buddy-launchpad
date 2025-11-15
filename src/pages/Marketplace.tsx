@@ -1,49 +1,27 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useTheme } from 'next-themes';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Search, TrendingUp, Star, ExternalLink, Package, Tag, Zap, ShoppingCart } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Store, Search, Filter, TrendingUp, CheckCircle, Clock, XCircle, Users, ShoppingBag, ArrowLeft, Sun, Moon, Upload } from 'lucide-react';
-import { toast } from 'sonner';
-import ImportCSVModal from '@/components/ImportCSVModal';
 
-interface Offer {
+interface Product {
   id: string;
-  brand: string;
-  logo: string;
-  campaign: string;
+  title: string;
+  image: string;
+  price: number;
+  originalPrice?: number;
   commission: number;
-  type: 'Físico' | 'Digital';
   category: string;
+  rating: number;
+  sales: number;
+  affiliateLink: string;
+  badge?: string;
   description: string;
-  requirements: {
-    followers: string;
-    approval: 'Automática' | 'Manual';
-  };
-  badge?: 'Exclusivo' | 'Alta Demanda';
-  products: string[];
-  materials: string[];
-  terms: string;
 }
 
-interface Application {
-  id: string;
-  offerId: string;
-  brand: string;
-  campaign: string;
-  status: 'Pendente' | 'Aprovado' | 'Recusado';
-  date: string;
-  reason?: string;
-}
-
-const mockOffers: Offer[] = [
+const mockProducts: Product[] = [
   {
     id: '1',
     brand: 'TechBrand',
