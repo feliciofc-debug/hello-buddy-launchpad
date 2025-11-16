@@ -1093,6 +1093,39 @@ export type Database = {
           },
         ]
       }
+      logs_analise_ia: {
+        Row: {
+          confianca: number | null
+          created_at: string | null
+          dados_extraidos: Json | null
+          erro: string | null
+          id: string
+          tempo_processamento: number | null
+          tipo: string
+          whatsapp_cliente: string | null
+        }
+        Insert: {
+          confianca?: number | null
+          created_at?: string | null
+          dados_extraidos?: Json | null
+          erro?: string | null
+          id?: string
+          tempo_processamento?: number | null
+          tipo: string
+          whatsapp_cliente?: string | null
+        }
+        Update: {
+          confianca?: number | null
+          created_at?: string | null
+          dados_extraidos?: Json | null
+          erro?: string | null
+          id?: string
+          tempo_processamento?: number | null
+          tipo?: string
+          whatsapp_cliente?: string | null
+        }
+        Relationships: []
+      }
       pipeline_stages: {
         Row: {
           created_at: string | null
@@ -1655,6 +1688,69 @@ export type Database = {
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
+        }
+        Relationships: []
+      }
+      validacoes_pedidos: {
+        Row: {
+          confianca_ia: number | null
+          created_at: string | null
+          dados_ia: Json | null
+          data_compra: string | null
+          ebook_enviado: boolean | null
+          id: string
+          imagem_url: string | null
+          instance_name: string | null
+          message_id: string | null
+          nome_cliente: string | null
+          numero_pedido: string
+          produto_nome: string | null
+          status: string
+          updated_at: string | null
+          validated_at: string | null
+          validated_by: string | null
+          valor_compra: number | null
+          whatsapp_cliente: string
+        }
+        Insert: {
+          confianca_ia?: number | null
+          created_at?: string | null
+          dados_ia?: Json | null
+          data_compra?: string | null
+          ebook_enviado?: boolean | null
+          id?: string
+          imagem_url?: string | null
+          instance_name?: string | null
+          message_id?: string | null
+          nome_cliente?: string | null
+          numero_pedido: string
+          produto_nome?: string | null
+          status?: string
+          updated_at?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+          valor_compra?: number | null
+          whatsapp_cliente: string
+        }
+        Update: {
+          confianca_ia?: number | null
+          created_at?: string | null
+          dados_ia?: Json | null
+          data_compra?: string | null
+          ebook_enviado?: boolean | null
+          id?: string
+          imagem_url?: string | null
+          instance_name?: string | null
+          message_id?: string | null
+          nome_cliente?: string | null
+          numero_pedido?: string
+          produto_nome?: string | null
+          status?: string
+          updated_at?: string | null
+          validated_at?: string | null
+          validated_by?: string | null
+          valor_compra?: number | null
+          whatsapp_cliente?: string
         }
         Relationships: []
       }
