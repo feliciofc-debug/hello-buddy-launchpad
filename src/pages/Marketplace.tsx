@@ -5,14 +5,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, ShoppingBag, Gift } from "lucide-react";
+import { Link2, ShoppingBag, Gift, CheckCircle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Marketplace() {
   const navigate = useNavigate();
   const [produtos, setProdutos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [shopeeLink, setShopeeLink] = useState("");
+  const [converting, setConverting] = useState(false);
   const [categoriaFiltro, setCategoriaFiltro] = useState("todos");
 
   const categorias = [
@@ -47,10 +48,54 @@ export default function Marketplace() {
     }
   };
 
+  const handleConvertLink = async () => {
+    if (!shopeeLink.trim()) {
+      toast.error("Por favor, cole um link da Shopee");
+      return;
+    }
+
+    try {
+      setConverting(true);
+      const { data, error } = await supabase.functions.invoke('converter-shopee', {
+        body: { shopeeLink }
+      });
+
+      if (error) throw error;
+
+      if (data?.success && data?.linkAfiliado) {
+        toast.success("Link convertido! Abrindo no WhatsApp...");
+        
+        const mensagem = `🎁 *PROMOÇÃO EXCLUSIVA SHOPEE!*
+
+Compre este produto usando MEU link de afiliado e ganhe um E-book GRÁTIS! 🎉
+
+🔗 *Link do produto:*
+${data.linkAfiliado}
+
+✅ *Como funciona:*
+1️⃣ Compre pelo link acima
+2️⃣ Envie print do comprovante aqui no WhatsApp
+3️⃣ Receba seu E-book GRÁTIS instantaneamente!
+
+Aproveite! 🛍️`;
+
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(mensagem)}`;
+        window.open(whatsappUrl, '_blank');
+      } else {
+        toast.error("Não foi possível converter o link");
+      }
+    } catch (error: any) {
+      console.error('Erro ao converter:', error);
+      toast.error("Erro ao converter link. Tente novamente.");
+    } finally {
+      setConverting(false);
+      setShopeeLink("");
+    }
+  };
+
   const produtosFiltrados = produtos.filter(p => {
-    const matchSearch = p.titulo.toLowerCase().includes(searchTerm.toLowerCase());
     const matchCategoria = categoriaFiltro === "todos" || p.categoria === categoriaFiltro;
-    return matchSearch && matchCategoria;
+    return matchCategoria;
   });
 
   const getPlatformBadge = (plataforma: string) => {
@@ -97,18 +142,102 @@ export default function Marketplace() {
           </div>
         </div>
       </header>
+      {/* Hero Section - Conversor Shopee */}
+      <section className="pt-32 pb-16 px-6">
+        <div className="max-w-4xl mx-auto">
+          {/* Título Principal */}
+          <div className="text-center mb-12">
+            <h2 className="text-5xl font-extrabold mb-4">
+              Cole seu <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-orange-600">Link da Shopee</span> Aqui
+            </h2>
+            <p className="text-purple-200 text-lg">
+              Faça sua compra pela <span className="font-bold text-orange-400">AMZ Ofertas</span> e escolha um <span className="font-bold text-purple-400">E-book GRÁTIS!</span>
+            </p>
+          </div>
 
-      <section className="pt-32 pb-12 px-6 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="max-w-7xl mx-auto text-center">
-          <h2 className="text-5xl md:text-6xl font-bold mb-6">
-            Marketplace de <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">Ofertas Premium</span>
-          </h2>
-          <p className="text-xl text-purple-200 mb-8 max-w-3xl mx-auto">Produtos selecionados das melhores marcas com preços exclusivos. Ganhe e-book grátis em cada compra!</p>
-          <div className="max-w-2xl mx-auto">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-purple-400" />
-              <Input placeholder="Buscar produtos..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-12 h-14 bg-slate-800/50 border-purple-500/30 text-white placeholder:text-purple-300" />
-            </div>
+          {/* Input Conversor */}
+          <Card className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-purple-500/30 shadow-2xl mb-8">
+            <CardContent className="p-8">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="relative flex-1">
+                  <Link2 className="absolute left-4 top-1/2 transform -translate-y-1/2 text-orange-400" size={24} />
+                  <Input
+                    placeholder="Cole o link do produto Shopee aqui..."
+                    className="pl-12 h-14 bg-slate-700 border-purple-500/50 text-white text-lg placeholder:text-purple-300 focus:border-orange-500"
+                    value={shopeeLink}
+                    onChange={(e) => setShopeeLink(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleConvertLink()}
+                  />
+                </div>
+                <Button
+                  onClick={handleConvertLink}
+                  disabled={converting}
+                  className="h-14 px-8 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-bold text-lg shadow-lg"
+                >
+                  {converting ? (
+                    <span className="flex items-center gap-2">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      Convertendo...
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-2">
+                      <Sparkles size={20} />
+                      Converter Link
+                    </span>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Cards Explicativos - 3 Colunas */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+            {/* 1. Cole o Link */}
+            <Card className="bg-gradient-to-br from-purple-900/50 to-purple-800/30 border-purple-500/30 hover:border-purple-400 transition">
+              <CardContent className="p-6 text-center">
+                <div className="bg-purple-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Link2 className="text-white" size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">1. Cole o Link</h3>
+                <p className="text-purple-200 text-sm">
+                  Copie qualquer link de produto da Shopee e cole no campo acima
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 2. Compre com Desconto */}
+            <Card className="bg-gradient-to-br from-orange-900/50 to-orange-800/30 border-orange-500/30 hover:border-orange-400 transition">
+              <CardContent className="p-6 text-center">
+                <div className="bg-orange-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <ShoppingBag className="text-white" size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">2. Compre com Desconto</h3>
+                <p className="text-orange-200 text-sm">
+                  Use nosso link de afiliado e aproveite as melhores ofertas da Shopee
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* 3. Ganhe E-book GRÁTIS */}
+            <Card className="bg-gradient-to-br from-pink-900/50 to-pink-800/30 border-pink-500/30 hover:border-pink-400 transition">
+              <CardContent className="p-6 text-center">
+                <div className="bg-pink-500 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Gift className="text-white" size={32} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">3. Ganhe E-book GRÁTIS</h3>
+                <p className="text-pink-200 text-sm">
+                  Envie o comprovante no WhatsApp e receba seu e-book instantaneamente!
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* CTA WhatsApp */}
+          <div className="text-center">
+            <p className="text-purple-300 mb-4">
+              <CheckCircle className="inline mr-2 text-green-400" size={20} />
+              100% Seguro | E-books entregues automaticamente via WhatsApp
+            </p>
           </div>
         </div>
       </section>
