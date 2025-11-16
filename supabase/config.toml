@@ -89,3 +89,6 @@ verify_jwt = false
 
 [functions.converter-shopee]
 verify_jwt = false
+
+[functions.analisar-comprovante-shopee]
+verify_jwt = false
