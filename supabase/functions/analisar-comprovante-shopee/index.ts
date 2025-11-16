@@ -499,7 +499,7 @@ async function logAnalise(
 async function notificarAdmin(mensagem: string) {
   try {
     // Enviar para WhatsApp admin (número configurável)
-    const ADMIN_WHATSAPP = "5511999999999"; // Configurar número real
+    const ADMIN_WHATSAPP = "5521995379550"; // Configurar número real
     
     await enviarMensagemWhatsApp(
       'default', // Instance name
