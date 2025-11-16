@@ -113,33 +113,33 @@ export default function Marketplace() {
         </div>
       </section>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8 bg-white">
         <div className="flex gap-8">
           <aside className="w-64 hidden lg:block">
-            <div className="sticky top-24 bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-6">
-              <h3 className="text-lg font-bold mb-4 text-purple-300">Categorias</h3>
+            <div className="sticky top-24 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="text-lg font-bold mb-4 text-gray-900">Categorias</h3>
               <div className="space-y-2">
-                <button onClick={() => setCategoriaFiltro("todos")} className={`w-full text-left px-4 py-2 rounded-lg transition ${categoriaFiltro === "todos" ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' : 'text-purple-200 hover:bg-slate-700/50'}`}>Todas</button>
+                <button onClick={() => setCategoriaFiltro("todos")} className={`w-full text-left px-4 py-2 rounded-lg transition ${categoriaFiltro === "todos" ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>Todas</button>
                 {categorias.map(cat => (
-                  <button key={cat} onClick={() => setCategoriaFiltro(cat)} className={`w-full text-left px-4 py-2 rounded-lg transition ${categoriaFiltro === cat ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' : 'text-purple-200 hover:bg-slate-700/50'}`}>{cat}</button>
+                  <button key={cat} onClick={() => setCategoriaFiltro(cat)} className={`w-full text-left px-4 py-2 rounded-lg transition ${categoriaFiltro === cat ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>{cat}</button>
                 ))}
               </div>
             </div>
           </aside>
 
           <main className="flex-1">
-            <div className="mb-6"><p className="text-purple-200"><span className="text-2xl font-bold text-white">{produtosFiltrados.length}</span> produtos encontrados</p></div>
+            <div className="mb-6"><p className="text-gray-600"><span className="text-2xl font-bold text-gray-900">{produtosFiltrados.length}</span> produtos encontrados</p></div>
             {produtosFiltrados.length === 0 ? (
-              <div className="text-center py-20 bg-slate-800/30 rounded-2xl border border-purple-500/20">
-                <ShoppingBag className="h-16 w-16 mx-auto text-purple-400 mb-4" />
-                <h3 className="text-2xl font-semibold mb-2">Nenhum produto encontrado</h3>
-                <p className="text-purple-300">Tente ajustar os filtros de busca</p>
+              <div className="text-center py-20 bg-gray-50 rounded-2xl border border-gray-200">
+                <ShoppingBag className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+                <h3 className="text-2xl font-semibold mb-2 text-gray-900">Nenhum produto encontrado</h3>
+                <p className="text-gray-600">Tente ajustar os filtros de busca</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {produtosFiltrados.map((produto) => (
-                  <Card key={produto.id} className="group bg-slate-800/50 border-purple-500/30 hover:border-purple-500/60 hover:shadow-2xl hover:shadow-purple-500/20 transition-all duration-300 cursor-pointer overflow-hidden" onClick={() => navigate(`/marketplace/${produto.slug}`)}>
-                    <div className="relative aspect-square overflow-hidden bg-slate-900">
+                  <Card key={produto.id} className="group bg-white border-gray-200 hover:border-purple-400 hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden" onClick={() => navigate(`/marketplace/${produto.slug}`)}>
+                    <div className="relative aspect-square overflow-hidden bg-gray-50">
                       {produto.imagens && produto.imagens[0] ? (
                         <img src={produto.imagens[0]} alt={produto.titulo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300" />
                       ) : (
@@ -152,12 +152,12 @@ export default function Marketplace() {
                       )}
                       <div className="absolute top-3 left-3">{getPlatformBadge(produto.plataforma || 'outros')}</div>
                     </div>
-                    <CardContent className="p-5 bg-gradient-to-b from-slate-800/80 to-slate-900">
-                      <h3 className="font-semibold text-sm mb-3 line-clamp-2 min-h-[2.5rem] text-white group-hover:text-purple-300 transition">{produto.titulo}</h3>
-                      {produto.categoria && <Badge variant="outline" className="text-xs mb-3 border-purple-500/50 text-purple-300">{produto.categoria}</Badge>}
+                    <CardContent className="p-5 bg-white">
+                      <h3 className="font-semibold text-sm mb-3 line-clamp-2 min-h-[2.5rem] text-gray-900 group-hover:text-purple-600 transition">{produto.titulo}</h3>
+                      {produto.categoria && <Badge variant="outline" className="text-xs mb-3 border-gray-300 text-gray-700">{produto.categoria}</Badge>}
                       <div className="flex items-baseline gap-2 mb-3">
-                        <span className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500">R$ {produto.preco.toFixed(2)}</span>
-                        {produto.preco_original && <span className="text-sm text-slate-400 line-through">R$ {produto.preco_original.toFixed(2)}</span>}
+                        <span className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-pink-600">R$ {produto.preco.toFixed(2)}</span>
+                        {produto.preco_original && <span className="text-sm text-gray-500 line-through">R$ {produto.preco_original.toFixed(2)}</span>}
                       </div>
                       {produto.ebook_bonus && (
                         <div className="mb-4 flex items-center gap-2 px-3 py-2 bg-green-500/20 border border-green-500/30 rounded-lg">
