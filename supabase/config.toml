@@ -86,3 +86,6 @@ verify_jwt = false
 
 [functions.search-leads]
 verify_jwt = false
+
+[functions.converter-shopee]
+verify_jwt = false
