@@ -1929,6 +1929,57 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_messages_received: {
+        Row: {
+          created_at: string | null
+          id: string
+          message: string
+          message_id: string | null
+          phone_number: string
+          raw_data: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          message: string
+          message_id?: string | null
+          phone_number: string
+          raw_data?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          message?: string
+          message_id?: string | null
+          phone_number?: string
+          raw_data?: Json | null
+        }
+        Relationships: []
+      }
+      whatsapp_messages_sent: {
+        Row: {
+          created_at: string | null
+          id: string
+          in_response_to: string | null
+          message: string
+          phone_number: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          in_response_to?: string | null
+          message: string
+          phone_number: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          in_response_to?: string | null
+          message?: string
+          phone_number?: string
+        }
+        Relationships: []
+      }
       whatsapp_notifications: {
         Row: {
           client_phone: string
