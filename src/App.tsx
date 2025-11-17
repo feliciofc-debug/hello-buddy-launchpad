@@ -4,7 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import { Bubble } from "@typebot.io/react";
+import { TypebotChat } from "@/components/TypebotChat";
 import Dashboard from "./pages/Dashboard";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -93,11 +93,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <Bubble
-            typebot="lead-generation-5cat1f5"
-            apiHost="https://typebot.io"
-            theme={{ button: { backgroundColor: "#0EA5E9" } }}
-          />
+          <TypebotChat />
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>
