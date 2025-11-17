@@ -1,5 +1,8 @@
 project_id = "jibpvpqgplmahjhswiza"
 
+[functions.send-wuzapi-message]
+verify_jwt = false
+
 [functions.analisar-produto]
 verify_jwt = false
 
