@@ -110,9 +110,43 @@ serve(async (req) => {
             });
           }
 
-          const encodedMessage = encodeURIComponent(personalizedMessage);
+          // Enviar via Wuzapi API
+          const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
+          const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
+          const WUZAPI_INSTANCE_ID = Deno.env.get('WUZAPI_INSTANCE_ID');
+
+          if (!WUZAPI_URL || !WUZAPI_TOKEN || !WUZAPI_INSTANCE_ID) {
+            console.error("[BULK-SEND] Credenciais Wuzapi não configuradas");
+            continue;
+          }
+
           const cleanPhone = contact.phone.replace(/\D/g, '');
-          const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
+          const chatId = `${cleanPhone}@s.whatsapp.net`;
+
+          try {
+            const wuzapiResponse = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Token': WUZAPI_TOKEN,
+              },
+              body: JSON.stringify({
+                session: WUZAPI_INSTANCE_ID,
+                to: chatId,
+                text: personalizedMessage
+              }),
+            });
+
+            if (wuzapiResponse.ok) {
+              sentCount++;
+              console.log(`[BULK-SEND] Mensagem enviada para ${contact.phone}`);
+            } else {
+              const errorData = await wuzapiResponse.json();
+              console.error(`[BULK-SEND] Erro ao enviar para ${contact.phone}:`, errorData);
+            }
+          } catch (sendError) {
+            console.error(`[BULK-SEND] Erro ao enviar para ${contact.phone}:`, sendError);
+          }
 
           // Update contact status
           await supabaseClient
