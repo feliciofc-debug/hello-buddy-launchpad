@@ -1,5 +1,8 @@
 project_id = "jibpvpqgplmahjhswiza"
 
+[functions.wuzapi-webhook]
+verify_jwt = false
+
 [functions.send-wuzapi-message]
 verify_jwt = false
 
