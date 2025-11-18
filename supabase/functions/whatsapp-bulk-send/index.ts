@@ -137,12 +137,14 @@ serve(async (req) => {
               }),
             });
 
+            const responseText = await wuzapiResponse.text();
+            console.log(`[BULK-SEND] Resposta Wuzapi para ${contact.phone}:`, responseText);
+
             if (wuzapiResponse.ok) {
               sentCount++;
               console.log(`[BULK-SEND] Mensagem enviada para ${contact.phone}`);
             } else {
-              const errorData = await wuzapiResponse.json();
-              console.error(`[BULK-SEND] Erro ao enviar para ${contact.phone}:`, errorData);
+              console.error(`[BULK-SEND] Erro ao enviar para ${contact.phone}. Status: ${wuzapiResponse.status}`);
             }
           } catch (sendError) {
             console.error(`[BULK-SEND] Erro ao enviar para ${contact.phone}:`, sendError);
