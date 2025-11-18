@@ -121,20 +121,24 @@ serve(async (req) => {
           }
 
           const cleanPhone = contact.phone.replace(/\D/g, '');
-          const chatId = `${cleanPhone}@s.whatsapp.net`;
 
           try {
+            // Wuzapi API v3 usa formato: {Phone, Body, Id}
+            const payload = {
+              Phone: cleanPhone,
+              Body: personalizedMessage,
+              Id: WUZAPI_INSTANCE_ID
+            };
+
+            console.log(`[BULK-SEND] 📦 Enviando para ${cleanPhone}:`, JSON.stringify(payload, null, 2));
+
             const wuzapiResponse = await fetch(`${WUZAPI_URL}/chat/send/text`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
                 'Token': WUZAPI_TOKEN,
               },
-              body: JSON.stringify({
-                session: WUZAPI_INSTANCE_ID,
-                to: chatId,
-                text: personalizedMessage
-              }),
+              body: JSON.stringify(payload),
             });
 
             const responseText = await wuzapiResponse.text();
