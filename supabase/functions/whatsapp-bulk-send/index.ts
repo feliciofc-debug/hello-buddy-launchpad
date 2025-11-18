@@ -124,16 +124,16 @@ serve(async (req) => {
           const chatId = `${cleanPhone}@s.whatsapp.net`;
 
           try {
-            const wuzapiResponse = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+            const wuzapiResponse = await fetch(`${WUZAPI_URL}/send-message`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Token': WUZAPI_TOKEN,
+                'token': WUZAPI_TOKEN,
               },
               body: JSON.stringify({
-                session: WUZAPI_INSTANCE_ID,
+                sessionId: WUZAPI_INSTANCE_ID,
                 to: chatId,
-                text: personalizedMessage
+                message: personalizedMessage
               }),
             });
 
