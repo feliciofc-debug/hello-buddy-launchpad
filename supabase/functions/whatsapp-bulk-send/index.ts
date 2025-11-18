@@ -132,16 +132,16 @@ serve(async (req) => {
           const cleanPhone = contact.phone.replace(/\D/g, '');
 
           try {
-            // Wuzapi API v3 usa formato correto: {phone, body, instanceId}
+            // Wuzapi API v3 formato CORRETO da documentação oficial
             const payload = {
-              phone: cleanPhone,
-              body: personalizedMessage,
-              instanceId: WUZAPI_INSTANCE_ID
+              Phone: cleanPhone,
+              Body: personalizedMessage,
+              Id: WUZAPI_INSTANCE_ID
             };
 
             // Remove barra extra se WUZAPI_URL já termina com /
             const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
-            const fullUrl = `${baseUrl}/message/send`;
+            const fullUrl = `${baseUrl}/chat/send/text`;
             console.log(`[BULK-SEND] 📦 Enviando para ${cleanPhone}`);
             console.log('URL completa:', fullUrl);
             console.log('Payload:', JSON.stringify(payload, null, 2));
@@ -151,7 +151,7 @@ serve(async (req) => {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${WUZAPI_TOKEN}`,
+                'Token': WUZAPI_TOKEN,
               },
               body: JSON.stringify(payload),
             });

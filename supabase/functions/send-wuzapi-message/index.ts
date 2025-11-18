@@ -38,22 +38,22 @@ serve(async (req) => {
     console.log('🚀 Enviando mensagem para:', formattedPhone);
     console.log('📍 URL completa:', `${WUZAPI_URL}/message/send`);
 
-    // Wuzapi API v3 usa formato correto: {phone, body, instanceId}
+    // Wuzapi API v3 formato CORRETO da documentação oficial
     const payload = {
-      phone: formattedPhone,
-      body: message,
-      instanceId: WUZAPI_INSTANCE_ID
+      Phone: formattedPhone,
+      Body: message,
+      Id: WUZAPI_INSTANCE_ID
     };
     
     console.log('📦 Payload:', JSON.stringify(payload, null, 2));
 
     // Remove barra extra se WUZAPI_URL já termina com /
     const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
-    const response = await fetch(`${baseUrl}/message/send`, {
+    const response = await fetch(`${baseUrl}/chat/send/text`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${WUZAPI_TOKEN}`,
+        'Token': WUZAPI_TOKEN,
       },
       body: JSON.stringify(payload),
     });
