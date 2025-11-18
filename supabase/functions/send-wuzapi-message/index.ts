@@ -41,16 +41,16 @@ serve(async (req) => {
     console.log('URL completa:', `${WUZAPI_URL}/chat/send/text`);
     console.log('Payload:', { session: WUZAPI_INSTANCE_ID, to: chatId, text: message });
 
-    const response = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+    const response = await fetch(`${WUZAPI_URL}/send-message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Token': WUZAPI_TOKEN,
+        'token': WUZAPI_TOKEN,
       },
       body: JSON.stringify({
-        session: WUZAPI_INSTANCE_ID,
+        sessionId: WUZAPI_INSTANCE_ID,
         to: chatId,
-        text: message
+        message: message
       }),
     });
 
