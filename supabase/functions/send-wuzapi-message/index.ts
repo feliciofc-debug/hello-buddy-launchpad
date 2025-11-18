@@ -32,14 +32,20 @@ serve(async (req) => {
       );
     }
 
-    // Formatar o número no padrão internacional
+    // Formatar o número no padrão internacional (apenas dígitos)
     const formattedPhone = phoneNumber.replace(/\D/g, '');
-    const chatId = `${formattedPhone}@s.whatsapp.net`;
 
-    console.log('Enviando mensagem para:', chatId);
+    console.log('🚀 Enviando mensagem para:', formattedPhone);
+    console.log('📍 URL completa:', `${WUZAPI_URL}/chat/send/text`);
 
-    console.log('URL completa:', `${WUZAPI_URL}/chat/send/text`);
-    console.log('Payload:', { session: WUZAPI_INSTANCE_ID, to: chatId, text: message });
+    // Wuzapi API v3 usa formato: {Phone, Body, Id}
+    const payload = {
+      Phone: formattedPhone,
+      Body: message,
+      Id: WUZAPI_INSTANCE_ID
+    };
+    
+    console.log('📦 Payload:', JSON.stringify(payload, null, 2));
 
     const response = await fetch(`${WUZAPI_URL}/chat/send/text`, {
       method: 'POST',
@@ -47,11 +53,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
         'Token': WUZAPI_TOKEN,
       },
-      body: JSON.stringify({
-        session: WUZAPI_INSTANCE_ID,
-        to: chatId,
-        text: message
-      }),
+      body: JSON.stringify(payload),
     });
 
     const responseText = await response.text();
