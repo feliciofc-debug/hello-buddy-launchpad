@@ -129,7 +129,12 @@ serve(async (req) => {
             continue;
           }
 
-          const cleanPhone = contact.phone.replace(/\D/g, '');
+          let cleanPhone = contact.phone.replace(/\D/g, '');
+          
+          // Adiciona código do país +55 se não tiver
+          if (!cleanPhone.startsWith('55') && cleanPhone.length === 11) {
+            cleanPhone = '55' + cleanPhone;
+          }
 
           try {
             // Wuzapi API v3 formato CORRETO da documentação oficial

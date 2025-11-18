@@ -33,10 +33,15 @@ serve(async (req) => {
     }
 
     // Formatar o número no padrão internacional (apenas dígitos)
-    const formattedPhone = phoneNumber.replace(/\D/g, '');
+    let formattedPhone = phoneNumber.replace(/\D/g, '');
+    
+    // Adiciona código do país +55 se não tiver
+    if (!formattedPhone.startsWith('55') && formattedPhone.length === 11) {
+      formattedPhone = '55' + formattedPhone;
+    }
 
     console.log('🚀 Enviando mensagem para:', formattedPhone);
-    console.log('📍 URL completa:', `${WUZAPI_URL}/message/send`);
+    console.log('📍 URL completa:', `${WUZAPI_URL}/chat/send/text`);
 
     // Wuzapi API v3 formato CORRETO da documentação oficial
     const payload = {
