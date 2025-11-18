@@ -13,17 +13,22 @@ interface Contact {
 }
 
 serve(async (req) => {
+  console.log('=== INICIO whatsapp-bulk-send ===');
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const requestBody = await req.json();
+    console.log('Request body:', JSON.stringify(requestBody, null, 2));
+    
     const { 
       campaignName, 
       messageTemplate, 
       contacts, 
       scheduledAt 
-    } = await req.json();
+    } = requestBody;
     
     console.log("[BULK-SEND] Processando envio em massa", { 
       campaignName, 
@@ -115,6 +120,10 @@ serve(async (req) => {
           const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
           const WUZAPI_INSTANCE_ID = Deno.env.get('WUZAPI_INSTANCE_ID');
 
+          console.log('Wuzapi URL:', WUZAPI_URL);
+          console.log('Wuzapi Instance ID:', WUZAPI_INSTANCE_ID);
+          console.log('Token existe?', !!WUZAPI_TOKEN);
+
           if (!WUZAPI_URL || !WUZAPI_TOKEN || !WUZAPI_INSTANCE_ID) {
             console.error("[BULK-SEND] Credenciais Wuzapi não configuradas");
             continue;
@@ -130,9 +139,13 @@ serve(async (req) => {
               Id: WUZAPI_INSTANCE_ID
             };
 
-            console.log(`[BULK-SEND] 📦 Enviando para ${cleanPhone}:`, JSON.stringify(payload, null, 2));
+            const fullUrl = `${WUZAPI_URL}/message/send`;
+            console.log(`[BULK-SEND] 📦 Enviando para ${cleanPhone}`);
+            console.log('URL completa:', fullUrl);
+            console.log('Payload:', JSON.stringify(payload, null, 2));
+            console.log('Enviando para Wuzapi...');
 
-            const wuzapiResponse = await fetch(`${WUZAPI_URL}/message/send`, {
+            const wuzapiResponse = await fetch(fullUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -141,8 +154,9 @@ serve(async (req) => {
               body: JSON.stringify(payload),
             });
 
+            console.log('Resposta Wuzapi status:', wuzapiResponse.status);
             const responseText = await wuzapiResponse.text();
-            console.log(`[BULK-SEND] Resposta Wuzapi para ${contact.phone}:`, responseText);
+            console.log('Resposta Wuzapi body:', responseText);
 
             if (wuzapiResponse.ok) {
               sentCount++;
@@ -194,6 +208,7 @@ serve(async (req) => {
       console.log(`[BULK-SEND] Envio concluído: ${sentCount}/${contacts.length}`);
     }
 
+    console.log('=== FIM whatsapp-bulk-send (sucesso) ===');
     return new Response(JSON.stringify({ 
       success: true,
       bulkSendId: bulkSend.id,
@@ -206,6 +221,7 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("[BULK-SEND] Erro:", error);
+    console.log('=== FIM whatsapp-bulk-send (erro) ===');
     return new Response(JSON.stringify({ 
       error: error instanceof Error ? error.message : String(error) 
     }), {
