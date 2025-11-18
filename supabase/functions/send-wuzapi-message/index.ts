@@ -36,7 +36,7 @@ serve(async (req) => {
     const formattedPhone = phoneNumber.replace(/\D/g, '');
 
     console.log('🚀 Enviando mensagem para:', formattedPhone);
-    console.log('📍 URL completa:', `${WUZAPI_URL}/chat/send/text`);
+    console.log('📍 URL completa:', `${WUZAPI_URL}/message/send`);
 
     // Wuzapi API v3 usa formato: {Phone, Body, Id}
     const payload = {
@@ -47,11 +47,11 @@ serve(async (req) => {
     
     console.log('📦 Payload:', JSON.stringify(payload, null, 2));
 
-    const response = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+    const response = await fetch(`${WUZAPI_URL}/message/send`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Token': WUZAPI_TOKEN,
+        'Authorization': `Bearer ${WUZAPI_TOKEN}`,
       },
       body: JSON.stringify(payload),
     });

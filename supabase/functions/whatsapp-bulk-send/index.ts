@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -132,11 +132,11 @@ serve(async (req) => {
 
             console.log(`[BULK-SEND] 📦 Enviando para ${cleanPhone}:`, JSON.stringify(payload, null, 2));
 
-            const wuzapiResponse = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+            const wuzapiResponse = await fetch(`${WUZAPI_URL}/message/send`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Token': WUZAPI_TOKEN,
+                'Authorization': `Bearer ${WUZAPI_TOKEN}`,
               },
               body: JSON.stringify(payload),
             });
