@@ -38,6 +38,9 @@ serve(async (req) => {
 
     console.log('Enviando mensagem para:', chatId);
 
+    console.log('URL completa:', `${WUZAPI_URL}/chat/send/text`);
+    console.log('Payload:', { session: WUZAPI_INSTANCE_ID, to: chatId, text: message });
+
     const response = await fetch(`${WUZAPI_URL}/chat/send/text`, {
       method: 'POST',
       headers: {
@@ -51,8 +54,17 @@ serve(async (req) => {
       }),
     });
 
-    const responseData = await response.json();
-    console.log('Resposta Wuzapi:', responseData);
+    const responseText = await response.text();
+    console.log('Resposta Wuzapi (texto):', responseText);
+    console.log('Status:', response.status);
+
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (e) {
+      console.error('Erro ao fazer parse do JSON:', e);
+      responseData = { rawResponse: responseText };
+    }
 
     if (!response.ok) {
       return new Response(
