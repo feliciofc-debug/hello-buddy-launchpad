@@ -132,14 +132,16 @@ serve(async (req) => {
           const cleanPhone = contact.phone.replace(/\D/g, '');
 
           try {
-            // Wuzapi API v3 usa formato: {Phone, Body, Id}
+            // Wuzapi API v3 usa formato correto: {phone, body, instanceId}
             const payload = {
-              Phone: cleanPhone,
-              Body: personalizedMessage,
-              Id: WUZAPI_INSTANCE_ID
+              phone: cleanPhone,
+              body: personalizedMessage,
+              instanceId: WUZAPI_INSTANCE_ID
             };
 
-            const fullUrl = `${WUZAPI_URL}/message/send`;
+            // Remove barra extra se WUZAPI_URL já termina com /
+            const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
+            const fullUrl = `${baseUrl}/message/send`;
             console.log(`[BULK-SEND] 📦 Enviando para ${cleanPhone}`);
             console.log('URL completa:', fullUrl);
             console.log('Payload:', JSON.stringify(payload, null, 2));
