@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft, Upload, Eye, Calendar, BarChart3, Trash2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft, Upload, Eye, Calendar, BarChart3, Trash2, Copy } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -39,6 +39,16 @@ interface GroupMessage {
 
 const WhatsAppPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Receber dados do IA Marketing (se vier de lá)
+  const iaMarketingData = location.state as {
+    messageTemplate?: string;
+    productImage?: string;
+    productTitle?: string;
+    campaignName?: string;
+    fromIAMarketing?: boolean;
+  } | null;
   
   // State para envio em massa
   const [campaignName, setCampaignName] = useState('');
@@ -51,6 +61,7 @@ const WhatsAppPage = () => {
   const [previewMessage, setPreviewMessage] = useState('');
   const [scheduledDate, setScheduledDate] = useState('');
   const [loading, setLoading] = useState(false);
+  const [productImage, setProductImage] = useState<string | null>(null);
 
   // State para histórico e estatísticas
   const [bulkSends, setBulkSends] = useState<BulkSend[]>([]);
@@ -71,6 +82,21 @@ const WhatsAppPage = () => {
     loadBulkSends();
     loadGroups();
     calculateStats();
+    
+    // Se vier do IA Marketing, preencher automaticamente
+    if (iaMarketingData?.fromIAMarketing) {
+      if (iaMarketingData.messageTemplate) {
+        setMessageTemplate(iaMarketingData.messageTemplate);
+      }
+      if (iaMarketingData.campaignName) {
+        setCampaignName(iaMarketingData.campaignName);
+      }
+      if (iaMarketingData.productImage) {
+        setProductImage(iaMarketingData.productImage);
+      }
+      
+      toast.success('✅ Mensagem do IA Marketing carregada! Agora escolha os grupos ou contatos.');
+    }
   }, []);
 
   const loadBulkSends = async () => {
@@ -443,6 +469,44 @@ const WhatsAppPage = () => {
                     className="font-mono text-sm"
                   />
                 </div>
+
+                {/* Imagem do Produto (se vier do IA Marketing) */}
+                {productImage && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">📷 Imagem do Produto</label>
+                    <div className="border rounded-lg p-4 bg-muted/30">
+                      <img 
+                        src={productImage} 
+                        alt="Produto"
+                        className="w-full max-w-xs h-48 object-cover rounded-md mx-auto"
+                      />
+                      <p className="text-xs text-muted-foreground mt-3 text-center">
+                        💡 Esta imagem será enviada junto com a mensagem no WhatsApp
+                      </p>
+                      <div className="flex gap-2 mt-3">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            navigator.clipboard.writeText(productImage);
+                            toast.success('Link da imagem copiado!');
+                          }}
+                          className="flex-1"
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copiar Link da Imagem
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setProductImage(null)}
+                          className="flex-1"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Remover
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Preview e Agendamento */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
