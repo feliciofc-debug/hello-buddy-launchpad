@@ -54,11 +54,11 @@ serve(async (req) => {
 
     // Remove barra extra se WUZAPI_URL já termina com /
     const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
-    const response = await fetch(`${baseUrl}/api/message/send`, {
+    const response = await fetch(`${baseUrl}/chat/send/text`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${WUZAPI_TOKEN}`,
+        'Token': WUZAPI_TOKEN,
       },
       body: JSON.stringify(payload),
     });
