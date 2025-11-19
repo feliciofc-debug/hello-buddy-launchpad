@@ -574,29 +574,33 @@ const IAMarketing = () => {
                             <Copy className="mr-2 h-4 w-4" />
                             Copiar
                           </Button>
+                        </div>
+                        
+                        {/* Botão Envio em Massa WhatsApp */}
                         <Button
                           onClick={() => {
                             const texto = editableTexts.whatsapp[selectedVariations.whatsapp];
-                            const linkProduto = resultado?.produto?.originalUrl || url;
                             const imagemProduto = resultado?.produto?.imagem;
+                            const tituloProduto = resultado?.produto?.titulo;
                             
-                            // Se tem imagem, abrir WhatsApp Web com imagem
-                            if (imagemProduto) {
-                              // WhatsApp Web suporta enviar imagem + texto via URL scheme
-                              const msg = encodeURIComponent(texto);
-                              window.open(`https://wa.me/?text=${msg}`, '_blank');
-                              toast.info("💡 Cole a imagem do produto manualmente no WhatsApp: " + imagemProduto);
-                            } else {
-                              const msg = encodeURIComponent(texto);
-                              window.open(`https://wa.me/?text=${msg}`, '_blank');
-                            }
+                            // Navegar para página WhatsApp com dados da campanha
+                            navigate('/whatsapp', {
+                              state: {
+                                messageTemplate: texto,
+                                productImage: imagemProduto,
+                                productTitle: tituloProduto,
+                                campaignName: `Campanha ${tituloProduto || 'Marketing'}`,
+                                fromIAMarketing: true
+                              }
+                            });
+                            
+                            toast.success('✅ Redirecionando para WhatsApp...');
                           }}
-                          className="flex-1 bg-green-600 hover:bg-green-700"
+                          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                         >
                           <MessageCircle className="mr-2 h-4 w-4" />
-                          Enviar
+                          📤 Enviar para WhatsApp (Grupos)
                         </Button>
-                        </div>
                         
                         {/* 🚀 PILAR 2: Botão Criar Campanha de Prospecção */}
                         <Button
