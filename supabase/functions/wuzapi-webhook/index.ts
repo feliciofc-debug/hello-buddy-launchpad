@@ -16,27 +16,45 @@ serve(async (req) => {
     const webhookData = await req.json();
     console.log('[WEBHOOK] Dados recebidos:', JSON.stringify(webhookData, null, 2));
 
-    // Verificar se é uma mensagem de entrada
-    if (!webhookData.messages || webhookData.messages.length === 0) {
-      return new Response(JSON.stringify({ status: 'ignored', reason: 'no messages' }), {
+    // Wuzapi envia eventos com estrutura: { type, event, instanceName, state }
+    // Verificar se é uma mensagem (não ReadReceipt, Delivery, etc)
+    if (webhookData.type !== 'Message') {
+      console.log(`[WEBHOOK] Ignorando evento tipo: ${webhookData.type}`);
+      return new Response(JSON.stringify({ status: 'ignored', reason: `event type: ${webhookData.type}` }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const message = webhookData.messages[0];
+    // Extrair dados da mensagem do objeto event
+    const event = webhookData.event;
     
     // Ignorar mensagens do próprio bot
-    if (message.fromMe) {
+    if (event.IsFromMe) {
+      console.log('[WEBHOOK] Ignorando mensagem própria');
       return new Response(JSON.stringify({ status: 'ignored', reason: 'own message' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const phoneNumber = message.from.replace('@s.whatsapp.net', '');
-    const messageText = message.body || message.text || '';
-    const messageId = message.id;
+    // Verificar se tem mensagem de texto
+    if (!webhookData.message || !webhookData.message.conversation) {
+      console.log('[WEBHOOK] Mensagem sem texto ou tipo não suportado');
+      return new Response(JSON.stringify({ status: 'ignored', reason: 'no text content' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
 
-    console.log(`[WEBHOOK] Nova mensagem de ${phoneNumber}: ${messageText}`);
+    const phoneNumber = (event.Sender?.replace('@s.whatsapp.net', '') || event.Chat?.replace('@s.whatsapp.net', ''))?.replace(/\D/g, '');
+    const messageText = webhookData.message.conversation;
+    const messageId = webhookData.messageID || webhookData.userID;
+    
+    // Garantir que o número tem código de país
+    let formattedPhone = phoneNumber;
+    if (formattedPhone && !formattedPhone.startsWith('55') && formattedPhone.length === 11) {
+      formattedPhone = '55' + formattedPhone;
+    }
+
+    console.log(`[WEBHOOK] Nova mensagem de ${formattedPhone}: ${messageText}`);
 
     // Inicializar Supabase
     const supabaseClient = createClient(
@@ -48,7 +66,7 @@ serve(async (req) => {
     await supabaseClient
       .from('whatsapp_messages_received')
       .insert({
-        phone_number: phoneNumber,
+        phone_number: formattedPhone,
         message: messageText,
         message_id: messageId,
         raw_data: webhookData
@@ -69,7 +87,7 @@ serve(async (req) => {
     const { data: messageHistory } = await supabaseClient
       .from('whatsapp_messages_received')
       .select('message, created_at')
-      .eq('phone_number', phoneNumber)
+      .eq('phone_number', formattedPhone)
       .order('created_at', { ascending: true })
       .limit(10);
 
@@ -144,16 +162,17 @@ Responda de forma natural e persuasiva:`;
       });
     }
 
-    const wuzapiResponse = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+    const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
+    const wuzapiResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Token': WUZAPI_TOKEN,
       },
       body: JSON.stringify({
-        session: WUZAPI_INSTANCE_ID,
-        to: message.from,
-        text: aiMessage
+        Phone: formattedPhone,
+        Body: aiMessage,
+        Id: WUZAPI_INSTANCE_ID
       }),
     });
 
@@ -169,7 +188,7 @@ Responda de forma natural e persuasiva:`;
     await supabaseClient
       .from('whatsapp_messages_sent')
       .insert({
-        phone_number: phoneNumber,
+        phone_number: formattedPhone,
         message: aiMessage,
         in_response_to: messageId
       });
