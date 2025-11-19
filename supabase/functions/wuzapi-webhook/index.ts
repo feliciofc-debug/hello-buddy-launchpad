@@ -14,39 +14,65 @@ serve(async (req) => {
 
   try {
     const webhookData = await req.json();
-    console.log('[WEBHOOK] Dados recebidos:', JSON.stringify(webhookData, null, 2));
+    console.log('[WEBHOOK] ========== EVENTO RECEBIDO ==========');
+    console.log('[WEBHOOK] Type:', webhookData.type);
+    console.log('[WEBHOOK] Payload completo:', JSON.stringify(webhookData, null, 2));
 
-    // Wuzapi envia eventos com estrutura: { type, event, instanceName, state }
-    // Verificar se é uma mensagem (não ReadReceipt, Delivery, etc)
-    if (webhookData.type !== 'Message') {
-      console.log(`[WEBHOOK] Ignorando evento tipo: ${webhookData.type}`);
-      return new Response(JSON.stringify({ status: 'ignored', reason: `event type: ${webhookData.type}` }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Extrair dados da mensagem do objeto event
-    const event = webhookData.event;
+    // Extrair dados do evento
+    const event = webhookData.event || {};
     
     // Ignorar mensagens do próprio bot
     if (event.IsFromMe) {
-      console.log('[WEBHOOK] Ignorando mensagem própria');
+      console.log('[WEBHOOK] ❌ Ignorando: mensagem própria');
       return new Response(JSON.stringify({ status: 'ignored', reason: 'own message' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Verificar se tem mensagem de texto
-    if (!webhookData.message || !webhookData.message.conversation) {
-      console.log('[WEBHOOK] Mensagem sem texto ou tipo não suportado');
-      return new Response(JSON.stringify({ status: 'ignored', reason: 'no text content' }), {
+    // Tentar extrair mensagem de diferentes locais do payload
+    let messageText = null;
+    
+    // Formato 1: webhookData.message.conversation
+    if (webhookData.message?.conversation) {
+      messageText = webhookData.message.conversation;
+      console.log('[WEBHOOK] ✅ Mensagem encontrada em: message.conversation');
+    }
+    // Formato 2: webhookData.message.text
+    else if (webhookData.message?.text) {
+      messageText = webhookData.message.text;
+      console.log('[WEBHOOK] ✅ Mensagem encontrada em: message.text');
+    }
+    // Formato 3: webhookData.text
+    else if (webhookData.text) {
+      messageText = webhookData.text;
+      console.log('[WEBHOOK] ✅ Mensagem encontrada em: text');
+    }
+    // Formato 4: event.Body
+    else if (event.Body) {
+      messageText = event.Body;
+      console.log('[WEBHOOK] ✅ Mensagem encontrada em: event.Body');
+    }
+    // Formato 5: Verificar se é ReadReceipt ou outro tipo sem mensagem
+    else {
+      console.log('[WEBHOOK] ❌ Ignorando: evento tipo', webhookData.type, '(sem texto)');
+      return new Response(JSON.stringify({ status: 'ignored', reason: `no text in ${webhookData.type}` }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const phoneNumber = (event.Sender?.replace('@s.whatsapp.net', '') || event.Chat?.replace('@s.whatsapp.net', ''))?.replace(/\D/g, '');
-    const messageText = webhookData.message.conversation;
-    const messageId = webhookData.messageID || webhookData.userID;
+    // Extrair número de telefone
+    const phoneNumber = (event.Sender?.replace('@s.whatsapp.net', '') || 
+                        event.Chat?.replace('@s.whatsapp.net', '') ||
+                        event.From?.replace('@s.whatsapp.net', ''))?.replace(/\D/g, '');
+    
+    const messageId = webhookData.messageID || webhookData.userID || event.MessageID;
+    
+    if (!phoneNumber || !messageText) {
+      console.log('[WEBHOOK] ❌ Dados incompletos - Phone:', phoneNumber, 'Text:', messageText);
+      return new Response(JSON.stringify({ status: 'ignored', reason: 'incomplete data' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
     
     // Garantir que o número tem código de país
     let formattedPhone = phoneNumber;
