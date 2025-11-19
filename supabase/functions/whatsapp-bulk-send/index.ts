@@ -140,8 +140,8 @@ serve(async (req) => {
             // Wuzapi API v3 formato CORRETO da documentação oficial
             const payload = {
               Phone: cleanPhone,
-              Body: personalizedMessage,
-              Id: WUZAPI_INSTANCE_ID
+              Body: personalizedMessage
+              // Id é opcional - se omitido, Wuzapi gera automaticamente
             };
 
             // Remove barra extra se WUZAPI_URL já termina com /
