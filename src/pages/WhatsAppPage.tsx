@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft, Upload, Eye, Calendar, BarChart3, Trash2, Copy } from 'lucide-react';
+import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft, Upload, Eye, Calendar, BarChart3, Trash2, Copy, Activity } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { WhatsAppDiagnostics } from '@/components/WhatsAppDiagnostics';
 
 interface Contact {
   name: string;
@@ -369,7 +370,7 @@ const WhatsAppPage = () => {
         </div>
 
         <Tabs defaultValue="bulk-send" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="bulk-send">
               <Send className="w-4 h-4 mr-2" />
               Envio em Massa
@@ -381,6 +382,10 @@ const WhatsAppPage = () => {
             <TabsTrigger value="history">
               <BarChart3 className="w-4 h-4 mr-2" />
               Histórico
+            </TabsTrigger>
+            <TabsTrigger value="diagnostics">
+              <Activity className="w-4 h-4 mr-2" />
+              Diagnóstico
             </TabsTrigger>
           </TabsList>
 
@@ -701,6 +706,11 @@ const WhatsAppPage = () => {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* DIAGNÓSTICO */}
+          <TabsContent value="diagnostics" className="space-y-6">
+            <WhatsAppDiagnostics />
           </TabsContent>
         </Tabs>
       </div>
