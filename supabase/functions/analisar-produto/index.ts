@@ -374,10 +374,12 @@ STORY INSTAGRAM (3 variações, MAX 80 caracteres):
 - Opção B: Pergunta + "Tá na Shopee!" SEMPRE termine com "🔗 Link abaixo!"
 - Opção C: "⏰ CORRE! Shopee" + urgência. SEMPRE termine com "🔗 Arrasta!"
 
-WHATSAPP (3 variações):
-- Opção A: Curto e direto (2-3 linhas max). Mencione "Shopee" e adicione o link: ${linkAfiliado}
-- Opção B: Amigável e conversacional. Use emoji 🛒. SEMPRE inclua o link: ${linkAfiliado}
-- Opção C: Com call-to-action forte e urgência. SEMPRE inclua o link: ${linkAfiliado}
+WHATSAPP (3 variações - CRÍTICO: NUNCA DEIXE VAZIO):
+- Opção A: Mensagem CURTA e DIRETA (2 linhas). Formato: "🚨 [Nome do Produto] com desconto na Shopee! [emoji relevante]" + NOVA LINHA + link completo: ${linkAfiliado}
+- Opção B: Mensagem AMIGÁVEL e pessoal (3-4 linhas). Formato: "Oi! 👋 [mensagem conversacional sobre o produto]" + NOVA LINHA + link completo: ${linkAfiliado}
+- Opção C: Mensagem de URGÊNCIA (2-3 linhas). Formato: "⏰ ÚLTIMAS UNIDADES! [call-to-action forte]" + NOVA LINHA + link completo: ${linkAfiliado}
+
+ATENÇÃO: TODAS as 3 opções de WhatsApp DEVEM ter texto E o link ${linkAfiliado}. NUNCA retorne vazio!
 
 IMPORTANTE:
 - TODOS os textos devem estar em ${detectedLanguage}

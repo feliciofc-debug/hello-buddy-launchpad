@@ -64,7 +64,7 @@ serve(async (req) => {
       throw new Error(data.message || 'Erro ao converter link Shopee');
     }
 
-    // Extrair dados do produto via scraping do HTML (fallback)
+    // Extrair dados do produto via scraping do HTML
     let titulo = 'Produto Shopee';
     let preco = '0.00';
     let imagem = null;
@@ -78,7 +78,12 @@ serve(async (req) => {
       }
       
       console.log('[SHOPEE] Fazendo scraping da URL:', finalUrl);
-      const htmlResponse = await fetch(finalUrl, {
+      
+      // Usar ScraperAPI para obter o HTML renderizado
+      const SCRAPER_API_KEY = Deno.env.get('SCRAPER_API_KEY');
+      const scraperUrl = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(finalUrl)}&render=true`;
+      
+      const htmlResponse = await fetch(scraperUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
@@ -86,31 +91,121 @@ serve(async (req) => {
       
       if (htmlResponse.ok) {
         const html = await htmlResponse.text();
+        console.log('[SHOPEE] HTML obtido com sucesso, tamanho:', html.length);
         
-        // Extrair título
-        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i) ||
-                          html.match(/"name"\s*:\s*"([^"]+)"/);
-        if (titleMatch) {
-          titulo = titleMatch[1].replace(/\s+/g, ' ').replace(/[|\-–—].*(Shopee).*$/i, '').trim();
+        // Tentar extrair dados do __INITIAL_STATE__ (formato usado pela Shopee)
+        const stateMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});/);
+        if (stateMatch) {
+          try {
+            const state = JSON.parse(stateMatch[1]);
+            console.log('[SHOPEE] __INITIAL_STATE__ encontrado');
+            
+            // Navegar na estrutura para encontrar os dados do item
+            const item = state?.item?.item;
+            if (item) {
+              titulo = item.name || titulo;
+              
+              // Preço na Shopee (dividido por 100000)
+              if (item.price_min) {
+                preco = (item.price_min / 100000).toFixed(2);
+              } else if (item.price) {
+                preco = (item.price / 100000).toFixed(2);
+              }
+              
+              // Imagem
+              if (item.image) {
+                imagem = `https://cf.shopee.com.br/file/${item.image}`;
+              } else if (item.images && item.images[0]) {
+                imagem = `https://cf.shopee.com.br/file/${item.images[0]}`;
+              }
+              
+              console.log('[SHOPEE] Dados extraídos do __INITIAL_STATE__:', { titulo, preco, imagem: !!imagem });
+            }
+          } catch (jsonError) {
+            console.warn('[SHOPEE] Erro ao parsear __INITIAL_STATE__:', jsonError);
+          }
         }
         
-        // Extrair preço (Shopee usa centavos * 100000)
-        let precoMatch = html.match(/"price_min"\s*:\s*([0-9]+)/);
-        if (!precoMatch) precoMatch = html.match(/"price"\s*:\s*([0-9]+)/);
-        if (precoMatch) {
-          preco = (parseInt(precoMatch[1]) / 100000).toFixed(2);
+        // Se não conseguiu pelo __INITIAL_STATE__, tentar outros métodos
+        if (titulo === 'Produto Shopee') {
+          // Tentar LD+JSON
+          const ldJsonMatch = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+          if (ldJsonMatch) {
+            try {
+              const ldJson = JSON.parse(ldJsonMatch[1]);
+              if (ldJson.name) titulo = ldJson.name;
+              if (ldJson.offers?.price) preco = parseFloat(ldJson.offers.price).toFixed(2);
+              if (ldJson.image) imagem = Array.isArray(ldJson.image) ? ldJson.image[0] : ldJson.image;
+              console.log('[SHOPEE] Dados extraídos do LD+JSON');
+            } catch (e) {
+              console.warn('[SHOPEE] Erro ao parsear LD+JSON:', e);
+            }
+          }
+          
+          // Fallback: regex patterns
+          if (titulo === 'Produto Shopee') {
+            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            if (titleMatch) {
+              titulo = titleMatch[1]
+                .replace(/\s+/g, ' ')
+                .replace(/[|\-–—].*(Shopee).*$/i, '')
+                .replace(/\s*\|\s*Shopee\s*Brasil/i, '')
+                .trim();
+            }
+          }
+          
+          if (preco === '0.00') {
+            // Tentar vários padrões de preço
+            const precoPatterns = [
+              /"price_min"\s*:\s*(\d+)/,
+              /"price"\s*:\s*(\d+)/,
+              /R\$\s*([\d.,]+)/,
+              /"priceCurrency":"BRL","price":"([\d.]+)"/
+            ];
+            
+            for (const pattern of precoPatterns) {
+              const match = html.match(pattern);
+              if (match) {
+                const valor = match[1].replace(/\./g, '').replace(',', '.');
+                const numero = parseFloat(valor);
+                
+                // Se for um valor muito grande, provavelmente está em centavos * 100000
+                if (numero > 100000) {
+                  preco = (numero / 100000).toFixed(2);
+                } else {
+                  preco = numero.toFixed(2);
+                }
+                break;
+              }
+            }
+          }
+          
+          if (!imagem) {
+            const imagemPatterns = [
+              /"image"\s*:\s*"([^"]+)"/,
+              /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+              /"images"\s*:\s*\[\s*"([^"]+)"/
+            ];
+            
+            for (const pattern of imagemPatterns) {
+              const match = html.match(pattern);
+              if (match) {
+                imagem = match[1];
+                if (!imagem.startsWith('http')) {
+                  imagem = `https://cf.shopee.com.br/file/${imagem}`;
+                }
+                break;
+              }
+            }
+          }
         }
         
-        // Extrair imagem
-        const imagemMatch = html.match(/"image"\s*:\s*"([^"]+)"/);
-        if (imagemMatch) {
-          imagem = imagemMatch[1];
-        }
-        
-        console.log('[SHOPEE] Dados extraídos:', { titulo, preco, imagem: !!imagem });
+        console.log('[SHOPEE] Dados finais extraídos:', { titulo, preco, imagem: !!imagem });
+      } else {
+        console.error('[SHOPEE] Erro ao obter HTML:', htmlResponse.status);
       }
     } catch (scrapingError) {
-      console.warn('[SHOPEE] Erro ao fazer scraping:', scrapingError);
+      console.error('[SHOPEE] Erro ao fazer scraping:', scrapingError);
     }
     
     const resultado = {
