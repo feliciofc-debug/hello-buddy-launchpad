@@ -352,6 +352,17 @@ const Dashboard = () => {
             <span className="font-semibold">📱 WhatsApp</span>
           </a>
           <a
+            href="/whatsapp-conversations"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+              window.location.pathname === '/whatsapp-conversations' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Bot size={20} />
+            💬 IA Conversas
+          </a>
+          <a
             href="/configuracoes/redes-sociais"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
               window.location.pathname === '/configuracoes/redes-sociais' 
