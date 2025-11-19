@@ -46,8 +46,8 @@ serve(async (req) => {
     // Wuzapi API v3 formato CORRETO da documentação oficial
     const payload = {
       Phone: formattedPhone,
-      Body: message,
-      Id: WUZAPI_INSTANCE_ID
+      Body: message
+      // Id é opcional - se omitido, Wuzapi gera automaticamente
     };
     
     console.log('📦 Payload:', JSON.stringify(payload, null, 2));
