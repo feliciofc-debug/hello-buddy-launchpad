@@ -5,9 +5,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { MessageSquare, User, Clock, ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { MessageSquare, User, Clock, ArrowRight, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useNavigate } from "react-router-dom";
 
 interface Message {
   id: string;
@@ -30,6 +32,7 @@ interface Conversation {
 }
 
 export default function WhatsAppConversations() {
+  const navigate = useNavigate();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
 
   const { data: conversations, isLoading } = useQuery({
@@ -130,11 +133,22 @@ export default function WhatsAppConversations() {
 
   return (
     <div className="container mx-auto p-8">
-      <div className="mb-6">
-        <h1 className="text-4xl font-bold mb-2">💬 Conversas WhatsApp</h1>
-        <p className="text-muted-foreground">
-          Acompanhe as conversas com seus leads em tempo real
-        </p>
+      <div className="mb-6 flex items-center gap-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate("/dashboard")}
+          className="gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Voltar ao Menu
+        </Button>
+        <div className="flex-1">
+          <h1 className="text-4xl font-bold mb-2">💬 Conversas WhatsApp</h1>
+          <p className="text-muted-foreground">
+            Acompanhe as conversas com seus leads em tempo real
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
