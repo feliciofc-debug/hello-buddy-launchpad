@@ -341,6 +341,17 @@ const Dashboard = () => {
             IA Marketing
           </a>
           <a
+            href="/whatsapp"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md hover:shadow-lg ${
+              window.location.pathname === '/whatsapp' 
+                ? 'ring-2 ring-green-300' 
+                : ''
+            }`}
+          >
+            <MessageCircle size={20} />
+            <span className="font-semibold">📱 WhatsApp</span>
+          </a>
+          <a
             href="/configuracoes/redes-sociais"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
               window.location.pathname === '/configuracoes/redes-sociais' 
