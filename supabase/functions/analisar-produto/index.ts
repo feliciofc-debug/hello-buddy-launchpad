@@ -543,40 +543,93 @@ Retorne APENAS um JSON válido no formato:
       console.log('✅ ScraperAPI OK, HTML:', html.length, 'bytes');
     }
 
-    // Extrair título e preço com regex melhorados
+    // Extrair título, preço e IMAGEM com regex melhorados
     let titulo = '';
     let preco = '';
+    let imagem = '';
 
-    // EXTRAÇÃO DE TÍTULO
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i) ||
-                      html.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
-                      html.match(/"name"\s*:\s*"([^"]+)"/);
-    
-    if (titleMatch) {
-      titulo = titleMatch[1]
-        .replace(/\s+/g, ' ')
-        .replace(/[|\-–—].*(Amazon|Shopee|Mercado\s*Livre).*$/i, '')
-        .trim();
-    }
-
-    // EXTRAÇÃO DE PREÇO - ESPECÍFICO POR MARKETPLACE
+    // EXTRAÇÃO ESPECÍFICA PARA SHOPEE (JSON embutido na página)
     if (finalUrl.includes('shopee.com')) {
-      console.log('🛍️ Detectado: Shopee');
+      console.log('🛍️ Detectado: Shopee - Extraindo dados do JSON embutido');
       
-      let precoMatch = html.match(/"price_min"\s*:\s*([0-9]+)/);
-      if (!precoMatch) precoMatch = html.match(/"price"\s*:\s*([0-9]+)/);
-      if (!precoMatch) precoMatch = html.match(/R\$\s*([0-9.,]+)/);
-      
-      if (precoMatch) {
-        let precoRaw = precoMatch[1].replace(/[.,]/g, '');
-        // Shopee usa centavos multiplicados por 100000
-        preco = (parseInt(precoRaw) / 100000).toFixed(2);
-        console.log('💰 Preço Shopee extraído:', preco);
+      // Shopee coloca todos os dados em um JSON dentro de <script type="application/ld+json">
+      const ldJsonMatch = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i);
+      if (ldJsonMatch) {
+        try {
+          const jsonData = JSON.parse(ldJsonMatch[1]);
+          if (jsonData.name) titulo = jsonData.name;
+          if (jsonData.offers?.price) preco = jsonData.offers.price;
+          if (jsonData.image) imagem = Array.isArray(jsonData.image) ? jsonData.image[0] : jsonData.image;
+          console.log('✅ Dados extraídos do LD+JSON:', { titulo, preco, imagem: !!imagem });
+        } catch (e) {
+          console.warn('⚠️ Erro ao parsear LD+JSON');
+        }
       }
+      
+      // Fallback: buscar no HTML/JSON da página
+      if (!titulo || !preco) {
+        // Buscar dados do produto em window.__INITIAL_STATE__ ou similar
+        const stateMatch = html.match(/window\.__INITIAL_STATE__\s*=\s*({[\s\S]*?});/);
+        if (stateMatch) {
+          try {
+            const state = JSON.parse(stateMatch[1]);
+            const item = state?.item?.item;
+            if (item) {
+              if (!titulo && item.name) titulo = item.name;
+              if (!preco && item.price) preco = (item.price / 100000).toFixed(2);
+              if (!imagem && item.image) imagem = item.image;
+              console.log('✅ Dados extraídos do INITIAL_STATE:', { titulo, preco, imagem: !!imagem });
+            }
+          } catch (e) {
+            console.warn('⚠️ Erro ao parsear INITIAL_STATE');
+          }
+        }
+      }
+      
+      // Fallback 2: Regex nos dados JSON inline
+      if (!titulo) {
+        const titleMatch = html.match(/"name"\s*:\s*"([^"]+)"/) || 
+                          html.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
+                          html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        if (titleMatch) {
+          titulo = titleMatch[1]
+            .replace(/\s+/g, ' ')
+            .replace(/[|\-–—].*(Shopee).*$/i, '')
+            .trim();
+        }
+      }
+      
+      if (!preco) {
+        let precoMatch = html.match(/"price_min"\s*:\s*([0-9]+)/) ||
+                        html.match(/"price"\s*:\s*([0-9]+)/) ||
+                        html.match(/"raw_price"\s*:\s*([0-9]+)/);
+        if (precoMatch) {
+          preco = (parseInt(precoMatch[1]) / 100000).toFixed(2);
+        }
+      }
+      
+      if (!imagem) {
+        const imagemMatch = html.match(/"image"\s*:\s*"([^"]+)"/) ||
+                           html.match(/"images"\s*:\s*\[\s*"([^"]+)"/);
+        if (imagemMatch) {
+          imagem = imagemMatch[1];
+        }
+      }
+      
+      console.log('💰 Dados finais Shopee:', { titulo, preco, imagem: !!imagem });
       
     } else if (finalUrl.includes('amazon.com')) {
       console.log('📦 Detectado: Amazon');
       
+      // Título
+      if (!titulo) {
+        const titleMatch = html.match(/<span[^>]*id=["']productTitle["'][^>]*>([^<]+)<\/span>/i) ||
+                          html.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
+                          html.match(/"name"\s*:\s*"([^"]+)"/);
+        if (titleMatch) titulo = titleMatch[1].trim();
+      }
+      
+      // Preço
       let precoMatch = html.match(/"price"\s*:\s*"?R?\$?\s*([0-9.,]+)"?/);
       if (!precoMatch) precoMatch = html.match(/R\$\s*([0-9.,]+)/);
       if (!precoMatch) precoMatch = html.match(/priceAmount[^>]*>R?\$?\s*([0-9.,]+)/);
@@ -586,9 +639,25 @@ Retorne APENAS um JSON válido no formato:
         console.log('💰 Preço Amazon extraído:', preco);
       }
       
+      // Imagem
+      if (!imagem) {
+        const imagemMatch = html.match(/"hiRes"\s*:\s*"([^"]+)"/) ||
+                           html.match(/data-old-hires=["']([^"']+)["']/) ||
+                           html.match(/id=["']landingImage["'][^>]*src=["']([^"']+)["']/);
+        if (imagemMatch) imagem = imagemMatch[1];
+      }
+      
     } else if (finalUrl.includes('mercadolivre.com') || finalUrl.includes('mercadolibre.com')) {
       console.log('🏪 Detectado: Mercado Livre');
       
+      // Título
+      if (!titulo) {
+        const titleMatch = html.match(/<h1[^>]*class=["'][^"']*title[^"']*["'][^>]*>([^<]+)<\/h1>/i) ||
+                          html.match(/"name"\s*:\s*"([^"]+)"/);
+        if (titleMatch) titulo = titleMatch[1].trim();
+      }
+      
+      // Preço
       let precoMatch = html.match(/"price"\s*:\s*([0-9.]+)/);
       if (!precoMatch) precoMatch = html.match(/R\$\s*([0-9.,]+)/);
       
@@ -597,9 +666,24 @@ Retorne APENAS um JSON válido no formato:
         console.log('💰 Preço Mercado Livre extraído:', preco);
       }
       
+      // Imagem
+      if (!imagem) {
+        const imagemMatch = html.match(/"secure_url"\s*:\s*"([^"]+\.jpg)/) ||
+                           html.match(/data-zoom=["']([^"']+)["']/);
+        if (imagemMatch) imagem = imagemMatch[1];
+      }
+      
     } else {
       console.log('🌐 Marketplace genérico');
       
+      // Título genérico
+      if (!titulo) {
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i) ||
+                          html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+        if (titleMatch) titulo = titleMatch[1].trim();
+      }
+      
+      // Preço genérico
       let precoMatch = html.match(/"price"\s*:\s*"?([0-9.,]+)"?/);
       if (!precoMatch) precoMatch = html.match(/R\$\s*([0-9.,]+)/);
       
@@ -607,13 +691,20 @@ Retorne APENAS um JSON válido no formato:
         preco = precoMatch[1].replace('.', '').replace(',', '.');
         console.log('💰 Preço genérico extraído:', preco);
       }
+      
+      // Imagem genérica
+      if (!imagem) {
+        const imagemMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/) ||
+                           html.match(/<img[^>]*class=["'][^"']*product[^"']*["'][^>]*src=["']([^"']+)["']/);
+        if (imagemMatch) imagem = imagemMatch[1];
+      }
     }
 
-    console.log('📊 Dados extraídos - Título:', titulo, '| Preço:', preco);
+    console.log('📊 Dados extraídos - Título:', titulo, '| Preço:', preco, '| Imagem:', !!imagem);
 
     // Validar dados extraídos
     if (!titulo || !preco) {
-      console.warn('⚠️ Extração incompleta - Título:', titulo, '| Preço:', preco);
+      console.warn('⚠️ Extração incompleta - Título:', titulo, '| Preço:', preco, '| Imagem:', !!imagem);
     }
 
     // Gerar posts com IA usando Gemini
@@ -742,7 +833,7 @@ Retorne APENAS um JSON válido no formato:
           preco: preco || '0.00',
           url: finalUrl,
           originalUrl: url,  // Link original de afiliado
-          imagem: null
+          imagem: imagem || null
         },
         instagram: posts.instagram,
         facebook: posts.facebook,
