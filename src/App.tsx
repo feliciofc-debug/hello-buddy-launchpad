@@ -14,6 +14,7 @@ import TestPayment from "./pages/TestPayment";
 import NotFound from "./pages/NotFound";
 import ProductsPage from "./pages/ProductsPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
+import WhatsAppConversations from "./pages/WhatsAppConversations";
 import Prospects from "./pages/Prospects";
 import Configuracoes from "./pages/Configuracoes";
 
@@ -65,6 +66,7 @@ const App = () => (
             <Route path="/configuracoes-icp" element={<ConfigurarICP />} />
             <Route path="/configurar-icp" element={<ConfigurarICP />} />
             <Route path="/whatsapp" element={<WhatsAppPage />} />
+            <Route path="/whatsapp-conversas" element={<WhatsAppConversations />} />
             <Route path="/prospects" element={<Prospects />} />
             <Route path="/campanhas-prospeccao" element={<CampanhasProspeccao />} />
             <Route path="/campanhas/:id" element={<CampanhaDetalhes />} />

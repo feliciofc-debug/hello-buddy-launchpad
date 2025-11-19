@@ -342,14 +342,25 @@ const Dashboard = () => {
           </a>
           <a
             href="/whatsapp"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md hover:shadow-lg ${
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
               window.location.pathname === '/whatsapp' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Send size={20} />
+            <span>WhatsApp Envio</span>
+          </a>
+          <a
+            href="/whatsapp-conversas"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md hover:shadow-lg ${
+              window.location.pathname === '/whatsapp-conversas' 
                 ? 'ring-2 ring-green-300' 
                 : ''
             }`}
           >
             <MessageCircle size={20} />
-            <span className="font-semibold">📱 WhatsApp</span>
+            <span className="font-semibold">💬 Conversas IA</span>
           </a>
           <a
             href="/configuracoes/redes-sociais"
