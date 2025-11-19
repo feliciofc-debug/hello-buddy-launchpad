@@ -103,10 +103,14 @@ const IAMarketing = () => {
         }
       }
 
+      // 🚀 PILAR 1: Detectar se é URL da Shopee
+      const isShopeeUrl = url.trim().toLowerCase().includes('shopee.com');
+      
       const { data, error } = await supabase.functions.invoke('analisar-produto', {
         body: { 
           url: url.trim(),
-          images: imagesBase64
+          images: imagesBase64,
+          source: isShopeeUrl ? 'shopee' : 'generic' // Passar source para edge function
         }
       });
 
@@ -213,6 +217,26 @@ const IAMarketing = () => {
         [variation]: text
       }
     }));
+  };
+
+  // 🚀 PILAR 2: Criar Campanha a partir do texto do WhatsApp
+  const handleCreateCampaign = () => {
+    const textoSelecionado = editableTexts.whatsapp[selectedVariations.whatsapp];
+    
+    if (!textoSelecionado.trim()) {
+      toast.error("Selecione uma variação de texto primeiro");
+      return;
+    }
+
+    // Salvar no localStorage
+    localStorage.setItem('campaignMessageTemplate', textoSelecionado);
+    
+    toast.success("Texto salvo! Redirecionando para criar campanha...");
+    
+    // Navegar para página de campanhas
+    setTimeout(() => {
+      navigate('/campanhas-prospeccao');
+    }, 500);
   };
 
   return (
@@ -524,24 +548,35 @@ const IAMarketing = () => {
                         className="min-h-[200px] text-sm"
                       />
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <Button
+                            onClick={() => handleCopy(editableTexts.whatsapp[selectedVariations.whatsapp], 'WhatsApp')}
+                            variant="outline"
+                            className="flex-1"
+                          >
+                            <Copy className="mr-2 h-4 w-4" />
+                            Copiar
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              const msg = encodeURIComponent(editableTexts.whatsapp[selectedVariations.whatsapp] + '\n\n🔗 ' + (resultado?.produto?.originalUrl || url));
+                              window.open(`https://wa.me/?text=${msg}`, '_blank');
+                            }}
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                          >
+                            <MessageCircle className="mr-2 h-4 w-4" />
+                            Enviar
+                          </Button>
+                        </div>
+                        
+                        {/* 🚀 PILAR 2: Botão Criar Campanha de Prospecção */}
                         <Button
-                          onClick={() => handleCopy(editableTexts.whatsapp[selectedVariations.whatsapp], 'WhatsApp')}
-                          variant="outline"
-                          className="flex-1"
+                          onClick={handleCreateCampaign}
+                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                         >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copiar
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            const msg = encodeURIComponent(editableTexts.whatsapp[selectedVariations.whatsapp] + '\n\n🔗 ' + (resultado?.produto?.originalUrl || url));
-                            window.open(`https://wa.me/?text=${msg}`, '_blank');
-                          }}
-                          className="flex-1 bg-green-600 hover:bg-green-700"
-                        >
-                          <MessageCircle className="mr-2 h-4 w-4" />
-                          Enviar
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          🚀 Criar Campanha de Prospecção
                         </Button>
                       </div>
                     </CardContent>

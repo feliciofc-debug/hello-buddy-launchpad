@@ -30,6 +30,18 @@ export default function CampanhasProspeccao() {
 
   useEffect(() => {
     loadData();
+    
+    // 🚀 PILAR 2: Verificar se há template de mensagem do IA Marketing
+    const campaignTemplate = localStorage.getItem('campaignMessageTemplate');
+    if (campaignTemplate) {
+      console.log('📝 Template de campanha detectado:', campaignTemplate);
+      // Pré-preencher descrição e abrir modal
+      setDescricao(campaignTemplate);
+      setDialogOpen(true);
+      // Limpar do localStorage
+      localStorage.removeItem('campaignMessageTemplate');
+      toast.info("✨ Texto da IA Marketing carregado! Configure sua campanha abaixo.");
+    }
   }, []);
 
   const loadData = async () => {
