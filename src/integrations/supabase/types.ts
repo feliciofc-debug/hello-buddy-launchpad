@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      campaign_ai_configs: {
+        Row: {
+          ai_identity: string | null
+          campaign_id: string | null
+          company_name: string | null
+          conversation_goal: string | null
+          created_at: string | null
+          custom_rules: string | null
+          id: string
+          product_or_service: string | null
+          target_audience: string | null
+          transfer_to_human_keywords: string[] | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          ai_identity?: string | null
+          campaign_id?: string | null
+          company_name?: string | null
+          conversation_goal?: string | null
+          created_at?: string | null
+          custom_rules?: string | null
+          id?: string
+          product_or_service?: string | null
+          target_audience?: string | null
+          transfer_to_human_keywords?: string[] | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          ai_identity?: string | null
+          campaign_id?: string | null
+          company_name?: string | null
+          conversation_goal?: string | null
+          created_at?: string | null
+          custom_rules?: string | null
+          id?: string
+          product_or_service?: string | null
+          target_audience?: string | null
+          transfer_to_human_keywords?: string[] | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campaign_ai_configs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campanha_execucoes: {
         Row: {
           campanha_id: string | null
@@ -1857,6 +1910,97 @@ export type Database = {
             columns: ["bulk_send_id"]
             isOneToOne: false
             referencedRelation: "whatsapp_bulk_sends"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_conversation_messages: {
+        Row: {
+          content: string
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          role: string
+          wuzapi_message_id: string | null
+        }
+        Insert: {
+          content: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          role: string
+          wuzapi_message_id?: string | null
+        }
+        Update: {
+          content?: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          role?: string
+          wuzapi_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversation_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_conversations: {
+        Row: {
+          campaign_id: string | null
+          created_at: string | null
+          id: string
+          last_message_at: string | null
+          lead_id: string | null
+          metadata: Json | null
+          phone_number: string
+          status: string | null
+          transferred_at: string | null
+          transferred_to_human: boolean | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string | null
+          id?: string
+          last_message_at?: string | null
+          lead_id?: string | null
+          metadata?: Json | null
+          phone_number: string
+          status?: string | null
+          transferred_at?: string | null
+          transferred_to_human?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string | null
+          id?: string
+          last_message_at?: string | null
+          lead_id?: string | null
+          metadata?: Json | null
+          phone_number?: string
+          status?: string | null
+          transferred_at?: string | null
+          transferred_to_human?: boolean | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
             referencedColumns: ["id"]
           },
         ]
