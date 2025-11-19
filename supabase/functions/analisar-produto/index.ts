@@ -200,6 +200,11 @@ Retorne APENAS um JSON válido no formato:
     "opcaoA": "texto curto aqui (max 80 chars)",
     "opcaoB": "texto curto aqui (max 80 chars)",
     "opcaoC": "texto curto aqui (max 80 chars)"
+  },
+  "whatsapp": {
+    "opcaoA": "texto aqui",
+    "opcaoB": "texto aqui",
+    "opcaoC": "texto aqui"
   }
 }`;
 
@@ -288,6 +293,7 @@ Retorne APENAS um JSON válido no formato:
           instagram: posts.instagram,
           facebook: posts.facebook,
           story: posts.story,
+          whatsapp: posts.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' },
           generatedImage: generatedImage // Incluir imagem gerada se houver
         }),
         { 
@@ -368,7 +374,12 @@ STORY INSTAGRAM (3 variações, MAX 80 caracteres):
 - Opção B: Pergunta + "Tá na Shopee!" SEMPRE termine com "🔗 Link abaixo!"
 - Opção C: "⏰ CORRE! Shopee" + urgência. SEMPRE termine com "🔗 Arrasta!"
 
-IMPORTANTE: 
+WHATSAPP (3 variações):
+- Opção A: Curto e direto (2-3 linhas max). Mencione "Shopee" e adicione o link: ${linkAfiliado}
+- Opção B: Amigável e conversacional. Use emoji 🛒. SEMPRE inclua o link: ${linkAfiliado}
+- Opção C: Com call-to-action forte e urgência. SEMPRE inclua o link: ${linkAfiliado}
+
+IMPORTANTE:
 - TODOS os textos devem estar em ${detectedLanguage}
 - Mencione "Shopee" em pelo menos 1 variação de cada plataforma
 - Use emojis relacionados a compras online: 🛒 🛍️ 📦 ✨ 🔥 ⚡
@@ -390,6 +401,11 @@ Retorne APENAS um JSON válido no formato:
     "opcaoA": "texto curto (max 80 chars)",
     "opcaoB": "texto curto (max 80 chars)",
     "opcaoC": "texto curto (max 80 chars)"
+  },
+  "whatsapp": {
+    "opcaoA": "texto + ${linkAfiliado}",
+    "opcaoB": "texto + ${linkAfiliado}",
+    "opcaoC": "texto + ${linkAfiliado}"
   }
 }`;
 
@@ -440,11 +456,13 @@ Retorne APENAS um JSON válido no formato:
               titulo: titulo,
               preco: preco,
               url: linkAfiliado,
-              originalUrl: linkAfiliado
+              originalUrl: linkAfiliado,
+              imagem: shopeeData.imagem || null
             },
             instagram: posts.instagram,
             facebook: posts.facebook,
             story: posts.story,
+            whatsapp: posts.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' },
             shopeeData: {
               commission: comissao,
               source: 'shopee_api'
@@ -627,7 +645,12 @@ STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
 - Opção B: Pergunta interativa para engajamento. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
 - Opção C: Contagem regressiva ou urgência. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
 
-IMPORTANTE: 
+WHATSAPP (3 variações):
+- Opção A: Curto e direto (2-3 linhas max). SEMPRE inclua o link: ${url}
+- Opção B: Amigável e conversacional. Use emoji. SEMPRE inclua o link: ${url}
+- Opção C: Com call-to-action forte e urgência. SEMPRE inclua o link: ${url}
+
+IMPORTANTE:
 - TODOS os textos devem estar em ${detectedLanguage}
 - Instagram e Story: NÃO incluir o link no texto (apenas mencionar "link na bio")
 - Facebook: SEMPRE incluir o link completo no final do texto
@@ -648,6 +671,11 @@ Retorne APENAS um JSON válido no formato:
     "opcaoA": "texto curto aqui (max 80 chars)",
     "opcaoB": "texto curto aqui (max 80 chars)",
     "opcaoC": "texto curto aqui (max 80 chars)"
+  },
+  "whatsapp": {
+    "opcaoA": "texto + ${url}",
+    "opcaoB": "texto + ${url}",
+    "opcaoC": "texto + ${url}"
   }
 }`;
 
@@ -713,11 +741,13 @@ Retorne APENAS um JSON válido no formato:
           titulo: titulo || 'Produto',
           preco: preco || '0.00',
           url: finalUrl,
-          originalUrl: url  // Link original de afiliado
+          originalUrl: url,  // Link original de afiliado
+          imagem: null
         },
         instagram: posts.instagram,
         facebook: posts.facebook,
-        story: posts.story
+        story: posts.story,
+        whatsapp: posts.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' }
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

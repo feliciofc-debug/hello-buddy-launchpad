@@ -24,6 +24,7 @@ interface ProductAnalysis {
     preco: string;
     url: string;
     originalUrl: string;
+    imagem?: string | null;
   };
   instagram: PostVariations;
   facebook: PostVariations;
@@ -542,6 +543,21 @@ const IAMarketing = () => {
                         </div>
                       </RadioGroup>
 
+                      {/* Exibir imagem do produto se disponível */}
+                      {resultado?.produto?.imagem && (
+                        <div className="border rounded-lg p-2 bg-muted/30">
+                          <p className="text-xs text-muted-foreground mb-2">📷 Imagem do produto:</p>
+                          <img 
+                            src={resultado.produto.imagem} 
+                            alt={resultado.produto.titulo}
+                            className="w-full h-32 object-cover rounded-md"
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            💡 Copie esta imagem e cole no WhatsApp junto com o texto
+                          </p>
+                        </div>
+                      )}
+
                       <Textarea
                         value={editableTexts.whatsapp[selectedVariations.whatsapp]}
                         onChange={(e) => updateText('whatsapp', selectedVariations.whatsapp, e.target.value)}
@@ -558,16 +574,28 @@ const IAMarketing = () => {
                             <Copy className="mr-2 h-4 w-4" />
                             Copiar
                           </Button>
-                          <Button
-                            onClick={() => {
-                              const msg = encodeURIComponent(editableTexts.whatsapp[selectedVariations.whatsapp] + '\n\n🔗 ' + (resultado?.produto?.originalUrl || url));
+                        <Button
+                          onClick={() => {
+                            const texto = editableTexts.whatsapp[selectedVariations.whatsapp];
+                            const linkProduto = resultado?.produto?.originalUrl || url;
+                            const imagemProduto = resultado?.produto?.imagem;
+                            
+                            // Se tem imagem, abrir WhatsApp Web com imagem
+                            if (imagemProduto) {
+                              // WhatsApp Web suporta enviar imagem + texto via URL scheme
+                              const msg = encodeURIComponent(texto);
                               window.open(`https://wa.me/?text=${msg}`, '_blank');
-                            }}
-                            className="flex-1 bg-green-600 hover:bg-green-700"
-                          >
-                            <MessageCircle className="mr-2 h-4 w-4" />
-                            Enviar
-                          </Button>
+                              toast.info("💡 Cole a imagem do produto manualmente no WhatsApp: " + imagemProduto);
+                            } else {
+                              const msg = encodeURIComponent(texto);
+                              window.open(`https://wa.me/?text=${msg}`, '_blank');
+                            }
+                          }}
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                        >
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                          Enviar
+                        </Button>
                         </div>
                         
                         {/* 🚀 PILAR 2: Botão Criar Campanha de Prospecção */}
