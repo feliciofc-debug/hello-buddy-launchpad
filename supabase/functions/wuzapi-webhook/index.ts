@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,20 +7,24 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  console.log('🚀 [WEBHOOK] Chamada recebida!');
+  
   if (req.method === 'OPTIONS') {
+    console.log('[WEBHOOK] OPTIONS request');
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const webhookData = await req.json();
-    console.log('[WEBHOOK] ========== EVENTO RECEBIDO ==========');
+    console.log('✅ [WEBHOOK] ========== EVENTO RECEBIDO ==========');
+    console.log('[WEBHOOK] Method:', req.method);
     console.log('[WEBHOOK] Type:', webhookData.type);
     console.log('[WEBHOOK] Payload completo:', JSON.stringify(webhookData, null, 2));
 
-    // Extrair dados do evento
+    // Extrair dados básicos
     const event = webhookData.event || {};
     
-    // Ignorar mensagens do próprio bot
+    // Ignorar mensagens próprias
     if (event.IsFromMe) {
       console.log('[WEBHOOK] ❌ Ignorando: mensagem própria');
       return new Response(JSON.stringify({ status: 'ignored', reason: 'own message' }), {
@@ -29,41 +32,21 @@ serve(async (req) => {
       });
     }
 
-    // Tentar extrair mensagem de diferentes locais do payload
-    let messageText = null;
+    // Extrair mensagem
+    let messageText = webhookData.message?.conversation || 
+                      webhookData.message?.text || 
+                      webhookData.text || 
+                      event.Body || 
+                      '';
     
-    // Formato 1: webhookData.message.conversation
-    if (webhookData.message?.conversation) {
-      messageText = webhookData.message.conversation;
-      console.log('[WEBHOOK] ✅ Mensagem encontrada em: message.conversation');
-    }
-    // Formato 2: webhookData.message.text
-    else if (webhookData.message?.text) {
-      messageText = webhookData.message.text;
-      console.log('[WEBHOOK] ✅ Mensagem encontrada em: message.text');
-    }
-    // Formato 3: webhookData.text
-    else if (webhookData.text) {
-      messageText = webhookData.text;
-      console.log('[WEBHOOK] ✅ Mensagem encontrada em: text');
-    }
-    // Formato 4: event.Body
-    else if (event.Body) {
-      messageText = event.Body;
-      console.log('[WEBHOOK] ✅ Mensagem encontrada em: event.Body');
-    }
-    // Formato 5: Verificar se é ReadReceipt ou outro tipo sem mensagem
-    else {
-      console.log('[WEBHOOK] ❌ Ignorando: evento tipo', webhookData.type, '(sem texto)');
-      return new Response(JSON.stringify({ status: 'ignored', reason: `no text in ${webhookData.type}` }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Extrair número de telefone
+    console.log('[WEBHOOK] Mensagem extraída:', messageText);
+    
+    // Extrair telefone
     const phoneNumber = (event.Sender?.replace('@s.whatsapp.net', '') || 
                         event.Chat?.replace('@s.whatsapp.net', '') ||
                         event.From?.replace('@s.whatsapp.net', ''))?.replace(/\D/g, '');
+    
+    console.log('[WEBHOOK] Telefone:', phoneNumber);
     
     const messageId = webhookData.messageID || webhookData.userID || event.MessageID;
     
