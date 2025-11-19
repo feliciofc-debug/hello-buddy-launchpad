@@ -146,7 +146,7 @@ serve(async (req) => {
 
             // Remove barra extra se WUZAPI_URL já termina com /
             const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
-            const fullUrl = `${baseUrl}/chat/send/text`;
+            const fullUrl = `${baseUrl}/api/message/send`;
             console.log(`[BULK-SEND] 📦 Enviando para ${cleanPhone}`);
             console.log('URL completa:', fullUrl);
             console.log('Payload:', JSON.stringify(payload, null, 2));
@@ -156,7 +156,7 @@ serve(async (req) => {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Token': WUZAPI_TOKEN,
+                'Authorization': `Bearer ${WUZAPI_TOKEN}`,
               },
               body: JSON.stringify(payload),
             });
