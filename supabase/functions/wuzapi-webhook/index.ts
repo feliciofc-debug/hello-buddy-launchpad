@@ -24,6 +24,9 @@ serve(async (req) => {
     // Extrair dados básicos
     const event = webhookData.event || {};
     
+    console.log('[WEBHOOK] 🔍 Evento Type:', webhookData.type);
+    console.log('[WEBHOOK] 🔍 Event completo:', JSON.stringify(event, null, 2));
+    
     // Ignorar mensagens próprias
     if (event.IsFromMe) {
       console.log('[WEBHOOK] ❌ Ignorando: mensagem própria');
@@ -41,12 +44,15 @@ serve(async (req) => {
       });
     }
 
-    // Extrair mensagem de texto
+    // Extrair mensagem de texto de TODAS as possíveis localizações
     let messageText = webhookData.message?.conversation || 
                       webhookData.message?.extendedTextMessage?.text ||
                       webhookData.message?.text || 
                       webhookData.text || 
-                      event.Body || 
+                      event.Body ||
+                      event.Message?.conversation ||
+                      event.Message?.text ||
+                      webhookData.data?.message?.text ||
                       '';
     
     // Extrair telefone
