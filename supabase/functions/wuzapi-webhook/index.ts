@@ -21,54 +21,39 @@ serve(async (req) => {
     console.log('[WEBHOOK] Type:', webhookData.type);
     console.log('[WEBHOOK] Payload completo:', JSON.stringify(webhookData, null, 2));
 
-    // Extrair dados básicos
+    // Extrair dados básicos do evento
+    const message = webhookData.message || {};
     const event = webhookData.event || {};
     
-    console.log('[WEBHOOK] 🔍 Evento Type:', webhookData.type);
-    console.log('[WEBHOOK] 🔍 Event completo:', JSON.stringify(event, null, 2));
-    
     // Ignorar mensagens próprias
-    if (event.IsFromMe) {
+    if (event.IsFromMe === true) {
       console.log('[WEBHOOK] ❌ Ignorando: mensagem própria');
       return new Response(JSON.stringify({ status: 'ignored', reason: 'own message' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Ignorar eventos de sistema (ReadReceipt, Delivered, etc)
-    const ignoredTypes = ['ReadReceipt', 'Delivered', 'Typing', 'Presence', 'Recording', 'Paused'];
-    if (ignoredTypes.includes(webhookData.type)) {
-      console.log('[WEBHOOK] ℹ️ Ignorando evento de sistema:', webhookData.type);
-      return new Response(JSON.stringify({ status: 'ignored', reason: 'system event' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Extrair mensagem de texto de TODAS as possíveis localizações
-    let messageText = webhookData.message?.conversation || 
-                      webhookData.message?.extendedTextMessage?.text ||
-                      webhookData.message?.text || 
+    // Extrair mensagem de texto
+    let messageText = message.conversation || 
+                      message.extendedTextMessage?.text ||
                       webhookData.text || 
-                      event.Body ||
-                      event.Message?.conversation ||
-                      event.Message?.text ||
-                      webhookData.data?.message?.text ||
+                      event.Body || 
                       '';
+    
+    console.log('[WEBHOOK] Mensagem extraída:', messageText);
     
     // Extrair telefone
     const phoneNumber = (event.Sender?.replace('@s.whatsapp.net', '') || 
                         event.Chat?.replace('@s.whatsapp.net', '') ||
                         event.From?.replace('@s.whatsapp.net', ''))?.replace(/\D/g, '');
     
-    console.log('[WEBHOOK] 📞 Telefone:', phoneNumber);
-    console.log('[WEBHOOK] 💬 Mensagem:', messageText);
+    console.log('[WEBHOOK] Telefone:', phoneNumber);
     
     const messageId = webhookData.messageID || webhookData.userID || event.MessageID;
     
-    // Só processar se tiver texto de mensagem
     if (!phoneNumber || !messageText) {
-      console.log('[WEBHOOK] ℹ️ Ignorando: sem texto de mensagem');
-      return new Response(JSON.stringify({ status: 'ignored', reason: 'no message text' }), {
+      console.log('[WEBHOOK] ❌ Dados incompletos - Phone:', phoneNumber, 'Text:', messageText);
+      return new Response(JSON.stringify({ status: 'ignored', reason: 'incomplete data' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
