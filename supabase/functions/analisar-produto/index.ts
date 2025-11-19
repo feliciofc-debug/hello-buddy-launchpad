@@ -12,8 +12,8 @@ serve(async (req) => {
   }
 
   try {
-    const { url, images = [] } = await req.json();
-    console.log('🔍 Analisando:', url, '| Imagens enviadas:', images.length);
+    const { url, images = [], source = 'generic' } = await req.json();
+    console.log('🔍 Analisando:', url, '| Imagens enviadas:', images.length, '| Source:', source);
 
     if (!url) {
       throw new Error('Texto ou URL não fornecido');
@@ -300,6 +300,167 @@ Retorne APENAS um JSON válido no formato:
     // Se chegou aqui, é uma URL de produto - fazer scraping
     if (!isUrl) {
       throw new Error('Por favor, forneça um link de produto válido ou uma imagem para análise.');
+    }
+
+    // 🚀 PILAR 1: Se source é 'shopee', usar API da Shopee
+    if (source === 'shopee' && url.includes('shopee.com')) {
+      console.log('🛍️ MODO SHOPEE API ATIVADO - Obtendo dados estruturados...');
+      
+      try {
+        // Chamar edge function converter-shopee para obter link de afiliado e dados
+        const shopeeResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/converter-shopee`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify({ product_url: url })
+        });
+
+        if (!shopeeResponse.ok) {
+          console.error('❌ Erro ao converter link Shopee:', shopeeResponse.status);
+          throw new Error('Erro ao obter dados da API da Shopee');
+        }
+
+        const shopeeData = await shopeeResponse.json();
+        console.log('✅ Dados da Shopee API:', shopeeData);
+
+        if (!shopeeData.success) {
+          throw new Error(shopeeData.error || 'Erro ao processar produto da Shopee');
+        }
+
+        // Extrair dados estruturados
+        const titulo = shopeeData.titulo || 'Produto Shopee';
+        const preco = shopeeData.preco || '0.00';
+        const linkAfiliado = shopeeData.affiliate_link || url;
+        const comissao = shopeeData.commission_rate || 'Comissão de afiliado disponível';
+        
+        // Criar prompt ENRIQUECIDO com dados da API da Shopee
+        const promptEnriquecido = `Crie posts promocionais SUPER PERSUASIVOS para o seguinte produto da Shopee:
+
+Produto: ${titulo}
+Preço: R$ ${preco}
+${comissao ? `Comissão: ${comissao}` : ''}
+Link de Afiliado: ${linkAfiliado}
+
+🎯 IMPORTANTE: Este produto está na Shopee, plataforma conhecida por:
+- Entrega rápida
+- Preços competitivos
+- Milhões de avaliações de clientes reais
+- Frete grátis em muitos produtos
+
+IDIOMA OBRIGATÓRIO: Todos os textos devem ser em ${detectedLanguage}
+
+Gere 9 variações de posts altamente persuasivos, 3 para cada tipo:
+
+INSTAGRAM (3 variações):
+- Opção A: Crie URGÊNCIA! Mencione que é "Oferta da Shopee" e que pode acabar rápido. SEMPRE termine com "🔗 Link na bio!"
+- Opção B: Conte uma HISTÓRIA de transformação com o produto. SEMPRE termine com "🔗 Link na bio!"
+- Opção C: Use PROVA SOCIAL, mencione "produto top vendas da Shopee". SEMPRE termine com "🔗 Link na bio!"
+
+FACEBOOK (3 variações):
+- Opção A: Tom casual mas com CALL-TO-ACTION forte. Mencione "Compre agora na Shopee". SEMPRE inclua o link: ${linkAfiliado}
+- Opção B: Estilo informativo com BENEFÍCIOS claros + "Disponível na Shopee com frete grátis". SEMPRE inclua o link: ${linkAfiliado}
+- Opção C: PROMOÇÃO/URGÊNCIA! "Últimas unidades na Shopee". SEMPRE inclua o link: ${linkAfiliado}
+
+STORY INSTAGRAM (3 variações, MAX 80 caracteres):
+- Opção A: "🔥 SHOPEE em oferta! 🛒✨" + emoji relevante. SEMPRE termine com "🔗 Arrasta pra cima!"
+- Opção B: Pergunta + "Tá na Shopee!" SEMPRE termine com "🔗 Link abaixo!"
+- Opção C: "⏰ CORRE! Shopee" + urgência. SEMPRE termine com "🔗 Arrasta!"
+
+IMPORTANTE: 
+- TODOS os textos devem estar em ${detectedLanguage}
+- Mencione "Shopee" em pelo menos 1 variação de cada plataforma
+- Use emojis relacionados a compras online: 🛒 🛍️ 📦 ✨ 🔥 ⚡
+- Crie senso de urgência e prova social
+
+Retorne APENAS um JSON válido no formato:
+{
+  "instagram": {
+    "opcaoA": "texto aqui",
+    "opcaoB": "texto aqui",
+    "opcaoC": "texto aqui"
+  },
+  "facebook": {
+    "opcaoA": "texto aqui + ${linkAfiliado}",
+    "opcaoB": "texto aqui + ${linkAfiliado}",
+    "opcaoC": "texto aqui + ${linkAfiliado}"
+  },
+  "story": {
+    "opcaoA": "texto curto (max 80 chars)",
+    "opcaoB": "texto curto (max 80 chars)",
+    "opcaoC": "texto curto (max 80 chars)"
+  }
+}`;
+
+        // Chamar IA para gerar posts com dados enriquecidos
+        const response = await fetch(
+          'https://ai.gateway.lovable.dev/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${LOVABLE_API_KEY}`
+            },
+            body: JSON.stringify({
+              model: 'google/gemini-2.5-flash',
+              messages: [
+                { role: 'system', content: `Você é um especialista em marketing digital de e-commerce e afiliados. Gere posts promocionais criativos e persuasivos EXCLUSIVAMENTE em ${detectedLanguage}.` },
+                { role: 'user', content: promptEnriquecido }
+              ]
+            })
+          }
+        );
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Erro na Lovable AI:', response.status, errorText);
+          throw new Error(`Erro na IA: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const texto = data.choices?.[0]?.message?.content || '';
+        
+        let textoLimpo = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+        const jsonMatch = textoLimpo.match(/\{[\s\S]*\}/);
+        
+        if (!jsonMatch) {
+          throw new Error('Resposta da IA não contém JSON válido');
+        }
+
+        let jsonString = jsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
+        const posts = JSON.parse(jsonString);
+
+        console.log('✅ Posts gerados com dados da Shopee API!');
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            produto: {
+              titulo: titulo,
+              preco: preco,
+              url: linkAfiliado,
+              originalUrl: linkAfiliado
+            },
+            instagram: posts.instagram,
+            facebook: posts.facebook,
+            story: posts.story,
+            shopeeData: {
+              commission: comissao,
+              source: 'shopee_api'
+            }
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200
+          }
+        );
+
+      } catch (shopeeError) {
+        console.error('❌ Erro ao usar API da Shopee:', shopeeError);
+        console.log('⚠️ Fallback: usando método de scraping tradicional...');
+        // Continuar com scraping normal em caso de erro
+      }
     }
 
     // Seguir redirect se for link curto
