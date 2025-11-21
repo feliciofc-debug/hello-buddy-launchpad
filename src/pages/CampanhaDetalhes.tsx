@@ -8,6 +8,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { ArrowLeft, Pause, Play, Loader2, TrendingUp, Users, MessageSquare, CheckCircle2, Clock, AlertCircle, Sparkles } from 'lucide-react';
+import { VoiceCallDashboard } from '@/components/VoiceCallDashboard';
 
 export default function CampanhaDetalhes() {
   const { id } = useParams();
@@ -443,73 +444,110 @@ export default function CampanhaDetalhes() {
           </CardContent>
         </Card>
 
-        {/* Leads */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
+        {/* Tabs */}
+        <Tabs defaultValue="overview" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="overview">Visão Geral</TabsTrigger>
+            <TabsTrigger value="leads">Leads</TabsTrigger>
+            <TabsTrigger value="voice">📞 Chamadas de Voz</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="overview" className="space-y-6 mt-6">
+            {/* Leads Overview */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Leads Descobertos</CardTitle>
+                    <CardDescription>Top leads qualificados desta campanha</CardDescription>
+                  </div>
+                  <Button onClick={() => navigate(`/campanhas/${id}/leads`)}>
+                    Ver todos →
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {leads.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">Nenhum lead qualificado</h3>
+                    <p className="text-muted-foreground">
+                      Aguarde o processamento da campanha
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {leads.map((lead) => (
+                      <Card key={lead.id} className="border-l-4 border-l-primary">
+                        <CardContent className="pt-6">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h3 className="font-semibold text-lg">
+                                  {lead.nome_profissional || lead.razao_social}
+                                </h3>
+                                {lead.score && (
+                                  <Badge variant="default">Score: {lead.score}/100</Badge>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-2">
+                                {lead.profissao && `${lead.profissao} • `}
+                                {lead.especialidade && `${lead.especialidade} • `}
+                                {lead.cidade}, {lead.estado}
+                              </p>
+                              {lead.telefone && (
+                                <p className="text-sm">📱 {lead.telefone}</p>
+                              )}
+                              {lead.linkedin_url && (
+                                <p className="text-sm">💼 LinkedIn conectado</p>
+                              )}
+                              {lead.instagram_username && (
+                                <p className="text-sm">📸 @{lead.instagram_username}</p>
+                              )}
+                            </div>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => navigate(`/campanhas/${id}/leads`)}
+                            >
+                              Ver detalhes
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="leads" className="space-y-6 mt-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Todos os Leads</CardTitle>
+                <CardDescription>Gerencie todos os leads desta campanha</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button onClick={() => navigate(`/campanhas/${id}/leads`)}>
+                  Ver página completa de leads →
+                </Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="voice" className="space-y-6 mt-6">
+            <div className="flex justify-between items-center mb-4">
               <div>
-                <CardTitle>Leads Descobertos</CardTitle>
-                <CardDescription>Top leads qualificados desta campanha</CardDescription>
-              </div>
-              <Button onClick={() => navigate(`/campanhas/${id}/leads`)}>
-                Ver todos →
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {leads.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Nenhum lead qualificado</h3>
-                <p className="text-muted-foreground">
-                  Aguarde o processamento da campanha
+                <h3 className="text-lg font-semibold">Campanha de Voz com IA</h3>
+                <p className="text-sm text-muted-foreground">
+                  Sistema automatizado de cold calling com Inteligência Artificial
                 </p>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {leads.map((lead) => (
-                  <Card key={lead.id} className="border-l-4 border-l-primary">
-                    <CardContent className="pt-6">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold text-lg">
-                              {lead.nome_profissional || lead.razao_social}
-                            </h3>
-                            {lead.score && (
-                              <Badge variant="default">Score: {lead.score}/100</Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">
-                            {lead.profissao && `${lead.profissao} • `}
-                            {lead.especialidade && `${lead.especialidade} • `}
-                            {lead.cidade}, {lead.estado}
-                          </p>
-                          {lead.telefone && (
-                            <p className="text-sm">📱 {lead.telefone}</p>
-                          )}
-                          {lead.linkedin_url && (
-                            <p className="text-sm">💼 LinkedIn conectado</p>
-                          )}
-                          {lead.instagram_username && (
-                            <p className="text-sm">📸 @{lead.instagram_username}</p>
-                          )}
-                        </div>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => navigate(`/campanhas/${id}/leads`)}
-                        >
-                          Ver detalhes
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+            <VoiceCallDashboard campanhaId={id!} />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );
