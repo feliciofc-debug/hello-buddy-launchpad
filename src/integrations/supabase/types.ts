@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      call_queue: {
+        Row: {
+          attempts: number | null
+          campanha_id: string
+          created_at: string | null
+          id: string
+          last_attempt_at: string | null
+          lead_id: string
+          lead_type: string
+          priority: number | null
+          scheduled_for: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number | null
+          campanha_id: string
+          created_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          lead_id: string
+          lead_type: string
+          priority?: number | null
+          scheduled_for?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number | null
+          campanha_id?: string
+          created_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          lead_id?: string
+          lead_type?: string
+          priority?: number | null
+          scheduled_for?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_queue_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_ai_configs: {
         Row: {
           ai_identity: string | null
@@ -1179,6 +1229,68 @@ export type Database = {
         }
         Relationships: []
       }
+      meetings: {
+        Row: {
+          campanha_id: string
+          confirmation_sent: boolean | null
+          created_at: string | null
+          duration: number | null
+          google_event_id: string | null
+          google_meet_link: string | null
+          id: string
+          lead_id: string
+          lead_type: string
+          meeting_datetime: string
+          notes: string | null
+          reminder_sent: boolean | null
+          scheduled_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          campanha_id: string
+          confirmation_sent?: boolean | null
+          created_at?: string | null
+          duration?: number | null
+          google_event_id?: string | null
+          google_meet_link?: string | null
+          id?: string
+          lead_id: string
+          lead_type: string
+          meeting_datetime: string
+          notes?: string | null
+          reminder_sent?: boolean | null
+          scheduled_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          campanha_id?: string
+          confirmation_sent?: boolean | null
+          created_at?: string | null
+          duration?: number | null
+          google_event_id?: string | null
+          google_meet_link?: string | null
+          id?: string
+          lead_id?: string
+          lead_type?: string
+          meeting_datetime?: string
+          notes?: string | null
+          reminder_sent?: boolean | null
+          scheduled_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meetings_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pipeline_stages: {
         Row: {
           created_at: string | null
@@ -1259,6 +1371,63 @@ export type Database = {
           texto_whatsapp?: string | null
           titulo?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      products_stock: {
+        Row: {
+          active: boolean | null
+          category: string
+          cost: number | null
+          created_at: string | null
+          description_long: string | null
+          description_short: string | null
+          id: string
+          img_url: string | null
+          name: string
+          objection_handler: Json | null
+          price: number
+          qty: number | null
+          sku: string
+          specs: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean | null
+          category: string
+          cost?: number | null
+          created_at?: string | null
+          description_long?: string | null
+          description_short?: string | null
+          id?: string
+          img_url?: string | null
+          name: string
+          objection_handler?: Json | null
+          price: number
+          qty?: number | null
+          sku: string
+          specs?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean | null
+          category?: string
+          cost?: number | null
+          created_at?: string | null
+          description_long?: string | null
+          description_short?: string | null
+          id?: string
+          img_url?: string | null
+          name?: string
+          objection_handler?: Json | null
+          price?: number
+          qty?: number | null
+          sku?: string
+          specs?: Json | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
@@ -1723,6 +1892,57 @@ export type Database = {
         }
         Relationships: []
       }
+      user_market_config: {
+        Row: {
+          base_prompt: string | null
+          created_at: string | null
+          descricao: string | null
+          faixa_preco_max: number | null
+          faixa_preco_min: number | null
+          formas_pagamento: string[] | null
+          ia_active: boolean | null
+          id: string
+          mercado: string
+          nichos: string[] | null
+          prazo_entrega_dias: number | null
+          regioes: string[] | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          base_prompt?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          faixa_preco_max?: number | null
+          faixa_preco_min?: number | null
+          formas_pagamento?: string[] | null
+          ia_active?: boolean | null
+          id?: string
+          mercado: string
+          nichos?: string[] | null
+          prazo_entrega_dias?: number | null
+          regioes?: string[] | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          base_prompt?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          faixa_preco_max?: number | null
+          faixa_preco_min?: number | null
+          formas_pagamento?: string[] | null
+          ia_active?: boolean | null
+          id?: string
+          mercado?: string
+          nichos?: string[] | null
+          prazo_entrega_dias?: number | null
+          regioes?: string[] | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
@@ -1804,6 +2024,128 @@ export type Database = {
           validated_by?: string | null
           valor_compra?: number | null
           whatsapp_cliente?: string
+        }
+        Relationships: []
+      }
+      voice_calls: {
+        Row: {
+          ai_analysis: Json | null
+          call_sid: string | null
+          campanha_id: string
+          completed_at: string | null
+          created_at: string | null
+          duration: number | null
+          id: string
+          lead_id: string
+          lead_qualified: boolean | null
+          lead_type: string
+          meeting_datetime: string | null
+          meeting_google_event_id: string | null
+          meeting_scheduled: boolean | null
+          next_action: string | null
+          objections: string[] | null
+          recording_url: string | null
+          sentiment_score: number | null
+          started_at: string | null
+          status: string
+          transcription: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_analysis?: Json | null
+          call_sid?: string | null
+          campanha_id: string
+          completed_at?: string | null
+          created_at?: string | null
+          duration?: number | null
+          id?: string
+          lead_id: string
+          lead_qualified?: boolean | null
+          lead_type: string
+          meeting_datetime?: string | null
+          meeting_google_event_id?: string | null
+          meeting_scheduled?: boolean | null
+          next_action?: string | null
+          objections?: string[] | null
+          recording_url?: string | null
+          sentiment_score?: number | null
+          started_at?: string | null
+          status?: string
+          transcription?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_analysis?: Json | null
+          call_sid?: string | null
+          campanha_id?: string
+          completed_at?: string | null
+          created_at?: string | null
+          duration?: number | null
+          id?: string
+          lead_id?: string
+          lead_qualified?: boolean | null
+          lead_type?: string
+          meeting_datetime?: string | null
+          meeting_google_event_id?: string | null
+          meeting_scheduled?: boolean | null
+          next_action?: string | null
+          objections?: string[] | null
+          recording_url?: string | null
+          sentiment_score?: number | null
+          started_at?: string | null
+          status?: string
+          transcription?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_calls_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_scripts: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          id: string
+          name: string
+          script_agendamento: string
+          script_intro: string
+          script_objecoes: Json | null
+          script_qualificacao: string
+          tipo_icp: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          id?: string
+          name: string
+          script_agendamento: string
+          script_intro: string
+          script_objecoes?: Json | null
+          script_qualificacao: string
+          tipo_icp: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          script_agendamento?: string
+          script_intro?: string
+          script_objecoes?: Json | null
+          script_qualificacao?: string
+          tipo_icp?: string
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }

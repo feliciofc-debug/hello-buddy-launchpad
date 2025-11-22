@@ -87,7 +87,7 @@ export function VoiceCallDashboard({ campanhaId }: { campanhaId: string }) {
       if (callsError) throw callsError
 
       if (callsData && callsData.length > 0) {
-        setCalls(callsData)
+        setCalls(callsData as VoiceCall[])
 
         // Buscar informações dos leads
         const leadIdsB2B = callsData.filter(c => c.lead_type === 'b2b').map(c => c.lead_id)
@@ -113,13 +113,13 @@ export function VoiceCallDashboard({ campanhaId }: { campanhaId: string }) {
         if (leadIdsB2C.length > 0) {
           const { data: leadsB2C } = await supabase
             .from('leads_b2c')
-            .select('id, nome_profissional, telefone')
+            .select('id, nome_completo, telefone')
             .in('id', leadIdsB2C)
 
           leadsB2C?.forEach(lead => {
             leadsMapping[lead.id] = {
               id: lead.id,
-              nome: lead.nome_profissional,
+              nome: lead.nome_completo,
               telefone: lead.telefone
             }
           })
@@ -128,7 +128,7 @@ export function VoiceCallDashboard({ campanhaId }: { campanhaId: string }) {
         setLeadsMap(leadsMapping)
 
         const active = callsData.find(c => c.status === 'in-progress' || c.status === 'ringing')
-        setActiveCall(active || null)
+        setActiveCall((active || null) as VoiceCall | null)
         
         setStats({
           total: callsData.length,
@@ -165,7 +165,7 @@ export function VoiceCallDashboard({ campanhaId }: { campanhaId: string }) {
       // Buscar leads qualificados B2C
       const { data: leadsB2C } = await supabase
         .from('leads_b2c')
-        .select('id, nome_profissional, telefone')
+        .select('id, nome_completo, telefone')
         .eq('campanha_id', campanhaId)
         .eq('pipeline_status', 'qualificado')
         .not('telefone', 'is', null)
@@ -173,7 +173,7 @@ export function VoiceCallDashboard({ campanhaId }: { campanhaId: string }) {
 
       const allLeads = [
         ...(leadsB2B || []).map(l => ({ ...l, lead_type: 'b2b' as const, nome: l.razao_social })),
-        ...(leadsB2C || []).map(l => ({ ...l, lead_type: 'b2c' as const, nome: l.nome_profissional }))
+        ...(leadsB2C || []).map(l => ({ ...l, lead_type: 'b2c' as const, nome: l.nome_completo }))
       ]
 
       if (allLeads.length === 0) {
