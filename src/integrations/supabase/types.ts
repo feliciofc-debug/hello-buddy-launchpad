@@ -576,6 +576,8 @@ export type Database = {
           lead_count_b2b: number | null
           lead_count_b2c: number | null
           nome: string
+          refinamento_comportamental: string | null
+          refinamento_geografico: string | null
           score_minimo: number | null
           tipo: string
           updated_at: string | null
@@ -593,6 +595,8 @@ export type Database = {
           lead_count_b2b?: number | null
           lead_count_b2c?: number | null
           nome: string
+          refinamento_comportamental?: string | null
+          refinamento_geografico?: string | null
           score_minimo?: number | null
           tipo: string
           updated_at?: string | null
@@ -610,6 +614,8 @@ export type Database = {
           lead_count_b2b?: number | null
           lead_count_b2c?: number | null
           nome?: string
+          refinamento_comportamental?: string | null
+          refinamento_geografico?: string | null
           score_minimo?: number | null
           tipo?: string
           updated_at?: string | null
