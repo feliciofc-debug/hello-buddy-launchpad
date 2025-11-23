@@ -62,27 +62,23 @@ const PROFISSOES_DISPONIVEIS = [
   { value: 'diretor_escola', label: 'Diretor de Escola', categoria: 'Educação', icon: '🎓' },
   { value: 'coordenador', label: 'Coordenador Pedagógico', categoria: 'Educação', icon: '📚' },
   
-  // Negócios
+  // Negócios/Executivos
   { value: 'empresario', label: 'Empresário', categoria: 'Negócios', icon: '💼' },
   { value: 'gerente', label: 'Gerente', categoria: 'Negócios', icon: '👔' },
   { value: 'diretor', label: 'Diretor', categoria: 'Negócios', icon: '🎯' },
   { value: 'ceo', label: 'CEO/Presidente', categoria: 'Negócios', icon: '👑' },
   { value: 'consultor', label: 'Consultor', categoria: 'Negócios', icon: '📈' },
+  
+  // Comércio
+  { value: 'comerciante', label: 'Comerciante', categoria: 'Comércio', icon: '🛒' },
+  { value: 'vendedor', label: 'Vendedor', categoria: 'Comércio', icon: '🤝' },
 ]
 
 const SETORES_B2B = [
   'Tecnologia', 'Saúde', 'Educação', 'Financeiro', 'Varejo', 
   'Indústria', 'Construção', 'Alimentação', 'Transporte', 
   'Logística', 'Agricultura', 'Energia', 'Telecom', 'Mídia',
-  'Turismo', 'Imobiliário', 'Seguros', 'Consultoria'
-]
-
-const PORTES_EMPRESA = [
-  { value: 'mei', label: 'MEI (1 pessoa)', min: 1, max: 1 },
-  { value: 'micro', label: 'Microempresa (2-9 funcionários)', min: 2, max: 9 },
-  { value: 'pequena', label: 'Pequena (10-49 funcionários)', min: 10, max: 49 },
-  { value: 'media', label: 'Média (50-249 funcionários)', min: 50, max: 249 },
-  { value: 'grande', label: 'Grande (250+ funcionários)', min: 250, max: 10000 },
+  'Turismo', 'Imobiliário', 'Seguros', 'Consultoria', 'Automotivo'
 ]
 
 const ESTADOS_BRASIL = [
@@ -96,22 +92,17 @@ export default function ConfigurarICP() {
   const { toast } = useToast()
   
   const [loading, setLoading] = useState(false)
-  const [generateLoading, setGenerateLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState('basico')
   
   // Estado do formulário
   const [nomeICP, setNomeICP] = useState('')
   const [descricao, setDescricao] = useState('')
-  const [tipoProspeccao, setTipoProspeccao] = useState<'b2b' | 'b2c'>('b2b')
+  const [tipoProspeccao, setTipoProspeccao] = useState<'b2b' | 'b2c' | 'ambos'>('ambos')
   
-  // B2B
+  // B2B - Seleção múltipla
   const [setoresSelecionados, setSetoresSelecionados] = useState<string[]>([])
-  const [portesSelecionados, setPortesSelecionados] = useState<string[]>([])
-  const [faturamentoMin, setFaturamentoMin] = useState('')
-  const [faturamentoMax, setFaturamentoMax] = useState('')
-  const [funcionariosMin, setFuncionariosMin] = useState('')
-  const [funcionariosMax, setFuncionariosMax] = useState('')
   
-  // B2C
+  // B2C - Seleção múltipla
   const [profissoesSelecionadas, setProfissoesSelecionadas] = useState<string[]>([])
   const [searchProfissao, setSearchProfissao] = useState('')
   const [profissoesCustomizadas, setProfissoesCustomizadas] = useState<string[]>([])
@@ -119,12 +110,16 @@ export default function ConfigurarICP() {
   
   // Geográfico
   const [estadosSelecionados, setEstadosSelecionados] = useState<string[]>([])
-  const [cidadesEspecificas, setCidadesEspecificas] = useState<string[]>([])
-  const [novaCidade, setNovaCidade] = useState('')
   
-  // Critérios extras
-  const [criteriosExtras, setCriteriosExtras] = useState('')
-  const [sugestoesIA, setSugestoesIA] = useState<string[]>([])
+  // ⭐ REFINAMENTOS (campo livre)
+  const [refinamentoEmpresa, setRefinamentoEmpresa] = useState('')
+  const [refinamentoProfissional, setRefinamentoProfissional] = useState('')
+  const [refinamentoGeografico, setRefinamentoGeografico] = useState('')
+  const [refinamentoComportamental, setRefinamentoComportamental] = useState('')
+
+  // Sugestões da IA
+  const [sugestoesIA, setSugestoesIA] = useState<any[]>([])
+  const [loadingIA, setLoadingIA] = useState(false)
 
   const profissoesFiltradas = PROFISSOES_DISPONIVEIS.filter(p => 
     p.label.toLowerCase().includes(searchProfissao.toLowerCase()) ||
