@@ -8,12 +8,12 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { 
   Building2, 
   Users, 
-  Briefcase, 
-  TrendingUp, 
   MapPin, 
   Search,
   X,
@@ -21,10 +21,17 @@ import {
   Loader2,
   Sparkles,
   CheckCircle2,
-  ArrowRight
+  ArrowRight,
+  Filter,
+  Zap,
+  Target,
+  AlertCircle
 } from 'lucide-react'
 
-// Lista completa de profissões (expansível)
+// ===================================================================
+// DADOS DISPONÍVEIS
+// ===================================================================
+
 const PROFISSOES_DISPONIVEIS = [
   // Saúde
   { value: 'medico', label: 'Médico', categoria: 'Saúde', icon: '🏥' },
@@ -56,18 +63,23 @@ const PROFISSOES_DISPONIVEIS = [
   { value: 'contador', label: 'Contador', categoria: 'Finanças', icon: '📊' },
   { value: 'auditor', label: 'Auditor', categoria: 'Finanças', icon: '🔍' },
   { value: 'consultor_financeiro', label: 'Consultor Financeiro', categoria: 'Finanças', icon: '💰' },
+  { value: 'gerente_banco', label: 'Gerente de Banco', categoria: 'Finanças', icon: '🏦' },
   
   // Educação
   { value: 'professor', label: 'Professor', categoria: 'Educação', icon: '👨‍🏫' },
   { value: 'diretor_escola', label: 'Diretor de Escola', categoria: 'Educação', icon: '🎓' },
   { value: 'coordenador', label: 'Coordenador Pedagógico', categoria: 'Educação', icon: '📚' },
   
-  // Negócios
+  // Negócios/Executivos
   { value: 'empresario', label: 'Empresário', categoria: 'Negócios', icon: '💼' },
   { value: 'gerente', label: 'Gerente', categoria: 'Negócios', icon: '👔' },
   { value: 'diretor', label: 'Diretor', categoria: 'Negócios', icon: '🎯' },
   { value: 'ceo', label: 'CEO/Presidente', categoria: 'Negócios', icon: '👑' },
   { value: 'consultor', label: 'Consultor', categoria: 'Negócios', icon: '📈' },
+  
+  // Comércio
+  { value: 'comerciante', label: 'Comerciante', categoria: 'Comércio', icon: '🛒' },
+  { value: 'vendedor', label: 'Vendedor', categoria: 'Comércio', icon: '🤝' },
 ]
 
 const SETORES_B2B = [
@@ -82,6 +94,10 @@ const ESTADOS_BRASIL = [
   'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN',
   'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ]
+
+// ===================================================================
+// COMPONENTE PRINCIPAL
+// ===================================================================
 
 export default function ConfigurarICP() {
   const navigate = useNavigate()
@@ -122,87 +138,130 @@ export default function ConfigurarICP() {
     p.categoria.toLowerCase().includes(searchProfissao.toLowerCase())
   )
 
-  const toggleProfissao = (value: string) => {
-    setProfissoesSelecionadas(prev => 
-      prev.includes(value) ? prev.filter(p => p !== value) : [...prev, value]
-    )
+  // ===================================================================
+  // AÇÕES DE SELEÇÃO RÁPIDA
+  // ===================================================================
+
+  const selecionarTodosSetores = () => {
+    setSetoresSelecionados(SETORES_B2B)
+    toast({
+      title: "✅ Todos os setores selecionados",
+      description: `${SETORES_B2B.length} setores marcados`
+    })
   }
 
-  const toggleSetor = (setor: string) => {
-    setSetoresSelecionados(prev =>
-      prev.includes(setor) ? prev.filter(s => s !== setor) : [...prev, setor]
-    )
+  const selecionarTodasProfissoes = () => {
+    setProfissoesSelecionadas(PROFISSOES_DISPONIVEIS.map(p => p.value))
+    toast({
+      title: "✅ Todas as profissões selecionadas",
+      description: `${PROFISSOES_DISPONIVEIS.length} profissões marcadas`
+    })
   }
 
-  const togglePorte = (porte: string) => {
-    setPortesSelecionados(prev =>
-      prev.includes(porte) ? prev.filter(p => p !== porte) : [...prev, porte]
-    )
+  const selecionarPorCategoria = (categoria: string) => {
+    const profissoesCategoria = PROFISSOES_DISPONIVEIS
+      .filter(p => p.categoria === categoria)
+      .map(p => p.value)
+    
+    setProfissoesSelecionadas(prev => {
+      const novaSelecao = [...new Set([...prev, ...profissoesCategoria])]
+      return novaSelecao
+    })
+    
+    toast({
+      title: `✅ Categoria ${categoria} selecionada`,
+      description: `${profissoesCategoria.length} profissões adicionadas`
+    })
   }
 
-  const toggleEstado = (estado: string) => {
-    setEstadosSelecionados(prev =>
-      prev.includes(estado) ? prev.filter(e => e !== estado) : [...prev, estado]
-    )
-  }
-
-  const adicionarProfissaoCustomizada = () => {
-    if (novaProfissao.trim() && !profissoesCustomizadas.includes(novaProfissao.trim())) {
-      setProfissoesCustomizadas(prev => [...prev, novaProfissao.trim()])
-      setNovaProfissao('')
-      toast({
-        title: "✅ Profissão adicionada",
-        description: `"${novaProfissao}" foi adicionada aos critérios`
-      })
-    }
-  }
-
-  const adicionarCidade = () => {
-    if (novaCidade.trim() && !cidadesEspecificas.includes(novaCidade.trim())) {
-      setCidadesEspecificas(prev => [...prev, novaCidade.trim()])
-      setNovaCidade('')
-    }
-  }
+  // ===================================================================
+  // GERAR SUGESTÕES COM IA
+  // ===================================================================
 
   const gerarSugestoesIA = async () => {
-    setGenerateLoading(true)
+    setLoadingIA(true)
     try {
-      // Aqui você pode chamar Claude API para gerar sugestões baseadas no que foi preenchido
-      const contexto = `
-        Tipo: ${tipoProspeccao}
-        ${tipoProspeccao === 'b2b' ? `Setores: ${setoresSelecionados.join(', ')}` : ''}
-        ${tipoProspeccao === 'b2c' ? `Profissões: ${profissoesSelecionadas.map(p => PROFISSOES_DISPONIVEIS.find(pr => pr.value === p)?.label).join(', ')}` : ''}
-        Descrição: ${descricao}
-      `
-
-      // Simulação (substitua por chamada real à API)
       await new Promise(resolve => setTimeout(resolve, 1500))
       
       const sugestoes = [
-        'Profissionais com mais de 5 anos de experiência',
-        'Empresas que cresceram mais de 20% no último ano',
-        'Profissionais ativos em redes sociais',
-        'Empresas com presença digital consolidada',
-        'Tomadores de decisão (C-Level)',
+        {
+          categoria: "Tamanho Empresa",
+          sugestao: "Empresas com mais de 100 funcionários",
+          motivo: "Maior poder de compra e decisão descentralizada"
+        },
+        {
+          categoria: "Cargo/Função",
+          sugestao: "Diretores, Gerentes e C-Level",
+          motivo: "Tomadores de decisão com orçamento aprovado"
+        },
+        {
+          categoria: "Faturamento",
+          sugestao: "Faturamento anual acima de R$ 5 milhões",
+          motivo: "Capacidade financeira para investir em soluções"
+        },
+        {
+          categoria: "Localização",
+          sugestao: "Regiões metropolitanas e capitais",
+          motivo: "Maior concentração de empresas e profissionais qualificados"
+        },
+        {
+          categoria: "Comportamento",
+          sugestao: "Ativos em redes sociais profissionais (LinkedIn)",
+          motivo: "Mais receptivos a abordagens modernas"
+        }
       ]
       
       setSugestoesIA(sugestoes)
       
       toast({
-        title: "✨ Sugestões geradas!",
-        description: "A IA analisou seu ICP e gerou critérios adicionais"
+        title: "✨ Sugestões geradas com sucesso!",
+        description: `${sugestoes.length} refinamentos inteligentes prontos`
       })
+
     } catch (error) {
       console.error(error)
+      toast({
+        title: "❌ Erro ao gerar sugestões",
+        description: "Tente novamente em instantes",
+        variant: "destructive"
+      })
     } finally {
-      setGenerateLoading(false)
+      setLoadingIA(false)
     }
   }
 
-  const adicionarSugestao = (sugestao: string) => {
-    setCriteriosExtras(prev => prev ? `${prev}\n- ${sugestao}` : `- ${sugestao}`)
+  const aplicarSugestao = (sugestao: any) => {
+    const campo = sugestao.categoria.includes('Empresa') || sugestao.categoria.includes('Tamanho') || sugestao.categoria.includes('Faturamento')
+      ? 'empresa'
+      : sugestao.categoria.includes('Cargo') || sugestao.categoria.includes('Função')
+      ? 'profissional'
+      : sugestao.categoria.includes('Localização') || sugestao.categoria.includes('Geográfico')
+      ? 'geografico'
+      : 'comportamental'
+
+    const textoSugestao = `- ${sugestao.sugestao} (${sugestao.motivo})`
+
+    if (campo === 'empresa') {
+      setRefinamentoEmpresa(prev => prev ? `${prev}\n${textoSugestao}` : textoSugestao)
+    } else if (campo === 'profissional') {
+      setRefinamentoProfissional(prev => prev ? `${prev}\n${textoSugestao}` : textoSugestao)
+    } else if (campo === 'geografico') {
+      setRefinamentoGeografico(prev => prev ? `${prev}\n${textoSugestao}` : textoSugestao)
+    } else {
+      setRefinamentoComportamental(prev => prev ? `${prev}\n${textoSugestao}` : textoSugestao)
+    }
+
     setSugestoesIA(prev => prev.filter(s => s !== sugestao))
+    
+    toast({
+      title: "✅ Sugestão aplicada!",
+      description: `Adicionada ao refinamento`
+    })
   }
+
+  // ===================================================================
+  // SALVAR ICP
+  // ===================================================================
 
   const salvarICP = async () => {
     if (!nomeICP.trim()) {
@@ -214,19 +273,19 @@ export default function ConfigurarICP() {
       return
     }
 
-    if (tipoProspeccao === 'b2b' && setoresSelecionados.length === 0) {
+    if (tipoProspeccao !== 'b2c' && setoresSelecionados.length === 0) {
       toast({
-        title: "❌ Setores obrigatórios",
-        description: "Selecione pelo menos um setor para B2B",
+        title: "⚠️ Nenhum setor selecionado",
+        description: "Para B2B, selecione pelo menos um setor",
         variant: "destructive"
       })
       return
     }
 
-    if (tipoProspeccao === 'b2c' && profissoesSelecionadas.length === 0 && profissoesCustomizadas.length === 0) {
+    if (tipoProspeccao !== 'b2b' && profissoesSelecionadas.length === 0 && profissoesCustomizadas.length === 0) {
       toast({
-        title: "❌ Profissões obrigatórias",
-        description: "Selecione ou adicione pelo menos uma profissão para B2C",
+        title: "⚠️ Nenhuma profissão selecionada",
+        description: "Para B2C, selecione pelo menos uma profissão",
         variant: "destructive"
       })
       return
@@ -238,18 +297,15 @@ export default function ConfigurarICP() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado')
 
-      const configB2B = tipoProspeccao === 'b2b' ? {
+      const configB2B = (tipoProspeccao === 'b2b' || tipoProspeccao === 'ambos') ? {
         setores: setoresSelecionados,
-        portes: portesSelecionados,
-        faturamento_min: faturamentoMin ? parseFloat(faturamentoMin) : null,
-        faturamento_max: faturamentoMax ? parseFloat(faturamentoMax) : null,
-        funcionarios_min: funcionariosMin ? parseInt(funcionariosMin) : null,
-        funcionarios_max: funcionariosMax ? parseInt(funcionariosMax) : null,
+        refinamentos: refinamentoEmpresa
       } : null
 
-      const configB2C = tipoProspeccao === 'b2c' ? {
+      const configB2C = (tipoProspeccao === 'b2c' || tipoProspeccao === 'ambos') ? {
         profissoes: profissoesSelecionadas,
         profissoes_customizadas: profissoesCustomizadas,
+        refinamentos: refinamentoProfissional
       } : null
 
       const { error } = await supabase.from('icp_configs').insert({
@@ -260,10 +316,10 @@ export default function ConfigurarICP() {
         b2b_config: configB2B,
         b2c_config: configB2C,
         filtros_avancados: {
-          estados: estadosSelecionados,
-          cidades: cidadesEspecificas,
-          criterios_extras: criteriosExtras
+          estados: estadosSelecionados
         },
+        refinamento_geografico: refinamentoGeografico,
+        refinamento_comportamental: refinamentoComportamental,
         ativo: true
       })
 
@@ -271,7 +327,7 @@ export default function ConfigurarICP() {
 
       toast({
         title: "✅ ICP salvo com sucesso!",
-        description: "Seu perfil de cliente ideal está pronto para gerar leads"
+        description: "Pronto para gerar leads inteligentes"
       })
 
       setTimeout(() => navigate('/campanhas'), 1500)
@@ -288,446 +344,499 @@ export default function ConfigurarICP() {
     }
   }
 
+  // ===================================================================
+  // RENDER
+  // ===================================================================
+
+  const totalSelecionado = 
+    setoresSelecionados.length + 
+    profissoesSelecionadas.length + 
+    profissoesCustomizadas.length +
+    estadosSelecionados.length
+
   return (
-    <div className="container mx-auto py-8 px-4 max-w-6xl">
+    <div className="container mx-auto py-8 px-4 max-w-7xl">
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Configurar Perfil Cliente Ideal (ICP)</h1>
         <p className="text-muted-foreground">
-          Defina os critérios detalhados do seu cliente ideal para gerar leads automaticamente com alta precisão
+          Marque <strong>TUDO</strong> que faz sentido e depois refine com critérios específicos
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Coluna Principal */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Informações Básicas */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* COLUNA PRINCIPAL (3/4) */}
+        <div className="lg:col-span-3 space-y-6">
+          {/* Card Básico */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Briefcase className="h-5 w-5" />
-                Informações Básicas
-              </CardTitle>
+              <CardTitle>Informações Básicas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="nome">Nome do ICP *</Label>
+                <Label>Nome do ICP *</Label>
                 <Input
-                  id="nome"
-                  placeholder="Ex: Médicos RJ 2025"
+                  placeholder="Ex: Executivos RJ Alto Padrão 2025"
                   value={nomeICP}
                   onChange={(e) => setNomeICP(e.target.value)}
                 />
               </div>
 
               <div>
-                <Label htmlFor="descricao">Descrição</Label>
+                <Label>Descrição</Label>
                 <Textarea
-                  id="descricao"
-                  placeholder="Descreva o perfil ideal do seu cliente..."
+                  placeholder="Ex: Profissionais de alto poder aquisitivo que trabalham em empresas grandes..."
                   value={descricao}
                   onChange={(e) => setDescricao(e.target.value)}
-                  rows={3}
+                  rows={2}
                 />
               </div>
 
               <div>
-                <Label>Tipo de Prospecção *</Label>
-                <div className="grid grid-cols-2 gap-3 mt-2">
+                <Label>Tipo de Prospecção</Label>
+                <div className="grid grid-cols-3 gap-3 mt-2">
                   <Button
                     type="button"
                     variant={tipoProspeccao === 'b2b' ? 'default' : 'outline'}
                     onClick={() => setTipoProspeccao('b2b')}
-                    className="h-auto py-4"
                   >
-                    <div className="text-center">
-                      <Building2 className="h-6 w-6 mx-auto mb-2" />
-                      <div className="font-semibold">B2B (Empresas)</div>
-                      <div className="text-xs opacity-70">Venda para empresas</div>
-                    </div>
+                    <Building2 className="mr-2 h-4 w-4" />
+                    B2B
                   </Button>
-
                   <Button
                     type="button"
                     variant={tipoProspeccao === 'b2c' ? 'default' : 'outline'}
                     onClick={() => setTipoProspeccao('b2c')}
-                    className="h-auto py-4"
                   >
-                    <div className="text-center">
-                      <Users className="h-6 w-6 mx-auto mb-2" />
-                      <div className="font-semibold">B2C (Profissionais)</div>
-                      <div className="text-xs opacity-70">Venda para pessoas</div>
-                    </div>
+                    <Users className="mr-2 h-4 w-4" />
+                    B2C
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={tipoProspeccao === 'ambos' ? 'default' : 'outline'}
+                    onClick={() => setTipoProspeccao('ambos')}
+                  >
+                    <Target className="mr-2 h-4 w-4" />
+                    Ambos
                   </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Configuração B2B */}
-          {tipoProspeccao === 'b2b' && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
-                  Critérios B2B (Empresas)
-                </CardTitle>
-                <CardDescription>
-                  Selecione os setores e portes de empresa que deseja prospectar
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Setores */}
-                <div>
-                  <Label className="mb-3 block">Setores de Atuação *</Label>
+          {/* Tabs de Configuração */}
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="basico">
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+                Seleção Rápida
+              </TabsTrigger>
+              <TabsTrigger value="refinamento">
+                <Filter className="h-4 w-4 mr-2" />
+                Refinamentos
+              </TabsTrigger>
+              <TabsTrigger value="geografico">
+                <MapPin className="h-4 w-4 mr-2" />
+                Localização
+              </TabsTrigger>
+              <TabsTrigger value="ia">
+                <Sparkles className="h-4 w-4 mr-2" />
+                IA Sugestões
+              </TabsTrigger>
+            </TabsList>
+
+            {/* TAB 1: SELEÇÃO RÁPIDA */}
+            <TabsContent value="basico" className="space-y-6">
+              {/* Setores B2B */}
+              {(tipoProspeccao === 'b2b' || tipoProspeccao === 'ambos') && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle>Setores B2B</CardTitle>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={selecionarTodosSetores}>
+                          <Plus className="h-3 w-3 mr-1" />
+                          Selecionar Todos
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setSetoresSelecionados([])}>
+                          <X className="h-3 w-3 mr-1" />
+                          Limpar
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-wrap gap-2">
+                      {SETORES_B2B.map(setor => (
+                        <Badge
+                          key={setor}
+                          variant={setoresSelecionados.includes(setor) ? 'default' : 'outline'}
+                          className="cursor-pointer hover:scale-105 transition-all text-sm py-1.5 px-3"
+                          onClick={() => setSetoresSelecionados(prev =>
+                            prev.includes(setor) ? prev.filter(s => s !== setor) : [...prev, setor]
+                          )}
+                        >
+                          {setor}
+                          {setoresSelecionados.includes(setor) && (
+                            <CheckCircle2 className="h-3 w-3 ml-1" />
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3">
+                      ✅ {setoresSelecionados.length} de {SETORES_B2B.length} selecionados
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Profissões B2C */}
+              {(tipoProspeccao === 'b2c' || tipoProspeccao === 'ambos') && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex justify-between items-center">
+                      <CardTitle>Profissões B2C</CardTitle>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={selecionarTodasProfissoes}>
+                          <Plus className="h-3 w-3 mr-1" />
+                          Selecionar Todas
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setProfissoesSelecionadas([])}>
+                          <X className="h-3 w-3 mr-1" />
+                          Limpar
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Busca */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Buscar profissão..."
+                        value={searchProfissao}
+                        onChange={(e) => setSearchProfissao(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+
+                    {/* Seleção por Categoria */}
+                    <div className="flex flex-wrap gap-2">
+                      {[...new Set(PROFISSOES_DISPONIVEIS.map(p => p.categoria))].map(cat => (
+                        <Button
+                          key={cat}
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => selecionarPorCategoria(cat)}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Todas de {cat}
+                        </Button>
+                      ))}
+                    </div>
+
+                    <Separator />
+
+                    {/* Lista por Categoria */}
+                    <div className="max-h-96 overflow-y-auto space-y-4">
+                      {Object.entries(
+                        profissoesFiltradas.reduce((acc, prof) => {
+                          if (!acc[prof.categoria]) acc[prof.categoria] = []
+                          acc[prof.categoria].push(prof)
+                          return acc
+                        }, {} as Record<string, typeof PROFISSOES_DISPONIVEIS>)
+                      ).map(([categoria, profissoes]) => (
+                        <div key={categoria}>
+                          <h4 className="font-semibold text-sm mb-2 text-primary">{categoria}</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {profissoes.map(prof => (
+                              <Badge
+                                key={prof.value}
+                                variant={profissoesSelecionadas.includes(prof.value) ? 'default' : 'outline'}
+                                className="cursor-pointer hover:scale-105 transition-all text-sm py-1.5"
+                                onClick={() => setProfissoesSelecionadas(prev =>
+                                  prev.includes(prof.value) ? prev.filter(p => p !== prof.value) : [...prev, prof.value]
+                                )}
+                              >
+                                <span className="mr-1">{prof.icon}</span>
+                                {prof.label}
+                                {profissoesSelecionadas.includes(prof.value) && (
+                                  <CheckCircle2 className="h-3 w-3 ml-1" />
+                                )}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      ✅ {profissoesSelecionadas.length} de {PROFISSOES_DISPONIVEIS.length} selecionadas
+                    </p>
+
+                    {/* Adicionar Customizada */}
+                    <Separator />
+                    <div>
+                      <Label>Profissão não listada? Adicione aqui:</Label>
+                      <div className="flex gap-2 mt-2">
+                        <Input
+                          placeholder="Ex: Coach Executivo, Personal Trainer..."
+                          value={novaProfissao}
+                          onChange={(e) => setNovaProfissao(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              if (novaProfissao.trim()) {
+                                setProfissoesCustomizadas(prev => [...prev, novaProfissao.trim()])
+                                setNovaProfissao('')
+                              }
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            if (novaProfissao.trim()) {
+                              setProfissoesCustomizadas(prev => [...prev, novaProfissao.trim()])
+                              setNovaProfissao('')
+                            }
+                          }}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      
+                      {profissoesCustomizadas.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {profissoesCustomizadas.map(prof => (
+                            <Badge key={prof} variant="secondary" className="gap-1">
+                              ✨ {prof}
+                              <X
+                                className="h-3 w-3 cursor-pointer hover:text-destructive"
+                                onClick={() => setProfissoesCustomizadas(prev => prev.filter(p => p !== prof))}
+                              />
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+
+            {/* TAB 2: REFINAMENTOS */}
+            <TabsContent value="refinamento" className="space-y-6">
+              <Alert>
+                <Zap className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Exemplo para Concessionária:</strong> "Profissionais que trabalham em empresas com mais de 100 funcionários, cargos de gerência ou diretoria, faturamento acima de R$ 5 milhões/ano"
+                </AlertDescription>
+              </Alert>
+
+              {(tipoProspeccao === 'b2b' || tipoProspeccao === 'ambos') && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>🏢 Refinamento: Tipo de Empresa</CardTitle>
+                    <CardDescription>
+                      Detalhe o perfil das empresas (tamanho, faturamento, maturidade, etc)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      placeholder={"Ex:\n- Empresas com mais de 100 funcionários\n- Faturamento anual acima de R$ 5 milhões\n- Empresas em crescimento (contratando)\n- Presença digital consolidada (site, redes sociais)\n- Que já usam CRM ou ferramentas de automação"}
+                      value={refinamentoEmpresa}
+                      onChange={(e) => setRefinamentoEmpresa(e.target.value)}
+                      rows={8}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+
+              {(tipoProspeccao === 'b2c' || tipoProspeccao === 'ambos') && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>👤 Refinamento: Perfil Profissional</CardTitle>
+                    <CardDescription>
+                      Detalhe o perfil dos profissionais (cargo, experiência, renda, etc)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      placeholder={"Ex:\n- Cargos de gerência, diretoria ou C-Level\n- Profissionais com mais de 5 anos de experiência\n- Renda mensal acima de R$ 10.000\n- Ativos em LinkedIn/redes profissionais\n- Que trabalham em empresas grandes (100+ funcionários)"}
+                      value={refinamentoProfissional}
+                      onChange={(e) => setRefinamentoProfissional(e.target.value)}
+                      rows={8}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>🎯 Refinamento: Comportamento/Interesse</CardTitle>
+                  <CardDescription>
+                    Defina comportamentos, interesses ou características específicas
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    placeholder={"Ex:\n- Ativos em redes sociais (LinkedIn, Instagram)\n- Frequentam eventos do setor\n- Leem blogs/newsletters especializados\n- Já demonstraram interesse em produtos similares\n- Fazem parte de associações profissionais"}
+                    value={refinamentoComportamental}
+                    onChange={(e) => setRefinamentoComportamental(e.target.value)}
+                    rows={7}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* TAB 3: GEOGRÁFICO */}
+            <TabsContent value="geografico" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Estados</CardTitle>
+                    <Button size="sm" variant="outline" onClick={() => setEstadosSelecionados(ESTADOS_BRASIL)}>
+                      <Plus className="h-3 w-3 mr-1" />
+                      Selecionar Todos
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {SETORES_B2B.map(setor => (
+                    {ESTADOS_BRASIL.map(estado => (
                       <Badge
-                        key={setor}
-                        variant={setoresSelecionados.includes(setor) ? 'default' : 'outline'}
-                        className="cursor-pointer hover:scale-105 transition-transform"
-                        onClick={() => toggleSetor(setor)}
+                        key={estado}
+                        variant={estadosSelecionados.includes(estado) ? 'default' : 'outline'}
+                        className="cursor-pointer hover:scale-105 transition-all text-sm py-1.5 px-3"
+                        onClick={() => setEstadosSelecionados(prev =>
+                          prev.includes(estado) ? prev.filter(e => e !== estado) : [...prev, estado]
+                        )}
                       >
-                        {setor}
-                        {setoresSelecionados.includes(setor) && (
+                        {estado}
+                        {estadosSelecionados.includes(estado) && (
                           <CheckCircle2 className="h-3 w-3 ml-1" />
                         )}
                       </Badge>
                     ))}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {setoresSelecionados.length} setor(es) selecionado(s)
+                  <p className="text-xs text-muted-foreground mt-3">
+                    {estadosSelecionados.length === 0 ? 'Nenhum estado = Brasil todo' : `✅ ${estadosSelecionados.length} estado(s)`}
                   </p>
-                </div>
+                </CardContent>
+              </Card>
 
-                <Separator />
+              <Card>
+                <CardHeader>
+                  <CardTitle>🎯 Refinamento Geográfico</CardTitle>
+                  <CardDescription>
+                    Cidades específicas, bairros, regiões, proximidade, etc
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Textarea
+                    placeholder={"Ex:\n- Capitais e regiões metropolitanas\n- Bairros nobres: Leblon, Ipanema, Jardins, Moema\n- Proximidade de shoppings de alto padrão\n- Cidades com mais de 500 mil habitantes"}
+                    value={refinamentoGeografico}
+                    onChange={(e) => setRefinamentoGeografico(e.target.value)}
+                    rows={6}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                {/* Porte da Empresa */}
-                <div>
-                  <Label className="mb-3 block">Porte da Empresa</Label>
-                  <div className="space-y-2">
-                    {PORTES_EMPRESA.map(porte => (
-                      <div
-                        key={porte.value}
-                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                          portesSelecionados.includes(porte.value)
-                            ? 'bg-primary/10 border-primary'
-                            : 'hover:bg-accent'
-                        }`}
-                        onClick={() => togglePorte(porte.value)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{porte.label}</span>
-                          {portesSelecionados.includes(porte.value) && (
-                            <CheckCircle2 className="h-5 w-5 text-primary" />
-                          )}
+            {/* TAB 4: IA SUGESTÕES */}
+            <TabsContent value="ia" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 text-yellow-500" />
+                    Sugestões Inteligentes da IA
+                  </CardTitle>
+                  <CardDescription>
+                    A IA analisa seu ICP e sugere refinamentos para aumentar conversão
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Button
+                    onClick={gerarSugestoesIA}
+                    disabled={loadingIA || totalSelecionado === 0}
+                    className="w-full"
+                    size="lg"
+                  >
+                    {loadingIA ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analisando seu ICP...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="mr-2 h-4 w-4" />
+                        Gerar Sugestões com IA
+                      </>
+                    )}
+                  </Button>
+
+                  {sugestoesIA.length > 0 && (
+                    <div className="space-y-3 mt-6">
+                      <Label>Clique para aplicar:</Label>
+                      {sugestoesIA.map((sugestao, idx) => (
+                        <div
+                          key={idx}
+                          className="p-4 border rounded-lg hover:bg-accent cursor-pointer transition-colors"
+                          onClick={() => aplicarSugestao(sugestao)}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Badge variant="secondary">{sugestao.categoria}</Badge>
+                              </div>
+                              <p className="font-medium mb-1">{sugestao.sugestao}</p>
+                              <p className="text-sm text-muted-foreground">{sugestao.motivo}</p>
+                            </div>
+                            <Plus className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Faturamento */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="fat-min">Faturamento Mínimo (R$)</Label>
-                    <Input
-                      id="fat-min"
-                      type="number"
-                      placeholder="Ex: 100000"
-                      value={faturamentoMin}
-                      onChange={(e) => setFaturamentoMin(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="fat-max">Faturamento Máximo (R$)</Label>
-                    <Input
-                      id="fat-max"
-                      type="number"
-                      placeholder="Ex: 5000000"
-                      value={faturamentoMax}
-                      onChange={(e) => setFaturamentoMax(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Número de Funcionários */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="func-min">Funcionários Mínimo</Label>
-                    <Input
-                      id="func-min"
-                      type="number"
-                      placeholder="Ex: 10"
-                      value={funcionariosMin}
-                      onChange={(e) => setFuncionariosMin(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="func-max">Funcionários Máximo</Label>
-                    <Input
-                      id="func-max"
-                      type="number"
-                      placeholder="Ex: 500"
-                      value={funcionariosMax}
-                      onChange={(e) => setFuncionariosMax(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Configuração B2C */}
-          {tipoProspeccao === 'b2c' && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Critérios B2C (Profissionais)
-                </CardTitle>
-                <CardDescription>
-                  Selecione as profissões e categorias que deseja prospectar
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Busca de Profissões */}
-                <div>
-                  <Label htmlFor="search-prof">Buscar Profissões</Label>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="search-prof"
-                      placeholder="Digite para buscar (ex: médico, advogado)..."
-                      value={searchProfissao}
-                      onChange={(e) => setSearchProfissao(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                {/* Lista de Profissões por Categoria */}
-                <div className="max-h-96 overflow-y-auto space-y-4 border rounded-lg p-4">
-                  {Object.entries(
-                    profissoesFiltradas.reduce((acc, prof) => {
-                      if (!acc[prof.categoria]) acc[prof.categoria] = []
-                      acc[prof.categoria].push(prof)
-                      return acc
-                    }, {} as Record<string, typeof PROFISSOES_DISPONIVEIS>)
-                  ).map(([categoria, profissoes]) => (
-                    <div key={categoria}>
-                      <h4 className="font-semibold text-sm mb-2 text-primary">{categoria}</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {profissoes.map(prof => (
-                          <Badge
-                            key={prof.value}
-                            variant={profissoesSelecionadas.includes(prof.value) ? 'default' : 'outline'}
-                            className="cursor-pointer hover:scale-105 transition-transform"
-                            onClick={() => toggleProfissao(prof.value)}
-                          >
-                            <span className="mr-1">{prof.icon}</span>
-                            {prof.label}
-                            {profissoesSelecionadas.includes(prof.value) && (
-                              <CheckCircle2 className="h-3 w-3 ml-1" />
-                            )}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <p className="text-sm text-muted-foreground">
-                  ✅ {profissoesSelecionadas.length} profissão(ões) selecionada(s)
-                </p>
-
-                <Separator />
-
-                {/* Adicionar Profissão Customizada */}
-                <div>
-                  <Label htmlFor="nova-prof">Profissão Não Listada? Adicione Aqui</Label>
-                  <div className="flex gap-2 mt-2">
-                    <Input
-                      id="nova-prof"
-                      placeholder="Ex: Coach Executivo, Personal Trainer..."
-                      value={novaProfissao}
-                      onChange={(e) => setNovaProfissao(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && adicionarProfissaoCustomizada()}
-                    />
-                    <Button type="button" onClick={adicionarProfissaoCustomizada}>
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  {profissoesCustomizadas.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {profissoesCustomizadas.map(prof => (
-                        <Badge key={prof} variant="secondary" className="gap-1">
-                          ✨ {prof}
-                          <X
-                            className="h-3 w-3 cursor-pointer hover:text-destructive"
-                            onClick={() => setProfissoesCustomizadas(prev => prev.filter(p => p !== prof))}
-                          />
-                        </Badge>
                       ))}
                     </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
-          {/* Localização Geográfica */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Localização Geográfica
-              </CardTitle>
-              <CardDescription>
-                Defina as regiões onde deseja prospectar
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label className="mb-2 block">Estados</Label>
-                <div className="flex flex-wrap gap-2">
-                  {ESTADOS_BRASIL.map(estado => (
-                    <Badge
-                      key={estado}
-                      variant={estadosSelecionados.includes(estado) ? 'default' : 'outline'}
-                      className="cursor-pointer hover:scale-105 transition-transform"
-                      onClick={() => toggleEstado(estado)}
-                    >
-                      {estado}
-                      {estadosSelecionados.includes(estado) && (
-                        <CheckCircle2 className="h-3 w-3 ml-1" />
-                      )}
-                    </Badge>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  {estadosSelecionados.length === 0 ? 'Nenhum estado = Brasil todo' : `${estadosSelecionados.length} estado(s)`}
-                </p>
-              </div>
-
-              <Separator />
-
-              <div>
-                <Label htmlFor="cidade">Cidades Específicas (opcional)</Label>
-                <div className="flex gap-2 mt-2">
-                  <Input
-                    id="cidade"
-                    placeholder="Ex: São Paulo, Rio de Janeiro..."
-                    value={novaCidade}
-                    onChange={(e) => setNovaCidade(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && adicionarCidade()}
-                  />
-                  <Button type="button" onClick={adicionarCidade}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                
-                {cidadesEspecificas.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {cidadesEspecificas.map(cidade => (
-                      <Badge key={cidade} variant="secondary" className="gap-1">
-                        📍 {cidade}
-                        <X
-                          className="h-3 w-3 cursor-pointer hover:text-destructive"
-                          onClick={() => setCidadesEspecificas(prev => prev.filter(c => c !== cidade))}
-                        />
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Critérios Extras */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5" />
-                Critérios Adicionais
-              </CardTitle>
-              <CardDescription>
-                Descreva qualquer outro critério importante que não esteja nas opções acima
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Textarea
-                placeholder="Ex:&#10;- Profissionais com mais de 5 anos de experiência&#10;- Empresas que cresceram mais de 20% no último ano&#10;- Profissionais ativos em redes sociais&#10;- Tomadores de decisão (C-Level)"
-                value={criteriosExtras}
-                onChange={(e) => setCriteriosExtras(e.target.value)}
-                rows={6}
-              />
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={gerarSugestoesIA}
-                disabled={generateLoading}
-                className="w-full"
-              >
-                {generateLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Gerando sugestões...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    Gerar Sugestões com IA
-                  </>
-                )}
-              </Button>
-
-              {sugestoesIA.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Sugestões da IA:</Label>
-                  {sugestoesIA.map((sugestao, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent cursor-pointer"
-                      onClick={() => adicionarSugestao(sugestao)}
-                    >
-                      <span className="text-sm">{sugestao}</span>
-                      <Plus className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                  {totalSelecionado === 0 && (
+                    <Alert>
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        Selecione setores ou profissões primeiro para gerar sugestões inteligentes
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
 
-        {/* Coluna Lateral - Resumo */}
+        {/* COLUNA LATERAL - RESUMO (1/4) */}
         <div className="lg:col-span-1">
           <Card className="sticky top-4">
             <CardHeader>
-              <CardTitle>Resumo do ICP</CardTitle>
+              <CardTitle className="text-lg">Resumo do ICP</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {nomeICP && (
-                <div>
-                  <Label className="text-xs text-muted-foreground">Nome</Label>
-                  <p className="font-medium">{nomeICP}</p>
-                </div>
+                <>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Nome</Label>
+                    <p className="font-medium text-sm">{nomeICP}</p>
+                  </div>
+                  <Separator />
+                </>
               )}
-
-              <Separator />
 
               <div>
                 <Label className="text-xs text-muted-foreground">Tipo</Label>
                 <Badge variant="default" className="mt-1">
-                  {tipoProspeccao === 'b2b' ? '🏢 B2B (Empresas)' : '👤 B2C (Profissionais)'}
+                  {tipoProspeccao === 'b2b' ? '🏢 B2B' : tipoProspeccao === 'b2c' ? '👤 B2C' : '🎯 B2B + B2C'}
                 </Badge>
               </div>
 
-              {tipoProspeccao === 'b2b' && setoresSelecionados.length > 0 && (
+              {setoresSelecionados.length > 0 && (
                 <>
                   <Separator />
                   <div>
@@ -735,14 +844,14 @@ export default function ConfigurarICP() {
                       Setores ({setoresSelecionados.length})
                     </Label>
                     <div className="flex flex-wrap gap-1">
-                      {setoresSelecionados.slice(0, 5).map(setor => (
+                      {setoresSelecionados.slice(0, 4).map(setor => (
                         <Badge key={setor} variant="secondary" className="text-xs">
                           {setor}
                         </Badge>
                       ))}
-                      {setoresSelecionados.length > 5 && (
+                      {setoresSelecionados.length > 4 && (
                         <Badge variant="secondary" className="text-xs">
-                          +{setoresSelecionados.length - 5}
+                          +{setoresSelecionados.length - 4}
                         </Badge>
                       )}
                     </div>
@@ -750,7 +859,7 @@ export default function ConfigurarICP() {
                 </>
               )}
 
-              {tipoProspeccao === 'b2c' && (profissoesSelecionadas.length > 0 || profissoesCustomizadas.length > 0) && (
+              {(profissoesSelecionadas.length > 0 || profissoesCustomizadas.length > 0) && (
                 <>
                   <Separator />
                   <div>
@@ -766,14 +875,9 @@ export default function ConfigurarICP() {
                           </Badge>
                         ) : null
                       })}
-                      {profissoesCustomizadas.slice(0, 2).map(prof => (
-                        <Badge key={prof} variant="secondary" className="text-xs">
-                          ✨ {prof}
-                        </Badge>
-                      ))}
-                      {(profissoesSelecionadas.length + profissoesCustomizadas.length) > 5 && (
+                      {(profissoesSelecionadas.length + profissoesCustomizadas.length) > 3 && (
                         <Badge variant="secondary" className="text-xs">
-                          +{(profissoesSelecionadas.length + profissoesCustomizadas.length) - 5}
+                          +{(profissoesSelecionadas.length + profissoesCustomizadas.length) - 3}
                         </Badge>
                       )}
                     </div>
@@ -799,6 +903,23 @@ export default function ConfigurarICP() {
                           +{estadosSelecionados.length - 6}
                         </Badge>
                       )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {(refinamentoEmpresa || refinamentoProfissional || refinamentoGeografico || refinamentoComportamental) && (
+                <>
+                  <Separator />
+                  <div>
+                    <Label className="text-xs text-muted-foreground mb-2 block">
+                      Refinamentos Aplicados
+                    </Label>
+                    <div className="space-y-1">
+                      {refinamentoEmpresa && <Badge variant="secondary" className="text-xs">🏢 Empresa</Badge>}
+                      {refinamentoProfissional && <Badge variant="secondary" className="text-xs">👤 Profissional</Badge>}
+                      {refinamentoGeografico && <Badge variant="secondary" className="text-xs">📍 Geográfico</Badge>}
+                      {refinamentoComportamental && <Badge variant="secondary" className="text-xs">🎯 Comportamento</Badge>}
                     </div>
                   </div>
                 </>
