@@ -86,6 +86,9 @@ const WhatsAppPage = () => {
   
   // State para contatos selecionados no manager
   const [selectedContactPhones, setSelectedContactPhones] = useState<string[]>([]);
+  
+  // State para campo de números direto
+  const [directPhoneNumbers, setDirectPhoneNumbers] = useState<string>('');
 
   // Carregar dados ao montar componente
   useEffect(() => {
@@ -108,6 +111,13 @@ const WhatsAppPage = () => {
       toast.success('✅ Mensagem do IA Marketing carregada! Agora escolha os grupos ou contatos.');
     }
   }, []);
+
+  // Sincronizar campo de números com seleção do manager
+  useEffect(() => {
+    if (selectedContactPhones.length > 0) {
+      setDirectPhoneNumbers(selectedContactPhones.join(', '));
+    }
+  }, [selectedContactPhones]);
 
   const loadBulkSends = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -285,9 +295,47 @@ const WhatsAppPage = () => {
     toast.success('Preview gerado!');
   };
 
+  // AUTO-SAVE: Salvar contato quando usuário digitar número manualmente
+  const autoSaveContact = async (phone: string, name?: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      await supabase
+        .from('whatsapp_contacts')
+        .upsert({
+          user_id: user.id,
+          nome: name || `Contato ${phone.slice(-4)}`,
+          phone: phone.replace(/\D/g, ''),
+          notes: null
+        }, {
+          onConflict: 'user_id,phone',
+          ignoreDuplicates: false
+        });
+    } catch (error) {
+      console.error('Erro ao salvar contato:', error);
+    }
+  };
+
   const handleBulkSend = async () => {
-    if (selectedContacts.length === 0 && selectedGroups.length === 0 && selectedContactPhones.length === 0) {
-      toast.error('Selecione pelo menos um contato ou grupo');
+    // Processar números do campo direto
+    const directPhones = directPhoneNumbers
+      .split(/[,\n]/)
+      .map(p => p.trim().replace(/\D/g, ''))
+      .filter(p => p.length >= 10);
+
+    // Combinar todas as fontes de números
+    const allPhones = [
+      ...selectedContacts,
+      ...selectedContactPhones,
+      ...directPhones
+    ];
+
+    // Remover duplicatas
+    const uniquePhones = [...new Set(allPhones)];
+
+    if (uniquePhones.length === 0 && selectedGroups.length === 0) {
+      toast.error('Selecione pelo menos um contato ou grupo, ou digite um número');
       return;
     }
 
@@ -302,53 +350,26 @@ const WhatsAppPage = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
+      // AUTO-SAVE: Salvar todos os números digitados diretamente
+      for (const phone of directPhones) {
+        await autoSaveContact(phone);
+      }
+
       // ENVIO USANDO FUNÇÃO ORIGINAL + SUPORTE A GRUPOS (ADITIVO)
       const results = [];
       
-      // 1. Enviar para contatos individuais selecionados (do upload/cola)
-      for (const phone of selectedContacts) {
+      // 1. Enviar para TODOS os números únicos (de todas as fontes)
+      for (const phone of uniquePhones) {
         const contact = contacts.find(c => c.phone === phone);
-        if (!contact) continue;
+        const contactName = contact?.name || `Contato ${phone.slice(-4)}`;
 
         try {
           // Personalizar mensagem
           let personalizedMessage = messageTemplate;
-          personalizedMessage = personalizedMessage.replace(/{nome}/g, contact.name || '');
-          personalizedMessage = personalizedMessage.replace(/{telefone}/g, contact.phone || '');
-          
-          // Usar função ORIGINAL que já funcionava
-          const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
-            body: {
-              phoneNumber: contact.phone,
-              message: personalizedMessage,
-              imageUrl: productImage || undefined
-            }
-          });
-
-          results.push({
-            phone: contact.phone,
-            success: !error && data?.success,
-            error: error?.message
-          });
-
-        } catch (err) {
-          results.push({
-            phone: contact.phone,
-            success: false,
-            error: err instanceof Error ? err.message : 'Erro'
-          });
-        }
-      }
-      
-      // 1b. Enviar para contatos selecionados do manager
-      for (const phone of selectedContactPhones) {
-        // Pular se já foi enviado (evita duplicatas)
-        if (selectedContacts.includes(phone)) continue;
-        
-        try {
-          let personalizedMessage = messageTemplate;
+          personalizedMessage = personalizedMessage.replace(/{nome}/g, contactName);
           personalizedMessage = personalizedMessage.replace(/{telefone}/g, phone);
           
+          // Usar função ORIGINAL que já funcionava
           const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
             body: {
               phoneNumber: phone,
@@ -407,42 +428,6 @@ const WhatsAppPage = () => {
       
       if (successCount > 0) {
         toast.success(`✅ ${successCount} enviadas${failCount > 0 ? `, ${failCount} falharam` : ''}!`);
-        
-        // AUTO-SAVE: Salvar contatos enviados automaticamente
-        try {
-          for (const contact of contacts) {
-            if (selectedContacts.includes(contact.phone)) {
-              await supabase
-                .from('whatsapp_contacts')
-                .upsert({
-                  user_id: user.id,
-                  nome: contact.name || `Contato ${contact.phone}`,
-                  phone: contact.phone,
-                  last_interaction: new Date().toISOString()
-                }, {
-                  onConflict: 'user_id,phone'
-                });
-            }
-          }
-          
-          // Salvar também os números do manager
-          for (const phone of selectedContactPhones) {
-            const contact = contacts.find(c => c.phone === phone);
-            await supabase
-              .from('whatsapp_contacts')
-              .upsert({
-                user_id: user.id,
-                nome: contact?.name || `Contato ${phone}`,
-                phone: phone,
-                last_interaction: new Date().toISOString()
-              }, {
-                onConflict: 'user_id,phone'
-              });
-          }
-        } catch (error) {
-          console.error('Erro ao salvar contatos:', error);
-          // Não bloqueia o fluxo se der erro ao salvar
-        }
       } else {
         toast.error('Nenhuma mensagem enviada');
       }
@@ -452,8 +437,10 @@ const WhatsAppPage = () => {
       setContacts([]);
       setCsvText('');
       setPhoneNumbers('');
+      setDirectPhoneNumbers('');
       setPreviewMessage('');
       clearAllSelections();
+      setSelectedContactPhones([]);
       
       // Recarregar histórico
       await loadBulkSends();
@@ -909,10 +896,54 @@ const WhatsAppPage = () => {
                   </div>
                 </div>
 
+                {/* CAMPO DE NÚMEROS SELECIONADOS / DIGITAR */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    📱 Números Selecionados
+                    <span className="text-xs text-muted-foreground font-normal">
+                      (adicione mais separados por vírgula ou linha)
+                    </span>
+                  </label>
+                  <Textarea
+                    value={
+                      selectedContactPhones.length > 0
+                        ? selectedContactPhones.join(', ')
+                        : directPhoneNumbers
+                    }
+                    onChange={(e) => {
+                      setDirectPhoneNumbers(e.target.value);
+                      // Limpar seleção do manager se usuário começar a digitar
+                      if (e.target.value && selectedContactPhones.length > 0) {
+                        setSelectedContactPhones([]);
+                      }
+                    }}
+                    placeholder="Digite números aqui (ex: 5521999998888) ou selecione contatos acima"
+                    rows={3}
+                    className="font-mono text-sm"
+                  />
+                  {(selectedContactPhones.length > 0 || directPhoneNumbers.trim()) && (
+                    <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+                      <span className="text-sm font-medium">
+                        {selectedContactPhones.length > 0
+                          ? `${selectedContactPhones.length} contato(s) selecionado(s)`
+                          : `${directPhoneNumbers.split(/[,\n]/).filter(p => p.trim()).length} número(s) digitado(s)`
+                        }
+                        {' '}serão salvos automaticamente
+                      </span>
+                    </div>
+                  )}
+                </div>
+
                 {/* Botão Enviar */}
                 <Button
                   onClick={handleBulkSend}
-                  disabled={loading || (selectedContacts.length === 0 && selectedGroups.length === 0)}
+                  disabled={loading || (
+                    selectedContacts.length === 0 && 
+                    selectedGroups.length === 0 && 
+                    selectedContactPhones.length === 0 &&
+                    !directPhoneNumbers.trim()
+                  )}
                   className="w-full"
                   size="lg"
                 >
@@ -921,7 +952,12 @@ const WhatsAppPage = () => {
                   ) : (
                     <>
                       <Send className="w-4 h-4 mr-2" />
-                      Enviar para {selectedContacts.length + selectedGroups.length} destinatário(s)
+                      Enviar para {
+                        selectedContacts.length + 
+                        selectedGroups.length + 
+                        selectedContactPhones.length +
+                        (directPhoneNumbers.trim() ? directPhoneNumbers.split(/[,\n]/).filter(p => p.trim()).length : 0)
+                      } destinatário(s)
                     </>
                   )}
                 </Button>
