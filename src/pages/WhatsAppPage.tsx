@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft, Upload, Eye, Calendar, BarChart3, Trash2, Copy, Activity } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -118,6 +118,65 @@ const WhatsAppPage = () => {
       setDirectPhoneNumbers(selectedContactPhones.join(', '));
     }
   }, [selectedContactPhones]);
+
+  // AUTO-SAVE COM DEBOUNCE: Salvar números digitados automaticamente
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [reloadContactsTrigger, setReloadContactsTrigger] = useState(0);
+
+  const autoSaveNumbers = useCallback(async (numbersText: string) => {
+    // Extrair números válidos (10+ dígitos)
+    const phoneRegex = /\d{10,}/g;
+    const foundNumbers = numbersText.match(phoneRegex) || [];
+    
+    if (foundNumbers.length === 0) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Salvar cada número encontrado
+      for (const phone of foundNumbers) {
+        const cleanPhone = phone.replace(/\D/g, '');
+        
+        await supabase
+          .from('whatsapp_contacts')
+          .upsert({
+            user_id: user.id,
+            nome: `Contato ${cleanPhone.slice(-4)}`,
+            phone: cleanPhone
+          }, {
+            onConflict: 'user_id,phone',
+            ignoreDuplicates: false
+          });
+      }
+
+      // Forçar reload dos contatos no manager
+      setReloadContactsTrigger(prev => prev + 1);
+      
+      toast.success(`✅ ${foundNumbers.length} número(s) salvo(s) automaticamente!`);
+    } catch (error) {
+      console.error('Erro ao salvar números:', error);
+    }
+  }, []);
+
+  // Debounce: Salva 500ms após parar de digitar
+  useEffect(() => {
+    if (!directPhoneNumbers.trim()) return;
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      autoSaveNumbers(directPhoneNumbers);
+    }, 500);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [directPhoneNumbers, autoSaveNumbers]);
 
   const loadBulkSends = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -295,28 +354,6 @@ const WhatsAppPage = () => {
     toast.success('Preview gerado!');
   };
 
-  // AUTO-SAVE: Salvar contato quando usuário digitar número manualmente
-  const autoSaveContact = async (phone: string, name?: string) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      await supabase
-        .from('whatsapp_contacts')
-        .upsert({
-          user_id: user.id,
-          nome: name || `Contato ${phone.slice(-4)}`,
-          phone: phone.replace(/\D/g, ''),
-          notes: null
-        }, {
-          onConflict: 'user_id,phone',
-          ignoreDuplicates: false
-        });
-    } catch (error) {
-      console.error('Erro ao salvar contato:', error);
-    }
-  };
-
   const handleBulkSend = async () => {
     // Processar números do campo direto
     const directPhones = directPhoneNumbers
@@ -349,11 +386,6 @@ const WhatsAppPage = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
-
-      // AUTO-SAVE: Salvar todos os números digitados diretamente
-      for (const phone of directPhones) {
-        await autoSaveContact(phone);
-      }
 
       // ENVIO USANDO FUNÇÃO ORIGINAL + SUPORTE A GRUPOS (ADITIVO)
       const results = [];
@@ -638,6 +670,7 @@ const WhatsAppPage = () => {
                     <WhatsAppContactManager
                       selectedContacts={selectedContactPhones}
                       onContactsChange={setSelectedContactPhones}
+                      key={reloadContactsTrigger}
                     />
                   </CardContent>
                 </Card>
