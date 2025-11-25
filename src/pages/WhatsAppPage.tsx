@@ -10,7 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Checkbox } from '@/components/ui/checkbox';
 import { WhatsAppDiagnostics } from '@/components/WhatsAppDiagnostics';
 import { AddGroupModal } from '@/components/AddGroupModal';
 import WhatsAppContactManager from '@/components/WhatsAppContactManager';
@@ -731,19 +730,21 @@ const WhatsAppPage = () => {
                             </div>
                           ) : (
                             contacts.map((contact, idx) => (
-                              <div
+                              <label
                                 key={idx}
-                                className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
+                                className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent"
                               >
-                                <Checkbox
+                                <input
+                                  type="checkbox"
                                   checked={selectedContacts.includes(contact.phone)}
-                                  onCheckedChange={() => toggleContact(contact.phone)}
+                                  onChange={() => toggleContact(contact.phone)}
+                                  className="w-4 h-4 rounded border-gray-300"
                                 />
-                                <div className="flex-1 cursor-pointer" onClick={() => toggleContact(contact.phone)}>
+                                <div className="flex-1">
                                   <p className="font-medium text-sm">{contact.name}</p>
                                   <p className="text-xs text-muted-foreground">{contact.phone}</p>
                                 </div>
-                              </div>
+                              </label>
                             ))
                           )}
                         </div>
@@ -777,21 +778,23 @@ const WhatsAppPage = () => {
                             </div>
                           ) : (
                             groups.map((group) => (
-                              <div
+                              <label
                                 key={group.id}
-                                className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
+                                className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent"
                               >
-                                <Checkbox
+                                <input
+                                  type="checkbox"
                                   checked={selectedGroups.includes(group.group_id)}
-                                  onCheckedChange={() => toggleGroup(group.group_id)}
+                                  onChange={() => toggleGroup(group.group_id)}
+                                  className="w-4 h-4 rounded border-gray-300"
                                 />
-                                <div className="flex-1 cursor-pointer" onClick={() => toggleGroup(group.group_id)}>
+                                <div className="flex-1">
                                   <p className="font-medium text-sm">{group.group_name}</p>
                                   <p className="text-xs text-muted-foreground">
                                     👥 {group.member_count || 0} membros
                                   </p>
                                 </div>
-                              </div>
+                              </label>
                             ))
                           )}
                         </div>
