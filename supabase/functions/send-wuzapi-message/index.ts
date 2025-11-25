@@ -11,7 +11,39 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumber, phoneNumbers, message, imageUrl, groupId } = await req.json();
+    const { phoneNumber, phoneNumbers, message, imageUrl, groupId, action } = await req.json();
+
+    // Se for ação de listar grupos, não valida phoneNumber/message
+    if (action === 'list-groups') {
+      const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
+      const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
+
+      if (!WUZAPI_URL || !WUZAPI_TOKEN) {
+        return new Response(
+          JSON.stringify({ error: 'Credenciais Wuzapi não configuradas' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
+      
+      console.log('📋 Listando grupos do WhatsApp...');
+      
+      const response = await fetch(`${baseUrl}/groups`, {
+        method: 'GET',
+        headers: {
+          'Token': WUZAPI_TOKEN,
+        },
+      });
+
+      const responseData = await response.json();
+      console.log('📋 Grupos encontrados:', responseData);
+
+      return new Response(
+        JSON.stringify({ success: true, groups: responseData }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Suporta tanto phoneNumber (single) quanto phoneNumbers (array)
     const numbersToSend = phoneNumbers || (phoneNumber ? [phoneNumber] : []);
