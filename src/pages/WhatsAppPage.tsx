@@ -739,11 +739,11 @@ const WhatsAppPage = () => {
                                   id={`contact-${idx}`}
                                   checked={selectedContacts.includes(contact.phone)}
                                   onCheckedChange={(checked) => {
-                                    if (checked) {
-                                      setSelectedContacts([...selectedContacts, contact.phone]);
-                                    } else {
-                                      setSelectedContacts(selectedContacts.filter(p => p !== contact.phone));
-                                    }
+                                    setSelectedContacts(prev => 
+                                      checked 
+                                        ? [...prev, contact.phone]
+                                        : prev.filter(p => p !== contact.phone)
+                                    );
                                   }}
                                 />
                                 <label 
@@ -795,11 +795,11 @@ const WhatsAppPage = () => {
                                   id={`group-${group.id}`}
                                   checked={selectedGroups.includes(group.group_id)}
                                   onCheckedChange={(checked) => {
-                                    if (checked) {
-                                      setSelectedGroups([...selectedGroups, group.group_id]);
-                                    } else {
-                                      setSelectedGroups(selectedGroups.filter(id => id !== group.group_id));
-                                    }
+                                    setSelectedGroups(prev => 
+                                      checked 
+                                        ? [...prev, group.group_id]
+                                        : prev.filter(id => id !== group.group_id)
+                                    );
                                   }}
                                 />
                                 <label 
