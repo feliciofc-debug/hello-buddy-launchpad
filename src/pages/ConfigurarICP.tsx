@@ -33,53 +33,183 @@ import {
 // ===================================================================
 
 const PROFISSOES_DISPONIVEIS = [
-  // Saúde
-  { value: 'medico', label: 'Médico', categoria: 'Saúde', icon: '🏥' },
-  { value: 'dentista', label: 'Dentista', categoria: 'Saúde', icon: '🦷' },
-  { value: 'fisioterapeuta', label: 'Fisioterapeuta', categoria: 'Saúde', icon: '💪' },
-  { value: 'nutricionista', label: 'Nutricionista', categoria: 'Saúde', icon: '🥗' },
-  { value: 'psicologo', label: 'Psicólogo', categoria: 'Saúde', icon: '🧠' },
-  { value: 'farmaceutico', label: 'Farmacêutico', categoria: 'Saúde', icon: '💊' },
-  { value: 'enfermeiro', label: 'Enfermeiro', categoria: 'Saúde', icon: '⚕️' },
-  { value: 'veterinario', label: 'Veterinário', categoria: 'Saúde', icon: '🐾' },
+  // ===================================================================
+  // FORMAÇÕES SUPERIORES
+  // ===================================================================
+  
+  // Saúde - Superior
+  { value: 'medico', label: 'Médico', categoria: 'Saúde Superior', icon: '🏥' },
+  { value: 'enfermeiro', label: 'Enfermeiro', categoria: 'Saúde Superior', icon: '⚕️' },
+  { value: 'psicologo', label: 'Psicólogo', categoria: 'Saúde Superior', icon: '🧠' },
+  { value: 'farmaceutico', label: 'Farmacêutico', categoria: 'Saúde Superior', icon: '💊' },
+  { value: 'fisioterapeuta', label: 'Fisioterapeuta', categoria: 'Saúde Superior', icon: '💪' },
+  { value: 'nutricionista', label: 'Nutricionista', categoria: 'Saúde Superior', icon: '🥗' },
+  { value: 'biomedico', label: 'Biomédico', categoria: 'Saúde Superior', icon: '🔬' },
+  { value: 'dentista', label: 'Dentista', categoria: 'Saúde Superior', icon: '🦷' },
+  { value: 'veterinario', label: 'Veterinário', categoria: 'Saúde Superior', icon: '🐾' },
   
   // Jurídico
   { value: 'advogado', label: 'Advogado', categoria: 'Jurídico', icon: '⚖️' },
-  { value: 'juiz', label: 'Juiz', categoria: 'Jurídico', icon: '👨‍⚖️' },
-  { value: 'promotor', label: 'Promotor', categoria: 'Jurídico', icon: '📜' },
+  
+  // Ciências Exatas
+  { value: 'economista', label: 'Economista', categoria: 'Ciências Exatas', icon: '📈' },
+  { value: 'matematico', label: 'Matemático', categoria: 'Ciências Exatas', icon: '🔢' },
+  { value: 'estatistico', label: 'Estatístico', categoria: 'Ciências Exatas', icon: '📊' },
+  { value: 'fisico', label: 'Físico', categoria: 'Ciências Exatas', icon: '⚛️' },
+  { value: 'quimico', label: 'Químico', categoria: 'Ciências Exatas', icon: '🧪' },
+  { value: 'biologo', label: 'Biólogo', categoria: 'Ciências Exatas', icon: '🧬' },
   
   // Engenharia
   { value: 'engenheiro_civil', label: 'Engenheiro Civil', categoria: 'Engenharia', icon: '🏗️' },
-  { value: 'engenheiro_eletrico', label: 'Engenheiro Elétrico', categoria: 'Engenharia', icon: '⚡' },
-  { value: 'engenheiro_mecanico', label: 'Engenheiro Mecânico', categoria: 'Engenharia', icon: '⚙️' },
+  { value: 'engenheiro_computacao', label: 'Engenheiro da Computação', categoria: 'Engenharia', icon: '💻' },
+  { value: 'engenheiro_producao', label: 'Engenheiro de Produção', categoria: 'Engenharia', icon: '⚙️' },
   { value: 'arquiteto', label: 'Arquiteto', categoria: 'Engenharia', icon: '📐' },
   
-  // Tecnologia
-  { value: 'desenvolvedor', label: 'Desenvolvedor', categoria: 'Tecnologia', icon: '💻' },
-  { value: 'analista_ti', label: 'Analista de TI', categoria: 'Tecnologia', icon: '🖥️' },
-  { value: 'designer', label: 'Designer', categoria: 'Tecnologia', icon: '🎨' },
-  
-  // Finanças
-  { value: 'contador', label: 'Contador', categoria: 'Finanças', icon: '📊' },
-  { value: 'auditor', label: 'Auditor', categoria: 'Finanças', icon: '🔍' },
-  { value: 'consultor_financeiro', label: 'Consultor Financeiro', categoria: 'Finanças', icon: '💰' },
-  { value: 'gerente_banco', label: 'Gerente de Banco', categoria: 'Finanças', icon: '🏦' },
+  // Negócios & Administração
+  { value: 'contador', label: 'Contador', categoria: 'Negócios', icon: '🧾' },
+  { value: 'administrador', label: 'Administrador', categoria: 'Negócios', icon: '💼' },
+  { value: 'ceo', label: 'CEO/Diretor/Gerente', categoria: 'Negócios', icon: '👔' },
+  { value: 'gestao_negocios', label: 'Gestão de Negócios', categoria: 'Negócios', icon: '📊' },
+  { value: 'gestao_estrategica', label: 'Gestão Estratégica', categoria: 'Negócios', icon: '🎯' },
+  { value: 'marketing', label: 'Marketing (CMO)', categoria: 'Negócios', icon: '📢' },
+  { value: 'recursos_humanos', label: 'Recursos Humanos', categoria: 'Negócios', icon: '👥' },
+  { value: 'financas', label: 'Finanças (CFO)', categoria: 'Negócios', icon: '💰' },
+  { value: 'comercio_exterior', label: 'Comércio Exterior', categoria: 'Negócios', icon: '🌍' },
+  { value: 'analista_ti', label: 'Sistemas de Informação', categoria: 'Negócios', icon: '🖥️' },
+  { value: 'comunicacao_social', label: 'Comunicação Social', categoria: 'Negócios', icon: '📰' },
+  { value: 'relacoes_internacionais', label: 'Relações Internacionais', categoria: 'Negócios', icon: '🌐' },
   
   // Educação
-  { value: 'professor', label: 'Professor', categoria: 'Educação', icon: '👨‍🏫' },
-  { value: 'diretor_escola', label: 'Diretor de Escola', categoria: 'Educação', icon: '🎓' },
-  { value: 'coordenador', label: 'Coordenador Pedagógico', categoria: 'Educação', icon: '📚' },
+  { value: 'pedagogo', label: 'Pedagogo', categoria: 'Educação', icon: '📚' },
+  { value: 'professor', label: 'Professor (Licenciaturas)', categoria: 'Educação', icon: '👨‍🏫' },
+  { value: 'educacao_fisica', label: 'Educação Física', categoria: 'Educação', icon: '⚽' },
   
-  // Negócios/Executivos
-  { value: 'empresario', label: 'Empresário', categoria: 'Negócios', icon: '💼' },
-  { value: 'gerente', label: 'Gerente', categoria: 'Negócios', icon: '👔' },
-  { value: 'diretor', label: 'Diretor', categoria: 'Negócios', icon: '🎯' },
-  { value: 'ceo', label: 'CEO/Presidente', categoria: 'Negócios', icon: '👑' },
-  { value: 'consultor', label: 'Consultor', categoria: 'Negócios', icon: '📈' },
+  // Comunicação & Design
+  { value: 'jornalista', label: 'Jornalista', categoria: 'Comunicação', icon: '📰' },
+  { value: 'publicitario', label: 'Publicitário', categoria: 'Comunicação', icon: '📢' },
+  { value: 'relacoes_publicas', label: 'Relações Públicas', categoria: 'Comunicação', icon: '🤝' },
+  { value: 'design_grafico', label: 'Design Gráfico', categoria: 'Comunicação', icon: '🎨' },
+  { value: 'design_interiores', label: 'Design de Interiores', categoria: 'Comunicação', icon: '🏠' },
+  { value: 'design_moda', label: 'Design de Moda', categoria: 'Comunicação', icon: '👗' },
   
-  // Comércio
-  { value: 'comerciante', label: 'Comerciante', categoria: 'Comércio', icon: '🛒' },
-  { value: 'vendedor', label: 'Vendedor', categoria: 'Comércio', icon: '🤝' },
+  // Ciências Humanas
+  { value: 'bibliotecario', label: 'Bibliotecário', categoria: 'Humanas', icon: '📖' },
+  { value: 'historiador', label: 'Historiador', categoria: 'Humanas', icon: '📜' },
+  { value: 'geografo', label: 'Geógrafo', categoria: 'Humanas', icon: '🗺️' },
+  { value: 'filosofo', label: 'Filósofo', categoria: 'Humanas', icon: '🤔' },
+  { value: 'sociologo', label: 'Sociólogo', categoria: 'Humanas', icon: '👥' },
+  
+  // Artes
+  { value: 'cinema_audiovisual', label: 'Cinema e Audiovisual', categoria: 'Artes', icon: '🎬' },
+  { value: 'musico', label: 'Músico', categoria: 'Artes', icon: '🎵' },
+  { value: 'artes_visuais', label: 'Artes Visuais', categoria: 'Artes', icon: '🎨' },
+  { value: 'teatro', label: 'Teatro', categoria: 'Artes', icon: '🎭' },
+  { value: 'danca', label: 'Dança', categoria: 'Artes', icon: '💃' },
+  
+  // Tecnólogos
+  { value: 'tec_analise_sistemas', label: 'Tecnólogo em Análise de Sistemas', categoria: 'Tecnólogos', icon: '💻' },
+  { value: 'tec_banco_dados', label: 'Tecnólogo em Banco de Dados', categoria: 'Tecnólogos', icon: '🗄️' },
+  { value: 'tec_automacao', label: 'Tecnólogo em Automação Industrial', categoria: 'Tecnólogos', icon: '🤖' },
+  { value: 'tec_logistica', label: 'Tecnólogo em Logística', categoria: 'Tecnólogos', icon: '📦' },
+  { value: 'tec_gestao_ti', label: 'Tecnólogo em Gestão de TI', categoria: 'Tecnólogos', icon: '🖥️' },
+  { value: 'tec_marketing', label: 'Tecnólogo em Marketing', categoria: 'Tecnólogos', icon: '📊' },
+  { value: 'tec_processos_gerenciais', label: 'Tecnólogo em Processos Gerenciais', categoria: 'Tecnólogos', icon: '📋' },
+  { value: 'tec_comercio_exterior', label: 'Tecnólogo em Comércio Exterior', categoria: 'Tecnólogos', icon: '🌍' },
+  { value: 'tec_eventos', label: 'Tecnólogo em Eventos', categoria: 'Tecnólogos', icon: '🎉' },
+  { value: 'tec_rh', label: 'Tecnólogo em Gestão de RH', categoria: 'Tecnólogos', icon: '👥' },
+  { value: 'tec_financeira', label: 'Tecnólogo em Gestão Financeira', categoria: 'Tecnólogos', icon: '💰' },
+  { value: 'tec_gestao_publica', label: 'Tecnólogo em Gestão Pública', categoria: 'Tecnólogos', icon: '🏛️' },
+  { value: 'tec_producao_industrial', label: 'Tecnólogo em Produção Industrial', categoria: 'Tecnólogos', icon: '🏭' },
+  { value: 'tec_redes', label: 'Tecnólogo em Redes de Computadores', categoria: 'Tecnólogos', icon: '🌐' },
+  { value: 'tec_seguranca_info', label: 'Tecnólogo em Segurança da Informação', categoria: 'Tecnólogos', icon: '🔒' },
+  { value: 'tec_turismo', label: 'Tecnólogo em Turismo', categoria: 'Tecnólogos', icon: '✈️' },
+  { value: 'tec_hotelaria', label: 'Tecnólogo em Hotelaria', categoria: 'Tecnólogos', icon: '🏨' },
+  { value: 'tec_jogos_digitais', label: 'Tecnólogo em Jogos Digitais', categoria: 'Tecnólogos', icon: '🎮' },
+  { value: 'tec_estetica', label: 'Tecnólogo em Estética e Cosmética', categoria: 'Tecnólogos', icon: '💅' },
+  { value: 'tec_radiologia', label: 'Tecnólogo em Radiologia', categoria: 'Tecnólogos', icon: '📡' },
+  { value: 'tec_seguranca_trabalho', label: 'Tecnólogo em Segurança do Trabalho', categoria: 'Tecnólogos', icon: '🦺' },
+  { value: 'tec_alimentos', label: 'Tecnólogo em Alimentos', categoria: 'Tecnólogos', icon: '🍽️' },
+  
+  // ===================================================================
+  // FORMAÇÕES TÉCNICAS
+  // ===================================================================
+  
+  // Técnicos - Administração & Negócios
+  { value: 'tec_administracao', label: 'Técnico em Administração', categoria: 'Técnico Negócios', icon: '📋' },
+  { value: 'tec_contabilidade', label: 'Técnico em Contabilidade', categoria: 'Técnico Negócios', icon: '🧾' },
+  { value: 'tec_comercio', label: 'Técnico em Comércio', categoria: 'Técnico Negócios', icon: '🛒' },
+  { value: 'tec_logistica_tec', label: 'Técnico em Logística', categoria: 'Técnico Negócios', icon: '📦' },
+  { value: 'tec_transportes', label: 'Técnico em Transportes', categoria: 'Técnico Negócios', icon: '🚚' },
+  { value: 'tec_corretagem', label: 'Técnico em Corretagem de Seguros', categoria: 'Técnico Negócios', icon: '📄' },
+  { value: 'tec_condominios', label: 'Técnico em Gestão de Condomínios', categoria: 'Técnico Negócios', icon: '🏢' },
+  
+  // Técnicos - Saúde
+  { value: 'tec_enfermagem', label: 'Técnico em Enfermagem', categoria: 'Técnico Saúde', icon: '⚕️' },
+  { value: 'tec_higiene_dental', label: 'Técnico em Higiene Dental', categoria: 'Técnico Saúde', icon: '🦷' },
+  { value: 'tec_farmacia', label: 'Técnico em Farmácia', categoria: 'Técnico Saúde', icon: '💊' },
+  { value: 'tec_laboratorio', label: 'Técnico em Laboratório', categoria: 'Técnico Saúde', icon: '🔬' },
+  { value: 'tec_radiologia_tec', label: 'Técnico em Radiologia', categoria: 'Técnico Saúde', icon: '📡' },
+  { value: 'tec_estetica_tec', label: 'Técnico em Estética', categoria: 'Técnico Saúde', icon: '💅' },
+  { value: 'tec_veterinaria', label: 'Técnico em Veterinária', categoria: 'Técnico Saúde', icon: '🐾' },
+  
+  // Técnicos - Tecnologia
+  { value: 'tec_informatica', label: 'Técnico em Informática', categoria: 'Técnico TI', icon: '💻' },
+  { value: 'tec_redes_tec', label: 'Técnico em Redes de Computadores', categoria: 'Técnico TI', icon: '🌐' },
+  { value: 'tec_informatica_internet', label: 'Técnico em Informática para Internet', categoria: 'Técnico TI', icon: '🌍' },
+  { value: 'tec_analise_sistemas_tec', label: 'Técnico em Análise de Sistemas', categoria: 'Técnico TI', icon: '🖥️' },
+  { value: 'tec_telecomunicacoes', label: 'Técnico em Telecomunicações', categoria: 'Técnico TI', icon: '📞' },
+  
+  // Técnicos - Engenharia & Indústria
+  { value: 'tec_mecanica', label: 'Técnico em Mecânica', categoria: 'Técnico Engenharia', icon: '⚙️' },
+  { value: 'tec_mecatronica', label: 'Técnico em Mecatrônica', categoria: 'Técnico Engenharia', icon: '🤖' },
+  { value: 'tec_eletronica', label: 'Técnico em Eletrônica', categoria: 'Técnico Engenharia', icon: '🔌' },
+  { value: 'tec_eletrotecnica', label: 'Técnico em Eletrotécnica', categoria: 'Técnico Engenharia', icon: '⚡' },
+  { value: 'tec_eletricidade', label: 'Técnico em Eletricidade', categoria: 'Técnico Engenharia', icon: '💡' },
+  { value: 'tec_eletroeletronica', label: 'Técnico em Eletroeletrônica', categoria: 'Técnico Engenharia', icon: '🔋' },
+  { value: 'tec_automacao_tec', label: 'Técnico em Automação', categoria: 'Técnico Engenharia', icon: '🤖' },
+  { value: 'tec_automacao_industrial', label: 'Técnico em Automação Industrial', categoria: 'Técnico Engenharia', icon: '🏭' },
+  { value: 'tec_eletro mecanica', label: 'Técnico em Eletromecânica', categoria: 'Técnico Engenharia', icon: '⚙️' },
+  { value: 'tec_refrigeracao', label: 'Técnico em Refrigeração', categoria: 'Técnico Engenharia', icon: '❄️' },
+  { value: 'tec_maquinas', label: 'Técnico em Máquinas Ferramentas', categoria: 'Técnico Engenharia', icon: '🔧' },
+  { value: 'tec_manutencao', label: 'Técnico em Manutenção Industrial', categoria: 'Técnico Engenharia', icon: '🛠️' },
+  { value: 'tec_instalacoes', label: 'Técnico em Instalações Elétricas', categoria: 'Técnico Engenharia', icon: '💡' },
+  
+  // Técnicos - Construção
+  { value: 'tec_edificacoes', label: 'Técnico em Edificações', categoria: 'Técnico Construção', icon: '🏗️' },
+  { value: 'tec_construcao_civil', label: 'Técnico em Construção Civil', categoria: 'Técnico Construção', icon: '🏢' },
+  { value: 'tec_desenho_arquitetonico', label: 'Técnico em Desenho Arquitetônico', categoria: 'Técnico Construção', icon: '📐' },
+  { value: 'tec_agrimensura', label: 'Técnico em Agrimensura', categoria: 'Técnico Construção', icon: '📏' },
+  
+  // Técnicos - Indústria & Produção
+  { value: 'tec_quimica', label: 'Técnico em Química', categoria: 'Técnico Indústria', icon: '🧪' },
+  { value: 'tec_alimentos_tec', label: 'Técnico em Alimentos', categoria: 'Técnico Indústria', icon: '🍽️' },
+  { value: 'tec_plasticos', label: 'Técnico em Plásticos', categoria: 'Técnico Indústria', icon: '♻️' },
+  { value: 'tec_petroleo', label: 'Técnico em Petróleo e Gás', categoria: 'Técnico Indústria', icon: '⛽' },
+  { value: 'tec_mineracao', label: 'Técnico em Mineração', categoria: 'Técnico Indústria', icon: '⛏️' },
+  { value: 'tec_saneamento', label: 'Técnico em Saneamento', categoria: 'Técnico Indústria', icon: '💧' },
+  { value: 'tec_seguranca_trabalho_tec', label: 'Técnico em Segurança do Trabalho', categoria: 'Técnico Indústria', icon: '🦺' },
+  
+  // Técnicos - Agropecuária
+  { value: 'tec_agropecuaria', label: 'Técnico em Agropecuária', categoria: 'Técnico Agro', icon: '🌾' },
+  { value: 'tec_agroindustria', label: 'Técnico em Agroindústria', categoria: 'Técnico Agro', icon: '🏭' },
+  { value: 'tec_florestas', label: 'Técnico em Florestas', categoria: 'Técnico Agro', icon: '🌲' },
+  { value: 'tec_zootecnia', label: 'Técnico em Zootecnia', categoria: 'Técnico Agro', icon: '🐄' },
+  
+  // Técnicos - Design & Artes
+  { value: 'tec_design_interiores_tec', label: 'Técnico em Design de Interiores', categoria: 'Técnico Design', icon: '🏠' },
+  { value: 'tec_design_moda_tec', label: 'Técnico em Design de Moda', categoria: 'Técnico Design', icon: '👗' },
+  { value: 'tec_design_grafico_tec', label: 'Técnico em Design Gráfico', categoria: 'Técnico Design', icon: '🎨' },
+  { value: 'tec_audiovisual', label: 'Técnico em Audiovisual', categoria: 'Técnico Design', icon: '🎬' },
+  { value: 'tec_carpintaria', label: 'Técnico em Carpintaria', categoria: 'Técnico Design', icon: '🪵' },
+  { value: 'tec_marcenaria', label: 'Técnico em Marcenaria', categoria: 'Técnico Design', icon: '🔨' },
+  
+  // Técnicos - Serviços
+  { value: 'tec_turismo_tec', label: 'Técnico em Turismo', categoria: 'Técnico Serviços', icon: '✈️' },
+  { value: 'tec_hotelaria_tec', label: 'Técnico em Hotelaria', categoria: 'Técnico Serviços', icon: '🏨' },
+  { value: 'tec_paisagismo', label: 'Técnico em Paisagismo', categoria: 'Técnico Serviços', icon: '🌳' },
+  { value: 'tec_jardinagem', label: 'Técnico em Jardinagem', categoria: 'Técnico Serviços', icon: '🌺' },
+  { value: 'tec_motoboy', label: 'Técnico em Logística de Entrega', categoria: 'Técnico Serviços', icon: '🏍️' },
+  { value: 'tec_motorista', label: 'Motorista de Aplicativo', categoria: 'Técnico Serviços', icon: '🚗' },
 ]
 
 const SETORES_B2B = [
