@@ -2211,56 +2211,48 @@ export type Database = {
       }
       whatsapp_contacts: {
         Row: {
-          bulk_send_id: string
-          created_at: string
-          custom_fields: Json | null
-          delivered_at: string | null
-          error_message: string | null
+          aceita_lancamentos: boolean | null
+          aceita_marketing: boolean | null
+          aceita_promocoes: boolean | null
+          created_at: string | null
+          email: string | null
           id: string
-          name: string | null
+          last_interaction: string | null
+          nome: string | null
+          origem: string | null
           phone: string
-          read_at: string | null
-          responded_at: string | null
-          sent_at: string | null
-          status: string
+          tags: string[] | null
+          user_id: string
         }
         Insert: {
-          bulk_send_id: string
-          created_at?: string
-          custom_fields?: Json | null
-          delivered_at?: string | null
-          error_message?: string | null
+          aceita_lancamentos?: boolean | null
+          aceita_marketing?: boolean | null
+          aceita_promocoes?: boolean | null
+          created_at?: string | null
+          email?: string | null
           id?: string
-          name?: string | null
+          last_interaction?: string | null
+          nome?: string | null
+          origem?: string | null
           phone: string
-          read_at?: string | null
-          responded_at?: string | null
-          sent_at?: string | null
-          status?: string
+          tags?: string[] | null
+          user_id: string
         }
         Update: {
-          bulk_send_id?: string
-          created_at?: string
-          custom_fields?: Json | null
-          delivered_at?: string | null
-          error_message?: string | null
+          aceita_lancamentos?: boolean | null
+          aceita_marketing?: boolean | null
+          aceita_promocoes?: boolean | null
+          created_at?: string | null
+          email?: string | null
           id?: string
-          name?: string | null
+          last_interaction?: string | null
+          nome?: string | null
+          origem?: string | null
           phone?: string
-          read_at?: string | null
-          responded_at?: string | null
-          sent_at?: string | null
-          status?: string
+          tags?: string[] | null
+          user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_contacts_bulk_send_id_fkey"
-            columns: ["bulk_send_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_bulk_sends"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       whatsapp_conversation_messages: {
         Row: {
