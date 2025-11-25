@@ -702,7 +702,6 @@ const WhatsAppPage = () => {
                         console.log('🔵 onContactsChange RECEBIDO:', phones);
                         setSelectedContactPhones(phones);
                       }}
-                      key={reloadContactsTrigger}
                     />
                   </CardContent>
                 </Card>
