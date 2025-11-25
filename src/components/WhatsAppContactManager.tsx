@@ -332,49 +332,58 @@ export default function WhatsAppContactManager({
             {search ? 'Nenhum contato encontrado' : 'Nenhum contato cadastrado'}
           </div>
         ) : (
-          filteredContacts.map(contact => (
-            <div
-              key={contact.id}
-              className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
-            >
-              <Checkbox
-                checked={selectedContacts.includes(contact.phone)}
-                onCheckedChange={() => toggleContact(contact.phone)}
-              />
-              <div 
-                className="flex-1 min-w-0 cursor-pointer"
-                onClick={() => handleEditContact(contact)}
+          filteredContacts.map(contact => {
+            const isSelected = selectedContacts.includes(contact.phone);
+            return (
+              <div
+                key={contact.id}
+                className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors cursor-pointer"
+                onClick={() => toggleContact(contact.phone)}
               >
-                <p className="font-medium truncate">{contact.nome}</p>
-                <p className="text-sm text-muted-foreground">{contact.phone}</p>
-                {contact.notes && (
-                  <p className="text-xs text-muted-foreground italic">{contact.notes}</p>
-                )}
+                {/* CHECKBOX VISUAL */}
+                <div className={`w-5 h-5 border-2 rounded flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}>
+                  {isSelected && (
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+
+                {/* INFO DO CONTATO */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{contact.nome}</p>
+                  <p className="text-sm text-muted-foreground">{contact.phone}</p>
+                  {contact.notes && (
+                    <p className="text-xs text-muted-foreground italic">{contact.notes}</p>
+                  )}
+                </div>
+
+                {/* BOTÕES DE AÇÃO */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEditContact(contact);
+                  }}
+                  className="text-blue-600 hover:text-blue-700 flex-shrink-0"
+                >
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteContact(contact.id);
+                  }}
+                  className="text-destructive hover:text-destructive flex-shrink-0"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditContact(contact);
-                }}
-                className="text-blue-600 hover:text-blue-700"
-              >
-                <Edit2 className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteContact(contact.id);
-                }}
-                className="text-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
