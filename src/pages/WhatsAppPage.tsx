@@ -88,10 +88,6 @@ const WhatsAppPage = () => {
   // State para contatos selecionados no manager
   const [selectedContactPhones, setSelectedContactPhones] = useState<string[]>([]);
   
-  useEffect(() => {
-    console.log('🟢 ESTADO selectedContactPhones MUDOU:', selectedContactPhones);
-  }, [selectedContactPhones]);
-  
   // State para campo de números direto
   const [directPhoneNumbers, setDirectPhoneNumbers] = useState<string>('');
 
@@ -698,10 +694,7 @@ const WhatsAppPage = () => {
                   <CardContent>
                     <WhatsAppContactManager
                       selectedContacts={selectedContactPhones}
-                      onContactsChange={(phones) => {
-                        console.log('🔵 onContactsChange RECEBIDO:', phones);
-                        setSelectedContactPhones(phones);
-                      }}
+                      onContactsChange={setSelectedContactPhones}
                       reloadTrigger={reloadContactsTrigger}
                     />
                   </CardContent>
@@ -1019,6 +1012,7 @@ const WhatsAppPage = () => {
                   onClick={handleBulkSend}
                   disabled={loading || (
                     selectedContacts.length === 0 && 
+                    selectedContactPhones.length === 0 &&
                     selectedGroups.length === 0 && 
                     !directPhoneNumbers.trim()
                   )}
@@ -1032,6 +1026,7 @@ const WhatsAppPage = () => {
                       <Send className="w-4 h-4 mr-2" />
                       Enviar para {
                         selectedContacts.length + 
+                        selectedContactPhones.length +
                         selectedGroups.length + 
                         (directPhoneNumbers.trim() ? directPhoneNumbers.split(/[,\n]/).filter(p => p.trim()).length : 0)
                       } destinatário(s)
