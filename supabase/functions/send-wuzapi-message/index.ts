@@ -11,11 +11,14 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumber, message } = await req.json();
+    const { phoneNumber, phoneNumbers, message, imageUrl } = await req.json();
 
-    if (!phoneNumber || !message) {
+    // Suporta tanto phoneNumber (single) quanto phoneNumbers (array)
+    const numbersToSend = phoneNumbers || (phoneNumber ? [phoneNumber] : []);
+
+    if (numbersToSend.length === 0 || !message) {
       return new Response(
-        JSON.stringify({ error: 'phoneNumber e message são obrigatórios' }),
+        JSON.stringify({ error: 'phoneNumber(s) e message são obrigatórios' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -32,58 +35,76 @@ serve(async (req) => {
       );
     }
 
-    // Formatar o número no padrão internacional (apenas dígitos)
-    let formattedPhone = phoneNumber.replace(/\D/g, '');
-    
-    // Adiciona código do país +55 se não tiver
-    if (!formattedPhone.startsWith('55') && formattedPhone.length === 11) {
-      formattedPhone = '55' + formattedPhone;
-    }
-
-    console.log('🚀 Enviando mensagem para:', formattedPhone);
-    console.log('📍 URL completa:', `${WUZAPI_URL}/chat/send/text`);
-
-    // Wuzapi API v3 formato CORRETO da documentação oficial
-    const payload = {
-      Phone: formattedPhone,
-      Body: message
-      // Id é opcional - se omitido, Wuzapi gera automaticamente
-    };
-    
-    console.log('📦 Payload:', JSON.stringify(payload, null, 2));
-
-    // Remove barra extra se WUZAPI_URL já termina com /
     const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
-    const response = await fetch(`${baseUrl}/chat/send/text`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Token': WUZAPI_TOKEN,
-      },
-      body: JSON.stringify(payload),
-    });
+    
+    // Enviar para todos os números
+    const results = [];
+    
+    for (const phoneNumber of numbersToSend) {
+      try {
+        // Formatar o número no padrão internacional (apenas dígitos)
+        let formattedPhone = phoneNumber.replace(/\D/g, '');
+        
+        // Adiciona código do país +55 se não tiver
+        if (!formattedPhone.startsWith('55') && formattedPhone.length === 11) {
+          formattedPhone = '55' + formattedPhone;
+        }
 
-    const responseText = await response.text();
-    console.log('Resposta Wuzapi (texto):', responseText);
-    console.log('Status:', response.status);
+        // Escolhe endpoint baseado se tem imagem ou não
+        const endpoint = imageUrl ? '/chat/send/image' : '/chat/send/text';
+        
+        console.log('🚀 Enviando para:', formattedPhone, imageUrl ? '(com imagem)' : '(só texto)');
 
-    let responseData;
-    try {
-      responseData = JSON.parse(responseText);
-    } catch (e) {
-      console.error('Erro ao fazer parse do JSON:', e);
-      responseData = { rawResponse: responseText };
-    }
+        // Payload varia conforme tipo de mensagem
+        const payload = imageUrl 
+          ? {
+              Phone: formattedPhone,
+              Body: message,
+              Media: imageUrl
+            }
+          : {
+              Phone: formattedPhone,
+              Body: message
+            };
+        
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Token': WUZAPI_TOKEN,
+          },
+          body: JSON.stringify(payload),
+        });
 
-    if (!response.ok) {
-      return new Response(
-        JSON.stringify({ error: 'Erro ao enviar mensagem', details: responseData }),
-        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+        const responseText = await response.text();
+        
+        let responseData;
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (e) {
+          responseData = { rawResponse: responseText };
+        }
+
+        results.push({
+          phoneNumber: formattedPhone,
+          success: response.ok,
+          data: responseData
+        });
+
+        console.log(`✅ Enviado para ${formattedPhone}:`, response.status);
+
+      } catch (error) {
+        console.error(`❌ Erro ao enviar para ${phoneNumber}:`, error);
+        results.push({
+          phoneNumber,
+          success: false,
+          error: error instanceof Error ? error.message : 'Erro desconhecido'
+        });
+      }
     }
 
     return new Response(
-      JSON.stringify({ success: true, data: responseData }),
+      JSON.stringify({ success: true, results }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
