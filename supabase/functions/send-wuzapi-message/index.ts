@@ -11,14 +11,22 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumber, phoneNumbers, message, imageUrl } = await req.json();
+    const { phoneNumber, phoneNumbers, message, imageUrl, groupId } = await req.json();
 
     // Suporta tanto phoneNumber (single) quanto phoneNumbers (array)
     const numbersToSend = phoneNumbers || (phoneNumber ? [phoneNumber] : []);
 
-    if (numbersToSend.length === 0 || !message) {
+    // ⚠️ NOVA LÓGICA ADITIVA: Aceita groupId também
+    if (numbersToSend.length === 0 && !groupId) {
       return new Response(
-        JSON.stringify({ error: 'phoneNumber(s) e message são obrigatórios' }),
+        JSON.stringify({ error: 'phoneNumber(s) ou groupId são obrigatórios' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!message) {
+      return new Response(
+        JSON.stringify({ error: 'message é obrigatório' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -37,7 +45,71 @@ serve(async (req) => {
 
     const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
     
-    // Enviar para todos os números
+    // ⚠️ NOVA LÓGICA ADITIVA: Se for groupId, usar endpoint de grupo
+    if (groupId) {
+      try {
+        console.log('👥 Enviando para grupo:', groupId, imageUrl ? '(com imagem)' : '(só texto)');
+
+        const endpoint = imageUrl ? '/send-group-media' : '/send-group-message';
+        
+        const payload = imageUrl 
+          ? {
+              group: groupId,
+              image: imageUrl,
+              caption: message || ''
+            }
+          : {
+              group: groupId,
+              message: message
+            };
+
+        console.log('📋 Payload grupo:', JSON.stringify(payload, null, 2));
+
+        const response = await fetch(`${baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Token': WUZAPI_TOKEN,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const responseText = await response.text();
+        console.log(`📨 Status grupo:`, response.status);
+        console.log(`📨 Resposta grupo:`, responseText);
+        
+        let responseData;
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (e) {
+          responseData = { rawResponse: responseText };
+        }
+
+        return new Response(
+          JSON.stringify({ 
+            success: response.ok, 
+            groupId,
+            type: 'group',
+            data: responseData 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+
+      } catch (error) {
+        console.error(`❌ Erro ao enviar para grupo ${groupId}:`, error);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            groupId,
+            type: 'group',
+            error: error instanceof Error ? error.message : 'Erro desconhecido' 
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+    
+    // ⚠️ LÓGICA ORIGINAL: Enviar para contatos individuais (NÃO MODIFICADA)
     const results = [];
     
     for (const phoneNumber of numbersToSend) {

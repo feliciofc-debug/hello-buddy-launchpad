@@ -77,6 +77,9 @@ const WhatsAppPage = () => {
   const [groups, setGroups] = useState<any[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<any>(null);
   const [groupMessages, setGroupMessages] = useState<GroupMessage[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
+  const [isLoadingGroups, setIsLoadingGroups] = useState(true);
 
   // Carregar dados ao montar componente
   useEffect(() => {
@@ -120,8 +123,12 @@ const WhatsAppPage = () => {
   };
 
   const loadGroups = async () => {
+    setIsLoadingGroups(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setIsLoadingGroups(false);
+      return;
+    }
 
     const { data, error } = await supabase
       .from('whatsapp_groups')
@@ -131,10 +138,13 @@ const WhatsAppPage = () => {
 
     if (error) {
       console.error('Erro ao carregar grupos:', error);
+      toast.error('Erro ao carregar grupos');
+      setIsLoadingGroups(false);
       return;
     }
 
     setGroups(data || []);
+    setIsLoadingGroups(false);
   };
 
   const calculateStats = async () => {
@@ -208,6 +218,47 @@ const WhatsAppPage = () => {
     setContacts(parsed);
   };
 
+  // Funções de seleção de contatos
+  const toggleContact = (phone: string) => {
+    setSelectedContacts(prev => 
+      prev.includes(phone) ? prev.filter(p => p !== phone) : [...prev, phone]
+    );
+  };
+
+  const selectAllContacts = () => {
+    setSelectedContacts(contacts.map(c => c.phone));
+  };
+
+  const clearContactSelection = () => {
+    setSelectedContacts([]);
+  };
+
+  // Funções de seleção de grupos
+  const toggleGroup = (groupId: string) => {
+    setSelectedGroups(prev => 
+      prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]
+    );
+  };
+
+  const selectAllGroups = () => {
+    setSelectedGroups(groups.map(g => g.group_id));
+  };
+
+  const clearGroupSelection = () => {
+    setSelectedGroups([]);
+  };
+
+  // Selecionar todos (contatos + grupos)
+  const selectAll = () => {
+    setSelectedContacts(contacts.map(c => c.phone));
+    setSelectedGroups(groups.map(g => g.group_id));
+  };
+
+  const clearAllSelections = () => {
+    setSelectedContacts([]);
+    setSelectedGroups([]);
+  };
+
   const generatePreview = () => {
     if (contacts.length === 0) {
       toast.error('Adicione contatos primeiro');
@@ -229,8 +280,8 @@ const WhatsAppPage = () => {
   };
 
   const handleBulkSend = async () => {
-    if (contacts.length === 0) {
-      toast.error('Adicione contatos para enviar');
+    if (selectedContacts.length === 0 && selectedGroups.length === 0) {
+      toast.error('Selecione pelo menos um contato ou grupo');
       return;
     }
 
@@ -245,10 +296,14 @@ const WhatsAppPage = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // ENVIO MANUAL - UM POR UM usando função ORIGINAL
+      // ENVIO USANDO FUNÇÃO ORIGINAL + SUPORTE A GRUPOS (ADITIVO)
       const results = [];
       
-      for (const contact of contacts) {
+      // 1. Enviar para contatos individuais selecionados
+      for (const phone of selectedContacts) {
+        const contact = contacts.find(c => c.phone === phone);
+        if (!contact) continue;
+
         try {
           // Personalizar mensagem
           let personalizedMessage = messageTemplate;
@@ -279,6 +334,36 @@ const WhatsAppPage = () => {
         }
       }
 
+      // 2. Enviar para grupos selecionados (NOVO - ADITIVO)
+      if (selectedGroups.length > 0) {
+        for (const groupId of selectedGroups) {
+          try {
+            const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
+              body: {
+                groupId: groupId,
+                message: messageTemplate,
+                imageUrl: productImage || undefined
+              }
+            });
+
+            results.push({
+              groupId: groupId,
+              type: 'group',
+              success: !error && data?.success,
+              error: error?.message
+            });
+
+          } catch (err) {
+            results.push({
+              groupId: groupId,
+              type: 'group',
+              success: false,
+              error: err instanceof Error ? err.message : 'Erro'
+            });
+          }
+        }
+      }
+
       const successCount = results.filter(r => r.success).length;
       const failCount = results.length - successCount;
       
@@ -294,6 +379,7 @@ const WhatsAppPage = () => {
       setCsvText('');
       setPhoneNumbers('');
       setPreviewMessage('');
+      clearAllSelections();
       
       // Recarregar histórico
       await loadBulkSends();
@@ -485,6 +571,169 @@ const WhatsAppPage = () => {
                   )}
                 </div>
 
+                {/* TABS: Selecionar Destinatários */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Users className="h-5 w-5" />
+                        Destinatários
+                      </span>
+                      <span className="text-sm font-normal text-muted-foreground">
+                        {selectedContacts.length + selectedGroups.length} selecionados
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Tabs defaultValue="contacts" className="w-full">
+                      <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="contacts">
+                          Contatos ({contacts.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="groups">
+                          Grupos ({groups.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="all">
+                          Todos
+                        </TabsTrigger>
+                      </TabsList>
+
+                      {/* TAB: Contatos */}
+                      <TabsContent value="contacts" className="space-y-3">
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={selectAllContacts} className="flex-1">
+                            Selecionar Todos
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={clearContactSelection} className="flex-1">
+                            Limpar
+                          </Button>
+                        </div>
+
+                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                          {contacts.length === 0 ? (
+                            <div className="text-center py-8">
+                              <Users className="h-12 w-12 mx-auto mb-2 text-muted-foreground opacity-50" />
+                              <p className="text-sm text-muted-foreground">
+                                Nenhum contato carregado. Adicione contatos acima.
+                              </p>
+                            </div>
+                          ) : (
+                            contacts.map((contact, idx) => (
+                              <label
+                                key={idx}
+                                className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedContacts.includes(contact.phone)}
+                                  onChange={() => toggleContact(contact.phone)}
+                                  className="w-4 h-4"
+                                />
+                                <div className="flex-1">
+                                  <p className="font-medium text-sm">{contact.name}</p>
+                                  <p className="text-xs text-muted-foreground">{contact.phone}</p>
+                                </div>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </TabsContent>
+
+                      {/* TAB: Grupos */}
+                      <TabsContent value="groups" className="space-y-3">
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={selectAllGroups} className="flex-1">
+                            Selecionar Todos
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={clearGroupSelection} className="flex-1">
+                            Limpar
+                          </Button>
+                        </div>
+
+                        <div className="space-y-2 max-h-96 overflow-y-auto">
+                          {isLoadingGroups ? (
+                            <div className="text-center py-8">
+                              <div className="h-6 w-6 animate-spin mx-auto border-4 border-primary border-t-transparent rounded-full" />
+                            </div>
+                          ) : groups.length === 0 ? (
+                            <div className="text-center py-8">
+                              <Users className="h-12 w-12 mx-auto mb-2 text-muted-foreground opacity-50" />
+                              <p className="text-sm text-muted-foreground">
+                                Nenhum grupo cadastrado
+                              </p>
+                              <Button size="sm" variant="outline" className="mt-3" onClick={loadGroups}>
+                                Atualizar Lista
+                              </Button>
+                            </div>
+                          ) : (
+                            groups.map((group) => (
+                              <label
+                                key={group.id}
+                                className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedGroups.includes(group.group_id)}
+                                  onChange={() => toggleGroup(group.group_id)}
+                                  className="w-4 h-4"
+                                />
+                                <div className="flex-1">
+                                  <p className="font-medium text-sm">{group.group_name}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    👥 {group.member_count || 0} membros
+                                  </p>
+                                </div>
+                              </label>
+                            ))
+                          )}
+                        </div>
+                      </TabsContent>
+
+                      {/* TAB: Todos */}
+                      <TabsContent value="all" className="space-y-3">
+                        <div className="p-6 text-center">
+                          <Users className="h-16 w-16 mx-auto mb-4 text-primary" />
+                          <h3 className="font-bold text-lg mb-2">Enviar para Todos</h3>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            Sua mensagem será enviada para:
+                          </p>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between p-3 bg-accent rounded">
+                              <span>👤 Contatos individuais</span>
+                              <span className="font-bold">{contacts.length}</span>
+                            </div>
+                            <div className="flex items-center justify-between p-3 bg-accent rounded">
+                              <span>👥 Grupos</span>
+                              <span className="font-bold">{groups.length}</span>
+                            </div>
+                            <div className="flex items-center justify-between p-3 bg-primary/10 rounded font-bold">
+                              <span>📨 Total de destinatários</span>
+                              <span className="text-primary">{contacts.length + groups.length}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <Button 
+                            onClick={selectAll}
+                            className="flex-1"
+                            variant="outline"
+                          >
+                            Selecionar Todos
+                          </Button>
+                          <Button 
+                            onClick={clearAllSelections}
+                            className="flex-1"
+                            variant="outline"
+                          >
+                            Limpar Tudo
+                          </Button>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+
                 {/* Template de Mensagem */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Template de Mensagem</label>
@@ -579,7 +828,7 @@ const WhatsAppPage = () => {
                 {/* Botão Enviar */}
                 <Button
                   onClick={handleBulkSend}
-                  disabled={loading || contacts.length === 0}
+                  disabled={loading || (selectedContacts.length === 0 && selectedGroups.length === 0)}
                   className="w-full"
                   size="lg"
                 >
@@ -588,7 +837,7 @@ const WhatsAppPage = () => {
                   ) : (
                     <>
                       <Send className="w-4 h-4 mr-2" />
-                      Enviar para {contacts.length} contatos
+                      Enviar para {selectedContacts.length + selectedGroups.length} destinatário(s)
                     </>
                   )}
                 </Button>
