@@ -733,14 +733,13 @@ const WhatsAppPage = () => {
                             contacts.map((contact, idx) => (
                               <div
                                 key={idx}
-                                className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent"
-                                onClick={() => toggleContact(contact.phone)}
+                                className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
                               >
                                 <Checkbox
                                   checked={selectedContacts.includes(contact.phone)}
                                   onCheckedChange={() => toggleContact(contact.phone)}
                                 />
-                                <div className="flex-1">
+                                <div className="flex-1 cursor-pointer" onClick={() => toggleContact(contact.phone)}>
                                   <p className="font-medium text-sm">{contact.name}</p>
                                   <p className="text-xs text-muted-foreground">{contact.phone}</p>
                                 </div>
@@ -780,14 +779,13 @@ const WhatsAppPage = () => {
                             groups.map((group) => (
                               <div
                                 key={group.id}
-                                className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent"
-                                onClick={() => toggleGroup(group.group_id)}
+                                className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
                               >
                                 <Checkbox
                                   checked={selectedGroups.includes(group.group_id)}
                                   onCheckedChange={() => toggleGroup(group.group_id)}
                                 />
-                                <div className="flex-1">
+                                <div className="flex-1 cursor-pointer" onClick={() => toggleGroup(group.group_id)}>
                                   <p className="font-medium text-sm">{group.group_name}</p>
                                   <p className="text-xs text-muted-foreground">
                                     👥 {group.member_count || 0} membros
