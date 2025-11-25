@@ -245,24 +245,47 @@ const WhatsAppPage = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      const { data, error } = await supabase.functions.invoke('send-whatsapp-campaign', {
-        body: {
-          phoneNumbers: contacts.map(c => c.phone),
-          message: messageTemplate,
-          imageUrl: productImage
+      // ENVIO MANUAL - UM POR UM usando função ORIGINAL
+      const results = [];
+      
+      for (const contact of contacts) {
+        try {
+          // Personalizar mensagem
+          let personalizedMessage = messageTemplate;
+          personalizedMessage = personalizedMessage.replace(/{nome}/g, contact.name || '');
+          personalizedMessage = personalizedMessage.replace(/{telefone}/g, contact.phone || '');
+          
+          // Usar função ORIGINAL que já funcionava
+          const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
+            body: {
+              phoneNumber: contact.phone,
+              message: personalizedMessage,
+              imageUrl: productImage || undefined
+            }
+          });
+
+          results.push({
+            phone: contact.phone,
+            success: !error && data?.success,
+            error: error?.message
+          });
+
+        } catch (err) {
+          results.push({
+            phone: contact.phone,
+            success: false,
+            error: err instanceof Error ? err.message : 'Erro'
+          });
         }
-      });
+      }
 
-      if (error) throw error;
-
-      // Processar resultados
-      const successCount = data.results.filter((r: any) => r.success).length;
-      const failCount = data.results.length - successCount;
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.length - successCount;
       
       if (successCount > 0) {
-        toast.success(`✅ ${successCount} mensagens enviadas${failCount > 0 ? `, ${failCount} falharam` : ''}!`);
+        toast.success(`✅ ${successCount} enviadas${failCount > 0 ? `, ${failCount} falharam` : ''}!`);
       } else {
-        toast.error('Nenhuma mensagem foi enviada com sucesso');
+        toast.error('Nenhuma mensagem enviada');
       }
       
       // Limpar formulário
