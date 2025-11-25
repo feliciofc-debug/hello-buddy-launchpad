@@ -25,11 +25,13 @@ interface Contact {
 interface Props {
   selectedContacts: string[];
   onContactsChange: (contacts: string[]) => void;
+  reloadTrigger?: number;
 }
 
 export default function WhatsAppContactManager({ 
   selectedContacts, 
-  onContactsChange 
+  onContactsChange,
+  reloadTrigger 
 }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +50,13 @@ export default function WhatsAppContactManager({
   useEffect(() => {
     loadContacts();
   }, []);
+
+  // Reload quando o trigger mudar, mas mantém seleção
+  useEffect(() => {
+    if (reloadTrigger && reloadTrigger > 0) {
+      loadContacts();
+    }
+  }, [reloadTrigger]);
 
   const loadContacts = async () => {
     try {
