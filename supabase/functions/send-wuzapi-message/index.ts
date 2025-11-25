@@ -36,7 +36,25 @@ serve(async (req) => {
         },
       });
 
-      const responseData = await response.json();
+      const responseText = await response.text();
+      console.log('📋 Resposta bruta:', responseText);
+      console.log('📋 Status:', response.status);
+
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (e) {
+        console.error('❌ Erro ao parsear resposta:', e);
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: 'Resposta inválida da API Wuzapi',
+            rawResponse: responseText 
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       console.log('📋 Grupos encontrados:', responseData);
 
       return new Response(
