@@ -735,26 +735,35 @@ const WhatsAppPage = () => {
                                 Nenhum contato carregado. Adicione contatos acima.
                               </p>
                             </div>
-                           ) : (
+                          ) : (
                             contacts.map((contact, idx) => {
-                              const isChecked = selectedContacts.includes(contact.phone);
+                              const isSelected = selectedContacts.includes(contact.phone);
                               return (
-                                <div
+                                <div 
                                   key={`${contact.phone}-${idx}`}
-                                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
+                                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent cursor-pointer"
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setSelectedContacts(selectedContacts.filter(p => p !== contact.phone));
+                                    } else {
+                                      setSelectedContacts([...selectedContacts, contact.phone]);
+                                    }
+                                  }}
                                 >
-                                <Checkbox
-                                  id={`contact-${contact.phone}`}
-                                  checked={isChecked}
-                                  onCheckedChange={() => toggleContact(contact.phone)}
-                                />
-                                  <label 
-                                    htmlFor={`contact-${contact.phone}`}
-                                    className="flex-1 cursor-pointer"
-                                  >
+                                  {/* CHECKBOX VISUAL */}
+                                  <div className={`w-5 h-5 border-2 rounded flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}>
+                                    {isSelected && (
+                                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    )}
+                                  </div>
+
+                                  {/* NOME E TELEFONE */}
+                                  <div className="flex-1">
                                     <p className="font-medium text-sm">{contact.name}</p>
                                     <p className="text-xs text-muted-foreground">{contact.phone}</p>
-                                  </label>
+                                  </div>
                                 </div>
                               );
                             })
@@ -790,26 +799,35 @@ const WhatsAppPage = () => {
                             </div>
                           ) : (
                             groups.map((group) => {
-                              const isChecked = selectedGroups.includes(group.group_id);
+                              const isSelected = selectedGroups.includes(group.group_id);
                               return (
                                 <div
                                   key={`${group.group_id}-${group.id}`}
-                                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
+                                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent cursor-pointer"
+                                  onClick={() => {
+                                    if (isSelected) {
+                                      setSelectedGroups(selectedGroups.filter(id => id !== group.group_id));
+                                    } else {
+                                      setSelectedGroups([...selectedGroups, group.group_id]);
+                                    }
+                                  }}
                                 >
-                                  <Checkbox
-                                    id={`group-${group.group_id}`}
-                                    checked={isChecked}
-                                    onCheckedChange={() => toggleGroup(group.group_id)}
-                                  />
-                                  <label 
-                                    htmlFor={`group-${group.group_id}`}
-                                    className="flex-1 cursor-pointer"
-                                  >
+                                  {/* CHECKBOX VISUAL */}
+                                  <div className={`w-5 h-5 border-2 rounded flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}>
+                                    {isSelected && (
+                                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    )}
+                                  </div>
+
+                                  {/* INFO DO GRUPO */}
+                                  <div className="flex-1">
                                     <p className="font-medium text-sm">{group.group_name}</p>
                                     <p className="text-xs text-muted-foreground">
                                       👥 {group.member_count || 0} membros
                                     </p>
-                                  </label>
+                                  </div>
                                 </div>
                               );
                             })
