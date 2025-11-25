@@ -141,14 +141,18 @@ const WhatsAppPage = () => {
       .upsert({
         user_id: user.id,
         phone: phone,
-        name: name,
-        last_sent_at: new Date().toISOString()
+        nome: name,
+        last_interaction: new Date().toISOString()
       }, {
         onConflict: 'user_id,phone'
       });
 
     if (!error) {
       await loadSavedContacts();
+      toast.success('Contato salvo!');
+    } else {
+      console.error('Erro ao salvar contato:', error);
+      toast.error('Erro ao salvar contato');
     }
   };
 
@@ -666,7 +670,7 @@ const WhatsAppPage = () => {
                             className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
                           >
                             <div className="flex-1">
-                              <p className="font-medium text-sm">{contact.name}</p>
+                              <p className="font-medium text-sm">{contact.nome}</p>
                               <p className="text-xs text-muted-foreground">{contact.phone}</p>
                             </div>
                             <div className="flex gap-2">
@@ -676,7 +680,7 @@ const WhatsAppPage = () => {
                                 onClick={() => {
                                   // Adicionar aos contatos da campanha
                                   if (!contacts.find(c => c.phone === contact.phone)) {
-                                    setContacts([...contacts, { name: contact.name, phone: contact.phone }]);
+                                    setContacts([...contacts, { name: contact.nome, phone: contact.phone }]);
                                     toast.success('Contato adicionado à campanha');
                                   }
                                 }}
