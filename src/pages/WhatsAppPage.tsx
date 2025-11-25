@@ -116,6 +116,7 @@ const WhatsAppPage = () => {
   useEffect(() => {
     if (selectedContactPhones.length > 0) {
       setDirectPhoneNumbers(selectedContactPhones.join(', '));
+      setSelectedContactPhones([]); // Limpa seleção após preencher campo
     }
   }, [selectedContactPhones]);
 
@@ -308,7 +309,6 @@ const WhatsAppPage = () => {
     // Combinar todas as fontes de números
     const allPhones = [
       ...selectedContacts,
-      ...selectedContactPhones,
       ...directPhones
     ];
 
@@ -906,31 +906,17 @@ const WhatsAppPage = () => {
                     </span>
                   </label>
                   <Textarea
-                    value={
-                      selectedContactPhones.length > 0
-                        ? selectedContactPhones.join(', ')
-                        : directPhoneNumbers
-                    }
-                    onChange={(e) => {
-                      setDirectPhoneNumbers(e.target.value);
-                      // Limpar seleção do manager se usuário começar a digitar
-                      if (e.target.value && selectedContactPhones.length > 0) {
-                        setSelectedContactPhones([]);
-                      }
-                    }}
+                    value={directPhoneNumbers}
+                    onChange={(e) => setDirectPhoneNumbers(e.target.value)}
                     placeholder="Digite números aqui (ex: 5521999998888) ou selecione contatos acima"
                     rows={3}
                     className="font-mono text-sm"
                   />
-                  {(selectedContactPhones.length > 0 || directPhoneNumbers.trim()) && (
+                  {directPhoneNumbers.trim() && (
                     <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
                       <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
                       <span className="text-sm font-medium">
-                        {selectedContactPhones.length > 0
-                          ? `${selectedContactPhones.length} contato(s) selecionado(s)`
-                          : `${directPhoneNumbers.split(/[,\n]/).filter(p => p.trim()).length} número(s) digitado(s)`
-                        }
-                        {' '}serão salvos automaticamente
+                        {directPhoneNumbers.split(/[,\n]/).filter(p => p.trim()).length} número(s) digitado(s) - serão salvos automaticamente
                       </span>
                     </div>
                   )}
@@ -942,7 +928,6 @@ const WhatsAppPage = () => {
                   disabled={loading || (
                     selectedContacts.length === 0 && 
                     selectedGroups.length === 0 && 
-                    selectedContactPhones.length === 0 &&
                     !directPhoneNumbers.trim()
                   )}
                   className="w-full"
@@ -956,7 +941,6 @@ const WhatsAppPage = () => {
                       Enviar para {
                         selectedContacts.length + 
                         selectedGroups.length + 
-                        selectedContactPhones.length +
                         (directPhoneNumbers.trim() ? directPhoneNumbers.split(/[,\n]/).filter(p => p.trim()).length : 0)
                       } destinatário(s)
                     </>
