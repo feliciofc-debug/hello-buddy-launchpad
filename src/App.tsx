@@ -44,6 +44,8 @@ import Marketplace from "./pages/Marketplace";
 import MarketplaceProduto from "./pages/MarketplaceProduto";
 import MarketplacePublico from "./pages/MarketplacePublico";
 import AdminProdutos from "./pages/AdminProdutos";
+import WhatsAppGrupos from "./pages/WhatsAppGrupos";
+import OnboardingWhatsApp from "./pages/OnboardingWhatsApp";
 
 const queryClient = new QueryClient();
 
@@ -66,7 +68,9 @@ const App = () => (
             <Route path="/configuracoes-icp" element={<ConfigurarICP />} />
             <Route path="/configurar-icp" element={<ConfigurarICP />} />
             <Route path="/whatsapp" element={<WhatsAppPage />} />
+            <Route path="/whatsapp/grupos" element={<WhatsAppGrupos />} />
             <Route path="/whatsapp-conversations" element={<WhatsAppConversations />} />
+            <Route path="/onboarding/whatsapp" element={<OnboardingWhatsApp />} />
             <Route path="/prospects" element={<Prospects />} />
             <Route path="/campanhas-prospeccao" element={<CampanhasProspeccao />} />
             <Route path="/campanhas/:id" element={<CampanhaDetalhes />} />
