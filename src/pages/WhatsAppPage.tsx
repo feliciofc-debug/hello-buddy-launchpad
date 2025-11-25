@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WhatsAppDiagnostics } from '@/components/WhatsAppDiagnostics';
+import { AddGroupModal } from '@/components/AddGroupModal';
 
 interface Contact {
   name: string;
@@ -80,6 +81,7 @@ const WhatsAppPage = () => {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
+  const [showAddGroupModal, setShowAddGroupModal] = useState(false);
 
   // Carregar dados ao montar componente
   useEffect(() => {
@@ -851,7 +853,9 @@ const WhatsAppPage = () => {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <span>Grupos do WhatsApp</span>
-                  <Button size="sm">+ Adicionar Grupo</Button>
+                  <Button size="sm" onClick={() => setShowAddGroupModal(true)}>
+                    + Adicionar Grupo
+                  </Button>
                 </CardTitle>
                 <CardDescription>
                   Gerencie seus grupos e envie mensagens
@@ -992,6 +996,13 @@ const WhatsAppPage = () => {
             <WhatsAppDiagnostics />
           </TabsContent>
         </Tabs>
+
+        {/* Modal Adicionar Grupo */}
+        <AddGroupModal
+          open={showAddGroupModal}
+          onOpenChange={setShowAddGroupModal}
+          onGroupAdded={loadGroups}
+        />
       </div>
     </div>
   );
