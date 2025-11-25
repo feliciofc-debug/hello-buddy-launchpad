@@ -308,11 +308,17 @@ const WhatsAppPage = () => {
     // Combinar todas as fontes de números
     const allPhones = [
       ...selectedContacts,
+      ...selectedContactPhones, // 🔥 ADICIONA CONTATOS DO GERENCIADOR
       ...directPhones
     ];
 
     // Remover duplicatas
     const uniquePhones = [...new Set(allPhones)];
+
+    console.log('📱 NÚMEROS PARA ENVIAR:', uniquePhones);
+    console.log('📱 Do gerenciador:', selectedContactPhones);
+    console.log('📱 Selecionados manualmente:', selectedContacts);
+    console.log('📱 Grupos selecionados:', selectedGroups);
 
     if (uniquePhones.length === 0 && selectedGroups.length === 0) {
       toast.error('Selecione pelo menos um contato ou grupo, ou digite um número');
@@ -672,7 +678,20 @@ const WhatsAppPage = () => {
 
                 {/* Gerenciador de Contatos */}
                 <Card className="border-primary/20">
-                  <CardContent className="pt-6">
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      📞 Seus Contatos
+                      {selectedContactPhones.length > 0 && (
+                        <span className="ml-2 text-sm font-normal text-primary">
+                          ({selectedContactPhones.length} selecionados)
+                        </span>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      Marque os contatos que deseja incluir na campanha
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
                     <WhatsAppContactManager
                       selectedContacts={selectedContactPhones}
                       onContactsChange={setSelectedContactPhones}
