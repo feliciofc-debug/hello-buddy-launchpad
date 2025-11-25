@@ -2243,9 +2243,11 @@ export type Database = {
           id: string
           last_interaction: string | null
           nome: string | null
+          notes: string | null
           origem: string | null
           phone: string
           tags: string[] | null
+          updated_at: string | null
           user_id: string
         }
         Insert: {
@@ -2257,9 +2259,11 @@ export type Database = {
           id?: string
           last_interaction?: string | null
           nome?: string | null
+          notes?: string | null
           origem?: string | null
           phone: string
           tags?: string[] | null
+          updated_at?: string | null
           user_id: string
         }
         Update: {
@@ -2271,9 +2275,11 @@ export type Database = {
           id?: string
           last_interaction?: string | null
           nome?: string | null
+          notes?: string | null
           origem?: string | null
           phone?: string
           tags?: string[] | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
