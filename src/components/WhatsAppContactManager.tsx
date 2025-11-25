@@ -198,12 +198,9 @@ export default function WhatsAppContactManager({
   };
 
   const toggleContact = (phone: string) => {
-    console.log('🔴 CLICOU NO CONTATO:', phone);
-    console.log('🔴 SELECIONADOS ANTES:', selectedContacts);
     const newSelected = selectedContacts.includes(phone)
       ? selectedContacts.filter(p => p !== phone)
       : [...selectedContacts, phone];
-    console.log('🔴 SELECIONADOS DEPOIS:', newSelected);
     onContactsChange(newSelected);
   };
 
@@ -340,17 +337,13 @@ export default function WhatsAppContactManager({
             return (
               <div
                 key={contact.id}
-                className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors cursor-pointer"
-                onClick={() => toggleContact(contact.phone)}
+                className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
               >
-                {/* CHECKBOX VISUAL */}
-                <div className={`w-5 h-5 border-2 rounded flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}>
-                  {isSelected && (
-                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </div>
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => toggleContact(contact.phone)}
+                  className="flex-shrink-0"
+                />
 
                 {/* INFO DO CONTATO */}
                 <div className="flex-1 min-w-0">
