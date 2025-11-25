@@ -198,9 +198,12 @@ export default function WhatsAppContactManager({
   };
 
   const toggleContact = (phone: string) => {
+    console.log('🔴 CLICOU NO CONTATO:', phone);
+    console.log('🔴 SELECIONADOS ANTES:', selectedContacts);
     const newSelected = selectedContacts.includes(phone)
       ? selectedContacts.filter(p => p !== phone)
       : [...selectedContacts, phone];
+    console.log('🔴 SELECIONADOS DEPOIS:', newSelected);
     onContactsChange(newSelected);
   };
 

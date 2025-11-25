@@ -113,14 +113,6 @@ const WhatsAppPage = () => {
     }
   }, []);
 
-  // Sincronizar campo de números com seleção do manager
-  useEffect(() => {
-    if (selectedContactPhones.length > 0) {
-      setDirectPhoneNumbers(selectedContactPhones.join(', '));
-      setSelectedContactPhones([]); // Limpa seleção após preencher campo
-    }
-  }, [selectedContactPhones]);
-
   // Trigger para forçar reload da lista de contatos
   const [reloadContactsTrigger, setReloadContactsTrigger] = useState(0);
 
