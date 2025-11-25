@@ -88,6 +88,11 @@ const WhatsAppPage = () => {
   // State para contatos selecionados no manager
   const [selectedContactPhones, setSelectedContactPhones] = useState<string[]>([]);
   
+  // Log toda mudança no selectedContactPhones
+  useEffect(() => {
+    console.log('🟢 ESTADO selectedContactPhones mudou:', selectedContactPhones);
+  }, [selectedContactPhones]);
+  
   // State para campo de números direto
   const [directPhoneNumbers, setDirectPhoneNumbers] = useState<string>('');
 
@@ -694,7 +699,10 @@ const WhatsAppPage = () => {
                   <CardContent>
                     <WhatsAppContactManager
                       selectedContacts={selectedContactPhones}
-                      onContactsChange={setSelectedContactPhones}
+                      onContactsChange={(phones) => {
+                        console.log('🔵 onContactsChange chamado com:', phones);
+                        setSelectedContactPhones(phones);
+                      }}
                       key={reloadContactsTrigger}
                     />
                   </CardContent>
