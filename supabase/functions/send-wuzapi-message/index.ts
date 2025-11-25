@@ -59,8 +59,7 @@ serve(async (req) => {
         const payload = imageUrl 
           ? {
               Phone: formattedPhone,
-              Body: message || '',
-              Media: imageUrl,
+              Image: imageUrl,
               Caption: message || ''
             }
           : {
