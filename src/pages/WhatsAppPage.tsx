@@ -241,9 +241,16 @@ const WhatsAppPage = () => {
 
   // Funções de seleção de contatos
   const toggleContact = (phone: string) => {
-    setSelectedContacts(prev => 
-      prev.includes(phone) ? prev.filter(p => p !== phone) : [...prev, phone]
-    );
+    console.log('Toggle contact:', phone);
+    console.log('Current selected:', selectedContacts);
+    setSelectedContacts(prev => {
+      const isSelected = prev.includes(phone);
+      const newSelection = isSelected 
+        ? prev.filter(p => p !== phone) 
+        : [...prev, phone];
+      console.log('New selection:', newSelection);
+      return newSelection;
+    });
   };
 
   const selectAllContacts = () => {
@@ -256,9 +263,16 @@ const WhatsAppPage = () => {
 
   // Funções de seleção de grupos
   const toggleGroup = (groupId: string) => {
-    setSelectedGroups(prev => 
-      prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]
-    );
+    console.log('Toggle group:', groupId);
+    console.log('Current selected groups:', selectedGroups);
+    setSelectedGroups(prev => {
+      const isSelected = prev.includes(groupId);
+      const newSelection = isSelected 
+        ? prev.filter(id => id !== groupId) 
+        : [...prev, groupId];
+      console.log('New group selection:', newSelection);
+      return newSelection;
+    });
   };
 
   const selectAllGroups = () => {
@@ -729,32 +743,32 @@ const WhatsAppPage = () => {
                                 Nenhum contato carregado. Adicione contatos acima.
                               </p>
                             </div>
-                          ) : (
-                            contacts.map((contact, idx) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
-                              >
-                                <Checkbox
-                                  id={`contact-${idx}`}
-                                  checked={selectedContacts.includes(contact.phone)}
-                                  onCheckedChange={(checked) => {
-                                    setSelectedContacts(prev => 
-                                      checked 
-                                        ? [...prev, contact.phone]
-                                        : prev.filter(p => p !== contact.phone)
-                                    );
-                                  }}
-                                />
-                                <label 
-                                  htmlFor={`contact-${idx}`}
-                                  className="flex-1 cursor-pointer"
+                           ) : (
+                            contacts.map((contact, idx) => {
+                              const isChecked = selectedContacts.includes(contact.phone);
+                              return (
+                                <div
+                                  key={`${contact.phone}-${idx}`}
+                                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
                                 >
-                                  <p className="font-medium text-sm">{contact.name}</p>
-                                  <p className="text-xs text-muted-foreground">{contact.phone}</p>
-                                </label>
-                              </div>
-                            ))
+                                  <Checkbox
+                                    id={`contact-${contact.phone}`}
+                                    checked={isChecked}
+                                    onCheckedChange={(checked) => {
+                                      console.log('Checkbox clicked:', contact.phone, 'checked:', checked);
+                                      toggleContact(contact.phone);
+                                    }}
+                                  />
+                                  <label 
+                                    htmlFor={`contact-${contact.phone}`}
+                                    className="flex-1 cursor-pointer"
+                                  >
+                                    <p className="font-medium text-sm">{contact.name}</p>
+                                    <p className="text-xs text-muted-foreground">{contact.phone}</p>
+                                  </label>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       </TabsContent>
@@ -786,33 +800,33 @@ const WhatsAppPage = () => {
                               </Button>
                             </div>
                           ) : (
-                            groups.map((group) => (
-                              <div
-                                key={group.id}
-                                className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
-                              >
-                                <Checkbox
-                                  id={`group-${group.id}`}
-                                  checked={selectedGroups.includes(group.group_id)}
-                                  onCheckedChange={(checked) => {
-                                    setSelectedGroups(prev => 
-                                      checked 
-                                        ? [...prev, group.group_id]
-                                        : prev.filter(id => id !== group.group_id)
-                                    );
-                                  }}
-                                />
-                                <label 
-                                  htmlFor={`group-${group.id}`}
-                                  className="flex-1 cursor-pointer"
+                            groups.map((group) => {
+                              const isChecked = selectedGroups.includes(group.group_id);
+                              return (
+                                <div
+                                  key={`${group.group_id}-${group.id}`}
+                                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
                                 >
-                                  <p className="font-medium text-sm">{group.group_name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    👥 {group.member_count || 0} membros
-                                  </p>
-                                </label>
-                              </div>
-                            ))
+                                  <Checkbox
+                                    id={`group-${group.group_id}`}
+                                    checked={isChecked}
+                                    onCheckedChange={(checked) => {
+                                      console.log('Group checkbox clicked:', group.group_id, 'checked:', checked);
+                                      toggleGroup(group.group_id);
+                                    }}
+                                  />
+                                  <label 
+                                    htmlFor={`group-${group.group_id}`}
+                                    className="flex-1 cursor-pointer"
+                                  >
+                                    <p className="font-medium text-sm">{group.group_name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      👥 {group.member_count || 0} membros
+                                    </p>
+                                  </label>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       </TabsContent>
