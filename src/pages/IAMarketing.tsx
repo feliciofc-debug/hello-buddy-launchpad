@@ -580,7 +580,7 @@ const IAMarketing = () => {
                         <Button
                           onClick={() => {
                             const texto = editableTexts.whatsapp[selectedVariations.whatsapp];
-                            const imagemProduto = resultado?.produto?.imagem;
+                            const imagemProduto = resultado?.generatedImage || resultado?.produto?.imagem;
                             const tituloProduto = resultado?.produto?.titulo;
                             
                             // Navegar para página WhatsApp com dados da campanha
