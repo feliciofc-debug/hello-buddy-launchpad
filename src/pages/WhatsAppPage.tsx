@@ -245,18 +245,25 @@ const WhatsAppPage = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      const { data, error } = await supabase.functions.invoke('whatsapp-bulk-send', {
+      const { data, error } = await supabase.functions.invoke('send-whatsapp-campaign', {
         body: {
-          campaignName: campaignName || `Campanha ${new Date().toLocaleDateString()}`,
-          messageTemplate,
-          contacts,
-          scheduledAt: scheduledDate || null
+          phoneNumbers: contacts.map(c => c.phone),
+          message: messageTemplate,
+          imageUrl: productImage
         }
       });
 
       if (error) throw error;
 
-      toast.success(data.message);
+      // Processar resultados
+      const successCount = data.results.filter((r: any) => r.success).length;
+      const failCount = data.results.length - successCount;
+      
+      if (successCount > 0) {
+        toast.success(`✅ ${successCount} mensagens enviadas${failCount > 0 ? `, ${failCount} falharam` : ''}!`);
+      } else {
+        toast.error('Nenhuma mensagem foi enviada com sucesso');
+      }
       
       // Limpar formulário
       setCampaignName('');
