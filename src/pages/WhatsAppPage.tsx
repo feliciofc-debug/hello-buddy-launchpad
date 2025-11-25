@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { MessageCircle, Users, Send, Clock, TrendingUp, CheckCircle, AlertCircle, Settings, ArrowLeft, Upload, Eye, Calendar, BarChart3, Trash2, Copy, Activity } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -119,64 +119,8 @@ const WhatsAppPage = () => {
     }
   }, [selectedContactPhones]);
 
-  // AUTO-SAVE COM DEBOUNCE: Salvar números digitados automaticamente
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // Trigger para forçar reload da lista de contatos
   const [reloadContactsTrigger, setReloadContactsTrigger] = useState(0);
-
-  const autoSaveNumbers = useCallback(async (numbersText: string) => {
-    // Extrair números válidos (10+ dígitos)
-    const phoneRegex = /\d{10,}/g;
-    const foundNumbers = numbersText.match(phoneRegex) || [];
-    
-    if (foundNumbers.length === 0) return;
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Salvar cada número encontrado
-      for (const phone of foundNumbers) {
-        const cleanPhone = phone.replace(/\D/g, '');
-        
-        await supabase
-          .from('whatsapp_contacts')
-          .upsert({
-            user_id: user.id,
-            nome: `Contato ${cleanPhone.slice(-4)}`,
-            phone: cleanPhone
-          }, {
-            onConflict: 'user_id,phone',
-            ignoreDuplicates: false
-          });
-      }
-
-      // Forçar reload dos contatos no manager
-      setReloadContactsTrigger(prev => prev + 1);
-      
-      toast.success(`✅ ${foundNumbers.length} número(s) salvo(s) automaticamente!`);
-    } catch (error) {
-      console.error('Erro ao salvar números:', error);
-    }
-  }, []);
-
-  // Debounce: Salva 500ms após parar de digitar
-  useEffect(() => {
-    if (!directPhoneNumbers.trim()) return;
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    debounceTimerRef.current = setTimeout(() => {
-      autoSaveNumbers(directPhoneNumbers);
-    }, 500);
-
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [directPhoneNumbers, autoSaveNumbers]);
 
   const loadBulkSends = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -460,6 +404,30 @@ const WhatsAppPage = () => {
       
       if (successCount > 0) {
         toast.success(`✅ ${successCount} enviadas${failCount > 0 ? `, ${failCount} falharam` : ''}!`);
+        
+        // AUTO-SAVE: Salvar TODOS os números enviados automaticamente
+        try {
+          for (const phone of uniquePhones) {
+            await supabase
+              .from('whatsapp_contacts')
+              .upsert({
+                user_id: user.id,
+                phone: phone,
+                nome: `Contato ${phone.slice(-4)}`,
+                origem: 'envio_mensagem',
+                last_interaction: new Date().toISOString()
+              }, {
+                onConflict: 'user_id,phone',
+                ignoreDuplicates: true
+              });
+          }
+          
+          // Forçar reload da lista de contatos
+          setReloadContactsTrigger(prev => prev + 1);
+        } catch (error) {
+          console.error('Erro ao salvar contatos:', error);
+          // Não bloqueia o fluxo
+        }
       } else {
         toast.error('Nenhuma mensagem enviada');
       }
