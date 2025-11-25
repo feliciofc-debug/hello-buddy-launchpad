@@ -30,39 +30,22 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
 
       toast.info('🔄 Sincronizando grupos do WhatsApp...');
 
-      // Chamar Wuzapi para listar grupos
-      const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
+      // Chamar função dedicada para sincronizar grupos
+      const { data, error } = await supabase.functions.invoke('sync-whatsapp-groups', {
         body: {
-          action: 'list-groups'
+          userId: user.id
         }
       });
 
       if (error) throw error;
 
-      // Inserir grupos no banco
-      if (data?.groups && data.groups.length > 0) {
-        const groupsToInsert = data.groups.map((g: any) => ({
-          user_id: user.id,
-          group_id: g.id,
-          group_name: g.name || g.subject || 'Sem nome',
-          member_count: g.size || 0,
-          status: 'active'
-        }));
-
-        const { error: insertError } = await supabase
-          .from('whatsapp_groups')
-          .upsert(groupsToInsert, { 
-            onConflict: 'user_id,group_id',
-            ignoreDuplicates: false 
-          });
-
-        if (insertError) throw insertError;
-
-        toast.success(`✅ ${data.groups.length} grupos sincronizados!`);
+      // Edge function já salva no banco, só precisa verificar sucesso
+      if (data?.success && data.groupsCount > 0) {
+        toast.success(`✅ ${data.groupsCount} grupos sincronizados!`);
         onGroupAdded();
         onOpenChange(false);
       } else {
-        toast.warning('Nenhum grupo encontrado no WhatsApp');
+        toast.warning(data?.error || 'Nenhum grupo encontrado no WhatsApp');
       }
 
     } catch (error: any) {
