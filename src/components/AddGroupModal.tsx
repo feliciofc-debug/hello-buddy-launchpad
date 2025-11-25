@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { RefreshCw, Plus } from 'lucide-react';
+import { RefreshCw, Plus, Eye } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface AddGroupModalProps {
   open: boolean;
@@ -15,6 +16,7 @@ interface AddGroupModalProps {
 }
 
 export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModalProps) => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   
   // Manual
@@ -107,11 +109,33 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="sync" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="visual" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="visual">Visual</TabsTrigger>
             <TabsTrigger value="sync">Sincronizar</TabsTrigger>
             <TabsTrigger value="manual">Manual</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="visual" className="space-y-4 pt-4">
+            <div className="text-center py-6">
+              <Eye className="w-16 h-16 mx-auto mb-4 text-primary" />
+              <h3 className="font-bold text-lg mb-2">Seleção Visual</h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                Veja todos os seus grupos do WhatsApp e selecione quais deseja usar de forma visual e intuitiva
+              </p>
+              <Button 
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate('/whatsapp/grupos');
+                }}
+                className="w-full"
+                size="lg"
+              >
+                <Eye className="mr-2 h-4 w-4" />
+                Selecionar Grupos Visualmente
+              </Button>
+            </div>
+          </TabsContent>
 
           <TabsContent value="sync" className="space-y-4 pt-4">
             <div className="text-center py-6">

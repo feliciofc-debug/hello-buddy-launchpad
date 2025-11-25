@@ -1949,6 +1949,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_onboarding: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          onboarding_completed: boolean | null
+          user_id: string
+          whatsapp_connected: boolean | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          onboarding_completed?: boolean | null
+          user_id: string
+          whatsapp_connected?: boolean | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          onboarding_completed?: boolean | null
+          user_id?: string
+          whatsapp_connected?: boolean | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
