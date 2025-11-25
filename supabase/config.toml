@@ -98,3 +98,9 @@ verify_jwt = false
 
 [functions.analisar-comprovante-shopee]
 verify_jwt = false
+
+[functions.voice-ai-calling]
+verify_jwt = false
+
+[functions.voice-ai-callback]
+verify_jwt = false
