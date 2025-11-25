@@ -78,6 +78,10 @@ serve(async (req) => {
 
         const responseText = await response.text();
         
+        console.log(`📋 Payload enviado:`, JSON.stringify(payload, null, 2));
+        console.log(`📨 Status:`, response.status);
+        console.log(`📨 Resposta completa:`, responseText);
+        
         let responseData;
         try {
           responseData = JSON.parse(responseText);
