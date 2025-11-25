@@ -241,15 +241,11 @@ const WhatsAppPage = () => {
 
   // Funções de seleção de contatos
   const toggleContact = (phone: string) => {
-    console.log('Toggle contact:', phone);
-    console.log('Current selected:', selectedContacts);
     setSelectedContacts(prev => {
-      const isSelected = prev.includes(phone);
-      const newSelection = isSelected 
-        ? prev.filter(p => p !== phone) 
-        : [...prev, phone];
-      console.log('New selection:', newSelection);
-      return newSelection;
+      if (prev.includes(phone)) {
+        return prev.filter(p => p !== phone);
+      }
+      return [...prev, phone];
     });
   };
 
@@ -263,15 +259,11 @@ const WhatsAppPage = () => {
 
   // Funções de seleção de grupos
   const toggleGroup = (groupId: string) => {
-    console.log('Toggle group:', groupId);
-    console.log('Current selected groups:', selectedGroups);
     setSelectedGroups(prev => {
-      const isSelected = prev.includes(groupId);
-      const newSelection = isSelected 
-        ? prev.filter(id => id !== groupId) 
-        : [...prev, groupId];
-      console.log('New group selection:', newSelection);
-      return newSelection;
+      if (prev.includes(groupId)) {
+        return prev.filter(id => id !== groupId);
+      }
+      return [...prev, groupId];
     });
   };
 
@@ -751,14 +743,11 @@ const WhatsAppPage = () => {
                                   key={`${contact.phone}-${idx}`}
                                   className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent"
                                 >
-                                  <Checkbox
-                                    id={`contact-${contact.phone}`}
-                                    checked={isChecked}
-                                    onCheckedChange={(checked) => {
-                                      console.log('Checkbox clicked:', contact.phone, 'checked:', checked);
-                                      toggleContact(contact.phone);
-                                    }}
-                                  />
+                                <Checkbox
+                                  id={`contact-${contact.phone}`}
+                                  checked={isChecked}
+                                  onCheckedChange={() => toggleContact(contact.phone)}
+                                />
                                   <label 
                                     htmlFor={`contact-${contact.phone}`}
                                     className="flex-1 cursor-pointer"
@@ -810,10 +799,7 @@ const WhatsAppPage = () => {
                                   <Checkbox
                                     id={`group-${group.group_id}`}
                                     checked={isChecked}
-                                    onCheckedChange={(checked) => {
-                                      console.log('Group checkbox clicked:', group.group_id, 'checked:', checked);
-                                      toggleGroup(group.group_id);
-                                    }}
+                                    onCheckedChange={() => toggleGroup(group.group_id)}
                                   />
                                   <label 
                                     htmlFor={`group-${group.group_id}`}
