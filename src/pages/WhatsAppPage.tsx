@@ -83,10 +83,15 @@ const WhatsAppPage = () => {
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
 
+  // State para histórico de contatos salvos
+  const [savedContacts, setSavedContacts] = useState<any[]>([]);
+  const [loadingSavedContacts, setLoadingSavedContacts] = useState(false);
+
   // Carregar dados ao montar componente
   useEffect(() => {
     loadBulkSends();
     loadGroups();
+    loadSavedContacts();
     calculateStats();
     
     // Se vier do IA Marketing, preencher automaticamente
@@ -104,6 +109,62 @@ const WhatsAppPage = () => {
       toast.success('✅ Mensagem do IA Marketing carregada! Agora escolha os grupos ou contatos.');
     }
   }, []);
+
+  const loadSavedContacts = async () => {
+    setLoadingSavedContacts(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setLoadingSavedContacts(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('whatsapp_contacts')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Erro ao carregar contatos salvos:', error);
+    } else {
+      setSavedContacts(data || []);
+    }
+    setLoadingSavedContacts(false);
+  };
+
+  const saveContact = async (name: string, phone: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from('whatsapp_contacts')
+      .upsert({
+        user_id: user.id,
+        phone: phone,
+        name: name,
+        last_sent_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,phone'
+      });
+
+    if (!error) {
+      await loadSavedContacts();
+    }
+  };
+
+  const deleteContact = async (id: string) => {
+    const { error } = await supabase
+      .from('whatsapp_contacts')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      toast.success('Contato excluído');
+      await loadSavedContacts();
+    } else {
+      toast.error('Erro ao excluir contato');
+    }
+  };
 
   const loadBulkSends = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -210,7 +271,7 @@ const WhatsAppPage = () => {
     reader.readAsText(file);
   };
 
-  const handlePhoneNumbersChange = (text: string) => {
+  const handlePhoneNumbersChange = async (text: string) => {
     setPhoneNumbers(text);
     const lines = text.split('\n').filter(l => l.trim());
     const parsed = lines.map(line => {
@@ -218,6 +279,11 @@ const WhatsAppPage = () => {
       return { name: name || 'Contato', phone: phone || line };
     });
     setContacts(parsed);
+
+    // Salvar automaticamente cada contato novo
+    for (const contact of parsed) {
+      await saveContact(contact.name, contact.phone);
+    }
   };
 
   // Funções de seleção de contatos
@@ -572,6 +638,66 @@ const WhatsAppPage = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Histórico de Contatos Salvos */}
+                {savedContacts.length > 0 && (
+                  <Card className="border-primary/20">
+                    <CardHeader>
+                      <CardTitle className="text-sm flex items-center justify-between">
+                        <span>📞 Contatos Salvos ({savedContacts.length})</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={loadSavedContacts}
+                          disabled={loadingSavedContacts}
+                        >
+                          🔄 Atualizar
+                        </Button>
+                      </CardTitle>
+                      <CardDescription className="text-xs">
+                        Contatos salvos automaticamente ao digitar
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {savedContacts.map((contact) => (
+                          <div
+                            key={contact.id}
+                            className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
+                          >
+                            <div className="flex-1">
+                              <p className="font-medium text-sm">{contact.name}</p>
+                              <p className="text-xs text-muted-foreground">{contact.phone}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  // Adicionar aos contatos da campanha
+                                  if (!contacts.find(c => c.phone === contact.phone)) {
+                                    setContacts([...contacts, { name: contact.name, phone: contact.phone }]);
+                                    toast.success('Contato adicionado à campanha');
+                                  }
+                                }}
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => deleteContact(contact.id)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* TABS: Selecionar Destinatários */}
                 <Card>
