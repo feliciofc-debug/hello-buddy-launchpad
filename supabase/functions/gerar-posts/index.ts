@@ -28,7 +28,7 @@ Preço: R$ ${produto.preco}
 ${produto.rating ? `Avaliação: ${produto.rating} estrelas (${produto.reviews} reviews)` : ''}
 ${produto.comissao ? `Comissão: R$ ${produto.comissao}` : ''}
 
-Gere 9 variações de posts, 3 para cada tipo:
+Gere 12 variações de posts, 3 para cada tipo:
 
 INSTAGRAM (3 variações):
 - Opção A: Estilo direto/urgente com call-to-action forte
@@ -39,6 +39,11 @@ FACEBOOK (3 variações):
 - Opção A: Casual/amigável, tom de conversa
 - Opção B: Profissional/informativo com dados e benefícios
 - Opção C: Promocional/vendedor com senso de urgência
+
+WHATSAPP (3 variações, MAX 280 caracteres cada):
+- Opção A: Urgente/direto com emoji e call-to-action
+- Opção B: Amigável/conversacional com proposta de valor
+- Opção C: Promocional com senso de escassez
 
 STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
 - Opção A: Curto e impactante com emoji
@@ -56,6 +61,11 @@ Retorne APENAS um JSON válido no formato:
     "opcaoA": "texto aqui",
     "opcaoB": "texto aqui",
     "opcaoC": "texto aqui"
+  },
+  "whatsapp": {
+    "opcaoA": "texto curto aqui (max 280 chars)",
+    "opcaoB": "texto curto aqui (max 280 chars)",
+    "opcaoC": "texto curto aqui (max 280 chars)"
   },
   "story": {
     "opcaoA": "texto curto aqui (max 80 chars)",
