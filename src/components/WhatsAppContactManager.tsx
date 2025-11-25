@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Trash2, Plus, Search } from 'lucide-react';
+import { Trash2, Plus, Search, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -35,12 +35,15 @@ export default function WhatsAppContactManager({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   
   const [newContact, setNewContact] = useState({
     name: '',
     phone: '',
     notes: ''
   });
+
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
 
   useEffect(() => {
     loadContacts();
@@ -161,6 +164,39 @@ export default function WhatsAppContactManager({
     }
   };
 
+  const handleEditContact = (contact: Contact) => {
+    setEditingContact(contact);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleUpdateContact = async () => {
+    if (!editingContact || !editingContact.nome.trim()) {
+      toast.error('Preencha o nome do contato');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('whatsapp_contacts')
+        .update({
+          nome: editingContact.nome.trim(),
+          notes: editingContact.notes?.trim() || null
+        })
+        .eq('id', editingContact.id);
+
+      if (error) throw error;
+
+      toast.success('✅ Contato atualizado!');
+      setIsEditDialogOpen(false);
+      setEditingContact(null);
+      loadContacts();
+
+    } catch (error) {
+      console.error('Erro ao atualizar contato:', error);
+      toast.error('Erro ao atualizar contato');
+    }
+  };
+
   const toggleContact = (phone: string) => {
     if (selectedContacts.includes(phone)) {
       onContactsChange(selectedContacts.filter(p => p !== phone));
@@ -234,6 +270,51 @@ export default function WhatsAppContactManager({
             </div>
           </DialogContent>
         </Dialog>
+
+        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>✏️ Editar Contato</DialogTitle>
+            </DialogHeader>
+            {editingContact && (
+              <div className="space-y-4">
+                <div>
+                  <Label>Telefone (não editável)</Label>
+                  <Input
+                    value={editingContact.phone}
+                    disabled
+                    className="bg-muted"
+                  />
+                </div>
+                <div>
+                  <Label>Nome *</Label>
+                  <Input
+                    placeholder="Ex: Maria Silva"
+                    value={editingContact.nome}
+                    onChange={(e) => setEditingContact({ 
+                      ...editingContact, 
+                      nome: e.target.value 
+                    })}
+                  />
+                </div>
+                <div>
+                  <Label>Observações (opcional)</Label>
+                  <Input
+                    placeholder="Ex: Cliente VIP"
+                    value={editingContact.notes || ''}
+                    onChange={(e) => setEditingContact({ 
+                      ...editingContact, 
+                      notes: e.target.value 
+                    })}
+                  />
+                </div>
+                <Button onClick={handleUpdateContact} className="w-full">
+                  💾 Salvar Alterações
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="relative">
@@ -261,7 +342,10 @@ export default function WhatsAppContactManager({
                 checked={selectedContacts.includes(contact.phone)}
                 onCheckedChange={() => toggleContact(contact.phone)}
               />
-              <div className="flex-1 min-w-0">
+              <div 
+                className="flex-1 min-w-0 cursor-pointer"
+                onClick={() => handleEditContact(contact)}
+              >
                 <p className="font-medium truncate">{contact.nome}</p>
                 <p className="text-sm text-muted-foreground">{contact.phone}</p>
                 {contact.notes && (
@@ -271,7 +355,21 @@ export default function WhatsAppContactManager({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleDeleteContact(contact.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditContact(contact);
+                }}
+                className="text-blue-600 hover:text-blue-700"
+              >
+                <Edit2 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteContact(contact.id);
+                }}
                 className="text-destructive hover:text-destructive"
               >
                 <Trash2 className="h-4 w-4" />
