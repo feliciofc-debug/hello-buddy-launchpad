@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import { WhatsAppDiagnostics } from '@/components/WhatsAppDiagnostics';
 import { AddGroupModal } from '@/components/AddGroupModal';
 import WhatsAppContactManager from '@/components/WhatsAppContactManager';
@@ -330,6 +331,45 @@ const WhatsAppPage = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
+
+      // VERIFICAR SE É AGENDAMENTO
+      if (scheduledDate) {
+        // CRIAR REGISTRO DE ENVIO AGENDADO
+        const { error: scheduleError } = await supabase
+          .from('whatsapp_bulk_sends')
+          .insert({
+            user_id: user.id,
+            campaign_name: campaignName || 'Campanha sem nome',
+            message_template: messageTemplate,
+            total_contacts: uniquePhones.length + selectedGroups.length,
+            scheduled_at: scheduledDate,
+            status: 'scheduled',
+            sent_count: 0,
+            delivered_count: 0,
+            read_count: 0,
+            response_count: 0
+          });
+
+        if (scheduleError) throw scheduleError;
+
+        toast.success(`✅ Envio agendado para ${new Date(scheduledDate).toLocaleString('pt-BR')}!`);
+        
+        // Limpar formulário
+        setCampaignName('');
+        setMessageTemplate('Olá {nome}! 👋\n\nConfira esta oferta:\n\n🔥 {produto}\n💰 {preco}\n\n🔗 {link}\n\nNão perca!');
+        setContacts([]);
+        setCsvText('');
+        setPhoneNumbers('');
+        setDirectPhoneNumbers('');
+        setScheduledDate('');
+        setPreviewMessage('');
+        clearAllSelections();
+        setSelectedContactPhones([]);
+        
+        await loadBulkSends();
+        setLoading(false);
+        return;
+      }
 
       // ENVIO USANDO FUNÇÃO ORIGINAL + SUPORTE A GRUPOS (ADITIVO)
       const results = [];
@@ -691,21 +731,20 @@ const WhatsAppPage = () => {
                             </div>
                           ) : (
                             contacts.map((contact, idx) => (
-                              <label
+                              <div
                                 key={idx}
                                 className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent"
+                                onClick={() => toggleContact(contact.phone)}
                               >
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={selectedContacts.includes(contact.phone)}
-                                  onChange={() => toggleContact(contact.phone)}
-                                  className="w-4 h-4"
+                                  onCheckedChange={() => toggleContact(contact.phone)}
                                 />
                                 <div className="flex-1">
                                   <p className="font-medium text-sm">{contact.name}</p>
                                   <p className="text-xs text-muted-foreground">{contact.phone}</p>
                                 </div>
-                              </label>
+                              </div>
                             ))
                           )}
                         </div>
@@ -739,15 +778,14 @@ const WhatsAppPage = () => {
                             </div>
                           ) : (
                             groups.map((group) => (
-                              <label
+                              <div
                                 key={group.id}
                                 className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-accent"
+                                onClick={() => toggleGroup(group.group_id)}
                               >
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={selectedGroups.includes(group.group_id)}
-                                  onChange={() => toggleGroup(group.group_id)}
-                                  className="w-4 h-4"
+                                  onCheckedChange={() => toggleGroup(group.group_id)}
                                 />
                                 <div className="flex-1">
                                   <p className="font-medium text-sm">{group.group_name}</p>
@@ -755,7 +793,7 @@ const WhatsAppPage = () => {
                                     👥 {group.member_count || 0} membros
                                   </p>
                                 </div>
-                              </label>
+                              </div>
                             ))
                           )}
                         </div>
