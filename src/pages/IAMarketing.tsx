@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Instagram, MessageCircle, ArrowLeft, Copy, Calendar as CalendarIcon, Upload, Video, Facebook, Sparkles } from "lucide-react";
+import { Loader2, Instagram, MessageCircle, ArrowLeft, Copy, Calendar as CalendarIcon, Upload, Video, Facebook, Sparkles, Download } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -205,6 +205,20 @@ const IAMarketing = () => {
     toast.success(`${type} copiado com link!`);
   };
 
+  const handleDownloadImage = () => {
+    if (!resultado?.generatedImage) return;
+    
+    // Criar um link temporário para download
+    const link = document.createElement('a');
+    link.href = resultado.generatedImage;
+    link.download = `imagem-ia-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success("Imagem baixada com sucesso!");
+  };
+
   const handleScheduleAll = () => {
     if (!resultado) return;
     setShowScheduleModal(true);
@@ -362,12 +376,19 @@ const IAMarketing = () => {
                         🎨 Imagem Gerada com IA
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="pt-6">
+                    <CardContent className="pt-6 space-y-4">
                       <img 
                         src={resultado.generatedImage} 
                         alt="Imagem gerada"
                         className="w-full rounded-lg shadow-lg"
                       />
+                      <Button
+                        onClick={handleDownloadImage}
+                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                      >
+                        <Download className="mr-2 h-5 w-5" />
+                        💾 Salvar Imagem no Computador
+                      </Button>
                     </CardContent>
                   </Card>
                 )}
