@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { WhatsAppDiagnostics } from '@/components/WhatsAppDiagnostics';
 import { AddGroupModal } from '@/components/AddGroupModal';
+import WhatsAppContactManager from '@/components/WhatsAppContactManager';
 
 interface Contact {
   name: string;
@@ -82,16 +83,14 @@ const WhatsAppPage = () => {
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
-
-  // State para histórico de contatos salvos
-  const [savedContacts, setSavedContacts] = useState<any[]>([]);
-  const [loadingSavedContacts, setLoadingSavedContacts] = useState(false);
+  
+  // State para contatos selecionados no manager
+  const [selectedContactPhones, setSelectedContactPhones] = useState<string[]>([]);
 
   // Carregar dados ao montar componente
   useEffect(() => {
     loadBulkSends();
     loadGroups();
-    loadSavedContacts();
     calculateStats();
     
     // Se vier do IA Marketing, preencher automaticamente
@@ -109,66 +108,6 @@ const WhatsAppPage = () => {
       toast.success('✅ Mensagem do IA Marketing carregada! Agora escolha os grupos ou contatos.');
     }
   }, []);
-
-  const loadSavedContacts = async () => {
-    setLoadingSavedContacts(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoadingSavedContacts(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('whatsapp_contacts')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Erro ao carregar contatos salvos:', error);
-    } else {
-      setSavedContacts(data || []);
-    }
-    setLoadingSavedContacts(false);
-  };
-
-  const saveContact = async (name: string, phone: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { error } = await supabase
-      .from('whatsapp_contacts')
-      .upsert({
-        user_id: user.id,
-        phone: phone,
-        nome: name,
-        last_interaction: new Date().toISOString()
-      }, {
-        onConflict: 'user_id,phone'
-      });
-
-    if (!error) {
-      await loadSavedContacts();
-      toast.success('Contato salvo!');
-    } else {
-      console.error('Erro ao salvar contato:', error);
-      toast.error('Erro ao salvar contato');
-    }
-  };
-
-  const deleteContact = async (id: string) => {
-    const { error } = await supabase
-      .from('whatsapp_contacts')
-      .delete()
-      .eq('id', id);
-
-    if (!error) {
-      toast.success('Contato excluído');
-      await loadSavedContacts();
-    } else {
-      toast.error('Erro ao excluir contato');
-    }
-  };
 
   const loadBulkSends = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -283,11 +222,6 @@ const WhatsAppPage = () => {
       return { name: name || 'Contato', phone: phone || line };
     });
     setContacts(parsed);
-
-    // Salvar automaticamente cada contato novo
-    for (const contact of parsed) {
-      await saveContact(contact.name, contact.phone);
-    }
   };
 
   // Funções de seleção de contatos
@@ -352,7 +286,7 @@ const WhatsAppPage = () => {
   };
 
   const handleBulkSend = async () => {
-    if (selectedContacts.length === 0 && selectedGroups.length === 0) {
+    if (selectedContacts.length === 0 && selectedGroups.length === 0 && selectedContactPhones.length === 0) {
       toast.error('Selecione pelo menos um contato ou grupo');
       return;
     }
@@ -371,7 +305,7 @@ const WhatsAppPage = () => {
       // ENVIO USANDO FUNÇÃO ORIGINAL + SUPORTE A GRUPOS (ADITIVO)
       const results = [];
       
-      // 1. Enviar para contatos individuais selecionados
+      // 1. Enviar para contatos individuais selecionados (do upload/cola)
       for (const phone of selectedContacts) {
         const contact = contacts.find(c => c.phone === phone);
         if (!contact) continue;
@@ -400,6 +334,38 @@ const WhatsAppPage = () => {
         } catch (err) {
           results.push({
             phone: contact.phone,
+            success: false,
+            error: err instanceof Error ? err.message : 'Erro'
+          });
+        }
+      }
+      
+      // 1b. Enviar para contatos selecionados do manager
+      for (const phone of selectedContactPhones) {
+        // Pular se já foi enviado (evita duplicatas)
+        if (selectedContacts.includes(phone)) continue;
+        
+        try {
+          let personalizedMessage = messageTemplate;
+          personalizedMessage = personalizedMessage.replace(/{telefone}/g, phone);
+          
+          const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
+            body: {
+              phoneNumber: phone,
+              message: personalizedMessage,
+              imageUrl: productImage || undefined
+            }
+          });
+
+          results.push({
+            phone: phone,
+            success: !error && data?.success,
+            error: error?.message
+          });
+
+        } catch (err) {
+          results.push({
+            phone: phone,
             success: false,
             error: err instanceof Error ? err.message : 'Erro'
           });
@@ -441,6 +407,42 @@ const WhatsAppPage = () => {
       
       if (successCount > 0) {
         toast.success(`✅ ${successCount} enviadas${failCount > 0 ? `, ${failCount} falharam` : ''}!`);
+        
+        // AUTO-SAVE: Salvar contatos enviados automaticamente
+        try {
+          for (const contact of contacts) {
+            if (selectedContacts.includes(contact.phone)) {
+              await supabase
+                .from('whatsapp_contacts')
+                .upsert({
+                  user_id: user.id,
+                  nome: contact.name || `Contato ${contact.phone}`,
+                  phone: contact.phone,
+                  last_interaction: new Date().toISOString()
+                }, {
+                  onConflict: 'user_id,phone'
+                });
+            }
+          }
+          
+          // Salvar também os números do manager
+          for (const phone of selectedContactPhones) {
+            const contact = contacts.find(c => c.phone === phone);
+            await supabase
+              .from('whatsapp_contacts')
+              .upsert({
+                user_id: user.id,
+                nome: contact?.name || `Contato ${phone}`,
+                phone: phone,
+                last_interaction: new Date().toISOString()
+              }, {
+                onConflict: 'user_id,phone'
+              });
+          }
+        } catch (error) {
+          console.error('Erro ao salvar contatos:', error);
+          // Não bloqueia o fluxo se der erro ao salvar
+        }
       } else {
         toast.error('Nenhuma mensagem enviada');
       }
@@ -643,65 +645,15 @@ const WhatsAppPage = () => {
                   )}
                 </div>
 
-                {/* Histórico de Contatos Salvos */}
-                {savedContacts.length > 0 && (
-                  <Card className="border-primary/20">
-                    <CardHeader>
-                      <CardTitle className="text-sm flex items-center justify-between">
-                        <span>📞 Contatos Salvos ({savedContacts.length})</span>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={loadSavedContacts}
-                          disabled={loadingSavedContacts}
-                        >
-                          🔄 Atualizar
-                        </Button>
-                      </CardTitle>
-                      <CardDescription className="text-xs">
-                        Contatos salvos automaticamente ao digitar
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2 max-h-60 overflow-y-auto">
-                        {savedContacts.map((contact) => (
-                          <div
-                            key={contact.id}
-                            className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
-                          >
-                            <div className="flex-1">
-                              <p className="font-medium text-sm">{contact.nome}</p>
-                              <p className="text-xs text-muted-foreground">{contact.phone}</p>
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  // Adicionar aos contatos da campanha
-                                  if (!contacts.find(c => c.phone === contact.phone)) {
-                                    setContacts([...contacts, { name: contact.nome, phone: contact.phone }]);
-                                    toast.success('Contato adicionado à campanha');
-                                  }
-                                }}
-                              >
-                                <Copy className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => deleteContact(contact.id)}
-                                className="text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                {/* Gerenciador de Contatos */}
+                <Card className="border-primary/20">
+                  <CardContent className="pt-6">
+                    <WhatsAppContactManager
+                      selectedContacts={selectedContactPhones}
+                      onContactsChange={setSelectedContactPhones}
+                    />
+                  </CardContent>
+                </Card>
 
                 {/* TABS: Selecionar Destinatários */}
                 <Card>
