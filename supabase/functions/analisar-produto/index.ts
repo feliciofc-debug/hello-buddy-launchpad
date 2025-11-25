@@ -179,7 +179,12 @@ STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
 - Opção B: Pergunta interativa para engajamento. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
 - Opção C: Contagem regressiva ou urgência. SEMPRE termine com "🔗 Arrasta pra cima!" ou "Link abaixo!"
 
-IMPORTANTE: 
+WHATSAPP (3 variações, máximo 280 caracteres cada):
+- Opção A: Curto e Direto com urgência. Use emojis estrategicamente.
+- Opção B: Amigável com storytelling rápido. Crie conexão emocional.
+- Opção C: Com Call-to-Action forte. Senso de oportunidade limitada.
+
+IMPORTANTE:
 - TODOS os textos devem estar em ${detectedLanguage}
 - Use emojis apropriados
 - Mantenha o tom adequado para cada rede social
