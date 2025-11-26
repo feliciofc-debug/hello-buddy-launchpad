@@ -36,9 +36,15 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
-      const name = groupName.trim() || `Grupo ${new Date().toLocaleString('pt-BR')}`;
+      const name = groupName.trim() || `Lista ${new Date().toLocaleString('pt-BR')}`;
 
-      const { error } = await supabase
+      console.log('💾 Salvando lista:', {
+        name: name,
+        numbers: phones,
+        count: phones.length
+      });
+
+      const { data, error } = await supabase
         .from('whatsapp_groups')
         .insert({
           user_id: user.id,
@@ -47,11 +53,17 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
           member_count: phones.length,
           phone_numbers: phones,
           status: 'active'
-        });
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao salvar:', error);
+        throw error;
+      }
 
-      toast.success(`✅ Grupo criado com ${phones.length} contatos! Veja na aba "Grupos"`);
+      console.log('✅ Lista salva:', data);
+
+      toast.success(`✅ Lista criada com ${phones.length} contatos! Veja na aba "Listas"`);
       setPastedNumbers('');
       setGroupName('');
       onOpenChange(false);
@@ -111,9 +123,15 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
-      const name = `Grupo CSV ${new Date().toLocaleString('pt-BR')}`;
+      const name = `Lista CSV ${new Date().toLocaleString('pt-BR')}`;
 
-      const { error } = await supabase
+      console.log('💾 Salvando lista CSV:', {
+        name: name,
+        numbers: numbers,
+        count: numbers.length
+      });
+
+      const { data, error } = await supabase
         .from('whatsapp_groups')
         .insert({
           user_id: user.id,
@@ -122,11 +140,17 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
           member_count: numbers.length,
           phone_numbers: numbers,
           status: 'active'
-        });
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao salvar:', error);
+        throw error;
+      }
 
-      toast.success(`✅ ${numbers.length} contatos importados do CSV! Veja na aba "Grupos"`);
+      console.log('✅ Lista CSV salva:', data);
+
+      toast.success(`✅ ${numbers.length} contatos importados! Veja na aba "Listas"`);
       onOpenChange(false);
       onGroupAdded();
 
@@ -201,7 +225,7 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Adicionar Contatos e Grupos</DialogTitle>
+          <DialogTitle>Criar Lista de Transmissão</DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="paste" className="w-full">
@@ -229,7 +253,7 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
             </div>
 
             <div>
-              <Label htmlFor="group-name">Nome do Grupo (opcional)</Label>
+              <Label htmlFor="group-name">Nome da Lista (opcional)</Label>
               <Input
                 id="group-name"
                 placeholder="Deixe vazio para gerar automático"
@@ -244,7 +268,7 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
               disabled={!pastedNumbers.trim() || isAdding}
               className="w-full"
             >
-              {isAdding ? 'Criando...' : 'Criar Grupo'}
+              {isAdding ? 'Criando...' : 'Criar Lista'}
             </Button>
 
             <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
