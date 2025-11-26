@@ -474,28 +474,10 @@ const WhatsAppPage = () => {
       const allNumbers = [...new Set([...uniquePhones, ...listPhones])];
       console.log(`📤 Total de números para envio: ${allNumbers.length}`);
       
-      // VERIFICAR SE TEM VARIÁVEL {{nome}} E AVISAR SE FALTAM NOMES
-      if (messageTemplate.includes('{{nome}}')) {
-        const { data: contactsWithNames } = await supabase
-          .from('whatsapp_contacts')
-          .select('phone, nome')
-          .in('phone', allNumbers)
-          .eq('user_id', user.id);
-
-        const numbersWithoutName = allNumbers.filter(
-          phone => !contactsWithNames?.find((c: any) => c.phone === phone && c.nome && c.nome !== `Contato ${phone.slice(-4)}`)
-        );
-
-        if (numbersWithoutName.length > 0) {
-          console.log(`⚠️ ${numbersWithoutName.length} contatos sem nome cadastrado`);
-          toast.warning(`⚠️ ${numbersWithoutName.length} contatos sem nome receberão "Cliente"`);
-        }
-      }
-      
-      // 1. Enviar para TODOS os números únicos com PERSONALIZAÇÃO
+      // 1. Enviar para TODOS os números únicos
       for (const phone of allNumbers) {
         try {
-          // BUSCAR NOME DO CONTATO NO BANCO
+          // BUSCAR NOME SALVO NO BANCO DE DADOS
           const { data: savedContact } = await supabase
             .from('whatsapp_contacts')
             .select('nome')
@@ -503,30 +485,16 @@ const WhatsAppPage = () => {
             .eq('user_id', user.id)
             .maybeSingle();
 
-          // Usar nome salvo, ou nome dos contatos carregados, ou "Cliente"
+          // Usar nome salvo ou fallback
           const contact = contacts.find(c => c.phone === phone);
-          let contactName = savedContact?.nome || contact?.name || 'Cliente';
-          
-          // Se o nome salvo é genérico, tentar usar o nome carregado
-          if (contactName.startsWith('Contato ') && contact?.name) {
-            contactName = contact.name;
-          }
+          const contactName = savedContact?.nome || contact?.name || `Contato ${phone.slice(-4)}`;
 
-          // PERSONALIZAR MENSAGEM COM VARIÁVEIS
+          // Personalizar mensagem com o NOME
           let personalizedMessage = messageTemplate;
-          personalizedMessage = personalizedMessage.replace(/\{\{nome\}\}/gi, contactName);
-          personalizedMessage = personalizedMessage.replace(/\{\{telefone\}\}/gi, phone);
-          personalizedMessage = personalizedMessage.replace(/\{\{data\}\}/gi, new Date().toLocaleDateString('pt-BR'));
-          personalizedMessage = personalizedMessage.replace(/\{\{hora\}\}/gi, new Date().toLocaleTimeString('pt-BR', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          }));
-          
-          // Também suportar formato antigo {nome} para compatibilidade
           personalizedMessage = personalizedMessage.replace(/{nome}/g, contactName);
           personalizedMessage = personalizedMessage.replace(/{telefone}/g, phone);
           
-          console.log(`📤 Enviando para ${contactName} (${phone}):`, personalizedMessage.substring(0, 50) + '...');
+          console.log(`📤 Enviando para ${contactName} (${phone})`);
           
           // Usar função ORIGINAL que já funcionava
           const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
@@ -1063,6 +1031,14 @@ const WhatsAppPage = () => {
                 {/* Template de Mensagem */}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Template de Mensagem</label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Variáveis disponíveis:{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{nome}'}</code>{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{telefone}'}</code>{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{produto}'}</code>{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{preco}'}</code>{' '}
+                    <code className="bg-muted px-2 py-1 rounded">{'{link}'}</code>
+                  </p>
                   <Textarea
                     value={messageTemplate}
                     onChange={(e) => setMessageTemplate(e.target.value)}
@@ -1070,56 +1046,6 @@ const WhatsAppPage = () => {
                     placeholder="Digite sua mensagem..."
                     className="font-mono text-sm"
                   />
-                  
-                  {/* VARIÁVEIS DISPONÍVEIS - CLICÁVEIS */}
-                  <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                    <p className="text-xs font-medium mb-2">💡 Variáveis disponíveis (clique para inserir):</p>
-                    <div className="flex gap-2 flex-wrap">
-                      <code 
-                        className="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors border"
-                        onClick={() => setMessageTemplate(messageTemplate + '{{nome}}')}
-                      >
-                        {'{{nome}}'} - Nome do contato
-                      </code>
-                      <code 
-                        className="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors border"
-                        onClick={() => setMessageTemplate(messageTemplate + '{{telefone}}')}
-                      >
-                        {'{{telefone}}'} - Número do telefone
-                      </code>
-                      <code 
-                        className="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors border"
-                        onClick={() => setMessageTemplate(messageTemplate + '{{data}}')}
-                      >
-                        {'{{data}}'} - Data atual
-                      </code>
-                      <code 
-                        className="text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors border"
-                        onClick={() => setMessageTemplate(messageTemplate + '{{hora}}')}
-                      >
-                        {'{{hora}}'} - Hora atual
-                      </code>
-                    </div>
-                  </div>
-
-                  {/* PREVIEW DA MENSAGEM PERSONALIZADA */}
-                  {messageTemplate && messageTemplate.includes('{{') && (
-                    <div className="mt-3 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border">
-                      <p className="text-sm font-medium mb-2">📱 Preview da personalização:</p>
-                      <div className="bg-white dark:bg-gray-800 p-3 rounded border">
-                        <p className="text-sm whitespace-pre-wrap">
-                          {messageTemplate
-                            .replace(/\{\{nome\}\}/gi, 'Maria Silva')
-                            .replace(/\{\{telefone\}\}/gi, '(21) 99999-8888')
-                            .replace(/\{\{data\}\}/gi, new Date().toLocaleDateString('pt-BR'))
-                            .replace(/\{\{hora\}\}/gi, new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))}
-                        </p>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        ℹ️ Cada pessoa receberá com suas próprias informações
-                      </p>
-                    </div>
-                  )}
                 </div>
 
                 {/* Imagem do Produto (se vier do IA Marketing) */}
