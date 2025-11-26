@@ -11,6 +11,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { WhatsAppDiagnostics } from '@/components/WhatsAppDiagnostics';
 import { AddGroupModal } from '@/components/AddGroupModal';
 import WhatsAppContactManager from '@/components/WhatsAppContactManager';
@@ -84,12 +86,21 @@ const WhatsAppPage = () => {
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const [showAddGroupModal, setShowAddGroupModal] = useState(false);
+  const [reloadContactsTrigger, setReloadContactsTrigger] = useState(0);
   
   // State para contatos selecionados no manager
   const [selectedContactPhones, setSelectedContactPhones] = useState<string[]>([]);
   
   // State para campo de números direto
   const [directPhoneNumbers, setDirectPhoneNumbers] = useState<string>('');
+
+  // Estados para modais de lista
+  const [viewListData, setViewListData] = useState<any>(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [editListData, setEditListData] = useState<any>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editNumbers, setEditNumbers] = useState('');
 
   // Carregar dados ao montar componente
   useEffect(() => {
@@ -112,9 +123,6 @@ const WhatsAppPage = () => {
       toast.success('✅ Mensagem do IA Marketing carregada! Agora escolha os grupos ou contatos.');
     }
   }, []);
-
-  // Trigger para forçar reload da lista de contatos
-  const [reloadContactsTrigger, setReloadContactsTrigger] = useState(0);
 
   const loadBulkSends = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -278,6 +286,68 @@ const WhatsAppPage = () => {
     setSelectedGroups([]);
   };
 
+  // Funções para gerenciar listas
+  const handleViewList = (list: any) => {
+    setViewListData(list);
+    setIsViewModalOpen(true);
+  };
+
+  const handleEditList = (list: any) => {
+    setEditListData(list);
+    setEditName(list.group_name);
+    setEditNumbers(list.phone_numbers?.join('\n') || '');
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    try {
+      const numbers = editNumbers
+        .split(/[\s,;\n]+/)
+        .map(n => n.replace(/\D/g, ''))
+        .filter(n => n.length >= 10)
+        .map(n => n.length < 13 ? '55' + n : n);
+
+      const { error } = await supabase
+        .from('whatsapp_groups')
+        .update({
+          group_name: editName,
+          phone_numbers: numbers,
+          member_count: numbers.length
+        })
+        .eq('id', editListData.id);
+
+      if (error) throw error;
+
+      toast.success('Lista atualizada!');
+      setIsEditModalOpen(false);
+      loadGroups();
+
+    } catch (error) {
+      console.error('Erro ao atualizar lista:', error);
+      toast.error('Erro ao atualizar lista');
+    }
+  };
+
+  const handleDeleteList = async (listId: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta lista?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('whatsapp_groups')
+        .delete()
+        .eq('id', listId);
+
+      if (error) throw error;
+
+      toast.success('Lista excluída!');
+      loadGroups();
+
+    } catch (error) {
+      console.error('Erro ao excluir lista:', error);
+      toast.error('Erro ao excluir lista');
+    }
+  };
+
   const generatePreview = () => {
     if (contacts.length === 0) {
       toast.error('Adicione contatos primeiro');
@@ -375,11 +445,37 @@ const WhatsAppPage = () => {
         return;
       }
 
-      // ENVIO USANDO FUNÇÃO ORIGINAL + SUPORTE A GRUPOS (ADITIVO)
+      // ENVIO USANDO FUNÇÃO ORIGINAL + SUPORTE A LISTAS (ADITIVO)
       const results = [];
       
-      // 1. Enviar para TODOS os números únicos (de todas as fontes)
-      for (const phone of uniquePhones) {
+      // Coletar números das listas selecionadas
+      let listPhones: string[] = [];
+      if (selectedGroups.length > 0) {
+        console.log('📋 Buscando números das listas selecionadas:', selectedGroups);
+        
+        const { data: lists, error: listError } = await supabase
+          .from('whatsapp_groups')
+          .select('phone_numbers, group_name')
+          .in('group_id', selectedGroups);
+
+        if (listError) {
+          console.error('❌ Erro ao buscar listas:', listError);
+        } else if (lists) {
+          lists.forEach(list => {
+            console.log(`📱 Lista "${list.group_name}": ${list.phone_numbers?.length || 0} números`);
+            if (list.phone_numbers) {
+              listPhones.push(...list.phone_numbers);
+            }
+          });
+        }
+      }
+
+      // Combinar números de todas as fontes
+      const allNumbers = [...new Set([...uniquePhones, ...listPhones])];
+      console.log(`📤 Total de números para envio: ${allNumbers.length}`);
+      
+      // 1. Enviar para TODOS os números únicos
+      for (const phone of allNumbers) {
         const contact = contacts.find(c => c.phone === phone);
         const contactName = contact?.name || `Contato ${phone.slice(-4)}`;
 
@@ -392,9 +488,9 @@ const WhatsAppPage = () => {
           // Usar função ORIGINAL que já funcionava
           const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
             body: {
-              phoneNumber: phone,
+              phoneNumbers: [phone],
               message: personalizedMessage,
-              imageUrl: productImage || undefined
+              ...(productImage && { imageUrl: productImage })
             }
           });
 
@@ -404,42 +500,14 @@ const WhatsAppPage = () => {
             error: error?.message
           });
 
+          await new Promise(r => setTimeout(r, 500)); // Delay entre envios
+
         } catch (err) {
           results.push({
             phone: phone,
             success: false,
             error: err instanceof Error ? err.message : 'Erro'
           });
-        }
-      }
-
-      // 2. Enviar para grupos selecionados (NOVO - ADITIVO)
-      if (selectedGroups.length > 0) {
-        for (const groupId of selectedGroups) {
-          try {
-            const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
-              body: {
-                groupId: groupId,
-                message: messageTemplate,
-                imageUrl: productImage || undefined
-              }
-            });
-
-            results.push({
-              groupId: groupId,
-              type: 'group',
-              success: !error && data?.success,
-              error: error?.message
-            });
-
-          } catch (err) {
-            results.push({
-              groupId: groupId,
-              type: 'group',
-              success: false,
-              error: err instanceof Error ? err.message : 'Erro'
-            });
-          }
         }
       }
 
@@ -451,7 +519,7 @@ const WhatsAppPage = () => {
         
         // AUTO-SAVE: Salvar TODOS os números enviados automaticamente
         try {
-          for (const phone of uniquePhones) {
+          for (const phone of allNumbers) {
             await supabase
               .from('whatsapp_contacts')
               .upsert({
@@ -782,7 +850,7 @@ const WhatsAppPage = () => {
                         </div>
                       </TabsContent>
 
-                      {/* TAB: Grupos */}
+                      {/* TAB: Listas de Transmissão */}
                       <TabsContent value="groups" className="space-y-3">
                         <div className="flex gap-2">
                           <Button 
@@ -791,10 +859,10 @@ const WhatsAppPage = () => {
                             onClick={() => setShowAddGroupModal(true)} 
                             className="flex-1"
                           >
-                            ➕ Adicionar Grupo
+                            ➕ Criar Lista
                           </Button>
                           <Button size="sm" variant="outline" onClick={selectAllGroups} className="flex-1">
-                            Selecionar Todos
+                            Selecionar Todas
                           </Button>
                           <Button size="sm" variant="outline" onClick={clearGroupSelection} className="flex-1">
                             Limpar
@@ -810,13 +878,13 @@ const WhatsAppPage = () => {
                             <div className="text-center py-8">
                               <Users className="h-12 w-12 mx-auto mb-2 text-muted-foreground opacity-50" />
                               <p className="text-sm font-medium text-muted-foreground mb-2">
-                                Nenhum grupo cadastrado
+                                Nenhuma lista cadastrada
                               </p>
                               <p className="text-xs text-muted-foreground mb-3">
-                                Clique em "➕ Adicionar Grupo" acima para criar seu primeiro grupo
+                                Clique em "➕ Criar Lista" acima para criar sua primeira lista de transmissão
                               </p>
                               <Button size="sm" variant="outline" onClick={loadGroups}>
-                                🔄 Atualizar Lista
+                                🔄 Atualizar
                               </Button>
                             </div>
                           ) : (
@@ -825,17 +893,20 @@ const WhatsAppPage = () => {
                               return (
                                 <div
                                   key={`${group.group_id}-${group.id}`}
-                                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-accent cursor-pointer"
-                                  onClick={() => {
-                                    if (isSelected) {
-                                      setSelectedGroups(selectedGroups.filter(id => id !== group.group_id));
-                                    } else {
-                                      setSelectedGroups([...selectedGroups, group.group_id]);
-                                    }
-                                  }}
+                                  className="flex items-center gap-3 p-4 border rounded-lg hover:bg-accent/50"
                                 >
                                   {/* CHECKBOX VISUAL */}
-                                  <div className={`w-5 h-5 border-2 rounded flex items-center justify-center ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}>
+                                  <div 
+                                    className={`w-5 h-5 border-2 rounded flex items-center justify-center cursor-pointer ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (isSelected) {
+                                        setSelectedGroups(selectedGroups.filter(id => id !== group.group_id));
+                                      } else {
+                                        setSelectedGroups([...selectedGroups, group.group_id]);
+                                      }
+                                    }}
+                                  >
                                     {isSelected && (
                                       <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -843,12 +914,56 @@ const WhatsAppPage = () => {
                                     )}
                                   </div>
 
-                                  {/* INFO DO GRUPO */}
+                                  <Users className="h-4 w-4 text-muted-foreground" />
+                                  
+                                  {/* INFO DA LISTA */}
                                   <div className="flex-1">
                                     <p className="font-medium text-sm">{group.group_name}</p>
                                     <p className="text-xs text-muted-foreground">
-                                      👥 {group.member_count || 0} membros
+                                      {group.member_count || 0} contatos
                                     </p>
+                                  </div>
+
+                                  {/* BOTÕES DE AÇÃO */}
+                                  <div className="flex gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleViewList(group);
+                                      }}
+                                      title="Ver detalhes"
+                                      className="h-8 w-8 p-0"
+                                    >
+                                      👁️
+                                    </Button>
+                                    
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleEditList(group);
+                                      }}
+                                      title="Editar lista"
+                                      className="h-8 w-8 p-0"
+                                    >
+                                      ✏️
+                                    </Button>
+                                    
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteList(group.id);
+                                      }}
+                                      title="Excluir lista"
+                                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                    >
+                                      🗑️
+                                    </Button>
                                   </div>
                                 </div>
                               );
@@ -1204,6 +1319,71 @@ const WhatsAppPage = () => {
           onOpenChange={setShowAddGroupModal}
           onGroupAdded={loadGroups}
         />
+
+        {/* Modal Ver Detalhes */}
+        <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{viewListData?.group_name}</DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium mb-1">Total de contatos:</p>
+                <p className="text-2xl font-bold">{viewListData?.member_count}</p>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium mb-2">Números cadastrados:</p>
+                <div className="bg-muted p-3 rounded-lg max-h-64 overflow-y-auto">
+                  {viewListData?.phone_numbers?.map((phone: string, idx: number) => (
+                    <div key={idx} className="text-sm py-1 font-mono">
+                      {idx + 1}. {phone}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal Editar */}
+        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Editar Lista</DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div>
+                <Label>Nome da Lista</Label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Nome da lista"
+                />
+              </div>
+
+              <div>
+                <Label>Números (um por linha)</Label>
+                <Textarea
+                  value={editNumbers}
+                  onChange={(e) => setEditNumbers(e.target.value)}
+                  rows={10}
+                  className="font-mono text-sm"
+                  placeholder="5521999998888&#10;5521999997777"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {editNumbers.split(/[\s,;\n]+/).filter(n => n.replace(/\D/g, '').length >= 10).length} números válidos
+                </p>
+              </div>
+
+              <Button onClick={handleSaveEdit} className="w-full">
+                Salvar Alterações
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
