@@ -1,285 +1,369 @@
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/ui/button";
-import { MessageSquare, User, Clock, ArrowRight, ArrowLeft } from "lucide-react";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { useNavigate } from "react-router-dom";
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  created_at: string;
-}
-
-interface Conversation {
-  id: string;
-  phone_number: string;
-  status: string;
-  last_message_at: string;
-  transferred_to_human: boolean;
-  transferred_at: string | null;
-  campanhas_prospeccao: {
-    nome: string;
-  } | null;
-  messages?: Message[];
-}
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { toast } from 'sonner';
+import { Send, ArrowLeft } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function WhatsAppConversations() {
   const navigate = useNavigate();
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [tipoConversa, setTipoConversa] = useState<'campanha' | 'prospeccao'>('campanha');
+  const [conversas, setConversas] = useState<any[]>([]);
+  const [conversaSelecionada, setConversaSelecionada] = useState<any>(null);
+  const [mensagens, setMensagens] = useState<any[]>([]);
+  const [novaMensagem, setNovaMensagem] = useState('');
+  const [enviando, setEnviando] = useState(false);
 
-  const { data: conversations, isLoading } = useQuery({
-    queryKey: ['whatsapp-conversations'],
-    queryFn: async () => {
+  const carregarConversas = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       const { data, error } = await supabase
         .from('whatsapp_conversations')
-        .select(`
-          *,
-          campanhas_prospeccao(nome)
-        `)
-        .order('last_message_at', { ascending: false });
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('origem', tipoConversa)
+        .order('updated_at', { ascending: false });
 
       if (error) throw error;
-      return data as Conversation[];
-    },
-    refetchInterval: 5000, // Atualizar a cada 5 segundos
-  });
+      setConversas(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar conversas:', error);
+    }
+  };
 
-  const { data: messages, isLoading: messagesLoading } = useQuery({
-    queryKey: ['conversation-messages', selectedConversation],
-    queryFn: async () => {
-      if (!selectedConversation) return [];
+  const carregarMensagens = async (phone: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
 
       const { data, error } = await supabase
-        .from('whatsapp_conversation_messages')
+        .from('whatsapp_messages')
         .select('*')
-        .eq('conversation_id', selectedConversation)
-        .order('created_at', { ascending: true });
+        .eq('user_id', user.id)
+        .eq('phone', phone)
+        .order('timestamp', { ascending: true });
 
       if (error) throw error;
-      return data as Message[];
-    },
-    enabled: !!selectedConversation,
-    refetchInterval: 3000, // Atualizar mensagens a cada 3 segundos
-  });
+      setMensagens(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar mensagens:', error);
+    }
+  };
 
-  // Inscrever-se em novos eventos de mensagens
-  useEffect(() => {
-    const channel = supabase
-      .channel('whatsapp-updates')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'whatsapp_conversation_messages'
-        },
-        () => {
-          // Forçar atualização das queries
-          console.log('Nova mensagem recebida');
+  const enviarMensagem = async () => {
+    if (!novaMensagem.trim() || !conversaSelecionada) return;
+
+    setEnviando(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Enviar via edge function
+      const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+        body: {
+          phoneNumbers: [conversaSelecionada.phone_number],
+          message: novaMensagem
         }
-      )
-      .subscribe();
+      });
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+      if (sendError) throw sendError;
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-500';
-      case 'transferred':
-        return 'bg-blue-500';
-      case 'closed':
-        return 'bg-gray-500';
-      default:
-        return 'bg-gray-300';
+      // Salvar no histórico
+      await supabase.from('whatsapp_messages').insert({
+        user_id: user.id,
+        phone: conversaSelecionada.phone_number,
+        direction: 'sent',
+        message: novaMensagem,
+        origem: conversaSelecionada.origem
+      });
+
+      toast.success('Mensagem enviada!');
+      setNovaMensagem('');
+      carregarMensagens(conversaSelecionada.phone_number);
+    } catch (error: any) {
+      console.error('Erro ao enviar:', error);
+      toast.error('Erro ao enviar mensagem');
+    } finally {
+      setEnviando(false);
     }
   };
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'Ativa (IA)';
-      case 'transferred':
-        return 'Humano';
-      case 'closed':
-        return 'Fechada';
-      default:
-        return status;
-    }
-  };
+  useEffect(() => {
+    carregarConversas();
+    const interval = setInterval(carregarConversas, 10000);
+    return () => clearInterval(interval);
+  }, [tipoConversa]);
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto p-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Carregando conversas...</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (conversaSelecionada) {
+      carregarMensagens(conversaSelecionada.phone_number);
+      const interval = setInterval(() => carregarMensagens(conversaSelecionada.phone_number), 5000);
+      return () => clearInterval(interval);
+    }
+  }, [conversaSelecionada]);
+
+  const conversasCampanha = conversas.filter(c => c.origem === 'campanha');
+  const conversasProspeccao = conversas.filter(c => c.origem === 'prospeccao');
 
   return (
-    <div className="container mx-auto p-8">
-      <div className="mb-6 flex items-center gap-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate("/dashboard")}
-          className="gap-2"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Voltar ao Menu
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-4xl font-bold mb-2">💬 Conversas WhatsApp</h1>
-          <p className="text-muted-foreground">
-            Acompanhe as conversas com seus leads em tempo real
-          </p>
+    <div className="flex flex-col h-screen bg-background">
+      {/* HEADER COM TABS */}
+      <div className="p-4 border-b bg-card">
+        <div className="mb-4 flex items-center gap-4">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/dashboard")}
+            className="gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Voltar
+          </Button>
+          <h1 className="text-2xl font-bold">💬 IA Conversas</h1>
         </div>
+        
+        <Tabs value={tipoConversa} onValueChange={(v) => setTipoConversa(v as any)}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="campanha" className="gap-2">
+              🛒 Base de Clientes
+              <Badge variant="outline">
+                {conversasCampanha.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="prospeccao" className="gap-2">
+              🔍 Prospects/Leads
+              <Badge variant="outline">
+                {conversasProspeccao.length}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Lista de Conversas */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageSquare className="w-5 h-5" />
-              Conversas ({conversations?.length || 0})
-            </CardTitle>
-            <CardDescription>
-              Clique em uma conversa para ver os detalhes
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <ScrollArea className="h-[600px]">
-              {conversations?.map((conv) => (
-                <div
-                  key={conv.id}
-                  className={`p-4 cursor-pointer hover:bg-accent transition-colors border-b ${
-                    selectedConversation === conv.id ? 'bg-accent' : ''
-                  }`}
-                  onClick={() => setSelectedConversation(conv.id)}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                        <User className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="font-medium">{conv.phone_number}</p>
-                        <Badge variant="outline" className={`${getStatusColor(conv.status)} text-white text-xs mt-1`}>
-                          {getStatusLabel(conv.status)}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {conv.campanhas_prospeccao && (
-                    <p className="text-xs text-muted-foreground mb-2">
-                      📋 {conv.campanhas_prospeccao.nome}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Clock className="w-3 h-3" />
-                    {format(new Date(conv.last_message_at), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                  </div>
-
-                  {conv.transferred_to_human && conv.transferred_at && (
-                    <div className="flex items-center gap-1 text-xs text-blue-600 mt-1">
-                      <ArrowRight className="w-3 h-3" />
-                      Transferido {format(new Date(conv.transferred_at), "dd/MM HH:mm", { locale: ptBR })}
-                    </div>
-                  )}
+      {/* CONTEÚDO */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* LISTA DE CONVERSAS */}
+        <aside className="w-80 border-r bg-muted/30 overflow-y-auto">
+          <div className="p-4 border-b bg-card sticky top-0">
+            <p className="text-sm text-muted-foreground">
+              {conversas.length} conversas ativas
+            </p>
+          </div>
+          
+          {conversas.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <p>Nenhuma conversa ainda</p>
+            </div>
+          ) : (
+            conversas.map(conv => (
+              <div
+                key={conv.phone_number}
+                className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
+                  conversaSelecionada?.phone_number === conv.phone_number ? 'bg-primary/10' : ''
+                }`}
+                onClick={() => setConversaSelecionada(conv)}
+              >
+                <div className="flex justify-between items-start mb-1">
+                  <p className="font-medium">{conv.phone_number}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(conv.updated_at).toLocaleTimeString('pt-BR', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
                 </div>
-              ))}
+                
+                {/* BADGE DE TIPO */}
+                <Badge 
+                  variant="outline" 
+                  className={`text-xs mb-2 ${
+                    conv.origem === 'campanha' 
+                      ? 'bg-blue-500/10 text-blue-700 border-blue-200' 
+                      : 'bg-green-500/10 text-green-700 border-green-200'
+                  }`}
+                >
+                  {conv.origem === 'campanha' ? '🛒 Cliente' : '🔍 Lead'}
+                </Badge>
+                
+                {/* CONTEXTO ESPECÍFICO */}
+                {conv.origem === 'campanha' && conv.last_message_context && (
+                  <p className="text-xs text-muted-foreground mb-1">
+                    📦 {conv.last_message_context.produto_nome}
+                  </p>
+                )}
+                
+                {conv.origem === 'prospeccao' && conv.last_message_context && (
+                  <p className="text-xs text-muted-foreground mb-1">
+                    🏢 {conv.last_message_context.empresa || 'Prospecção'}
+                  </p>
+                )}
+              </div>
+            ))
+          )}
+        </aside>
 
-              {!conversations?.length && (
-                <div className="p-8 text-center text-muted-foreground">
-                  Nenhuma conversa encontrada
+        {/* CHAT */}
+        <main className="flex-1 flex flex-col">
+          {conversaSelecionada ? (
+            <>
+              {/* Header diferenciado por tipo */}
+              <div className="p-4 border-b bg-card">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold">{conversaSelecionada.phone_number}</p>
+                      <Badge 
+                        className={
+                          conversaSelecionada.origem === 'campanha'
+                            ? 'bg-blue-500'
+                            : 'bg-green-500'
+                        }
+                      >
+                        {conversaSelecionada.origem === 'campanha' ? '🛒 Cliente' : '🔍 Lead'}
+                      </Badge>
+                    </div>
+                    
+                    {conversaSelecionada.origem === 'campanha' && conversaSelecionada.last_message_context && (
+                      <p className="text-sm text-muted-foreground">
+                        Produto: {conversaSelecionada.last_message_context.produto_nome}
+                      </p>
+                    )}
+                    
+                    {conversaSelecionada.origem === 'prospeccao' && conversaSelecionada.last_message_context && (
+                      <p className="text-sm text-muted-foreground">
+                        Empresa: {conversaSelecionada.last_message_context.empresa || 'N/A'}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(`https://wa.me/${conversaSelecionada.phone_number}`, '_blank')}
+                  >
+                    💬 Abrir WhatsApp
+                  </Button>
+                </div>
+              </div>
+
+              {/* CONTEXTO DIFERENCIADO */}
+              {conversaSelecionada.origem === 'campanha' && conversaSelecionada.last_message_context && (
+                <div className="p-3 bg-blue-500/10 border-b">
+                  <div className="flex gap-3">
+                    {conversaSelecionada.last_message_context.produto_imagens?.[0] && (
+                      <img
+                        src={conversaSelecionada.last_message_context.produto_imagens[0]}
+                        className="w-12 h-12 object-cover rounded"
+                        alt="Produto"
+                      />
+                    )}
+                    <div className="flex-1 text-xs">
+                      <p className="font-medium">
+                        {conversaSelecionada.last_message_context.produto_nome}
+                      </p>
+                      <p className="text-green-600 font-bold">
+                        R$ {conversaSelecionada.last_message_context.produto_preco}
+                      </p>
+                      <p className="text-muted-foreground">
+                        Estoque: {conversaSelecionada.last_message_context.produto_estoque}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
-            </ScrollArea>
-          </CardContent>
-        </Card>
 
-        {/* Área de Mensagens */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Mensagens</CardTitle>
-            <CardDescription>
-              {selectedConversation 
-                ? 'Acompanhe a conversa em tempo real' 
-                : 'Selecione uma conversa para ver as mensagens'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!selectedConversation ? (
-              <div className="h-[600px] flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                  <p>Selecione uma conversa para começar</p>
+              {conversaSelecionada.origem === 'prospeccao' && conversaSelecionada.last_message_context && (
+                <div className="p-3 bg-green-500/10 border-b">
+                  <div className="text-xs space-y-1">
+                    <p><strong>Empresa:</strong> {conversaSelecionada.last_message_context.empresa || 'N/A'}</p>
+                    <p><strong>Cargo:</strong> {conversaSelecionada.last_message_context.cargo || 'N/A'}</p>
+                    {conversaSelecionada.last_message_context.linkedin_url && (
+                      <p><strong>LinkedIn:</strong> <a href={conversaSelecionada.last_message_context.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Ver perfil</a></p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ) : messagesLoading ? (
-              <div className="h-[600px] flex items-center justify-center">
-                <p className="text-muted-foreground">Carregando mensagens...</p>
-              </div>
-            ) : (
-              <ScrollArea className="h-[600px] pr-4">
-                <div className="space-y-4">
-                  {messages?.map((message) => (
+              )}
+
+              {/* MENSAGENS */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-muted/20">
+                {mensagens.length === 0 ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <p>Nenhuma mensagem ainda</p>
+                  </div>
+                ) : (
+                  mensagens.map((msg, idx) => (
                     <div
-                      key={message.id}
-                      className={`flex ${
-                        message.role === 'user' ? 'justify-end' : 'justify-start'
-                      }`}
+                      key={idx}
+                      className={`flex ${msg.direction === 'sent' ? 'justify-end' : 'justify-start'}`}
                     >
-                      <div
-                        className={`max-w-[80%] rounded-lg p-4 ${
-                          message.role === 'user'
-                            ? 'bg-primary text-primary-foreground'
-                            : message.role === 'assistant'
-                            ? 'bg-accent'
-                            : 'bg-muted'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge variant="outline" className="text-xs">
-                            {message.role === 'user' ? 'Cliente' : message.role === 'assistant' ? '🤖 IA' : 'Sistema'}
-                          </Badge>
-                          <span className="text-xs opacity-70">
-                            {format(new Date(message.created_at), "HH:mm", { locale: ptBR })}
-                          </span>
-                        </div>
-                        <p className="whitespace-pre-wrap">{message.content}</p>
-                      </div>
+                      <Card className={`max-w-[70%] p-3 ${
+                        msg.direction === 'sent' 
+                          ? 'bg-primary text-primary-foreground' 
+                          : 'bg-card'
+                      }`}>
+                        <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                        <span className={`text-xs mt-1 block ${
+                          msg.direction === 'sent' ? 'text-primary-foreground/70' : 'text-muted-foreground'
+                        }`}>
+                          {new Date(msg.timestamp).toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </Card>
                     </div>
-                  ))}
+                  ))
+                )}
+              </div>
 
-                  {!messages?.length && (
-                    <div className="text-center text-muted-foreground py-8">
-                      Nenhuma mensagem ainda
-                    </div>
-                  )}
+              {/* CAMPO DE RESPOSTA */}
+              <div className="p-4 border-t bg-card">
+                <div className="flex gap-2">
+                  <Textarea
+                    value={novaMensagem}
+                    onChange={(e) => setNovaMensagem(e.target.value)}
+                    placeholder="Digite sua mensagem..."
+                    className="resize-none"
+                    rows={2}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        enviarMensagem();
+                      }
+                    }}
+                  />
+                  <Button
+                    onClick={enviarMensagem}
+                    disabled={!novaMensagem.trim() || enviando}
+                    size="icon"
+                    className="h-full"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
                 </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Enter para enviar, Shift+Enter para nova linha
+                </p>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <p className="text-lg mb-2">
+                  {tipoConversa === 'campanha' 
+                    ? '🛒 Base de Clientes' 
+                    : '🔍 Prospects/Leads'}
+                </p>
+                <p className="text-sm">Selecione uma conversa para visualizar</p>
+              </div>
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );
