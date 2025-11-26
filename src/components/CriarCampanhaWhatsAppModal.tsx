@@ -200,18 +200,25 @@ export function CriarCampanhaWhatsAppModal({
 
     // Calcular próxima execução
     const calcularProximaExecucao = () => {
+      const agora = new Date();
+      const [h, m] = horarios[0].split(':');
+      
       if (frequencia === 'uma_vez') {
         const dataHora = new Date(dataInicio);
-        const [h, m] = horarios[0].split(':');
         dataHora.setHours(parseInt(h), parseInt(m), 0, 0);
         return dataHora.toISOString();
       }
-      // Para outras frequências, começar amanhã no primeiro horário
-      const amanha = new Date();
-      amanha.setDate(amanha.getDate() + 1);
-      const [h, m] = horarios[0].split(':');
-      amanha.setHours(parseInt(h), parseInt(m), 0, 0);
-      return amanha.toISOString();
+      
+      // Para outras frequências, usar data_inicio ou hoje
+      const dataExec = new Date(dataInicio);
+      dataExec.setHours(parseInt(h), parseInt(m), 0, 0);
+      
+      // Se a data já passou, usar amanhã
+      if (dataExec <= agora) {
+        dataExec.setDate(dataExec.getDate() + 1);
+      }
+      
+      return dataExec.toISOString();
     };
 
     if (campanhaExistente) {
