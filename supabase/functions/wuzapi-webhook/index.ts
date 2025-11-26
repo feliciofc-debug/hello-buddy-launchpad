@@ -7,7 +7,20 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('🚀 [WEBHOOK] Chamada recebida!');
+  // Endpoint de teste GET
+  if (req.method === 'GET') {
+    return new Response(JSON.stringify({
+      status: 'online',
+      timestamp: new Date().toISOString(),
+      message: 'Webhook está funcionando! ✅'
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  console.log('='.repeat(50));
+  console.log('🔔 WEBHOOK CHAMADO!');
+  console.log('Timestamp:', new Date().toISOString());
   
   if (req.method === 'OPTIONS') {
     console.log('[WEBHOOK] OPTIONS request');
@@ -20,12 +33,14 @@ serve(async (req) => {
     console.log('[WEBHOOK] Method:', req.method);
     console.log('[WEBHOOK] Type:', webhookData.type);
     console.log('[WEBHOOK] Payload completo:', JSON.stringify(webhookData, null, 2));
+    console.log('='.repeat(50));
 
     // Extrair dados básicos do evento
     const message = webhookData.message || {};
     const event = webhookData.event || {};
     
     // Ignorar mensagens próprias
+    console.log('🤖 FromMe?:', event.IsFromMe);
     if (event.IsFromMe === true) {
       console.log('[WEBHOOK] ❌ Ignorando: mensagem própria');
       return new Response(JSON.stringify({ status: 'ignored', reason: 'own message' }), {
@@ -40,19 +55,22 @@ serve(async (req) => {
                       event.Body || 
                       '';
     
-    console.log('[WEBHOOK] Mensagem extraída:', messageText);
+    console.log('💬 Mensagem extraída:', messageText);
     
     // Extrair telefone
     const phoneNumber = (event.Sender?.replace('@s.whatsapp.net', '') || 
                         event.Chat?.replace('@s.whatsapp.net', '') ||
                         event.From?.replace('@s.whatsapp.net', ''))?.replace(/\D/g, '');
     
-    console.log('[WEBHOOK] Telefone:', phoneNumber);
+    console.log('📱 Telefone extraído:', phoneNumber);
     
     const messageId = webhookData.messageID || webhookData.userID || event.MessageID;
     
     if (!phoneNumber || !messageText) {
-      console.log('[WEBHOOK] ❌ Dados incompletos - Phone:', phoneNumber, 'Text:', messageText);
+      console.log('❌ PAROU AQUI - Motivo:');
+      console.log('  - Mensagem vazia?', !messageText);
+      console.log('  - Telefone vazio?', !phoneNumber);
+      console.log('  - É do bot?', event.IsFromMe);
       return new Response(JSON.stringify({ status: 'ignored', reason: 'incomplete data' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -83,6 +101,8 @@ serve(async (req) => {
       });
 
     // BUSCAR CONTEXTO DO PRODUTO
+    console.log('🔍 Buscando contexto para:', formattedPhone);
+    
     const { data: contexto, error: ctxError } = await supabaseClient
       .from('whatsapp_conversations')
       .select(`
@@ -97,6 +117,12 @@ serve(async (req) => {
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
+
+    console.log('📦 Contexto encontrado:', contexto ? 'SIM' : 'NÃO');
+    console.log('📦 Erro:', ctxError);
+    if (contexto) {
+      console.log('📦 Dados:', JSON.stringify(contexto, null, 2));
+    }
 
     if (ctxError || !contexto || !contexto.last_message_context) {
       console.log('[WEBHOOK] ❌ Sem contexto encontrado para este cliente');
@@ -208,6 +234,9 @@ LEAD DISSE: "${messageText}"
 RESPONDA (apenas a resposta, sem explicações):`;
 
     // CHAMAR LOVABLE AI (Gemini)
+    console.log('🤖 Chamando IA...');
+    console.log('Prompt:', promptIA.substring(0, 200) + '...');
+    
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     
     if (!LOVABLE_API_KEY) {
@@ -246,6 +275,10 @@ RESPONDA (apenas a resposta, sem explicações):`;
     console.log('[WEBHOOK] 🤖 Resposta da IA:', aiMessage);
 
     // ENVIAR RESPOSTA VIA WUZAPI
+    console.log('📤 Enviando para Wuzapi...');
+    console.log('URL:', WUZAPI_URL);
+    console.log('Token:', WUZAPI_TOKEN ? 'Configurado' : 'FALTANDO');
+    
     const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
     const wuzapiResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: 'POST',

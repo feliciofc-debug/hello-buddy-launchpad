@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import NotificationCenter from '@/components/NotificationCenter';
 import ShopeeSearchComponent from '@/components/ShopeeSearchComponent';
 import { LeadsQuentes } from '@/components/LeadsQuentes';
+import { WhatsAppDebugPanel } from '@/components/WhatsAppDebugPanel';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -1114,6 +1115,15 @@ const Dashboard = () => {
 
                   {/* LEADS QUENTES - IA WhatsApp */}
                   <LeadsQuentes />
+
+                  {/* DEBUG WHATSAPP - Sistema de Diagnóstico */}
+                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                      <Bot className="w-6 h-6 text-purple-500" />
+                      🔍 Debug WhatsApp IA
+                    </h3>
+                    <WhatsAppDebugPanel />
+                  </div>
 
                   {/* Quick Actions */}
                   <div className="bg-gradient-to-r from-blue-100 to-green-100 dark:from-blue-900/30 dark:to-green-900/30 rounded-xl p-6">
