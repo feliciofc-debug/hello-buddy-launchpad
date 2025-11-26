@@ -387,9 +387,13 @@ export function CriarCampanhaWhatsAppModal({
                     {dayNames.map((dia, idx) => (
                       <Button
                         key={idx}
-                        variant={diasSemana.includes(idx) ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => toggleDiaSemana(idx)}
+                        className={
+                          diasSemana.includes(idx)
+                            ? 'bg-green-500 hover:bg-green-600 text-white border-green-500'
+                            : 'bg-red-500 hover:bg-red-600 text-white border-red-500'
+                        }
                       >
                         {dia}
                       </Button>
