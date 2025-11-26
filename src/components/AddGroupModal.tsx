@@ -3,9 +3,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
 
 interface AddGroupModalProps {
   open: boolean;
@@ -14,24 +14,82 @@ interface AddGroupModalProps {
 }
 
 export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModalProps) => {
-  const [groupLink, setGroupLink] = useState('');
-  const [isJoining, setIsJoining] = useState(false);
+  const [manualGroupId, setManualGroupId] = useState('');
+  const [manualGroupName, setManualGroupName] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
 
-  const handleJoinGroup = async () => {
+  const handleAddManualGroup = async () => {
     try {
-      setIsJoining(true);
+      setIsAdding(true);
 
-      // Validar link
-      if (!groupLink.includes('chat.whatsapp.com/')) {
-        toast.error('Link inválido. Use o link de convite do grupo.');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Usuário não autenticado');
         return;
       }
 
-      // Extrair código do convite
-      const inviteCode = groupLink.split('chat.whatsapp.com/')[1]?.split('?')[0];
-      
-      if (!inviteCode) {
-        toast.error('Não foi possível extrair o código do convite');
+      const { error } = await supabase
+        .from('whatsapp_groups')
+        .insert({
+          user_id: user.id,
+          group_id: manualGroupId.trim(),
+          group_name: manualGroupName.trim(),
+          member_count: 0,
+          status: 'active'
+        });
+
+      if (error) throw error;
+
+      toast.success('✅ Grupo adicionado com sucesso!');
+      setManualGroupId('');
+      setManualGroupName('');
+      onOpenChange(false);
+      onGroupAdded();
+    } catch (error: any) {
+      console.error('Erro ao adicionar grupo:', error);
+      toast.error(error.message || 'Erro ao adicionar grupo');
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const downloadCsvTemplate = () => {
+    const csv = 'group_id,group_name\n120363123456789@g.us,Exemplo Grupo 1\n120363987654321@g.us,Exemplo Grupo 2';
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'modelo_grupos.csv';
+    link.click();
+    toast.success('📥 Modelo baixado com sucesso!');
+  };
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsAdding(true);
+
+      const text = await file.text();
+      const lines = text.split('\n').filter(line => line.trim());
+
+      // Remover header
+      if (lines.length > 0) lines.shift();
+
+      if (lines.length === 0) {
+        toast.error('CSV vazio ou sem dados');
+        return;
+      }
+
+      const grupos = lines
+        .map(line => {
+          const [group_id, group_name] = line.split(',').map(s => s.trim());
+          return { group_id, group_name };
+        })
+        .filter(g => g.group_id && g.group_name);
+
+      if (grupos.length === 0) {
+        toast.error('Nenhum grupo válido encontrado no CSV');
         return;
       }
 
@@ -41,85 +99,132 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
-      toast.info('🔗 Conectando ao grupo...');
+      const gruposToInsert = grupos.map(g => ({
+        user_id: user.id,
+        group_id: g.group_id,
+        group_name: g.group_name,
+        member_count: 0,
+        status: 'active'
+      }));
 
-      // Chamar edge function
-      const { data, error } = await supabase.functions.invoke('join-group-by-link', {
-        body: { 
-          userId: user.id,
-          inviteCode: inviteCode 
-        }
-      });
+      const { error } = await supabase
+        .from('whatsapp_groups')
+        .insert(gruposToInsert);
 
       if (error) throw error;
 
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao conectar grupo');
-      }
-
-      toast.success(`✅ Grupo "${data.groupName}" conectado com sucesso!`);
-      
-      // Limpar e fechar
-      setGroupLink('');
+      toast.success(`✅ ${grupos.length} grupos importados com sucesso!`);
       onOpenChange(false);
-      
-      // Recarregar grupos
       onGroupAdded();
 
+      // Limpar input
+      e.target.value = '';
     } catch (error: any) {
-      console.error('Erro ao conectar grupo:', error);
-      toast.error(error.message || 'Erro ao conectar grupo');
+      console.error('Erro ao importar CSV:', error);
+      toast.error(error.message || 'Erro ao importar CSV');
     } finally {
-      setIsJoining(false);
+      setIsAdding(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Conectar Grupo via Link</DialogTitle>
+          <DialogTitle>Adicionar Grupos</DialogTitle>
         </DialogHeader>
-        
-        <div className="space-y-4">
-          {/* Input do Link */}
-          <div>
-            <Label>Link de Convite do Grupo *</Label>
-            <Input
-              placeholder="https://chat.whatsapp.com/ABC123DEF456"
-              value={groupLink}
-              onChange={(e) => setGroupLink(e.target.value)}
-            />
-          </div>
 
-          {/* Instruções */}
-          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-            <p className="font-medium text-sm mb-2">📱 Como pegar o link:</p>
-            <ol className="text-xs space-y-1 list-decimal list-inside text-muted-foreground">
-              <li>Abra o grupo no WhatsApp</li>
-              <li>Toque no nome do grupo no topo</li>
-              <li>Toque em "Link de convite"</li>
-              <li>Toque em "Copiar link"</li>
-              <li>Cole aqui acima</li>
-            </ol>
-          </div>
+        <Tabs defaultValue="manual" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="manual">Manual</TabsTrigger>
+            <TabsTrigger value="csv">Importar CSV</TabsTrigger>
+          </TabsList>
 
-          {/* Botão */}
-          <Button 
-            onClick={handleJoinGroup}
-            disabled={!groupLink.trim() || isJoining}
-            className="w-full"
-          >
-            {isJoining ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Conectando...
-              </>
-            ) : (
-              '✅ Conectar Grupo'
-            )}
-          </Button>
-        </div>
+          {/* ABA 1: MANUAL */}
+          <TabsContent value="manual" className="space-y-4">
+            <div>
+              <Label htmlFor="group-id">ID do Grupo *</Label>
+              <Input
+                id="group-id"
+                placeholder="120363123456789@g.us"
+                value={manualGroupId}
+                onChange={(e) => setManualGroupId(e.target.value)}
+                disabled={isAdding}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Formato: 120363XXXXXXXXXX@g.us
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="group-name">Nome do Grupo *</Label>
+              <Input
+                id="group-name"
+                placeholder="Clientes VIP"
+                value={manualGroupName}
+                onChange={(e) => setManualGroupName(e.target.value)}
+                disabled={isAdding}
+              />
+            </div>
+
+            <Button
+              onClick={handleAddManualGroup}
+              disabled={!manualGroupId.trim() || !manualGroupName.trim() || isAdding}
+              className="w-full"
+            >
+              {isAdding ? 'Adicionando...' : 'Adicionar Grupo'}
+            </Button>
+
+            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
+              <p className="font-medium mb-2">💡 Como pegar o ID:</p>
+              <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                <li>Abra WhatsApp Web</li>
+                <li>Entre no grupo</li>
+                <li>Olhe a URL do navegador</li>
+                <li>Copie o ID que termina em <strong>@g.us</strong></li>
+              </ol>
+            </div>
+          </TabsContent>
+
+          {/* ABA 2: CSV */}
+          <TabsContent value="csv" className="space-y-4">
+            <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
+              <input
+                type="file"
+                accept=".csv"
+                onChange={handleCsvUpload}
+                className="hidden"
+                id="csv-upload"
+                disabled={isAdding}
+              />
+              <label htmlFor="csv-upload" className="cursor-pointer">
+                <div className="text-4xl mb-2">📄</div>
+                <p className="font-medium">Clique para selecionar CSV</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ou arraste o arquivo aqui
+                </p>
+              </label>
+            </div>
+
+            <Button
+              onClick={downloadCsvTemplate}
+              variant="outline"
+              className="w-full"
+              disabled={isAdding}
+            >
+              ⬇️ Baixar Modelo CSV
+            </Button>
+
+            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
+              <p className="font-medium mb-2">📋 Formato do CSV:</p>
+              <pre className="bg-white dark:bg-gray-900 p-2 rounded mt-2 text-xs overflow-x-auto">
+group_id,group_name
+120363123456789@g.us,Clientes VIP
+120363987654321@g.us,Grupo Ofertas
+              </pre>
+            </div>
+          </TabsContent>
+        </Tabs>
       </DialogContent>
     </Dialog>
   );
