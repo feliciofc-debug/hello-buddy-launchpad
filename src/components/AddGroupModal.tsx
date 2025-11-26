@@ -135,20 +135,64 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
 
   const isValidBrazilianPhone = (phone: string): boolean => {
     const cleaned = cleanPhoneNumber(phone);
-    return cleaned.length === 11 || cleaned.length === 13;
+    return cleaned.length >= 10 && cleaned.length <= 13;
+  };
+
+  const normalizePhoneNumber = (phone: string): string => {
+    const cleaned = cleanPhoneNumber(phone);
+    if (cleaned.length === 10 || cleaned.length === 11) {
+      return '55' + cleaned;
+    }
+    return cleaned;
+  };
+
+  const extractPhoneNumbers = (text: string): string[] => {
+    if (!text.trim()) return [];
+    
+    const phones: string[] = [];
+    
+    // Tentar separar por delimitadores primeiro
+    const delimitedParts = text.split(/[\s,\n]+/).filter(p => p.trim());
+    
+    if (delimitedParts.length > 1 || (delimitedParts.length === 1 && text.includes(' '))) {
+      // Tem delimitadores, processar cada parte
+      delimitedParts.forEach(part => {
+        const cleanPart = cleanPhoneNumber(part);
+        if (isValidBrazilianPhone(cleanPart)) {
+          phones.push(normalizePhoneNumber(cleanPart));
+        }
+      });
+    } else {
+      // Tudo junto, dividir em blocos de 10-13 dígitos
+      const cleaned = cleanPhoneNumber(text);
+      let i = 0;
+      while (i < cleaned.length) {
+        let found = false;
+        for (let len = 13; len >= 10; len--) {
+          const block = cleaned.substring(i, i + len);
+          if (block.length === len && isValidBrazilianPhone(block)) {
+            phones.push(normalizePhoneNumber(block));
+            i += len;
+            found = true;
+            break;
+          }
+        }
+        if (!found) i++;
+      }
+    }
+
+    // Remover duplicados
+    return [...new Set(phones)];
   };
 
   const handleConvertToContacts = async () => {
     try {
       setIsAdding(true);
 
-      const lines = pastedNumbers
-        .split('\n')
-        .map(line => line.trim())
-        .filter(line => line.length > 0);
+      const phones = extractPhoneNumbers(pastedNumbers);
 
-      if (lines.length === 0) {
-        toast.error('Nenhum número encontrado');
+      if (phones.length === 0) {
+        toast.error('Nenhum número válido encontrado');
         return;
       }
 
@@ -158,20 +202,12 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
-      const contatos = lines
-        .map(line => cleanPhoneNumber(line))
-        .filter(phone => isValidBrazilianPhone(phone))
-        .map(phone => ({
-          user_id: user.id,
-          phone: phone,
-          name: `Contato ${phone}`,
-          notes: 'Importado via cola de números'
-        }));
-
-      if (contatos.length === 0) {
-        toast.error('Nenhum número válido encontrado');
-        return;
-      }
+      const contatos = phones.map(phone => ({
+        user_id: user.id,
+        phone: phone,
+        name: `Contato ${phone}`,
+        notes: 'Importado via cola de números'
+      }));
 
       const { error } = await supabase
         .from('whatsapp_contacts')
@@ -196,27 +232,15 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
   };
 
   const handleDownloadAsCsv = () => {
-    const lines = pastedNumbers
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
+    const phones = extractPhoneNumbers(pastedNumbers);
 
-    if (lines.length === 0) {
-      toast.error('Nenhum número encontrado');
-      return;
-    }
-
-    const cleaned = lines
-      .map(line => cleanPhoneNumber(line))
-      .filter(phone => isValidBrazilianPhone(phone));
-
-    if (cleaned.length === 0) {
+    if (phones.length === 0) {
       toast.error('Nenhum número válido encontrado');
       return;
     }
 
     const csv = 'nome,telefone\n' + 
-      cleaned.map((phone, index) => `Contato ${index + 1},${phone}`).join('\n');
+      phones.map((phone, index) => `Contato ${index + 1},${phone}`).join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -224,7 +248,7 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
     link.download = `contatos_${Date.now()}.csv`;
     link.click();
 
-    toast.success(`📥 CSV com ${cleaned.length} números baixado!`);
+    toast.success(`📥 CSV com ${phones.length} números baixado!`);
   };
 
   return (
@@ -300,9 +324,9 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
                 className="font-mono text-sm"
                 disabled={isAdding}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {pastedNumbers.split('\n').filter(n => n.trim()).length} números detectados
-              </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {extractPhoneNumbers(pastedNumbers).length} números válidos detectados
+                    </p>
             </div>
 
             <div className="flex gap-2">
