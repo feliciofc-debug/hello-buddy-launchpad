@@ -55,7 +55,7 @@ serve(async (req) => {
       console.log('❌ Endpoint 1 falhou:', e.message)
     }
 
-    // TENTAR ENDPOINT 2: /group/join (se o primeiro falhou)
+    // TENTAR ENDPOINT 2: /group/join - ENDPOINT CORRETO! (se o primeiro falhou)
     if (!groupId) {
       try {
         console.log('🔍 Tentando endpoint: /group/join')
@@ -66,7 +66,7 @@ serve(async (req) => {
             'Token': wuzapiToken,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ inviteCode: inviteCode })
+          body: JSON.stringify({ Code: inviteCode })  // Parâmetro correto: "Code" com C maiúsculo
         })
 
         console.log('📡 Status:', response2.status)
