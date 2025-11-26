@@ -138,14 +138,26 @@ serve(async (req) => {
 
         console.log(`📊 Campanha ${campanha.nome}: ${enviados} enviados, ${errosEnvio} erros`);
 
+        // Calcular próxima execução
+        const proximaExecucao = calcularProximaExecucao(
+          campanha.frequencia,
+          campanha.horarios,
+          campanha.dias_semana
+        );
+
         // Atualizar campanha
         const updateData: any = {
-          proxima_execucao: null
+          ultima_execucao: now.toISOString(),
+          total_enviados: (campanha.total_enviados || 0) + enviados,
+          proxima_execucao: proximaExecucao
         };
 
         // Se for uma_vez, desativar
         if (campanha.frequencia === 'uma_vez') {
           updateData.ativa = false;
+          updateData.status = 'encerrada';
+        } else {
+          updateData.status = 'ativa';
         }
 
         await supabase
@@ -190,3 +202,50 @@ serve(async (req) => {
     );
   }
 });
+
+// Função auxiliar para calcular próxima execução
+function calcularProximaExecucao(
+  frequencia: string,
+  horarios: string[],
+  diasSemana: number[]
+): string | null {
+  const now = new Date();
+  const primeiroHorario = horarios[0] || '09:00';
+  const [hora, minuto] = primeiroHorario.split(':');
+
+  if (frequencia === 'uma_vez') {
+    return null; // Campanha única não repete
+  }
+
+  if (frequencia === 'diario') {
+    const amanha = new Date(now);
+    amanha.setDate(amanha.getDate() + 1);
+    amanha.setHours(parseInt(hora), parseInt(minuto), 0, 0);
+    return amanha.toISOString();
+  }
+
+  if (frequencia === 'semanal') {
+    const proxima = new Date(now);
+    proxima.setDate(proxima.getDate() + 1);
+    
+    // Encontrar próximo dia da semana válido
+    let tentativas = 0;
+    while (!diasSemana.includes(proxima.getDay()) && tentativas < 7) {
+      proxima.setDate(proxima.getDate() + 1);
+      tentativas++;
+    }
+    
+    proxima.setHours(parseInt(hora), parseInt(minuto), 0, 0);
+    return proxima.toISOString();
+  }
+
+  if (frequencia === 'personalizado') {
+    // Para personalizado, assumir diário
+    const amanha = new Date(now);
+    amanha.setDate(amanha.getDate() + 1);
+    amanha.setHours(parseInt(hora), parseInt(minuto), 0, 0);
+    return amanha.toISOString();
+  }
+
+  return null;
+}

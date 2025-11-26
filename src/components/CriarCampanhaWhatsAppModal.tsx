@@ -25,18 +25,32 @@ interface Product {
   imagem_url: string | null;
 }
 
+interface Campanha {
+  id: string;
+  nome: string;
+  frequencia: string;
+  data_inicio: string;
+  horarios: string[];
+  dias_semana: number[];
+  mensagem_template: string;
+  listas_ids: string[];
+  ativa: boolean;
+}
+
 interface CriarCampanhaWhatsAppModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   produto: Product;
   onSuccess?: () => void;
+  campanhaExistente?: Campanha | null;
 }
 
 export function CriarCampanhaWhatsAppModal({ 
   open, 
   onOpenChange, 
   produto,
-  onSuccess 
+  onSuccess,
+  campanhaExistente 
 }: CriarCampanhaWhatsAppModalProps) {
   const [frequencia, setFrequencia] = useState<'agora' | 'uma_vez' | 'diario' | 'semanal' | 'personalizado'>('agora');
   const [dataInicio, setDataInicio] = useState('');
@@ -52,10 +66,21 @@ export function CriarCampanhaWhatsAppModal({
   useEffect(() => {
     if (open) {
       fetchListas();
-      // Template inicial com variáveis
-      setMensagem(`Olá {{nome}}! 👋\n\nConfira nosso produto:\n\n${produto.nome}\n${produto.preco ? `💰 R$ ${produto.preco.toFixed(2)}` : ''}\n\n${produto.descricao || ''}`);
+      
+      // Se tem campanha existente, carregar dados dela
+      if (campanhaExistente) {
+        setFrequencia(campanhaExistente.frequencia as any);
+        setDataInicio(campanhaExistente.data_inicio);
+        setHorarios(campanhaExistente.horarios);
+        setDiasSemana(campanhaExistente.dias_semana || [1, 2, 3, 4, 5]);
+        setMensagem(campanhaExistente.mensagem_template);
+        setListasSelecionadas(campanhaExistente.listas_ids);
+      } else {
+        // Template inicial com variáveis
+        setMensagem(`Olá {{nome}}! 👋\n\nConfira nosso produto:\n\n${produto.nome}\n${produto.preco ? `💰 R$ ${produto.preco.toFixed(2)}` : ''}\n\n${produto.descricao || ''}`);
+      }
     }
-  }, [open, produto]);
+  }, [open, produto, campanhaExistente]);
 
   const fetchListas = async () => {
     try {
@@ -173,24 +198,62 @@ export function CriarCampanhaWhatsAppModal({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { error } = await supabase
-      .from('campanhas_recorrentes')
-      .insert({
-        user_id: user.id,
-        produto_id: produto.id,
-        nome: `Campanha ${produto.nome}`,
-        listas_ids: listasSelecionadas,
-        frequencia: frequencia,
-        data_inicio: dataInicio,
-        horarios: horarios,
-        dias_semana: diasSemana,
-        mensagem_template: mensagem,
-        ativa: true
-      });
+    // Calcular próxima execução
+    const calcularProximaExecucao = () => {
+      if (frequencia === 'uma_vez') {
+        const dataHora = new Date(dataInicio);
+        const [h, m] = horarios[0].split(':');
+        dataHora.setHours(parseInt(h), parseInt(m), 0, 0);
+        return dataHora.toISOString();
+      }
+      // Para outras frequências, começar amanhã no primeiro horário
+      const amanha = new Date();
+      amanha.setDate(amanha.getDate() + 1);
+      const [h, m] = horarios[0].split(':');
+      amanha.setHours(parseInt(h), parseInt(m), 0, 0);
+      return amanha.toISOString();
+    };
 
-    if (error) throw error;
-    
-    toast.success('✅ Campanha agendada com sucesso!');
+    if (campanhaExistente) {
+      // Atualizar campanha existente
+      const { error } = await supabase
+        .from('campanhas_recorrentes')
+        .update({
+          nome: `Campanha ${produto.nome}`,
+          listas_ids: listasSelecionadas,
+          frequencia: frequencia,
+          data_inicio: dataInicio,
+          horarios: horarios,
+          dias_semana: diasSemana,
+          mensagem_template: mensagem,
+          ativa: true,
+          proxima_execucao: calcularProximaExecucao()
+        })
+        .eq('id', campanhaExistente.id);
+
+      if (error) throw error;
+      toast.success('✅ Campanha atualizada com sucesso!');
+    } else {
+      // Criar nova campanha
+      const { error } = await supabase
+        .from('campanhas_recorrentes')
+        .insert({
+          user_id: user.id,
+          produto_id: produto.id,
+          nome: `Campanha ${produto.nome}`,
+          listas_ids: listasSelecionadas,
+          frequencia: frequencia,
+          data_inicio: dataInicio,
+          horarios: horarios,
+          dias_semana: diasSemana,
+          mensagem_template: mensagem,
+          ativa: true,
+          proxima_execucao: calcularProximaExecucao()
+        });
+
+      if (error) throw error;
+      toast.success('✅ Campanha agendada com sucesso!');
+    }
   };
 
   const handleCriarCampanha = async () => {
@@ -226,7 +289,9 @@ export function CriarCampanhaWhatsAppModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-2xl">🚀 Criar Campanha WhatsApp - {produto.nome}</DialogTitle>
+          <DialogTitle className="text-2xl">
+            {campanhaExistente ? '✏️ Editar Campanha' : '🚀 Criar Campanha'} WhatsApp - {produto.nome}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
