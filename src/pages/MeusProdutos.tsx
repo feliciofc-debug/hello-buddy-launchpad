@@ -19,6 +19,7 @@ import { ClientesManager } from '@/components/ClientesManager';
 import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
 import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
+import { useScheduledCampaigns } from '@/hooks/useScheduledCampaigns';
 
 interface Campanha {
   id: string;
@@ -360,6 +361,11 @@ export default function MeusProdutos() {
   const [products, setProducts] = useState<Product[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [userId, setUserId] = useState<string>();
+  
+  // ATIVAR VERIFICADOR DE CAMPANHAS
+  useScheduledCampaigns(userId);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [clienteAtivo, setClienteAtivo] = useState<string>('minha-empresa');
@@ -408,7 +414,15 @@ export default function MeusProdutos() {
   useEffect(() => {
     fetchProducts();
     fetchClientes();
+    fetchUserId();
   }, []);
+
+  const fetchUserId = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      setUserId(user.id);
+    }
+  };
 
   useEffect(() => {
     // Extract unique categories from products
@@ -1092,6 +1106,12 @@ export default function MeusProdutos() {
         {/* PAINEL DE DEBUG DE CAMPANHAS */}
         <div className="mt-8">
           <CampanhaDebugPanel />
+        </div>
+        
+        {/* Indicador Visual de Verificador Ativo */}
+        <div className="fixed bottom-4 right-4 bg-green-500 text-white px-3 py-2 rounded-full text-xs flex items-center gap-2 shadow-lg z-50">
+          <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+          Verificador Ativo
         </div>
       </div>
 
