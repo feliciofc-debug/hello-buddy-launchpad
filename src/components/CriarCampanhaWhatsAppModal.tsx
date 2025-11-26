@@ -399,12 +399,6 @@ export function CriarCampanhaWhatsAppModal({
                 <RadioGroupItem value="personalizado" id="personalizado" />
                 <Label htmlFor="personalizado" className="cursor-pointer">⚙️ Personalizado</Label>
               </div>
-              <div className="flex items-center space-x-2 mt-2 p-2 bg-yellow-50 dark:bg-yellow-950 rounded">
-                <RadioGroupItem value="teste" id="teste" />
-                <Label htmlFor="teste" className="cursor-pointer font-bold text-yellow-700 dark:text-yellow-300">
-                  🧪 TESTE (daqui 2 minutos)
-                </Label>
-              </div>
             </RadioGroup>
           </div>
 
