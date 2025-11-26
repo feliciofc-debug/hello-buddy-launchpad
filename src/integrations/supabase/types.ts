@@ -117,6 +117,36 @@ export type Database = {
           },
         ]
       }
+      campaign_execution_logs: {
+        Row: {
+          campaign_id: string | null
+          created_at: string | null
+          error: string | null
+          id: string
+          log_type: string
+          message: string | null
+          metadata: Json | null
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          log_type: string
+          message?: string | null
+          metadata?: Json | null
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          log_type?: string
+          message?: string | null
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
       campanha_execucoes: {
         Row: {
           campanha_id: string | null
