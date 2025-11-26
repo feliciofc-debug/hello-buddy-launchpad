@@ -143,29 +143,77 @@ export function useScheduledCampaigns(userId: string | undefined) {
 
 function calcularProxima(campanha: any): string | null {
   const agora = new Date();
-  const horario = campanha.horarios?.[0] || '09:00';
-  const [hora, minuto] = horario.split(':').map(Number);
+  const horarios = campanha.horarios || ['09:00'];
 
   if (campanha.frequencia === 'uma_vez') {
-    return null;
+    // Verificar se ainda tem horários pendentes HOJE
+    const dataInicio = new Date(campanha.data_inicio);
+    
+    if (dataInicio.toDateString() === agora.toDateString()) {
+      // Procurar próximo horário que ainda não passou
+      for (const horario of horarios) {
+        const [hora, minuto] = horario.split(':').map(Number);
+        const proximaExec = new Date();
+        proximaExec.setHours(hora, minuto, 0, 0);
+        
+        if (proximaExec > agora) {
+          console.log(`⏰ Próximo horário hoje: ${proximaExec.toLocaleString('pt-BR')}`);
+          return proximaExec.toISOString();
+        }
+      }
+    }
+    
+    return null; // Todos horários já passaram
   }
 
   if (campanha.frequencia === 'diario') {
-    const proxima = new Date();
-    proxima.setDate(proxima.getDate() + 1);
-    proxima.setHours(hora, minuto, 0, 0);
-    return proxima.toISOString();
+    // Verificar se ainda tem horários pendentes HOJE
+    for (const horario of horarios) {
+      const [hora, minuto] = horario.split(':').map(Number);
+      const proximaExec = new Date();
+      proximaExec.setHours(hora, minuto, 0, 0);
+      
+      if (proximaExec > agora) {
+        console.log(`⏰ Próximo horário hoje: ${proximaExec.toLocaleString('pt-BR')}`);
+        return proximaExec.toISOString();
+      }
+    }
+    
+    // Se todos horários de hoje já passaram, vai pro primeiro horário de amanhã
+    const [hora, minuto] = horarios[0].split(':').map(Number);
+    const amanha = new Date();
+    amanha.setDate(amanha.getDate() + 1);
+    amanha.setHours(hora, minuto, 0, 0);
+    console.log(`📅 Próximo horário amanhã: ${amanha.toLocaleString('pt-BR')}`);
+    return amanha.toISOString();
   }
 
   if (campanha.frequencia === 'semanal') {
-    const proxima = new Date();
     const diasValidos = campanha.dias_semana || [];
-
+    
+    // Verificar se HOJE é dia válido e tem horários pendentes
+    if (diasValidos.includes(agora.getDay())) {
+      for (const horario of horarios) {
+        const [hora, minuto] = horario.split(':').map(Number);
+        const proximaExec = new Date();
+        proximaExec.setHours(hora, minuto, 0, 0);
+        
+        if (proximaExec > agora) {
+          console.log(`⏰ Próximo horário hoje: ${proximaExec.toLocaleString('pt-BR')}`);
+          return proximaExec.toISOString();
+        }
+      }
+    }
+    
+    // Procurar próximo dia válido
+    const proxima = new Date();
     do {
       proxima.setDate(proxima.getDate() + 1);
     } while (!diasValidos.includes(proxima.getDay()));
-
+    
+    const [hora, minuto] = horarios[0].split(':').map(Number);
     proxima.setHours(hora, minuto, 0, 0);
+    console.log(`📅 Próximo dia válido: ${proxima.toLocaleString('pt-BR')}`);
     return proxima.toISOString();
   }
 
