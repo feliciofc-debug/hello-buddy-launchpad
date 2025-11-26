@@ -106,7 +106,14 @@ serve(async (req) => {
     }
 
     const ctx = contexto.last_message_context;
-    console.log('[WEBHOOK] 📦 Produto no contexto:', ctx.produto_nome);
+    const origem = contexto.origem || 'campanha';
+    console.log('[WEBHOOK] 📦 Origem:', origem);
+    
+    if (origem === 'campanha') {
+      console.log('[WEBHOOK] 📦 Produto no contexto:', ctx.produto_nome);
+    } else {
+      console.log('[WEBHOOK] 🏢 Lead no contexto:', ctx.empresa || 'Prospecção');
+    }
 
     // BUSCAR CREDENCIAIS WUZAPI
     const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
@@ -134,8 +141,9 @@ serve(async (req) => {
       ?.map(msg => `${msg.direction === 'received' ? 'Cliente' : ctx.vendedor_nome}: ${msg.message}`)
       .join('\n') || '';
 
-    // PROMPT PARA IA
-    const promptIA = `Você é ${ctx.vendedor_nome || 'vendedor'}.
+    // PROMPT PARA IA (DIFERENTE POR ORIGEM)
+    const promptIA = origem === 'campanha'
+      ? `Você é ${ctx.vendedor_nome || 'vendedor'}.
 
 CONTEXTO: Você enviou oferta do produto "${ctx.produto_nome}" para este cliente.
 
@@ -166,6 +174,36 @@ REGRAS:
 - Seja breve (máximo 3 linhas)
 
 CLIENTE DISSE: "${messageText}"
+
+RESPONDA (apenas a resposta, sem explicações):`
+      : `Você é ${ctx.vendedor_nome || 'representante comercial'}.
+
+CONTEXTO: Este é um lead de prospecção B2B/B2C.
+
+LEAD:
+- Empresa: ${ctx.empresa || 'N/A'}
+- Cargo: ${ctx.cargo || 'N/A'}
+- LinkedIn: ${ctx.linkedin_url || 'N/A'}
+- Origem: ${ctx.origem_lead || 'Prospecção'}
+
+HISTÓRICO DA CONVERSA:
+${conversationHistory}
+
+SUA MISSÃO:
+1. QUALIFICAR o lead fazendo perguntas estratégicas
+2. Identificar dores e necessidades
+3. Apresentar soluções de forma consultiva
+4. Agendar reunião se houver fit
+5. Manter tom profissional e respeitoso
+
+REGRAS:
+- NÃO seja invasivo ou agressivo
+- Faça perguntas abertas
+- Escute ativamente as respostas
+- Seja breve (máximo 3 linhas)
+- Use 1-2 emojis profissionais
+
+LEAD DISSE: "${messageText}"
 
 RESPONDA (apenas a resposta, sem explicações):`;
 
@@ -230,19 +268,21 @@ RESPONDA (apenas a resposta, sem explicações):`;
 
     console.log('[WEBHOOK] ✅ Resposta enviada com sucesso!');
 
-    // SALVAR HISTÓRICO
+    // SALVAR HISTÓRICO COM ORIGEM
     await supabaseClient.from('whatsapp_messages').insert([
       {
         user_id: contexto.user_id,
         phone: formattedPhone,
         direction: 'received',
-        message: messageText
+        message: messageText,
+        origem: origem
       },
       {
         user_id: contexto.user_id,
         phone: formattedPhone,
         direction: 'sent',
-        message: aiMessage
+        message: aiMessage,
+        origem: origem
       }
     ]);
 

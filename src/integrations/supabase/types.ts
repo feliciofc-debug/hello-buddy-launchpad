@@ -2476,6 +2476,7 @@ export type Database = {
           last_message_at: string | null
           lead_id: string | null
           metadata: Json | null
+          origem: string | null
           phone_number: string
           status: string | null
           transferred_at: string | null
@@ -2490,6 +2491,7 @@ export type Database = {
           last_message_at?: string | null
           lead_id?: string | null
           metadata?: Json | null
+          origem?: string | null
           phone_number: string
           status?: string | null
           transferred_at?: string | null
@@ -2504,6 +2506,7 @@ export type Database = {
           last_message_at?: string | null
           lead_id?: string | null
           metadata?: Json | null
+          origem?: string | null
           phone_number?: string
           status?: string | null
           transferred_at?: string | null
@@ -2597,6 +2600,7 @@ export type Database = {
           direction: string
           id: string
           message: string | null
+          origem: string | null
           phone: string
           timestamp: string | null
           user_id: string | null
@@ -2605,6 +2609,7 @@ export type Database = {
           direction: string
           id?: string
           message?: string | null
+          origem?: string | null
           phone: string
           timestamp?: string | null
           user_id?: string | null
@@ -2613,6 +2618,7 @@ export type Database = {
           direction?: string
           id?: string
           message?: string | null
+          origem?: string | null
           phone?: string
           timestamp?: string | null
           user_id?: string | null

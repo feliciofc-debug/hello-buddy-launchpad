@@ -85,6 +85,7 @@ export function useScheduledCampaigns(userId: string | undefined) {
                   await supabase.from('whatsapp_conversations').upsert({
                     user_id: userId,
                     phone_number: phone,
+                    origem: 'campanha', // ← MARCAR COMO CAMPANHA
                     last_message_context: {
                       produto_nome: campanha.produtos.nome,
                       produto_descricao: campanha.produtos.descricao,
@@ -98,6 +99,15 @@ export function useScheduledCampaigns(userId: string | undefined) {
                     }
                   }, {
                     onConflict: 'user_id,phone_number'
+                  });
+
+                  // Salvar mensagem no histórico com origem
+                  await supabase.from('whatsapp_messages').insert({
+                    user_id: userId,
+                    phone: phone,
+                    direction: 'sent',
+                    message: mensagem,
+                    origem: 'campanha' // ← MARCAR COMO CAMPANHA
                   });
                 }
 
