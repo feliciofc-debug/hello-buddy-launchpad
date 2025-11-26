@@ -2611,6 +2611,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      process_scheduled_campaigns: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "empresa" | "afiliado"
