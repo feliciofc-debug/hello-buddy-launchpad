@@ -713,6 +713,37 @@ export default function MeusProdutos() {
     }
   };
 
+  const handleTestarCampanha = async (product: Product) => {
+    if (!product.campanha?.id) {
+      toast.error('Campanha não encontrada');
+      return;
+    }
+
+    toast.info('🧪 Testando envio imediato...');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('execute-campaign', {
+        body: { campaign_id: product.campanha.id }
+      });
+
+      if (error) {
+        toast.error('Erro ao executar: ' + error.message);
+        console.error(error);
+      } else if (data?.success) {
+        toast.success(
+          `✅ ${data.enviados}/${data.total} mensagens enviadas!`,
+          { duration: 5000 }
+        );
+        fetchProducts();
+      } else {
+        toast.error('Erro: ' + (data?.error || 'Falha desconhecida'));
+      }
+    } catch (err) {
+      toast.error('Erro ao testar campanha');
+      console.error(err);
+    }
+  };
+
   const openAddModal = () => {
     resetForm();
     setIsAddModalOpen(true);
@@ -1001,6 +1032,16 @@ export default function MeusProdutos() {
                             </Button>
                           )}
                         </div>
+                        {product.campanha.ativa && (
+                          <Button 
+                            size="sm" 
+                            className="w-full"
+                            variant="default"
+                            onClick={() => handleTestarCampanha(product)}
+                          >
+                            🧪 Testar Agora
+                          </Button>
+                        )}
                         {product.campanha.proxima_execucao && (
                           <p className="text-[10px] text-muted-foreground text-center">
                             Próximo envio: {new Date(product.campanha.proxima_execucao).toLocaleString('pt-BR', { 
