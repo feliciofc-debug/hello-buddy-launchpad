@@ -345,6 +345,65 @@ export type Database = {
           },
         ]
       }
+      campanhas_recorrentes: {
+        Row: {
+          ativa: boolean | null
+          created_at: string | null
+          data_inicio: string
+          dias_semana: number[] | null
+          frequencia: string
+          horarios: string[]
+          id: string
+          listas_ids: string[]
+          mensagem_template: string
+          nome: string
+          produto_id: string
+          proxima_execucao: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativa?: boolean | null
+          created_at?: string | null
+          data_inicio: string
+          dias_semana?: number[] | null
+          frequencia: string
+          horarios?: string[]
+          id?: string
+          listas_ids: string[]
+          mensagem_template: string
+          nome: string
+          produto_id: string
+          proxima_execucao?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativa?: boolean | null
+          created_at?: string | null
+          data_inicio?: string
+          dias_semana?: number[] | null
+          frequencia?: string
+          horarios?: string[]
+          id?: string
+          listas_ids?: string[]
+          mensagem_template?: string
+          nome?: string
+          produto_id?: string
+          proxima_execucao?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campanhas_recorrentes_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clientes: {
         Row: {
           ativo: boolean | null
