@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { RefreshCw, Plus, Eye } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 
 interface AddGroupModalProps {
   open: boolean;
@@ -16,209 +14,112 @@ interface AddGroupModalProps {
 }
 
 export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModalProps) => {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  
-  // Manual
-  const [groupId, setGroupId] = useState('');
-  const [groupName, setGroupName] = useState('');
-  const [memberCount, setMemberCount] = useState('');
+  const [groupLink, setGroupLink] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
 
-  const handleSyncFromWuzapi = async () => {
-    setLoading(true);
+  const handleJoinGroup = async () => {
     try {
+      setIsJoining(true);
+
+      // Validar link
+      if (!groupLink.includes('chat.whatsapp.com/')) {
+        toast.error('Link inválido. Use o link de convite do grupo.');
+        return;
+      }
+
+      // Extrair código do convite
+      const inviteCode = groupLink.split('chat.whatsapp.com/')[1]?.split('?')[0];
+      
+      if (!inviteCode) {
+        toast.error('Não foi possível extrair o código do convite');
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Usuário não autenticado');
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        return;
+      }
 
-      toast.info('🔄 Sincronizando grupos do WhatsApp...');
+      toast.info('🔗 Conectando ao grupo...');
 
-      // Chamar função dedicada para sincronizar grupos
-      const { data, error } = await supabase.functions.invoke('sync-whatsapp-groups', {
-        body: {
-          userId: user.id
+      // Chamar edge function
+      const { data, error } = await supabase.functions.invoke('join-group-by-link', {
+        body: { 
+          userId: user.id,
+          inviteCode: inviteCode 
         }
       });
 
       if (error) throw error;
 
-      // Edge function já salva no banco, só precisa verificar sucesso
-      if (data?.success && data.groupsCount > 0) {
-        toast.success(`✅ ${data.groupsCount} grupos sincronizados!`);
-        onGroupAdded();
-        onOpenChange(false);
-      } else {
-        toast.warning(data?.error || 'Nenhum grupo encontrado no WhatsApp');
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao conectar grupo');
       }
 
-    } catch (error: any) {
-      console.error('Erro ao sincronizar grupos:', error);
-      toast.error('Erro ao sincronizar: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleManualAdd = async () => {
-    if (!groupId || !groupName) {
-      toast.error('Preencha o ID e nome do grupo');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Usuário não autenticado');
-
-      const { error } = await supabase
-        .from('whatsapp_groups')
-        .insert({
-          user_id: user.id,
-          group_id: groupId,
-          group_name: groupName,
-          member_count: parseInt(memberCount) || 0,
-          status: 'active'
-        });
-
-      if (error) throw error;
-
-      toast.success('✅ Grupo adicionado!');
+      toast.success(`✅ Grupo "${data.groupName}" conectado com sucesso!`);
       
-      // Limpar form
-      setGroupId('');
-      setGroupName('');
-      setMemberCount('');
-      
-      onGroupAdded();
+      // Limpar e fechar
+      setGroupLink('');
       onOpenChange(false);
+      
+      // Recarregar grupos
+      onGroupAdded();
 
     } catch (error: any) {
-      console.error('Erro ao adicionar grupo:', error);
-      toast.error('Erro: ' + error.message);
+      console.error('Erro ao conectar grupo:', error);
+      toast.error(error.message || 'Erro ao conectar grupo');
     } finally {
-      setLoading(false);
+      setIsJoining(false);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Adicionar Grupo do WhatsApp</DialogTitle>
-          <DialogDescription>
-            Sincronize seus grupos do WhatsApp ou adicione manualmente
-          </DialogDescription>
+          <DialogTitle>Conectar Grupo via Link</DialogTitle>
         </DialogHeader>
+        
+        <div className="space-y-4">
+          {/* Input do Link */}
+          <div>
+            <Label>Link de Convite do Grupo *</Label>
+            <Input
+              placeholder="https://chat.whatsapp.com/ABC123DEF456"
+              value={groupLink}
+              onChange={(e) => setGroupLink(e.target.value)}
+            />
+          </div>
 
-        <Tabs defaultValue="visual" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="visual">Visual</TabsTrigger>
-            <TabsTrigger value="sync">Sincronizar</TabsTrigger>
-            <TabsTrigger value="manual">Manual</TabsTrigger>
-          </TabsList>
+          {/* Instruções */}
+          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <p className="font-medium text-sm mb-2">📱 Como pegar o link:</p>
+            <ol className="text-xs space-y-1 list-decimal list-inside text-muted-foreground">
+              <li>Abra o grupo no WhatsApp</li>
+              <li>Toque no nome do grupo no topo</li>
+              <li>Toque em "Link de convite"</li>
+              <li>Toque em "Copiar link"</li>
+              <li>Cole aqui acima</li>
+            </ol>
+          </div>
 
-          <TabsContent value="visual" className="space-y-4 pt-4">
-            <div className="text-center py-6">
-              <Eye className="w-16 h-16 mx-auto mb-4 text-primary" />
-              <h3 className="font-bold text-lg mb-2">Seleção Visual</h3>
-              <p className="text-sm text-muted-foreground mb-6">
-                Veja todos os seus grupos do WhatsApp e selecione quais deseja usar de forma visual e intuitiva
-              </p>
-              <Button 
-                onClick={() => {
-                  onOpenChange(false);
-                  navigate('/whatsapp/grupos');
-                }}
-                className="w-full"
-                size="lg"
-              >
-                <Eye className="mr-2 h-4 w-4" />
-                Selecionar Grupos Visualmente
-              </Button>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="sync" className="space-y-4 pt-4">
-            <div className="text-center py-6">
-              <RefreshCw className="w-16 h-16 mx-auto mb-4 text-primary" />
-              <h3 className="font-bold text-lg mb-2">Sincronizar Grupos</h3>
-              <p className="text-sm text-muted-foreground mb-6">
-                Busque automaticamente todos os grupos do seu WhatsApp conectado
-              </p>
-              <Button 
-                onClick={handleSyncFromWuzapi}
-                disabled={loading}
-                className="w-full"
-                size="lg"
-              >
-                {loading ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Sincronizando...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Sincronizar Agora
-                  </>
-                )}
-              </Button>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="manual" className="space-y-4 pt-4">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="groupId">ID do Grupo *</Label>
-                <Input
-                  id="groupId"
-                  placeholder="Ex: 120363123456789012@g.us"
-                  value={groupId}
-                  onChange={(e) => setGroupId(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  💡 O ID do grupo termina com @g.us
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="groupName">Nome do Grupo *</Label>
-                <Input
-                  id="groupName"
-                  placeholder="Ex: Clientes VIP"
-                  value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="memberCount">Quantidade de Membros</Label>
-                <Input
-                  id="memberCount"
-                  type="number"
-                  placeholder="Ex: 50"
-                  value={memberCount}
-                  onChange={(e) => setMemberCount(e.target.value)}
-                />
-              </div>
-
-              <Button 
-                onClick={handleManualAdd}
-                disabled={loading}
-                className="w-full"
-                size="lg"
-              >
-                {loading ? (
-                  'Adicionando...'
-                ) : (
-                  <>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Adicionar Grupo
-                  </>
-                )}
-              </Button>
-            </div>
-          </TabsContent>
-        </Tabs>
+          {/* Botão */}
+          <Button 
+            onClick={handleJoinGroup}
+            disabled={!groupLink.trim() || isJoining}
+            className="w-full"
+          >
+            {isJoining ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Conectando...
+              </>
+            ) : (
+              '✅ Conectar Grupo'
+            )}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
