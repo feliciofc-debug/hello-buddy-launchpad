@@ -104,6 +104,3 @@ verify_jwt = false
 
 [functions.voice-ai-callback]
 verify_jwt = false
-
-[functions.join-group-by-link]
-verify_jwt = false
