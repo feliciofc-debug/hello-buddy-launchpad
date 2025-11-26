@@ -78,15 +78,23 @@ export function useScheduledCampaigns(userId: string | undefined) {
                 if (!sendError) {
                   enviados++;
 
-                  // Salvar contexto
+                  // Salvar contexto COMPLETO do produto para IA
+                  const { data: userData } = await supabase.auth.getUser();
+                  const vendedorNome = userData?.user?.user_metadata?.full_name || 'Vendedor';
+
                   await supabase.from('whatsapp_conversations').upsert({
                     user_id: userId,
                     phone_number: phone,
-                    metadata: {
-                      last_product_sent: campanha.produto_id,
+                    last_message_context: {
                       produto_nome: campanha.produtos.nome,
+                      produto_descricao: campanha.produtos.descricao,
                       produto_preco: campanha.produtos.preco,
-                      produto_descricao: campanha.produtos.descricao
+                      produto_estoque: campanha.produtos.estoque || 0,
+                      produto_especificacoes: campanha.produtos.especificacoes || '',
+                      produto_imagens: campanha.produtos.imagens || [],
+                      link_marketplace: campanha.produtos.link_marketplace || '',
+                      vendedor_nome: vendedorNome,
+                      data_envio: new Date().toISOString()
                     }
                   }, {
                     onConflict: 'user_id,phone_number'
