@@ -52,7 +52,7 @@ export function CriarCampanhaWhatsAppModal({
   onSuccess,
   campanhaExistente 
 }: CriarCampanhaWhatsAppModalProps) {
-  const [frequencia, setFrequencia] = useState<'agora' | 'uma_vez' | 'diario' | 'semanal' | 'personalizado'>('agora');
+  const [frequencia, setFrequencia] = useState<'agora' | 'uma_vez' | 'diario' | 'semanal' | 'personalizado' | 'teste'>('agora');
   const [dataInicio, setDataInicio] = useState('');
   const [horarios, setHorarios] = useState<string[]>(['10:00']);
   const [diasSemana, setDiasSemana] = useState<number[]>([1, 2, 3, 4, 5]); // Seg-Sex
@@ -198,32 +198,78 @@ export function CriarCampanhaWhatsAppModal({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Calcular próxima execução
+    // Calcular próxima execução COM LOGS
     const calcularProximaExecucao = () => {
       const agora = new Date();
-      const [h, m] = horarios[0].split(':');
+      const [h, m] = horarios[0].split(':').map(Number);
       
-      if (frequencia === 'uma_vez') {
-        const dataHora = new Date(dataInicio);
-        dataHora.setHours(parseInt(h), parseInt(m), 0, 0);
-        return dataHora.toISOString();
+      console.log('🕐 Calculando próxima execução:', {
+        frequencia,
+        dataInicio,
+        horarios,
+        diasSemana,
+        agoraLocal: agora.toLocaleString('pt-BR'),
+        agoraISO: agora.toISOString()
+      });
+
+      let proximaExec: Date;
+
+      if (frequencia === 'teste') {
+        // MODO TESTE: executar daqui 2 minutos
+        proximaExec = new Date();
+        proximaExec.setMinutes(proximaExec.getMinutes() + 2);
+        console.log('🧪 TESTE - executar em 2 minutos:', proximaExec.toLocaleString('pt-BR'));
+      } else if (frequencia === 'uma_vez') {
+        proximaExec = new Date(dataInicio);
+        proximaExec.setHours(h, m, 0, 0);
+        console.log('📅 Uma vez - usando data escolhida:', proximaExec.toLocaleString('pt-BR'));
+      } else if (frequencia === 'diario') {
+        proximaExec = new Date(dataInicio);
+        proximaExec.setHours(h, m, 0, 0);
+        
+        // Se já passou, começar amanhã
+        if (proximaExec <= agora) {
+          proximaExec.setDate(proximaExec.getDate() + 1);
+          console.log('⏭️ Horário passou, movendo para amanhã');
+        }
+      } else if (frequencia === 'semanal') {
+        proximaExec = new Date(dataInicio);
+        proximaExec.setHours(h, m, 0, 0);
+        
+        // Encontrar próximo dia válido
+        let tentativas = 0;
+        while (
+          (!diasSemana.includes(proximaExec.getDay()) || proximaExec <= agora) &&
+          tentativas < 14
+        ) {
+          proximaExec.setDate(proximaExec.getDate() + 1);
+          tentativas++;
+        }
+        console.log('📆 Semanal - próximo dia válido:', proximaExec.toLocaleString('pt-BR'));
+      } else {
+        // personalizado - mesmo que diário
+        proximaExec = new Date(dataInicio);
+        proximaExec.setHours(h, m, 0, 0);
+        if (proximaExec <= agora) {
+          proximaExec.setDate(proximaExec.getDate() + 1);
+        }
       }
+
+      const resultado = proximaExec.toISOString();
+      console.log('✅ Próxima execução calculada:', {
+        iso: resultado,
+        local: proximaExec.toLocaleString('pt-BR'),
+        emMinutos: Math.round((proximaExec.getTime() - agora.getTime()) / 60000)
+      });
       
-      // Para outras frequências, usar data_inicio ou hoje
-      const dataExec = new Date(dataInicio);
-      dataExec.setHours(parseInt(h), parseInt(m), 0, 0);
-      
-      // Se a data já passou, usar amanhã
-      if (dataExec <= agora) {
-        dataExec.setDate(dataExec.getDate() + 1);
-      }
-      
-      return dataExec.toISOString();
+      return resultado;
     };
+
+    const proximaExecucao = calcularProximaExecucao();
 
     if (campanhaExistente) {
       // Atualizar campanha existente
-      const { error } = await supabase
+      const { data: campanhaAtualizada, error } = await supabase
         .from('campanhas_recorrentes')
         .update({
           nome: `Campanha ${produto.nome}`,
@@ -234,15 +280,18 @@ export function CriarCampanhaWhatsAppModal({
           dias_semana: diasSemana,
           mensagem_template: mensagem,
           ativa: true,
-          proxima_execucao: calcularProximaExecucao()
+          proxima_execucao: proximaExecucao
         })
-        .eq('id', campanhaExistente.id);
+        .eq('id', campanhaExistente.id)
+        .select()
+        .single();
 
       if (error) throw error;
-      toast.success('✅ Campanha atualizada com sucesso!');
+      console.log('📝 Campanha atualizada:', campanhaAtualizada);
+      toast.success(`✅ Campanha atualizada! Próximo envio: ${new Date(proximaExecucao).toLocaleString('pt-BR')}`);
     } else {
       // Criar nova campanha
-      const { error } = await supabase
+      const { data: novaCampanha, error } = await supabase
         .from('campanhas_recorrentes')
         .insert({
           user_id: user.id,
@@ -255,11 +304,15 @@ export function CriarCampanhaWhatsAppModal({
           dias_semana: diasSemana,
           mensagem_template: mensagem,
           ativa: true,
-          proxima_execucao: calcularProximaExecucao()
-        });
+          proxima_execucao: proximaExecucao,
+          status: 'ativa'
+        })
+        .select()
+        .single();
 
       if (error) throw error;
-      toast.success('✅ Campanha agendada com sucesso!');
+      console.log('✨ Nova campanha criada:', novaCampanha);
+      toast.success(`✅ Campanha agendada! Próximo envio: ${new Date(proximaExecucao).toLocaleString('pt-BR')}`);
     }
   };
 
@@ -345,6 +398,12 @@ export function CriarCampanhaWhatsAppModal({
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="personalizado" id="personalizado" />
                 <Label htmlFor="personalizado" className="cursor-pointer">⚙️ Personalizado</Label>
+              </div>
+              <div className="flex items-center space-x-2 mt-2 p-2 bg-yellow-50 dark:bg-yellow-950 rounded">
+                <RadioGroupItem value="teste" id="teste" />
+                <Label htmlFor="teste" className="cursor-pointer font-bold text-yellow-700 dark:text-yellow-300">
+                  🧪 TESTE (daqui 2 minutos)
+                </Label>
               </div>
             </RadioGroup>
           </div>

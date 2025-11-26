@@ -18,6 +18,7 @@ import ImportCSVModal from '@/components/ImportCSVModal';
 import { ClientesManager } from '@/components/ClientesManager';
 import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
 import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
+import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 
 interface Campanha {
   id: string;
@@ -1087,6 +1088,11 @@ export default function MeusProdutos() {
             ))}
           </div>
         )}
+        
+        {/* PAINEL DE DEBUG DE CAMPANHAS */}
+        <div className="mt-8">
+          <CampanhaDebugPanel />
+        </div>
       </div>
 
       {/* Modals */}
