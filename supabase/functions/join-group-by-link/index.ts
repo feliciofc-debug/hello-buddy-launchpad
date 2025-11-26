@@ -14,7 +14,7 @@ serve(async (req) => {
   try {
     const { userId, inviteCode } = await req.json()
 
-    console.log('🔗 Tentando entrar no grupo com código:', inviteCode)
+    console.log('🔗 Código do convite:', inviteCode)
 
     const wuzapiUrl = Deno.env.get('WUZAPI_URL')
     const wuzapiToken = Deno.env.get('WUZAPI_TOKEN')
@@ -25,35 +25,95 @@ serve(async (req) => {
 
     const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl
 
-    // Entrar no grupo via link
-    const joinResponse = await fetch(`${baseUrl}/group/join`, {
-      method: 'POST',
-      headers: {
-        'Token': wuzapiToken,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        code: inviteCode
+    let joinData = null
+    let groupId = null
+    let groupName = null
+
+    // TENTAR ENDPOINT 1: /group/acceptInvite
+    try {
+      console.log('🔍 Tentando endpoint: /group/acceptInvite')
+      
+      const response1 = await fetch(`${baseUrl}/group/acceptInvite`, {
+        method: 'POST',
+        headers: {
+          'Token': wuzapiToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code: inviteCode })
       })
-    })
 
-    console.log('📡 Status do join:', joinResponse.status)
+      console.log('📡 Status:', response1.status)
+      const text1 = await response1.text()
+      console.log('📝 Resposta:', text1)
 
-    if (!joinResponse.ok) {
-      const errorText = await joinResponse.text()
-      console.error('❌ Erro ao entrar no grupo:', errorText)
-      throw new Error(`Erro ao entrar no grupo: ${errorText}`)
+      if (response1.ok) {
+        joinData = JSON.parse(text1)
+        groupId = joinData.data?.jid || joinData.data?.id
+        groupName = joinData.data?.subject || joinData.data?.name
+      }
+    } catch (e: any) {
+      console.log('❌ Endpoint 1 falhou:', e.message)
     }
 
-    const joinData = await joinResponse.json()
-    console.log('✅ Resposta do join:', joinData)
-
-    // Extrair informações do grupo
-    const groupId = joinData.data?.groupId || joinData.data?.jid || joinData.groupId
-    const groupName = joinData.data?.subject || joinData.data?.name || 'Grupo sem nome'
-
+    // TENTAR ENDPOINT 2: /group/join (se o primeiro falhou)
     if (!groupId) {
-      throw new Error('ID do grupo não retornado pela API')
+      try {
+        console.log('🔍 Tentando endpoint: /group/join')
+        
+        const response2 = await fetch(`${baseUrl}/group/join`, {
+          method: 'POST',
+          headers: {
+            'Token': wuzapiToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ inviteCode: inviteCode })
+        })
+
+        console.log('📡 Status:', response2.status)
+        const text2 = await response2.text()
+        console.log('📝 Resposta:', text2)
+
+        if (response2.ok) {
+          joinData = JSON.parse(text2)
+          groupId = joinData.data?.jid || joinData.data?.id
+          groupName = joinData.data?.subject || joinData.data?.name
+        }
+      } catch (e: any) {
+        console.log('❌ Endpoint 2 falhou:', e.message)
+      }
+    }
+
+    // TENTAR ENDPOINT 3: /acceptInvite (se os anteriores falharam)
+    if (!groupId) {
+      try {
+        console.log('🔍 Tentando endpoint: /acceptInvite')
+        
+        const response3 = await fetch(`${baseUrl}/acceptInvite`, {
+          method: 'POST',
+          headers: {
+            'Token': wuzapiToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ inviteCode: inviteCode })
+        })
+
+        console.log('📡 Status:', response3.status)
+        const text3 = await response3.text()
+        console.log('📝 Resposta:', text3)
+
+        if (response3.ok) {
+          joinData = JSON.parse(text3)
+          groupId = joinData.data?.jid || joinData.data?.id
+          groupName = joinData.data?.subject || joinData.data?.name
+        }
+      } catch (e: any) {
+        console.log('❌ Endpoint 3 falhou:', e.message)
+      }
+    }
+
+    // Se nenhum endpoint funcionou
+    if (!groupId) {
+      throw new Error('Não foi possível entrar no grupo. Verifique se o link está correto e tente novamente.')
     }
 
     // Salvar grupo no banco
@@ -67,7 +127,7 @@ serve(async (req) => {
       .upsert({
         user_id: userId,
         group_id: groupId,
-        group_name: groupName,
+        group_name: groupName || 'Grupo sem nome',
         member_count: 0,
         status: 'active'
       }, {
@@ -79,13 +139,13 @@ serve(async (req) => {
       throw insertError
     }
 
-    console.log('💾 Grupo salvo no banco de dados')
+    console.log('✅ Grupo conectado e salvo com sucesso!')
 
     return new Response(
       JSON.stringify({
         success: true,
         groupId: groupId,
-        groupName: groupName
+        groupName: groupName || 'Grupo sem nome'
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
