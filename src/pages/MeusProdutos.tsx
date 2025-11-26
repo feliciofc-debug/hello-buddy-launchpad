@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import ImportCSVModal from '@/components/ImportCSVModal';
 import { ClientesManager } from '@/components/ClientesManager';
 import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
+import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
 
 interface Product {
   id: string;
@@ -349,6 +350,7 @@ export default function MeusProdutos() {
   const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
   const [isClientesManagerOpen, setIsClientesManagerOpen] = useState(false);
   const [isCampanhaModalOpen, setIsCampanhaModalOpen] = useState(false);
+  const [isCampanhaWhatsAppOpen, setIsCampanhaWhatsAppOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
 
@@ -620,7 +622,7 @@ export default function MeusProdutos() {
 
   const handleCreateCampaign = (product: Product) => {
     setSelectedProduct(product);
-    setIsCampanhaModalOpen(true);
+    setIsCampanhaWhatsAppOpen(true);
   };
 
   const openAddModal = () => {
@@ -956,6 +958,18 @@ export default function MeusProdutos() {
           }}
           produto={selectedProduct}
           cliente={selectedProduct.clientes || null}
+        />
+      )}
+
+      {selectedProduct && (
+        <CriarCampanhaWhatsAppModal
+          open={isCampanhaWhatsAppOpen}
+          onOpenChange={(open) => {
+            setIsCampanhaWhatsAppOpen(open);
+            if (!open) setSelectedProduct(null);
+          }}
+          produto={selectedProduct}
+          onSuccess={fetchProducts}
         />
       )}
     </div>
