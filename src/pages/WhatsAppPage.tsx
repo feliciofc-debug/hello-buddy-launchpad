@@ -59,7 +59,7 @@ const WhatsAppPage = () => {
   // State para envio em massa
   const [campaignName, setCampaignName] = useState('');
   const [messageTemplate, setMessageTemplate] = useState(
-    'Olá {nome}! 👋\n\nConfira esta oferta:\n\n🔥 {produto}\n💰 {preco}\n\n🔗 {link}\n\nNão perca!'
+    'Olá {nome}! 👋\n\nTenho uma novidade incrível para você!'
   );
   const [csvText, setCsvText] = useState('');
   const [phoneNumbers, setPhoneNumbers] = useState('');
@@ -430,7 +430,7 @@ const WhatsAppPage = () => {
         
         // Limpar formulário
         setCampaignName('');
-        setMessageTemplate('Olá {nome}! 👋\n\nConfira esta oferta:\n\n🔥 {produto}\n💰 {preco}\n\n🔗 {link}\n\nNão perca!');
+        setMessageTemplate('Olá {nome}! 👋\n\nTenho uma novidade incrível para você!');
         setContacts([]);
         setCsvText('');
         setPhoneNumbers('');
@@ -1032,12 +1032,7 @@ const WhatsAppPage = () => {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Template de Mensagem</label>
                   <p className="text-xs text-muted-foreground mb-2">
-                    Variáveis disponíveis:{' '}
-                    <code className="bg-muted px-2 py-1 rounded">{'{nome}'}</code>{' '}
-                    <code className="bg-muted px-2 py-1 rounded">{'{telefone}'}</code>{' '}
-                    <code className="bg-muted px-2 py-1 rounded">{'{produto}'}</code>{' '}
-                    <code className="bg-muted px-2 py-1 rounded">{'{preco}'}</code>{' '}
-                    <code className="bg-muted px-2 py-1 rounded">{'{link}'}</code>
+                    Use <code className="bg-muted px-2 py-1 rounded">{'{nome}'}</code> para personalizar com o nome do contato
                   </p>
                   <Textarea
                     value={messageTemplate}
