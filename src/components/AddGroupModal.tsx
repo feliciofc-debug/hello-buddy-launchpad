@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -16,6 +17,7 @@ interface AddGroupModalProps {
 export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModalProps) => {
   const [manualGroupId, setManualGroupId] = useState('');
   const [manualGroupName, setManualGroupName] = useState('');
+  const [pastedNumbers, setPastedNumbers] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
   const handleAddManualGroup = async () => {
@@ -127,16 +129,115 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
     }
   };
 
+  const cleanPhoneNumber = (phone: string): string => {
+    return phone.replace(/\D/g, '');
+  };
+
+  const isValidBrazilianPhone = (phone: string): boolean => {
+    const cleaned = cleanPhoneNumber(phone);
+    return cleaned.length === 11 || cleaned.length === 13;
+  };
+
+  const handleConvertToContacts = async () => {
+    try {
+      setIsAdding(true);
+
+      const lines = pastedNumbers
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+
+      if (lines.length === 0) {
+        toast.error('Nenhum número encontrado');
+        return;
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        return;
+      }
+
+      const contatos = lines
+        .map(line => cleanPhoneNumber(line))
+        .filter(phone => isValidBrazilianPhone(phone))
+        .map(phone => ({
+          user_id: user.id,
+          phone: phone,
+          name: `Contato ${phone}`,
+          notes: 'Importado via cola de números'
+        }));
+
+      if (contatos.length === 0) {
+        toast.error('Nenhum número válido encontrado');
+        return;
+      }
+
+      const { error } = await supabase
+        .from('whatsapp_contacts')
+        .upsert(contatos, {
+          onConflict: 'user_id,phone',
+          ignoreDuplicates: true
+        });
+
+      if (error) throw error;
+
+      toast.success(`✅ ${contatos.length} contatos importados!`);
+      setPastedNumbers('');
+      onOpenChange(false);
+      onGroupAdded();
+
+    } catch (error: any) {
+      console.error('Erro ao importar:', error);
+      toast.error(error.message || 'Erro ao importar contatos');
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleDownloadAsCsv = () => {
+    const lines = pastedNumbers
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    if (lines.length === 0) {
+      toast.error('Nenhum número encontrado');
+      return;
+    }
+
+    const cleaned = lines
+      .map(line => cleanPhoneNumber(line))
+      .filter(phone => isValidBrazilianPhone(phone));
+
+    if (cleaned.length === 0) {
+      toast.error('Nenhum número válido encontrado');
+      return;
+    }
+
+    const csv = 'nome,telefone\n' + 
+      cleaned.map((phone, index) => `Contato ${index + 1},${phone}`).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `contatos_${Date.now()}.csv`;
+    link.click();
+
+    toast.success(`📥 CSV com ${cleaned.length} números baixado!`);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Adicionar Grupos</DialogTitle>
+          <DialogTitle>Adicionar Contatos e Grupos</DialogTitle>
         </DialogHeader>
 
         <Tabs defaultValue="manual" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="manual">Manual</TabsTrigger>
+            <TabsTrigger value="paste">Colar Números</TabsTrigger>
             <TabsTrigger value="csv">Importar CSV</TabsTrigger>
           </TabsList>
 
@@ -186,7 +287,58 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
             </div>
           </TabsContent>
 
-          {/* ABA 2: CSV */}
+          {/* ABA 2: COLAR NÚMEROS */}
+          <TabsContent value="paste" className="space-y-4">
+            <div>
+              <Label htmlFor="paste-numbers">Cole os números aqui (um por linha)</Label>
+              <Textarea
+                id="paste-numbers"
+                placeholder="5521999998888&#10;5521999997777&#10;5521988886666"
+                value={pastedNumbers}
+                onChange={(e) => setPastedNumbers(e.target.value)}
+                rows={10}
+                className="font-mono text-sm"
+                disabled={isAdding}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {pastedNumbers.split('\n').filter(n => n.trim()).length} números detectados
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleConvertToContacts}
+                disabled={!pastedNumbers.trim() || isAdding}
+                className="flex-1"
+              >
+                ✅ Importar como Contatos
+              </Button>
+              
+              <Button 
+                onClick={handleDownloadAsCsv}
+                disabled={!pastedNumbers.trim() || isAdding}
+                variant="outline"
+                className="flex-1"
+              >
+                ⬇️ Baixar CSV
+              </Button>
+            </div>
+
+            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
+              <p className="font-medium mb-2">💡 Formatos aceitos:</p>
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                <li>5521999998888</li>
+                <li>(21) 99999-8888</li>
+                <li>21 99999-8888</li>
+                <li>+55 21 99999-8888</li>
+              </ul>
+              <p className="mt-2 text-muted-foreground">
+                O sistema remove automaticamente caracteres especiais
+              </p>
+            </div>
+          </TabsContent>
+
+          {/* ABA 3: CSV */}
           <TabsContent value="csv" className="space-y-4">
             <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
               <input
