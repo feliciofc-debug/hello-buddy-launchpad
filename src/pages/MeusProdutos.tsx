@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import ImportCSVModal from '@/components/ImportCSVModal';
@@ -19,6 +20,7 @@ import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
 import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { useScheduledCampaigns } from '@/hooks/useScheduledCampaigns';
+import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 
 interface Campanha {
   id: string;
@@ -51,6 +53,11 @@ interface Product {
   cliente_id: string | null;
   clientes?: { nome: string; tipo_negocio: string | null };
   campanha?: Campanha | null;
+  estoque: number;
+  especificacoes: string | null;
+  link_marketplace: string | null;
+  publicar_marketplace: boolean;
+  imagens: any; // Json do banco pode ser string[] ou string
 }
 
 interface ProductFormProps {
@@ -63,6 +70,11 @@ interface ProductFormProps {
     link: string;
     tags: string;
     ativo: boolean;
+    estoque: string;
+    especificacoes: string;
+    link_marketplace: string;
+    publicar_marketplace: boolean;
+    imagens: string[];
   };
   setFormData: (data: any) => void;
   onSubmit: () => void;
@@ -231,16 +243,6 @@ const ProductForm = ({
     </div>
 
     <div className="space-y-2">
-      <Label htmlFor="categoria">Categoria *</Label>
-      <Input
-        id="categoria"
-        value={formData.categoria}
-        onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-        placeholder="Ex: Eletrônicos, Roupas, Alimentos..."
-      />
-    </div>
-
-    <div className="space-y-2">
       <Label htmlFor="link">Link do Produto</Label>
       <Input
         id="link"
@@ -259,6 +261,122 @@ const ProductForm = ({
         onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
         placeholder="Ex: promoção, novo, destaque"
       />
+    </div>
+
+    {/* NOVOS CAMPOS */}
+    <div className="grid grid-cols-2 gap-4">
+      <div className="space-y-2">
+        <Label htmlFor="estoque">Estoque Disponível *</Label>
+        <Input
+          id="estoque"
+          type="number"
+          value={formData.estoque}
+          onChange={(e) => setFormData({ ...formData, estoque: e.target.value })}
+          placeholder="Ex: 50"
+        />
+      </div>
+    </div>
+
+    <div className="space-y-2">
+      <Label htmlFor="especificacoes">Especificações Técnicas</Label>
+      <Textarea
+        id="especificacoes"
+        value={formData.especificacoes}
+        onChange={(e) => setFormData({ ...formData, especificacoes: e.target.value })}
+        rows={3}
+        placeholder="• Peso: 500g&#10;• Validade: 30 dias&#10;• Origem: Nacional"
+      />
+    </div>
+
+    <div className="space-y-2">
+      <Label htmlFor="link_marketplace">Link do Marketplace (Pagamento) *</Label>
+      <Input
+        id="link_marketplace"
+        type="url"
+        value={formData.link_marketplace}
+        onChange={(e) => setFormData({ ...formData, link_marketplace: e.target.value })}
+        placeholder="https://pay.mercadopago.com/..."
+      />
+      <p className="text-xs text-muted-foreground">
+        Cole aqui o link onde o cliente vai pagar (Mercado Pago, PagSeguro, etc)
+      </p>
+    </div>
+
+    {/* MÚLTIPLAS IMAGENS */}
+    <div className="space-y-2">
+      <Label>Fotos do Produto (até 5 URLs)</Label>
+      <div className="space-y-2">
+        {formData.imagens.map((img: string, idx: number) => (
+          <div key={idx} className="flex gap-2 items-center">
+            {img && (
+              <img src={img} className="w-16 h-16 object-cover rounded" alt={`Foto ${idx + 1}`} />
+            )}
+            <Input 
+              value={img} 
+              onChange={(e) => {
+                const novasImagens = [...formData.imagens];
+                novasImagens[idx] = e.target.value;
+                setFormData({ ...formData, imagens: novasImagens });
+              }} 
+              placeholder="URL da imagem"
+            />
+            <Button 
+              type="button"
+              variant="ghost" 
+              size="sm" 
+              onClick={() => {
+                const novasImagens = formData.imagens.filter((_: string, i: number) => i !== idx);
+                setFormData({ ...formData, imagens: novasImagens });
+              }}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        ))}
+        {formData.imagens.length < 5 && (
+          <Button 
+            type="button"
+            variant="outline" 
+            size="sm" 
+            onClick={() => setFormData({ ...formData, imagens: [...formData.imagens, ''] })}
+          >
+            <ImageIcon className="w-4 h-4 mr-2" />
+            Adicionar Foto
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        💡 Dica: Use URLs de imagens do Google Drive, Imgur, etc.
+      </p>
+    </div>
+
+    {/* CATEGORIA COM SELECT */}
+    <div className="space-y-2">
+      <Label htmlFor="categoria">Categoria *</Label>
+      <Select 
+        value={formData.categoria}
+        onValueChange={(value) => setFormData({ ...formData, categoria: value })}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Selecione uma categoria" />
+        </SelectTrigger>
+        <SelectContent>
+          {CATEGORIAS_MARKETPLACE.map(cat => (
+            <SelectItem key={cat.id} value={cat.id}>
+              {cat.icone} {cat.nome}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+
+    {/* PUBLICAR NO MARKETPLACE */}
+    <div className="flex items-center gap-2">
+      <Checkbox
+        checked={formData.publicar_marketplace}
+        onCheckedChange={(checked) => setFormData({ ...formData, publicar_marketplace: checked as boolean })}
+      />
+      <Label className="cursor-pointer">🌍 Publicar no Marketplace Público AMZ Ofertas</Label>
     </div>
 
     <div className="flex items-center gap-3">
@@ -322,7 +440,12 @@ export default function MeusProdutos() {
     sku: '',
     link: '',
     tags: '',
-    ativo: true
+    ativo: true,
+    estoque: '',
+    especificacoes: '',
+    link_marketplace: '',
+    publicar_marketplace: true,
+    imagens: [] as string[]
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -470,7 +593,12 @@ export default function MeusProdutos() {
           tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : null,
           ativo: formData.ativo,
           cliente_id: null,
-          imagem_url: null
+          imagem_url: null,
+          estoque: formData.estoque ? parseInt(formData.estoque) : 0,
+          especificacoes: formData.especificacoes || null,
+          link_marketplace: formData.link_marketplace || null,
+          publicar_marketplace: formData.publicar_marketplace,
+          imagens: formData.imagens || []
         })
         .select()
         .single();
@@ -548,7 +676,12 @@ export default function MeusProdutos() {
           tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : null,
           ativo: formData.ativo,
           cliente_id: null,
-          imagem_url: imagemUrl
+          imagem_url: imagemUrl,
+          estoque: formData.estoque ? parseInt(formData.estoque) : 0,
+          especificacoes: formData.especificacoes || null,
+          link_marketplace: formData.link_marketplace || null,
+          publicar_marketplace: formData.publicar_marketplace,
+          imagens: formData.imagens || []
         })
         .eq('id', selectedProduct.id);
 
@@ -688,7 +821,12 @@ export default function MeusProdutos() {
       sku: product.sku || '',
       link: product.link || '',
       tags: product.tags?.join(', ') || '',
-      ativo: product.ativo
+      ativo: product.ativo,
+      estoque: product.estoque?.toString() || '0',
+      especificacoes: product.especificacoes || '',
+      link_marketplace: product.link_marketplace || '',
+      publicar_marketplace: product.publicar_marketplace ?? true,
+      imagens: Array.isArray(product.imagens) ? product.imagens : []
     });
     setCurrentImageUrl(product.imagem_url);
     setImageFile(null);
@@ -704,7 +842,12 @@ export default function MeusProdutos() {
       sku: '',
       link: '',
       tags: '',
-      ativo: true
+      ativo: true,
+      estoque: '',
+      especificacoes: '',
+      link_marketplace: '',
+      publicar_marketplace: true,
+      imagens: []
     });
     setSelectedProduct(null);
     setImageFile(null);

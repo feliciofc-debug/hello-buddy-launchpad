@@ -1543,11 +1543,16 @@ export type Database = {
           cliente_id: string | null
           created_at: string
           descricao: string | null
+          especificacoes: string | null
+          estoque: number | null
           id: string
           imagem_url: string | null
+          imagens: Json | null
           link: string | null
+          link_marketplace: string | null
           nome: string
           preco: number | null
+          publicar_marketplace: boolean | null
           sku: string | null
           tags: string[] | null
           updated_at: string
@@ -1559,11 +1564,16 @@ export type Database = {
           cliente_id?: string | null
           created_at?: string
           descricao?: string | null
+          especificacoes?: string | null
+          estoque?: number | null
           id?: string
           imagem_url?: string | null
+          imagens?: Json | null
           link?: string | null
+          link_marketplace?: string | null
           nome: string
           preco?: number | null
+          publicar_marketplace?: boolean | null
           sku?: string | null
           tags?: string[] | null
           updated_at?: string
@@ -1575,11 +1585,16 @@ export type Database = {
           cliente_id?: string | null
           created_at?: string
           descricao?: string | null
+          especificacoes?: string | null
+          estoque?: number | null
           id?: string
           imagem_url?: string | null
+          imagens?: Json | null
           link?: string | null
+          link_marketplace?: string | null
           nome?: string
           preco?: number | null
+          publicar_marketplace?: boolean | null
           sku?: string | null
           tags?: string[] | null
           updated_at?: string
