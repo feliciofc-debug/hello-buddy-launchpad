@@ -359,6 +359,9 @@ export type Database = {
           nome: string
           produto_id: string
           proxima_execucao: string | null
+          status: string | null
+          total_enviados: number | null
+          ultima_execucao: string | null
           updated_at: string | null
           user_id: string
         }
@@ -375,6 +378,9 @@ export type Database = {
           nome: string
           produto_id: string
           proxima_execucao?: string | null
+          status?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
           updated_at?: string | null
           user_id: string
         }
@@ -391,6 +397,9 @@ export type Database = {
           nome?: string
           produto_id?: string
           proxima_execucao?: string | null
+          status?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
           updated_at?: string | null
           user_id?: string
         }

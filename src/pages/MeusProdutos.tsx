@@ -19,6 +19,22 @@ import { ClientesManager } from '@/components/ClientesManager';
 import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
 import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
 
+interface Campanha {
+  id: string;
+  nome: string;
+  frequencia: string;
+  data_inicio: string;
+  horarios: string[];
+  dias_semana: number[];
+  mensagem_template: string;
+  listas_ids: string[];
+  ativa: boolean;
+  status: string;
+  ultima_execucao: string | null;
+  total_enviados: number;
+  proxima_execucao: string | null;
+}
+
 interface Product {
   id: string;
   nome: string;
@@ -33,6 +49,7 @@ interface Product {
   created_at: string;
   cliente_id: string | null;
   clientes?: { nome: string; tipo_negocio: string | null };
+  campanha?: Campanha | null;
 }
 
 interface Cliente {
@@ -352,6 +369,7 @@ export default function MeusProdutos() {
   const [isCampanhaModalOpen, setIsCampanhaModalOpen] = useState(false);
   const [isCampanhaWhatsAppOpen, setIsCampanhaWhatsAppOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
 
   // Form states
@@ -402,11 +420,29 @@ export default function MeusProdutos() {
       setIsLoading(true);
       const { data, error } = await supabase
         .from('produtos')
-        .select('*, clientes(nome, tipo_negocio)')
+        .select(`
+          *, 
+          clientes(nome, tipo_negocio),
+          campanhas_recorrentes!campanhas_recorrentes_produto_id_fkey(
+            id, nome, frequencia, data_inicio, horarios, dias_semana,
+            mensagem_template, listas_ids, ativa, status, ultima_execucao,
+            total_enviados, proxima_execucao
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setProducts(data || []);
+      
+      // Processar produtos para incluir campanha ativa
+      const produtosComCampanhas = (data || []).map(p => {
+        const campanhasAtivas = (p.campanhas_recorrentes as any[])?.filter((c: any) => c.ativa) || [];
+        return {
+          ...p,
+          campanha: campanhasAtivas.length > 0 ? campanhasAtivas[0] : null
+        };
+      });
+      
+      setProducts(produtosComCampanhas);
     } catch (error) {
       console.error('Erro ao buscar produtos:', error);
       toast.error('Erro ao carregar produtos');
@@ -622,7 +658,59 @@ export default function MeusProdutos() {
 
   const handleCreateCampaign = (product: Product) => {
     setSelectedProduct(product);
+    setSelectedCampanha(null);
     setIsCampanhaWhatsAppOpen(true);
+  };
+
+  const handleEditCampaign = (product: Product) => {
+    if (product.campanha) {
+      setSelectedProduct(product);
+      setSelectedCampanha(product.campanha);
+      setIsCampanhaWhatsAppOpen(true);
+    }
+  };
+
+  const handlePausarCampanha = async (product: Product) => {
+    if (!product.campanha) return;
+    
+    try {
+      const { error } = await supabase
+        .from('campanhas_recorrentes')
+        .update({ ativa: false, status: 'pausada' })
+        .eq('id', product.campanha.id);
+
+      if (error) throw error;
+      toast.success('✅ Campanha pausada');
+      fetchProducts();
+    } catch (error) {
+      console.error('Erro ao pausar campanha:', error);
+      toast.error('Erro ao pausar campanha');
+    }
+  };
+
+  const handleRenovarCampanha = async (product: Product) => {
+    if (!product.campanha) return;
+    
+    try {
+      const amanha = new Date();
+      amanha.setDate(amanha.getDate() + 1);
+      
+      const { error } = await supabase
+        .from('campanhas_recorrentes')
+        .update({ 
+          ativa: true, 
+          status: 'ativa',
+          proxima_execucao: amanha.toISOString()
+        })
+        .eq('id', product.campanha.id);
+
+      if (error) throw error;
+      toast.success('✅ Campanha renovada!');
+      fetchProducts();
+    } catch (error) {
+      console.error('Erro ao renovar campanha:', error);
+      toast.error('Erro ao renovar campanha');
+    }
   };
 
   const openAddModal = () => {
@@ -815,7 +903,33 @@ export default function MeusProdutos() {
                   <div className="flex items-start justify-between mb-3">
                     <div className="relative">
                       {product.imagem_url ? (
-                        <img src={product.imagem_url} alt={product.nome} className="w-16 h-16 object-cover rounded" />
+                        <div className="relative">
+                          <img src={product.imagem_url} alt={product.nome} className="w-16 h-16 object-cover rounded" />
+                          
+                          {/* BADGES DE STATUS DA CAMPANHA */}
+                          {product.campanha && product.campanha.ativa && (
+                            <Badge className="absolute -top-2 -right-2 bg-green-500 text-white text-xs animate-pulse">
+                              🚀 Em Campanha
+                            </Badge>
+                          )}
+                          {product.campanha && !product.campanha.ativa && product.campanha.status === 'pausada' && (
+                            <Badge className="absolute -top-2 -right-2 bg-gray-500 text-white text-xs">
+                              ⏸️ Pausada
+                            </Badge>
+                          )}
+                          {product.campanha && product.campanha.status === 'encerrada' && (
+                            <Badge className="absolute -top-2 -right-2 bg-gray-400 text-white text-xs">
+                              ✓ Encerrada
+                            </Badge>
+                          )}
+                          
+                          {/* CONTADOR DE ENVIOS */}
+                          {product.campanha && product.campanha.total_enviados > 0 && (
+                            <div className="absolute -bottom-2 -left-2 bg-black/70 text-white px-2 py-0.5 rounded text-[10px]">
+                              📤 {product.campanha.total_enviados}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <ImageIcon className="w-16 h-16 text-muted-foreground" />
                       )}
@@ -857,29 +971,75 @@ export default function MeusProdutos() {
                     )}
                   </div>
 
-                  <div className="flex gap-2 pt-4">
-                    <Button 
-                      size="sm" 
-                      className="flex-1 gap-2"
-                      onClick={() => handleCreateCampaign(product)}
-                    >
-                      <Rocket className="w-4 h-4" />
-                      Criar Campanha
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="icon"
-                      onClick={() => openEditModal(product)}
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="icon"
-                      onClick={() => handleDeleteProduct(product.id)}
-                    >
-                      <Trash2 className="w-4 h-4 text-destructive" />
-                    </Button>
+                  {/* BOTÕES DE AÇÃO */}
+                  <div className="space-y-2 pt-4">
+                    {product.campanha ? (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleEditCampaign(product)}
+                          >
+                            ✏️ Editar
+                          </Button>
+                          {product.campanha.ativa ? (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handlePausarCampanha(product)}
+                            >
+                              ⏸️ Pausar
+                            </Button>
+                          ) : (
+                            <Button 
+                              size="sm" 
+                              variant="default"
+                              onClick={() => handleRenovarCampanha(product)}
+                            >
+                              🔄 Renovar
+                            </Button>
+                          )}
+                        </div>
+                        {product.campanha.proxima_execucao && (
+                          <p className="text-[10px] text-muted-foreground text-center">
+                            Próximo envio: {new Date(product.campanha.proxima_execucao).toLocaleString('pt-BR', { 
+                              day: '2-digit', 
+                              month: '2-digit', 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <Button 
+                        size="sm" 
+                        className="w-full gap-2"
+                        onClick={() => handleCreateCampaign(product)}
+                      >
+                        <Rocket className="w-4 h-4" />
+                        Criar Campanha
+                      </Button>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => openEditModal(product)}
+                      >
+                        <Pencil className="w-4 h-4 mr-1" />
+                        Editar
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleDeleteProduct(product.id)}
+                      >
+                        <Trash2 className="w-4 h-4 text-destructive mr-1" />
+                        Excluir
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -966,9 +1126,13 @@ export default function MeusProdutos() {
           open={isCampanhaWhatsAppOpen}
           onOpenChange={(open) => {
             setIsCampanhaWhatsAppOpen(open);
-            if (!open) setSelectedProduct(null);
+            if (!open) {
+              setSelectedProduct(null);
+              setSelectedCampanha(null);
+            }
           }}
           produto={selectedProduct}
+          campanhaExistente={selectedCampanha}
           onSuccess={fetchProducts}
         />
       )}
