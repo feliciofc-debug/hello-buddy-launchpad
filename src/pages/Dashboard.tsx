@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import NotificationCenter from '@/components/NotificationCenter';
 import ShopeeSearchComponent from '@/components/ShopeeSearchComponent';
+import { LeadsQuentes } from '@/components/LeadsQuentes';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -1110,6 +1111,9 @@ const Dashboard = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* LEADS QUENTES - IA WhatsApp */}
+                  <LeadsQuentes />
 
                   {/* Quick Actions */}
                   <div className="bg-gradient-to-r from-blue-100 to-green-100 dark:from-blue-900/30 dark:to-green-900/30 rounded-xl p-6">

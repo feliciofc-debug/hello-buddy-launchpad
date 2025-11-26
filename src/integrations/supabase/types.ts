@@ -814,6 +814,39 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          mensagem_cliente: string | null
+          phone: string
+          produto_nome: string | null
+          status: string | null
+          user_id: string | null
+          visualizado: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          mensagem_cliente?: string | null
+          phone: string
+          produto_nome?: string | null
+          status?: string | null
+          user_id?: string | null
+          visualizado?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          mensagem_cliente?: string | null
+          phone?: string
+          produto_nome?: string | null
+          status?: string | null
+          user_id?: string | null
+          visualizado?: boolean | null
+        }
+        Relationships: []
+      }
       leads_b2b: {
         Row: {
           campanha_id: string
@@ -2556,6 +2589,33 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_messages: {
+        Row: {
+          direction: string
+          id: string
+          message: string | null
+          phone: string
+          timestamp: string | null
+          user_id: string | null
+        }
+        Insert: {
+          direction: string
+          id?: string
+          message?: string | null
+          phone: string
+          timestamp?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          direction?: string
+          id?: string
+          message?: string | null
+          phone?: string
+          timestamp?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }
