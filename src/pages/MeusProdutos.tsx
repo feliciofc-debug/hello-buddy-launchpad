@@ -952,23 +952,6 @@ export default function MeusProdutos() {
                         <div className="relative">
                           <img src={product.imagem_url} alt={product.nome} className="w-16 h-16 object-cover rounded" />
                           
-                          {/* BADGES DE STATUS DA CAMPANHA */}
-                          {product.campanha && product.campanha.ativa && (
-                            <Badge className="absolute -top-2 -right-2 bg-green-500 text-white text-xs animate-pulse">
-                              🚀 Em Campanha
-                            </Badge>
-                          )}
-                          {product.campanha && !product.campanha.ativa && product.campanha.status === 'pausada' && (
-                            <Badge className="absolute -top-2 -right-2 bg-gray-500 text-white text-xs">
-                              ⏸️ Pausada
-                            </Badge>
-                          )}
-                          {product.campanha && product.campanha.status === 'encerrada' && (
-                            <Badge className="absolute -top-2 -right-2 bg-gray-400 text-white text-xs">
-                              ✓ Encerrada
-                            </Badge>
-                          )}
-                          
                           {/* CONTADOR DE ENVIOS */}
                           {product.campanha && product.campanha.total_enviados > 0 && (
                             <div className="absolute -bottom-2 -left-2 bg-black/70 text-white px-2 py-0.5 rounded text-[10px]">
@@ -985,9 +968,28 @@ export default function MeusProdutos() {
                         </Badge>
                       )}
                     </div>
-                    <Badge variant={product.ativo ? 'default' : 'secondary'}>
-                      {product.ativo ? 'Ativo' : 'Pausado'}
-                    </Badge>
+                    
+                    {/* BADGES DE STATUS DA CAMPANHA + ATIVO/PAUSADO */}
+                    <div className="flex flex-col items-end gap-1">
+                      {product.campanha && product.campanha.ativa && (
+                        <Badge className="bg-green-500 text-white text-xs animate-pulse">
+                          🚀 Em Campanha
+                        </Badge>
+                      )}
+                      {product.campanha && !product.campanha.ativa && product.campanha.status === 'pausada' && (
+                        <Badge className="bg-gray-500 text-white text-xs">
+                          ⏸️ Pausada
+                        </Badge>
+                      )}
+                      {product.campanha && product.campanha.status === 'encerrada' && (
+                        <Badge className="bg-gray-400 text-white text-xs">
+                          ✓ Encerrada
+                        </Badge>
+                      )}
+                      <Badge variant={product.ativo ? 'default' : 'secondary'}>
+                        {product.ativo ? 'Ativo' : 'Pausado'}
+                      </Badge>
+                    </div>
                   </div>
                   <CardTitle className="text-xl">{product.nome}</CardTitle>
                   <CardDescription className="line-clamp-2">
@@ -1027,7 +1029,7 @@ export default function MeusProdutos() {
                             variant="outline"
                             onClick={() => handleEditCampaign(product)}
                           >
-                            ✏️ Editar
+                            ✏️ Editar Campanha
                           </Button>
                           {product.campanha.ativa ? (
                             <Button 
@@ -1047,16 +1049,24 @@ export default function MeusProdutos() {
                             </Button>
                           )}
                         </div>
-                        {product.campanha.ativa && (
+                        <div className="grid grid-cols-2 gap-2">
                           <Button 
-                            size="sm" 
-                            className="w-full"
-                            variant="default"
-                            onClick={() => handleTestarCampanha(product)}
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => openEditModal(product)}
                           >
-                            🧪 Testar Agora
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar Produto
                           </Button>
-                        )}
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleDeleteProduct(product.id)}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive mr-1" />
+                            Excluir
+                          </Button>
+                        </div>
                         {product.campanha.proxima_execucao && (
                           <p className="text-[10px] text-muted-foreground text-center">
                             Próximo envio: {new Date(product.campanha.proxima_execucao).toLocaleString('pt-BR', { 
@@ -1069,33 +1079,35 @@ export default function MeusProdutos() {
                         )}
                       </>
                     ) : (
-                      <Button 
-                        size="sm" 
-                        className="w-full gap-2"
-                        onClick={() => handleCreateCampaign(product)}
-                      >
-                        <Rocket className="w-4 h-4" />
-                        Criar Campanha
-                      </Button>
+                      <>
+                        <Button 
+                          size="sm" 
+                          className="w-full gap-2"
+                          onClick={() => handleCreateCampaign(product)}
+                        >
+                          <Rocket className="w-4 h-4" />
+                          Criar Campanha
+                        </Button>
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => openEditModal(product)}
+                          >
+                            <Pencil className="w-4 h-4 mr-1" />
+                            Editar
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleDeleteProduct(product.id)}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive mr-1" />
+                            Excluir
+                          </Button>
+                        </div>
+                      </>
                     )}
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => openEditModal(product)}
-                      >
-                        <Pencil className="w-4 h-4 mr-1" />
-                        Editar
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleDeleteProduct(product.id)}
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive mr-1" />
-                        Excluir
-                      </Button>
-                    </div>
                   </div>
                 </CardContent>
               </Card>
