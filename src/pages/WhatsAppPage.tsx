@@ -785,6 +785,14 @@ const WhatsAppPage = () => {
                       {/* TAB: Grupos */}
                       <TabsContent value="groups" className="space-y-3">
                         <div className="flex gap-2">
+                          <Button 
+                            size="sm" 
+                            variant="default" 
+                            onClick={() => setShowAddGroupModal(true)} 
+                            className="flex-1"
+                          >
+                            ➕ Adicionar Grupo
+                          </Button>
                           <Button size="sm" variant="outline" onClick={selectAllGroups} className="flex-1">
                             Selecionar Todos
                           </Button>
@@ -801,11 +809,14 @@ const WhatsAppPage = () => {
                           ) : groups.length === 0 ? (
                             <div className="text-center py-8">
                               <Users className="h-12 w-12 mx-auto mb-2 text-muted-foreground opacity-50" />
-                              <p className="text-sm text-muted-foreground">
+                              <p className="text-sm font-medium text-muted-foreground mb-2">
                                 Nenhum grupo cadastrado
                               </p>
-                              <Button size="sm" variant="outline" className="mt-3" onClick={loadGroups}>
-                                Atualizar Lista
+                              <p className="text-xs text-muted-foreground mb-3">
+                                Clique em "➕ Adicionar Grupo" acima para criar seu primeiro grupo
+                              </p>
+                              <Button size="sm" variant="outline" onClick={loadGroups}>
+                                🔄 Atualizar Lista
                               </Button>
                             </div>
                           ) : (
