@@ -51,7 +51,7 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
 
       if (error) throw error;
 
-      toast.success(`✅ Grupo criado com ${phones.length} contatos!`);
+      toast.success(`✅ Grupo criado com ${phones.length} contatos! Veja na aba "Grupos"`);
       setPastedNumbers('');
       setGroupName('');
       onOpenChange(false);
@@ -126,7 +126,7 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
 
       if (error) throw error;
 
-      toast.success(`✅ ${numbers.length} contatos importados do CSV!`);
+      toast.success(`✅ ${numbers.length} contatos importados do CSV! Veja na aba "Grupos"`);
       onOpenChange(false);
       onGroupAdded();
 
