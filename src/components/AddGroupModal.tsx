@@ -15,14 +15,20 @@ interface AddGroupModalProps {
 }
 
 export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModalProps) => {
-  const [manualGroupId, setManualGroupId] = useState('');
-  const [manualGroupName, setManualGroupName] = useState('');
   const [pastedNumbers, setPastedNumbers] = useState('');
+  const [groupName, setGroupName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
-  const handleAddManualGroup = async () => {
+  const handleCreateGroup = async () => {
     try {
       setIsAdding(true);
+
+      const phones = extractPhoneNumbers(pastedNumbers);
+
+      if (phones.length === 0) {
+        toast.error('Nenhum número válido encontrado');
+        return;
+      }
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -30,37 +36,40 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
+      const name = groupName.trim() || `Grupo ${new Date().toLocaleString('pt-BR')}`;
+
       const { error } = await supabase
         .from('whatsapp_groups')
         .insert({
           user_id: user.id,
-          group_id: manualGroupId.trim(),
-          group_name: manualGroupName.trim(),
-          member_count: 0,
+          group_id: `manual_${Date.now()}@g.us`,
+          group_name: name,
+          member_count: phones.length,
+          phone_numbers: phones,
           status: 'active'
         });
 
       if (error) throw error;
 
-      toast.success('✅ Grupo adicionado com sucesso!');
-      setManualGroupId('');
-      setManualGroupName('');
+      toast.success(`✅ Grupo criado com ${phones.length} contatos!`);
+      setPastedNumbers('');
+      setGroupName('');
       onOpenChange(false);
       onGroupAdded();
     } catch (error: any) {
-      console.error('Erro ao adicionar grupo:', error);
-      toast.error(error.message || 'Erro ao adicionar grupo');
+      console.error('Erro ao criar grupo:', error);
+      toast.error(error.message || 'Erro ao criar grupo');
     } finally {
       setIsAdding(false);
     }
   };
 
   const downloadCsvTemplate = () => {
-    const csv = 'group_id,group_name\n120363123456789@g.us,Exemplo Grupo 1\n120363987654321@g.us,Exemplo Grupo 2';
+    const csv = 'telefone\n5521999998888\n5521999997777\n5528999879585';
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'modelo_grupos.csv';
+    link.download = 'modelo.csv';
     link.click();
     toast.success('📥 Modelo baixado com sucesso!');
   };
@@ -83,15 +92,16 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
-      const grupos = lines
+      const numbers = lines
         .map(line => {
-          const [group_id, group_name] = line.split(',').map(s => s.trim());
-          return { group_id, group_name };
+          const phone = line.split(',')[0]?.replace(/\D/g, '');
+          return phone;
         })
-        .filter(g => g.group_id && g.group_name);
+        .filter(n => n && n.length >= 10)
+        .map(n => normalizePhoneNumber(n));
 
-      if (grupos.length === 0) {
-        toast.error('Nenhum grupo válido encontrado no CSV');
+      if (numbers.length === 0) {
+        toast.error('CSV vazio ou inválido');
         return;
       }
 
@@ -101,21 +111,22 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
-      const gruposToInsert = grupos.map(g => ({
-        user_id: user.id,
-        group_id: g.group_id,
-        group_name: g.group_name,
-        member_count: 0,
-        status: 'active'
-      }));
+      const name = `Grupo CSV ${new Date().toLocaleString('pt-BR')}`;
 
       const { error } = await supabase
         .from('whatsapp_groups')
-        .insert(gruposToInsert);
+        .insert({
+          user_id: user.id,
+          group_id: `csv_${Date.now()}@g.us`,
+          group_name: name,
+          member_count: numbers.length,
+          phone_numbers: numbers,
+          status: 'active'
+        });
 
       if (error) throw error;
 
-      toast.success(`✅ ${grupos.length} grupos importados com sucesso!`);
+      toast.success(`✅ ${numbers.length} contatos importados do CSV!`);
       onOpenChange(false);
       onGroupAdded();
 
@@ -185,71 +196,6 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
     return [...new Set(phones)];
   };
 
-  const handleConvertToContacts = async () => {
-    try {
-      setIsAdding(true);
-
-      const phones = extractPhoneNumbers(pastedNumbers);
-
-      if (phones.length === 0) {
-        toast.error('Nenhum número válido encontrado');
-        return;
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Usuário não autenticado');
-        return;
-      }
-
-      const contatos = phones.map(phone => ({
-        user_id: user.id,
-        phone: phone,
-        name: `Contato ${phone}`,
-        notes: 'Importado via cola de números'
-      }));
-
-      const { error } = await supabase
-        .from('whatsapp_contacts')
-        .upsert(contatos, {
-          onConflict: 'user_id,phone',
-          ignoreDuplicates: true
-        });
-
-      if (error) throw error;
-
-      toast.success(`✅ ${contatos.length} contatos importados!`);
-      setPastedNumbers('');
-      onOpenChange(false);
-      onGroupAdded();
-
-    } catch (error: any) {
-      console.error('Erro ao importar:', error);
-      toast.error(error.message || 'Erro ao importar contatos');
-    } finally {
-      setIsAdding(false);
-    }
-  };
-
-  const handleDownloadAsCsv = () => {
-    const phones = extractPhoneNumbers(pastedNumbers);
-
-    if (phones.length === 0) {
-      toast.error('Nenhum número válido encontrado');
-      return;
-    }
-
-    const csv = 'nome,telefone\n' + 
-      phones.map((phone, index) => `Contato ${index + 1},${phone}`).join('\n');
-
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `contatos_${Date.now()}.csv`;
-    link.click();
-
-    toast.success(`📥 CSV com ${phones.length} números baixado!`);
-  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -258,111 +204,60 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
           <DialogTitle>Adicionar Contatos e Grupos</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="manual" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="manual">Manual</TabsTrigger>
+        <Tabs defaultValue="paste" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="paste">Colar Números</TabsTrigger>
             <TabsTrigger value="csv">Importar CSV</TabsTrigger>
           </TabsList>
 
-          {/* ABA 1: MANUAL */}
-          <TabsContent value="manual" className="space-y-4">
+          {/* ABA 1: COLAR NÚMEROS */}
+          <TabsContent value="paste" className="space-y-4">
             <div>
-              <Label htmlFor="group-id">ID do Grupo *</Label>
-              <Input
-                id="group-id"
-                placeholder="120363123456789@g.us"
-                value={manualGroupId}
-                onChange={(e) => setManualGroupId(e.target.value)}
+              <Label htmlFor="paste-numbers">Cole os números aqui</Label>
+              <Textarea
+                id="paste-numbers"
+                placeholder="5521999998888 5521999997777"
+                value={pastedNumbers}
+                onChange={(e) => setPastedNumbers(e.target.value)}
+                rows={8}
+                className="font-mono text-sm"
                 disabled={isAdding}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Formato: 120363XXXXXXXXXX@g.us
+                {extractPhoneNumbers(pastedNumbers).length} números válidos detectados
               </p>
             </div>
 
             <div>
-              <Label htmlFor="group-name">Nome do Grupo *</Label>
+              <Label htmlFor="group-name">Nome do Grupo (opcional)</Label>
               <Input
                 id="group-name"
-                placeholder="Clientes VIP"
-                value={manualGroupName}
-                onChange={(e) => setManualGroupName(e.target.value)}
+                placeholder="Deixe vazio para gerar automático"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
                 disabled={isAdding}
               />
             </div>
 
-            <Button
-              onClick={handleAddManualGroup}
-              disabled={!manualGroupId.trim() || !manualGroupName.trim() || isAdding}
+            <Button 
+              onClick={handleCreateGroup}
+              disabled={!pastedNumbers.trim() || isAdding}
               className="w-full"
             >
-              {isAdding ? 'Adicionando...' : 'Adicionar Grupo'}
+              {isAdding ? 'Criando...' : 'Criar Grupo'}
             </Button>
-
-            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
-              <p className="font-medium mb-2">💡 Como pegar o ID:</p>
-              <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                <li>Abra WhatsApp Web</li>
-                <li>Entre no grupo</li>
-                <li>Olhe a URL do navegador</li>
-                <li>Copie o ID que termina em <strong>@g.us</strong></li>
-              </ol>
-            </div>
-          </TabsContent>
-
-          {/* ABA 2: COLAR NÚMEROS */}
-          <TabsContent value="paste" className="space-y-4">
-            <div>
-              <Label htmlFor="paste-numbers">Cole os números aqui (um por linha)</Label>
-              <Textarea
-                id="paste-numbers"
-                placeholder="5521999998888&#10;5521999997777&#10;5521988886666"
-                value={pastedNumbers}
-                onChange={(e) => setPastedNumbers(e.target.value)}
-                rows={10}
-                className="font-mono text-sm"
-                disabled={isAdding}
-              />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {extractPhoneNumbers(pastedNumbers).length} números válidos detectados
-                    </p>
-            </div>
-
-            <div className="flex gap-2">
-              <Button 
-                onClick={handleConvertToContacts}
-                disabled={!pastedNumbers.trim() || isAdding}
-                className="flex-1"
-              >
-                ✅ Importar como Contatos
-              </Button>
-              
-              <Button 
-                onClick={handleDownloadAsCsv}
-                disabled={!pastedNumbers.trim() || isAdding}
-                variant="outline"
-                className="flex-1"
-              >
-                ⬇️ Baixar CSV
-              </Button>
-            </div>
 
             <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
               <p className="font-medium mb-2">💡 Formatos aceitos:</p>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                 <li>5521999998888</li>
                 <li>(21) 99999-8888</li>
-                <li>21 99999-8888</li>
-                <li>+55 21 99999-8888</li>
+                <li>Separados por espaço, vírgula ou linha</li>
               </ul>
-              <p className="mt-2 text-muted-foreground">
-                O sistema remove automaticamente caracteres especiais
-              </p>
             </div>
           </TabsContent>
 
-          {/* ABA 3: CSV */}
+          {/* ABA 2: CSV */}
           <TabsContent value="csv" className="space-y-4">
             <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
               <input
@@ -394,9 +289,10 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
             <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
               <p className="font-medium mb-2">📋 Formato do CSV:</p>
               <pre className="bg-white dark:bg-gray-900 p-2 rounded mt-2 text-xs overflow-x-auto">
-group_id,group_name
-120363123456789@g.us,Clientes VIP
-120363987654321@g.us,Grupo Ofertas
+telefone
+5521999998888
+5521999997777
+5528999879585
               </pre>
             </div>
           </TabsContent>

@@ -2415,6 +2415,7 @@ export type Database = {
           id: string
           last_message_at: string | null
           member_count: number
+          phone_numbers: string[] | null
           status: string
           updated_at: string
           user_id: string
@@ -2426,6 +2427,7 @@ export type Database = {
           id?: string
           last_message_at?: string | null
           member_count?: number
+          phone_numbers?: string[] | null
           status?: string
           updated_at?: string
           user_id: string
@@ -2437,6 +2439,7 @@ export type Database = {
           id?: string
           last_message_at?: string | null
           member_count?: number
+          phone_numbers?: string[] | null
           status?: string
           updated_at?: string
           user_id?: string
