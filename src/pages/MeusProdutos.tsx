@@ -11,11 +11,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, Users, Store, X } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import ImportCSVModal from '@/components/ImportCSVModal';
-import { ClientesManager } from '@/components/ClientesManager';
 import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
 import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
@@ -54,12 +53,6 @@ interface Product {
   campanha?: Campanha | null;
 }
 
-interface Cliente {
-  id: string;
-  nome: string;
-  tipo_negocio: string | null;
-}
-
 interface ProductFormProps {
   formData: {
     nome: string;
@@ -70,14 +63,10 @@ interface ProductFormProps {
     link: string;
     tags: string;
     ativo: boolean;
-    tipo_produto: string;
-    cliente_id: string | null;
   };
   setFormData: (data: any) => void;
-  clientes: Cliente[];
   onSubmit: () => void;
   submitLabel: string;
-  setIsClientesManagerOpen: (open: boolean) => void;
   setIsAddModalOpen: (open: boolean) => void;
   setIsEditModalOpen: (open: boolean) => void;
   imageFile: File | null;
@@ -89,10 +78,8 @@ interface ProductFormProps {
 const ProductForm = ({ 
   formData, 
   setFormData, 
-  clientes, 
   onSubmit, 
   submitLabel,
-  setIsClientesManagerOpen,
   setIsAddModalOpen,
   setIsEditModalOpen,
   imageFile,
@@ -121,56 +108,6 @@ const ProductForm = ({
 
   return (
   <div className="space-y-4">
-    <div className="space-y-2">
-      <Label>Este produto é de:</Label>
-      <RadioGroup 
-        value={formData.tipo_produto} 
-        onValueChange={(v) => setFormData({ ...formData, tipo_produto: v, cliente_id: null })}
-      >
-        <div className="flex items-center space-x-2">
-          <RadioGroupItem value="minha-empresa" id="minha" />
-          <Label htmlFor="minha">🏢 Minha Empresa</Label>
-        </div>
-        <div className="flex items-center space-x-2">
-          <RadioGroupItem value="cliente" id="cliente" />
-          <Label htmlFor="cliente">👤 Um Cliente Meu</Label>
-        </div>
-      </RadioGroup>
-    </div>
-
-    {formData.tipo_produto === 'cliente' && (
-      <div className="space-y-2">
-        <Label htmlFor="cliente_select">Selecione o Cliente *</Label>
-        <Select 
-          value={formData.cliente_id || ''} 
-          onValueChange={(v) => setFormData({ ...formData, cliente_id: v })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Escolha um cliente..." />
-          </SelectTrigger>
-          <SelectContent>
-            {clientes.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.nome} {c.tipo_negocio && `- ${c.tipo_negocio}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {clientes.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Você ainda não tem clientes cadastrados.{' '}
-            <Button 
-              variant="link" 
-              className="p-0 h-auto"
-              onClick={() => setIsClientesManagerOpen(true)}
-            >
-              Adicionar cliente
-            </Button>
-          </p>
-        )}
-      </div>
-    )}
-
     <div className="space-y-2">
       <Label htmlFor="nome">Nome do Produto *</Label>
       <Input
@@ -359,7 +296,6 @@ export default function MeusProdutos() {
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const [products, setProducts] = useState<Product[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<string>();
   
@@ -368,11 +304,9 @@ export default function MeusProdutos() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [clienteAtivo, setClienteAtivo] = useState<string>('minha-empresa');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
-  const [isClientesManagerOpen, setIsClientesManagerOpen] = useState(false);
   const [isCampanhaModalOpen, setIsCampanhaModalOpen] = useState(false);
   const [isCampanhaWhatsAppOpen, setIsCampanhaWhatsAppOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -388,9 +322,7 @@ export default function MeusProdutos() {
     sku: '',
     link: '',
     tags: '',
-    ativo: true,
-    tipo_produto: 'minha-empresa',
-    cliente_id: null as string | null
+    ativo: true
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -413,7 +345,6 @@ export default function MeusProdutos() {
 
   useEffect(() => {
     fetchProducts();
-    fetchClientes();
     fetchUserId();
   }, []);
 
@@ -466,23 +397,6 @@ export default function MeusProdutos() {
     }
   };
 
-  const fetchClientes = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('clientes')
-        .select('id, nome, tipo_negocio')
-        .eq('user_id', user.id)
-        .order('nome', { ascending: true });
-
-      if (error) throw error;
-      setClientes(data || []);
-    } catch (error) {
-      console.error('Erro ao buscar clientes:', error);
-    }
-  };
 
   const uploadImage = async (file: File, productId: string): Promise<string | null> => {
     try {
@@ -555,7 +469,7 @@ export default function MeusProdutos() {
           link: formData.link || null,
           tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : null,
           ativo: formData.ativo,
-          cliente_id: formData.tipo_produto === 'cliente' ? formData.cliente_id : null,
+          cliente_id: null,
           imagem_url: null
         })
         .select()
@@ -633,7 +547,7 @@ export default function MeusProdutos() {
           link: formData.link || null,
           tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : null,
           ativo: formData.ativo,
-          cliente_id: formData.tipo_produto === 'cliente' ? formData.cliente_id : null,
+          cliente_id: null,
           imagem_url: imagemUrl
         })
         .eq('id', selectedProduct.id);
@@ -774,9 +688,7 @@ export default function MeusProdutos() {
       sku: product.sku || '',
       link: product.link || '',
       tags: product.tags?.join(', ') || '',
-      ativo: product.ativo,
-      tipo_produto: product.cliente_id ? 'cliente' : 'minha-empresa',
-      cliente_id: product.cliente_id
+      ativo: product.ativo
     });
     setCurrentImageUrl(product.imagem_url);
     setImageFile(null);
@@ -792,9 +704,7 @@ export default function MeusProdutos() {
       sku: '',
       link: '',
       tags: '',
-      ativo: true,
-      tipo_produto: 'minha-empresa',
-      cliente_id: null
+      ativo: true
     });
     setSelectedProduct(null);
     setImageFile(null);
@@ -802,24 +712,12 @@ export default function MeusProdutos() {
   };
 
   const getFilteredProducts = () => {
-    let filtered = products;
-
-    // Filtro por cliente ativo
-    if (clienteAtivo === 'minha-empresa') {
-      filtered = filtered.filter(p => !p.cliente_id);
-    } else if (clienteAtivo !== 'todos') {
-      filtered = filtered.filter(p => p.cliente_id === clienteAtivo);
-    }
-
-    // Filtro de busca
-    filtered = filtered.filter(product => {
+    return products.filter(product => {
       const matchesSearch = product.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            (product.descricao?.toLowerCase() || '').includes(searchTerm.toLowerCase());
       const matchesCategory = categoryFilter === 'all' || product.categoria === categoryFilter;
       return matchesSearch && matchesCategory;
     });
-
-    return filtered;
   };
 
   const filteredProducts = getFilteredProducts();
@@ -836,14 +734,10 @@ export default function MeusProdutos() {
               </div>
               <div>
                 <h1 className="text-4xl font-bold">📦 Gestão de Produtos</h1>
-                <p className="text-muted-foreground mt-1">Organize produtos seus e de seus clientes</p>
+                <p className="text-muted-foreground mt-1">Gerencie seus produtos e campanhas</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button onClick={() => setIsClientesManagerOpen(true)} variant="outline" className="gap-2">
-                <Users className="w-4 h-4" />
-                Gerenciar Clientes
-              </Button>
               <Button onClick={openAddModal} className="gap-2">
                 <Plus className="w-4 h-4" />
                 Adicionar Produto
@@ -862,25 +756,6 @@ export default function MeusProdutos() {
             </div>
           </div>
         </div>
-
-        {/* Tabs de Cliente */}
-        <Tabs value={clienteAtivo} onValueChange={setClienteAtivo}>
-          <TabsList className="w-full justify-start overflow-x-auto">
-            <TabsTrigger value="minha-empresa" className="gap-2">
-              <Store className="w-4 h-4" />
-              🏢 Minha Empresa
-            </TabsTrigger>
-            {clientes.map((cliente) => (
-              <TabsTrigger key={cliente.id} value={cliente.id} className="gap-2">
-                <Users className="w-4 h-4" />
-                {cliente.nome}
-              </TabsTrigger>
-            ))}
-            <TabsTrigger value="todos" className="gap-2">
-              📋 Todos os Clientes
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
 
         {/* Filtros */}
         <Card>
@@ -959,13 +834,8 @@ export default function MeusProdutos() {
                             </div>
                           )}
                         </div>
-                      ) : (
+                       ) : (
                         <ImageIcon className="w-16 h-16 text-muted-foreground" />
-                      )}
-                      {product.cliente_id && product.clientes && (
-                        <Badge variant="outline" className="absolute -top-2 -right-2 text-xs">
-                          👤 {product.clientes.nome}
-                        </Badge>
                       )}
                     </div>
                     
@@ -1137,10 +1007,8 @@ export default function MeusProdutos() {
           <ProductForm 
             formData={formData}
             setFormData={setFormData}
-            clientes={clientes}
             onSubmit={handleAddProduct}
             submitLabel="Adicionar Produto"
-            setIsClientesManagerOpen={setIsClientesManagerOpen}
             setIsAddModalOpen={setIsAddModalOpen}
             setIsEditModalOpen={setIsEditModalOpen}
             imageFile={imageFile}
@@ -1160,10 +1028,8 @@ export default function MeusProdutos() {
           <ProductForm 
             formData={formData}
             setFormData={setFormData}
-            clientes={clientes}
             onSubmit={handleEditProduct}
             submitLabel="Salvar Alterações"
-            setIsClientesManagerOpen={setIsClientesManagerOpen}
             setIsAddModalOpen={setIsAddModalOpen}
             setIsEditModalOpen={setIsEditModalOpen}
             imageFile={imageFile}
@@ -1178,14 +1044,6 @@ export default function MeusProdutos() {
         isOpen={isImportCSVOpen}
         onClose={() => setIsImportCSVOpen(false)}
         onSuccess={fetchProducts}
-      />
-
-      <ClientesManager
-        isOpen={isClientesManagerOpen}
-        onClose={() => {
-          setIsClientesManagerOpen(false);
-          fetchClientes();
-        }}
       />
 
       {selectedProduct && (
