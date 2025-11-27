@@ -6,8 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowLeft, Bot, User, Send } from 'lucide-react';
+import { ArrowLeft, Bot, User, Send, UserCheck, Target, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Conversa {
@@ -18,6 +19,7 @@ interface Conversa {
   last_message_at: string | null;
   metadata: any;
   origem: string;
+  tipo_contato: string;
 }
 
 interface Mensagem {
@@ -34,14 +36,15 @@ export default function IAConversas() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [novaMensagem, setNovaMensagem] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [filtro, setFiltro] = useState('todas');
+  const [abaAtiva, setAbaAtiva] = useState('leads');
+  const [filtroModo, setFiltroModo] = useState('todas');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     carregarConversas();
     const interval = setInterval(carregarConversas, 5000);
     return () => clearInterval(interval);
-  }, [filtro]);
+  }, []);
 
   useEffect(() => {
     if (conversaSelecionada) {
@@ -58,25 +61,18 @@ export default function IAConversas() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      let query = supabase
+      const { data, error } = await supabase
         .from('whatsapp_conversations')
         .select('*')
         .eq('user_id', user.id)
         .order('last_message_at', { ascending: false });
-
-      if (filtro === 'ia') {
-        query = query.eq('modo_atendimento', 'ia');
-      } else if (filtro === 'humano') {
-        query = query.eq('modo_atendimento', 'humano');
-      }
-
-      const { data, error } = await query;
 
       if (error) {
         console.error('Erro ao carregar conversas:', error);
         return;
       }
 
+      console.log('📊 Conversas carregadas:', data?.length);
       setConversas(data || []);
     } catch (error) {
       console.error('Erro:', error);
@@ -114,11 +110,9 @@ export default function IAConversas() {
       .eq('id', conversa.id);
 
     if (!error) {
-      toast.success('✅ Você assumiu a conversa!');
+      toast.success('✅ Você assumiu esta conversa!');
       carregarConversas();
-      if (conversaSelecionada?.id === conversa.id) {
-        setConversaSelecionada({ ...conversa, modo_atendimento: 'humano' });
-      }
+      setConversaSelecionada({ ...conversa, modo_atendimento: 'humano' });
     } else {
       toast.error('Erro ao assumir conversa');
     }
@@ -135,13 +129,24 @@ export default function IAConversas() {
       .eq('id', conversa.id);
 
     if (!error) {
-      toast.success('✅ IA voltou a atender!');
+      toast.success('🤖 IA voltou a atender!');
       carregarConversas();
-      if (conversaSelecionada?.id === conversa.id) {
-        setConversaSelecionada({ ...conversa, modo_atendimento: 'ia' });
-      }
+      setConversaSelecionada({ ...conversa, modo_atendimento: 'ia' });
     } else {
       toast.error('Erro ao devolver para IA');
+    }
+  };
+
+  const marcarComoCliente = async (conversa: Conversa) => {
+    const { error } = await supabase
+      .from('whatsapp_conversations')
+      .update({ tipo_contato: 'cliente' })
+      .eq('id', conversa.id);
+
+    if (!error) {
+      toast.success('✅ Marcado como Cliente!');
+      carregarConversas();
+      setConversaSelecionada({ ...conversa, tipo_contato: 'cliente' });
     }
   };
 
@@ -154,7 +159,6 @@ export default function IAConversas() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Enviar via edge function
       const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
         body: {
           phone: conversaSelecionada.phone_number,
@@ -167,14 +171,12 @@ export default function IAConversas() {
         return;
       }
 
-      // Salvar mensagem no banco
       await supabase.from('whatsapp_conversation_messages').insert({
         conversation_id: conversaSelecionada.id,
         role: 'assistant',
         content: novaMensagem
       });
 
-      // Atualizar última mensagem
       await supabase
         .from('whatsapp_conversations')
         .update({ last_message_at: new Date().toISOString() })
@@ -201,6 +203,27 @@ export default function IAConversas() {
     return phone;
   };
 
+  // Filtrar conversas por tipo e modo
+  const conversasFiltradas = conversas.filter(conv => {
+    const tipoMatch = abaAtiva === 'todas' || 
+      (abaAtiva === 'leads' && (conv.tipo_contato === 'lead' || !conv.tipo_contato)) ||
+      (abaAtiva === 'clientes' && conv.tipo_contato === 'cliente');
+    
+    const modoMatch = filtroModo === 'todas' ||
+      (filtroModo === 'ia' && (conv.modo_atendimento === 'ia' || !conv.modo_atendimento)) ||
+      (filtroModo === 'humano' && conv.modo_atendimento === 'humano');
+    
+    return tipoMatch && modoMatch;
+  });
+
+  const countByType = (tipo: string) => conversas.filter(c => 
+    tipo === 'leads' ? (c.tipo_contato === 'lead' || !c.tipo_contato) : c.tipo_contato === 'cliente'
+  ).length;
+
+  const countByMode = (modo: string) => conversasFiltradas.filter(c => 
+    modo === 'ia' ? (c.modo_atendimento === 'ia' || !c.modo_atendimento) : c.modo_atendimento === 'humano'
+  ).length;
+
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center gap-4 mb-6">
@@ -208,30 +231,48 @@ export default function IAConversas() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <h1 className="text-3xl font-bold">💬 IA Conversas</h1>
-        
-        <div className="flex gap-2 ml-auto">
-          <Button
-            variant={filtro === 'todas' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFiltro('todas')}
-          >
-            Todas
-          </Button>
-          <Button
-            variant={filtro === 'ia' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFiltro('ia')}
-          >
-            <Bot className="w-4 h-4 mr-1" /> IA Ativa
-          </Button>
-          <Button
-            variant={filtro === 'humano' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFiltro('humano')}
-          >
-            <User className="w-4 h-4 mr-1" /> Humano
-          </Button>
-        </div>
+      </div>
+
+      {/* ABAS: LEADS vs CLIENTES */}
+      <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="mb-4">
+        <TabsList>
+          <TabsTrigger value="leads" className="gap-2">
+            <Target className="w-4 h-4" />
+            Leads/Prospects ({countByType('leads')})
+          </TabsTrigger>
+          <TabsTrigger value="clientes" className="gap-2">
+            <Users className="w-4 h-4" />
+            Clientes Base ({countByType('clientes')})
+          </TabsTrigger>
+          <TabsTrigger value="todas" className="gap-2">
+            Todas ({conversas.length})
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* FILTROS DE MODO */}
+      <div className="flex gap-2 mb-4">
+        <Button
+          variant={filtroModo === 'todas' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setFiltroModo('todas')}
+        >
+          Todas ({conversasFiltradas.length})
+        </Button>
+        <Button
+          variant={filtroModo === 'ia' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setFiltroModo('ia')}
+        >
+          <Bot className="w-4 h-4 mr-1" /> IA Ativa ({countByMode('ia')})
+        </Button>
+        <Button
+          variant={filtroModo === 'humano' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setFiltroModo('humano')}
+        >
+          <User className="w-4 h-4 mr-1" /> Você Atendendo ({countByMode('humano')})
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -239,7 +280,10 @@ export default function IAConversas() {
         {/* LISTA DE CONVERSAS */}
         <Card className="lg:col-span-1">
           <CardHeader>
-            <CardTitle>Conversas Ativas ({conversas.length})</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              {abaAtiva === 'leads' ? <Target className="w-5 h-5" /> : abaAtiva === 'clientes' ? <Users className="w-5 h-5" /> : null}
+              {abaAtiva === 'leads' ? 'Leads' : abaAtiva === 'clientes' ? 'Clientes' : 'Todas'} ({conversasFiltradas.length})
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <ScrollArea className="h-[600px]">
@@ -247,39 +291,46 @@ export default function IAConversas() {
                 <p className="p-4 text-sm text-muted-foreground text-center">
                   Carregando...
                 </p>
-              ) : conversas.length === 0 ? (
-                <p className="p-4 text-sm text-muted-foreground text-center">
-                  Nenhuma conversa ainda
-                </p>
+              ) : conversasFiltradas.length === 0 ? (
+                <div className="p-4 text-center">
+                  <p className="text-sm text-muted-foreground mb-2">
+                    {abaAtiva === 'leads' 
+                      ? 'Nenhum lead ainda' 
+                      : abaAtiva === 'clientes'
+                      ? 'Nenhum cliente na base'
+                      : 'Nenhuma conversa'
+                    }
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {abaAtiva === 'leads' 
+                      ? 'Leads aparecem quando respondem campanhas' 
+                      : 'Marque leads como "Cliente" para aparecerem aqui'
+                    }
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-1">
-                  {conversas.map(conv => (
+                  {conversasFiltradas.map(conv => (
                     <div
                       key={conv.id}
                       className={`p-4 cursor-pointer hover:bg-accent border-b transition-colors ${
-                        conversaSelecionada?.id === conv.id ? 'bg-accent' : ''
+                        conversaSelecionada?.id === conv.id ? 'bg-accent border-l-4 border-l-primary' : ''
                       }`}
                       onClick={() => setConversaSelecionada(conv)}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start gap-3">
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-start gap-3 flex-1">
                           <Avatar className="w-10 h-10">
                             <AvatarFallback className="bg-primary text-primary-foreground">
-                              {(conv.contact_name || conv.phone_number || '?')[0].toUpperCase()}
+                              {conv.tipo_contato === 'cliente' ? '👤' : '🎯'}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="flex-1">
-                            <p className="font-medium text-sm">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">
                               {conv.contact_name || formatPhone(conv.phone_number)}
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {formatPhone(conv.phone_number)}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {conv.last_message_at ? 
-                                new Date(conv.last_message_at).toLocaleString('pt-BR') 
-                                : 'Sem mensagens'
-                              }
                             </p>
                           </div>
                         </div>
@@ -288,6 +339,18 @@ export default function IAConversas() {
                           {conv.modo_atendimento === 'humano' ? '👤' : '🤖'}
                         </Badge>
                       </div>
+                      
+                      <p className="text-xs text-muted-foreground">
+                        {conv.last_message_at 
+                          ? new Date(conv.last_message_at).toLocaleString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : 'Sem mensagens'
+                        }
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -299,64 +362,99 @@ export default function IAConversas() {
         {/* CHAT */}
         <Card className="lg:col-span-2">
           {!conversaSelecionada ? (
-            <CardContent className="h-[600px] flex items-center justify-center">
-              <p className="text-muted-foreground">
-                Selecione uma conversa para ver as mensagens
-              </p>
+            <CardContent className="h-[700px] flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-muted-foreground mb-2">
+                  Selecione uma conversa para ver as mensagens
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  👈 Clique em um contato na lista ao lado
+                </p>
+              </div>
             </CardContent>
           ) : (
             <>
               <CardHeader className="border-b">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>
-                      {conversaSelecionada.contact_name || formatPhone(conversaSelecionada.phone_number)}
-                    </CardTitle>
-                    <p className="text-xs text-muted-foreground">
-                      {formatPhone(conversaSelecionada.phone_number)}
-                    </p>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="w-12 h-12">
+                      <AvatarFallback className="bg-primary text-primary-foreground text-xl">
+                        {conversaSelecionada.tipo_contato === 'cliente' ? '👤' : '🎯'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <CardTitle className="text-lg">
+                        {conversaSelecionada.contact_name || formatPhone(conversaSelecionada.phone_number)}
+                      </CardTitle>
+                      <p className="text-xs text-muted-foreground">
+                        {formatPhone(conversaSelecionada.phone_number)}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex gap-2">
-                    {conversaSelecionada.modo_atendimento === 'ia' ? (
+                    {(conversaSelecionada.modo_atendimento === 'ia' || !conversaSelecionada.modo_atendimento) ? (
                       <Button
                         onClick={() => assumirConversa(conversaSelecionada)}
                         className="bg-green-500 hover:bg-green-600"
+                        size="sm"
                       >
-                        <User className="w-4 h-4 mr-2" /> Assumir Conversa
+                        <User className="w-4 h-4 mr-2" /> Assumir Esta Conversa
                       </Button>
                     ) : (
                       <Button
                         onClick={() => devolverParaIA(conversaSelecionada)}
                         variant="outline"
+                        size="sm"
                       >
                         <Bot className="w-4 h-4 mr-2" /> Devolver para IA
+                      </Button>
+                    )}
+
+                    {(conversaSelecionada.tipo_contato === 'lead' || !conversaSelecionada.tipo_contato) && (
+                      <Button
+                        onClick={() => marcarComoCliente(conversaSelecionada)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <UserCheck className="w-4 h-4 mr-2" /> Marcar como Cliente
                       </Button>
                     )}
                   </div>
                 </div>
 
-                <Badge 
-                  variant={conversaSelecionada.modo_atendimento === 'humano' ? 'default' : 'secondary'}
-                  className="mt-2 w-fit"
-                >
-                  {conversaSelecionada.modo_atendimento === 'humano' 
-                    ? '👤 Você está atendendo' 
-                    : '🤖 IA está atendendo'
-                  }
-                </Badge>
+                <div className="flex gap-2">
+                  <Badge 
+                    variant={conversaSelecionada.modo_atendimento === 'humano' ? 'default' : 'secondary'}
+                  >
+                    {conversaSelecionada.modo_atendimento === 'humano' 
+                      ? '👤 Você está atendendo' 
+                      : '🤖 IA está atendendo'
+                    }
+                  </Badge>
+
+                  <Badge variant="outline">
+                    {(conversaSelecionada.tipo_contato === 'lead' || !conversaSelecionada.tipo_contato) ? '🎯 Lead' : '👥 Cliente'}
+                  </Badge>
+
+                  {conversaSelecionada.origem && (
+                    <Badge variant="outline">
+                      Origem: {conversaSelecionada.origem}
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
 
               <CardContent className="p-0">
                 {/* MENSAGENS */}
-                <ScrollArea className="h-[400px] p-4">
-                  <div className="space-y-4">
-                    {mensagens.length === 0 ? (
-                      <p className="text-center text-muted-foreground text-sm">
-                        Nenhuma mensagem ainda
-                      </p>
-                    ) : (
-                      mensagens.map(msg => (
+                <ScrollArea className="h-[450px] p-4">
+                  {mensagens.length === 0 ? (
+                    <p className="text-center text-sm text-muted-foreground py-8">
+                      Nenhuma mensagem ainda
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {mensagens.map(msg => (
                         <div
                           key={msg.id}
                           className={`flex ${
@@ -370,21 +468,24 @@ export default function IAConversas() {
                                 : 'bg-muted'
                             }`}
                           >
-                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                            <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
                             <p className={`text-xs mt-1 ${
                               msg.role === 'assistant' ? 'opacity-70' : 'text-muted-foreground'
                             }`}>
-                              {new Date(msg.created_at).toLocaleTimeString('pt-BR')}
+                              {new Date(msg.created_at).toLocaleTimeString('pt-BR', {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
                             </p>
                           </div>
                         </div>
-                      ))
-                    )}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </ScrollArea>
 
                 {/* INPUT DE MENSAGEM */}
-                {conversaSelecionada.modo_atendimento === 'humano' && (
+                {conversaSelecionada.modo_atendimento === 'humano' ? (
                   <div className="border-t p-4">
                     <div className="flex gap-2">
                       <Input
@@ -397,6 +498,7 @@ export default function IAConversas() {
                             enviarMensagem();
                           }
                         }}
+                        disabled={enviando}
                       />
                       <Button
                         onClick={enviarMensagem}
@@ -406,12 +508,10 @@ export default function IAConversas() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-2">
-                      Enter para enviar • Você está atendendo manualmente
+                      Enter para enviar • Você está respondendo manualmente
                     </p>
                   </div>
-                )}
-
-                {conversaSelecionada.modo_atendimento === 'ia' && (
+                ) : (
                   <div className="border-t p-4 bg-muted/50">
                     <p className="text-sm text-center">
                       🤖 IA está respondendo automaticamente.{' '}
