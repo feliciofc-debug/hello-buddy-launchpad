@@ -15,6 +15,7 @@ import { DebugPayloads } from '@/components/DebugPayloads';
 import { TestarEnvioWuzapi } from '@/components/TestarEnvioWuzapi';
 import { TestarWuzapiDireto } from '@/components/TestarWuzapiDireto';
 import { LogsEnvioWuzapi } from '@/components/LogsEnvioWuzapi';
+import { DiagnosticoWuzapi } from '@/components/DiagnosticoWuzapi';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -1128,6 +1129,9 @@ const Dashboard = () => {
                     </h3>
                     <WhatsAppDebugPanel />
                   </div>
+
+                  {/* DIAGNÓSTICO WUZAPI - Verificação completa */}
+                  <DiagnosticoWuzapi />
 
                   {/* DEBUG PAYLOADS - Ver payloads brutos do Wuzapi */}
                   <DebugPayloads />
