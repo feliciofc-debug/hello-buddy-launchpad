@@ -305,11 +305,12 @@ RESPONDA (curto e humano):`;
     let formatoUsado = '';
     let respostaWuzapi = '';
 
-    // FORMATO 1: /chat/send/text (formato atual)
+    // FORMATO 1: /chat/send/text (SEM o campo Id que estava causando problema!)
     console.log('3️⃣ FORMATO 1: /chat/send/text');
     try {
       const url1 = `${baseUrl}/chat/send/text`;
-      const body1 = { Phone: phoneNumber, Body: respostaIA, Id: WUZAPI_INSTANCE_ID };
+      // CORRIGIDO: Removido o campo Id que estava interferindo no envio
+      const body1 = { Phone: phoneNumber, Body: respostaIA };
       console.log('   URL:', url1);
       console.log('   Body:', JSON.stringify(body1));
       
