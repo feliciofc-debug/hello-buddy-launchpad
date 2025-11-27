@@ -2325,6 +2325,33 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_debug_logs: {
+        Row: {
+          extracted_message: string | null
+          extracted_phone: string | null
+          id: string
+          payload: Json | null
+          processing_result: string | null
+          timestamp: string | null
+        }
+        Insert: {
+          extracted_message?: string | null
+          extracted_phone?: string | null
+          id?: string
+          payload?: Json | null
+          processing_result?: string | null
+          timestamp?: string | null
+        }
+        Update: {
+          extracted_message?: string | null
+          extracted_phone?: string | null
+          id?: string
+          payload?: Json | null
+          processing_result?: string | null
+          timestamp?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_bulk_sends: {
         Row: {
           campaign_name: string | null
