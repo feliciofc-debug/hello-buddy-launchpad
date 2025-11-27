@@ -12,6 +12,7 @@ import ShopeeSearchComponent from '@/components/ShopeeSearchComponent';
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import { WhatsAppDebugPanel } from '@/components/WhatsAppDebugPanel';
 import { DebugPayloads } from '@/components/DebugPayloads';
+import { TestarEnvioWuzapi } from '@/components/TestarEnvioWuzapi';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -1128,6 +1129,9 @@ const Dashboard = () => {
 
                   {/* DEBUG PAYLOADS - Ver payloads brutos do Wuzapi */}
                   <DebugPayloads />
+
+                  {/* TESTAR ENVIO WUZAPI */}
+                  <TestarEnvioWuzapi />
 
                   {/* Quick Actions */}
                   <div className="bg-gradient-to-r from-blue-100 to-green-100 dark:from-blue-900/30 dark:to-green-900/30 rounded-xl p-6">

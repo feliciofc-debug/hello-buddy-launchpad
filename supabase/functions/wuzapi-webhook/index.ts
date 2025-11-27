@@ -267,71 +267,61 @@ serve(async (req) => {
       ?.map(msg => `${msg.direction === 'received' ? 'Cliente' : ctx.vendedor_nome}: ${msg.message}`)
       .join('\n') || '';
 
-    // PROMPT PARA IA (DIFERENTE POR ORIGEM)
+    // PROMPT PARA IA - HUMANIZADO E DETALHADO
     const promptIA = origem === 'campanha'
-      ? `Você é ${ctx.vendedor_nome || 'vendedor'}.
+      ? `Você é ${ctx.vendedor_nome || 'um vendedor'} especializado em ${ctx.produto_nome}.
 
-CONTEXTO: Você enviou oferta do produto "${ctx.produto_nome}" para este cliente.
-
-PRODUTO:
-- Nome: ${ctx.produto_nome}
-- Descrição: ${ctx.produto_descricao}
-- Preço: R$ ${ctx.produto_preco}
-- Estoque: ${ctx.produto_estoque} unidades
-${ctx.produto_especificacoes ? `- Especificações: ${ctx.produto_especificacoes}` : ''}
-- Link para compra: ${ctx.link_marketplace}
+INFORMAÇÕES COMPLETAS DO PRODUTO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📦 Nome: ${ctx.produto_nome}
+💰 Preço: R$ ${ctx.produto_preco}
+📊 Estoque: ${ctx.produto_estoque || 'disponível'} unidades disponíveis
+${ctx.produto_descricao ? `📝 Descrição: ${ctx.produto_descricao}` : ''}
+${ctx.produto_especificacoes ? `⚙️ Especificações:\n${ctx.produto_especificacoes}` : ''}
+🔗 Link de compra: ${ctx.link_marketplace || 'disponível'}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 HISTÓRICO DA CONVERSA:
 ${conversationHistory}
 
-SUA MISSÃO:
-1. Responda de forma HUMANIZADA e NATURAL
-2. Ajude o cliente com dúvidas sobre o produto
-3. Negocie de forma amigável
-4. Se cliente demonstrar INTERESSE FORTE, envie o link: ${ctx.link_marketplace}
-5. Informe disponibilidade de estoque quando perguntado
-6. Seja profissional mas amigável
+CLIENTE PERGUNTOU/DISSE:
+"${messageText}"
 
-REGRAS:
-- NÃO invente informações que não estão no contexto
-- Se não souber algo, seja honesto
-- Use 1-2 emojis por mensagem
-- Mantenha tom profissional mas amigável
-- Seja breve (máximo 3 linhas)
+SUAS INSTRUÇÕES DE RESPOSTA:
+1. Responda como um VENDEDOR HUMANO experiente, não como um robô
+2. Use linguagem NATURAL e INFORMAL (pode usar "vc", "tá", "pra", etc)
+3. Seja ESPECÍFICO sobre o produto - mencione detalhes, qualidades, benefícios
+4. Se perguntarem sobre:
+   • ESTOQUE → Confirme que tem ${ctx.produto_estoque || 'unidades'} disponíveis
+   • QUALIDADE → Fale dos diferenciais e especificações técnicas
+   • PREÇO → Mencione o valor R$ ${ctx.produto_preco} e destaque o custo-benefício
+   • ENTREGA → Diga que combina após a compra
+   • PAGAMENTO → Envie o link e diga que aceita várias formas
+5. Se cliente demonstrar INTERESSE FORTE (palavras: quero/comprar/pagar/reservar/fechar):
+   → Envie o link diretamente: ${ctx.link_marketplace || 'Link de compra'}
+   → Diga "Segue o link para finalizar! 😊"
+6. Use 1-2 emojis relevantes (mas não exagere)
+7. Mantenha tom ENTUSIASMADO mas não forçado
+8. Seja BREVE (máximo 3-4 linhas)
+9. Faça UMA pergunta no final para continuar conversa (ex: "Quer saber mais alguma coisa?")
+
+IMPORTANTE: Seja VOCÊ MESMO, converse naturalmente como se estivesse no balcão da loja!
+
+RESPONDA AGORA (APENAS A MENSAGEM PARA O CLIENTE):`
+      : `Você é ${ctx.vendedor_nome || 'atendente'} da empresa.
+
+HISTÓRICO DA CONVERSA:
+${conversationHistory}
 
 CLIENTE DISSE: "${messageText}"
 
-RESPONDA (apenas a resposta, sem explicações):`
-      : `Você é ${ctx.vendedor_nome || 'representante comercial'}.
+Responda de forma:
+- Natural e profissional
+- Breve (2-3 linhas)
+- Prestativa
+- Faça uma pergunta para entender melhor a necessidade
 
-CONTEXTO: Este é um lead de prospecção B2B/B2C.
-
-LEAD:
-- Empresa: ${ctx.empresa || 'N/A'}
-- Cargo: ${ctx.cargo || 'N/A'}
-- LinkedIn: ${ctx.linkedin_url || 'N/A'}
-- Origem: ${ctx.origem_lead || 'Prospecção'}
-
-HISTÓRICO DA CONVERSA:
-${conversationHistory}
-
-SUA MISSÃO:
-1. QUALIFICAR o lead fazendo perguntas estratégicas
-2. Identificar dores e necessidades
-3. Apresentar soluções de forma consultiva
-4. Agendar reunião se houver fit
-5. Manter tom profissional e respeitoso
-
-REGRAS:
-- NÃO seja invasivo ou agressivo
-- Faça perguntas abertas
-- Escute ativamente as respostas
-- Seja breve (máximo 3 linhas)
-- Use 1-2 emojis profissionais
-
-LEAD DISSE: "${messageText}"
-
-RESPONDA (apenas a resposta, sem explicações):`;
+RESPONDA AGORA:`;
 
     // CHAMAR LOVABLE AI (Gemini)
     console.log('🤖 Chamando IA...');
@@ -378,9 +368,14 @@ RESPONDA (apenas a resposta, sem explicações):`;
     console.log('📤 Enviando para Wuzapi...');
     console.log('URL:', WUZAPI_URL);
     console.log('Token:', WUZAPI_TOKEN ? 'Configurado' : 'FALTANDO');
+    console.log('Instance ID:', WUZAPI_INSTANCE_ID);
+    console.log('Telefone destino:', phoneNumber);
+    console.log('Mensagem a enviar:', aiMessage);
     
     const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
-    const wuzapiResponse = await fetch(`${baseUrl}/chat/send/text`, {
+    
+    // Tentar formato principal
+    let wuzapiResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -393,13 +388,37 @@ RESPONDA (apenas a resposta, sem explicações):`;
       }),
     });
 
+    let responseText = await wuzapiResponse.text();
+    console.log('📤 Status formato 1:', wuzapiResponse.status);
+    console.log('📤 Response formato 1:', responseText);
+
+    // Se falhou, tentar formato alternativo
     if (!wuzapiResponse.ok) {
-      const errorData = await wuzapiResponse.json();
-      console.error('[WEBHOOK] Erro ao enviar resposta:', errorData);
-      throw new Error('Erro ao enviar resposta via WhatsApp');
+      console.log('⚠️ Tentando formato alternativo...');
+      
+      wuzapiResponse = await fetch(`${baseUrl}/send/text`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Token': WUZAPI_TOKEN,
+        },
+        body: JSON.stringify({
+          phone: phoneNumber,
+          message: aiMessage
+        }),
+      });
+
+      responseText = await wuzapiResponse.text();
+      console.log('📤 Status formato 2:', wuzapiResponse.status);
+      console.log('📤 Response formato 2:', responseText);
     }
 
-    console.log('[WEBHOOK] ✅ Resposta enviada com sucesso!');
+    if (!wuzapiResponse.ok) {
+      console.error('[WEBHOOK] ❌ Erro ao enviar resposta - todos formatos falharam');
+      // Não falha o webhook, apenas loga o erro
+    } else {
+      console.log('[WEBHOOK] ✅ Resposta enviada com sucesso!');
+    }
 
     // SALVAR HISTÓRICO COM ORIGEM
     await supabaseClient.from('whatsapp_messages').insert([
