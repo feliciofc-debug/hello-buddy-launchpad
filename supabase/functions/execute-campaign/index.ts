@@ -88,21 +88,26 @@ serve(async (req) => {
         if (!sendError) {
           enviados++
           
-          // Salvar contexto para IA
+          // Salvar contexto para IA responder automaticamente
           await supabase.from('whatsapp_conversations').upsert({
             user_id: campanha.user_id,
-            phone: phone,
-            last_product_sent: campanha.produto_id,
-            last_message_context: {
+            phone_number: phone, // CORRIGIDO: era 'phone', agora é 'phone_number'
+            origem: 'campanha',
+            status: 'active',
+            metadata: { // CORRIGIDO: era 'last_message_context', agora é 'metadata'
               produto_nome: campanha.produtos?.nome,
               produto_preco: campanha.produtos?.preco,
               produto_descricao: campanha.produtos?.descricao,
+              produto_estoque: campanha.produtos?.estoque || 10,
+              link_marketplace: campanha.produtos?.link_marketplace,
               campanha_id: campanha.id
             },
             updated_at: new Date().toISOString()
           }, {
-            onConflict: 'user_id,phone'
+            onConflict: 'user_id,phone_number'
           })
+          
+          console.log(`✅ Contexto salvo para ${phone}`)
         } else {
           console.error(`Erro ao enviar para ${phone}:`, sendError)
           erros++
