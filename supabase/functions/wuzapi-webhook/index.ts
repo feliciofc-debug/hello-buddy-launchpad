@@ -71,13 +71,25 @@ serve(async (req) => {
     console.log('📥 Payload (tipo Message):', JSON.stringify(webhookData, null, 2));
 
     // EXTRAÇÃO MULTI-FORMATO
+    // CORREÇÃO: Quando Chat termina com @lid, usar SenderAlt para pegar telefone real
     if (webhookData.event?.Message?.conversation) {
       messageText = webhookData.event.Message.conversation;
-      phoneNumber = webhookData.event?.Info?.Chat || webhookData.event?.Info?.RemoteJid || '';
+      const chat = webhookData.event?.Info?.Chat || '';
+      // Se é um ID de lista (@lid), pegar o telefone real de SenderAlt
+      if (chat.endsWith('@lid')) {
+        phoneNumber = webhookData.event?.Info?.SenderAlt || webhookData.event?.Info?.Sender || chat;
+      } else {
+        phoneNumber = chat || webhookData.event?.Info?.RemoteJid || '';
+      }
     }
     if (!messageText && webhookData.event?.Message?.extendedTextMessage?.text) {
       messageText = webhookData.event.Message.extendedTextMessage.text;
-      phoneNumber = webhookData.event?.Info?.Chat || webhookData.event?.Info?.RemoteJid || '';
+      const chat = webhookData.event?.Info?.Chat || '';
+      if (chat.endsWith('@lid')) {
+        phoneNumber = webhookData.event?.Info?.SenderAlt || webhookData.event?.Info?.Sender || chat;
+      } else {
+        phoneNumber = chat || webhookData.event?.Info?.RemoteJid || '';
+      }
     }
     if (!messageText && webhookData.data?.body) {
       messageText = webhookData.data.body;
