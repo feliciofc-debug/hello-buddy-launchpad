@@ -359,9 +359,9 @@ const Dashboard = () => {
             <span className="font-semibold">📱 WhatsApp</span>
           </a>
           <a
-            href="/whatsapp-conversations"
+            href="/ia-conversas"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/whatsapp-conversations' 
+              window.location.pathname === '/ia-conversas' 
                 ? 'bg-blue-500 text-white' 
                 : 'hover:bg-gray-200 dark:hover:bg-gray-700'
             }`}

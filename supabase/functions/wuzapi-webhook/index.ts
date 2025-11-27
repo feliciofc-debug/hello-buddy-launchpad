@@ -186,6 +186,39 @@ serve(async (req) => {
       return new Response(JSON.stringify({ status: 'no_context' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // ═══════════════════════════════════════
+    // 🔒 VERIFICAR MODO DE ATENDIMENTO
+    // ═══════════════════════════════════════
+    const modoAtendimento = contexto.modo_atendimento || 'ia';
+    console.log('📋 Modo de atendimento:', modoAtendimento);
+    
+    if (modoAtendimento === 'humano') {
+      console.log('🚫 Conversa em modo HUMANO - IA não vai responder');
+      
+      // Salvar mensagem recebida mas NÃO responder
+      await supabaseClient.from('whatsapp_conversation_messages').insert({
+        conversation_id: contexto.id,
+        role: 'user',
+        content: messageText
+      });
+      
+      // Atualizar última mensagem da conversa
+      await supabaseClient
+        .from('whatsapp_conversations')
+        .update({ last_message_at: new Date().toISOString() })
+        .eq('id', contexto.id);
+      
+      return new Response(JSON.stringify({ 
+        success: true, 
+        modo: 'humano',
+        message: 'Mensagem salva, humano atendendo' 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+    
+    console.log('🤖 Modo IA - IA vai responder');
+
     const ctx = contexto.metadata || contexto.last_message_context || {};
     const origem = contexto.origem || 'campanha';
 
