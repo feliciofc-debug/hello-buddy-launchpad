@@ -161,7 +161,7 @@ export default function IAConversas() {
 
       const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
         body: {
-          phone: conversaSelecionada.phone_number,
+          phoneNumber: conversaSelecionada.phone_number,
           message: novaMensagem
         }
       });
