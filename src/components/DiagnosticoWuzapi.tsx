@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 
 interface WuzapiConfig {
@@ -21,6 +22,7 @@ interface DiagnosticoResult {
 
 export function DiagnosticoWuzapi() {
   const [config, setConfig] = useState<WuzapiConfig | null>(null);
+  const [loading, setLoading] = useState(true);
   const [testando, setTestando] = useState(false);
   const [diagnostico, setDiagnostico] = useState<DiagnosticoResult | null>(null);
   const [editando, setEditando] = useState(false);
@@ -30,22 +32,36 @@ export function DiagnosticoWuzapi() {
   }, []);
 
   const carregarConfig = async () => {
+    setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    console.log('👤 User ID:', user.id);
 
     const { data, error } = await (supabase as any)
       .from('wuzapi_config')
       .select('*')
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
+
+    console.log('📊 Resultado query wuzapi_config:', { data, error });
 
     if (data && !error) {
+      console.log('✅ Config encontrada:', {
+        instance_url: data.instance_url,
+        token_length: data.token?.length,
+        phone_number: data.phone_number
+      });
       setConfig({
         instance_url: data.instance_url || '',
         token: data.token || '',
         phone_number: data.phone_number || ''
       });
     } else {
+      console.log('❌ Nenhuma config encontrada');
       setConfig({
         instance_url: '',
         token: '',
@@ -53,6 +69,7 @@ export function DiagnosticoWuzapi() {
       });
       setEditando(true);
     }
+    setLoading(false);
   };
 
   const salvarConfig = async () => {
@@ -151,27 +168,55 @@ export function DiagnosticoWuzapi() {
     setTestando(false);
   };
 
-  if (!config) {
+  if (loading) {
     return (
       <Card className="border-2 border-yellow-200">
         <CardContent className="p-6 text-center">
-          <p>Carregando configuração...</p>
+          <p>⏳ Carregando configuração...</p>
         </CardContent>
       </Card>
     );
   }
 
+  const temConfigValida = config && config.instance_url && config.token;
+
   return (
-    <Card className="border-2 border-blue-200">
-      <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20">
+    <Card className={`border-2 ${temConfigValida ? 'border-green-200' : 'border-red-200'}`}>
+      <CardHeader className={`${temConfigValida ? 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20' : 'bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/20'}`}>
         <CardTitle className="flex items-center justify-between">
-          <span>🔧 Diagnóstico Wuzapi</span>
-          <Button variant="outline" size="sm" onClick={() => setEditando(!editando)}>
-            {editando ? '❌ Cancelar' : '✏️ Editar'}
-          </Button>
+          <span>🔧 Configuração Wuzapi</span>
+          <div className="flex items-center gap-2">
+            {temConfigValida ? (
+              <Badge className="bg-green-500">✓ Configurado</Badge>
+            ) : (
+              <Badge variant="destructive">❌ Não Configurado</Badge>
+            )}
+            <Button variant="outline" size="sm" onClick={() => setEditando(!editando)}>
+              {editando ? '❌ Cancelar' : '✏️ Editar'}
+            </Button>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
+
+        {/* STATUS ATUAL */}
+        {temConfigValida ? (
+          <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+            <p className="font-bold text-sm text-green-800 dark:text-green-200 mb-2">✅ Wuzapi está configurado!</p>
+            <div className="text-xs text-green-700 dark:text-green-300 space-y-1">
+              <p><strong>URL:</strong> {config?.instance_url}</p>
+              <p><strong>Token:</strong> {config?.token ? `${config.token.substring(0, 20)}...` : '❌ Vazio'}</p>
+              <p><strong>Seu número:</strong> {config?.phone_number}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+            <p className="font-bold text-sm text-red-800 dark:text-red-200 mb-2">❌ Wuzapi NÃO está configurado!</p>
+            <p className="text-xs text-red-700 dark:text-red-300">
+              Clique em "Editar" e preencha os dados abaixo.
+            </p>
+          </div>
+        )}
 
         {/* CONFIGURAÇÃO */}
         <div className="space-y-3">
