@@ -2537,6 +2537,7 @@ export type Database = {
           origem: string | null
           phone_number: string
           status: string | null
+          tipo_contato: string | null
           transferred_at: string | null
           transferred_to_human: boolean | null
           updated_at: string | null
@@ -2556,6 +2557,7 @@ export type Database = {
           origem?: string | null
           phone_number: string
           status?: string | null
+          tipo_contato?: string | null
           transferred_at?: string | null
           transferred_to_human?: boolean | null
           updated_at?: string | null
@@ -2575,6 +2577,7 @@ export type Database = {
           origem?: string | null
           phone_number?: string
           status?: string | null
+          tipo_contato?: string | null
           transferred_at?: string | null
           transferred_to_human?: boolean | null
           updated_at?: string | null

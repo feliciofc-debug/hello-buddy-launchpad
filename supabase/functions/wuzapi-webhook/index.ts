@@ -135,7 +135,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ status: 'incomplete' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // BUSCAR CONTEXTO
+    // BUSCAR OU CRIAR CONVERSA
     let { data: contexto } = await supabaseClient
       .from('whatsapp_conversations')
       .select('*')
@@ -144,7 +144,13 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    let userId = contexto?.user_id;
+    let produtoInfo: any = null;
+
+    // Se não existe conversa, buscar por mensagens anteriores ou criar nova
     if (!contexto) {
+      console.log('📱 Conversa não existe, buscando contexto...');
+      
       const { data: ultimaMensagem } = await supabaseClient
         .from('whatsapp_messages')
         .select('*')
@@ -155,6 +161,8 @@ serve(async (req) => {
         .maybeSingle();
 
       if (ultimaMensagem) {
+        userId = ultimaMensagem.user_id;
+        
         const { data: campanhaRecente } = await supabaseClient
           .from('campanhas_recorrentes')
           .select('*, produtos(*)')
@@ -164,25 +172,48 @@ serve(async (req) => {
           .maybeSingle();
 
         if (campanhaRecente?.produtos) {
-          const produto = campanhaRecente.produtos;
-          contexto = {
-            user_id: ultimaMensagem.user_id,
+          produtoInfo = campanhaRecente.produtos;
+        }
+      }
+
+      // Criar nova conversa se temos um user_id
+      if (userId) {
+        console.log('➕ Criando nova conversa para user_id:', userId);
+        
+        const pushName = webhookData.event?.Info?.PushName || null;
+        
+        const { data: novaConversa, error: erroCriar } = await supabaseClient
+          .from('whatsapp_conversations')
+          .insert({
+            user_id: userId,
             phone_number: phoneNumber,
+            contact_name: pushName,
+            tipo_contato: 'lead',
             origem: 'campanha',
-            metadata: {
-              produto_nome: produto.nome,
-              produto_descricao: produto.descricao,
-              produto_preco: produto.preco,
-              produto_estoque: produto.estoque,
-              link_marketplace: produto.link_marketplace,
-            }
-          };
+            modo_atendimento: 'ia',
+            last_message_at: new Date().toISOString(),
+            metadata: produtoInfo ? {
+              produto_nome: produtoInfo.nome,
+              produto_descricao: produtoInfo.descricao,
+              produto_preco: produtoInfo.preco,
+              produto_estoque: produtoInfo.estoque,
+              link_marketplace: produtoInfo.link_marketplace,
+            } : {}
+          })
+          .select()
+          .single();
+
+        if (erroCriar) {
+          console.error('❌ Erro ao criar conversa:', erroCriar);
+        } else {
+          console.log('✅ Nova conversa criada:', novaConversa?.id);
+          contexto = novaConversa;
         }
       }
     }
 
     if (!contexto) {
-      console.log('❌ Sem contexto');
+      console.log('❌ Sem contexto e sem como criar');
       return new Response(JSON.stringify({ status: 'no_context' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
@@ -506,11 +537,23 @@ RESPONDA (curto e humano):`;
       processing_result: envioSucesso ? `ENVIADO_${formatoUsado.toUpperCase().replace(/\//g, '_')}` : 'ERRO_ENVIO_TODOS_FORMATOS'
     });
 
-    // SALVAR HISTÓRICO
+    // SALVAR HISTÓRICO em whatsapp_messages
     await supabaseClient.from('whatsapp_messages').insert([
       { user_id: contexto.user_id, phone: phoneNumber, direction: 'received', message: messageText, origem },
       { user_id: contexto.user_id, phone: phoneNumber, direction: 'sent', message: respostaIA, origem }
     ]);
+
+    // SALVAR TAMBÉM em whatsapp_conversation_messages (para exibir na tela IA Conversas)
+    await supabaseClient.from('whatsapp_conversation_messages').insert([
+      { conversation_id: contexto.id, role: 'user', content: messageText },
+      { conversation_id: contexto.id, role: 'assistant', content: respostaIA }
+    ]);
+
+    // Atualizar última mensagem da conversa
+    await supabaseClient
+      .from('whatsapp_conversations')
+      .update({ last_message_at: new Date().toISOString() })
+      .eq('id', contexto.id);
 
     // DETECTAR LEAD QUENTE
     const palavrasInteresse = ['quero', 'comprar', 'pagar', 'pix', 'link', 'fechado', 'fechar', 'sim', 'ok', 'beleza'];
