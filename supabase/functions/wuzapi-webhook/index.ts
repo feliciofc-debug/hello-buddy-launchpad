@@ -35,36 +35,47 @@ serve(async (req) => {
     console.log('[WEBHOOK] Payload completo:', JSON.stringify(webhookData, null, 2));
     console.log('='.repeat(50));
 
-    // Extrair dados básicos do evento
-    const message = webhookData.message || {};
+    // Extrair dados - FORMATO WUZAPI CORRETO
     const event = webhookData.event || {};
+    const eventInfo = event.Info || {};
+    const eventMessage = event.Message || {};
     
     // Ignorar mensagens próprias
-    console.log('🤖 FromMe?:', event.IsFromMe);
-    if (event.IsFromMe === true) {
+    const isFromMe = eventInfo.IsFromMe || event.IsFromMe;
+    console.log('🤖 FromMe?:', isFromMe);
+    if (isFromMe === true) {
       console.log('[WEBHOOK] ❌ Ignorando: mensagem própria');
       return new Response(JSON.stringify({ status: 'ignored', reason: 'own message' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Extrair mensagem de texto
-    let messageText = message.conversation || 
-                      message.extendedTextMessage?.text ||
-                      webhookData.text || 
-                      event.Body || 
+    // Extrair mensagem de texto - MÚLTIPLOS FORMATOS WUZAPI
+    let messageText = eventMessage.conversation ||                    // Formato principal
+                      eventMessage.extendedTextMessage?.text ||       // Mensagem com link/citação
+                      event.Message?.conversation ||                  // Fallback
+                      webhookData.text ||                             // Formato alternativo
                       '';
     
     console.log('💬 Mensagem extraída:', messageText);
     
-    // Extrair telefone
-    const phoneNumber = (event.Sender?.replace('@s.whatsapp.net', '') || 
-                        event.Chat?.replace('@s.whatsapp.net', '') ||
-                        event.From?.replace('@s.whatsapp.net', ''))?.replace(/\D/g, '');
+    // Extrair telefone - FORMATO WUZAPI CORRETO
+    const rawPhone = eventInfo.Chat ||                               // Formato principal: Info.Chat
+                     eventInfo.Sender ||                              // Alternativo: Info.Sender
+                     event.Chat ||                                    // Fallback: event.Chat
+                     event.Sender ||                                  // Fallback: event.Sender
+                     '';
+    
+    const phoneNumber = rawPhone
+      .replace('@s.whatsapp.net', '')
+      .replace('@c.us', '')
+      .replace('@lid', '')
+      .replace(/\D/g, '');
     
     console.log('📱 Telefone extraído:', phoneNumber);
+    console.log('📱 Raw phone:', rawPhone);
     
-    const messageId = webhookData.messageID || webhookData.userID || event.MessageID;
+    const messageId = webhookData.messageID || webhookData.userID || eventInfo.ID || event.MessageID;
     
     if (!phoneNumber || !messageText) {
       console.log('❌ PAROU AQUI - Motivo:');
