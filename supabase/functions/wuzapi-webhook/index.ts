@@ -241,6 +241,88 @@ serve(async (req) => {
       console.log('[WEBHOOK] 🏢 Lead no contexto:', ctx.empresa || 'Prospecção');
     }
 
+    // BUSCAR CONFIGURAÇÃO DE SEGMENTO DA EMPRESA
+    const { data: empresaConfig } = await supabaseClient
+      .from('empresa_config')
+      .select('segmento, nome_empresa')
+      .eq('user_id', contexto.user_id)
+      .maybeSingle();
+
+    const segmentoId = empresaConfig?.segmento || 'outros';
+    const nomeEmpresa = empresaConfig?.nome_empresa || ctx.vendedor_nome || 'nossa empresa';
+    console.log('[WEBHOOK] 🎯 Segmento:', segmentoId);
+
+    // Configurações de segmento para IA
+    const SEGMENTOS_CONFIG: Record<string, { tom: string; estilo: string; vocabulario: string[] }> = {
+      'alimentos-bebidas': {
+        tom: 'informal e entusiasta',
+        estilo: 'Vendedor de mercado: rápido, animado, foco em frescor e promoção',
+        vocabulario: ['fresco', 'saboroso', 'qualidade', 'entrega rápida', 'promoção']
+      },
+      'eletronicos-informatica': {
+        tom: 'técnico mas acessível',
+        estilo: 'Especialista técnico: conhecedor, detalhista, foca em specs e custo-benefício',
+        vocabulario: ['processador', 'memória', 'armazenamento', 'garantia', 'especificações']
+      },
+      'produtos-hospitalares': {
+        tom: 'profissional e formal',
+        estilo: 'Consultor técnico: preciso, formal, foca em certificações e conformidade',
+        vocabulario: ['certificado', 'Anvisa', 'normas técnicas', 'garantia']
+      },
+      'seguranca-automacao': {
+        tom: 'técnico-consultivo',
+        estilo: 'Consultor de segurança: técnico mas acessível, foca em proteção',
+        vocabulario: ['resolução', 'compatibilidade', 'instalação', 'suporte técnico']
+      },
+      'casa-construcao': {
+        tom: 'prático e direto',
+        estilo: 'Vendedor de construção: prático, foca em qualidade e durabilidade',
+        vocabulario: ['resistente', 'durável', 'rendimento', 'acabamento']
+      },
+      'moda-vestuario': {
+        tom: 'moderno e atencioso',
+        estilo: 'Consultor de moda: estiloso, foca em caimento e ocasião',
+        vocabulario: ['tendência', 'estilo', 'caimento', 'tecido', 'cores']
+      },
+      'automotivo': {
+        tom: 'técnico-prático',
+        estilo: 'Especialista automotivo: conhecedor, foca em compatibilidade',
+        vocabulario: ['compatível', 'original', 'durabilidade', 'instalação']
+      },
+      'pet-shop': {
+        tom: 'carinhoso e atencioso',
+        estilo: 'Especialista em pets: amoroso, foca no bem-estar do animal',
+        vocabulario: ['pet', 'saúde', 'bem-estar', 'nutrição', 'seu amiguinho']
+      },
+      'beleza-cosmeticos': {
+        tom: 'atencioso e conhecedor',
+        estilo: 'Consultor de beleza: foca em benefícios e resultados',
+        vocabulario: ['pele', 'resultado', 'tratamento', 'ingredientes']
+      },
+      'esportes-fitness': {
+        tom: 'motivador e energético',
+        estilo: 'Coach de vendas: motivador, foca em performance e resultados',
+        vocabulario: ['performance', 'resistência', 'treino', 'resultado']
+      },
+      'imoveis': {
+        tom: 'formal e detalhista',
+        estilo: 'Corretor: foca em localização, documentação e oportunidade',
+        vocabulario: ['localização', 'metragem', 'documentação', 'oportunidade']
+      },
+      'servicos-profissionais': {
+        tom: 'corporativo e consultivo',
+        estilo: 'Consultor B2B: profissional, foca em ROI e valor agregado',
+        vocabulario: ['solução', 'experiência', 'resultados', 'expertise']
+      },
+      'outros': {
+        tom: 'profissional e adaptável',
+        estilo: 'Vendedor profissional: adaptável e prestativo',
+        vocabulario: ['qualidade', 'disponível', 'garantia', 'entrega']
+      }
+    };
+
+    const segmentoConfig = SEGMENTOS_CONFIG[segmentoId] || SEGMENTOS_CONFIG['outros'];
+
     // BUSCAR CREDENCIAIS WUZAPI
     const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
     const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
@@ -267,59 +349,66 @@ serve(async (req) => {
       ?.map(msg => `${msg.direction === 'received' ? 'Cliente' : ctx.vendedor_nome}: ${msg.message}`)
       .join('\n') || '';
 
-    // PROMPT PARA IA - HUMANIZADO E DETALHADO
+    // PROMPT PARA IA - ADAPTADO AO SEGMENTO DA EMPRESA
     const promptIA = origem === 'campanha'
-      ? `Você é ${ctx.vendedor_nome || 'um vendedor'} especializado em ${ctx.produto_nome}.
+      ? `Você é vendedor da ${nomeEmpresa}, especializado em ${ctx.produto_nome}.
 
-INFORMAÇÕES COMPLETAS DO PRODUTO:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦 Nome: ${ctx.produto_nome}
-💰 Preço: R$ ${ctx.produto_preco}
-📊 Estoque: ${ctx.produto_estoque || 'disponível'} unidades disponíveis
-${ctx.produto_descricao ? `📝 Descrição: ${ctx.produto_descricao}` : ''}
-${ctx.produto_especificacoes ? `⚙️ Especificações:\n${ctx.produto_especificacoes}` : ''}
-🔗 Link de compra: ${ctx.link_marketplace || 'disponível'}
+🎯 SEU PERFIL DE ATENDIMENTO:
+${segmentoConfig.estilo}
+
+Tom de conversa: ${segmentoConfig.tom}
+Vocabulário típico: ${segmentoConfig.vocabulario.join(', ')}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📦 PRODUTO:
+Nome: ${ctx.produto_nome}
+Preço: R$ ${ctx.produto_preco}
+Estoque: ${ctx.produto_estoque || 'disponível'} unidades
+${ctx.produto_descricao ? `Descrição: ${ctx.produto_descricao}` : ''}
+${ctx.produto_especificacoes ? `Especificações:\n${ctx.produto_especificacoes}` : ''}
+Link de compra: ${ctx.link_marketplace || 'disponível'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 HISTÓRICO DA CONVERSA:
 ${conversationHistory}
 
-CLIENTE PERGUNTOU/DISSE:
+CLIENTE DISSE:
 "${messageText}"
 
-SUAS INSTRUÇÕES DE RESPOSTA:
-1. Responda como um VENDEDOR HUMANO experiente, não como um robô
-2. Use linguagem NATURAL e INFORMAL (pode usar "vc", "tá", "pra", etc)
-3. Seja ESPECÍFICO sobre o produto - mencione detalhes, qualidades, benefícios
+SUAS INSTRUÇÕES:
+1. Siga EXATAMENTE o perfil de atendimento do seu segmento
+2. Use o TOM de conversa indicado (${segmentoConfig.tom})
+3. Inclua naturalmente o VOCABULÁRIO típico quando fizer sentido
 4. Se perguntarem sobre:
    • ESTOQUE → Confirme que tem ${ctx.produto_estoque || 'unidades'} disponíveis
-   • QUALIDADE → Fale dos diferenciais e especificações técnicas
-   • PREÇO → Mencione o valor R$ ${ctx.produto_preco} e destaque o custo-benefício
+   • QUALIDADE → Fale dos diferenciais usando vocabulário do segmento
+   • PREÇO → Mencione R$ ${ctx.produto_preco} e destaque custo-benefício
    • ENTREGA → Diga que combina após a compra
    • PAGAMENTO → Envie o link e diga que aceita várias formas
-5. Se cliente demonstrar INTERESSE FORTE (palavras: quero/comprar/pagar/reservar/fechar):
-   → Envie o link diretamente: ${ctx.link_marketplace || 'Link de compra'}
-   → Diga "Segue o link para finalizar! 😊"
-6. Use 1-2 emojis relevantes (mas não exagere)
-7. Mantenha tom ENTUSIASMADO mas não forçado
-8. Seja BREVE (máximo 3-4 linhas)
-9. Faça UMA pergunta no final para continuar conversa (ex: "Quer saber mais alguma coisa?")
+5. Se cliente demonstrar INTERESSE FORTE (quero/comprar/pagar/reservar/fechar):
+   → Envie: ${ctx.link_marketplace || 'Link de compra'}
+   → Diga algo como "Segue o link! 😊"
+6. Use 1-2 emojis apropriados ao segmento
+7. Seja BREVE (máximo 3-4 linhas)
+8. Faça UMA pergunta para continuar conversa
 
-IMPORTANTE: Seja VOCÊ MESMO, converse naturalmente como se estivesse no balcão da loja!
+RESPONDA AGORA (apenas a mensagem para o cliente):`
+      : `Você é ${nomeEmpresa ? `atendente da ${nomeEmpresa}` : 'atendente'}.
 
-RESPONDA AGORA (APENAS A MENSAGEM PARA O CLIENTE):`
-      : `Você é ${ctx.vendedor_nome || 'atendente'} da empresa.
+🎯 SEU PERFIL: ${segmentoConfig.estilo}
+Tom: ${segmentoConfig.tom}
 
-HISTÓRICO DA CONVERSA:
+HISTÓRICO:
 ${conversationHistory}
 
 CLIENTE DISSE: "${messageText}"
 
-Responda de forma:
-- Natural e profissional
+Responda seguindo seu perfil de atendimento:
+- ${segmentoConfig.tom}
 - Breve (2-3 linhas)
 - Prestativa
-- Faça uma pergunta para entender melhor a necessidade
+- Faça uma pergunta para entender a necessidade
 
 RESPONDA AGORA:`;
 
