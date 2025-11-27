@@ -152,7 +152,8 @@ serve(async (req) => {
     // BUSCAR CONTEXTO DO PRODUTO
     console.log('🔍 Buscando contexto para:', phoneNumber);
     
-    const { data: contexto, error: ctxError } = await supabaseClient
+    // Tentar buscar contexto na tabela de conversas
+    let { data: contexto, error: ctxError } = await supabaseClient
       .from('whatsapp_conversations')
       .select('*')
       .eq('phone_number', phoneNumber)
@@ -160,20 +161,77 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    console.log('📦 Contexto encontrado:', contexto ? 'SIM' : 'NÃO');
-    console.log('📦 Erro:', ctxError);
-    if (contexto) {
-      console.log('📦 Dados:', JSON.stringify(contexto, null, 2));
+    // Se não encontrou, criar contexto baseado na última mensagem enviada
+    if (!contexto) {
+      console.log('[WEBHOOK] Buscando contexto na última mensagem enviada...');
+      
+      const { data: ultimaMensagem } = await supabaseClient
+        .from('whatsapp_messages')
+        .select('*')
+        .eq('phone', phoneNumber)
+        .eq('direction', 'sent')
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (ultimaMensagem) {
+        // Buscar produto da campanha mais recente
+        const { data: campanhaRecente } = await supabaseClient
+          .from('campanhas_recorrentes')
+          .select('*, produtos(*)')
+          .eq('user_id', ultimaMensagem.user_id)
+          .order('ultima_execucao', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (campanhaRecente?.produtos) {
+          const produto = campanhaRecente.produtos;
+          
+          // Criar contexto dinamicamente
+          contexto = {
+            user_id: ultimaMensagem.user_id,
+            phone_number: phoneNumber,
+            origem: 'campanha',
+            metadata: {
+              produto_nome: produto.nome,
+              produto_descricao: produto.descricao,
+              produto_preco: produto.preco,
+              produto_estoque: produto.estoque,
+              produto_especificacoes: produto.especificacoes,
+              link_marketplace: produto.link_marketplace,
+              vendedor_nome: 'Vendedor'
+            }
+          };
+          
+          console.log('[WEBHOOK] ✅ Contexto criado a partir da última campanha:', produto.nome);
+        }
+      }
     }
 
-    if (ctxError || !contexto || !contexto.last_message_context) {
+    console.log('📦 Contexto encontrado:', contexto ? 'SIM' : 'NÃO');
+
+    if (!contexto) {
       console.log('[WEBHOOK] ❌ Sem contexto encontrado para este cliente');
+      
+      // Atualizar log de debug
+      await supabaseClient.from('webhook_debug_logs')
+        .update({ processing_result: 'SEM CONTEXTO: nenhuma campanha encontrada para este número' })
+        .eq('extracted_phone', phoneNumber)
+        .order('timestamp', { ascending: false })
+        .limit(1);
+
       return new Response(JSON.stringify({ status: 'no_context' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    const ctx = contexto.last_message_context;
+    // Usar metadata como contexto (compatibilidade)
+    const ctx = contexto.metadata || contexto.last_message_context || {
+      produto_nome: 'Produto',
+      produto_descricao: '',
+      produto_preco: 0,
+      vendedor_nome: 'Vendedor'
+    };
     const origem = contexto.origem || 'campanha';
     console.log('[WEBHOOK] 📦 Origem:', origem);
     
