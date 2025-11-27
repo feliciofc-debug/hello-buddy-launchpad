@@ -13,6 +13,8 @@ import { LeadsQuentes } from '@/components/LeadsQuentes';
 import { WhatsAppDebugPanel } from '@/components/WhatsAppDebugPanel';
 import { DebugPayloads } from '@/components/DebugPayloads';
 import { TestarEnvioWuzapi } from '@/components/TestarEnvioWuzapi';
+import { TestarWuzapiDireto } from '@/components/TestarWuzapiDireto';
+import { LogsEnvioWuzapi } from '@/components/LogsEnvioWuzapi';
 import { mockProducts, type Marketplace } from '@/data/mockData';
 
 const Dashboard = () => {
@@ -1132,6 +1134,12 @@ const Dashboard = () => {
 
                   {/* TESTAR ENVIO WUZAPI */}
                   <TestarEnvioWuzapi />
+
+                  {/* TESTE DIRETO WUZAPI - Debug completo */}
+                  <TestarWuzapiDireto />
+
+                  {/* LOGS DE ENVIO WUZAPI */}
+                  <LogsEnvioWuzapi />
 
                   {/* Quick Actions */}
                   <div className="bg-gradient-to-r from-blue-100 to-green-100 dark:from-blue-900/30 dark:to-green-900/30 rounded-xl p-6">
