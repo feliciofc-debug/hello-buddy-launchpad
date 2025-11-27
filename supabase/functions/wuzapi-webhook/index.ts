@@ -7,6 +7,12 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
+  // Inicializar Supabase no início
+  const supabaseClient = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+  );
+
   // Endpoint de teste GET
   if (req.method === 'GET') {
     return new Response(JSON.stringify({
@@ -23,26 +29,95 @@ serve(async (req) => {
   console.log('Timestamp:', new Date().toISOString());
   
   if (req.method === 'OPTIONS') {
-    console.log('[WEBHOOK] OPTIONS request');
     return new Response(null, { headers: corsHeaders });
   }
 
+  let webhookData: any = {};
+  let phoneNumber = '';
+  let messageText = '';
+  let processingResult = '';
+
   try {
-    const webhookData = await req.json();
+    webhookData = await req.json();
     console.log('✅ [WEBHOOK] ========== EVENTO RECEBIDO ==========');
-    console.log('[WEBHOOK] Method:', req.method);
-    console.log('[WEBHOOK] Type:', webhookData.type);
     console.log('[WEBHOOK] Payload completo:', JSON.stringify(webhookData, null, 2));
+    console.log('[WEBHOOK] Payload keys:', Object.keys(webhookData));
     console.log('='.repeat(50));
 
-    // Extrair dados - FORMATO WUZAPI CORRETO
-    const event = webhookData.event || {};
-    const eventInfo = event.Info || {};
-    const eventMessage = event.Message || {};
+    // ===== EXTRAÇÃO MULTI-FORMATO =====
+    // Formato 1: event.Message.conversation (Wuzapi padrão)
+    if (webhookData.event?.Message?.conversation) {
+      messageText = webhookData.event.Message.conversation;
+      phoneNumber = webhookData.event?.Info?.Chat || webhookData.event?.Info?.RemoteJid || '';
+      console.log('📌 Formato detectado: event.Message.conversation');
+    }
     
-    // Ignorar mensagens próprias
-    const isFromMe = eventInfo.IsFromMe || event.IsFromMe;
+    // Formato 2: event.Message.extendedTextMessage (mensagem com link/citação)
+    if (!messageText && webhookData.event?.Message?.extendedTextMessage?.text) {
+      messageText = webhookData.event.Message.extendedTextMessage.text;
+      phoneNumber = webhookData.event?.Info?.Chat || webhookData.event?.Info?.RemoteJid || '';
+      console.log('📌 Formato detectado: event.Message.extendedTextMessage');
+    }
+
+    // Formato 3: data.body (formato alternativo)
+    if (!messageText && webhookData.data?.body) {
+      messageText = webhookData.data.body;
+      phoneNumber = webhookData.data?.from || '';
+      console.log('📌 Formato detectado: data.body');
+    }
+
+    // Formato 4: message.body
+    if (!messageText && webhookData.message?.body) {
+      messageText = webhookData.message.body;
+      phoneNumber = webhookData.message?.from || '';
+      console.log('📌 Formato detectado: message.body');
+    }
+
+    // Formato 5: text direto
+    if (!messageText && webhookData.text) {
+      messageText = webhookData.text;
+      phoneNumber = webhookData.from || webhookData.phone || '';
+      console.log('📌 Formato detectado: text direto');
+    }
+
+    // Formato 6: body direto
+    if (!messageText && webhookData.body) {
+      messageText = webhookData.body;
+      phoneNumber = webhookData.from || webhookData.phone || webhookData.sender || '';
+      console.log('📌 Formato detectado: body direto');
+    }
+
+    // Limpar telefone
+    phoneNumber = phoneNumber
+      .replace('@s.whatsapp.net', '')
+      .replace('@c.us', '')
+      .replace('@lid', '')
+      .replace(/\D/g, '');
+
+    // Adicionar código do país se necessário
+    if (phoneNumber && !phoneNumber.startsWith('55') && phoneNumber.length === 11) {
+      phoneNumber = '55' + phoneNumber;
+    }
+
+    console.log('📱 Telefone extraído:', phoneNumber);
+    console.log('💬 Mensagem extraída:', messageText);
+
+    // Verificar se é mensagem própria
+    const isFromMe = webhookData.event?.Info?.IsFromMe || 
+                     webhookData.event?.IsFromMe || 
+                     webhookData.data?.fromMe ||
+                     webhookData.fromMe;
+    
     console.log('🤖 FromMe?:', isFromMe);
+
+    // SALVAR LOG DE DEBUG (sempre salva o payload bruto)
+    await supabaseClient.from('webhook_debug_logs').insert({
+      payload: webhookData,
+      extracted_phone: phoneNumber || 'NÃO EXTRAÍDO',
+      extracted_message: messageText || 'NÃO EXTRAÍDA',
+      processing_result: isFromMe ? 'IGNORADO: mensagem própria' : 'PROCESSANDO'
+    });
+
     if (isFromMe === true) {
       console.log('[WEBHOOK] ❌ Ignorando: mensagem própria');
       return new Response(JSON.stringify({ status: 'ignored', reason: 'own message' }), {
@@ -50,81 +125,37 @@ serve(async (req) => {
       });
     }
 
-    // Extrair mensagem de texto - MÚLTIPLOS FORMATOS WUZAPI
-    let messageText = eventMessage.conversation ||                    // Formato principal
-                      eventMessage.extendedTextMessage?.text ||       // Mensagem com link/citação
-                      event.Message?.conversation ||                  // Fallback
-                      webhookData.text ||                             // Formato alternativo
-                      '';
-    
-    console.log('💬 Mensagem extraída:', messageText);
-    
-    // Extrair telefone - FORMATO WUZAPI CORRETO
-    const rawPhone = eventInfo.Chat ||                               // Formato principal: Info.Chat
-                     eventInfo.Sender ||                              // Alternativo: Info.Sender
-                     event.Chat ||                                    // Fallback: event.Chat
-                     event.Sender ||                                  // Fallback: event.Sender
-                     '';
-    
-    const phoneNumber = rawPhone
-      .replace('@s.whatsapp.net', '')
-      .replace('@c.us', '')
-      .replace('@lid', '')
-      .replace(/\D/g, '');
-    
-    console.log('📱 Telefone extraído:', phoneNumber);
-    console.log('📱 Raw phone:', rawPhone);
-    
-    const messageId = webhookData.messageID || webhookData.userID || eventInfo.ID || event.MessageID;
-    
     if (!phoneNumber || !messageText) {
+      processingResult = `FALHOU: phone=${!phoneNumber}, message=${!messageText}, keys=${Object.keys(webhookData).join(',')}`;
       console.log('❌ PAROU AQUI - Motivo:');
       console.log('  - Mensagem vazia?', !messageText);
       console.log('  - Telefone vazio?', !phoneNumber);
-      console.log('  - É do bot?', event.IsFromMe);
-      return new Response(JSON.stringify({ status: 'ignored', reason: 'incomplete data' }), {
+      console.log('  - Payload keys:', Object.keys(webhookData));
+      
+      await supabaseClient.from('webhook_debug_logs')
+        .update({ processing_result: processingResult })
+        .eq('extracted_phone', 'NÃO EXTRAÍDO')
+        .order('timestamp', { ascending: false })
+        .limit(1);
+
+      return new Response(JSON.stringify({ 
+        status: 'error', 
+        reason: 'incomplete data',
+        payload_keys: Object.keys(webhookData)
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
-    
-    // Garantir que o número tem código de país
-    let formattedPhone = phoneNumber;
-    if (formattedPhone && !formattedPhone.startsWith('55') && formattedPhone.length === 11) {
-      formattedPhone = '55' + formattedPhone;
-    }
 
-    console.log(`[WEBHOOK] Nova mensagem de ${formattedPhone}: ${messageText}`);
-
-    // Inicializar Supabase
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    // Registrar mensagem recebida
-    await supabaseClient
-      .from('whatsapp_messages_received')
-      .insert({
-        phone_number: formattedPhone,
-        message: messageText,
-        message_id: messageId,
-        raw_data: webhookData
-      });
+    console.log(`[WEBHOOK] Nova mensagem de ${phoneNumber}: ${messageText}`);
 
     // BUSCAR CONTEXTO DO PRODUTO
-    console.log('🔍 Buscando contexto para:', formattedPhone);
+    console.log('🔍 Buscando contexto para:', phoneNumber);
     
     const { data: contexto, error: ctxError } = await supabaseClient
       .from('whatsapp_conversations')
-      .select(`
-        *,
-        users!inner (
-          id,
-          email,
-          user_metadata
-        )
-      `)
-      .eq('phone_number', formattedPhone)
+      .select('*')
+      .eq('phone_number', phoneNumber)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -170,7 +201,7 @@ serve(async (req) => {
       .from('whatsapp_messages')
       .select('direction, message, timestamp')
       .eq('user_id', contexto.user_id)
-      .eq('phone', formattedPhone)
+      .eq('phone', phoneNumber)
       .order('timestamp', { ascending: true })
       .limit(10);
 
@@ -298,7 +329,7 @@ RESPONDA (apenas a resposta, sem explicações):`;
         'Token': WUZAPI_TOKEN,
       },
       body: JSON.stringify({
-        Phone: formattedPhone,
+        Phone: phoneNumber,
         Body: aiMessage,
         Id: WUZAPI_INSTANCE_ID
       }),
@@ -316,14 +347,14 @@ RESPONDA (apenas a resposta, sem explicações):`;
     await supabaseClient.from('whatsapp_messages').insert([
       {
         user_id: contexto.user_id,
-        phone: formattedPhone,
+        phone: phoneNumber,
         direction: 'received',
         message: messageText,
         origem: origem
       },
       {
         user_id: contexto.user_id,
-        phone: formattedPhone,
+        phone: phoneNumber,
         direction: 'sent',
         message: aiMessage,
         origem: origem
@@ -346,7 +377,7 @@ RESPONDA (apenas a resposta, sem explicações):`;
       
       await supabaseClient.from('lead_notifications').insert({
         user_id: contexto.user_id,
-        phone: formattedPhone,
+        phone: phoneNumber,
         produto_nome: ctx.produto_nome,
         mensagem_cliente: messageText,
         status: 'quente'
@@ -362,8 +393,34 @@ RESPONDA (apenas a resposta, sem explicações):`;
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
+    // Atualizar log com sucesso
+    processingResult = `SUCESSO: IA respondeu "${aiMessage.substring(0, 50)}..."`;
+    await supabaseClient.from('webhook_debug_logs')
+      .update({ processing_result: processingResult })
+      .eq('extracted_phone', phoneNumber)
+      .order('timestamp', { ascending: false })
+      .limit(1);
+
+    return new Response(JSON.stringify({ 
+      status: 'success', 
+      message: 'Mensagem processada e respondida',
+      aiResponse: aiMessage,
+      leadQuente: temInteresse
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
   } catch (error) {
     console.error('[WEBHOOK] ❌ Erro:', error);
+    
+    // Salvar erro no log
+    await supabaseClient.from('webhook_debug_logs').insert({
+      payload: webhookData,
+      extracted_phone: phoneNumber || 'ERRO',
+      extracted_message: messageText || 'ERRO',
+      processing_result: `ERRO: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+    });
+
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
