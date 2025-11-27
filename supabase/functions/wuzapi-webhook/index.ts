@@ -46,7 +46,29 @@ serve(async (req) => {
 
   try {
     webhookData = await req.json();
-    console.log('📥 Payload:', JSON.stringify(webhookData, null, 2));
+    
+    // ═══════════════════════════════════════
+    // 🚫 FILTRAR TIPOS DE EVENTO - MUITO IMPORTANTE!
+    // ═══════════════════════════════════════
+    const eventType = webhookData.type || '';
+    
+    // IGNORAR eventos que não são mensagens
+    if (eventType === 'ReadReceipt' || eventType === 'ChatPresence' || eventType === 'HistorySync') {
+      console.log(`⏭️ Ignorando evento tipo: ${eventType}`);
+      return new Response(JSON.stringify({ status: 'ignored', reason: `event_type_${eventType}` }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    
+    // SÓ PROCESSAR tipo "Message"
+    if (eventType && eventType !== 'Message') {
+      console.log(`⏭️ Ignorando tipo desconhecido: ${eventType}`);
+      return new Response(JSON.stringify({ status: 'ignored', reason: 'not_message_type' }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    
+    console.log('📥 Payload (tipo Message):', JSON.stringify(webhookData, null, 2));
 
     // EXTRAÇÃO MULTI-FORMATO
     if (webhookData.event?.Message?.conversation) {
