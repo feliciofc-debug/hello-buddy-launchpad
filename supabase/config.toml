@@ -107,3 +107,6 @@ verify_jwt = false
 
 [functions.voice-ai-callback]
 verify_jwt = false
+
+[functions.test-wuzapi-direct]
+verify_jwt = false

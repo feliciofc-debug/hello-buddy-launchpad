@@ -6,56 +6,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Frases robóticas para filtrar
 const FRASES_ROBOTICAS = [
-  'fico feliz',
-  'agradeço',
-  'é um prazer',
-  'gostaria de',
-  'certamente',
-  'com toda certeza',
-  'é importante ressaltar',
-  'vale mencionar',
-  'posso ajudar',
-  'estou à disposição',
-  'não hesite',
-  'fique à vontade'
+  'fico feliz', 'agradeço', 'é um prazer', 'gostaria de', 'certamente',
+  'com toda certeza', 'é importante ressaltar', 'vale mencionar', 
+  'posso ajudar', 'estou à disposição', 'não hesite', 'fique à vontade'
 ];
 
-// Exemplos por segmento
 const EXEMPLOS_SEGMENTO: Record<string, string> = {
-  'alimentos-bebidas': `
-"Bom dia!" → "E aí! Viu o produto? Tá com preço top hoje 😊"
-"Quanto?" → "R$ XX! Fresquinho, chegou agora"
-"Tem?" → "Tenho sim! Pronta entrega"`,
-  'eletronicos-informatica': `
-"Bom dia!" → "Opa! Esse produto é muito bom 💻"
-"Quanto?" → "R$ XX! Top de linha, garantia de 1 ano"
-"Tem?" → "Tenho! Lacrado, com nota fiscal"`,
-  'produtos-hospitalares': `
-"Bom dia!" → "Bom dia! Equipamento certificado Anvisa"
-"Quanto?" → "R$ XX. Com certificação e garantia"
-"Tem?" → "Sim, pronta entrega"`,
-  'seguranca-automacao': `
-"Bom dia!" → "Opa! Equipamento top com garantia 🔒"
-"Quanto?" → "R$ XX. Instalação pode ser inclusa"
-"Tem?" → "Tenho! Entrego essa semana"`,
-  'moda-vestuario': `
-"Bom dia!" → "Oi! Peça linda né? 😍"
-"Quanto?" → "R$ XX! Tecido de qualidade"
-"Tem?" → "Tenho sim! Qual seu tamanho?"`,
-  'pet-shop': `
-"Bom dia!" → "Oi! Seu pet vai amar 🐾"
-"Quanto?" → "R$ XX! Qualidade top pro seu amiguinho"
-"Tem?" → "Tenho sim! Pronta entrega"`,
-  'beleza-cosmeticos': `
-"Bom dia!" → "Oi! Produto maravilhoso esse 💄"
-"Quanto?" → "R$ XX! Resultado garantido"
-"Tem?" → "Tenho sim! Original lacrado"`,
-  'outros': `
-"Bom dia!" → "Opa! Tudo bem? 😊"
-"Quanto?" → "R$ XX! Preço bom né?"
-"Tem?" → "Tenho sim! Pronta entrega"`
+  'alimentos-bebidas': `"Bom dia!" → "E aí! Viu o produto? Tá com preço top hoje 😊"\n"Quanto?" → "R$ XX! Fresquinho, chegou agora"\n"Tem?" → "Tenho sim! Pronta entrega"`,
+  'eletronicos-informatica': `"Bom dia!" → "Opa! Esse produto é muito bom 💻"\n"Quanto?" → "R$ XX! Top de linha"\n"Tem?" → "Tenho! Lacrado"`,
+  'outros': `"Bom dia!" → "Opa! Tudo bem? 😊"\n"Quanto?" → "R$ XX!"\n"Tem?" → "Tenho sim!"`
 };
 
 serve(async (req) => {
@@ -64,20 +24,17 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
-  // Endpoint de teste GET
   if (req.method === 'GET') {
     return new Response(JSON.stringify({
       status: 'online',
       timestamp: new Date().toISOString(),
-      message: 'Webhook humanizado ativo! ✅'
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+      message: 'Webhook v3.0 com debug completo ✅'
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
-  console.log('='.repeat(50));
-  console.log('🔔 WEBHOOK HUMANIZADO v2.0');
-  console.log('Timestamp:', new Date().toISOString());
+  console.log('═══════════════════════════════════════');
+  console.log('🔔 WEBHOOK v3.0 - DEBUG COMPLETO');
+  console.log('═══════════════════════════════════════');
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -89,46 +46,35 @@ serve(async (req) => {
 
   try {
     webhookData = await req.json();
-    console.log('✅ Payload recebido:', JSON.stringify(webhookData, null, 2));
+    console.log('📥 Payload:', JSON.stringify(webhookData, null, 2));
 
-    // ===== EXTRAÇÃO MULTI-FORMATO =====
+    // EXTRAÇÃO MULTI-FORMATO
     if (webhookData.event?.Message?.conversation) {
       messageText = webhookData.event.Message.conversation;
       phoneNumber = webhookData.event?.Info?.Chat || webhookData.event?.Info?.RemoteJid || '';
     }
-    
     if (!messageText && webhookData.event?.Message?.extendedTextMessage?.text) {
       messageText = webhookData.event.Message.extendedTextMessage.text;
       phoneNumber = webhookData.event?.Info?.Chat || webhookData.event?.Info?.RemoteJid || '';
     }
-
     if (!messageText && webhookData.data?.body) {
       messageText = webhookData.data.body;
       phoneNumber = webhookData.data?.from || '';
     }
-
     if (!messageText && webhookData.message?.body) {
       messageText = webhookData.message.body;
       phoneNumber = webhookData.message?.from || '';
     }
-
     if (!messageText && webhookData.text) {
       messageText = webhookData.text;
       phoneNumber = webhookData.from || webhookData.phone || '';
     }
-
     if (!messageText && webhookData.body) {
       messageText = webhookData.body;
       phoneNumber = webhookData.from || webhookData.phone || webhookData.sender || '';
     }
 
-    // Limpar telefone
-    phoneNumber = phoneNumber
-      .replace('@s.whatsapp.net', '')
-      .replace('@c.us', '')
-      .replace('@lid', '')
-      .replace(/\D/g, '');
-
+    phoneNumber = phoneNumber.replace('@s.whatsapp.net', '').replace('@c.us', '').replace('@lid', '').replace(/\D/g, '');
     if (phoneNumber && !phoneNumber.startsWith('55') && phoneNumber.length === 11) {
       phoneNumber = '55' + phoneNumber;
     }
@@ -136,32 +82,23 @@ serve(async (req) => {
     console.log('📱 Telefone:', phoneNumber);
     console.log('💬 Mensagem:', messageText);
 
-    // Verificar se é mensagem própria
-    const isFromMe = webhookData.event?.Info?.IsFromMe || 
-                     webhookData.event?.IsFromMe || 
-                     webhookData.data?.fromMe ||
-                     webhookData.fromMe;
+    const isFromMe = webhookData.event?.Info?.IsFromMe || webhookData.event?.IsFromMe || webhookData.data?.fromMe || webhookData.fromMe;
 
-    // Salvar log de debug
     await supabaseClient.from('webhook_debug_logs').insert({
       payload: webhookData,
       extracted_phone: phoneNumber || 'NÃO EXTRAÍDO',
       extracted_message: messageText || 'NÃO EXTRAÍDA',
-      processing_result: isFromMe ? 'IGNORADO: própria' : 'PROCESSANDO'
+      processing_result: isFromMe ? 'IGNORADO_PROPRIA' : 'PROCESSANDO'
     });
 
     if (isFromMe === true) {
-      console.log('❌ Ignorando: mensagem própria');
-      return new Response(JSON.stringify({ status: 'ignored', reason: 'own message' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      console.log('❌ Ignorando: própria');
+      return new Response(JSON.stringify({ status: 'ignored' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     if (!phoneNumber || !messageText) {
       console.log('❌ Dados incompletos');
-      return new Response(JSON.stringify({ status: 'error', reason: 'incomplete data' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({ status: 'incomplete' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // BUSCAR CONTEXTO
@@ -203,9 +140,7 @@ serve(async (req) => {
               produto_descricao: produto.descricao,
               produto_preco: produto.preco,
               produto_estoque: produto.estoque,
-              produto_especificacoes: produto.especificacoes,
               link_marketplace: produto.link_marketplace,
-              vendedor_nome: 'Vendedor'
             }
           };
         }
@@ -214,9 +149,7 @@ serve(async (req) => {
 
     if (!contexto) {
       console.log('❌ Sem contexto');
-      return new Response(JSON.stringify({ status: 'no_context' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({ status: 'no_context' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const ctx = contexto.metadata || contexto.last_message_context || {};
@@ -225,14 +158,13 @@ serve(async (req) => {
     // BUSCAR SEGMENTO
     const { data: empresaConfig } = await supabaseClient
       .from('empresa_config')
-      .select('segmento, nome_empresa')
+      .select('segmento')
       .eq('user_id', contexto.user_id)
       .maybeSingle();
 
     const segmentoId = empresaConfig?.segmento || 'outros';
-    console.log('🎯 Segmento:', segmentoId);
 
-    // BUSCAR HISTÓRICO (últimas 3 mensagens)
+    // BUSCAR HISTÓRICO
     const { data: historico } = await supabaseClient
       .from('whatsapp_messages')
       .select('direction, message')
@@ -243,244 +175,278 @@ serve(async (req) => {
 
     let historicoTexto = '';
     if (historico && historico.length > 0) {
-      historicoTexto = '\n━━━ CONVERSA ATÉ AGORA ━━━\n';
+      historicoTexto = '\n━━ CONVERSA ━━\n';
       historico.reverse().forEach(msg => {
         historicoTexto += `${msg.direction === 'received' ? '👤' : '🤖'}: ${msg.message}\n`;
       });
     }
 
-    // LÓGICA DE ESTOQUE ESTRATÉGICA
+    // LÓGICA DE ESTOQUE
     const estoque = ctx.produto_estoque || 0;
     const temEstoque = estoque > 0;
     const estoqueBaixo = estoque > 0 && estoque <= 10;
-    const estoqueAlto = estoque > 10;
 
-    let infoEstoque = '';
-    if (!temEstoque) {
-      infoEstoque = 'SEM ESTOQUE - diga que acabou e pergunte se quer ser avisado quando chegar';
-    } else if (estoqueBaixo) {
-      infoEstoque = `POUCO ESTOQUE (${estoque}) - pode mencionar "só tem ${estoque} ainda" para criar urgência`;
-    } else {
-      infoEstoque = 'TEM ESTOQUE - diga apenas "tenho sim" ou "tenho disponível", NUNCA revele quantidade';
-    }
+    let infoEstoque = !temEstoque 
+      ? 'SEM ESTOQUE - diga que acabou' 
+      : estoqueBaixo 
+        ? `POUCO (${estoque}) - pode criar urgência` 
+        : 'TEM - diga "tenho sim", nunca quantidade';
 
-    console.log('📊 Estoque real:', estoque, '| Estratégia:', infoEstoque);
+    // PROMPT HUMANIZADO
+    const promptIA = `Você é vendedor WhatsApp. MÁXIMO 2 LINHAS.
 
-    // PROMPT SUPER HUMANIZADO
-    const promptIA = `Você é vendedor via WhatsApp. Responda como humano real.
+📦 ${ctx.produto_nome} - R$ ${ctx.produto_preco}
+${ctx.produto_descricao || ''}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦 PRODUTO:
-${ctx.produto_nome} - R$ ${ctx.produto_preco}
-${ctx.produto_descricao ? ctx.produto_descricao : ''}
-
-📊 ESTOQUE:
-${infoEstoque}
-
-⚠️ REGRA DE ESTOQUE (CRÍTICO):
-- Estoque ALTO (>10): Diga "Tenho sim!" ou "Tenho disponível!" - NUNCA quantidade
-- Estoque BAIXO (≤10): Pode dizer "Só tenho ${estoque} ainda" para criar urgência
-- SEM estoque: "Acabou, mas chega essa semana. Quer que eu avise?"
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 ESTOQUE: ${infoEstoque}
 ${historicoTexto}
 
-💬 CLIENTE DISSE: "${messageText}"
+💬 CLIENTE: "${messageText}"
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 REGRAS ABSOLUTAS:
+REGRAS:
+1. MÁXIMO 2 LINHAS
+2. Use "vc", "tá", "pra" - informal
+3. NUNCA "Fico feliz", "Agradeço"
+4. 1 emoji só
+5. Se quer comprar → link: ${ctx.link_marketplace || '[link]'}
 
-1. MÁXIMO 2 LINHAS (seja MUITO breve!)
-2. 100% NATURAL - escreva como vc falaria no WhatsApp
-3. Use "vc", "tá", "pra", "né", "viu" - seja informal
-4. NUNCA diga "Fico feliz", "Agradeço", "É um prazer" - frases robóticas
-5. 1 emoji NO MÁXIMO
-6. Seja DIRETO - vendedor de WhatsApp real
-
-RESPOSTAS POR TIPO:
-
-Se cumprimento (oi/bom dia):
-→ Cumprimente de volta + 1 frase curta sobre produto/preço
-
-Se pergunta preço:
-→ "R$ ${ctx.produto_preco}! [1 característica]"
-
-Se pergunta estoque/tem/disponível:
-${!temEstoque ? '→ "Acabou agora, mas chega essa semana. Quer que eu avise?"' : ''}
-${estoqueBaixo ? `→ "Tenho sim! Só restam ${estoque} ainda, tá saindo rápido"` : ''}
-${estoqueAlto ? '→ "Tenho sim! Pronta entrega" (NUNCA fale quantidade!)' : ''}
-
-Se quer comprar/interesse forte:
-→ "Fechou! 🎉 Segue o link: ${ctx.link_marketplace || '[link]'}"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXEMPLOS DO SEU SEGMENTO:
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-EXEMPLOS CORRETOS DE ESTOQUE:
+RESPONDA (curto e humano):`;
 
-👤: "Tem aí?"
-✅ "Tenho sim! Pronta entrega"
-❌ "Tenho 100 unidades disponíveis" (NUNCA!)
-
-👤: "Tem em estoque?"  
-✅ "Tem sim! Quer quantas?"
-❌ "Temos 50 unidades em estoque" (NUNCA!)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-RESPONDA AGORA (SÓ A MENSAGEM, curta e humana):`;
-
-    console.log('🤖 Chamando IA humanizada...');
+    console.log('🤖 Chamando IA...');
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
     const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
     const WUZAPI_INSTANCE_ID = Deno.env.get('WUZAPI_INSTANCE_ID');
 
-    if (!LOVABLE_API_KEY || !WUZAPI_URL || !WUZAPI_TOKEN || !WUZAPI_INSTANCE_ID) {
+    if (!LOVABLE_API_KEY || !WUZAPI_URL || !WUZAPI_TOKEN) {
       console.error('❌ Credenciais faltando');
-      return new Response(JSON.stringify({ status: 'error', reason: 'missing credentials' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return new Response(JSON.stringify({ status: 'missing_credentials' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${LOVABLE_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: promptIA }],
-        max_tokens: 100, // Forçar respostas curtas
-        temperature: 0.8, // Mais naturalidade
-        top_p: 0.9
+        max_tokens: 100,
+        temperature: 0.8
       }),
     });
-
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error('❌ Erro IA:', errorText);
-      throw new Error('Erro na IA');
-    }
 
     const aiData = await aiResponse.json();
     let respostaIA = aiData.choices?.[0]?.message?.content || 'Opa, pode repetir?';
 
-    console.log('🤖 Resposta bruta:', respostaIA);
-
     // LIMPAR RESPOSTA
-    // Limitar a 2 linhas
     const linhas = respostaIA.split('\n').filter((l: string) => l.trim());
-    if (linhas.length > 2) {
-      respostaIA = linhas.slice(0, 2).join('\n');
-    }
-
-    // Remover frases robóticas
-    FRASES_ROBOTICAS.forEach(frase => {
-      respostaIA = respostaIA.replace(new RegExp(frase, 'gi'), '');
-    });
+    if (linhas.length > 2) respostaIA = linhas.slice(0, 2).join('\n');
+    
+    FRASES_ROBOTICAS.forEach(f => { respostaIA = respostaIA.replace(new RegExp(f, 'gi'), ''); });
     respostaIA = respostaIA.replace(/\s+/g, ' ').trim();
 
-    // Verificar se revelou estoque alto
-    const revelouEstoqueAlto = estoqueAlto && /\d{2,}\s*(unidade|unidades|em estoque|disponível|disponíveis)/gi.test(respostaIA);
-    
-    if (revelouEstoqueAlto) {
-      console.log('⚠️ IA revelou estoque! Corrigindo...');
-      respostaIA = 'Tenho sim! Pronta entrega 😊';
-    }
-
-    // Validar se resposta é muito robótica
-    const ehRobotica = FRASES_ROBOTICAS.some(f => respostaIA.toLowerCase().includes(f)) ||
-                       respostaIA.length > 200 ||
-                       respostaIA.split('\n').length > 3;
-
-    if (ehRobotica) {
-      console.log('⚠️ Resposta robótica detectada, usando fallback...');
-      
+    // Fallback se robótica
+    if (respostaIA.length > 200 || FRASES_ROBOTICAS.some(f => respostaIA.toLowerCase().includes(f))) {
       const msgLower = messageText.toLowerCase();
-      
-      if (['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'eae', 'eai'].some(c => msgLower.includes(c))) {
+      if (['oi', 'olá', 'bom dia', 'boa tarde'].some(c => msgLower.includes(c))) {
         respostaIA = `Opa! ${ctx.produto_nome} tá R$ ${ctx.produto_preco} 😊`;
-      } else if (['quanto', 'preço', 'preco', 'valor', 'custa'].some(p => msgLower.includes(p))) {
+      } else if (['quanto', 'preço', 'valor'].some(p => msgLower.includes(p))) {
         respostaIA = `R$ ${ctx.produto_preco}! Tenho disponível`;
-      } else if (['tem', 'estoque', 'disponível', 'disponivel'].some(e => msgLower.includes(e))) {
-        respostaIA = temEstoque 
-          ? (estoqueBaixo ? `Só tenho ${estoque} ainda! Tá acabando` : 'Tenho sim! Pronta entrega')
-          : 'Acabou, mas chega essa semana. Te aviso?';
-      } else if (['quero', 'comprar', 'pagar', 'pix', 'link', 'fechado', 'fechar'].some(i => msgLower.includes(i))) {
-        respostaIA = `Fechou! 🎉 Segue: ${ctx.link_marketplace || 'te mando o link'}`;
-      } else {
-        respostaIA = `Opa! Sobre o ${ctx.produto_nome}, tá R$ ${ctx.produto_preco} 😊`;
+      } else if (['tem', 'estoque'].some(e => msgLower.includes(e))) {
+        respostaIA = temEstoque ? 'Tenho sim! Pronta entrega' : 'Acabou, mas chega essa semana';
+      } else if (['quero', 'comprar', 'pix'].some(i => msgLower.includes(i))) {
+        respostaIA = `Fechou! 🎉 ${ctx.link_marketplace || 'te mando o link'}`;
       }
     }
 
-    console.log('✅ Resposta final:', respostaIA);
+    console.log('✅ Resposta IA:', respostaIA);
 
-    // ENVIAR VIA WUZAPI
+    // ═══════════════════════════════════════
+    // 📤 PROCESSO DE ENVIO COM DEBUG COMPLETO
+    // ═══════════════════════════════════════
+    console.log('═══════════════════════════════════════');
+    console.log('📤 INICIANDO ENVIO WUZAPI');
+    console.log('═══════════════════════════════════════');
+    console.log('1️⃣ DADOS:');
+    console.log('   Telefone:', phoneNumber);
+    console.log('   Mensagem:', respostaIA);
+    console.log('2️⃣ CONFIG:');
+    console.log('   URL:', WUZAPI_URL);
+    console.log('   Token existe?:', !!WUZAPI_TOKEN);
+    console.log('   Token (20 chars):', WUZAPI_TOKEN?.substring(0, 20) + '...');
+    console.log('   Instance ID:', WUZAPI_INSTANCE_ID);
+
     const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
-    
-    let wuzapiResponse = await fetch(`${baseUrl}/chat/send/text`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Token': WUZAPI_TOKEN,
-      },
-      body: JSON.stringify({
-        Phone: phoneNumber,
-        Body: respostaIA,
-        Id: WUZAPI_INSTANCE_ID
-      }),
-    });
+    let envioSucesso = false;
+    let formatoUsado = '';
+    let respostaWuzapi = '';
 
-    if (!wuzapiResponse.ok) {
-      wuzapiResponse = await fetch(`${baseUrl}/send/text`, {
+    // FORMATO 1: /chat/send/text (formato atual)
+    console.log('3️⃣ FORMATO 1: /chat/send/text');
+    try {
+      const url1 = `${baseUrl}/chat/send/text`;
+      const body1 = { Phone: phoneNumber, Body: respostaIA, Id: WUZAPI_INSTANCE_ID };
+      console.log('   URL:', url1);
+      console.log('   Body:', JSON.stringify(body1));
+      
+      const res1 = await fetch(url1, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Token': WUZAPI_TOKEN,
-        },
-        body: JSON.stringify({
-          phone: phoneNumber,
-          message: respostaIA
-        }),
+        headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+        body: JSON.stringify(body1)
       });
+      const text1 = await res1.text();
+      console.log('   Status:', res1.status);
+      console.log('   Response:', text1);
+      
+      if (res1.ok) {
+        envioSucesso = true;
+        formatoUsado = 'chat/send/text';
+        respostaWuzapi = text1;
+        console.log('   ✅ SUCESSO FORMATO 1!');
+      }
+    } catch (e1) { console.error('   ❌ Erro formato 1:', e1); }
+
+    // FORMATO 2: /send/text
+    if (!envioSucesso) {
+      console.log('4️⃣ FORMATO 2: /send/text');
+      try {
+        const url2 = `${baseUrl}/send/text`;
+        const body2 = { phone: phoneNumber, message: respostaIA };
+        console.log('   URL:', url2);
+        console.log('   Body:', JSON.stringify(body2));
+        
+        const res2 = await fetch(url2, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+          body: JSON.stringify(body2)
+        });
+        const text2 = await res2.text();
+        console.log('   Status:', res2.status);
+        console.log('   Response:', text2);
+        
+        if (res2.ok) {
+          envioSucesso = true;
+          formatoUsado = 'send/text';
+          respostaWuzapi = text2;
+          console.log('   ✅ SUCESSO FORMATO 2!');
+        }
+      } catch (e2) { console.error('   ❌ Erro formato 2:', e2); }
     }
 
-    const envioOk = wuzapiResponse.ok;
-    console.log(envioOk ? '✅ Mensagem enviada!' : '❌ Falha no envio');
+    // FORMATO 3: /send-message
+    if (!envioSucesso) {
+      console.log('5️⃣ FORMATO 3: /send-message');
+      try {
+        const url3 = `${baseUrl}/send-message`;
+        const body3 = { phone: phoneNumber, message: respostaIA };
+        console.log('   URL:', url3);
+        console.log('   Body:', JSON.stringify(body3));
+        
+        const res3 = await fetch(url3, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+          body: JSON.stringify(body3)
+        });
+        const text3 = await res3.text();
+        console.log('   Status:', res3.status);
+        console.log('   Response:', text3);
+        
+        if (res3.ok) {
+          envioSucesso = true;
+          formatoUsado = 'send-message';
+          respostaWuzapi = text3;
+          console.log('   ✅ SUCESSO FORMATO 3!');
+        }
+      } catch (e3) { console.error('   ❌ Erro formato 3:', e3); }
+    }
+
+    // FORMATO 4: /message/text
+    if (!envioSucesso) {
+      console.log('6️⃣ FORMATO 4: /message/text');
+      try {
+        const url4 = `${baseUrl}/message/text`;
+        const body4 = { number: phoneNumber, text: respostaIA };
+        console.log('   URL:', url4);
+        console.log('   Body:', JSON.stringify(body4));
+        
+        const res4 = await fetch(url4, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+          body: JSON.stringify(body4)
+        });
+        const text4 = await res4.text();
+        console.log('   Status:', res4.status);
+        console.log('   Response:', text4);
+        
+        if (res4.ok) {
+          envioSucesso = true;
+          formatoUsado = 'message/text';
+          respostaWuzapi = text4;
+          console.log('   ✅ SUCESSO FORMATO 4!');
+        }
+      } catch (e4) { console.error('   ❌ Erro formato 4:', e4); }
+    }
+
+    // FORMATO 5: /chat/send-text (hífen)
+    if (!envioSucesso) {
+      console.log('7️⃣ FORMATO 5: /chat/send-text');
+      try {
+        const url5 = `${baseUrl}/chat/send-text`;
+        const body5 = { chatId: phoneNumber + '@s.whatsapp.net', text: respostaIA };
+        console.log('   URL:', url5);
+        console.log('   Body:', JSON.stringify(body5));
+        
+        const res5 = await fetch(url5, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+          body: JSON.stringify(body5)
+        });
+        const text5 = await res5.text();
+        console.log('   Status:', res5.status);
+        console.log('   Response:', text5);
+        
+        if (res5.ok) {
+          envioSucesso = true;
+          formatoUsado = 'chat/send-text';
+          respostaWuzapi = text5;
+          console.log('   ✅ SUCESSO FORMATO 5!');
+        }
+      } catch (e5) { console.error('   ❌ Erro formato 5:', e5); }
+    }
+
+    console.log('═══════════════════════════════════════');
+    console.log('📊 RESULTADO ENVIO:', envioSucesso ? '✅ SUCESSO' : '❌ FALHOU');
+    console.log('   Formato usado:', formatoUsado || 'NENHUM');
+    console.log('═══════════════════════════════════════');
+
+    // Salvar log de envio
+    await supabaseClient.from('webhook_debug_logs').insert({
+      payload: {
+        tipo: 'ENVIO_WUZAPI',
+        formato: formatoUsado || 'TODOS_FALHARAM',
+        sucesso: envioSucesso,
+        telefone: phoneNumber,
+        mensagem: respostaIA,
+        response: respostaWuzapi,
+        wuzapi_url: baseUrl,
+        instance_id: WUZAPI_INSTANCE_ID
+      },
+      extracted_phone: phoneNumber,
+      extracted_message: respostaIA,
+      processing_result: envioSucesso ? `ENVIADO_${formatoUsado.toUpperCase().replace(/\//g, '_')}` : 'ERRO_ENVIO_TODOS_FORMATOS'
+    });
 
     // SALVAR HISTÓRICO
     await supabaseClient.from('whatsapp_messages').insert([
-      {
-        user_id: contexto.user_id,
-        phone: phoneNumber,
-        direction: 'received',
-        message: messageText,
-        origem: origem
-      },
-      {
-        user_id: contexto.user_id,
-        phone: phoneNumber,
-        direction: 'sent',
-        message: respostaIA,
-        origem: origem
-      }
+      { user_id: contexto.user_id, phone: phoneNumber, direction: 'received', message: messageText, origem },
+      { user_id: contexto.user_id, phone: phoneNumber, direction: 'sent', message: respostaIA, origem }
     ]);
 
     // DETECTAR LEAD QUENTE
-    const palavrasInteresse = [
-      'quero', 'comprar', 'vou comprar', 'pagar', 'pix',
-      'link', 'fechado', 'aceita', 'beleza', 'sim', 'ok', 
-      'vou', 'me manda', 'envia', 'fechar', 'fecha'
-    ];
-
-    const temInteresse = palavrasInteresse.some(p => 
-      messageText.toLowerCase().includes(p)
-    );
+    const palavrasInteresse = ['quero', 'comprar', 'pagar', 'pix', 'link', 'fechado', 'fechar', 'sim', 'ok', 'beleza'];
+    const temInteresse = palavrasInteresse.some(p => messageText.toLowerCase().includes(p));
 
     if (temInteresse) {
       console.log('🔥 LEAD QUENTE!');
@@ -493,23 +459,16 @@ RESPONDA AGORA (SÓ A MENSAGEM, curta e humana):`;
       });
     }
 
-    // Atualizar log de debug
-    await supabaseClient.from('webhook_debug_logs')
-      .update({ processing_result: `SUCESSO: "${respostaIA.substring(0, 50)}..."` })
-      .eq('extracted_phone', phoneNumber)
-      .order('timestamp', { ascending: false })
-      .limit(1);
-
     return new Response(JSON.stringify({ 
-      status: 'success', 
+      status: 'success',
+      envio_sucesso: envioSucesso,
+      formato_usado: formatoUsado,
       aiResponse: respostaIA,
       leadQuente: temInteresse
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
-    console.error('❌ Erro:', error);
+    console.error('❌ ERRO GERAL:', error);
     
     await supabaseClient.from('webhook_debug_logs').insert({
       payload: webhookData,
