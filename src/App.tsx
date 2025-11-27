@@ -46,6 +46,7 @@ import MarketplacePublico from "./pages/MarketplacePublico";
 import AdminProdutos from "./pages/AdminProdutos";
 import OnboardingWhatsApp from "./pages/OnboardingWhatsApp";
 import ConfiguracaoEmpresa from "./pages/ConfiguracaoEmpresa";
+import IAConversas from "./pages/IAConversas";
 
 const queryClient = new QueryClient();
 
@@ -93,6 +94,7 @@ const App = () => (
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/produtos" element={<AdminProdutos />} />
             <Route path="/configuracao-empresa" element={<ConfiguracaoEmpresa />} />
+            <Route path="/ia-conversas" element={<IAConversas />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:slug" element={<MarketplaceProduto />} />
             <Route path="/marketplace-publico" element={<MarketplacePublico />} />

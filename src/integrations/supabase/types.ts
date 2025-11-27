@@ -2524,12 +2524,16 @@ export type Database = {
       }
       whatsapp_conversations: {
         Row: {
+          assumido_em: string | null
+          assumido_por: string | null
           campaign_id: string | null
+          contact_name: string | null
           created_at: string | null
           id: string
           last_message_at: string | null
           lead_id: string | null
           metadata: Json | null
+          modo_atendimento: string | null
           origem: string | null
           phone_number: string
           status: string | null
@@ -2539,12 +2543,16 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          assumido_em?: string | null
+          assumido_por?: string | null
           campaign_id?: string | null
+          contact_name?: string | null
           created_at?: string | null
           id?: string
           last_message_at?: string | null
           lead_id?: string | null
           metadata?: Json | null
+          modo_atendimento?: string | null
           origem?: string | null
           phone_number: string
           status?: string | null
@@ -2554,12 +2562,16 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          assumido_em?: string | null
+          assumido_por?: string | null
           campaign_id?: string | null
+          contact_name?: string | null
           created_at?: string | null
           id?: string
           last_message_at?: string | null
           lead_id?: string | null
           metadata?: Json | null
+          modo_atendimento?: string | null
           origem?: string | null
           phone_number?: string
           status?: string | null
