@@ -6,7 +6,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, X } from 'lucide-react';
+import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { salvarCampanhaNaBiblioteca } from '@/lib/bibliotecaCampanhas';
@@ -38,6 +38,12 @@ interface Campanha {
   ativa: boolean;
 }
 
+interface PostsGerados {
+  urgencia: string;
+  beneficio: string;
+  promocional: string;
+}
+
 interface CriarCampanhaWhatsAppModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -61,6 +67,10 @@ export function CriarCampanhaWhatsAppModal({
   const [listasSelecionadas, setListasSelecionadas] = useState<string[]>([]);
   const [mensagem, setMensagem] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Estados para geração de posts IA
+  const [postsGerados, setPostsGerados] = useState<PostsGerados | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -132,6 +142,42 @@ export function CriarCampanhaWhatsAppModal({
     } else {
       setListasSelecionadas([...listasSelecionadas, listaId]);
     }
+  };
+
+  const gerarPostsIA = async () => {
+    try {
+      setIsGenerating(true);
+      setPostsGerados(null);
+      
+      const { data, error } = await supabase.functions.invoke('gerar-posts-whatsapp', {
+        body: { 
+          produto: {
+            nome: produto.nome,
+            preco: produto.preco,
+            descricao: produto.descricao
+          }
+        }
+      });
+
+      if (error) throw error;
+      
+      if (data?.posts) {
+        setPostsGerados(data.posts);
+        toast.success('✨ 3 variações de posts geradas!');
+      } else {
+        throw new Error('Resposta inválida da IA');
+      }
+    } catch (error) {
+      console.error('Erro ao gerar posts:', error);
+      toast.error('Erro ao gerar posts. Tente novamente.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const selecionarPost = (texto: string) => {
+    setMensagem(texto);
+    toast.success('Post selecionado!');
   };
 
   const enviarCampanhaAgora = async () => {
@@ -552,13 +598,71 @@ export function CriarCampanhaWhatsAppModal({
 
           {/* 4. MENSAGEM */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">4. Mensagem</Label>
+            <div className="flex items-center justify-between mb-3">
+              <Label className="text-lg font-semibold">4. Mensagem</Label>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={gerarPostsIA}
+                disabled={isGenerating}
+                className="gap-2"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Gerando...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Gerar com IA
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* Posts gerados pela IA */}
+            {postsGerados && (
+              <div className="mb-4 space-y-3">
+                <p className="text-sm font-medium text-muted-foreground">✨ Escolha uma variação:</p>
+                
+                <div 
+                  onClick={() => selecionarPost(postsGerados.urgencia)}
+                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold bg-red-100 text-red-700 px-2 py-0.5 rounded">🔥 URGÊNCIA</span>
+                  </div>
+                  <p className="text-sm whitespace-pre-wrap">{postsGerados.urgencia}</p>
+                </div>
+
+                <div 
+                  onClick={() => selecionarPost(postsGerados.beneficio)}
+                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded">✅ BENEFÍCIO</span>
+                  </div>
+                  <p className="text-sm whitespace-pre-wrap">{postsGerados.beneficio}</p>
+                </div>
+
+                <div 
+                  onClick={() => selecionarPost(postsGerados.promocional)}
+                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold bg-orange-100 text-orange-700 px-2 py-0.5 rounded">🎁 PROMOCIONAL</span>
+                  </div>
+                  <p className="text-sm whitespace-pre-wrap">{postsGerados.promocional}</p>
+                </div>
+              </div>
+            )}
+
             <Textarea
               value={mensagem}
               onChange={(e) => setMensagem(e.target.value)}
               placeholder="Olá {{nome}}! Confira nosso produto..."
               rows={8}
-              className="mt-3"
             />
             <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
               <p className="text-xs font-medium mb-2">💡 Variáveis disponíveis:</p>
