@@ -86,6 +86,7 @@ const App = () => (
             <Route path="/biblioteca" element={<Biblioteca />} />
           <Route path="/campanhas" element={<Campanhas />} />
           <Route path="/campanhas/google-ads" element={<GoogleAds />} />
+          <Route path="/google-ads" element={<GoogleAds />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
             <Route path="/reviewer" element={<ReviewerLogin />} />
