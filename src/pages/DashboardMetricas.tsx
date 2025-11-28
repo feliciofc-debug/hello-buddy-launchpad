@@ -239,9 +239,12 @@ export default function DashboardMetricas() {
     { icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
     { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
+    { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
     { icon: Users, label: 'Prospects', path: '/campanhas-prospeccao' },
+    { icon: Target, label: 'Configurar ICP', path: '/configurar-icp' },
     { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
     { icon: Megaphone, label: 'Campanhas', path: '/campanhas' },
+    { icon: TrendingUp, label: 'Analytics', path: '/analytics' },
     { icon: Settings, label: 'Configurações', path: '/configuracoes' },
   ];
 
