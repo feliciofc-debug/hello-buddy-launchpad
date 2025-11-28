@@ -19,7 +19,6 @@ import ImportCSVModal from '@/components/ImportCSVModal';
 import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
 import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
-import { useScheduledCampaigns } from '@/hooks/useScheduledCampaigns';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 
 interface Campanha {
@@ -416,9 +415,6 @@ export default function MeusProdutos() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [userId, setUserId] = useState<string>();
-  
-  // ATIVAR VERIFICADOR DE CAMPANHAS
-  useScheduledCampaigns(userId);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
