@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { salvarCampanhaNaBiblioteca } from '@/lib/bibliotecaCampanhas';
 
 interface WhatsAppGroup {
   id: string;
@@ -192,6 +193,47 @@ export function CriarCampanhaWhatsAppModal({
     }
 
     toast.success(`✅ Campanha enviada! ${enviados} sucesso, ${erros} erros`);
+    
+    // Criar campanha temporária para salvar na biblioteca
+    const { data: campanhaTemp } = await supabase
+      .from('campanhas_recorrentes')
+      .insert({
+        user_id: user.id,
+        produto_id: produto.id,
+        nome: `Envio Imediato - ${produto.nome}`,
+        listas_ids: listasSelecionadas,
+        frequencia: 'agora',
+        data_inicio: new Date().toISOString().split('T')[0],
+        horarios: [new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })],
+        dias_semana: [],
+        mensagem_template: mensagem,
+        ativa: false,
+        status: 'finalizada',
+        total_enviados: enviados,
+        ultima_execucao: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (campanhaTemp) {
+      await salvarCampanhaNaBiblioteca({
+        produto: {
+          id: produto.id,
+          nome: produto.nome,
+          descricao: produto.descricao || undefined,
+          preco: produto.preco || undefined,
+          imagem_url: produto.imagem_url || undefined
+        },
+        campanha: {
+          id: campanhaTemp.id,
+          nome: campanhaTemp.nome,
+          mensagem_template: mensagem,
+          frequencia: 'agora',
+          listas_ids: listasSelecionadas
+        }
+      });
+      console.log('📚 Campanha imediata salva na biblioteca!');
+    }
   };
 
   const salvarCampanhaRecorrente = async () => {
@@ -312,6 +354,26 @@ export function CriarCampanhaWhatsAppModal({
 
       if (error) throw error;
       console.log('✨ Nova campanha criada:', novaCampanha);
+      
+      // Salvar na biblioteca automaticamente
+      await salvarCampanhaNaBiblioteca({
+        produto: {
+          id: produto.id,
+          nome: produto.nome,
+          descricao: produto.descricao || undefined,
+          preco: produto.preco || undefined,
+          imagem_url: produto.imagem_url || undefined
+        },
+        campanha: {
+          id: novaCampanha.id,
+          nome: novaCampanha.nome,
+          mensagem_template: mensagem,
+          frequencia: frequencia,
+          listas_ids: listasSelecionadas
+        }
+      });
+      console.log('📚 Campanha salva na biblioteca!');
+      
       toast.success(`✅ Campanha agendada! Próximo envio: ${new Date(proximaExecucao).toLocaleString('pt-BR')}`);
     }
   };
