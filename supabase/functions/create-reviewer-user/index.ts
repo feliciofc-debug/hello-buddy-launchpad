@@ -7,13 +7,13 @@ Deno.serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Criar usuário revisor da Shopee
+    // Criar usuário revisor
     const { data: user, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
-      email: 'shopee_reviewer@review.shopee.com',
-      password: 'ShopeeReview@2025!',
+      email: 'expo@atombrasildigital.com',
+      password: 'Amz520741$',
       email_confirm: true,
       user_metadata: {
-        nome: 'Shopee Reviewer',
+        nome: 'Expo Reviewer',
         role: 'reviewer'
       }
     });
@@ -31,8 +31,8 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Usuário shopee_reviewer criado com sucesso!',
-        email: 'shopee_reviewer@review.shopee.com',
+        message: 'Usuário expo criado com sucesso!',
+        email: 'expo@atombrasildigital.com',
         userId: user.user?.id
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
