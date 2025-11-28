@@ -19,11 +19,11 @@ export default function ReviewerLogin() {
     setLoading(true);
 
     try {
-      localStorage.setItem('reviewer_session', JSON.stringify({
-        email: 'shopee_reviewer@review.shopee.com',
-        role: 'reviewer',
-        loginTime: new Date().toISOString()
-      }));
+    localStorage.setItem('reviewer_session', JSON.stringify({
+      email: 'expo@atombrasildigital.com',
+      role: 'reviewer',
+      loginTime: new Date().toISOString()
+    }));
       
       toast.success('Login realizado com sucesso!');
       navigate('/dashboard');
