@@ -272,14 +272,15 @@ serve(async (req) => {
         const prod = ultimaCampanha.produtos;
         console.log('✅ Produto encontrado:', prod.nome, '- R$', prod.preco);
         
+        // IMPORTANTE: spread ctx PRIMEIRO, depois os novos valores sobrescrevem
         ctx = {
+          ...ctx,
           produto_nome: prod.nome,
           produto_descricao: prod.descricao,
           produto_preco: prod.preco,
           produto_estoque: prod.estoque,
           produto_especificacoes: prod.especificacoes,
-          link_marketplace: prod.link_marketplace,
-          ...ctx
+          link_marketplace: prod.link_marketplace
         };
 
         // Atualizar o contexto na conversa para próximas mensagens
