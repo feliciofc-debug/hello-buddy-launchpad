@@ -250,8 +250,47 @@ serve(async (req) => {
     
     console.log('🤖 Modo IA - IA vai responder');
 
-    const ctx = contexto.metadata || contexto.last_message_context || {};
+    let ctx = contexto.metadata || contexto.last_message_context || {};
     const origem = contexto.origem || 'campanha';
+
+    // ═══════════════════════════════════════
+    // 🔍 SE NÃO TEM DADOS DO PRODUTO, BUSCAR DA ÚLTIMA CAMPANHA
+    // ═══════════════════════════════════════
+    if (!ctx.produto_nome || !ctx.produto_preco) {
+      console.log('⚠️ Contexto sem dados de produto, buscando da última campanha...');
+      
+      // Buscar última campanha enviada para este telefone
+      const { data: ultimaCampanha } = await supabaseClient
+        .from('campanhas_recorrentes')
+        .select('*, produtos(*)')
+        .eq('user_id', contexto.user_id)
+        .order('ultima_execucao', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (ultimaCampanha?.produtos) {
+        const prod = ultimaCampanha.produtos;
+        console.log('✅ Produto encontrado:', prod.nome, '- R$', prod.preco);
+        
+        ctx = {
+          produto_nome: prod.nome,
+          produto_descricao: prod.descricao,
+          produto_preco: prod.preco,
+          produto_estoque: prod.estoque,
+          produto_especificacoes: prod.especificacoes,
+          link_marketplace: prod.link_marketplace,
+          ...ctx
+        };
+
+        // Atualizar o contexto na conversa para próximas mensagens
+        await supabaseClient
+          .from('whatsapp_conversations')
+          .update({ metadata: ctx })
+          .eq('id', contexto.id);
+      } else {
+        console.log('⚠️ Nenhum produto encontrado nas campanhas');
+      }
+    }
 
     // BUSCAR SEGMENTO
     const { data: empresaConfig } = await supabaseClient
@@ -290,11 +329,20 @@ serve(async (req) => {
         ? `POUCO (${estoque}) - pode criar urgência` 
         : 'TEM - diga "tenho sim", nunca quantidade';
 
+    // PREPARAR DADOS DO PRODUTO COM FALLBACKS
+    const produtoNome = ctx.produto_nome || 'Produto';
+    const produtoPreco = ctx.produto_preco ? `R$ ${Number(ctx.produto_preco).toFixed(2)}` : 'consulte';
+    const produtoDescricao = ctx.produto_descricao || '';
+    const produtoEspecs = ctx.produto_especificacoes || '';
+
+    console.log('📦 Dados do produto para IA:', { produtoNome, produtoPreco, produtoDescricao });
+
     // PROMPT HUMANIZADO
     const promptIA = `Você é vendedor WhatsApp. MÁXIMO 2 LINHAS.
 
-📦 ${ctx.produto_nome} - R$ ${ctx.produto_preco}
-${ctx.produto_descricao || ''}
+📦 ${produtoNome} - ${produtoPreco}
+${produtoDescricao}
+${produtoEspecs ? `Especificações: ${produtoEspecs}` : ''}
 
 📊 ESTOQUE: ${infoEstoque}
 ${historicoTexto}
@@ -365,9 +413,9 @@ RESPONDA (curto e humano, sem repetir "tá"):`;
     if (respostaIA.length > 200 || FRASES_ROBOTICAS.some(f => respostaIA.toLowerCase().includes(f))) {
       const msgLower = messageText.toLowerCase();
       if (['oi', 'olá', 'bom dia', 'boa tarde'].some(c => msgLower.includes(c))) {
-        respostaIA = `Opa! ${ctx.produto_nome} tá R$ ${ctx.produto_preco} 😊`;
+        respostaIA = `Opa! ${produtoNome} tá ${produtoPreco} 😊`;
       } else if (['quanto', 'preço', 'valor'].some(p => msgLower.includes(p))) {
-        respostaIA = `R$ ${ctx.produto_preco}! Tenho disponível`;
+        respostaIA = `${produtoPreco}! Tenho disponível`;
       } else if (['tem', 'estoque'].some(e => msgLower.includes(e))) {
         respostaIA = temEstoque ? 'Tenho sim! Pronta entrega' : 'Acabou, mas chega essa semana';
       } else if (['quero', 'comprar', 'pix'].some(i => msgLower.includes(i))) {
