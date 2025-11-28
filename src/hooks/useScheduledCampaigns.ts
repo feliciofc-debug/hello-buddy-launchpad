@@ -1,14 +1,34 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export function useScheduledCampaigns(userId: string | undefined) {
+  // Lock para evitar execuções duplicadas
+  const isExecuting = useRef(false);
+  const lastExecutionTime = useRef<number>(0);
+
   useEffect(() => {
     if (!userId) return;
 
     console.log('🔄 Iniciando verificador de campanhas');
 
     const checkAndExecute = async () => {
+      // Evitar execução se já está executando
+      if (isExecuting.current) {
+        console.log('⏳ Execução já em andamento, pulando...');
+        return;
+      }
+
+      // Evitar execução se última foi há menos de 30 segundos
+      const now = Date.now();
+      if (now - lastExecutionTime.current < 30000) {
+        console.log('⏳ Última execução muito recente, pulando...');
+        return;
+      }
+
+      isExecuting.current = true;
+      lastExecutionTime.current = now;
+
       try {
         const agora = new Date();
         console.log('⏰ Verificando campanhas:', agora.toLocaleString('pt-BR'));
@@ -28,7 +48,10 @@ export function useScheduledCampaigns(userId: string | undefined) {
 
         console.log(`📋 Encontradas ${campanhas?.length || 0} campanhas para executar`);
 
-        if (!campanhas || campanhas.length === 0) return;
+        if (!campanhas || campanhas.length === 0) {
+          isExecuting.current = false;
+          return;
+        }
 
         // EXECUTAR CADA CAMPANHA
         for (const campanha of campanhas) {
@@ -85,7 +108,7 @@ export function useScheduledCampaigns(userId: string | undefined) {
                   await supabase.from('whatsapp_conversations').upsert({
                     user_id: userId,
                     phone_number: phone,
-                    origem: 'campanha', // ← MARCAR COMO CAMPANHA
+                    origem: 'campanha',
                     last_message_context: {
                       produto_nome: campanha.produtos.nome,
                       produto_descricao: campanha.produtos.descricao,
@@ -107,7 +130,7 @@ export function useScheduledCampaigns(userId: string | undefined) {
                     phone: phone,
                     direction: 'sent',
                     message: mensagem,
-                    origem: 'campanha' // ← MARCAR COMO CAMPANHA
+                    origem: 'campanha'
                   });
                 }
 
@@ -145,6 +168,8 @@ export function useScheduledCampaigns(userId: string | undefined) {
 
       } catch (error) {
         console.error('❌ Erro ao verificar campanhas:', error);
+      } finally {
+        isExecuting.current = false;
       }
     };
 
