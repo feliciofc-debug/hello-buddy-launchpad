@@ -71,7 +71,7 @@ export function CriarCampanhaWhatsAppModal({
   // Estados para geração de posts IA
   const [postsGerados, setPostsGerados] = useState<PostsGerados | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-
+  const [sugestaoIA, setSugestaoIA] = useState(''); // Campo para sugestões personalizadas
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   useEffect(() => {
@@ -155,7 +155,8 @@ export function CriarCampanhaWhatsAppModal({
             nome: produto.nome,
             preco: produto.preco,
             descricao: produto.descricao
-          }
+          },
+          sugestao: sugestaoIA // Passa as sugestões do usuário
         }
       });
 
@@ -598,14 +599,22 @@ export function CriarCampanhaWhatsAppModal({
 
           {/* 4. MENSAGEM */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <div className="flex items-center justify-between mb-3">
-              <Label className="text-lg font-semibold">4. Mensagem</Label>
+            <Label className="text-lg font-semibold mb-3 block">4. Mensagem</Label>
+            
+            {/* Campo de sugestões + Botão IA */}
+            <div className="flex gap-2 mb-4">
+              <Input
+                value={sugestaoIA}
+                onChange={(e) => setSugestaoIA(e.target.value)}
+                placeholder="Ex: promoção no Mundial, pão quentinho saindo agora, padaria Recreio..."
+                className="flex-1"
+              />
               <Button 
                 variant="outline" 
                 size="sm" 
                 onClick={gerarPostsIA}
                 disabled={isGenerating}
-                className="gap-2"
+                className="gap-2 whitespace-nowrap"
               >
                 {isGenerating ? (
                   <>
