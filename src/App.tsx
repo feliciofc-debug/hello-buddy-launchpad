@@ -47,6 +47,7 @@ import AdminProdutos from "./pages/AdminProdutos";
 import OnboardingWhatsApp from "./pages/OnboardingWhatsApp";
 import ConfiguracaoEmpresa from "./pages/ConfiguracaoEmpresa";
 import IAConversas from "./pages/IAConversas";
+import DashboardMetricas from "./pages/DashboardMetricas";
 
 const queryClient = new QueryClient();
 
@@ -64,6 +65,7 @@ const App = () => (
             <Route path="/planos" element={<Planos />} />
             <Route path="/test-payment" element={<TestPayment />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/dashboard-metricas" element={<DashboardMetricas />} />
             <Route path="/produtos" element={<ProductsPage />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
             <Route path="/configuracoes-icp" element={<ConfigurarICP />} />
