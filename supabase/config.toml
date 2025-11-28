@@ -110,3 +110,15 @@ verify_jwt = false
 
 [functions.test-wuzapi-direct]
 verify_jwt = false
+
+[functions.google-ads-auth]
+verify_jwt = false
+
+[functions.google-ads-callback]
+verify_jwt = false
+
+[functions.google-ads-create-campaign]
+verify_jwt = false
+
+[functions.google-ads-sync-metrics]
+verify_jwt = false
