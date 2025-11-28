@@ -554,44 +554,288 @@ const Biblioteca = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Google Ads */}
+      {/* Modal Google Ads - Formulário Completo */}
       <Dialog open={!!googleAdsModal} onOpenChange={() => setGoogleAdsModal(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>🎯 Criar Campanha Google Ads</DialogTitle>
             <DialogDescription>
-              Enviar produto "{googleAdsModal?.produto_nome}" para Google Ads
+              Configure a campanha de anúncios para "{googleAdsModal?.produto_nome}"
             </DialogDescription>
           </DialogHeader>
           {googleAdsModal && (
-            <div className="space-y-4">
-              <div className="bg-muted p-4 rounded space-y-2">
-                <p><strong>Produto:</strong> {googleAdsModal.produto_nome}</p>
-                {googleAdsModal.produto_preco && (
-                  <p><strong>Preço:</strong> R$ {googleAdsModal.produto_preco.toFixed(2)}</p>
-                )}
-                <p><strong>Categoria:</strong> {googleAdsModal.produto_categoria || 'N/A'}</p>
-              </div>
-              
-              <p className="text-sm text-muted-foreground">
-                Você será redirecionado para criar uma campanha de anúncios com os dados do produto pré-preenchidos.
-              </p>
-
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setGoogleAdsModal(null)} className="flex-1">
-                  Cancelar
-                </Button>
-                <Button onClick={criarCampanhaGoogleAds} className="flex-1">
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Ir para Google Ads
-                </Button>
-              </div>
-            </div>
+            <GoogleAdsForm 
+              campanha={googleAdsModal} 
+              onClose={() => setGoogleAdsModal(null)}
+              onSuccess={() => {
+                setGoogleAdsModal(null);
+                loadCampanhas();
+                toast.success("Campanha Google Ads criada!");
+              }}
+            />
           )}
         </DialogContent>
       </Dialog>
     </div>
   );
 };
+
+// Componente do formulário Google Ads
+function GoogleAdsForm({ 
+  campanha, 
+  onClose, 
+  onSuccess 
+}: { 
+  campanha: BibliotecaCampanha; 
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    nome_campanha: `Google Ads - ${campanha.produto_nome}`,
+    objetivo: 'vendas',
+    orcamento_diario: '50',
+    duracao_dias: '30',
+    headline1: campanha.produto_nome.substring(0, 30),
+    headline2: campanha.produto_preco ? `A partir de R$ ${campanha.produto_preco.toFixed(2)}` : 'Confira agora!',
+    headline3: 'Compre Online',
+    descricao1: campanha.produto_descricao?.substring(0, 90) || 'Produto de qualidade com entrega rápida.',
+    descricao2: 'Aproveite as melhores ofertas. Compre agora!',
+    url_final: campanha.produto_link_marketplace || '',
+    palavras_chave: campanha.produto_categoria || '',
+    localizacao: 'Brasil',
+    idade_min: '18',
+    idade_max: '65',
+    genero: 'todos'
+  });
+
+  const handleSalvar = async () => {
+    try {
+      setIsLoading(true);
+      
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.error('Usuário não autenticado');
+        return;
+      }
+
+      // Salvar campanha Google Ads no banco
+      const { error } = await supabase
+        .from('campanhas')
+        .insert({
+          user_id: userData.user.id,
+          nome: formData.nome_campanha,
+          plataforma: 'google_ads',
+          status: 'rascunho',
+          orcamento: parseFloat(formData.orcamento_diario) * parseInt(formData.duracao_dias),
+          publico: {
+            localizacao: formData.localizacao,
+            idade_min: parseInt(formData.idade_min),
+            idade_max: parseInt(formData.idade_max),
+            genero: formData.genero,
+            palavras_chave: formData.palavras_chave.split(',').map(p => p.trim())
+          },
+          metricas: {
+            objetivo: formData.objetivo,
+            headlines: [formData.headline1, formData.headline2, formData.headline3],
+            descricoes: [formData.descricao1, formData.descricao2],
+            url_final: formData.url_final,
+            produto_imagem: campanha.produto_imagem_url,
+            biblioteca_campanha_id: campanha.id
+          },
+          posts_ids: []
+        });
+
+      if (error) throw error;
+
+      // Marcar na biblioteca que foi enviado para Google Ads
+      await supabase
+        .from('biblioteca_campanhas')
+        .update({ 
+          enviado_google_ads: true,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', campanha.id);
+
+      onSuccess();
+    } catch (error) {
+      console.error('Erro ao criar campanha:', error);
+      toast.error('Erro ao criar campanha Google Ads');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 py-4">
+      {/* Preview do Produto */}
+      <div className="flex gap-4 p-4 bg-muted rounded-lg">
+        {campanha.produto_imagem_url && (
+          <img 
+            src={campanha.produto_imagem_url} 
+            alt={campanha.produto_nome}
+            className="w-24 h-24 object-cover rounded"
+          />
+        )}
+        <div className="flex-1">
+          <h3 className="font-bold">{campanha.produto_nome}</h3>
+          <p className="text-sm text-muted-foreground line-clamp-2">{campanha.produto_descricao}</p>
+          {campanha.produto_preco && (
+            <p className="text-lg font-bold text-green-600 mt-1">
+              R$ {campanha.produto_preco.toFixed(2)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Configurações Básicas */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <label className="text-sm font-medium">Nome da Campanha</label>
+          <Input 
+            value={formData.nome_campanha}
+            onChange={(e) => setFormData({...formData, nome_campanha: e.target.value})}
+            className="mt-1"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Objetivo</label>
+          <Select value={formData.objetivo} onValueChange={(v) => setFormData({...formData, objetivo: v})}>
+            <SelectTrigger className="mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vendas">💰 Vendas</SelectItem>
+              <SelectItem value="leads">📋 Leads</SelectItem>
+              <SelectItem value="trafego">🌐 Tráfego</SelectItem>
+              <SelectItem value="awareness">📢 Reconhecimento</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-sm font-medium">Orçamento Diário (R$)</label>
+          <Input 
+            type="number"
+            value={formData.orcamento_diario}
+            onChange={(e) => setFormData({...formData, orcamento_diario: e.target.value})}
+            className="mt-1"
+          />
+        </div>
+      </div>
+
+      {/* Headlines */}
+      <div className="space-y-3">
+        <label className="text-sm font-medium">Headlines (Títulos do Anúncio)</label>
+        <Input 
+          value={formData.headline1}
+          onChange={(e) => setFormData({...formData, headline1: e.target.value})}
+          placeholder="Headline 1 (max 30 caracteres)"
+          maxLength={30}
+        />
+        <Input 
+          value={formData.headline2}
+          onChange={(e) => setFormData({...formData, headline2: e.target.value})}
+          placeholder="Headline 2 (max 30 caracteres)"
+          maxLength={30}
+        />
+        <Input 
+          value={formData.headline3}
+          onChange={(e) => setFormData({...formData, headline3: e.target.value})}
+          placeholder="Headline 3 (max 30 caracteres)"
+          maxLength={30}
+        />
+      </div>
+
+      {/* Descrições */}
+      <div className="space-y-3">
+        <label className="text-sm font-medium">Descrições</label>
+        <Input 
+          value={formData.descricao1}
+          onChange={(e) => setFormData({...formData, descricao1: e.target.value})}
+          placeholder="Descrição 1 (max 90 caracteres)"
+          maxLength={90}
+        />
+        <Input 
+          value={formData.descricao2}
+          onChange={(e) => setFormData({...formData, descricao2: e.target.value})}
+          placeholder="Descrição 2 (max 90 caracteres)"
+          maxLength={90}
+        />
+      </div>
+
+      {/* URL e Palavras-chave */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="col-span-2">
+          <label className="text-sm font-medium">URL Final (Link do Produto)</label>
+          <Input 
+            value={formData.url_final}
+            onChange={(e) => setFormData({...formData, url_final: e.target.value})}
+            placeholder="https://..."
+            className="mt-1"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="text-sm font-medium">Palavras-chave (separadas por vírgula)</label>
+          <Input 
+            value={formData.palavras_chave}
+            onChange={(e) => setFormData({...formData, palavras_chave: e.target.value})}
+            placeholder="produto, categoria, marca..."
+            className="mt-1"
+          />
+        </div>
+      </div>
+
+      {/* Público-alvo */}
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="text-sm font-medium">Localização</label>
+          <Input 
+            value={formData.localizacao}
+            onChange={(e) => setFormData({...formData, localizacao: e.target.value})}
+            className="mt-1"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Idade Mín.</label>
+          <Input 
+            type="number"
+            value={formData.idade_min}
+            onChange={(e) => setFormData({...formData, idade_min: e.target.value})}
+            className="mt-1"
+          />
+        </div>
+        <div>
+          <label className="text-sm font-medium">Idade Máx.</label>
+          <Input 
+            type="number"
+            value={formData.idade_max}
+            onChange={(e) => setFormData({...formData, idade_max: e.target.value})}
+            className="mt-1"
+          />
+        </div>
+      </div>
+
+      {/* Preview do Anúncio */}
+      <div className="border rounded-lg p-4 bg-background">
+        <p className="text-xs text-muted-foreground mb-2">Preview do Anúncio:</p>
+        <div className="space-y-1">
+          <p className="text-blue-600 font-medium text-lg">{formData.headline1} | {formData.headline2}</p>
+          <p className="text-green-700 text-sm">{formData.url_final || 'www.seusite.com.br'}</p>
+          <p className="text-sm text-muted-foreground">{formData.descricao1}</p>
+        </div>
+      </div>
+
+      {/* Botões */}
+      <div className="flex gap-3 pt-4">
+        <Button variant="outline" onClick={onClose} className="flex-1">
+          Cancelar
+        </Button>
+        <Button onClick={handleSalvar} disabled={isLoading} className="flex-1">
+          {isLoading ? 'Salvando...' : '🚀 Criar Campanha'}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default Biblioteca;
