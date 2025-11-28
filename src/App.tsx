@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { TypebotChat } from "@/components/TypebotChat";
+import { CampaignScheduler } from "@/components/CampaignScheduler";
 import Dashboard from "./pages/Dashboard";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -57,6 +58,7 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <CampaignScheduler />
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/" element={<Landing />} />
