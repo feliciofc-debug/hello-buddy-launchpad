@@ -793,6 +793,126 @@ export type Database = {
         }
         Relationships: []
       }
+      google_ads_campaigns: {
+        Row: {
+          ad_type: string | null
+          biblioteca_campanha_id: string | null
+          budget_daily: number | null
+          budget_total: number | null
+          campaign_id: string
+          created_at: string | null
+          end_date: string | null
+          id: string
+          keywords: string[] | null
+          metrics: Json | null
+          name: string
+          produto_id: string | null
+          start_date: string | null
+          status: string | null
+          targeting: Json | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          ad_type?: string | null
+          biblioteca_campanha_id?: string | null
+          budget_daily?: number | null
+          budget_total?: number | null
+          campaign_id: string
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          keywords?: string[] | null
+          metrics?: Json | null
+          name: string
+          produto_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          targeting?: Json | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          ad_type?: string | null
+          biblioteca_campanha_id?: string | null
+          budget_daily?: number | null
+          budget_total?: number | null
+          campaign_id?: string
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          keywords?: string[] | null
+          metrics?: Json | null
+          name?: string
+          produto_id?: string | null
+          start_date?: string | null
+          status?: string | null
+          targeting?: Json | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "google_ads_campaigns_biblioteca_campanha_id_fkey"
+            columns: ["biblioteca_campanha_id"]
+            isOneToOne: false
+            referencedRelation: "biblioteca_campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "google_ads_campaigns_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      google_ads_config: {
+        Row: {
+          access_token: string | null
+          account_email: string | null
+          client_id: string | null
+          client_secret: string | null
+          connected_at: string | null
+          created_at: string | null
+          customer_id: string | null
+          id: string
+          refresh_token: string | null
+          token_expires_at: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          account_email?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          connected_at?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          id?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          account_email?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          connected_at?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          id?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       icp_configs: {
         Row: {
           ativo: boolean | null
