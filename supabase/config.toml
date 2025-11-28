@@ -125,3 +125,6 @@ verify_jwt = false
 
 [functions.google-ads-sync-metrics]
 verify_jwt = false
+
+[functions.update-reviewer-password]
+verify_jwt = false
