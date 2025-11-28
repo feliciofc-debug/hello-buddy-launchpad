@@ -14,6 +14,111 @@ export type Database = {
   }
   public: {
     Tables: {
+      biblioteca_campanhas: {
+        Row: {
+          campanha_id: string | null
+          campanha_nome: string
+          created_at: string | null
+          data_campanha: string | null
+          disponivel_remarketing: boolean | null
+          enviado_google_ads: boolean | null
+          frequencia: string | null
+          google_ads_campaign_id: string | null
+          id: string
+          listas_ids: string[] | null
+          mensagem_template: string | null
+          produto_categoria: string | null
+          produto_descricao: string | null
+          produto_id: string | null
+          produto_imagem_url: string | null
+          produto_imagens: Json | null
+          produto_link_marketplace: string | null
+          produto_nome: string
+          produto_preco: number | null
+          status: string | null
+          taxa_conversao: number | null
+          taxa_resposta: number | null
+          total_conversoes: number | null
+          total_enviados: number | null
+          total_respostas: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          campanha_id?: string | null
+          campanha_nome: string
+          created_at?: string | null
+          data_campanha?: string | null
+          disponivel_remarketing?: boolean | null
+          enviado_google_ads?: boolean | null
+          frequencia?: string | null
+          google_ads_campaign_id?: string | null
+          id?: string
+          listas_ids?: string[] | null
+          mensagem_template?: string | null
+          produto_categoria?: string | null
+          produto_descricao?: string | null
+          produto_id?: string | null
+          produto_imagem_url?: string | null
+          produto_imagens?: Json | null
+          produto_link_marketplace?: string | null
+          produto_nome: string
+          produto_preco?: number | null
+          status?: string | null
+          taxa_conversao?: number | null
+          taxa_resposta?: number | null
+          total_conversoes?: number | null
+          total_enviados?: number | null
+          total_respostas?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          campanha_id?: string | null
+          campanha_nome?: string
+          created_at?: string | null
+          data_campanha?: string | null
+          disponivel_remarketing?: boolean | null
+          enviado_google_ads?: boolean | null
+          frequencia?: string | null
+          google_ads_campaign_id?: string | null
+          id?: string
+          listas_ids?: string[] | null
+          mensagem_template?: string | null
+          produto_categoria?: string | null
+          produto_descricao?: string | null
+          produto_id?: string | null
+          produto_imagem_url?: string | null
+          produto_imagens?: Json | null
+          produto_link_marketplace?: string | null
+          produto_nome?: string
+          produto_preco?: number | null
+          status?: string | null
+          taxa_conversao?: number | null
+          taxa_resposta?: number | null
+          total_conversoes?: number | null
+          total_enviados?: number | null
+          total_respostas?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "biblioteca_campanhas_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "campanhas_recorrentes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "biblioteca_campanhas_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_queue: {
         Row: {
           attempts: number | null

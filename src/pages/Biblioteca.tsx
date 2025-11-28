@@ -5,90 +5,114 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ArrowLeft, Search, Edit, Copy, Trash2, Download, Instagram, Facebook, Calendar } from "lucide-react";
+import { 
+  ArrowLeft, Search, Repeat, Trash2, Download, 
+  TrendingUp, MessageCircle, Users, Package,
+  ExternalLink, Calendar, BarChart3, Target
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
-interface Content {
+interface BibliotecaCampanha {
   id: string;
-  thumbnail: string;
-  titulo: string;
-  tipo: "Post" | "Story" | "Vídeo";
-  redes: string[];
-  dataCriacao: string;
-  status: "Rascunho" | "Agendado" | "Postado";
-  texto?: string;
+  produto_id: string | null;
+  campanha_id: string | null;
+  produto_nome: string;
+  produto_descricao: string | null;
+  produto_preco: number | null;
+  produto_imagem_url: string | null;
+  produto_imagens: unknown[];
+  produto_categoria: string | null;
+  produto_link_marketplace: string | null;
+  campanha_nome: string;
+  mensagem_template: string | null;
+  frequencia: string | null;
+  listas_ids: string[] | null;
+  total_enviados: number;
+  total_respostas: number;
+  total_conversoes: number;
+  taxa_resposta: number;
+  taxa_conversao: number;
+  status: string;
+  disponivel_remarketing: boolean;
+  enviado_google_ads: boolean;
+  google_ads_campaign_id: string | null;
+  data_campanha: string;
+  created_at: string;
 }
 
 const Biblioteca = () => {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
-  const [tipoFilter, setTipoFilter] = useState<string>("Todos");
-  const [redeFilter, setRedeFilter] = useState<string>("Todas");
+  const [categoriaFilter, setCategoriaFilter] = useState<string>("Todas");
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [contents, setContents] = useState<Content[]>([]);
+  const [campanhas, setCampanhas] = useState<BibliotecaCampanha[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detalhesModal, setDetalhesModal] = useState<BibliotecaCampanha | null>(null);
+  const [googleAdsModal, setGoogleAdsModal] = useState<BibliotecaCampanha | null>(null);
 
   useEffect(() => {
-    loadContents();
+    loadCampanhas();
   }, []);
 
-  const loadContents = async () => {
+  const loadCampanhas = async () => {
     try {
       setLoading(true);
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) return;
 
       const { data, error } = await supabase
-        .from('posts')
+        .from('biblioteca_campanhas')
         .select('*')
         .eq('user_id', userData.user.id)
-        .order('created_at', { ascending: false });
+        .order('data_campanha', { ascending: false });
 
       if (error) throw error;
 
-      const mappedContents: Content[] = data.map(post => ({
-        id: post.id,
-        thumbnail: post.imagem_url || "/placeholder.svg",
-        titulo: post.titulo,
-        tipo: "Post",
-        redes: ["Instagram", "WhatsApp"],
-        dataCriacao: new Date(post.created_at).toLocaleDateString('pt-BR'),
-        status: post.status === 'agendado' ? 'Agendado' : post.status === 'postado' ? 'Postado' : 'Rascunho',
-        texto: post.texto_instagram
-      }));
-
-      setContents(mappedContents);
+      // Cast the data to the correct type
+      const typedData = (data || []) as unknown as BibliotecaCampanha[];
+      setCampanhas(typedData);
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao carregar posts");
+      toast.error("Erro ao carregar biblioteca");
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredContents = contents.filter(content => {
-    const matchSearch = content.titulo.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchTipo = tipoFilter === "Todos" || content.tipo === tipoFilter;
-    const matchRede = redeFilter === "Todas" || content.redes.includes(redeFilter);
-    const matchStatus = statusFilter === "Todos" || content.status === statusFilter;
-    return matchSearch && matchTipo && matchRede && matchStatus;
+  const categorias = [...new Set(campanhas.map(c => c.produto_categoria).filter(Boolean))];
+
+  const filteredCampanhas = campanhas.filter(campanha => {
+    const matchSearch = campanha.produto_nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        campanha.campanha_nome.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchCategoria = categoriaFilter === "Todas" || campanha.produto_categoria === categoriaFilter;
+    const matchStatus = statusFilter === "Todos" || campanha.status === statusFilter;
+    return matchSearch && matchCategoria && matchStatus;
   });
 
   const stats = {
-    total: contents.length,
-    agendados: contents.filter(c => c.status === "Agendado").length,
-    postados: contents.filter(c => c.status === "Postado").length,
-    rascunhos: contents.filter(c => c.status === "Rascunho").length,
+    total: campanhas.length,
+    ativas: campanhas.filter(c => c.status === "ativa").length,
+    finalizadas: campanhas.filter(c => c.status === "finalizada").length,
+    totalEnviados: campanhas.reduce((sum, c) => sum + c.total_enviados, 0),
+    totalRespostas: campanhas.reduce((sum, c) => sum + c.total_respostas, 0),
+    totalConversoes: campanhas.reduce((sum, c) => sum + c.total_conversoes, 0),
   };
 
   const toggleSelectAll = () => {
-    if (selectedItems.length === filteredContents.length) {
+    if (selectedItems.length === filteredCampanhas.length) {
       setSelectedItems([]);
     } else {
-      setSelectedItems(filteredContents.map(c => c.id));
+      setSelectedItems(filteredCampanhas.map(c => c.id));
     }
   };
 
@@ -98,98 +122,92 @@ const Biblioteca = () => {
     );
   };
 
-  const handleEdit = (id: string) => {
-    toast.info("Edição em desenvolvimento");
+  const handleRemarketing = async (campanha: BibliotecaCampanha) => {
+    // Navegar para criar nova campanha com dados pré-preenchidos
+    localStorage.setItem('remarketing_campanha', JSON.stringify({
+      produto_id: campanha.produto_id,
+      produto_nome: campanha.produto_nome,
+      produto_imagem_url: campanha.produto_imagem_url,
+      mensagem_template: campanha.mensagem_template,
+      listas_ids: campanha.listas_ids
+    }));
+    navigate('/meus-produtos');
+    toast.success("Dados carregados para remarketing!");
   };
 
-  const handleDuplicate = (id: string) => {
-    const content = contents.find(c => c.id === id);
-    if (content) {
-      const newContent = {
-        ...content,
-        id: Date.now().toString(),
-        titulo: `${content.titulo} (Cópia)`,
-        status: "Rascunho" as const
-      };
-      setContents([newContent, ...contents]);
-      toast.success("Conteúdo duplicado!");
-    }
+  const handleGoogleAds = (campanha: BibliotecaCampanha) => {
+    setGoogleAdsModal(campanha);
+  };
+
+  const criarCampanhaGoogleAds = async () => {
+    if (!googleAdsModal) return;
+    
+    // Salvar dados para a página de Google Ads
+    localStorage.setItem('google_ads_campanha', JSON.stringify({
+      produto_nome: googleAdsModal.produto_nome,
+      produto_descricao: googleAdsModal.produto_descricao,
+      produto_preco: googleAdsModal.produto_preco,
+      produto_imagem_url: googleAdsModal.produto_imagem_url,
+      produto_link_marketplace: googleAdsModal.produto_link_marketplace,
+      campanha_id: googleAdsModal.id
+    }));
+    
+    navigate('/google-ads');
+    toast.success("Dados carregados para Google Ads!");
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Tem certeza que deseja deletar este conteúdo? Esta ação não pode ser desfeita.')) {
+    if (!confirm('Tem certeza que deseja remover esta campanha da biblioteca?')) {
       return;
     }
 
     try {
       const { error } = await supabase
-        .from('posts')
+        .from('biblioteca_campanhas')
         .delete()
         .eq('id', id);
 
       if (error) throw error;
 
-      setContents(prev => prev.filter(c => c.id !== id));
+      setCampanhas(prev => prev.filter(c => c.id !== id));
       setSelectedItems(prev => prev.filter(i => i !== id));
-      toast.success("Conteúdo deletado permanentemente!");
+      toast.success("Campanha removida da biblioteca!");
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao deletar conteúdo");
+      toast.error("Erro ao remover campanha");
     }
-  };
-
-  const handleScheduleSelected = () => {
-    if (selectedItems.length === 0) {
-      toast.error("Selecione pelo menos um conteúdo!");
-      return;
-    }
-    toast.info(`${selectedItems.length} conteúdos agendados!`);
   };
 
   const handleExportCSV = () => {
-    toast.info("Exportação em desenvolvimento");
-  };
-
-  const handleDeleteSelected = async () => {
-    if (selectedItems.length === 0) {
-      toast.error("Selecione pelo menos um conteúdo!");
-      return;
-    }
-
-    if (!confirm(`Tem certeza que deseja deletar ${selectedItems.length} conteúdo(s)? Esta ação não pode ser desfeita.`)) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .in('id', selectedItems);
-
-      if (error) throw error;
-
-      setContents(prev => prev.filter(c => !selectedItems.includes(c.id)));
-      setSelectedItems([]);
-      toast.success(`${selectedItems.length} conteúdo(s) deletado(s) permanentemente!`);
-    } catch (error) {
-      console.error(error);
-      toast.error("Erro ao deletar conteúdos");
-    }
+    const headers = ['Produto', 'Campanha', 'Categoria', 'Preço', 'Enviados', 'Respostas', 'Conversões', 'Taxa Resposta', 'Taxa Conversão', 'Data'];
+    const rows = filteredCampanhas.map(c => [
+      c.produto_nome,
+      c.campanha_nome,
+      c.produto_categoria || '',
+      c.produto_preco || '',
+      c.total_enviados,
+      c.total_respostas,
+      c.total_conversoes,
+      c.taxa_resposta + '%',
+      c.taxa_conversao + '%',
+      new Date(c.data_campanha).toLocaleDateString('pt-BR')
+    ]);
+    
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'biblioteca_campanhas.csv';
+    a.click();
+    toast.success("CSV exportado!");
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "Agendado": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100";
-      case "Postado": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100";
-      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100";
-    }
-  };
-
-  const getTipoColor = (tipo: string) => {
-    switch (tipo) {
-      case "Post": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100";
-      case "Story": return "bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-100";
-      case "Vídeo": return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100";
+      case "ativa": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100";
+      case "finalizada": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100";
+      case "pausada": return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100";
       default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100";
     }
   };
@@ -207,49 +225,76 @@ const Biblioteca = () => {
         </Button>
 
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Biblioteca de Conteúdo</h1>
-          <p className="text-muted-foreground">Gerencie todos os seus conteúdos gerados</p>
+          <h1 className="text-4xl font-bold mb-2">📚 Biblioteca de Campanhas</h1>
+          <p className="text-muted-foreground">Gerencie campanhas para remarketing e Google Ads</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main Content Area */}
           <div className="lg:col-span-3 space-y-6">
+            {/* Cards de Métricas */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-5 w-5 text-purple-500" />
+                    <span className="text-sm text-muted-foreground">Campanhas</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-1">{stats.total}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-green-500/10 to-green-600/5 border-green-500/20">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <MessageCircle className="h-5 w-5 text-green-500" />
+                    <span className="text-sm text-muted-foreground">Enviados</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-1">{stats.totalEnviados}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-blue-500" />
+                    <span className="text-sm text-muted-foreground">Respostas</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-1">{stats.totalRespostas}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-orange-500/10 to-orange-600/5 border-orange-500/20">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-orange-500" />
+                    <span className="text-sm text-muted-foreground">Conversões</span>
+                  </div>
+                  <p className="text-2xl font-bold mt-1">{stats.totalConversoes}</p>
+                </CardContent>
+              </Card>
+            </div>
+
             {/* Filtros */}
             <Card>
               <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Buscar por nome..."
+                      placeholder="Buscar produto ou campanha..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-10"
                     />
                   </div>
                   
-                  <Select value={tipoFilter} onValueChange={setTipoFilter}>
+                  <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Tipo" />
+                      <SelectValue placeholder="Categoria" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Todos">Todos</SelectItem>
-                      <SelectItem value="Post">Posts</SelectItem>
-                      <SelectItem value="Story">Stories</SelectItem>
-                      <SelectItem value="Vídeo">Vídeos</SelectItem>
-                    </SelectContent>
-                  </Select>
-
-                  <Select value={redeFilter} onValueChange={setRedeFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Rede" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Todas">Todas</SelectItem>
-                      <SelectItem value="Instagram">Instagram</SelectItem>
-                      <SelectItem value="Facebook">Facebook</SelectItem>
-                      <SelectItem value="TikTok">TikTok</SelectItem>
-                      <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                      <SelectItem value="Todas">Todas Categorias</SelectItem>
+                      {categorias.map(cat => (
+                        <SelectItem key={cat} value={cat!}>{cat}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
 
@@ -258,10 +303,10 @@ const Biblioteca = () => {
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Todos">Todos</SelectItem>
-                      <SelectItem value="Rascunho">Rascunhos</SelectItem>
-                      <SelectItem value="Agendado">Agendados</SelectItem>
-                      <SelectItem value="Postado">Postados</SelectItem>
+                      <SelectItem value="Todos">Todos Status</SelectItem>
+                      <SelectItem value="ativa">Ativas</SelectItem>
+                      <SelectItem value="finalizada">Finalizadas</SelectItem>
+                      <SelectItem value="pausada">Pausadas</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -274,79 +319,125 @@ const Biblioteca = () => {
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex items-center gap-2">
                     <Checkbox 
-                      checked={selectedItems.length === filteredContents.length && filteredContents.length > 0}
+                      checked={selectedItems.length === filteredCampanhas.length && filteredCampanhas.length > 0}
                       onCheckedChange={toggleSelectAll}
                     />
                     <span className="text-sm font-medium">Selecionar todos</span>
                   </div>
                   <div className="flex-1" />
-                  <Button onClick={handleScheduleSelected} variant="default" size="sm">
-                    <Calendar className="mr-2 h-4 w-4" />
-                    Agendar Selecionados
-                  </Button>
                   <Button onClick={handleExportCSV} variant="outline" size="sm">
                     <Download className="mr-2 h-4 w-4" />
                     Exportar CSV
-                  </Button>
-                  <Button onClick={handleDeleteSelected} variant="destructive" size="sm">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Deletar Selecionados
                   </Button>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Grid de Conteúdos */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredContents.map((content) => (
-                <Card key={content.id} className="group relative overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="absolute top-2 left-2 z-10">
-                    <Checkbox 
-                      checked={selectedItems.includes(content.id)}
-                      onCheckedChange={() => toggleSelectItem(content.id)}
-                    />
-                  </div>
-                  <CardHeader className="p-0">
-                    <div className="aspect-video bg-muted flex items-center justify-center relative">
-                      <div className="text-center p-4">
-                        <p className="text-sm font-medium line-clamp-3">{content.texto?.substring(0, 100)}...</p>
+            {/* Grid de Campanhas */}
+            {loading ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Carregando...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredCampanhas.map((campanha) => (
+                  <Card key={campanha.id} className="group relative overflow-hidden hover:shadow-lg transition-shadow">
+                    <div className="absolute top-2 left-2 z-10">
+                      <Checkbox 
+                        checked={selectedItems.includes(campanha.id)}
+                        onCheckedChange={() => toggleSelectItem(campanha.id)}
+                      />
+                    </div>
+                    <CardHeader className="p-0">
+                      <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
+                        {campanha.produto_imagem_url ? (
+                          <img 
+                            src={campanha.produto_imagem_url} 
+                            alt={campanha.produto_nome}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Package className="h-12 w-12 text-muted-foreground" />
+                        )}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <Button size="sm" variant="secondary" onClick={() => setDetalhesModal(campanha)}>
+                            <BarChart3 className="h-4 w-4 mr-1" />
+                            Detalhes
+                          </Button>
+                          <Button size="sm" variant="secondary" onClick={() => handleRemarketing(campanha)}>
+                            <Repeat className="h-4 w-4 mr-1" />
+                            Remarketing
+                          </Button>
+                        </div>
                       </div>
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <Button size="icon" variant="secondary" onClick={() => handleEdit(content.id)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="secondary" onClick={() => handleDuplicate(content.id)}>
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="destructive" onClick={() => handleDelete(content.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3">
+                      <div>
+                        <h3 className="font-semibold line-clamp-1">{campanha.produto_nome}</h3>
+                        <p className="text-sm text-muted-foreground line-clamp-1">{campanha.campanha_nome}</p>
                       </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-4 space-y-2">
-                    <h3 className="font-semibold line-clamp-1">{content.titulo}</h3>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge className={getTipoColor(content.tipo)}>{content.tipo}</Badge>
-                      <Badge className={getStatusColor(content.status)}>{content.status}</Badge>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {content.redes.map(rede => (
-                        rede === "Instagram" ? <Instagram key={rede} className="h-4 w-4" /> :
-                        rede === "Facebook" ? <Facebook key={rede} className="h-4 w-4" /> :
-                        null
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{content.dataCriacao}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        <Badge className={getStatusColor(campanha.status)}>{campanha.status}</Badge>
+                        {campanha.produto_preco && (
+                          <Badge variant="outline">R$ {campanha.produto_preco.toFixed(2)}</Badge>
+                        )}
+                      </div>
 
-            {filteredContents.length === 0 && (
+                      {/* Métricas */}
+                      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                        <div className="bg-muted/50 rounded p-2">
+                          <p className="font-bold">{campanha.total_enviados}</p>
+                          <p className="text-muted-foreground">Enviados</p>
+                        </div>
+                        <div className="bg-muted/50 rounded p-2">
+                          <p className="font-bold">{campanha.taxa_resposta}%</p>
+                          <p className="text-muted-foreground">Resposta</p>
+                        </div>
+                        <div className="bg-muted/50 rounded p-2">
+                          <p className="font-bold">{campanha.taxa_conversao}%</p>
+                          <p className="text-muted-foreground">Conversão</p>
+                        </div>
+                      </div>
+
+                      {/* Ações */}
+                      <div className="flex gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="flex-1"
+                          onClick={() => handleGoogleAds(campanha)}
+                        >
+                          <Target className="h-4 w-4 mr-1" />
+                          Google Ads
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost"
+                          onClick={() => handleDelete(campanha.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        <Calendar className="h-3 w-3 inline mr-1" />
+                        {new Date(campanha.data_campanha).toLocaleDateString('pt-BR')}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {filteredCampanhas.length === 0 && !loading && (
               <Card>
                 <CardContent className="py-12 text-center">
-                  <p className="text-muted-foreground">Nenhum conteúdo encontrado</p>
+                  <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground mb-4">Nenhuma campanha na biblioteca</p>
+                  <p className="text-sm text-muted-foreground">
+                    Campanhas de produtos serão salvas aqui automaticamente
+                  </p>
                 </CardContent>
               </Card>
             )}
@@ -356,30 +447,149 @@ const Biblioteca = () => {
           <div className="lg:col-span-1">
             <Card className="sticky top-6">
               <CardHeader>
-                <CardTitle>Estatísticas</CardTitle>
+                <CardTitle>📊 Resumo</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Total de conteúdos:</span>
+                  <span className="text-sm font-medium">Total de campanhas:</span>
                   <span className="text-2xl font-bold">{stats.total}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Agendados:</span>
-                  <span className="text-xl font-bold text-blue-600">{stats.agendados}</span>
+                  <span className="text-sm font-medium">Ativas:</span>
+                  <span className="text-xl font-bold text-green-600">{stats.ativas}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Postados:</span>
-                  <span className="text-xl font-bold text-green-600">{stats.postados}</span>
+                  <span className="text-sm font-medium">Finalizadas:</span>
+                  <span className="text-xl font-bold text-blue-600">{stats.finalizadas}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium">Rascunhos:</span>
-                  <span className="text-xl font-bold text-gray-600">{stats.rascunhos}</span>
+                <hr className="my-4" />
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Taxa média de resposta:</p>
+                  <p className="text-xl font-bold text-primary">
+                    {stats.total > 0 
+                      ? (campanhas.reduce((sum, c) => sum + c.taxa_resposta, 0) / stats.total).toFixed(1)
+                      : 0}%
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Taxa média de conversão:</p>
+                  <p className="text-xl font-bold text-primary">
+                    {stats.total > 0 
+                      ? (campanhas.reduce((sum, c) => sum + c.taxa_conversao, 0) / stats.total).toFixed(1)
+                      : 0}%
+                  </p>
                 </div>
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
+
+      {/* Modal Detalhes */}
+      <Dialog open={!!detalhesModal} onOpenChange={() => setDetalhesModal(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalhes da Campanha</DialogTitle>
+            <DialogDescription>Métricas e informações completas</DialogDescription>
+          </DialogHeader>
+          {detalhesModal && (
+            <div className="space-y-4">
+              <div className="flex gap-4">
+                {detalhesModal.produto_imagem_url && (
+                  <img 
+                    src={detalhesModal.produto_imagem_url} 
+                    alt={detalhesModal.produto_nome}
+                    className="w-32 h-32 object-cover rounded"
+                  />
+                )}
+                <div>
+                  <h3 className="font-bold text-lg">{detalhesModal.produto_nome}</h3>
+                  <p className="text-muted-foreground">{detalhesModal.campanha_nome}</p>
+                  {detalhesModal.produto_preco && (
+                    <p className="text-xl font-bold text-primary mt-2">
+                      R$ {detalhesModal.produto_preco.toFixed(2)}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-muted rounded p-3 text-center">
+                  <p className="text-2xl font-bold">{detalhesModal.total_enviados}</p>
+                  <p className="text-sm text-muted-foreground">Enviados</p>
+                </div>
+                <div className="bg-muted rounded p-3 text-center">
+                  <p className="text-2xl font-bold">{detalhesModal.total_respostas}</p>
+                  <p className="text-sm text-muted-foreground">Respostas</p>
+                </div>
+                <div className="bg-muted rounded p-3 text-center">
+                  <p className="text-2xl font-bold">{detalhesModal.total_conversoes}</p>
+                  <p className="text-sm text-muted-foreground">Conversões</p>
+                </div>
+                <div className="bg-muted rounded p-3 text-center">
+                  <p className="text-2xl font-bold">{detalhesModal.taxa_conversao}%</p>
+                  <p className="text-sm text-muted-foreground">Conversão</p>
+                </div>
+              </div>
+
+              {detalhesModal.mensagem_template && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Mensagem:</p>
+                  <p className="bg-muted p-3 rounded text-sm">{detalhesModal.mensagem_template}</p>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button onClick={() => handleRemarketing(detalhesModal)} className="flex-1">
+                  <Repeat className="h-4 w-4 mr-2" />
+                  Fazer Remarketing
+                </Button>
+                <Button onClick={() => { setDetalhesModal(null); handleGoogleAds(detalhesModal); }} variant="outline" className="flex-1">
+                  <Target className="h-4 w-4 mr-2" />
+                  Criar Google Ads
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Google Ads */}
+      <Dialog open={!!googleAdsModal} onOpenChange={() => setGoogleAdsModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>🎯 Criar Campanha Google Ads</DialogTitle>
+            <DialogDescription>
+              Enviar produto "{googleAdsModal?.produto_nome}" para Google Ads
+            </DialogDescription>
+          </DialogHeader>
+          {googleAdsModal && (
+            <div className="space-y-4">
+              <div className="bg-muted p-4 rounded space-y-2">
+                <p><strong>Produto:</strong> {googleAdsModal.produto_nome}</p>
+                {googleAdsModal.produto_preco && (
+                  <p><strong>Preço:</strong> R$ {googleAdsModal.produto_preco.toFixed(2)}</p>
+                )}
+                <p><strong>Categoria:</strong> {googleAdsModal.produto_categoria || 'N/A'}</p>
+              </div>
+              
+              <p className="text-sm text-muted-foreground">
+                Você será redirecionado para criar uma campanha de anúncios com os dados do produto pré-preenchidos.
+              </p>
+
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setGoogleAdsModal(null)} className="flex-1">
+                  Cancelar
+                </Button>
+                <Button onClick={criarCampanhaGoogleAds} className="flex-1">
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Ir para Google Ads
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
