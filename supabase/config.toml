@@ -24,6 +24,9 @@ verify_jwt = false
 [functions.gerar-posts]
 verify_jwt = false
 
+[functions.gerar-posts-whatsapp]
+verify_jwt = false
+
 [functions.calcular-roi]
 verify_jwt = false
 
