@@ -26,6 +26,7 @@ import {
   Megaphone,
   MessageSquare
 } from 'lucide-react';
+import NotificationCenter from '@/components/NotificationCenter';
 import {
   AreaChart,
   Area,
@@ -327,7 +328,7 @@ export default function DashboardMetricas() {
                 <p className="text-muted-foreground">Visão completa do seu negócio</p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
                 <Activity className="w-3 h-3 mr-1" />
                 Online
@@ -335,6 +336,10 @@ export default function DashboardMetricas() {
               <Button variant="outline" size="sm" onClick={carregarMetricas}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Atualizar
+              </Button>
+              <NotificationCenter />
+              <Button variant="ghost" size="icon" onClick={handleLogout} title="Sair">
+                <LogOut className="w-5 h-5" />
               </Button>
             </div>
           </div>

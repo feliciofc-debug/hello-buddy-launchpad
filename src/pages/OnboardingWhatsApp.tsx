@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 export default function OnboardingWhatsApp() {
@@ -126,10 +126,20 @@ export default function OnboardingWhatsApp() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-primary/10 flex items-center justify-center p-6">
-      <div className="w-full max-w-4xl bg-card rounded-2xl shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="bg-primary text-primary-foreground p-6">
-          <h1 className="text-2xl font-bold mb-2">🚀 Bem-vindo ao AMZ Ofertas!</h1>
+      <div className="w-full max-w-4xl">
+        <Button
+          onClick={() => navigate('/dashboard')}
+          variant="ghost"
+          className="mb-4 text-foreground"
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Voltar ao Dashboard
+        </Button>
+        
+        <div className="bg-card rounded-2xl shadow-2xl overflow-hidden">
+          {/* Header */}
+          <div className="bg-primary text-primary-foreground p-6">
+            <h1 className="text-2xl font-bold mb-2">🚀 Bem-vindo ao AMZ Ofertas!</h1>
           <p className="text-primary-foreground/80">Configure seu WhatsApp Business em 3 minutos</p>
           
           {/* Progress */}
@@ -360,6 +370,7 @@ export default function OnboardingWhatsApp() {
               </Button>
             </div>
           )}
+        </div>
         </div>
       </div>
     </div>
