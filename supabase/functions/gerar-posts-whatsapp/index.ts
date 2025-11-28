@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { produto } = await req.json();
+    const { produto, sugestao } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
 
     if (!LOVABLE_API_KEY) {
@@ -20,13 +20,19 @@ serve(async (req) => {
     }
 
     console.log(`Gerando posts WhatsApp para produto: ${produto.nome}`);
+    console.log(`Sugestão do usuário: ${sugestao || 'Nenhuma'}`);
+
+    // Monta contexto extra se houver sugestão
+    const contextoExtra = sugestao 
+      ? `\n\nCONTEXTO ADICIONAL DO VENDEDOR:\n"${sugestao}"\n(Use essas informações para personalizar as mensagens - mencione o local, promoção, detalhes específicos etc.)`
+      : '';
 
     const prompt = `Crie 3 mensagens de WhatsApp para vender o seguinte produto:
 
 PRODUTO:
 - Nome: ${produto.nome}
 - Preço: R$ ${produto.preco || 'A consultar'}
-- Descrição: ${produto.descricao || 'Produto de alta qualidade'}
+- Descrição: ${produto.descricao || 'Produto de alta qualidade'}${contextoExtra}
 
 REGRAS IMPORTANTES:
 - Mensagens curtas e diretas (máximo 4 linhas)
@@ -36,6 +42,7 @@ REGRAS IMPORTANTES:
 - Inclua {{nome}} para personalização
 - Mencione o preço de forma atrativa
 - Termine com call-to-action
+- SE houver contexto adicional, USE-O para tornar a mensagem mais específica e personalizada
 
 Crie 3 variações diferentes:
 1. URGÊNCIA: Foco em escassez/oportunidade única
