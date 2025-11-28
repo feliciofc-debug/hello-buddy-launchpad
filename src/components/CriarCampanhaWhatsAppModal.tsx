@@ -24,6 +24,10 @@ interface Product {
   descricao: string | null;
   preco: number | null;
   imagem_url: string | null;
+  estoque?: number;
+  especificacoes?: string | null;
+  categoria?: string;
+  link_marketplace?: string | null;
 }
 
 interface Campanha {
@@ -154,9 +158,13 @@ export function CriarCampanhaWhatsAppModal({
           produto: {
             nome: produto.nome,
             preco: produto.preco,
-            descricao: produto.descricao
+            descricao: produto.descricao,
+            estoque: produto.estoque,
+            especificacoes: produto.especificacoes,
+            categoria: produto.categoria,
+            link_marketplace: produto.link_marketplace
           },
-          sugestao: sugestaoIA // Passa as sugestões do usuário
+          sugestao: sugestaoIA
         }
       });
 

@@ -27,12 +27,30 @@ serve(async (req) => {
       ? `\n\nCONTEXTO ADICIONAL DO VENDEDOR:\n"${sugestao}"\n(Use essas informações para personalizar as mensagens - mencione o local, promoção, detalhes específicos etc.)`
       : '';
 
+    // Monta informações de estoque
+    const estoqueInfo = produto.estoque !== undefined && produto.estoque !== null
+      ? `- Estoque: ${produto.estoque} unidades disponíveis`
+      : '';
+
+    // Monta especificações
+    const especsInfo = produto.especificacoes 
+      ? `- Especificações: ${produto.especificacoes}`
+      : '';
+
+    // Monta categoria
+    const categoriaInfo = produto.categoria 
+      ? `- Categoria: ${produto.categoria}`
+      : '';
+
     const prompt = `Crie 3 mensagens de WhatsApp para vender o seguinte produto:
 
 PRODUTO:
 - Nome: ${produto.nome}
 - Preço: R$ ${produto.preco || 'A consultar'}
-- Descrição: ${produto.descricao || 'Produto de alta qualidade'}${contextoExtra}
+- Descrição: ${produto.descricao || 'Produto de alta qualidade'}
+${estoqueInfo}
+${especsInfo}
+${categoriaInfo}${contextoExtra}
 
 REGRAS IMPORTANTES:
 - Mensagens curtas e diretas (máximo 4 linhas)
