@@ -22,6 +22,7 @@ import {
   Sparkles,
   CheckCircle2,
   ArrowRight,
+  ArrowLeft,
   Filter,
   Zap,
   Target,
@@ -486,6 +487,15 @@ export default function ConfigurarICP() {
 
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
+      <Button
+        onClick={() => navigate('/dashboard')}
+        variant="ghost"
+        className="mb-4"
+      >
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        Voltar ao Dashboard
+      </Button>
+      
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Configurar Perfil Cliente Ideal (ICP)</h1>
         <p className="text-muted-foreground">
