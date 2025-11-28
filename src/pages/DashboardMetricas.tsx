@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,9 +15,16 @@ import {
   Target,
   Clock,
   RefreshCw,
-  ArrowLeft,
-  ShoppingCart,
-  Bot
+  Bot,
+  Package,
+  BarChart3,
+  Settings,
+  LogOut,
+  Menu,
+  X,
+  BookOpen,
+  Megaphone,
+  MessageSquare
 } from 'lucide-react';
 import {
   AreaChart,
@@ -225,6 +232,24 @@ export default function DashboardMetricas() {
     }
   };
 
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const menuItems = [
+    { icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
+    { icon: Package, label: 'Produtos', path: '/meus-produtos' },
+    { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
+    { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
+    { icon: Users, label: 'Prospects', path: '/campanhas-prospeccao' },
+    { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
+    { icon: Megaphone, label: 'Campanhas', path: '/campanhas' },
+    { icon: Settings, label: 'Configurações', path: '/configuracoes' },
+  ];
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/login');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -237,31 +262,79 @@ export default function DashboardMetricas() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-              Dashboard de Métricas
-            </h1>
-            <p className="text-muted-foreground">Visão completa do seu negócio em tempo real</p>
+    <div className="min-h-screen bg-background flex">
+      {/* Sidebar */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-card border-r transform transition-transform duration-300 lg:translate-x-0 lg:static ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex flex-col h-full">
+          {/* Logo */}
+          <div className="p-4 border-b flex items-center justify-between">
+            <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+              AMZ Ofertas
+            </h2>
+            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setIsMenuOpen(false)}>
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
+
+          {/* Menu Items */}
+          <nav className="flex-1 p-4 space-y-1">
+            {menuItems.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-muted ${
+                  item.path === '/dashboard' ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                }`}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <item.icon className="w-5 h-5" />
+                <span>{item.label}</span>
+              </Link>
+            ))}
+          </nav>
+
+          {/* Logout */}
+          <div className="p-4 border-t">
+            <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={handleLogout}>
+              <LogOut className="w-5 h-5 mr-3" />
+              Sair
+            </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
-            <Activity className="w-3 h-3 mr-1" />
-            Online
-          </Badge>
-          <Button variant="outline" size="sm" onClick={carregarMetricas}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Atualizar
-          </Button>
-        </div>
-      </div>
+      </aside>
+
+      {/* Overlay mobile */}
+      {isMenuOpen && (
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setIsMenuOpen(false)} />
+      )}
+
+      {/* Main Content */}
+      <main className="flex-1 min-h-screen overflow-auto">
+        <div className="p-6 space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setIsMenuOpen(true)}>
+                <Menu className="w-5 h-5" />
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+                  Dashboard
+                </h1>
+                <p className="text-muted-foreground">Visão completa do seu negócio</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
+                <Activity className="w-3 h-3 mr-1" />
+                Online
+              </Badge>
+              <Button variant="outline" size="sm" onClick={carregarMetricas}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Atualizar
+              </Button>
+            </div>
+          </div>
 
       {/* Cards Principais */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -555,6 +628,8 @@ export default function DashboardMetricas() {
           </CardContent>
         </Card>
       </div>
+        </div>
+      </main>
     </div>
   );
 }
