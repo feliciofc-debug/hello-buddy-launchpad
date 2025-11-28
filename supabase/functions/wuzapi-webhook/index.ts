@@ -13,7 +13,7 @@ const FRASES_ROBOTICAS = [
 ];
 
 const EXEMPLOS_SEGMENTO: Record<string, string> = {
-  'alimentos-bebidas': `"Bom dia!" → "E aí! Viu o produto? Tá com preço top hoje 😊"\n"Quanto?" → "R$ XX! Fresquinho, chegou agora"\n"Tem?" → "Tenho sim! Pronta entrega"`,
+  'alimentos-bebidas': `"Bom dia!" → "E aí! Viu o produto? Preço top hoje 😊"\n"Quanto?" → "R$ XX! Fresquinho, chegou agora"\n"Tem?" → "Tenho sim! Pronta entrega"`,
   'eletronicos-informatica': `"Bom dia!" → "Opa! Esse produto é muito bom 💻"\n"Quanto?" → "R$ XX! Top de linha"\n"Tem?" → "Tenho! Lacrado"`,
   'outros': `"Bom dia!" → "Opa! Tudo bem? 😊"\n"Quanto?" → "R$ XX!"\n"Tem?" → "Tenho sim!"`
 };
@@ -303,14 +303,15 @@ ${historicoTexto}
 
 REGRAS:
 1. MÁXIMO 2 LINHAS
-2. Use "vc", "tá", "pra" - informal
-3. NUNCA "Fico feliz", "Agradeço"
-4. 1 emoji só
-5. Se quer comprar → link: ${ctx.link_marketplace || '[link]'}
+2. Linguagem informal natural: "vc", "pra", "blz", "show"
+3. NÃO use "tá?" no final das frases - varie a linguagem!
+4. NUNCA "Fico feliz", "Agradeço"
+5. 1 emoji só
+6. Se quer comprar → link: ${ctx.link_marketplace || '[link]'}
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
-RESPONDA (curto e humano):`;
+RESPONDA (curto e humano, sem repetir "tá"):`;
 
     console.log('🤖 Chamando IA...');
 
@@ -343,6 +344,21 @@ RESPONDA (curto e humano):`;
     if (linhas.length > 2) respostaIA = linhas.slice(0, 2).join('\n');
     
     FRASES_ROBOTICAS.forEach(f => { respostaIA = respostaIA.replace(new RegExp(f, 'gi'), ''); });
+    
+    // REMOVER REPETIÇÃO DE "TÁ" - máximo 1 por mensagem
+    const taMatches = respostaIA.match(/\btá\b/gi);
+    if (taMatches && taMatches.length > 1) {
+      // Manter só o primeiro "tá" e remover os outros
+      let taCount = 0;
+      respostaIA = respostaIA.replace(/\btá\b/gi, (match: string) => {
+        taCount++;
+        return taCount === 1 ? match : '';
+      });
+    }
+    // Remover "tá?" do final das frases (fica repetitivo)
+    respostaIA = respostaIA.replace(/,?\s*tá\?\s*$/gi, '');
+    respostaIA = respostaIA.replace(/,?\s*tá\?/gi, '');
+    
     respostaIA = respostaIA.replace(/\s+/g, ' ').trim();
 
     // Fallback se robótica
