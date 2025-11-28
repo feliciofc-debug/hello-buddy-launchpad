@@ -24,9 +24,17 @@ import {
   X,
   BookOpen,
   Megaphone,
-  MessageSquare
+  MessageSquare,
+  Plus,
+  Calendar,
+  Eye,
+  ExternalLink,
+  Flame,
+  DollarSign,
+  MousePointer
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
+import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
   AreaChart,
   Area,
@@ -249,6 +257,57 @@ export default function DashboardMetricas() {
     { icon: Activity, label: 'Analytics', path: '/analytics' },
     { icon: Settings, label: 'Configurações', path: '/configuracoes' },
   ];
+
+  // Componente de campanhas em andamento
+  const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
+    const [campanhas, setCampanhas] = useState<any[]>([]);
+    
+    useEffect(() => {
+      const loadCampanhas = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const { data } = await supabase
+          .from('campanhas_recorrentes')
+          .select('*, produtos(nome, imagem_url)')
+          .eq('user_id', user.id)
+          .eq('ativa', true)
+          .limit(3);
+        
+        setCampanhas(data || []);
+      };
+      loadCampanhas();
+    }, []);
+
+    if (campanhas.length === 0) {
+      return (
+        <div className="text-center py-4 text-muted-foreground">
+          <p className="text-sm">Nenhuma campanha ativa</p>
+          <Button size="sm" variant="link" onClick={() => navigate('/campanhas')}>
+            Criar primeira campanha
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {campanhas.map((campanha) => (
+          <div key={campanha.id} className="bg-muted/50 rounded-lg p-3 flex justify-between items-center">
+            <div>
+              <p className="font-medium text-sm">{campanha.nome}</p>
+              <p className="text-xs text-muted-foreground">
+                {campanha.total_enviados || 0} enviados • {campanha.frequencia}
+              </p>
+            </div>
+            <Badge variant="secondary" className="text-xs">
+              🚀 Ativa
+            </Badge>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -633,6 +692,162 @@ export default function DashboardMetricas() {
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Taxa Automação</span>
               <Badge className="bg-primary/10 text-primary">{metricas.taxaAutomacao}%</Badge>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Ações Rápidas */}
+      <Card className="bg-gradient-to-r from-primary/5 to-purple-500/10">
+        <CardContent className="p-6">
+          <h3 className="font-semibold mb-4 text-center">⚡ Ações Rápidas</h3>
+          <div className="flex flex-wrap gap-3 justify-center">
+            <Button onClick={() => navigate('/meus-produtos')} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Novo Produto
+            </Button>
+            <Button variant="secondary" onClick={() => navigate('/campanhas')} className="gap-2">
+              <Megaphone className="w-4 h-4" />
+              Criar Campanha
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/whatsapp')} className="gap-2">
+              <Calendar className="w-4 h-4" />
+              Agendar Envio
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/google-ads')} className="gap-2">
+              <Target className="w-4 h-4" />
+              Google Ads
+            </Button>
+            <Button variant="outline" onClick={() => navigate('/configurar-icp')} className="gap-2">
+              <Users className="w-4 h-4" />
+              Configurar ICP
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Campanhas em Andamento + Leads Quentes */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Campanhas em Andamento */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-red-500" />
+              📢 Campanhas em Andamento
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <CampanhasEmAndamentoSection navigate={navigate} />
+            <div className="flex gap-2 pt-2">
+              <Button size="sm" onClick={() => navigate('/campanhas')} className="gap-1">
+                <Plus className="w-4 h-4" />
+                Nova Campanha
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => navigate('/biblioteca')}>
+                Ver Histórico
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Leads Quentes */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Flame className="w-5 h-5 text-orange-500" />
+              🔥 Leads Quentes
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LeadsQuentes />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Google Ads + Analytics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Google Ads */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5 text-red-500" />
+              🎯 Google Ads
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground">Campanhas Ativas</p>
+                <p className="text-xl font-bold">3</p>
+              </div>
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground">CPC Médio</p>
+                <p className="text-xl font-bold">R$ 0.42</p>
+              </div>
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground">CTR</p>
+                <p className="text-xl font-bold text-green-500">4.8%</p>
+              </div>
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground">ROI</p>
+                <p className="text-xl font-bold text-purple-500">4.5x</p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button size="sm" onClick={() => navigate('/google-ads')} className="flex-1 gap-1">
+                <Eye className="w-4 h-4" />
+                Ver Campanhas
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => navigate('/google-ads')} className="flex-1 gap-1">
+                <Plus className="w-4 h-4" />
+                Criar Nova
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Google Analytics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-blue-500" />
+              📊 Analytics
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground">Visitas (mês)</p>
+                <p className="text-xl font-bold">12.5K</p>
+              </div>
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground">Taxa Conversão</p>
+                <p className="text-xl font-bold text-green-500">4.2%</p>
+              </div>
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MousePointer className="w-3 h-3" />
+                  Cliques Checkout
+                </p>
+                <p className="text-xl font-bold text-orange-500">847</p>
+              </div>
+              <div className="bg-muted/50 p-3 rounded-lg">
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <DollarSign className="w-3 h-3" />
+                  Vendas
+                </p>
+                <p className="text-xl font-bold text-green-500">R$ 15.8K</p>
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button size="sm" onClick={() => navigate('/analytics')} className="flex-1 gap-1">
+                <BarChart3 className="w-4 h-4" />
+                Ver Relatório
+              </Button>
+              <Button size="sm" variant="outline" className="flex-1 gap-1">
+                <ExternalLink className="w-4 h-4" />
+                Exportar
+              </Button>
             </div>
           </CardContent>
         </Card>
