@@ -64,8 +64,8 @@ const App = () => (
             <Route path="/cadastro" element={<Cadastro />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/test-payment" element={<TestPayment />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/dashboard-metricas" element={<DashboardMetricas />} />
+            <Route path="/dashboard" element={<DashboardMetricas />} />
+            <Route path="/dashboard-antigo" element={<Dashboard />} />
             <Route path="/produtos" element={<ProductsPage />} />
             <Route path="/configuracoes" element={<SettingsPage />} />
             <Route path="/configuracoes-icp" element={<ConfigurarICP />} />
