@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 import { Eye, EyeOff } from 'lucide-react';
 
 export default function ReviewerLogin() {
-  const [email] = useState('shopee_reviewer@review.shopee.com');
-  const [password] = useState('ShopeeReview@2025!');
+  const [email] = useState('expo@atombrasildigital.com');
+  const [password] = useState('Amz520741$');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
