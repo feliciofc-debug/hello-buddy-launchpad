@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink, History, Plus, FileText, Circle } from 'lucide-react';
+import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink, History, Plus, FileText, Circle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -67,14 +67,39 @@ const TimelineInteracoes = ({ leadId, leadTipo, refresh }: { leadId: string; lea
   }, [leadId, refresh]);
 
   const loadInteracoes = async () => {
-    const { data } = await supabase
+    // Buscar interações
+    const { data: interacoesData } = await supabase
       .from('interacoes')
       .select('*')
       .eq('lead_id', leadId)
       .eq('lead_tipo', leadTipo)
       .order('created_at', { ascending: false });
     
-    setInteracoes(data || []);
+    // Buscar voice_calls
+    const { data: callsData } = await supabase
+      .from('voice_calls')
+      .select('*')
+      .eq('lead_id', leadId)
+      .eq('lead_type', leadTipo);
+
+    // Converter voice_calls para formato de interação
+    const callsAsInteracoes: Interacao[] = (callsData || []).map(call => ({
+      id: call.id,
+      lead_id: call.lead_id,
+      lead_tipo: call.lead_type,
+      tipo: 'call',
+      titulo: `Ligação Twilio - ${call.status}`,
+      descricao: call.transcription || 'Sem transcrição disponível',
+      resultado: (call.ai_analysis as any)?.sentiment || call.status,
+      duracao_segundos: call.duration,
+      created_at: call.created_at
+    }));
+
+    // Mesclar e ordenar por data
+    const todasInteracoes = [...(interacoesData || []), ...callsAsInteracoes]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    
+    setInteracoes(todasInteracoes);
     setLoading(false);
   };
 
@@ -169,6 +194,7 @@ export default function LeadsFunil() {
   const [showNovaInteracao, setShowNovaInteracao] = useState(false);
   const [novaInteracao, setNovaInteracao] = useState({ tipo: '', titulo: '', descricao: '', resultado: '' });
   const [refreshTimeline, setRefreshTimeline] = useState(0);
+  const [chamandoLead, setChamandoLead] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -278,8 +304,42 @@ export default function LeadsFunil() {
     window.open(`https://wa.me/55${cleanNumber}`, '_blank');
   };
 
-  const handleLigar = (numero: string) => {
+  const handleLigarSimples = (numero: string) => {
     window.open(`tel:${numero}`, '_blank');
+  };
+
+  const handleLigarTwilio = async () => {
+    if (!leadSelecionado?.telefone) {
+      toast.error('Lead sem telefone');
+      return;
+    }
+
+    setChamandoLead(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('voice-ai-calling', {
+        body: {
+          lead_id: leadSelecionado.id,
+          lead_type: leadSelecionado.tipo,
+          campanha_id: leadSelecionado.product_id || null
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success('📞 Ligação iniciada via Twilio! Aguarde...');
+      setRefreshTimeline(prev => prev + 1);
+      
+      setTimeout(() => {
+        loadLeads();
+        setChamandoLead(false);
+      }, 3000);
+
+    } catch (error: any) {
+      console.error('Erro ao ligar:', error);
+      toast.error('Erro ao ligar: ' + error.message);
+      setChamandoLead(false);
+    }
   };
 
   const getLeadsPorStatus = (status: string): Lead[] => {
@@ -507,12 +567,30 @@ export default function LeadsFunil() {
               <div className="space-y-2">
                 <h4 className="font-semibold">Contatos</h4>
                 {leadSelecionado.telefone && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <Phone className="w-4 h-4 text-muted-foreground" />
                     <span>{leadSelecionado.telefone}</span>
-                    <Button size="sm" variant="outline" onClick={() => handleLigar(leadSelecionado.telefone!)}>
+                    <Button size="sm" variant="outline" onClick={() => handleLigarSimples(leadSelecionado.telefone!)}>
                       <Phone className="w-3 h-3 mr-1" />
                       Ligar
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="default"
+                      onClick={handleLigarTwilio}
+                      disabled={chamandoLead}
+                    >
+                      {chamandoLead ? (
+                        <>
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          Ligando...
+                        </>
+                      ) : (
+                        <>
+                          <Phone className="w-3 h-3 mr-1" />
+                          🤖 Ligar IA
+                        </>
+                      )}
                     </Button>
                   </div>
                 )}
