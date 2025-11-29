@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Play, Pause, Eye, Loader2, Trash2, ArrowLeft, Sparkles, Settings, RotateCcw } from "lucide-react";
+import { Plus, Play, Pause, Eye, Loader2, Trash2, ArrowLeft, Sparkles, Settings, RotateCcw, Linkedin, Instagram, CheckCircle2 } from "lucide-react";
 
 interface CampanhaStats {
   descobertos: number;
@@ -396,42 +396,130 @@ export default function CampanhasProspeccao() {
             </div>
           </div>
 
+          {/* Métricas de Qualidade */}
+          <div className="grid grid-cols-2 gap-2 mb-4 p-3 bg-gradient-to-r from-green-500/10 to-blue-500/10 rounded-lg">
+            <div className="flex items-center gap-2 text-xs">
+              <CheckCircle2 className="h-3 w-3 text-green-500" />
+              <span className="text-muted-foreground">WhatsApp Verificados:</span>
+              <span className="font-bold">{(campanha.stats as any)?.whatsapp_validos || 0}</span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <Linkedin className="h-3 w-3 text-blue-500" />
+              <span className="text-muted-foreground">LinkedIn:</span>
+              <span className="font-bold">{(campanha.stats as any)?.linkedin_encontrados || 0}</span>
+            </div>
+          </div>
+
           {/* Ações */}
-          <div className="flex gap-2 pt-4 border-t">
+          <div className="flex flex-col gap-2 pt-4 border-t">
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => navigate(`/leads-funil?campanha=${campanha.id}`)}
+              >
+                👁️ Ver Leads
+              </Button>
+              <Button 
+                variant="secondary"
+                size="icon"
+                onClick={() => executarBuscaLeads(campanha.id)}
+                disabled={campanha.status !== 'ativa' || processing === campanha.id}
+                title="Busca rápida (Google)"
+              >
+                {processing === campanha.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              </Button>
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => navigate(`/configurar-icp?edit=${campanha.icp_config_id}`)}
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={() => handleDeletarCampanha(campanha.id)}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            {/* Botão de Busca de Qualidade */}
             <Button 
-              variant="outline" 
-              className="flex-1"
-              onClick={() => navigate(`/leads-funil?campanha=${campanha.id}`)}
+              variant="default"
+              className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              onClick={() => handleBuscaQualidade(campanha.id, campanha.icp_config_id)}
+              disabled={processing === campanha.id}
             >
-              👁️ Ver Leads
-            </Button>
-            <Button 
-              variant="secondary"
-              size="icon"
-              onClick={() => executarBuscaLeads(campanha.id)}
-              disabled={campanha.status !== 'ativa' || processing === campanha.id}
-              title="Executar busca de leads"
-            >
-              {processing === campanha.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            </Button>
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => navigate(`/configurar-icp?edit=${campanha.icp_config_id}`)}
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => handleDeletarCampanha(campanha.id)}
-            >
-              <Trash2 className="h-4 w-4" />
+              {processing === campanha.id ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <>
+                  <Linkedin className="h-4 w-4 mr-1" />
+                  <Instagram className="h-4 w-4 mr-2" />
+                </>
+              )}
+              🎯 Buscar Leads REAIS (LinkedIn + Instagram)
             </Button>
           </div>
         </CardContent>
       </Card>
     );
+  };
+
+  const handleBuscaQualidade = async (campanhaId: string, icpConfigId: string) => {
+    setProcessing(campanhaId);
+    
+    try {
+      toast.loading("🎯 Buscando leads de QUALIDADE no LinkedIn e Instagram...", { id: 'qualidade' });
+
+      // Atualizar status para ativa
+      await supabase
+        .from('campanhas_prospeccao')
+        .update({
+          status: 'ativa',
+          iniciada_em: new Date().toISOString()
+        })
+        .eq('id', campanhaId);
+
+      const { data, error } = await supabase.functions.invoke('generate-leads-quality', {
+        body: {
+          campanha_id: campanhaId,
+          icp_config_id: icpConfigId,
+          fontes: ['linkedin', 'instagram'],
+          validarWhatsApp: true,
+          scoreMinimo: 50
+        }
+      });
+
+      if (error) throw error;
+
+      const stats = data?.stats || {};
+      
+      toast.success(
+        `✅ Busca concluída!\n` +
+        `📊 LinkedIn: ${stats.linkedin_encontrados || 0}\n` +
+        `📸 Instagram: ${stats.instagram_encontrados || 0}\n` +
+        `✅ WhatsApp válidos: ${stats.whatsapp_validos || 0}\n` +
+        `💾 Salvos: ${stats.salvos || 0}`,
+        { id: 'qualidade', duration: 8000 }
+      );
+      
+      loadData();
+
+    } catch (error: any) {
+      console.error("Erro na busca de qualidade:", error);
+      toast.error(`❌ Erro: ${error.message}`, { id: 'qualidade' });
+      
+      await supabase
+        .from('campanhas_prospeccao')
+        .update({ status: 'pausada' })
+        .eq('id', campanhaId);
+        
+    } finally {
+      setProcessing(null);
+    }
   };
 
   if (loading) {

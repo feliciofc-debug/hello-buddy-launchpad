@@ -140,3 +140,18 @@ verify_jwt = false
 
 [functions.enrich-lead]
 verify_jwt = false
+
+[functions.validate-whatsapp]
+verify_jwt = false
+
+[functions.apify-linkedin-scraper]
+verify_jwt = false
+
+[functions.apify-instagram-scraper]
+verify_jwt = false
+
+[functions.generate-leads-quality]
+verify_jwt = false
+
+[functions.calcular-score]
+verify_jwt = false
