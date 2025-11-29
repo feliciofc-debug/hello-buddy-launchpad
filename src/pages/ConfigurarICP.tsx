@@ -439,7 +439,8 @@ export default function ConfigurarICP() {
         refinamentos: refinamentoProfissional
       } : null
 
-      const { error } = await supabase.from('icp_configs').insert({
+      // 1. Salvar ICP
+      const { data: icpData, error: icpError } = await supabase.from('icp_configs').insert({
         user_id: user.id,
         nome: nomeICP,
         descricao,
@@ -452,16 +453,39 @@ export default function ConfigurarICP() {
         refinamento_geografico: refinamentoGeografico,
         refinamento_comportamental: refinamentoComportamental,
         ativo: true
+      }).select().single()
+
+      if (icpError) throw icpError
+
+      // 2. Criar campanha de prospecção automaticamente vinculada ao ICP
+      const { error: campanhaError } = await supabase.from('campanhas_prospeccao').insert({
+        user_id: user.id,
+        nome: `Campanha: ${nomeICP}`,
+        descricao: descricao || `Campanha de prospecção baseada no ICP "${nomeICP}"`,
+        tipo: tipoProspeccao,
+        icp_config_id: icpData.id,
+        status: 'ativa',
+        automatica: false,
+        meta_leads_total: 100,
+        meta_leads_qualificados: 30,
+        stats: {
+          descobertos: 0,
+          enriquecidos: 0,
+          qualificados: 0,
+          enviados: 0,
+          responderam: 0,
+          convertidos: 0
+        }
       })
 
-      if (error) throw error
+      if (campanhaError) throw campanhaError
 
       toast({
-        title: "✅ ICP salvo com sucesso!",
-        description: "Pronto para gerar leads inteligentes"
+        title: "✅ ICP e Campanha criados!",
+        description: "Campanha pronta para buscar leads"
       })
 
-      setTimeout(() => navigate('/campanhas'), 1500)
+      setTimeout(() => navigate('/campanhas-prospeccao'), 1500)
 
     } catch (error: any) {
       console.error(error)
