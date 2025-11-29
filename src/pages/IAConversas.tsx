@@ -38,9 +38,8 @@ export default function IAConversas() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [novaMensagem, setNovaMensagem] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState('todas');
+  const [abaAtiva, setAbaAtiva] = useState('prospeccao');
   const [filtroModo, setFiltroModo] = useState('todas');
-  const [filtroOrigem, setFiltroOrigem] = useState('todas');
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -216,30 +215,28 @@ export default function IAConversas() {
     return phone;
   };
 
-  // Filtrar conversas por tipo, modo e origem
-  const conversasFiltradas = conversas.filter(conv => {
-    const tipoMatch = abaAtiva === 'todas' || 
-      (abaAtiva === 'leads' && (conv.tipo_contato === 'lead' || !conv.tipo_contato)) ||
-      (abaAtiva === 'clientes' && conv.tipo_contato === 'cliente') ||
-      (abaAtiva === 'prospects' && conv.lead_id);
-    
-    const modoMatch = filtroModo === 'todas' ||
-      (filtroModo === 'ia' && (conv.modo_atendimento === 'ia' || !conv.modo_atendimento)) ||
-      (filtroModo === 'humano' && conv.modo_atendimento === 'humano');
-    
-    const origemMatch = filtroOrigem === 'todas' ||
-      (filtroOrigem === 'prospeccao' && conv.origem === 'prospeccao') ||
-      (filtroOrigem === 'campanha' && conv.origem === 'campanha');
-    
-    return tipoMatch && modoMatch && origemMatch;
-  });
+  // SEPARAR conversas: Prospecção vs Clientes (NUNCA misturar!)
+  const conversasProspeccao = conversas.filter(c => 
+    c.origem === 'prospeccao' || c.lead_id
+  );
+  
+  const conversasClientes = conversas.filter(c => 
+    c.origem === 'campanha' && !c.lead_id
+  );
 
-  const countByType = (tipo: string) => conversas.filter(c => {
-    if (tipo === 'leads') return c.tipo_contato === 'lead' || !c.tipo_contato;
-    if (tipo === 'clientes') return c.tipo_contato === 'cliente';
-    if (tipo === 'prospects') return !!c.lead_id;
-    return true;
-  }).length;
+  // Filtrar dentro da aba ativa
+  const conversasFiltradas = (() => {
+    let base = abaAtiva === 'prospeccao' ? conversasProspeccao : 
+               abaAtiva === 'clientes' ? conversasClientes : conversas;
+    
+    if (filtroModo !== 'todas') {
+      base = base.filter(c => 
+        filtroModo === 'ia' ? (c.modo_atendimento === 'ia' || !c.modo_atendimento) : c.modo_atendimento === 'humano'
+      );
+    }
+    
+    return base;
+  })();
 
   const countByMode = (modo: string) => conversasFiltradas.filter(c => 
     modo === 'ia' ? (c.modo_atendimento === 'ia' || !c.modo_atendimento) : c.modo_atendimento === 'humano'
@@ -254,28 +251,35 @@ export default function IAConversas() {
         <h1 className="text-3xl font-bold">💬 IA Conversas</h1>
       </div>
 
-      {/* ABAS: TODAS | PROSPECTS | LEADS | CLIENTES */}
+      {/* ABAS PRINCIPAIS: PROSPECÇÃO vs CLIENTES (SEPARADAS!) */}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="mb-4">
-        <TabsList>
-          <TabsTrigger value="todas" className="gap-2">
-            Todas ({conversas.length})
-          </TabsTrigger>
-          <TabsTrigger value="prospects" className="gap-2">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="prospeccao" className="gap-2">
             <Target className="w-4 h-4" />
-            🎯 Prospects ({countByType('prospects')})
-          </TabsTrigger>
-          <TabsTrigger value="leads" className="gap-2">
-            <Target className="w-4 h-4" />
-            Leads ({countByType('leads')})
+            🎯 Prospecção ({conversasProspeccao.length})
           </TabsTrigger>
           <TabsTrigger value="clientes" className="gap-2">
             <Users className="w-4 h-4" />
-            Clientes ({countByType('clientes')})
+            🛒 Clientes ({conversasClientes.length})
           </TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {/* FILTROS DE MODO E ORIGEM */}
+      {/* Descrição da aba */}
+      <div className={`mb-4 p-3 rounded-lg border ${
+        abaAtiva === 'prospeccao' 
+          ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800' 
+          : 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800'
+      }`}>
+        <p className="text-sm">
+          {abaAtiva === 'prospeccao' 
+            ? '🎯 Leads B2B/B2C de campanhas de prospecção ativa' 
+            : '🛒 Clientes da base que responderam campanhas de produtos'
+          }
+        </p>
+      </div>
+
+      {/* FILTROS DE MODO */}
       <div className="flex gap-2 mb-4 flex-wrap">
         <Button
           variant={filtroModo === 'todas' ? 'default' : 'outline'}
@@ -298,40 +302,24 @@ export default function IAConversas() {
         >
           <User className="w-4 h-4 mr-1" /> Você Atendendo ({countByMode('humano')})
         </Button>
-        
-        <div className="w-px h-6 bg-border mx-2" />
-        
-        <Button
-          variant={filtroOrigem === 'todas' ? 'secondary' : 'ghost'}
-          size="sm"
-          onClick={() => setFiltroOrigem('todas')}
-        >
-          Todas Origens
-        </Button>
-        <Button
-          variant={filtroOrigem === 'prospeccao' ? 'secondary' : 'ghost'}
-          size="sm"
-          onClick={() => setFiltroOrigem('prospeccao')}
-        >
-          🎯 Prospecção
-        </Button>
-        <Button
-          variant={filtroOrigem === 'campanha' ? 'secondary' : 'ghost'}
-          size="sm"
-          onClick={() => setFiltroOrigem('campanha')}
-        >
-          📢 Campanha
-        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* LISTA DE CONVERSAS */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
+        <Card className={`lg:col-span-1 ${
+          abaAtiva === 'prospeccao' 
+            ? 'border-blue-200 dark:border-blue-800' 
+            : 'border-green-200 dark:border-green-800'
+        }`}>
+          <CardHeader className={`${
+            abaAtiva === 'prospeccao' 
+              ? 'bg-blue-50 dark:bg-blue-950/30' 
+              : 'bg-green-50 dark:bg-green-950/30'
+          }`}>
             <CardTitle className="flex items-center gap-2">
-              {abaAtiva === 'leads' ? <Target className="w-5 h-5" /> : abaAtiva === 'clientes' ? <Users className="w-5 h-5" /> : null}
-              {abaAtiva === 'leads' ? 'Leads' : abaAtiva === 'clientes' ? 'Clientes' : 'Todas'} ({conversasFiltradas.length})
+              {abaAtiva === 'prospeccao' ? <Target className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+              {abaAtiva === 'prospeccao' ? '🎯 Prospecção' : '🛒 Clientes'} ({conversasFiltradas.length})
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
@@ -343,17 +331,15 @@ export default function IAConversas() {
               ) : conversasFiltradas.length === 0 ? (
                 <div className="p-4 text-center">
                   <p className="text-sm text-muted-foreground mb-2">
-                    {abaAtiva === 'leads' 
-                      ? 'Nenhum lead ainda' 
-                      : abaAtiva === 'clientes'
-                      ? 'Nenhum cliente na base'
-                      : 'Nenhuma conversa'
+                    {abaAtiva === 'prospeccao' 
+                      ? 'Nenhum prospect ainda' 
+                      : 'Nenhum cliente na base'
                     }
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {abaAtiva === 'leads' 
-                      ? 'Leads aparecem quando respondem campanhas' 
-                      : 'Marque leads como "Cliente" para aparecerem aqui'
+                    {abaAtiva === 'prospeccao' 
+                      ? 'Aborde leads no Funil para iniciar conversas' 
+                      : 'Clientes aparecem quando respondem campanhas de produtos'
                     }
                   </p>
                 </div>
