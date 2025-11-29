@@ -31,7 +31,8 @@ import {
   ExternalLink,
   Flame,
   DollarSign,
-  MousePointer
+  MousePointer,
+  Search
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import { LeadsQuentes } from '@/components/LeadsQuentes';
@@ -249,7 +250,8 @@ export default function DashboardMetricas() {
     { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
     { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
     { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
-    { icon: Users, label: 'Prospects', path: '/campanhas-prospeccao' },
+    { icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },
+    { icon: Search, label: 'Buscar CNPJ', path: '/prospects' },
     { icon: Flame, label: 'Funil de Leads', path: '/leads-funil' },
     { icon: Target, label: 'Configurar ICP', path: '/configurar-icp' },
     { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
