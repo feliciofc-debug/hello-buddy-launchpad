@@ -6,213 +6,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL") || "",
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
-);
-
-// Função simplificada para obter DDD por localização
-function getDDDFromLocation(location: string): string {
-  const loc = location.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  
-  if (loc.includes('rio de janeiro') || loc.includes('rio') || loc.includes('rj')) return '21';
-  if (loc.includes('niteroi')) return '21';
-  if (loc.includes('sao paulo') || loc.includes('sp')) return '11';
-  if (loc.includes('belo horizonte') || loc.includes('mg')) return '31';
-  if (loc.includes('brasilia') || loc.includes('df')) return '61';
-  if (loc.includes('salvador') || loc.includes('ba')) return '71';
-  if (loc.includes('fortaleza') || loc.includes('ce')) return '85';
-  if (loc.includes('recife') || loc.includes('pe')) return '81';
-  if (loc.includes('curitiba') || loc.includes('pr')) return '41';
-  if (loc.includes('porto alegre') || loc.includes('rs')) return '51';
-  
-  return '21'; // Default
-}
-
-// Base de dados simulada de profissionais por categoria
-const professionalDatabase: Record<string, any> = {
-  'medico': {
-    names: [
-      'Dr. Carlos Alberto Silva',
-      'Dra. Ana Paula Santos',
-      'Dr. Pedro Henrique Costa',
-      'Dra. Maria Fernanda Oliveira',
-      'Dr. João Gabriel Ferreira',
-      'Dra. Paula Regina Rodrigues',
-      'Dr. Lucas Eduardo Almeida',
-      'Dra. Fernanda Cristina Lima',
-      'Dr. Ricardo José Souza',
-      'Dra. Juliana Maria Martins',
-      'Dr. André Luiz Barbosa',
-      'Dra. Camila Santos Ribeiro',
-      'Dr. Rafael Moreira Costa',
-      'Dra. Beatriz Gonçalves Dias',
-      'Dr. Thiago Pereira Rocha'
-    ],
-    specialties: [
-      'Cardiologista',
-      'Pediatra',
-      'Clínico Geral',
-      'Dermatologista',
-      'Ortopedista',
-      'Neurologista',
-      'Oftalmologista',
-      'Ginecologista',
-      'Urologista',
-      'Endocrinologista'
-    ],
-    clinics: [
-      'Hospital São Lucas',
-      'Clínica Vida',
-      'Hospital Santa Casa',
-      'Centro Médico Saúde Total',
-      'Clínica Médica Dr. Silva',
-      'Consultório Particular',
-      'Hospital Albert Einstein',
-      'Hospital Sírio-Libanês',
-      'Rede D\'Or',
-      'Unimed'
-    ]
-  },
-  'advogado': {
-    names: [
-      'Dr. Roberto Carlos Silva',
-      'Dra. Patricia Regina Costa',
-      'Dr. Marcos Antonio Santos',
-      'Dra. Beatriz Fernandes Oliveira',
-      'Dr. Felipe Augusto Almeida',
-      'Dra. Mariana Souza Lima',
-      'Dr. Eduardo Pereira Dias',
-      'Dra. Juliana Costa Rocha',
-      'Dr. Bruno Henrique Martins',
-      'Dra. Carla Fernanda Barbosa'
-    ],
-    specialties: [
-      'Advogado Trabalhista',
-      'Advogada Cível',
-      'Advogado Tributário',
-      'Advogada Empresarial',
-      'Advogado Criminalista',
-      'Advogado Imobiliário',
-      'Advogada de Família',
-      'Advogado Previdenciário'
-    ],
-    companies: [
-      'Silva & Associados Advocacia',
-      'Costa Advocacia Empresarial',
-      'Escritório Dias & Dias',
-      'TRF Advogados Associados',
-      'Barros Advocacia',
-      'Advocacia Consultiva',
-      'Escritório Particular'
-    ]
-  },
-  'dentista': {
-    names: [
-      'Dr. André Luis Lima',
-      'Dra. Carla Regina Mendes',
-      'Dr. Paulo César Rocha',
-      'Dra. Simone Aparecida Dias',
-      'Dr. Fernando José Costa',
-      'Dra. Renata Silva Santos',
-      'Dr. Rodrigo Almeida Souza',
-      'Dra. Amanda Cristina Oliveira'
-    ],
-    specialties: [
-      'Ortodontista',
-      'Implantodontista',
-      'Dentista Clínico Geral',
-      'Periodontista',
-      'Endodontista',
-      'Odontopediatra'
-    ],
-    clinics: [
-      'Clínica Odonto Vida',
-      'Sorrir Odontologia',
-      'Dental Art',
-      'Odonto Excellence',
-      'Clínica OdontoSaúde',
-      'Consultório Particular'
-    ]
-  }
-};
-
-function normalizeKeyword(keyword: string): string {
-  return keyword.toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/s$/i, ''); // Remove plural
-}
-
-
-function surname(fullName: string): string {
-  const parts = fullName.split(' ').filter(p => p.toLowerCase() !== 'dr.' && p.toLowerCase() !== 'dra.');
-  return parts[parts.length - 1].toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-}
-
-function slugify(text: string): string {
-  return text.toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '')
-    .replace(/^-+|-+$/g, '');
-}
-
-function generateRealisticLeads(profissao: string, cidade: string, estado: string, limit: number = 10) {
-  const normalizedProf = normalizeKeyword(profissao);
-  const data = professionalDatabase[normalizedProf] || {
-    names: ['Profissional 1', 'Profissional 2', 'Profissional 3'],
-    specialties: ['Especialista'],
-    clinics: ['Empresa']
-  };
-
-  const leads = [];
-  const ddd = getDDDFromLocation(cidade);
-  
-  console.log(`🔍 Gerando leads com DDD ${ddd} para ${cidade}`);
-  
-  for (let i = 0; i < limit; i++) {
-    const nameIndex = i % data.names.length;
-    const specIndex = i % data.specialties.length;
-    const clinicIndex = i % (data.clinics?.length || data.companies?.length || 1);
-    
-    const name = data.names[nameIndex];
-    const firstName = name.split(' ')[1] || name.split(' ')[0];
-    const lastName = surname(name);
-    
-    // Gerar email realista
-    const emailDomain = ['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com.br'][i % 4];
-    const email = `${firstName.toLowerCase()}.${lastName}@${emailDomain}`;
-    
-    // Gerar telefone com DDD correto da cidade
-    const phone = `(${ddd}) 9${Math.floor(1000 + Math.random() * 8999)}-${Math.floor(1000 + Math.random() * 8999)}`;
-    
-    leads.push({
-      nome_completo: name,
-      profissao: data.specialties[specIndex],
-      cidade: cidade,
-      estado: estado,
-      email: email,
-      telefone: phone,
-      linkedin_url: `https://linkedin.com/in/${firstName.toLowerCase()}-${lastName}-${i}`,
-      fonte: 'database_simulado',
-      fonte_url: `https://linkedin.com/in/${firstName.toLowerCase()}-${lastName}-${i}`,
-      fonte_snippet: `${data.specialties[specIndex]} em ${cidade}. Atendimento em ${data.clinics?.[clinicIndex] || data.companies?.[clinicIndex] || 'Consultório Particular'}.`,
-      query_usada: `${profissao} ${cidade}`,
-      pipeline_status: 'descoberto'
-    });
-  }
-  
-  return leads;
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") || "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+  );
+
   try {
-    console.log("🚀 Iniciando busca de leads...");
+    console.log("🚀 Iniciando busca de leads REAIS...");
     
     const { campanha_id, icp_config_id } = await req.json();
     console.log("📋 IDs recebidos:", { campanha_id, icp_config_id });
@@ -236,24 +41,190 @@ serve(async (req) => {
     const cidade = icp.b2c_config?.cidades?.[0] || "Rio de Janeiro";
     const estado = icp.b2c_config?.estados?.[0] || "RJ";
 
-    console.log("🔍 Gerando leads para:", { profissao, cidade, estado });
+    console.log("🔍 Buscando leads REAIS para:", { profissao, cidade, estado });
 
-    // Gerar leads realistas com DDD correto
-    const leadsData = generateRealisticLeads(profissao, cidade, estado, 15);
+    // ==== BUSCAR LEADS REAIS VIA APIFY LINKEDIN ====
+    const APIFY_TOKEN = Deno.env.get('APIFY_API_KEY');
     
-    console.log(`✅ ${leadsData.length} leads gerados com DDD ${getDDDFromLocation(cidade)}`);
-    console.log(`📞 Exemplo de telefone: ${leadsData[0]?.telefone}`);
+    if (!APIFY_TOKEN) {
+      console.error("❌ APIFY_API_KEY não configurada");
+      throw new Error("APIFY_API_KEY não configurada. Configure no Supabase.");
+    }
 
-    // Adicionar campanha_id e user_id aos leads
-    const leads = leadsData.map(lead => ({
-      ...lead,
-      campanha_id,
-      user_id: icp.user_id
-    }));
+    console.log("🔗 Iniciando busca no LinkedIn via Apify...");
 
-    console.log(`💾 Salvando ${leads.length} leads no banco...`);
+    const searchQuery = `${profissao} ${cidade}`;
+    const maxResults = 30;
 
-    // Salvar leads
+    // Chamar Apify LinkedIn Scraper
+    const runResponse = await fetch('https://api.apify.com/v2/acts/bebity~linkedin-people-search/runs?waitForFinish=300', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${APIFY_TOKEN}`
+      },
+      body: JSON.stringify({
+        searchTerms: [searchQuery],
+        location: 'Brazil',
+        maxResults: maxResults,
+        proxy: {
+          useApifyProxy: true,
+          apifyProxyGroups: ['RESIDENTIAL']
+        }
+      })
+    });
+
+    if (!runResponse.ok) {
+      const errorText = await runResponse.text();
+      console.error('❌ Erro Apify LinkedIn:', errorText);
+      throw new Error(`Erro Apify: ${runResponse.status} - ${errorText}`);
+    }
+
+    const runData = await runResponse.json();
+    const runId = runData.data?.id;
+
+    console.log(`✅ Run Apify iniciada: ${runId}`);
+
+    if (!runId) {
+      throw new Error('Não foi possível obter ID da execução Apify');
+    }
+
+    // Buscar resultados do dataset
+    const resultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items`, {
+      headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
+    });
+
+    const linkedinResults = await resultsResponse.json();
+    console.log(`📊 LinkedIn: ${linkedinResults.length} perfis encontrados`);
+
+    // ==== BUSCAR TAMBÉM NO INSTAGRAM (opcional) ====
+    let instagramResults: any[] = [];
+    
+    try {
+      console.log("📷 Buscando no Instagram via Apify...");
+      
+      const igResponse = await fetch('https://api.apify.com/v2/acts/apify~instagram-profile-scraper/runs?waitForFinish=180', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${APIFY_TOKEN}`
+        },
+        body: JSON.stringify({
+          search: `${profissao} ${cidade}`,
+          searchType: 'hashtag',
+          resultsLimit: 20,
+          proxy: { useApifyProxy: true }
+        })
+      });
+
+      if (igResponse.ok) {
+        const igRunData = await igResponse.json();
+        const igRunId = igRunData.data?.id;
+        
+        if (igRunId) {
+          const igResultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${igRunId}/dataset/items`, {
+            headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
+          });
+          instagramResults = await igResultsResponse.json();
+          console.log(`📷 Instagram: ${instagramResults.length} perfis encontrados`);
+        }
+      }
+    } catch (igError) {
+      console.warn("⚠️ Busca Instagram falhou (continuando com LinkedIn):", igError);
+    }
+
+    // ==== PROCESSAR E UNIFICAR RESULTADOS ====
+    const leads: any[] = [];
+
+    // Processar LinkedIn
+    for (const profile of linkedinResults) {
+      const lead = {
+        nome_completo: profile.fullName || profile.name || 'Nome não disponível',
+        profissao: profile.headline || profile.title || profissao,
+        especialidade: profile.headline || null,
+        cidade: profile.location?.split(',')[0]?.trim() || cidade,
+        estado: profile.location?.split(',')[1]?.trim() || estado,
+        linkedin_url: profile.profileUrl || profile.url || profile.linkedinUrl,
+        linkedin_id: profile.publicIdentifier || profile.profileId,
+        email: profile.email || null,
+        telefone: profile.phoneNumber || profile.phone || null,
+        foto_url: profile.profilePicture || profile.photoUrl,
+        fonte: 'linkedin_apify',
+        fonte_url: profile.profileUrl || profile.url,
+        fonte_snippet: `${profile.headline || profissao} em ${profile.location || cidade}`,
+        query_usada: searchQuery,
+        pipeline_status: 'descoberto',
+        score: 50, // Score base para leads reais
+        campanha_id,
+        user_id: icp.user_id
+      };
+
+      // Só adicionar se tiver LinkedIn URL válido
+      if (lead.linkedin_url) {
+        leads.push(lead);
+      }
+    }
+
+    // Processar Instagram (merge com LinkedIn se mesmo nome)
+    for (const profile of instagramResults) {
+      // Verificar se é conta business ou verificada
+      if (!profile.isBusinessAccount && !profile.isVerified && (profile.followersCount || 0) < 1000) {
+        continue;
+      }
+
+      // Verificar se já existe pelo nome
+      const existingLead = leads.find(l => 
+        l.nome_completo.toLowerCase() === (profile.fullName || profile.username || '').toLowerCase()
+      );
+
+      if (existingLead) {
+        // Merge - adicionar dados do Instagram
+        existingLead.instagram_username = profile.username;
+        existingLead.instagram_seguidores = profile.followersCount;
+        existingLead.email = existingLead.email || profile.businessEmail || profile.publicEmail;
+        existingLead.telefone = existingLead.telefone || profile.businessPhoneNumber || profile.publicPhoneNumber;
+        existingLead.score = (existingLead.score || 50) + 10; // Bonus por ter Instagram
+      } else {
+        // Novo lead apenas do Instagram
+        leads.push({
+          nome_completo: profile.fullName || profile.username,
+          profissao: profile.businessCategoryName || profissao,
+          cidade: profile.businessAddressJson?.city || cidade,
+          estado: estado,
+          instagram_username: profile.username,
+          instagram_seguidores: profile.followersCount,
+          email: profile.businessEmail || profile.publicEmail,
+          telefone: profile.businessPhoneNumber || profile.publicPhoneNumber,
+          site_url: profile.externalUrl,
+          fonte: 'instagram_apify',
+          fonte_url: `https://instagram.com/${profile.username}`,
+          fonte_snippet: profile.biography?.substring(0, 200),
+          query_usada: searchQuery,
+          pipeline_status: 'descoberto',
+          score: 40, // Score base para leads só do Instagram
+          campanha_id,
+          user_id: icp.user_id
+        });
+      }
+    }
+
+    console.log(`✅ Total de leads processados: ${leads.length}`);
+
+    if (leads.length === 0) {
+      console.warn("⚠️ Nenhum lead encontrado");
+      return new Response(
+        JSON.stringify({
+          success: false,
+          leads_encontrados: 0,
+          message: "Nenhum lead encontrado. Tente ajustar os parâmetros de busca."
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+      );
+    }
+
+    // ==== SALVAR LEADS NO BANCO ====
+    console.log(`💾 Salvando ${leads.length} leads REAIS no banco...`);
+
     const { error: insertError } = await supabase
       .from("leads_b2c")
       .insert(leads);
@@ -263,13 +234,27 @@ serve(async (req) => {
       throw insertError;
     }
 
-    console.log(`🎉 Busca concluída: ${leads.length} leads salvos com sucesso!`);
+    // Atualizar estatísticas da campanha
+    await supabase
+      .from("campanhas_prospeccao")
+      .update({
+        stats: {
+          leads_descobertos: leads.length,
+          ultima_busca: new Date().toISOString(),
+          fonte: 'apify_linkedin_instagram'
+        }
+      })
+      .eq("id", campanha_id);
+
+    console.log(`🎉 Busca REAL concluída: ${leads.length} leads salvos!`);
 
     return new Response(
       JSON.stringify({
         success: true,
         leads_encontrados: leads.length,
-        message: `${leads.length} leads qualificados encontrados em ${cidade}!`
+        leads_linkedin: linkedinResults.length,
+        leads_instagram: instagramResults.length,
+        message: `${leads.length} leads REAIS encontrados via LinkedIn e Instagram!`
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
