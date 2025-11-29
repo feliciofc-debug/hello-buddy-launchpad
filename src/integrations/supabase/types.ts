@@ -1030,6 +1030,48 @@ export type Database = {
         }
         Relationships: []
       }
+      interacoes: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          descricao: string | null
+          duracao_segundos: number | null
+          id: string
+          lead_id: string
+          lead_tipo: string
+          metadata: Json | null
+          resultado: string | null
+          tipo: string
+          titulo: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          descricao?: string | null
+          duracao_segundos?: number | null
+          id?: string
+          lead_id: string
+          lead_tipo: string
+          metadata?: Json | null
+          resultado?: string | null
+          tipo: string
+          titulo?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          descricao?: string | null
+          duracao_segundos?: number | null
+          id?: string
+          lead_id?: string
+          lead_tipo?: string
+          metadata?: Json | null
+          resultado?: string | null
+          tipo?: string
+          titulo?: string | null
+        }
+        Relationships: []
+      }
       lead_history: {
         Row: {
           created_at: string | null
