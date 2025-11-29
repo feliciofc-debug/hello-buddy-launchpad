@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,7 @@ interface Mensagem {
   content: string;
   role: string;
   created_at: string;
+  metadata?: any;
 }
 
 export default function IAConversas() {
@@ -41,6 +42,16 @@ export default function IAConversas() {
   const [filtroModo, setFiltroModo] = useState('todas');
   const [filtroOrigem, setFiltroOrigem] = useState('todas');
   const [loading, setLoading] = useState(true);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Scroll automático para última mensagem
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [mensagens]);
 
   useEffect(() => {
     carregarConversas();
@@ -552,43 +563,66 @@ export default function IAConversas() {
                 )}
               </CardHeader>
 
-              <CardContent className="p-0">
+              <CardContent className="p-0 flex flex-col">
                 {/* MENSAGENS */}
-                <ScrollArea className="h-[450px] p-4">
-                  {mensagens.length === 0 ? (
-                    <p className="text-center text-sm text-muted-foreground py-8">
-                      Nenhuma mensagem ainda
-                    </p>
-                  ) : (
-                    <div className="space-y-4">
-                      {mensagens.map(msg => (
-                        <div
-                          key={msg.id}
-                          className={`flex ${
-                            msg.role === 'assistant' ? 'justify-end' : 'justify-start'
-                          }`}
-                        >
-                          <div
-                            className={`max-w-[70%] rounded-lg p-3 ${
-                              msg.role === 'assistant'
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted'
-                            }`}
-                          >
-                            <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
-                            <p className={`text-xs mt-1 ${
-                              msg.role === 'assistant' ? 'opacity-70' : 'text-muted-foreground'
-                            }`}>
-                              {new Date(msg.created_at).toLocaleTimeString('pt-BR', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                <ScrollArea className="h-[450px]">
+                  <div className="p-4">
+                    {mensagens.length === 0 ? (
+                      <p className="text-center text-sm text-muted-foreground py-8">
+                        Nenhuma mensagem ainda
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        {mensagens.map(msg => {
+                          const isFromBusiness = msg.role === 'assistant';
+                          const isAutoSent = msg.metadata?.auto_sent === true;
+                          
+                          return (
+                            <div
+                              key={msg.id}
+                              className={`flex ${isFromBusiness ? 'justify-end' : 'justify-start'}`}
+                            >
+                              <div
+                                className={`max-w-[70%] rounded-2xl p-3 ${
+                                  isFromBusiness
+                                    ? 'bg-primary text-primary-foreground rounded-br-md'
+                                    : 'bg-muted rounded-bl-md'
+                                }`}
+                              >
+                                <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                                
+                                <div className={`flex items-center gap-2 mt-1 ${
+                                  isFromBusiness ? 'justify-end' : 'justify-start'
+                                }`}>
+                                  <span className={`text-xs ${
+                                    isFromBusiness ? 'opacity-70' : 'text-muted-foreground'
+                                  }`}>
+                                    {new Date(msg.created_at).toLocaleTimeString('pt-BR', {
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                  
+                                  {isAutoSent && (
+                                    <Badge 
+                                      variant="outline" 
+                                      className={`text-[10px] px-1 py-0 h-4 ${
+                                        isFromBusiness ? 'border-primary-foreground/30 text-primary-foreground/70' : ''
+                                      }`}
+                                    >
+                                      🤖 Auto
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {/* Scroll anchor */}
+                        <div ref={messagesEndRef} />
+                      </div>
+                    )}
+                  </div>
                 </ScrollArea>
 
                 {/* INPUT DE MENSAGEM */}
