@@ -619,7 +619,7 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
     });
   };
 
-  // Enviar mensagens aprovadas
+  // Enviar mensagens aprovadas - COM INTEGRAÇÃO IA CONVERSAS
   const handleEnviarAprovados = async () => {
     const aprovados = Object.entries(mensagensGeradas).filter(([_, msg]) => msg.aprovado && !msg.error);
 
@@ -638,12 +638,20 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
       const lead = leadsParaAbordar.find(l => l.id === leadId);
       if (!lead) continue;
 
+      const telefone = lead.whatsapp || lead.telefone;
+      if (!telefone) continue;
+
+      // Formatar telefone
+      let phoneFormatted = telefone.replace(/\D/g, '');
+      if (phoneFormatted.length === 11) phoneFormatted = `55${phoneFormatted}`;
+
       try {
         toast.loading(`Enviando ${enviados + 1}/${aprovados.length}...`, { id: 'enviar' });
 
+        // 1. Enviar mensagem via Wuzapi
         await supabase.functions.invoke('send-whatsapp-prospeccao', {
           body: {
-            phone: lead.whatsapp || lead.telefone,
+            phone: telefone,
             message: msg.texto,
             leadId: lead.id,
             leadTipo: lead.tipo,
@@ -652,7 +660,83 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
           }
         });
 
-        // Registrar interação
+        // 2. Verificar se já existe conversa para este telefone
+        const { data: existingConv } = await supabase
+          .from('whatsapp_conversations')
+          .select('id')
+          .eq('phone_number', phoneFormatted)
+          .eq('user_id', user?.id)
+          .maybeSingle();
+
+        let conversationId = existingConv?.id;
+
+        // 3. Se não existe, criar conversa com dados do lead
+        if (!conversationId) {
+          const { data: newConv } = await supabase
+            .from('whatsapp_conversations')
+            .insert({
+              user_id: user?.id,
+              phone_number: phoneFormatted,
+              contact_name: lead.nome_completo || lead.razao_social,
+              lead_id: lead.id,
+              tipo_contato: 'lead',
+              origem: 'prospeccao',
+              modo_atendimento: 'ia',
+              last_message_at: new Date().toISOString(),
+              metadata: {
+                lead_tipo: lead.tipo,
+                profissao: lead.profissao,
+                especialidade: (lead as any).especialidade,
+                setor: lead.setor,
+                cidade: lead.cidade,
+                estado: lead.estado,
+                score: lead.score,
+                campanha_id: (lead as any).campanha_id,
+                strategy: msg.strategy
+              }
+            })
+            .select()
+            .single();
+          
+          conversationId = newConv?.id;
+        } else {
+          // Atualizar conversa existente com dados do lead
+          await supabase
+            .from('whatsapp_conversations')
+            .update({
+              lead_id: lead.id,
+              contact_name: lead.nome_completo || lead.razao_social,
+              origem: 'prospeccao',
+              last_message_at: new Date().toISOString(),
+              metadata: {
+                lead_tipo: lead.tipo,
+                profissao: lead.profissao,
+                especialidade: (lead as any).especialidade,
+                setor: lead.setor,
+                cidade: lead.cidade,
+                estado: lead.estado,
+                score: lead.score,
+                strategy: msg.strategy
+              }
+            })
+            .eq('id', conversationId);
+        }
+
+        // 4. Salvar mensagem enviada na conversa
+        if (conversationId) {
+          await supabase.from('whatsapp_conversation_messages').insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: msg.texto,
+            metadata: {
+              tipo: 'prospeccao_ativa',
+              lead_id: lead.id,
+              auto_sent: true
+            }
+          });
+        }
+
+        // 5. Registrar interação com referência à conversa
         await supabase.from('interacoes').insert({
           lead_id: lead.id,
           lead_tipo: lead.tipo,
@@ -660,10 +744,14 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
           titulo: '🎯 Abordagem ativa enviada',
           descricao: msg.texto,
           resultado: 'aguardando_resposta',
-          created_by: user?.id
+          created_by: user?.id,
+          metadata: {
+            conversation_id: conversationId,
+            phone: phoneFormatted
+          }
         });
 
-        // Atualizar lead
+        // 6. Atualizar lead
         const tabela = lead.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
         await supabase.from(tabela).update({
           pipeline_status: 'enviado',

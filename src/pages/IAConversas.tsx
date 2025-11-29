@@ -20,6 +20,7 @@ interface Conversa {
   metadata: any;
   origem: string;
   tipo_contato: string;
+  lead_id: string | null;
 }
 
 interface Mensagem {
@@ -36,8 +37,9 @@ export default function IAConversas() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [novaMensagem, setNovaMensagem] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState('leads');
+  const [abaAtiva, setAbaAtiva] = useState('todas');
   const [filtroModo, setFiltroModo] = useState('todas');
+  const [filtroOrigem, setFiltroOrigem] = useState('todas');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -203,22 +205,30 @@ export default function IAConversas() {
     return phone;
   };
 
-  // Filtrar conversas por tipo e modo
+  // Filtrar conversas por tipo, modo e origem
   const conversasFiltradas = conversas.filter(conv => {
     const tipoMatch = abaAtiva === 'todas' || 
       (abaAtiva === 'leads' && (conv.tipo_contato === 'lead' || !conv.tipo_contato)) ||
-      (abaAtiva === 'clientes' && conv.tipo_contato === 'cliente');
+      (abaAtiva === 'clientes' && conv.tipo_contato === 'cliente') ||
+      (abaAtiva === 'prospects' && conv.lead_id);
     
     const modoMatch = filtroModo === 'todas' ||
       (filtroModo === 'ia' && (conv.modo_atendimento === 'ia' || !conv.modo_atendimento)) ||
       (filtroModo === 'humano' && conv.modo_atendimento === 'humano');
     
-    return tipoMatch && modoMatch;
+    const origemMatch = filtroOrigem === 'todas' ||
+      (filtroOrigem === 'prospeccao' && conv.origem === 'prospeccao') ||
+      (filtroOrigem === 'campanha' && conv.origem === 'campanha');
+    
+    return tipoMatch && modoMatch && origemMatch;
   });
 
-  const countByType = (tipo: string) => conversas.filter(c => 
-    tipo === 'leads' ? (c.tipo_contato === 'lead' || !c.tipo_contato) : c.tipo_contato === 'cliente'
-  ).length;
+  const countByType = (tipo: string) => conversas.filter(c => {
+    if (tipo === 'leads') return c.tipo_contato === 'lead' || !c.tipo_contato;
+    if (tipo === 'clientes') return c.tipo_contato === 'cliente';
+    if (tipo === 'prospects') return !!c.lead_id;
+    return true;
+  }).length;
 
   const countByMode = (modo: string) => conversasFiltradas.filter(c => 
     modo === 'ia' ? (c.modo_atendimento === 'ia' || !c.modo_atendimento) : c.modo_atendimento === 'humano'
@@ -233,25 +243,29 @@ export default function IAConversas() {
         <h1 className="text-3xl font-bold">💬 IA Conversas</h1>
       </div>
 
-      {/* ABAS: LEADS vs CLIENTES */}
+      {/* ABAS: TODAS | PROSPECTS | LEADS | CLIENTES */}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="mb-4">
         <TabsList>
+          <TabsTrigger value="todas" className="gap-2">
+            Todas ({conversas.length})
+          </TabsTrigger>
+          <TabsTrigger value="prospects" className="gap-2">
+            <Target className="w-4 h-4" />
+            🎯 Prospects ({countByType('prospects')})
+          </TabsTrigger>
           <TabsTrigger value="leads" className="gap-2">
             <Target className="w-4 h-4" />
-            Leads/Prospects ({countByType('leads')})
+            Leads ({countByType('leads')})
           </TabsTrigger>
           <TabsTrigger value="clientes" className="gap-2">
             <Users className="w-4 h-4" />
-            Clientes Base ({countByType('clientes')})
-          </TabsTrigger>
-          <TabsTrigger value="todas" className="gap-2">
-            Todas ({conversas.length})
+            Clientes ({countByType('clientes')})
           </TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {/* FILTROS DE MODO */}
-      <div className="flex gap-2 mb-4">
+      {/* FILTROS DE MODO E ORIGEM */}
+      <div className="flex gap-2 mb-4 flex-wrap">
         <Button
           variant={filtroModo === 'todas' ? 'default' : 'outline'}
           size="sm"
@@ -272,6 +286,30 @@ export default function IAConversas() {
           onClick={() => setFiltroModo('humano')}
         >
           <User className="w-4 h-4 mr-1" /> Você Atendendo ({countByMode('humano')})
+        </Button>
+        
+        <div className="w-px h-6 bg-border mx-2" />
+        
+        <Button
+          variant={filtroOrigem === 'todas' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setFiltroOrigem('todas')}
+        >
+          Todas Origens
+        </Button>
+        <Button
+          variant={filtroOrigem === 'prospeccao' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setFiltroOrigem('prospeccao')}
+        >
+          🎯 Prospecção
+        </Button>
+        <Button
+          variant={filtroOrigem === 'campanha' ? 'secondary' : 'ghost'}
+          size="sm"
+          onClick={() => setFiltroOrigem('campanha')}
+        >
+          📢 Campanha
         </Button>
       </div>
 
@@ -315,14 +353,16 @@ export default function IAConversas() {
                       key={conv.id}
                       className={`p-4 cursor-pointer hover:bg-accent border-b transition-colors ${
                         conversaSelecionada?.id === conv.id ? 'bg-accent border-l-4 border-l-primary' : ''
-                      }`}
+                      } ${conv.lead_id ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''}`}
                       onClick={() => setConversaSelecionada(conv)}
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-start gap-3 flex-1">
                           <Avatar className="w-10 h-10">
-                            <AvatarFallback className="bg-primary text-primary-foreground">
-                              {conv.tipo_contato === 'cliente' ? '👤' : '🎯'}
+                            <AvatarFallback className={`text-primary-foreground ${
+                              conv.lead_id ? 'bg-blue-500' : conv.tipo_contato === 'cliente' ? 'bg-green-500' : 'bg-primary'
+                            }`}>
+                              {conv.lead_id ? '🎯' : conv.tipo_contato === 'cliente' ? '👤' : '💬'}
                             </AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
@@ -332,12 +372,31 @@ export default function IAConversas() {
                             <p className="text-xs text-muted-foreground">
                               {formatPhone(conv.phone_number)}
                             </p>
+                            {conv.lead_id && (
+                              <Badge variant="outline" className="text-xs mt-1 bg-blue-100 dark:bg-blue-900 border-blue-300">
+                                🎯 Prospect
+                              </Badge>
+                            )}
+                            {conv.origem === 'prospeccao' && !conv.lead_id && (
+                              <Badge variant="outline" className="text-xs mt-1">
+                                Prospecção
+                              </Badge>
+                            )}
                           </div>
                         </div>
                         
-                        <Badge variant={conv.modo_atendimento === 'humano' ? 'default' : 'secondary'}>
-                          {conv.modo_atendimento === 'humano' ? '👤' : '🤖'}
-                        </Badge>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant={conv.modo_atendimento === 'humano' ? 'default' : 'secondary'}>
+                            {conv.modo_atendimento === 'humano' ? '👤' : '🤖'}
+                          </Badge>
+                          {conv.metadata?.score && (
+                            <span className={`text-xs font-medium ${
+                              conv.metadata.score >= 80 ? 'text-red-500' : conv.metadata.score >= 50 ? 'text-yellow-500' : 'text-blue-500'
+                            }`}>
+                              {conv.metadata.score >= 80 ? '🔥' : conv.metadata.score >= 50 ? '🟡' : '❄️'} {conv.metadata.score}
+                            </span>
+                          )}
+                        </div>
                       </div>
                       
                       <p className="text-xs text-muted-foreground">
@@ -423,7 +482,7 @@ export default function IAConversas() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Badge 
                     variant={conversaSelecionada.modo_atendimento === 'humano' ? 'default' : 'secondary'}
                   >
@@ -438,11 +497,59 @@ export default function IAConversas() {
                   </Badge>
 
                   {conversaSelecionada.origem && (
-                    <Badge variant="outline">
-                      Origem: {conversaSelecionada.origem}
+                    <Badge variant={conversaSelecionada.origem === 'prospeccao' ? 'default' : 'outline'}>
+                      {conversaSelecionada.origem === 'prospeccao' ? '🎯 Prospecção Ativa' : `Origem: ${conversaSelecionada.origem}`}
+                    </Badge>
+                  )}
+
+                  {conversaSelecionada.lead_id && (
+                    <Badge variant="default" className="bg-blue-500">
+                      🔗 Lead Vinculado
                     </Badge>
                   )}
                 </div>
+
+                {/* CARD DE INFO DO LEAD (se tiver lead vinculado) */}
+                {conversaSelecionada.lead_id && conversaSelecionada.metadata && (
+                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="outline" className="bg-blue-100 dark:bg-blue-900">
+                        🎯 Lead de Prospecção
+                      </Badge>
+                      {conversaSelecionada.metadata?.score && (
+                        <Badge variant={conversaSelecionada.metadata.score >= 80 ? 'default' : 'secondary'}>
+                          Score: {conversaSelecionada.metadata.score}
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {conversaSelecionada.metadata?.profissao && (
+                        <p><strong>Profissão:</strong> {conversaSelecionada.metadata.profissao}</p>
+                      )}
+                      {conversaSelecionada.metadata?.especialidade && (
+                        <p><strong>Especialidade:</strong> {conversaSelecionada.metadata.especialidade}</p>
+                      )}
+                      {conversaSelecionada.metadata?.setor && (
+                        <p><strong>Setor:</strong> {conversaSelecionada.metadata.setor}</p>
+                      )}
+                      {(conversaSelecionada.metadata?.cidade || conversaSelecionada.metadata?.estado) && (
+                        <p><strong>Local:</strong> {conversaSelecionada.metadata.cidade}/{conversaSelecionada.metadata.estado}</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 mt-3">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => navigate(`/leads-funil?campanha=${conversaSelecionada.metadata?.campanha_id || ''}`)}
+                      >
+                        <Target className="w-3 h-3 mr-1" />
+                        Ver no Funil
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardHeader>
 
               <CardContent className="p-0">
