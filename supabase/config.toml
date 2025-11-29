@@ -128,3 +128,15 @@ verify_jwt = false
 
 [functions.update-reviewer-password]
 verify_jwt = false
+
+[functions.create-approach-strategy]
+verify_jwt = false
+
+[functions.send-whatsapp-prospeccao]
+verify_jwt = false
+
+[functions.gerar-mensagem-ia]
+verify_jwt = false
+
+[functions.enrich-lead]
+verify_jwt = false
