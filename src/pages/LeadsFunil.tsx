@@ -18,7 +18,8 @@ const PIPELINE_STAGES = [
   { id: 'mensagem_gerada', label: 'Mensagem Gerada', color: 'bg-yellow-500' },
   { id: 'enviado', label: 'Enviado', color: 'bg-orange-500' },
   { id: 'respondeu', label: 'Respondeu', color: 'bg-green-500' },
-  { id: 'convertido', label: 'Convertido', color: 'bg-emerald-600' }
+  { id: 'convertido', label: 'Convertido', color: 'bg-emerald-600' },
+  { id: 'invalidado', label: '❌ Invalidados', color: 'bg-red-500' }
 ];
 
 interface Lead {
@@ -37,6 +38,18 @@ interface Lead {
   pipeline_status: string;
   product_id?: string;
   tipo?: 'b2c' | 'b2b';
+  linkedin_url?: string;
+  instagram_username?: string;
+  facebook_url?: string;
+  especialidade?: string;
+  whatsapp_status?: string;
+  fonte?: string;
+  campanha_id?: string;
+  created_at?: string;
+  validado_manualmente?: boolean;
+  validado_em?: string;
+  validado_por?: string;
+  motivo_invalidacao?: string;
 }
 
 interface Produto {
@@ -196,6 +209,7 @@ export default function LeadsFunil() {
   const [refreshTimeline, setRefreshTimeline] = useState(0);
   const [chamandoLead, setChamandoLead] = useState(false);
   const [campanhaFiltro, setCampanhaFiltro] = useState<string | null>(null);
+  const [filtroValidacao, setFiltroValidacao] = useState('todos');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -996,6 +1010,57 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
     }
   };
 
+  // VALIDAR/INVALIDAR LEAD MANUALMENTE
+  const handleValidarLead = async (leadId: string, isValid: boolean) => {
+    if (!leadSelecionado) return;
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    const tabela = leadSelecionado.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+
+    if (isValid) {
+      // Marcar como validado
+      await supabase.from(tabela).update({
+        validado_manualmente: true,
+        validado_em: new Date().toISOString(),
+        validado_por: user?.id,
+        score: Math.min((leadSelecionado.score || 0) + 20, 100)
+      }).eq('id', leadId);
+
+      toast.success('✅ Lead validado! Score +20');
+      
+    } else {
+      // Marcar como inválido
+      const motivo = prompt('Por que este lead é falso?');
+      
+      await supabase.from(tabela).update({
+        validado_manualmente: false,
+        validado_em: new Date().toISOString(),
+        validado_por: user?.id,
+        motivo_invalidacao: motivo || 'Não especificado',
+        pipeline_status: 'invalidado',
+        score: 0
+      }).eq('id', leadId);
+
+      toast.error('❌ Lead marcado como falso e removido');
+    }
+
+    setLeadSelecionado(null);
+    loadLeads(campanhaFiltro);
+  };
+
+  // Calcular estatísticas de qualidade
+  const getQualityStats = () => {
+    const todosLeads = [...leadsB2C, ...leadsB2B];
+    return {
+      total: todosLeads.length,
+      validados: todosLeads.filter(l => l.validado_manualmente === true).length,
+      comLinkedin: todosLeads.filter(l => l.linkedin_url).length,
+      comInstagram: todosLeads.filter(l => l.instagram_username).length,
+      whatsappOk: todosLeads.filter(l => l.whatsapp_status === 'valid' || l.whatsapp).length,
+      invalidos: todosLeads.filter(l => l.pipeline_status === 'invalidado').length
+    };
+  };
+
   const getLeadsPorStatus = (status: string): Lead[] => {
     let b2c = leadsB2C.filter(l => l.pipeline_status === status);
     let b2b = leadsB2B.filter(l => l.pipeline_status === status);
@@ -1003,6 +1068,18 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
     if (filtroProduct && filtroProduct !== 'all') {
       b2c = b2c.filter(l => l.product_id === filtroProduct);
       b2b = b2b.filter(l => l.product_id === filtroProduct);
+    }
+
+    // Aplicar filtro de validação
+    if (filtroValidacao === 'validados') {
+      b2c = b2c.filter(l => l.validado_manualmente === true);
+      b2b = b2b.filter(l => l.validado_manualmente === true);
+    } else if (filtroValidacao === 'nao_validados') {
+      b2c = b2c.filter(l => !l.validado_manualmente && l.pipeline_status !== 'invalidado');
+      b2b = b2b.filter(l => !l.validado_manualmente && l.pipeline_status !== 'invalidado');
+    } else if (filtroValidacao === 'invalidados') {
+      b2c = b2c.filter(l => l.pipeline_status === 'invalidado');
+      b2b = b2b.filter(l => l.pipeline_status === 'invalidado');
     }
 
     return [...b2c.map(l => ({ ...l, tipo: 'b2c' as const })), ...b2b.map(l => ({ ...l, tipo: 'b2b' as const }))];
@@ -1066,7 +1143,7 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
           </Button>
 
           <Select value={filtroProduct} onValueChange={setFiltroProduct}>
-            <SelectTrigger className="w-64">
+            <SelectTrigger className="w-48">
               <SelectValue placeholder="Filtrar por produto" />
             </SelectTrigger>
             <SelectContent>
@@ -1074,6 +1151,18 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
               {produtos.map(p => (
                 <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={filtroValidacao} onValueChange={setFiltroValidacao}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Validação" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="validados">✅ Apenas Validados</SelectItem>
+              <SelectItem value="nao_validados">⏳ Não Validados</SelectItem>
+              <SelectItem value="invalidados">❌ Marcados como Falsos</SelectItem>
             </SelectContent>
           </Select>
 
@@ -1094,7 +1183,61 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
         </div>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-180px)]">
+      {/* Relatório de Qualidade */}
+      {(() => {
+        const stats = getQualityStats();
+        return (
+          <Card className="p-4 mb-4">
+            <h3 className="font-bold mb-3">📊 Relatório de Qualidade</h3>
+            
+            <div className="grid grid-cols-6 gap-4 text-sm">
+              <div className="text-center">
+                <p className="text-muted-foreground">Total</p>
+                <p className="text-2xl font-bold">{stats.total}</p>
+              </div>
+              
+              <div className="text-center">
+                <p className="text-muted-foreground">Validados</p>
+                <p className="text-2xl font-bold text-green-500">{stats.validados}</p>
+                <p className="text-xs text-muted-foreground">
+                  {stats.total > 0 ? ((stats.validados/stats.total)*100).toFixed(1) : 0}%
+                </p>
+              </div>
+              
+              <div className="text-center">
+                <p className="text-muted-foreground">Com LinkedIn</p>
+                <p className="text-2xl font-bold text-blue-500">{stats.comLinkedin}</p>
+                <p className="text-xs text-muted-foreground">
+                  {stats.total > 0 ? ((stats.comLinkedin/stats.total)*100).toFixed(1) : 0}%
+                </p>
+              </div>
+              
+              <div className="text-center">
+                <p className="text-muted-foreground">Com Instagram</p>
+                <p className="text-2xl font-bold text-pink-500">{stats.comInstagram}</p>
+                <p className="text-xs text-muted-foreground">
+                  {stats.total > 0 ? ((stats.comInstagram/stats.total)*100).toFixed(1) : 0}%
+                </p>
+              </div>
+              
+              <div className="text-center">
+                <p className="text-muted-foreground">WhatsApp OK</p>
+                <p className="text-2xl font-bold text-green-500">{stats.whatsappOk}</p>
+                <p className="text-xs text-muted-foreground">
+                  {stats.total > 0 ? ((stats.whatsappOk/stats.total)*100).toFixed(1) : 0}%
+                </p>
+              </div>
+              
+              <div className="text-center">
+                <p className="text-muted-foreground">Falsos</p>
+                <p className="text-2xl font-bold text-red-500">{stats.invalidos}</p>
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
+
+      <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-280px)]">
         {PIPELINE_STAGES.map(stage => {
           const leads = getLeadsPorStatus(stage.id);
           
@@ -1110,7 +1253,7 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                 <p className="text-xs opacity-90">{leads.length} leads</p>
               </div>
               
-              <div className="bg-muted/30 p-2 space-y-2 rounded-b-lg min-h-[200px] max-h-[calc(100vh-280px)] overflow-y-auto border border-t-0 border-border">
+              <div className="bg-muted/30 p-2 space-y-2 rounded-b-lg min-h-[200px] max-h-[calc(100vh-380px)] overflow-y-auto border border-t-0 border-border">
                 {leads.map(lead => {
                   const temp = getTemperatura(lead.score || 0);
                   const nome = lead.nome_completo || lead.razao_social || lead.nome_fantasia;
@@ -1174,10 +1317,35 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                         </p>
                       )}
 
-                      <div className="mt-2">
+                      {/* Badges de Validação e Redes Sociais */}
+                      <div className="flex gap-1 mt-2 flex-wrap">
                         <Badge variant={lead.tipo === 'b2c' ? 'default' : 'secondary'} className="text-xs">
                           {lead.tipo?.toUpperCase()}
                         </Badge>
+                        
+                        {lead.validado_manualmente && (
+                          <Badge variant="default" className="bg-green-500 text-xs">
+                            ✓ Validado
+                          </Badge>
+                        )}
+                        
+                        {lead.linkedin_url && (
+                          <Badge variant="outline" className="text-xs">
+                            in
+                          </Badge>
+                        )}
+                        
+                        {lead.instagram_username && (
+                          <Badge variant="outline" className="text-xs">
+                            📷
+                          </Badge>
+                        )}
+                        
+                        {(lead.whatsapp_status === 'valid' || lead.whatsapp) && (
+                          <Badge variant="outline" className="text-xs text-green-600">
+                            ✓ WA
+                          </Badge>
+                        )}
                       </div>
                     </Card>
                   );
@@ -1196,50 +1364,236 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
 
       {/* Modal de Detalhes do Lead */}
       <Dialog open={!!leadSelecionado} onOpenChange={() => setLeadSelecionado(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
               {leadSelecionado?.nome_completo || leadSelecionado?.razao_social || leadSelecionado?.nome_fantasia}
+              {leadSelecionado?.validado_manualmente && (
+                <Badge variant="default" className="bg-green-500">
+                  ✓ Validado
+                </Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
 
           {leadSelecionado && (
             <div className="space-y-4">
-              {/* Info Básica */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Score</label>
-                  <p className="text-2xl font-bold">{leadSelecionado.score || 0}/100</p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-muted-foreground">Status</label>
-                  <div className="mt-1">
-                    <Badge>{leadSelecionado.pipeline_status}</Badge>
+              {/* SEÇÃO 1: PROVAS VISUAIS - REDES SOCIAIS */}
+              <Card className="p-4 bg-blue-50 dark:bg-blue-950/30">
+                <h3 className="font-bold mb-3 flex items-center gap-2">
+                  🔗 Provas Visuais - Clique para Verificar
+                </h3>
+
+                <div className="space-y-3">
+                  {/* LinkedIn */}
+                  {leadSelecionado.linkedin_url ? (
+                    <div className="flex items-center justify-between p-3 bg-background rounded">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-600 rounded flex items-center justify-center">
+                          <span className="text-white font-bold">in</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold">LinkedIn Verificado</p>
+                          <p className="text-xs text-muted-foreground">
+                            {leadSelecionado.profissao}
+                          </p>
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm"
+                        onClick={() => window.open(leadSelecionado.linkedin_url!, '_blank')}
+                      >
+                        Ver Perfil →
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 p-3 bg-muted rounded opacity-50">
+                      <div className="w-10 h-10 bg-muted-foreground/30 rounded flex items-center justify-center">
+                        <span className="text-muted-foreground font-bold">in</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">LinkedIn não encontrado</p>
+                    </div>
+                  )}
+
+                  {/* Instagram */}
+                  {leadSelecionado.instagram_username ? (
+                    <div className="flex items-center justify-between p-3 bg-background rounded">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded flex items-center justify-center">
+                          <span className="text-white font-bold">📷</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold">Instagram Encontrado</p>
+                          <p className="text-xs text-muted-foreground">
+                            @{leadSelecionado.instagram_username}
+                          </p>
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm"
+                        onClick={() => window.open(`https://instagram.com/${leadSelecionado.instagram_username}`, '_blank')}
+                      >
+                        Ver Perfil →
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 p-3 bg-muted rounded opacity-50">
+                      <div className="w-10 h-10 bg-muted-foreground/30 rounded flex items-center justify-center">
+                        <span className="text-muted-foreground font-bold">📷</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">Instagram não encontrado</p>
+                    </div>
+                  )}
+
+                  {/* Facebook */}
+                  {leadSelecionado.facebook_url && (
+                    <div className="flex items-center justify-between p-3 bg-background rounded">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-500 rounded flex items-center justify-center">
+                          <span className="text-white font-bold">f</span>
+                        </div>
+                        <div>
+                          <p className="font-semibold">Facebook Encontrado</p>
+                          <p className="text-xs text-muted-foreground">Perfil verificado</p>
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm"
+                        onClick={() => window.open(leadSelecionado.facebook_url!, '_blank')}
+                      >
+                        Ver Perfil →
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Google Search */}
+                  <div className="flex items-center justify-between p-3 bg-background rounded">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-muted rounded flex items-center justify-center">
+                        <span className="text-muted-foreground font-bold">G</span>
+                      </div>
+                      <div>
+                        <p className="font-semibold">Buscar no Google</p>
+                        <p className="text-xs text-muted-foreground">
+                          Verificar manualmente na web
+                        </p>
+                      </div>
+                    </div>
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      onClick={() => window.open(
+                        `https://www.google.com/search?q=${encodeURIComponent(
+                          `${leadSelecionado.nome_completo || leadSelecionado.razao_social} ${leadSelecionado.profissao || ''} ${leadSelecionado.cidade || ''}`
+                        )}`, 
+                        '_blank'
+                      )}
+                    >
+                      Buscar →
+                    </Button>
                   </div>
                 </div>
-              </div>
+              </Card>
 
-              {/* Produto Vinculado */}
-              <div>
-                <label className="text-sm font-medium mb-2 block">Produto de Interesse</label>
-                <Select 
-                  value={leadSelecionado.product_id || ''} 
-                  onValueChange={(productId) => handleVincularProduto(leadSelecionado.id, productId)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione um produto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {produtos.map(p => (
-                      <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* SEÇÃO 2: DADOS COLETADOS */}
+              <Card className="p-4">
+                <h3 className="font-bold mb-3">📋 Dados Coletados</h3>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Nome Completo</p>
+                    <p className="font-semibold">{leadSelecionado.nome_completo || leadSelecionado.razao_social || 'N/A'}</p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-muted-foreground">Score</p>
+                    <p className="text-2xl font-bold">{leadSelecionado.score || 0}/100</p>
+                  </div>
+                  
+                  <div>
+                    <p className="text-muted-foreground">Profissão/Setor</p>
+                    <p className="font-semibold">{leadSelecionado.profissao || leadSelecionado.setor || 'N/A'}</p>
+                  </div>
+                  
+                  {leadSelecionado.especialidade && (
+                    <div>
+                      <p className="text-muted-foreground">Especialidade</p>
+                      <p className="font-semibold">{leadSelecionado.especialidade}</p>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <p className="text-muted-foreground">Localização</p>
+                    <p className="font-semibold">
+                      {leadSelecionado.cidade}/{leadSelecionado.estado}
+                    </p>
+                  </div>
+                  
+                  {leadSelecionado.telefone && (
+                    <div>
+                      <p className="text-muted-foreground">Telefone</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold">{leadSelecionado.telefone}</p>
+                        {leadSelecionado.whatsapp_status === 'valid' || leadSelecionado.whatsapp ? (
+                          <Badge variant="default" className="bg-green-500 text-xs">
+                            ✓ WhatsApp
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">
+                            Não verificado
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {leadSelecionado.email && (
+                    <div>
+                      <p className="text-muted-foreground">Email</p>
+                      <p className="font-semibold">{leadSelecionado.email}</p>
+                    </div>
+                  )}
+                </div>
+              </Card>
 
-              {/* Contatos */}
+              {/* SEÇÃO 3: VALIDAÇÃO MANUAL */}
+              <Card className="p-4 bg-yellow-50 dark:bg-yellow-950/30">
+                <h3 className="font-bold mb-3">✅ Validação Manual</h3>
+                
+                <div className="space-y-3">
+                  <p className="text-sm">
+                    Você verificou este lead nas redes sociais? Confirme se é um perfil REAL:
+                  </p>
+
+                  <div className="flex gap-2">
+                    <Button 
+                      className="flex-1 bg-green-500 hover:bg-green-600"
+                      onClick={() => handleValidarLead(leadSelecionado.id, true)}
+                    >
+                      ✅ Lead Verificado (É REAL)
+                    </Button>
+                    
+                    <Button 
+                      className="flex-1 bg-red-500 hover:bg-red-600"
+                      onClick={() => handleValidarLead(leadSelecionado.id, false)}
+                    >
+                      ❌ Lead Falso (REMOVER)
+                    </Button>
+                  </div>
+
+                  {leadSelecionado.validado_manualmente && leadSelecionado.validado_em && (
+                    <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded">
+                      <p className="text-sm font-semibold text-green-700 dark:text-green-300">
+                        ✓ Lead validado em {new Date(leadSelecionado.validado_em).toLocaleDateString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              {/* SEÇÃO 4: CONTATOS E AÇÕES */}
               <div className="space-y-2">
-                <h4 className="font-semibold">Contatos</h4>
+                <h4 className="font-semibold">📞 Contatos Rápidos</h4>
                 {leadSelecionado.telefone && (
                   <div className="flex items-center gap-2 flex-wrap">
                     <Phone className="w-4 h-4 text-muted-foreground" />
@@ -1310,15 +1664,25 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                 )}
               </div>
 
-              {/* Localização */}
-              {leadSelecionado.cidade && (
-                <div>
-                  <h4 className="font-semibold mb-1">Localização</h4>
-                  <p className="text-muted-foreground">
-                    📍 {leadSelecionado.cidade}/{leadSelecionado.estado}
-                  </p>
-                </div>
-              )}
+              {/* SEÇÃO 5: METADADOS TÉCNICOS */}
+              <details className="text-xs">
+                <summary className="cursor-pointer font-semibold mb-2">
+                  🔍 Ver Metadados Técnicos
+                </summary>
+                <pre className="bg-muted p-3 rounded overflow-x-auto text-xs">
+{JSON.stringify({
+  id: leadSelecionado.id,
+  fonte: leadSelecionado.fonte,
+  score: leadSelecionado.score,
+  pipeline_status: leadSelecionado.pipeline_status,
+  criado_em: leadSelecionado.created_at,
+  campanha_id: leadSelecionado.campanha_id,
+  whatsapp_status: leadSelecionado.whatsapp_status,
+  linkedin_url: leadSelecionado.linkedin_url,
+  instagram_username: leadSelecionado.instagram_username
+}, null, 2)}
+                </pre>
+              </details>
 
               {/* Timeline de Interações */}
               <div className="border-t pt-4">
@@ -1334,7 +1698,7 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                 </div>
 
                 <div className="max-h-64 overflow-y-auto">
-                  <TimelineInteracoes 
+                  <TimelineInteracoes
                     leadId={leadSelecionado.id} 
                     leadTipo={leadSelecionado.tipo!}
                     refresh={refreshTimeline}

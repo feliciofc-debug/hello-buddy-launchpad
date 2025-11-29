@@ -1176,6 +1176,7 @@ export type Database = {
           linkedin_url: string | null
           mensagem_selecionada: string | null
           mensagens_geradas: Json | null
+          motivo_invalidacao: string | null
           natureza_juridica: string | null
           nome_fantasia: string | null
           num_funcionarios: number | null
@@ -1198,6 +1199,9 @@ export type Database = {
           updated_at: string | null
           user_id: string
           validacao_icp: Json | null
+          validado_em: string | null
+          validado_manualmente: boolean | null
+          validado_por: string | null
           website: string | null
         }
         Insert: {
@@ -1234,6 +1238,7 @@ export type Database = {
           linkedin_url?: string | null
           mensagem_selecionada?: string | null
           mensagens_geradas?: Json | null
+          motivo_invalidacao?: string | null
           natureza_juridica?: string | null
           nome_fantasia?: string | null
           num_funcionarios?: number | null
@@ -1256,6 +1261,9 @@ export type Database = {
           updated_at?: string | null
           user_id: string
           validacao_icp?: Json | null
+          validado_em?: string | null
+          validado_manualmente?: boolean | null
+          validado_por?: string | null
           website?: string | null
         }
         Update: {
@@ -1292,6 +1300,7 @@ export type Database = {
           linkedin_url?: string | null
           mensagem_selecionada?: string | null
           mensagens_geradas?: Json | null
+          motivo_invalidacao?: string | null
           natureza_juridica?: string | null
           nome_fantasia?: string | null
           num_funcionarios?: number | null
@@ -1314,6 +1323,9 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           validacao_icp?: Json | null
+          validado_em?: string | null
+          validado_manualmente?: boolean | null
+          validado_por?: string | null
           website?: string | null
         }
         Relationships: [
@@ -1365,6 +1377,7 @@ export type Database = {
           linkedin_url: string | null
           mensagem_selecionada: string | null
           mensagens_geradas: Json | null
+          motivo_invalidacao: string | null
           nome_completo: string
           oab: string | null
           pipeline_status: string
@@ -1385,6 +1398,9 @@ export type Database = {
           updated_at: string | null
           user_id: string
           validacao_resultado: Json | null
+          validado_em: string | null
+          validado_manualmente: boolean | null
+          validado_por: string | null
           whatsapp: string | null
           whatsapp_status: string | null
         }
@@ -1419,6 +1435,7 @@ export type Database = {
           linkedin_url?: string | null
           mensagem_selecionada?: string | null
           mensagens_geradas?: Json | null
+          motivo_invalidacao?: string | null
           nome_completo: string
           oab?: string | null
           pipeline_status?: string
@@ -1439,6 +1456,9 @@ export type Database = {
           updated_at?: string | null
           user_id: string
           validacao_resultado?: Json | null
+          validado_em?: string | null
+          validado_manualmente?: boolean | null
+          validado_por?: string | null
           whatsapp?: string | null
           whatsapp_status?: string | null
         }
@@ -1473,6 +1493,7 @@ export type Database = {
           linkedin_url?: string | null
           mensagem_selecionada?: string | null
           mensagens_geradas?: Json | null
+          motivo_invalidacao?: string | null
           nome_completo?: string
           oab?: string | null
           pipeline_status?: string
@@ -1493,6 +1514,9 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
           validacao_resultado?: Json | null
+          validado_em?: string | null
+          validado_manualmente?: boolean | null
+          validado_por?: string | null
           whatsapp?: string | null
           whatsapp_status?: string | null
         }
