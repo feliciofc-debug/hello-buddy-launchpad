@@ -458,11 +458,14 @@ export default function ConfigurarICP() {
       if (icpError) throw icpError
 
       // 2. Criar campanha de prospecção automaticamente vinculada ao ICP
+      // Mapear tipo para valores aceitos pela constraint (b2b ou b2c)
+      const tipoCampanha = tipoProspeccao === 'b2b' ? 'b2b' : 'b2c'
+      
       const { error: campanhaError } = await supabase.from('campanhas_prospeccao').insert({
         user_id: user.id,
         nome: `Campanha: ${nomeICP}`,
         descricao: descricao || `Campanha de prospecção baseada no ICP "${nomeICP}"`,
-        tipo: tipoProspeccao,
+        tipo: tipoCampanha,
         icp_config_id: icpData.id,
         status: 'ativa',
         automatica: false,
