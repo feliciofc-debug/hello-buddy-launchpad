@@ -29,7 +29,7 @@ serve(async (req) => {
       });
     }
 
-    const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
+    let WUZAPI_URL = Deno.env.get('WUZAPI_URL') || '';
     const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
 
     if (!WUZAPI_URL || !WUZAPI_TOKEN) {
@@ -42,6 +42,9 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // CORREÇÃO: Remover barra final da URL se existir
+    WUZAPI_URL = WUZAPI_URL.replace(/\/+$/, '');
 
     // Limpar telefone
     const cleanPhone = phone.replace(/\D/g, '');
@@ -60,15 +63,16 @@ serve(async (req) => {
     console.log("[SEND-WA-PROSPECCAO] Telefone formatado:", formattedPhone);
     console.log("[SEND-WA-PROSPECCAO] Mensagem:", message.substring(0, 100) + "...");
 
-    // Enviar via Wuzapi
+    // Enviar via Wuzapi - payload CORRETO sem campo Id
     const wuzapiPayload = {
       Phone: formattedPhone,
       Body: message
     };
     
-    console.log("[SEND-WA-PROSPECCAO] Enviando para Wuzapi:", `${WUZAPI_URL}/chat/send/text`);
+    const wuzapiEndpoint = `${WUZAPI_URL}/chat/send/text`;
+    console.log("[SEND-WA-PROSPECCAO] Enviando para Wuzapi:", wuzapiEndpoint);
 
-    const wuzapiResponse = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+    const wuzapiResponse = await fetch(wuzapiEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -113,13 +117,13 @@ serve(async (req) => {
       console.warn("[SEND-WA-PROSPECCAO] Erro ao salvar mensagem:", insertError);
     }
 
-    // Também salvar em whatsapp_messages para histórico
+    // Também salvar em whatsapp_messages para histórico (coluna correta: origem)
     const { error: historyError } = await supabase.from('whatsapp_messages').insert({
       user_id: userId || null,
       phone: formattedPhone,
       direction: 'sent',
       message: message,
-      origin: 'prospeccao'
+      origem: 'prospeccao'
     });
     if (historyError) console.warn("[SEND-WA-PROSPECCAO] Erro ao salvar histórico:", historyError);
 
