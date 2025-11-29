@@ -407,6 +407,13 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
   const [enviandoWhatsApp, setEnviandoWhatsApp] = useState(false);
   const [qualificandoLead, setQualificandoLead] = useState(false);
   const [qualificandoLote, setQualificandoLote] = useState(false);
+  
+  // Estados do modal de preview
+  const [previewModal, setPreviewModal] = useState<{ step: 'select' | 'review' } | null>(null);
+  const [leadsParaAbordar, setLeadsParaAbordar] = useState<Lead[]>([]);
+  const [mensagensGeradas, setMensagensGeradas] = useState<Record<string, { texto: string; strategy?: any; aprovado: boolean; error?: boolean }>>({});
+  const [processandoMensagens, setProcessandoMensagens] = useState(false);
+  const [quantidadeLeads, setQuantidadeLeads] = useState(10);
 
   // QUALIFICAÇÃO ATIVA + ABORDAGEM WHATSAPP AUTOMÁTICA
   const handleQualificarEAbordar = async (lead: Lead) => {
@@ -522,7 +529,7 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
     }
   };
 
-  // QUALIFICAÇÃO EM LOTE
+  // QUALIFICAÇÃO EM LOTE - ABRE MODAL DE SELEÇÃO
   const handleQualificarLote = async () => {
     const todosLeads = [...leadsB2C.map(l => ({ ...l, tipo: 'b2c' as const })), ...leadsB2B.map(l => ({ ...l, tipo: 'b2b' as const }))];
     
@@ -537,29 +544,160 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
       return;
     }
 
-    if (!window.confirm(`⚡ Qualificar e enviar WhatsApp para ${leadsQuentes.length} leads?`)) {
+    setLeadsParaAbordar(leadsQuentes.slice(0, 10));
+    setQuantidadeLeads(Math.min(10, leadsQuentes.length));
+    setMensagensGeradas({});
+    setPreviewModal({ step: 'select' });
+  };
+
+  // Gerar mensagens para todos os leads selecionados
+  const handleGerarMensagens = async () => {
+    setProcessandoMensagens(true);
+    const mensagens: Record<string, { texto: string; strategy?: any; aprovado: boolean; error?: boolean }> = {};
+
+    for (const lead of leadsParaAbordar) {
+      try {
+        toast.loading(`Gerando mensagem ${Object.keys(mensagens).length + 1}/${leadsParaAbordar.length}...`, { id: 'gerar' });
+
+        // Gerar estratégia
+        const { data: strategy } = await supabase.functions.invoke('create-approach-strategy', {
+          body: {
+            lead,
+            produto: 'Soluções de Marketing Digital',
+            objetivo: 'Agendar apresentação comercial'
+          }
+        });
+
+        // Gerar mensagem
+        const { data: msg } = await supabase.functions.invoke('gerar-mensagem-ia', {
+          body: {
+            leadId: lead.id,
+            leadTipo: lead.tipo,
+            strategy,
+            tipo_abordagem: 'ativa_comercial'
+          }
+        });
+
+        mensagens[lead.id] = {
+          texto: msg?.texto || msg?.mensagem || 'Erro ao gerar mensagem',
+          strategy,
+          aprovado: false,
+          error: !msg?.texto && !msg?.mensagem
+        };
+
+        // Delay para não sobrecarregar
+        await new Promise(r => setTimeout(r, 1000));
+
+      } catch (error) {
+        console.error('Erro ao gerar mensagem para lead:', lead.id, error);
+        mensagens[lead.id] = {
+          texto: 'Erro ao gerar mensagem',
+          aprovado: false,
+          error: true
+        };
+      }
+    }
+
+    toast.success(`${Object.keys(mensagens).length} mensagens geradas!`, { id: 'gerar' });
+    setMensagensGeradas(mensagens);
+    setPreviewModal({ step: 'review' });
+    setProcessandoMensagens(false);
+  };
+
+  // Aprovar todas as mensagens
+  const handleAprovarTodos = () => {
+    setMensagensGeradas(prev => {
+      const updated: typeof prev = {};
+      Object.keys(prev).forEach(id => {
+        if (!prev[id].error) {
+          updated[id] = { ...prev[id], aprovado: true };
+        } else {
+          updated[id] = prev[id];
+        }
+      });
+      return updated;
+    });
+  };
+
+  // Enviar mensagens aprovadas
+  const handleEnviarAprovados = async () => {
+    const aprovados = Object.entries(mensagensGeradas).filter(([_, msg]) => msg.aprovado && !msg.error);
+
+    if (aprovados.length === 0) {
+      toast.error('Nenhuma mensagem aprovada');
       return;
     }
 
-    setQualificandoLote(true);
-    toast.loading(`Processando ${leadsQuentes.length} leads...`, { id: 'batch' });
-
-    let sucesso = 0;
+    setProcessandoMensagens(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    let enviados = 0;
     let erros = 0;
 
-    for (const lead of leadsQuentes) {
+    for (const [leadId, msg] of aprovados) {
+      const lead = leadsParaAbordar.find(l => l.id === leadId);
+      if (!lead) continue;
+
       try {
-        await handleQualificarEAbordar(lead);
-        sucesso++;
-        // Delay entre envios para não sobrecarregar
-        await new Promise(r => setTimeout(r, 5000));
-      } catch {
+        toast.loading(`Enviando ${enviados + 1}/${aprovados.length}...`, { id: 'enviar' });
+
+        await supabase.functions.invoke('send-whatsapp-prospeccao', {
+          body: {
+            phone: lead.whatsapp || lead.telefone,
+            message: msg.texto,
+            leadId: lead.id,
+            leadTipo: lead.tipo,
+            strategy: msg.strategy,
+            userId: user?.id
+          }
+        });
+
+        // Registrar interação
+        await supabase.from('interacoes').insert({
+          lead_id: lead.id,
+          lead_tipo: lead.tipo,
+          tipo: 'whatsapp',
+          titulo: '🎯 Abordagem ativa enviada',
+          descricao: msg.texto,
+          resultado: 'aguardando_resposta',
+          created_by: user?.id
+        });
+
+        // Atualizar lead
+        const tabela = lead.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+        await supabase.from(tabela).update({
+          pipeline_status: 'enviado',
+          enviado_em: new Date().toISOString()
+        }).eq('id', lead.id);
+
+        enviados++;
+        
+        // Aguardar 3s entre envios
+        await new Promise(r => setTimeout(r, 3000));
+
+      } catch (error) {
+        console.error('Erro ao enviar:', error);
         erros++;
       }
     }
 
-    setQualificandoLote(false);
-    toast.success(`✅ ${sucesso} abordados | ❌ ${erros} erros`, { id: 'batch' });
+    setProcessandoMensagens(false);
+    setPreviewModal(null);
+    toast.success(`✅ ${enviados} enviados | ${erros > 0 ? `❌ ${erros} erros` : ''}`, { id: 'enviar' });
+    
+    loadLeads(campanhaFiltro);
+  };
+
+  // Atualizar quantidade de leads
+  const handleAtualizarQuantidade = (num: number) => {
+    const todosLeads = [...leadsB2C.map(l => ({ ...l, tipo: 'b2c' as const })), ...leadsB2B.map(l => ({ ...l, tipo: 'b2b' as const }))];
+    const leadsQuentes = todosLeads.filter(l => 
+      l.score && l.score >= 70 && 
+      (l.pipeline_status === 'enriquecido' || l.pipeline_status === 'qualificado' || l.pipeline_status === 'descoberto') &&
+      (l.whatsapp || l.telefone)
+    );
+    setQuantidadeLeads(num);
+    setLeadsParaAbordar(leadsQuentes.slice(0, num));
   };
 
   const handleEnviarWhatsApp = async () => {
@@ -1049,6 +1187,176 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
             <Button className="w-full" onClick={handleSalvarInteracao}>
               Salvar Interação
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Seleção de Leads para Abordagem em Lote */}
+      <Dialog open={previewModal?.step === 'select'} onOpenChange={() => setPreviewModal(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>🎯 Selecionar Leads para Abordagem</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Seletor de quantidade */}
+            <div>
+              <label className="text-sm font-medium mb-2 block">
+                Quantos leads processar?
+              </label>
+              <Input 
+                type="number" 
+                min="1" 
+                max={leadsB2C.length + leadsB2B.length}
+                value={quantidadeLeads}
+                onChange={(e) => handleAtualizarQuantidade(parseInt(e.target.value) || 1)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {leadsParaAbordar.length} leads selecionados
+              </p>
+            </div>
+
+            {/* Lista de leads selecionados */}
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {leadsParaAbordar.map((lead, idx) => (
+                <Card key={lead.id} className="p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="font-medium">
+                        {idx + 1}. {lead.nome_completo || lead.razao_social}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {lead.profissao || lead.setor} • {lead.cidade}/{lead.estado} • Score: {lead.score}
+                      </p>
+                      <p className="text-xs">
+                        📱 {lead.whatsapp || lead.telefone}
+                      </p>
+                    </div>
+                    <Badge variant={lead.score && lead.score >= 80 ? 'default' : 'secondary'}>
+                      {lead.score && lead.score >= 80 ? '🔥 Quente' : '🟡 Morno'}
+                    </Badge>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button variant="outline" onClick={() => setPreviewModal(null)}>
+                Cancelar
+              </Button>
+              <Button 
+                className="flex-1"
+                onClick={handleGerarMensagens}
+                disabled={processandoMensagens || leadsParaAbordar.length === 0}
+              >
+                {processandoMensagens ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Gerando mensagens...
+                  </>
+                ) : (
+                  <>Gerar Mensagens ({leadsParaAbordar.length})</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Revisão das Mensagens */}
+      <Dialog open={previewModal?.step === 'review'} onOpenChange={() => setPreviewModal(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>✏️ Revisar Mensagens Geradas</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {leadsParaAbordar.map((lead) => {
+              const msg = mensagensGeradas[lead.id];
+              if (!msg) return null;
+
+              return (
+                <Card key={lead.id} className={`p-4 ${msg.error ? 'border-red-500' : msg.aprovado ? 'border-green-500' : ''}`}>
+                  <div className="flex items-start justify-between mb-2">
+                    <div>
+                      <p className="font-semibold">
+                        {lead.nome_completo || lead.razao_social}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        📱 {lead.whatsapp || lead.telefone}
+                      </p>
+                    </div>
+                    {!msg.error && (
+                      <Button
+                        size="sm"
+                        variant={msg.aprovado ? 'default' : 'outline'}
+                        onClick={() => {
+                          setMensagensGeradas(prev => ({
+                            ...prev,
+                            [lead.id]: { ...prev[lead.id], aprovado: !prev[lead.id].aprovado }
+                          }));
+                        }}
+                      >
+                        {msg.aprovado ? '✅ Aprovado' : '⏸️ Aprovar'}
+                      </Button>
+                    )}
+                    {msg.error && (
+                      <Badge variant="destructive">Erro</Badge>
+                    )}
+                  </div>
+
+                  <div className="bg-muted p-3 rounded-lg mb-2">
+                    <Textarea
+                      value={msg.texto}
+                      onChange={(e) => {
+                        setMensagensGeradas(prev => ({
+                          ...prev,
+                          [lead.id]: { ...prev[lead.id], texto: e.target.value }
+                        }));
+                      }}
+                      rows={5}
+                      className="resize-none"
+                      disabled={msg.error}
+                    />
+                  </div>
+
+                  {msg.strategy && (
+                    <div className="text-xs text-muted-foreground">
+                      <p><strong>Estratégia:</strong> {msg.strategy?.abordagem_recomendada}</p>
+                      <p><strong>Tom:</strong> {msg.strategy?.tom_mensagem}</p>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
+
+            <div className="flex gap-2 pt-4">
+              <Button variant="outline" onClick={() => setPreviewModal({ step: 'select' })}>
+                ← Voltar
+              </Button>
+              <Button 
+                variant="secondary"
+                onClick={handleAprovarTodos}
+              >
+                Aprovar Todos
+              </Button>
+              <Button 
+                className="flex-1"
+                onClick={handleEnviarAprovados}
+                disabled={processandoMensagens || Object.values(mensagensGeradas).filter(m => m.aprovado && !m.error).length === 0}
+              >
+                {processandoMensagens ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  <>
+                    📱 Enviar Aprovados ({Object.values(mensagensGeradas).filter(m => m.aprovado && !m.error).length})
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
