@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink, History, Plus, FileText, Circle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 const PIPELINE_STAGES = [
   { id: 'descoberto', label: 'Descoberto', color: 'bg-gray-500' },
@@ -195,12 +195,17 @@ export default function LeadsFunil() {
   const [novaInteracao, setNovaInteracao] = useState({ tipo: '', titulo: '', descricao: '', resultado: '' });
   const [refreshTimeline, setRefreshTimeline] = useState(0);
   const [chamandoLead, setChamandoLead] = useState(false);
+  const [campanhaFiltro, setCampanhaFiltro] = useState<string | null>(null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   useEffect(() => {
-    loadLeads();
+    // Pegar filtro de campanha da URL
+    const campanhaId = searchParams.get('campanha');
+    setCampanhaFiltro(campanhaId);
+    loadLeads(campanhaId);
     loadProdutos();
-  }, []);
+  }, [searchParams]);
 
   const loadProdutos = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -215,11 +220,17 @@ export default function LeadsFunil() {
     setProdutos(data || []);
   };
 
-  const loadLeads = async () => {
-    const [b2c, b2b] = await Promise.all([
-      supabase.from('leads_b2c').select('*').order('created_at', { ascending: false }),
-      supabase.from('leads_b2b').select('*').order('created_at', { ascending: false })
-    ]);
+  const loadLeads = async (campanhaId?: string | null) => {
+    let queryB2C = supabase.from('leads_b2c').select('*').order('created_at', { ascending: false });
+    let queryB2B = supabase.from('leads_b2b').select('*').order('created_at', { ascending: false });
+
+    // Filtrar por campanha se fornecido
+    if (campanhaId) {
+      queryB2C = queryB2C.eq('campanha_id', campanhaId);
+      queryB2B = queryB2B.eq('campanha_id', campanhaId);
+    }
+
+    const [b2c, b2b] = await Promise.all([queryB2C, queryB2B]);
     
     setLeadsB2C(b2c.data || []);
     setLeadsB2B(b2b.data || []);
@@ -255,7 +266,7 @@ export default function LeadsFunil() {
     }
 
     toast.success('Lead movido!');
-    loadLeads();
+    loadLeads(campanhaFiltro);
     setDraggedLead(null);
   };
 
@@ -270,7 +281,7 @@ export default function LeadsFunil() {
       .eq('id', leadId);
 
     toast.success('Produto vinculado!');
-    loadLeads();
+    loadLeads(campanhaFiltro);
     setLeadSelecionado(null);
   };
 
@@ -331,7 +342,7 @@ export default function LeadsFunil() {
       setRefreshTimeline(prev => prev + 1);
       
       setTimeout(() => {
-        loadLeads();
+        loadLeads(campanhaFiltro);
         setChamandoLead(false);
       }, 3000);
 
@@ -380,13 +391,20 @@ export default function LeadsFunil() {
     <div className="p-6 h-screen overflow-hidden bg-background">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate('/dashboard')}>
+          <Button variant="ghost" onClick={() => campanhaFiltro ? navigate('/campanhas-prospeccao') : navigate('/dashboard')}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Voltar
           </Button>
           <div>
             <h1 className="text-3xl font-bold">🎯 Funil de Leads</h1>
-            <p className="text-muted-foreground">Pipeline visual de prospecção</p>
+            <p className="text-muted-foreground">
+              Pipeline visual de prospecção
+              {campanhaFiltro && (
+                <Badge variant="secondary" className="ml-2">
+                  Filtrado por campanha
+                </Badge>
+              )}
+            </p>
           </div>
         </div>
         
