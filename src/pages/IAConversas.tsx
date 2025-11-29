@@ -42,14 +42,32 @@ export default function IAConversas() {
   const [filtroModo, setFiltroModo] = useState('todas');
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScroll = useRef(true);
+  const previousMensagensLength = useRef(0);
 
-  // Scroll automático para última mensagem
+  // Scroll automático APENAS quando novas mensagens chegam E usuário está no final
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messagesContainerRef.current && shouldAutoScroll.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  };
+
+  // Verificar se usuário está próximo do final antes de auto-scroll
+  const handleMessagesScroll = () => {
+    if (messagesContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+      // Se estiver a menos de 100px do final, permite auto-scroll
+      shouldAutoScroll.current = scrollHeight - scrollTop - clientHeight < 100;
+    }
   };
 
   useEffect(() => {
-    scrollToBottom();
+    // Só faz scroll se mensagens aumentaram (nova mensagem) e estava no final
+    if (mensagens.length > previousMensagensLength.current) {
+      scrollToBottom();
+    }
+    previousMensagensLength.current = mensagens.length;
   }, [mensagens]);
 
   useEffect(() => {
@@ -557,7 +575,11 @@ export default function IAConversas() {
 
               <CardContent className="p-0 flex flex-col">
                 {/* MENSAGENS */}
-                <ScrollArea className="h-[450px]">
+                <div 
+                  ref={messagesContainerRef}
+                  onScroll={handleMessagesScroll}
+                  className="h-[450px] overflow-y-auto"
+                >
                   <div className="p-4">
                     {mensagens.length === 0 ? (
                       <p className="text-center text-sm text-muted-foreground py-8">
@@ -615,7 +637,7 @@ export default function IAConversas() {
                       </div>
                     )}
                   </div>
-                </ScrollArea>
+                </div>
 
                 {/* INPUT DE MENSAGEM */}
                 {conversaSelecionada.modo_atendimento === 'humano' ? (
