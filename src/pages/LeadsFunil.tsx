@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink, History, Plus, FileText, Circle, Loader2 } from 'lucide-react';
+import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink, History, Plus, FileText, Circle, Loader2, Zap, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -405,6 +405,162 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
   };
 
   const [enviandoWhatsApp, setEnviandoWhatsApp] = useState(false);
+  const [qualificandoLead, setQualificandoLead] = useState(false);
+  const [qualificandoLote, setQualificandoLote] = useState(false);
+
+  // QUALIFICAÇÃO ATIVA + ABORDAGEM WHATSAPP AUTOMÁTICA
+  const handleQualificarEAbordar = async (lead: Lead) => {
+    const telefone = lead.whatsapp || lead.telefone;
+    if (!telefone) {
+      toast.error('Lead sem telefone/WhatsApp');
+      return;
+    }
+
+    setQualificandoLead(true);
+    const toastId = 'qualify';
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // ETAPA 1: Enriquecer dados
+      toast.loading('🔍 Enriquecendo dados do lead...', { id: toastId });
+      
+      const { data: enriched, error: enrichError } = await supabase.functions.invoke('enrich-lead', {
+        body: { 
+          lead_id: lead.id,
+          lead_tipo: lead.tipo 
+        }
+      });
+
+      if (enrichError) console.warn('Enriquecimento parcial:', enrichError);
+
+      // ETAPA 2: IA cria estratégia de abordagem
+      toast.loading('🤖 IA analisando perfil...', { id: toastId });
+      
+      const leadData = enriched?.lead || lead;
+      const { data: strategy, error: strategyError } = await supabase.functions.invoke('create-approach-strategy', {
+        body: {
+          lead: leadData,
+          produto: 'Soluções de Marketing Digital',
+          objetivo: 'Agendar apresentação comercial'
+        }
+      });
+
+      if (strategyError) {
+        console.warn('Estratégia com fallback:', strategyError);
+      }
+
+      // ETAPA 3: Gerar mensagem WhatsApp ultra-personalizada
+      toast.loading('💬 Gerando mensagem personalizada...', { id: toastId });
+      
+      const { data: messageData, error: msgError } = await supabase.functions.invoke('gerar-mensagem-ia', {
+        body: {
+          leadId: lead.id,
+          leadTipo: lead.tipo,
+          strategy: strategy,
+          tipo_abordagem: 'ativa_comercial'
+        }
+      });
+
+      if (msgError) throw msgError;
+
+      const mensagem = messageData?.texto || messageData?.mensagem;
+      if (!mensagem) throw new Error('Mensagem não gerada');
+
+      // ETAPA 4: Enviar automaticamente pelo WhatsApp
+      toast.loading('📱 Enviando pelo WhatsApp...', { id: toastId });
+      
+      const { data: sent, error: sendError } = await supabase.functions.invoke('send-whatsapp-prospeccao', {
+        body: {
+          phone: telefone,
+          message: mensagem,
+          leadId: lead.id,
+          leadTipo: lead.tipo,
+          strategy: strategy,
+          userId: user.id
+        }
+      });
+
+      if (sendError) throw sendError;
+
+      // ETAPA 5: Registrar interação
+      await supabase.from('interacoes').insert({
+        lead_id: lead.id,
+        lead_tipo: lead.tipo,
+        tipo: 'whatsapp',
+        titulo: '🎯 Abordagem ativa enviada',
+        descricao: mensagem,
+        resultado: 'aguardando_resposta',
+        metadata: {
+          strategy: strategy,
+          auto_sent: true,
+          objetivo: 'agendar_apresentacao'
+        },
+        created_by: user.id
+      });
+
+      // ETAPA 6: Atualizar lead
+      const tabela = lead.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+      await supabase.from(tabela).update({
+        pipeline_status: 'enviado',
+        score: Math.min((lead.score || 0) + 20, 100),
+        enviado_em: new Date().toISOString()
+      }).eq('id', lead.id);
+
+      toast.success('✅ Lead qualificado e abordado!', { id: toastId });
+      
+      setRefreshTimeline(prev => prev + 1);
+      loadLeads(campanhaFiltro);
+      setLeadSelecionado(null);
+
+    } catch (error: any) {
+      console.error('❌ Erro na qualificação:', error);
+      toast.error('Erro: ' + error.message, { id: toastId });
+    } finally {
+      setQualificandoLead(false);
+    }
+  };
+
+  // QUALIFICAÇÃO EM LOTE
+  const handleQualificarLote = async () => {
+    const todosLeads = [...leadsB2C.map(l => ({ ...l, tipo: 'b2c' as const })), ...leadsB2B.map(l => ({ ...l, tipo: 'b2b' as const }))];
+    
+    const leadsQuentes = todosLeads.filter(l => 
+      l.score && l.score >= 70 && 
+      (l.pipeline_status === 'enriquecido' || l.pipeline_status === 'qualificado' || l.pipeline_status === 'descoberto') &&
+      (l.whatsapp || l.telefone)
+    );
+
+    if (leadsQuentes.length === 0) {
+      toast.error('Nenhum lead elegível (Score >= 70 + telefone)');
+      return;
+    }
+
+    if (!window.confirm(`⚡ Qualificar e enviar WhatsApp para ${leadsQuentes.length} leads?`)) {
+      return;
+    }
+
+    setQualificandoLote(true);
+    toast.loading(`Processando ${leadsQuentes.length} leads...`, { id: 'batch' });
+
+    let sucesso = 0;
+    let erros = 0;
+
+    for (const lead of leadsQuentes) {
+      try {
+        await handleQualificarEAbordar(lead);
+        sucesso++;
+        // Delay entre envios para não sobrecarregar
+        await new Promise(r => setTimeout(r, 5000));
+      } catch {
+        erros++;
+      }
+    }
+
+    setQualificandoLote(false);
+    toast.success(`✅ ${sucesso} abordados | ❌ ${erros} erros`, { id: 'batch' });
+  };
 
   const handleEnviarWhatsApp = async () => {
     if (!leadSelecionado?.telefone && !leadSelecionado?.whatsapp) {
@@ -513,6 +669,19 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
         </div>
         
         <div className="flex items-center gap-4">
+          <Button 
+            variant="secondary"
+            onClick={handleQualificarLote}
+            disabled={qualificandoLote}
+          >
+            {qualificandoLote ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Zap className="w-4 h-4 mr-2" />
+            )}
+            ⚡ Qualificar Lote (Score ≥70)
+          </Button>
+
           <Select value={filtroProduct} onValueChange={setFiltroProduct}>
             <SelectTrigger className="w-64">
               <SelectValue placeholder="Filtrar por produto" />
@@ -791,13 +960,23 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
               </div>
 
               {/* Ações Rápidas */}
-              <div className="flex gap-2 pt-4 border-t">
-                <Button className="flex-1" onClick={() => {
-                  toast.success('Lead qualificado!');
-                  setLeadSelecionado(null);
-                }}>
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                  Qualificar
+              <div className="flex gap-2 pt-4 border-t flex-wrap">
+                <Button 
+                  className="flex-1" 
+                  onClick={() => handleQualificarEAbordar(leadSelecionado)}
+                  disabled={qualificandoLead || (!leadSelecionado.whatsapp && !leadSelecionado.telefone)}
+                >
+                  {qualificandoLead ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      <Target className="w-4 h-4 mr-2" />
+                      🎯 Qualificar + Abordar
+                    </>
+                  )}
                 </Button>
                 <Button className="flex-1" variant="outline" onClick={() => setShowNovaInteracao(true)}>
                   <Plus className="w-4 h-4 mr-2" />

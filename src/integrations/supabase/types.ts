@@ -1742,6 +1742,51 @@ export type Database = {
           },
         ]
       }
+      mensagens_enviadas: {
+        Row: {
+          created_at: string | null
+          id: string
+          lead_id: string | null
+          lead_tipo: string
+          message: string
+          phone: string
+          respondeu: boolean | null
+          resposta_texto: string | null
+          sent_at: string | null
+          strategy: Json | null
+          user_id: string | null
+          wuzapi_response: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_tipo?: string
+          message: string
+          phone: string
+          respondeu?: boolean | null
+          resposta_texto?: string | null
+          sent_at?: string | null
+          strategy?: Json | null
+          user_id?: string | null
+          wuzapi_response?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          lead_id?: string | null
+          lead_tipo?: string
+          message?: string
+          phone?: string
+          respondeu?: boolean | null
+          resposta_texto?: string | null
+          sent_at?: string | null
+          strategy?: Json | null
+          user_id?: string | null
+          wuzapi_response?: Json | null
+        }
+        Relationships: []
+      }
       pipeline_stages: {
         Row: {
           created_at: string | null
