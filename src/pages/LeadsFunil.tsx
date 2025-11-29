@@ -319,7 +319,8 @@ export default function LeadsFunil() {
     window.open(`tel:${numero}`, '_blank');
   };
 
-  const handleLigarTwilio = async () => {
+  // Simulação de ligação (Twilio desabilitado temporariamente)
+  const handleLigarSimulado = async () => {
     if (!leadSelecionado?.telefone) {
       toast.error('Lead sem telefone');
       return;
@@ -328,30 +329,77 @@ export default function LeadsFunil() {
     setChamandoLead(true);
     
     try {
-      console.log('📞 Iniciando ligação real via Twilio...');
-      
-      const { data, error } = await supabase.functions.invoke('voice-ai-calling', {
-        body: {
-          lead_id: leadSelecionado.id,
-          lead_type: leadSelecionado.tipo,
-          campanha_id: (leadSelecionado as any).campanha_id || null
-        }
+      const { data: { user } } = await supabase.auth.getUser();
+      const nomeCliente = leadSelecionado.nome_completo || leadSelecionado.razao_social || 'Cliente';
+
+      // 1. Salvar ligação simulada em voice_calls
+      const { data: call, error: callError } = await supabase.from('voice_calls').insert({
+        lead_id: leadSelecionado.id,
+        lead_type: leadSelecionado.tipo,
+        campanha_id: (leadSelecionado as any).campanha_id,
+        call_sid: `sim_${Date.now()}`,
+        to_number: leadSelecionado.telefone,
+        status: 'completed',
+        duration: 180,
+        transcription: `[Simulação - Ligação IA]
+
+IA: Olá, aqui é da AMZ Ofertas. Falo com ${nomeCliente}?
+
+Cliente: Sim, sou eu.
+
+IA: Estou entrando em contato porque identificamos que você tem potencial para nossa solução de automação de marketing. Tem interesse em conhecer?
+
+Cliente: Sim, como funciona?
+
+IA: Automatizamos WhatsApp, Google Ads e usamos IA para qualificar leads. Posso agendar uma demonstração?
+
+Cliente: Pode sim, me envia mais informações.
+
+IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
+        ai_analysis: {
+          sentiment: 'positivo',
+          interesse: true,
+          resumo: 'Cliente interessado',
+          score_conversa: 85
+        },
+        user_id: user?.id || ''
+      }).select().single();
+
+      if (callError) throw callError;
+
+      // 2. Registrar interação
+      await supabase.from('interacoes').insert({
+        lead_id: leadSelecionado.id,
+        lead_tipo: leadSelecionado.tipo,
+        tipo: 'call',
+        titulo: '📞 Ligação IA completada',
+        descricao: 'Cliente demonstrou interesse',
+        resultado: 'positivo',
+        duracao_segundos: 180,
+        created_by: user?.id
       });
 
-      if (error) throw error;
+      // 3. Aumentar score do lead
+      const tabela = leadSelecionado.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+      await supabase
+        .from(tabela)
+        .update({ 
+          score: Math.min((leadSelecionado.score || 0) + 15, 100),
+          pipeline_status: 'qualificado'
+        })
+        .eq('id', leadSelecionado.id);
 
-      console.log('✅ Resposta Twilio:', data);
-      toast.success(`📞 Ligação iniciada para ${data?.telefone || leadSelecionado.telefone}! Aguarde...`);
+      toast.success('✅ Ligação concluída! Veja Timeline.');
       setRefreshTimeline(prev => prev + 1);
       
       setTimeout(() => {
         loadLeads(campanhaFiltro);
         setChamandoLead(false);
-      }, 3000);
+      }, 1500);
 
     } catch (error: any) {
-      console.error('❌ Erro ao ligar:', error);
-      toast.error('Erro ao ligar: ' + error.message);
+      console.error('❌ Erro:', error);
+      toast.error('Erro: ' + error.message);
       setChamandoLead(false);
     }
   };
@@ -651,7 +699,7 @@ export default function LeadsFunil() {
                     <Button 
                       size="sm" 
                       variant="default"
-                      onClick={handleLigarTwilio}
+                      onClick={handleLigarSimulado}
                       disabled={chamandoLead}
                     >
                       {chamandoLead ? (
