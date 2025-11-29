@@ -410,12 +410,22 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
   
   // Estados do modal de preview
   const [previewModal, setPreviewModal] = useState<{ step: 'select' | 'review' } | null>(null);
+  
+  // NOVO: Modal de aprovação individual
+  const [previewIndividual, setPreviewIndividual] = useState<{
+    lead: Lead;
+    mensagem: string;
+    strategy: any;
+    pesquisa: any;
+  } | null>(null);
+  const [enviandoMensagemAprovada, setEnviandoMensagemAprovada] = useState(false);
+  const [mensagemEditada, setMensagemEditada] = useState('');
   const [leadsParaAbordar, setLeadsParaAbordar] = useState<Lead[]>([]);
   const [mensagensGeradas, setMensagensGeradas] = useState<Record<string, { texto: string; strategy?: any; aprovado: boolean; error?: boolean }>>({});
   const [processandoMensagens, setProcessandoMensagens] = useState(false);
   const [quantidadeLeads, setQuantidadeLeads] = useState(10);
 
-  // QUALIFICAÇÃO ATIVA + ABORDAGEM WHATSAPP AUTOMÁTICA
+  // QUALIFICAÇÃO ATIVA + ABORDAGEM WHATSAPP COM APROVAÇÃO
   const handleQualificarEAbordar = async (lead: Lead) => {
     const telefone = lead.whatsapp || lead.telefone;
     if (!telefone) {
@@ -430,27 +440,58 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // ETAPA 1: Enriquecer dados
-      toast.loading('🔍 Enriquecendo dados do lead...', { id: toastId });
+      // ETAPA 1: Pesquisar lead no Google/Redes Sociais
+      toast.loading('🔍 Pesquisando lead no Google e redes sociais...', { id: toastId });
       
-      const { data: enriched, error: enrichError } = await supabase.functions.invoke('enrich-lead', {
-        body: { 
-          lead_id: lead.id,
-          lead_tipo: lead.tipo 
-        }
-      });
+      const nomeCompleto = lead.nome_completo || lead.razao_social || '';
+      const profissao = lead.profissao || lead.setor || '';
+      const cidade = lead.cidade || '';
+      
+      let pesquisaResultado: any = {
+        linkedin: null,
+        instagram: null,
+        noticias: [],
+        resumo: 'Pesquisa não realizada'
+      };
 
-      if (enrichError) console.warn('Enriquecimento parcial:', enrichError);
+      // Tentar enriquecer via função
+      try {
+        const { data: enriched } = await supabase.functions.invoke('enrich-lead', {
+          body: { 
+            lead_id: lead.id,
+            lead_tipo: lead.tipo,
+            buscar_redes_sociais: true
+          }
+        });
+        
+        if (enriched?.pesquisa) {
+          pesquisaResultado = enriched.pesquisa;
+        }
+        
+        // Buscar dados atualizados do lead
+        const tabela = lead.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+        const { data: leadAtualizado } = await supabase
+          .from(tabela)
+          .select('*')
+          .eq('id', lead.id)
+          .single();
+          
+        if (leadAtualizado) {
+          lead = { ...lead, ...leadAtualizado };
+        }
+      } catch (e) {
+        console.warn('Enriquecimento parcial:', e);
+      }
 
       // ETAPA 2: IA cria estratégia de abordagem
-      toast.loading('🤖 IA analisando perfil...', { id: toastId });
+      toast.loading('🤖 IA analisando perfil e criando estratégia...', { id: toastId });
       
-      const leadData = enriched?.lead || lead;
       const { data: strategy, error: strategyError } = await supabase.functions.invoke('create-approach-strategy', {
         body: {
-          lead: leadData,
+          lead: lead,
           produto: 'Soluções de Marketing Digital',
-          objetivo: 'Agendar apresentação comercial'
+          objetivo: 'Agendar apresentação comercial',
+          contexto_pesquisa: pesquisaResultado
         }
       });
 
@@ -475,10 +516,52 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
       const mensagem = messageData?.texto || messageData?.mensagem;
       if (!mensagem) throw new Error('Mensagem não gerada');
 
-      // ETAPA 4: Enviar automaticamente pelo WhatsApp
-      toast.loading('📱 Enviando pelo WhatsApp...', { id: toastId });
+      toast.dismiss(toastId);
+
+      // ETAPA 4: MOSTRAR PREVIEW PARA APROVAÇÃO (não enviar direto!)
+      setPreviewIndividual({
+        lead,
+        mensagem,
+        strategy,
+        pesquisa: pesquisaResultado
+      });
+      setMensagemEditada(mensagem);
+      setQualificandoLead(false);
+
+    } catch (error: any) {
+      console.error('❌ Erro na qualificação:', error);
+      toast.error('Erro: ' + error.message, { id: toastId });
+      setQualificandoLead(false);
+    }
+  };
+
+  // ENVIAR MENSAGEM APÓS APROVAÇÃO
+  const handleEnviarMensagemAprovada = async () => {
+    if (!previewIndividual) return;
+    
+    const { lead, strategy } = previewIndividual;
+    const mensagem = mensagemEditada || previewIndividual.mensagem;
+    const telefone = lead.whatsapp || lead.telefone;
+    
+    if (!telefone) {
+      toast.error('Lead sem telefone');
+      return;
+    }
+
+    setEnviandoMensagemAprovada(true);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      // Formatar telefone
+      let phoneFormatted = telefone.replace(/\D/g, '');
+      if (phoneFormatted.length === 11) phoneFormatted = `55${phoneFormatted}`;
+
+      // 1. Enviar mensagem via Wuzapi
+      toast.loading('📱 Enviando WhatsApp...', { id: 'send' });
       
-      const { data: sent, error: sendError } = await supabase.functions.invoke('send-whatsapp-prospeccao', {
+      const { error: sendError } = await supabase.functions.invoke('send-whatsapp-prospeccao', {
         body: {
           phone: telefone,
           message: mensagem,
@@ -491,7 +574,76 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
 
       if (sendError) throw sendError;
 
-      // ETAPA 5: Registrar interação
+      // 2. Criar/atualizar conversa em whatsapp_conversations para IA Conversas
+      const { data: existingConv } = await supabase
+        .from('whatsapp_conversations')
+        .select('id')
+        .eq('phone_number', phoneFormatted)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      let conversationId = existingConv?.id;
+
+      if (!conversationId) {
+        const { data: newConv } = await supabase
+          .from('whatsapp_conversations')
+          .insert({
+            user_id: user.id,
+            phone_number: phoneFormatted,
+            contact_name: lead.nome_completo || lead.razao_social,
+            lead_id: lead.id,
+            tipo_contato: 'lead',
+            origem: 'prospeccao',
+            modo_atendimento: 'ia',
+            last_message_at: new Date().toISOString(),
+            metadata: {
+              lead_tipo: lead.tipo,
+              profissao: lead.profissao,
+              especialidade: (lead as any).especialidade,
+              setor: lead.setor,
+              cidade: lead.cidade,
+              estado: lead.estado,
+              score: lead.score,
+              campanha_id: (lead as any).campanha_id,
+              strategy: strategy
+            }
+          })
+          .select()
+          .single();
+        
+        conversationId = newConv?.id;
+      } else {
+        await supabase
+          .from('whatsapp_conversations')
+          .update({
+            lead_id: lead.id,
+            contact_name: lead.nome_completo || lead.razao_social,
+            origem: 'prospeccao',
+            last_message_at: new Date().toISOString(),
+            metadata: {
+              lead_tipo: lead.tipo,
+              strategy: strategy
+            }
+          })
+          .eq('id', conversationId);
+      }
+
+      // 3. Salvar mensagem na conversa
+      if (conversationId) {
+        await supabase.from('whatsapp_conversation_messages').insert({
+          conversation_id: conversationId,
+          role: 'assistant',
+          content: mensagem,
+          metadata: {
+            tipo: 'prospeccao_ativa',
+            lead_id: lead.id,
+            auto_sent: true,
+            aprovado_por_usuario: true
+          }
+        });
+      }
+
+      // 4. Registrar interação
       await supabase.from('interacoes').insert({
         lead_id: lead.id,
         lead_tipo: lead.tipo,
@@ -502,30 +654,35 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
         metadata: {
           strategy: strategy,
           auto_sent: true,
-          objetivo: 'agendar_apresentacao'
+          aprovado_por_usuario: true,
+          conversation_id: conversationId,
+          phone: phoneFormatted
         },
         created_by: user.id
       });
 
-      // ETAPA 6: Atualizar lead
+      // 5. Atualizar lead
       const tabela = lead.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
       await supabase.from(tabela).update({
         pipeline_status: 'enviado',
         score: Math.min((lead.score || 0) + 20, 100),
-        enviado_em: new Date().toISOString()
+        enviado_em: new Date().toISOString(),
+        mensagem_selecionada: mensagem
       }).eq('id', lead.id);
 
-      toast.success('✅ Lead qualificado e abordado!', { id: toastId });
+      toast.success('✅ Mensagem enviada e conversa criada!', { id: 'send' });
       
+      // Fechar modais e atualizar
+      setPreviewIndividual(null);
+      setLeadSelecionado(null);
       setRefreshTimeline(prev => prev + 1);
       loadLeads(campanhaFiltro);
-      setLeadSelecionado(null);
 
     } catch (error: any) {
-      console.error('❌ Erro na qualificação:', error);
-      toast.error('Erro: ' + error.message, { id: toastId });
+      console.error('❌ Erro ao enviar:', error);
+      toast.error('Erro: ' + error.message, { id: 'send' });
     } finally {
-      setQualificandoLead(false);
+      setEnviandoMensagemAprovada(false);
     }
   };
 
@@ -1446,6 +1603,137 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE APROVAÇÃO INDIVIDUAL - Preview antes de enviar */}
+      <Dialog open={!!previewIndividual} onOpenChange={() => setPreviewIndividual(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Aprovar Mensagem para Envio
+            </DialogTitle>
+          </DialogHeader>
+
+          {previewIndividual && (
+            <div className="space-y-4">
+              {/* Info do Lead */}
+              <div className="bg-muted/50 p-4 rounded-lg">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <span className="text-lg font-semibold">
+                      {(previewIndividual.lead.nome_completo || previewIndividual.lead.razao_social || '?')[0]}
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold">
+                      {previewIndividual.lead.nome_completo || previewIndividual.lead.razao_social}
+                    </h4>
+                    <p className="text-sm text-muted-foreground">
+                      {previewIndividual.lead.profissao || previewIndividual.lead.setor} • {previewIndividual.lead.cidade}/{previewIndividual.lead.estado}
+                    </p>
+                  </div>
+                  <Badge className="ml-auto">
+                    Score: {previewIndividual.lead.score || 0}
+                  </Badge>
+                </div>
+                
+                <div className="text-sm text-muted-foreground">
+                  <p>📱 {previewIndividual.lead.whatsapp || previewIndividual.lead.telefone}</p>
+                </div>
+              </div>
+
+              {/* Estratégia da IA */}
+              {previewIndividual.strategy && (
+                <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2 text-blue-700 dark:text-blue-300">
+                    🤖 Estratégia da IA
+                  </h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Perfil:</p>
+                      <p>{previewIndividual.strategy.perfil_comportamental || 'Profissional'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Tom:</p>
+                      <p>{previewIndividual.strategy.tom_mensagem || 'Consultivo'}</p>
+                    </div>
+                    {previewIndividual.strategy.dores_identificadas?.length > 0 && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground">Dores identificadas:</p>
+                        <p>{previewIndividual.strategy.dores_identificadas.join(', ')}</p>
+                      </div>
+                    )}
+                    {previewIndividual.strategy.abordagem_recomendada && (
+                      <div className="col-span-2">
+                        <p className="text-muted-foreground">Abordagem:</p>
+                        <p>{previewIndividual.strategy.abordagem_recomendada}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Mensagem - Editável */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium">💬 Mensagem para Enviar</label>
+                  <Badge variant="outline">Você pode editar</Badge>
+                </div>
+                <Textarea
+                  value={mensagemEditada}
+                  onChange={(e) => setMensagemEditada(e.target.value)}
+                  rows={6}
+                  className="resize-none"
+                  placeholder="Mensagem a ser enviada..."
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {mensagemEditada.length} caracteres
+                </p>
+              </div>
+
+              {/* Preview Visual */}
+              <div className="bg-green-50 dark:bg-green-950/30 p-4 rounded-lg">
+                <h4 className="font-semibold mb-2 text-green-700 dark:text-green-300">
+                  📱 Preview no WhatsApp
+                </h4>
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm max-w-sm">
+                  <p className="text-sm whitespace-pre-wrap">{mensagemEditada}</p>
+                  <p className="text-xs text-muted-foreground mt-2 text-right">
+                    {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} ✓
+                  </p>
+                </div>
+              </div>
+
+              {/* Ações */}
+              <div className="flex gap-2 pt-4 border-t">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setPreviewIndividual(null)}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleEnviarMensagemAprovada}
+                  disabled={enviandoMensagemAprovada || !mensagemEditada.trim()}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                >
+                  {enviandoMensagemAprovada ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      ✅ Aprovar e Enviar
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
