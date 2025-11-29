@@ -5,7 +5,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink, History, Plus, FileText, Circle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 
@@ -43,6 +45,119 @@ interface Produto {
   imagem_url?: string;
 }
 
+interface Interacao {
+  id: string;
+  lead_id: string;
+  lead_tipo: string;
+  tipo: string;
+  titulo?: string;
+  descricao?: string;
+  resultado?: string;
+  duracao_segundos?: number;
+  created_at: string;
+}
+
+// Componente Timeline
+const TimelineInteracoes = ({ leadId, leadTipo, refresh }: { leadId: string; leadTipo: string; refresh: number }) => {
+  const [interacoes, setInteracoes] = useState<Interacao[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadInteracoes();
+  }, [leadId, refresh]);
+
+  const loadInteracoes = async () => {
+    const { data } = await supabase
+      .from('interacoes')
+      .select('*')
+      .eq('lead_id', leadId)
+      .eq('lead_tipo', leadTipo)
+      .order('created_at', { ascending: false });
+    
+    setInteracoes(data || []);
+    setLoading(false);
+  };
+
+  const getTipoIcon = (tipo: string) => {
+    const icons: Record<string, JSX.Element> = {
+      'call': <Phone className="w-4 h-4 text-blue-500" />,
+      'whatsapp': <MessageSquare className="w-4 h-4 text-green-500" />,
+      'email': <Mail className="w-4 h-4 text-purple-500" />,
+      'meeting': <Calendar className="w-4 h-4 text-orange-500" />,
+      'note': <FileText className="w-4 h-4 text-gray-500" />,
+      'status_change': <TrendingUp className="w-4 h-4 text-indigo-500" />
+    };
+    return icons[tipo] || <Circle className="w-4 h-4" />;
+  };
+
+  const formatTempo = (segundos?: number) => {
+    if (!segundos) return null;
+    const min = Math.floor(segundos / 60);
+    const sec = segundos % 60;
+    return `${min}m ${sec}s`;
+  };
+
+  if (loading) return <div className="text-center py-4 text-muted-foreground">Carregando...</div>;
+
+  if (interacoes.length === 0) {
+    return (
+      <div className="text-center text-muted-foreground py-8 text-sm">
+        Nenhuma interação registrada ainda
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {interacoes.map((interacao, idx) => (
+        <div key={interacao.id} className="flex gap-3">
+          <div className="flex flex-col items-center">
+            <div className="p-2 rounded-full bg-muted">
+              {getTipoIcon(interacao.tipo)}
+            </div>
+            {idx < interacoes.length - 1 && (
+              <div className="w-px h-full bg-border mt-2" />
+            )}
+          </div>
+
+          <div className="flex-1 pb-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-medium text-sm">
+                  {interacao.titulo || interacao.tipo}
+                </p>
+                {interacao.descricao && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {interacao.descricao}
+                  </p>
+                )}
+                {interacao.resultado && (
+                  <Badge variant="outline" className="mt-2">
+                    {interacao.resultado}
+                  </Badge>
+                )}
+                {interacao.duracao_segundos && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ⏱️ Duração: {formatTempo(interacao.duracao_segundos)}
+                  </p>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                {new Date(interacao.created_at).toLocaleString('pt-BR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export default function LeadsFunil() {
   const [leadsB2C, setLeadsB2C] = useState<Lead[]>([]);
   const [leadsB2B, setLeadsB2B] = useState<Lead[]>([]);
@@ -51,6 +166,9 @@ export default function LeadsFunil() {
   const [leadSelecionado, setLeadSelecionado] = useState<Lead | null>(null);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [filtroProduct, setFiltroProduct] = useState<string>('all');
+  const [showNovaInteracao, setShowNovaInteracao] = useState(false);
+  const [novaInteracao, setNovaInteracao] = useState({ tipo: '', titulo: '', descricao: '', resultado: '' });
+  const [refreshTimeline, setRefreshTimeline] = useState(0);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -89,12 +207,26 @@ export default function LeadsFunil() {
   const handleDrop = async (novoStatus: string) => {
     if (!draggedLead) return;
 
+    const { data: { user } } = await supabase.auth.getUser();
     const tabela = draggedLead.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
     
+    // Atualizar status do lead
     await supabase
       .from(tabela)
       .update({ pipeline_status: novoStatus })
       .eq('id', draggedLead.id);
+
+    // Registrar interação automática
+    if (user) {
+      await supabase.from('interacoes').insert({
+        lead_id: draggedLead.id,
+        lead_tipo: draggedLead.tipo,
+        tipo: 'status_change',
+        titulo: 'Status alterado',
+        descricao: `Movido para: ${novoStatus}`,
+        created_by: user.id
+      });
+    }
 
     toast.success('Lead movido!');
     loadLeads();
@@ -116,6 +248,31 @@ export default function LeadsFunil() {
     setLeadSelecionado(null);
   };
 
+  const handleSalvarInteracao = async () => {
+    if (!leadSelecionado || !novaInteracao.tipo) {
+      toast.error('Selecione o tipo da interação');
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    await supabase.from('interacoes').insert({
+      lead_id: leadSelecionado.id,
+      lead_tipo: leadSelecionado.tipo,
+      tipo: novaInteracao.tipo,
+      titulo: novaInteracao.titulo,
+      descricao: novaInteracao.descricao,
+      resultado: novaInteracao.resultado,
+      created_by: user.id
+    });
+
+    toast.success('Interação registrada!');
+    setShowNovaInteracao(false);
+    setNovaInteracao({ tipo: '', titulo: '', descricao: '', resultado: '' });
+    setRefreshTimeline(prev => prev + 1);
+  };
+
   const handleAbrirWhatsApp = (numero: string) => {
     const cleanNumber = numero.replace(/\D/g, '');
     window.open(`https://wa.me/55${cleanNumber}`, '_blank');
@@ -129,7 +286,6 @@ export default function LeadsFunil() {
     let b2c = leadsB2C.filter(l => l.pipeline_status === status);
     let b2b = leadsB2B.filter(l => l.pipeline_status === status);
 
-    // Aplicar filtro por produto
     if (filtroProduct && filtroProduct !== 'all') {
       b2c = b2c.filter(l => l.product_id === filtroProduct);
       b2b = b2b.filter(l => l.product_id === filtroProduct);
@@ -175,7 +331,6 @@ export default function LeadsFunil() {
         </div>
         
         <div className="flex items-center gap-4">
-          {/* Filtro por Produto */}
           <Select value={filtroProduct} onValueChange={setFiltroProduct}>
             <SelectTrigger className="w-64">
               <SelectValue placeholder="Filtrar por produto" />
@@ -307,7 +462,7 @@ export default function LeadsFunil() {
 
       {/* Modal de Detalhes do Lead */}
       <Dialog open={!!leadSelecionado} onOpenChange={() => setLeadSelecionado(null)}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {leadSelecionado?.nome_completo || leadSelecionado?.razao_social || leadSelecionado?.nome_fantasia}
@@ -395,6 +550,28 @@ export default function LeadsFunil() {
                 </div>
               )}
 
+              {/* Timeline de Interações */}
+              <div className="border-t pt-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <History className="w-4 h-4" />
+                    Timeline de Interações
+                  </h4>
+                  <Button size="sm" variant="outline" onClick={() => setShowNovaInteracao(true)}>
+                    <Plus className="w-3 h-3 mr-1" />
+                    Nova
+                  </Button>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto">
+                  <TimelineInteracoes 
+                    leadId={leadSelecionado.id} 
+                    leadTipo={leadSelecionado.tipo!}
+                    refresh={refreshTimeline}
+                  />
+                </div>
+              </div>
+
               {/* Ações Rápidas */}
               <div className="flex gap-2 pt-4 border-t">
                 <Button className="flex-1" onClick={() => {
@@ -404,15 +581,78 @@ export default function LeadsFunil() {
                   <TrendingUp className="w-4 h-4 mr-2" />
                   Qualificar
                 </Button>
-                <Button className="flex-1" variant="outline" onClick={() => {
-                  toast.info('Funcionalidade em desenvolvimento');
-                }}>
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Agendar
+                <Button className="flex-1" variant="outline" onClick={() => setShowNovaInteracao(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Interação
                 </Button>
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Nova Interação */}
+      <Dialog open={showNovaInteracao} onOpenChange={setShowNovaInteracao}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar Interação</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Tipo</label>
+              <Select value={novaInteracao.tipo} onValueChange={(v) => setNovaInteracao({...novaInteracao, tipo: v})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="call">📞 Ligação</SelectItem>
+                  <SelectItem value="whatsapp">💬 WhatsApp</SelectItem>
+                  <SelectItem value="email">📧 Email</SelectItem>
+                  <SelectItem value="meeting">🤝 Reunião</SelectItem>
+                  <SelectItem value="note">📝 Anotação</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Título</label>
+              <Input 
+                placeholder="Ex: Ligação de apresentação"
+                value={novaInteracao.titulo}
+                onChange={(e) => setNovaInteracao({...novaInteracao, titulo: e.target.value})}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Descrição</label>
+              <Textarea 
+                placeholder="Descreva o que aconteceu..."
+                value={novaInteracao.descricao}
+                onChange={(e) => setNovaInteracao({...novaInteracao, descricao: e.target.value})}
+                rows={4}
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Resultado</label>
+              <Select value={novaInteracao.resultado} onValueChange={(v) => setNovaInteracao({...novaInteracao, resultado: v})}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Como foi?" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="positivo">✅ Positivo</SelectItem>
+                  <SelectItem value="neutro">➖ Neutro</SelectItem>
+                  <SelectItem value="negativo">❌ Negativo</SelectItem>
+                  <SelectItem value="agendado">📅 Agendado follow-up</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button className="w-full" onClick={handleSalvarInteracao}>
+              Salvar Interação
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
