@@ -76,7 +76,7 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${WUZAPI_TOKEN}`
+        'Token': WUZAPI_TOKEN
       },
       body: JSON.stringify(wuzapiPayload)
     });
