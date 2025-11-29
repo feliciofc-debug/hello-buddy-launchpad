@@ -319,7 +319,7 @@ export default function LeadsFunil() {
     window.open(`tel:${numero}`, '_blank');
   };
 
-  const handleLigarSimulado = async () => {
+  const handleLigarTwilio = async () => {
     if (!leadSelecionado?.telefone) {
       toast.error('Lead sem telefone');
       return;
@@ -328,58 +328,30 @@ export default function LeadsFunil() {
     setChamandoLead(true);
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const nomeCliente = leadSelecionado.nome_completo || leadSelecionado.razao_social || 'Cliente';
-
-      // Registrar interação simulada
-      await supabase.from('interacoes').insert({
-        lead_id: leadSelecionado.id,
-        lead_tipo: leadSelecionado.tipo,
-        tipo: 'call',
-        titulo: '📞 Ligação IA (Simulação)',
-        descricao: `Ligação de teste para ${leadSelecionado.telefone}.\n\nIA disse: "Olá ${nomeCliente}, aqui é da AMZ Ofertas. Estou entrando em contato para apresentar nossa solução de automação de marketing..."\n\nCliente respondeu: "Interessante, pode me enviar mais informações."\n\nIA: "Claro! Vou enviar por WhatsApp agora mesmo. Posso agendar uma demonstração?"\n\nCliente: "Sim, pode agendar."`,
-        resultado: 'positivo',
-        duracao_segundos: 180,
-        created_by: user?.id,
-        metadata: {
-          phone: leadSelecionado.telefone,
-          simulated: true,
-          sentiment: 'positivo',
-          interesse: true
+      console.log('📞 Iniciando ligação real via Twilio...');
+      
+      const { data, error } = await supabase.functions.invoke('voice-ai-calling', {
+        body: {
+          lead_id: leadSelecionado.id,
+          lead_type: leadSelecionado.tipo,
+          campanha_id: (leadSelecionado as any).campanha_id || null
         }
       });
 
-      // Salvar em voice_calls também
-      await supabase.from('voice_calls').insert({
-        lead_id: leadSelecionado.id,
-        lead_type: leadSelecionado.tipo,
-        campanha_id: leadSelecionado.product_id || '00000000-0000-0000-0000-000000000000',
-        user_id: user?.id,
-        call_sid: `sim_${Date.now()}`,
-        to_number: leadSelecionado.telefone,
-        status: 'completed',
-        duration: 180,
-        transcription: `Conversa simulada com ${nomeCliente}.\n\nCliente demonstrou interesse e solicitou mais informações.\n\nPróximos passos: Enviar material por WhatsApp e agendar demonstração.`,
-        ai_analysis: {
-          sentiment: 'positivo',
-          interesse: true,
-          resumo: 'Cliente interessado, quer demonstração',
-          keywords: ['interessante', 'informações', 'agendar']
-        },
-        lead_qualified: true
-      });
+      if (error) throw error;
 
-      toast.success('📞 Ligação simulada registrada! Veja na Timeline.');
+      console.log('✅ Resposta Twilio:', data);
+      toast.success(`📞 Ligação iniciada para ${data?.telefone || leadSelecionado.telefone}! Aguarde...`);
       setRefreshTimeline(prev => prev + 1);
       
       setTimeout(() => {
         loadLeads(campanhaFiltro);
         setChamandoLead(false);
-      }, 1500);
+      }, 3000);
 
     } catch (error: any) {
-      console.error('Erro ao registrar:', error);
-      toast.error('Erro ao registrar: ' + error.message);
+      console.error('❌ Erro ao ligar:', error);
+      toast.error('Erro ao ligar: ' + error.message);
       setChamandoLead(false);
     }
   };
@@ -626,7 +598,7 @@ export default function LeadsFunil() {
                     <Button 
                       size="sm" 
                       variant="default"
-                      onClick={handleLigarSimulado}
+                      onClick={handleLigarTwilio}
                       disabled={chamandoLead}
                     >
                       {chamandoLead ? (
