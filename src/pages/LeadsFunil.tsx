@@ -356,6 +356,59 @@ export default function LeadsFunil() {
     }
   };
 
+  const [enviandoWhatsApp, setEnviandoWhatsApp] = useState(false);
+
+  const handleEnviarWhatsApp = async () => {
+    if (!leadSelecionado?.telefone && !leadSelecionado?.whatsapp) {
+      toast.error('Lead sem telefone/WhatsApp');
+      return;
+    }
+
+    const numero = leadSelecionado.whatsapp || leadSelecionado.telefone;
+    const nome = leadSelecionado.nome_completo || leadSelecionado.razao_social || 'Cliente';
+
+    setEnviandoWhatsApp(true);
+    
+    try {
+      console.log('📱 Enviando WhatsApp via Wuzapi...');
+      
+      const mensagem = `Olá ${nome}! 👋\n\nAqui é da AMZ Ofertas. Estamos entrando em contato porque identificamos que você pode ter interesse em nossas soluções de automação de marketing.\n\nPosso te apresentar como funciona?`;
+
+      const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
+        body: {
+          phone: numero,
+          message: mensagem
+        }
+      });
+
+      if (error) throw error;
+
+      console.log('✅ Resposta Wuzapi:', data);
+      
+      // Registrar interação
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from('interacoes').insert({
+        lead_id: leadSelecionado.id,
+        lead_tipo: leadSelecionado.tipo,
+        tipo: 'whatsapp',
+        titulo: '📱 WhatsApp Enviado',
+        descricao: mensagem,
+        resultado: 'enviado',
+        created_by: user?.id,
+        metadata: { phone: numero, via: 'wuzapi' }
+      });
+
+      toast.success(`📱 WhatsApp enviado para ${nome}!`);
+      setRefreshTimeline(prev => prev + 1);
+
+    } catch (error: any) {
+      console.error('❌ Erro ao enviar WhatsApp:', error);
+      toast.error('Erro ao enviar: ' + error.message);
+    } finally {
+      setEnviandoWhatsApp(false);
+    }
+  };
+
   const getLeadsPorStatus = (status: string): Lead[] => {
     let b2c = leadsB2C.filter(l => l.pipeline_status === status);
     let b2b = leadsB2B.filter(l => l.pipeline_status === status);
@@ -616,12 +669,30 @@ export default function LeadsFunil() {
                   </div>
                 )}
                 {leadSelecionado.whatsapp && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <MessageSquare className="w-4 h-4 text-muted-foreground" />
                     <span>{leadSelecionado.whatsapp}</span>
                     <Button size="sm" variant="outline" onClick={() => handleAbrirWhatsApp(leadSelecionado.whatsapp!)}>
                       <MessageSquare className="w-3 h-3 mr-1" />
-                      WhatsApp
+                      Abrir
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="default"
+                      onClick={handleEnviarWhatsApp}
+                      disabled={enviandoWhatsApp}
+                    >
+                      {enviandoWhatsApp ? (
+                        <>
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          <MessageSquare className="w-3 h-3 mr-1" />
+                          📱 Enviar Msg
+                        </>
+                      )}
                     </Button>
                   </div>
                 )}
