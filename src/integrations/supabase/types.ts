@@ -1139,6 +1139,7 @@ export type Database = {
           num_funcionarios: number | null
           pipeline_status: string
           porte: string | null
+          product_id: string | null
           qualificacao_motivo: string | null
           qualified_at: string | null
           query_usada: string | null
@@ -1196,6 +1197,7 @@ export type Database = {
           num_funcionarios?: number | null
           pipeline_status?: string
           porte?: string | null
+          product_id?: string | null
           qualificacao_motivo?: string | null
           qualified_at?: string | null
           query_usada?: string | null
@@ -1253,6 +1255,7 @@ export type Database = {
           num_funcionarios?: number | null
           pipeline_status?: string
           porte?: string | null
+          product_id?: string | null
           qualificacao_motivo?: string | null
           qualified_at?: string | null
           query_usada?: string | null
@@ -1277,6 +1280,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_b2b_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
             referencedColumns: ["id"]
           },
         ]
@@ -1316,6 +1326,7 @@ export type Database = {
           nome_completo: string
           oab: string | null
           pipeline_status: string
+          product_id: string | null
           profissao: string
           qualificacao_motivo: string | null
           qualified_at: string | null
@@ -1369,6 +1380,7 @@ export type Database = {
           nome_completo: string
           oab?: string | null
           pipeline_status?: string
+          product_id?: string | null
           profissao: string
           qualificacao_motivo?: string | null
           qualified_at?: string | null
@@ -1422,6 +1434,7 @@ export type Database = {
           nome_completo?: string
           oab?: string | null
           pipeline_status?: string
+          product_id?: string | null
           profissao?: string
           qualificacao_motivo?: string | null
           qualified_at?: string | null
@@ -1447,6 +1460,13 @@ export type Database = {
             columns: ["campanha_id"]
             isOneToOne: false
             referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_b2c_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
             referencedColumns: ["id"]
           },
         ]
