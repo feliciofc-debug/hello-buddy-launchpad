@@ -6,10 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const supabase = createClient(
-  Deno.env.get("SUPABASE_URL") || "",
-  Deno.env.get("SUPABASE_ANON_KEY") || ""
-);
+// Cliente criado dentro das funções para usar SERVICE_ROLE_KEY
 
 interface EnrichRequest {
   lead_id: string;
@@ -164,6 +161,11 @@ function detectPowerSignals(enrichmentData: any): string[] {
 async function enrichLeadB2C(leadId: string) {
   console.log("🔍 Enriquecendo lead B2C:", leadId);
   
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") || "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+  );
+  
   const { data: lead, error } = await supabase
     .from("leads_b2c")
     .select("*")
@@ -171,7 +173,8 @@ async function enrichLeadB2C(leadId: string) {
     .maybeSingle();
   
   if (error || !lead) {
-    throw new Error("Lead não encontrado");
+    console.error("Erro ao buscar lead B2C:", error);
+    throw new Error("Lead B2C não encontrado: " + (error?.message || leadId));
   }
   
   const enrichment: any = {};
@@ -240,6 +243,11 @@ async function enrichLeadB2C(leadId: string) {
 async function enrichLeadB2B(leadId: string) {
   console.log("🔍 Enriquecendo lead B2B:", leadId);
   
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") || "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+  );
+  
   const { data: lead, error } = await supabase
     .from("leads_b2b")
     .select("*")
@@ -247,7 +255,8 @@ async function enrichLeadB2B(leadId: string) {
     .maybeSingle();
   
   if (error || !lead) {
-    throw new Error("Lead não encontrado");
+    console.error("Erro ao buscar lead B2B:", error);
+    throw new Error("Lead B2B não encontrado: " + (error?.message || leadId));
   }
   
   const cnpjData = await enrichCNPJ(lead.cnpj);
