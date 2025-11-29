@@ -243,13 +243,19 @@ export default function IAConversas() {
   ).length;
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <h1 className="text-3xl font-bold">💬 IA Conversas</h1>
+    <div className="h-screen flex flex-col overflow-hidden">
+      {/* HEADER FIXO NO TOPO */}
+      <div className="sticky top-0 z-50 bg-background border-b px-6 py-4 shrink-0">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-3xl font-bold">💬 IA Conversas</h1>
+        </div>
       </div>
+
+      {/* CONTEÚDO SCROLLÁVEL */}
+      <div className="flex-1 overflow-auto p-6">
 
       {/* ABAS PRINCIPAIS: PROSPECÇÃO vs CLIENTES (SEPARADAS!) */}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="mb-4">
@@ -657,6 +663,7 @@ export default function IAConversas() {
             </>
           )}
         </Card>
+      </div>
       </div>
     </div>
   );
