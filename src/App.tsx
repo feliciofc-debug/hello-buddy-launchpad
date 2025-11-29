@@ -49,6 +49,7 @@ import OnboardingWhatsApp from "./pages/OnboardingWhatsApp";
 import ConfiguracaoEmpresa from "./pages/ConfiguracaoEmpresa";
 import IAConversas from "./pages/IAConversas";
 import DashboardMetricas from "./pages/DashboardMetricas";
+import LeadsFunil from "./pages/LeadsFunil";
 
 const queryClient = new QueryClient();
 
@@ -100,6 +101,7 @@ const App = () => (
             <Route path="/admin/produtos" element={<AdminProdutos />} />
             <Route path="/configuracao-empresa" element={<ConfiguracaoEmpresa />} />
             <Route path="/ia-conversas" element={<IAConversas />} />
+            <Route path="/leads-funil" element={<LeadsFunil />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:slug" element={<MarketplaceProduto />} />
             <Route path="/marketplace-publico" element={<MarketplacePublico />} />
