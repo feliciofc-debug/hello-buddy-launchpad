@@ -60,29 +60,9 @@ serve(async (req) => {
     const userInfo = await userInfoResponse.json()
     console.log('📧 Email:', userInfo.email)
 
-    // Tentar buscar info da conta Google Ads (pode falhar se não tiver conta)
-    let customerId = null
-    const developerToken = Deno.env.get('GOOGLE_ADS_DEVELOPER_TOKEN')
-    
-    if (developerToken) {
-      try {
-        const accountResponse = await fetch(
-          'https://googleads.googleapis.com/v15/customers:listAccessibleCustomers',
-          {
-            headers: {
-              'Authorization': `Bearer ${tokens.access_token}`,
-              'developer-token': developerToken
-            }
-          }
-        )
-
-        const accountData = await accountResponse.json()
-        customerId = accountData.resourceNames?.[0]?.split('/')?.[1] || null
-        console.log('🏢 Customer ID:', customerId)
-      } catch (e) {
-        console.log('⚠️ Não foi possível obter Customer ID (pode não ter conta Google Ads)')
-      }
-    }
+    // Usar Customer ID fixo configurado
+    const customerId = '6553038395'
+    console.log('🏢 Customer ID configurado:', customerId)
 
     // Salvar no Supabase
     const supabase = createClient(
