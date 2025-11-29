@@ -188,16 +188,44 @@ export default function CampanhasProspeccao() {
   };
 
   const handleContinuarCampanha = async (campanhaId: string) => {
+    setProcessing(campanhaId);
     try {
       await supabase
         .from('campanhas_prospeccao')
         .update({ status: 'ativa' })
         .eq('id', campanhaId);
 
-      toast.success("▶️ Campanha retomada");
+      toast.success("⏳ Campanha ativada! Buscando leads...");
+      await executarBuscaLeads(campanhaId);
       loadData();
     } catch (error: any) {
       toast.error(`Erro: ${error.message}`);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const executarBuscaLeads = async (campanhaId: string) => {
+    const campanha = campanhas.find(c => c.id === campanhaId);
+    if (!campanha) return;
+
+    try {
+      toast.loading("🔍 Buscando leads...", { id: 'busca' });
+      
+      const { data, error } = await supabase.functions.invoke('search-leads', {
+        body: {
+          campanha_id: campanhaId,
+          icp_config_id: campanha.icp_config_id
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success(`✅ ${data?.total_encontrados || 0} novos leads descobertos!`, { id: 'busca' });
+      loadData();
+    } catch (error: any) {
+      console.error("Erro na busca:", error);
+      toast.error(`❌ Erro: ${error.message}`, { id: 'busca' });
     }
   };
 
@@ -376,6 +404,15 @@ export default function CampanhasProspeccao() {
               onClick={() => navigate(`/leads-funil?campanha=${campanha.id}`)}
             >
               👁️ Ver Leads
+            </Button>
+            <Button 
+              variant="secondary"
+              size="icon"
+              onClick={() => executarBuscaLeads(campanha.id)}
+              disabled={campanha.status !== 'ativa' || processing === campanha.id}
+              title="Executar busca de leads"
+            >
+              {processing === campanha.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             </Button>
             <Button 
               variant="outline" 
