@@ -620,6 +620,38 @@ RESPONDA (curto e humano, sem repetir "tá"):`;
       .update({ last_message_at: new Date().toISOString() })
       .eq('id', contexto.id);
 
+    // ═══════════════════════════════════════
+    // 🎯 ATUALIZAR LEAD SE VINCULADO (PROSPECÇÃO)
+    // ═══════════════════════════════════════
+    const leadId = contexto.lead_id;
+    const leadTipo = contexto.metadata?.lead_tipo;
+    
+    if (leadId && leadTipo) {
+      console.log('🎯 Lead vinculado encontrado:', leadId, leadTipo);
+      
+      // Registrar interação no lead
+      await supabaseClient.from('interacoes').insert({
+        lead_id: leadId,
+        lead_tipo: leadTipo,
+        tipo: 'whatsapp',
+        titulo: '💬 Lead respondeu!',
+        descricao: messageText,
+        resultado: 'respondeu'
+      });
+
+      // Atualizar pipeline do lead para "respondeu"
+      const tabelaLead = leadTipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+      const scoreAtual = contexto.metadata?.score || 50;
+      
+      await supabaseClient.from(tabelaLead).update({
+        pipeline_status: 'respondeu',
+        respondeu_em: new Date().toISOString(),
+        score: Math.min(scoreAtual + 15, 100)
+      }).eq('id', leadId);
+
+      console.log('✅ Lead atualizado para status "respondeu"');
+    }
+
     // DETECTAR LEAD QUENTE
     const palavrasInteresse = ['quero', 'comprar', 'pagar', 'pix', 'link', 'fechado', 'fechar', 'sim', 'ok', 'beleza'];
     const temInteresse = palavrasInteresse.some(p => messageText.toLowerCase().includes(p));
@@ -633,6 +665,16 @@ RESPONDA (curto e humano, sem repetir "tá"):`;
         mensagem_cliente: messageText,
         status: 'quente'
       });
+
+      // Se tem lead vinculado, atualizar para qualificado
+      if (leadId && leadTipo) {
+        const tabelaLead = leadTipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+        await supabaseClient.from(tabelaLead).update({
+          pipeline_status: 'qualificado',
+          score: 90
+        }).eq('id', leadId);
+        console.log('🔥 Lead promovido para QUALIFICADO!');
+      }
     }
 
     return new Response(JSON.stringify({ 
