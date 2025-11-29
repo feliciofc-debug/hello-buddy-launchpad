@@ -363,7 +363,7 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
           score_conversa: 85
         },
         user_id: user?.id || ''
-      }).select().single();
+      }).select().maybeSingle();
 
       if (callError) throw callError;
 

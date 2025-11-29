@@ -2538,6 +2538,7 @@ export type Database = {
           sentiment_score: number | null
           started_at: string | null
           status: string
+          to_number: string | null
           transcription: string | null
           user_id: string
         }
@@ -2561,6 +2562,7 @@ export type Database = {
           sentiment_score?: number | null
           started_at?: string | null
           status?: string
+          to_number?: string | null
           transcription?: string | null
           user_id: string
         }
@@ -2584,6 +2586,7 @@ export type Database = {
           sentiment_score?: number | null
           started_at?: string | null
           status?: string
+          to_number?: string | null
           transcription?: string | null
           user_id?: string
         }
