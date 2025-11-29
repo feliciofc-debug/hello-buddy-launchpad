@@ -250,6 +250,7 @@ export default function DashboardMetricas() {
     { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
     { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
     { icon: Users, label: 'Prospects', path: '/campanhas-prospeccao' },
+    { icon: Flame, label: 'Funil de Leads', path: '/leads-funil' },
     { icon: Target, label: 'Configurar ICP', path: '/configurar-icp' },
     { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
     { icon: Megaphone, label: 'Campanhas', path: '/campanhas' },
