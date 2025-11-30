@@ -2760,8 +2760,10 @@ export type Database = {
           especialidade: string | null
           foto_url: string | null
           id: string
+          login: string | null
           meta_mensal: number | null
           nome: string
+          senha: string | null
           updated_at: string | null
           user_id: string | null
           whatsapp: string | null
@@ -2774,8 +2776,10 @@ export type Database = {
           especialidade?: string | null
           foto_url?: string | null
           id?: string
+          login?: string | null
           meta_mensal?: number | null
           nome: string
+          senha?: string | null
           updated_at?: string | null
           user_id?: string | null
           whatsapp?: string | null
@@ -2788,8 +2792,10 @@ export type Database = {
           especialidade?: string | null
           foto_url?: string | null
           id?: string
+          login?: string | null
           meta_mensal?: number | null
           nome?: string
+          senha?: string | null
           updated_at?: string | null
           user_id?: string | null
           whatsapp?: string | null

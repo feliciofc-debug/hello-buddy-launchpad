@@ -18,22 +18,27 @@ export default function VendedorLogin() {
     setLoading(true);
 
     try {
-      // Buscar vendedor pelo login e senha
-      const { data: vendedor, error } = await supabase
+      const { data: vendedores, error } = await supabase
         .from('vendedores')
         .select('*')
         .eq('login', login.toLowerCase().trim())
         .eq('senha', senha)
-        .eq('ativo', true)
-        .single();
+        .eq('ativo', true);
 
-      if (error || !vendedor) {
+      if (error) {
+        toast.error('Erro ao verificar credenciais');
+        setLoading(false);
+        return;
+      }
+
+      if (!vendedores || vendedores.length === 0) {
         toast.error('Login ou senha incorretos');
         setLoading(false);
         return;
       }
 
-      // Salvar sessão do vendedor no localStorage
+      const vendedor = vendedores[0];
+
       localStorage.setItem('vendedor_session', JSON.stringify({
         id: vendedor.id,
         nome: vendedor.nome,
