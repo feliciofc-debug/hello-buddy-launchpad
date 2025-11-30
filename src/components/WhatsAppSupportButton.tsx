@@ -78,7 +78,7 @@ export function WhatsAppSupportButton() {
       {/* Botão flutuante do WhatsApp */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-50 w-16 h-16 bg-green-500 hover:bg-green-600 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110"
+        className="fixed bottom-6 right-6 z-[9999] w-16 h-16 bg-green-500 hover:bg-green-600 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110"
         aria-label="Abrir chat de suporte"
       >
         {isOpen ? (
@@ -92,7 +92,7 @@ export function WhatsAppSupportButton() {
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-96 max-w-[calc(100vw-48px)] bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200">
+        <div className="fixed bottom-24 right-6 z-[9999] w-96 max-w-[calc(100vw-48px)] bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200">
           {/* Header */}
           <div className="bg-gradient-to-r from-green-500 to-green-600 p-4 text-white">
             <div className="flex items-center gap-3">
@@ -144,7 +144,7 @@ export function WhatsAppSupportButton() {
           </ScrollArea>
 
           {/* Input */}
-          <div className="p-4 bg-white border-t border-gray-100" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="p-4 bg-white border-t border-gray-100 relative z-[10000]">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -156,12 +156,10 @@ export function WhatsAppSupportButton() {
                     handleSendMessage();
                   }
                 }}
-                onFocus={(e) => e.target.select()}
                 placeholder="Digite sua dúvida..."
-                className="flex-1 h-10 px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 disabled:opacity-50 pointer-events-auto"
+                className="flex-1 h-10 px-3 py-2 text-sm text-gray-900 bg-white border border-gray-200 rounded-md focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 disabled:opacity-50"
                 disabled={isLoading}
                 autoComplete="off"
-                style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
               />
               <Button
                 onClick={handleSendMessage}
