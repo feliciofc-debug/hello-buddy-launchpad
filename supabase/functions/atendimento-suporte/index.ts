@@ -80,14 +80,19 @@ A AMZ Ofertas é uma plataforma completa de marketing digital com inteligência 
 - É MUITO importante cadastrar seus produtos no Marketplace para aproveitar essa divulgação gratuita
 
 ### 9. BÔNUS EXCLUSIVOS PARA CLIENTES
-- Ebooks GRÁTIS de brinde para todos os clientes!
+- Ebooks GRÁTIS de brinde para todos os clientes que comprarem na AMZ!
+- Ebooks criados pela nossa IA própria exclusiva
 - Temas disponíveis:
   • Guia de Emagrecimento
-  • Dicas de Maquiagem Profissional
+  • Dicas de Maquiagem Profissional  
   • Dietas Low Carb
   • Receitas Saudáveis
+  • Finanças Pessoais
+  • Produtividade
   • E muito mais!
-- Material de qualidade para uso pessoal ou para presentear clientes
+- Material de altíssima qualidade criado por IA
+- Pode usar para atrair clientes ou como brinde pós-venda
+- Conteúdo exclusivo que só clientes AMZ Ofertas têm acesso
 
 ### 9. ANALYTICS/MÉTRICAS
 - Dashboard com métricas em tempo real
