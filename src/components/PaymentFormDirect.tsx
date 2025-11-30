@@ -24,11 +24,14 @@ export default function PaymentFormDirect({
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
   const [copied, setCopied] = useState(false);
-  const [installments, setInstallments] = useState(1);
+  const [installments, setInstallments] = useState(12);
+  const [documentType, setDocumentType] = useState<'cpf' | 'cnpj'>('cpf');
   
   const [formData, setFormData] = useState({
     email: '',
     cpf: '',
+    cnpj: '',
+    companyName: '',
     firstName: '',
     lastName: '',
     cardNumber: '',
@@ -38,12 +41,33 @@ export default function PaymentFormDirect({
     cvv: ''
   });
 
+  // Valores: 12x de 597 = 7164, com 10% desconto = 6447.60
+  const valorIntegral = amount * 12; // R$ 7.164,00
+  const valorComDesconto = valorIntegral * 0.9; // R$ 6.447,60
+
+  const getDisplayAmount = () => {
+    if (paymentMethod === 'pix') {
+      return valorComDesconto;
+    }
+    return valorIntegral;
+  };
+
   const formatCPF = (value: string) => {
     return value
       .replace(/\D/g, '')
       .replace(/(\d{3})(\d)/, '$1.$2')
       .replace(/(\d{3})(\d)/, '$1.$2')
       .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+      .replace(/(-\d{2})\d+?$/, '$1');
+  };
+
+  const formatCNPJ = (value: string) => {
+    return value
+      .replace(/\D/g, '')
+      .replace(/(\d{2})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1/$2')
+      .replace(/(\d{4})(\d{1,2})/, '$1-$2')
       .replace(/(-\d{2})\d+?$/, '$1');
   };
 
@@ -59,12 +83,24 @@ export default function PaymentFormDirect({
     return cleaned.length === 11;
   };
 
+  const validateCNPJ = (cnpj: string) => {
+    const cleaned = cnpj.replace(/\D/g, '');
+    return cleaned.length === 14;
+  };
+
+  const validateDocument = () => {
+    if (documentType === 'cpf') {
+      return validateCPF(formData.cpf);
+    }
+    return validateCNPJ(formData.cnpj);
+  };
+
   const validateEmail = (email: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
   const calculateInstallment = (numInstallments: number) => {
-    return amount / numInstallments;
+    return valorIntegral / numInstallments;
   };
 
   const handlePayment = async () => {
@@ -75,26 +111,34 @@ export default function PaymentFormDirect({
         throw new Error('Email inválido');
       }
       
-      if (!validateCPF(formData.cpf)) {
-        throw new Error('CPF inválido - deve ter 11 dígitos');
+      if (!validateDocument()) {
+        throw new Error(documentType === 'cpf' ? 'CPF inválido - deve ter 11 dígitos' : 'CNPJ inválido - deve ter 14 dígitos');
       }
 
+      const documentNumber = documentType === 'cpf' 
+        ? formData.cpf.replace(/\D/g, '') 
+        : formData.cnpj.replace(/\D/g, '');
+
+      const paymentAmount = paymentMethod === 'pix' ? valorComDesconto : valorIntegral;
+
       const basePayload = {
-        transaction_amount: amount,
+        transaction_amount: paymentAmount,
         description: `Assinatura ${planName}`,
         payer: {
           email: formData.email,
-          first_name: formData.firstName || 'Cliente',
+          first_name: formData.firstName || (documentType === 'cnpj' ? formData.companyName : 'Cliente'),
           last_name: formData.lastName || 'AMZ Ofertas',
           identification: {
-            type: 'CPF',
-            number: formData.cpf.replace(/\D/g, '')
+            type: documentType.toUpperCase(),
+            number: documentNumber
           }
         },
         metadata: {
           plan_name: planName,
           plan_type: planType,
-          user_id: userId
+          user_id: userId,
+          document_type: documentType,
+          company_name: documentType === 'cnpj' ? formData.companyName : null
         }
       };
 
@@ -241,11 +285,15 @@ export default function PaymentFormDirect({
     <div className="max-w-3xl mx-auto p-6 bg-card rounded-xl shadow-xl">
       <div className="mb-6 text-center">
         <h2 className="text-3xl font-bold mb-2">Finalizar Assinatura</h2>
-        <div className="inline-block bg-gradient-to-r from-primary to-primary/80 text-primary-foreground px-6 py-3 rounded-lg">
+        <div className="inline-block bg-gradient-to-r from-primary to-primary/80 text-primary-foreground px-6 py-3 rounded-lg mb-3">
           <p className="text-sm">Plano {planName}</p>
           <p className="text-2xl font-bold">
-            R$ {amount.toFixed(2)}/{planType === 'monthly' ? 'mês' : 'ano'}
+            até 12x de R$ {amount.toFixed(2)}
           </p>
+        </div>
+        <div className="text-sm text-muted-foreground">
+          <p>💳 Cartão: R$ {valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} em até 12x</p>
+          <p className="text-green-500 font-semibold">📱 PIX: R$ {valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)</p>
         </div>
       </div>
 
@@ -267,7 +315,7 @@ export default function PaymentFormDirect({
                 <div className="text-center">
                   <div className="text-3xl mb-2">📱</div>
                   <div className="font-bold">PIX</div>
-                  <div className="text-xs text-muted-foreground mt-1">Instantâneo</div>
+                  <div className="text-xs text-green-500 font-semibold mt-1">10% OFF</div>
                 </div>
               </button>
 
@@ -304,6 +352,30 @@ export default function PaymentFormDirect({
           </div>
 
           <div className="space-y-4 mb-6">
+            {/* CPF/CNPJ Toggle */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setDocumentType('cpf')}
+                className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                  documentType === 'cpf'
+                    ? 'border-primary bg-primary/10 font-bold'
+                    : 'border-border hover:border-primary/50'
+                }`}
+              >
+                Pessoa Física (CPF)
+              </button>
+              <button
+                onClick={() => setDocumentType('cnpj')}
+                className={`flex-1 p-3 rounded-lg border-2 transition-all ${
+                  documentType === 'cnpj'
+                    ? 'border-primary bg-primary/10 font-bold'
+                    : 'border-border hover:border-primary/50'
+                }`}
+              >
+                Pessoa Jurídica (CNPJ)
+              </button>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>E-mail *</Label>
@@ -315,16 +387,37 @@ export default function PaymentFormDirect({
                 />
               </div>
               <div>
-                <Label>CPF *</Label>
-                <Input
-                  type="text"
-                  value={formData.cpf}
-                  onChange={(e) => setFormData({...formData, cpf: formatCPF(e.target.value)})}
-                  placeholder="000.000.000-00"
-                  maxLength={14}
-                />
+                <Label>{documentType === 'cpf' ? 'CPF' : 'CNPJ'} *</Label>
+                {documentType === 'cpf' ? (
+                  <Input
+                    type="text"
+                    value={formData.cpf}
+                    onChange={(e) => setFormData({...formData, cpf: formatCPF(e.target.value)})}
+                    placeholder="000.000.000-00"
+                    maxLength={14}
+                  />
+                ) : (
+                  <Input
+                    type="text"
+                    value={formData.cnpj}
+                    onChange={(e) => setFormData({...formData, cnpj: formatCNPJ(e.target.value)})}
+                    placeholder="00.000.000/0000-00"
+                    maxLength={18}
+                  />
+                )}
               </div>
             </div>
+
+            {documentType === 'cnpj' && (
+              <div>
+                <Label>Nome da Empresa *</Label>
+                <Input
+                  value={formData.companyName}
+                  onChange={(e) => setFormData({...formData, companyName: e.target.value})}
+                  placeholder="Razão Social da Empresa"
+                />
+              </div>
+            )}
 
             {(paymentMethod === 'boleto' || paymentMethod === 'card') && (
               <div className="grid grid-cols-2 gap-4">
@@ -419,8 +512,7 @@ export default function PaymentFormDirect({
                     onChange={(e) => setInstallments(Number(e.target.value))}
                     className="w-full p-2 border rounded-lg bg-background"
                   >
-                    <option value={1}>À vista - R$ {amount.toFixed(2)}</option>
-                    {Array.from({length: 11}, (_, i) => i + 2).map(num => (
+                    {Array.from({length: 12}, (_, i) => i + 1).map(num => (
                       <option key={num} value={num}>
                         {num}x de R$ {calculateInstallment(num).toFixed(2)} sem juros
                       </option>
@@ -433,14 +525,14 @@ export default function PaymentFormDirect({
 
           <Button
             onClick={handlePayment}
-            disabled={loading || !formData.email || !formData.cpf}
+            disabled={loading || !formData.email || (documentType === 'cpf' ? !formData.cpf : !formData.cnpj) || (documentType === 'cnpj' && !formData.companyName)}
             className="w-full py-6 text-lg"
           >
             {loading ? 'Processando...' : 
-              paymentMethod === 'pix' ? `Gerar PIX - R$ ${amount.toFixed(2)}` :
-              paymentMethod === 'card' && installments > 1 ? 
-                `Pagar ${installments}x de R$ {calculateInstallment(installments).toFixed(2)}` :
-              `Pagar R$ ${amount.toFixed(2)}`
+              paymentMethod === 'pix' ? `Gerar PIX - R$ ${valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)` :
+              paymentMethod === 'card' ? 
+                `Pagar ${installments}x de R$ ${calculateInstallment(installments).toFixed(2)}` :
+              `Pagar R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
             }
           </Button>
 
