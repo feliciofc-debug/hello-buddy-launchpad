@@ -79,13 +79,22 @@ export default function VendedorLogin() {
       // Buscar vendedor pelo email
       const { data: vendedor, error } = await supabase
         .from('vendedores')
-        .select('id, nome, email')
+        .select('id, nome, email, whatsapp')
         .eq('email', forgotEmail.toLowerCase().trim())
         .eq('ativo', true)
-        .single();
+        .maybeSingle();
 
       if (error || !vendedor) {
         toast.error('Email não encontrado no sistema');
+        setSendingPassword(false);
+        return;
+      }
+
+      // Verificar se tem WhatsApp cadastrado
+      if (!vendedor.whatsapp) {
+        toast.error('Não há WhatsApp cadastrado. Fale com seu gerente para recuperar sua senha.', {
+          duration: 8000
+        });
         setSendingPassword(false);
         return;
       }
@@ -105,11 +114,29 @@ export default function VendedorLogin() {
         return;
       }
 
-      // Mostrar nova senha para o usuário copiar
-      toast.success(`Nova senha gerada: ${novaSenha}`, {
-        duration: 10000,
-        description: 'Copie e guarde em local seguro!'
-      });
+      // Enviar nova senha via WhatsApp para o número cadastrado
+      try {
+        await supabase.functions.invoke('send-wuzapi-message', {
+          body: {
+            phoneNumber: vendedor.whatsapp,
+            message: `🔐 *AMZ Ofertas - Nova Senha*\n\nOlá ${vendedor.nome}!\n\nSua nova senha de acesso é:\n*${novaSenha}*\n\nAcesse: amzofertas.com.br/vendedor-login`
+          }
+        });
+        
+        // Mascarar o número para exibição
+        const whatsappMasked = vendedor.whatsapp.replace(/(\d{2})(\d{5})(\d{4})/, '($1) *****-$3');
+        
+        toast.success(`Nova senha enviada para ${whatsappMasked}`, {
+          duration: 8000,
+          description: 'Verifique seu WhatsApp cadastrado'
+        });
+      } catch {
+        toast.error('Erro ao enviar mensagem. Fale com seu gerente.', {
+          duration: 8000
+        });
+        setSendingPassword(false);
+        return;
+      }
 
       setShowForgotPassword(false);
       setForgotEmail('');
