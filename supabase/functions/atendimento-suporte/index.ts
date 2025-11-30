@@ -69,12 +69,25 @@ A AMZ Ofertas é uma plataforma completa de marketing digital com inteligência 
 - Handoff para atendimento humano
 - Histórico de conversas
 
-### 8. MARKETPLACE PÚBLICO
-- Vitrine de produtos de todos os vendedores
+### 8. MARKETPLACE PÚBLICO (SUPER IMPORTANTE!)
+- Vitrine de produtos de todos os vendedores em amzofertas.com.br/marketplace
 - 15 categorias principais
 - Busca e filtros avançados
 - Compra direta via link do vendedor
 - Contato via WhatsApp
+- **VANTAGEM EXCLUSIVA**: A AMZ Ofertas divulga o Marketplace no Google Ads!
+- Seus produtos ganham visibilidade extra sem custo adicional
+- É MUITO importante cadastrar seus produtos no Marketplace para aproveitar essa divulgação gratuita
+
+### 9. BÔNUS EXCLUSIVOS PARA CLIENTES
+- Ebooks GRÁTIS de brinde para todos os clientes!
+- Temas disponíveis:
+  • Guia de Emagrecimento
+  • Dicas de Maquiagem Profissional
+  • Dietas Low Carb
+  • Receitas Saudáveis
+  • E muito mais!
+- Material de qualidade para uso pessoal ou para presentear clientes
 
 ### 9. ANALYTICS/MÉTRICAS
 - Dashboard com métricas em tempo real
