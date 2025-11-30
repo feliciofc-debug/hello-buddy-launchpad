@@ -1,372 +1,311 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") || "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
-  );
+  console.log('🚀 [INICIO] Função search-leads V3 DEBUG iniciada')
+  
+  // Verificar secrets ANTES de tudo
+  const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY')
+  const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY')
+  const GOOGLE_CX = Deno.env.get('GOOGLE_CX')
+  const APIFY_API_TOKEN = Deno.env.get('APIFY_API_KEY')
 
+  console.log('🔑 [SECRETS] Verificando configuração:')
+  console.log('🔑 SERPAPI_KEY:', SERPAPI_KEY ? `CONFIGURADO (${SERPAPI_KEY.substring(0, 8)}...)` : '❌ NÃO CONFIGURADO')
+  console.log('🔑 GOOGLE_API_KEY:', GOOGLE_API_KEY ? `CONFIGURADO (${GOOGLE_API_KEY.substring(0, 8)}...)` : '❌ NÃO CONFIGURADO')
+  console.log('🔑 GOOGLE_CX:', GOOGLE_CX ? `CONFIGURADO (${GOOGLE_CX.substring(0, 8)}...)` : '❌ NÃO CONFIGURADO')
+  console.log('🔑 APIFY_API_KEY:', APIFY_API_TOKEN ? `CONFIGURADO (${APIFY_API_TOKEN.substring(0, 8)}...)` : '❌ NÃO CONFIGURADO')
+  
   try {
-    console.log("🚀 [V2] Iniciando busca de leads...");
-    
-    const { campanha_id, icp_config_id } = await req.json();
-    console.log("📋 IDs:", { campanha_id, icp_config_id });
-    
-    // 1. Buscar ICP
-    const { data: icp, error: icpError } = await supabase
-      .from("icp_configs")
-      .select("*")
-      .eq("id", icp_config_id)
-      .single();
-    
-    if (icpError || !icp) {
-      console.error("❌ ICP não encontrado:", icpError);
-      throw new Error(`ICP não encontrado: ${icpError?.message || 'ID inválido'}`);
+    const body = await req.json()
+    console.log('📦 [BODY] Dados recebidos:', JSON.stringify(body, null, 2))
+
+    const { campanha_id, icp_config_id } = body
+
+    if (!campanha_id || !icp_config_id) {
+      throw new Error('campanha_id e icp_config_id são obrigatórios')
     }
+
+    // Conectar Supabase
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
+
+    // Buscar ICP
+    console.log('🔍 [DB] Buscando ICP:', icp_config_id)
+    const { data: icp, error: icpError } = await supabase
+      .from('icp_configs')
+      .select('*')
+      .eq('id', icp_config_id)
+      .single()
+
+    if (icpError || !icp) {
+      console.error('❌ [DB] Erro ao buscar ICP:', icpError)
+      throw new Error('ICP não encontrado')
+    }
+
+    console.log('✅ [ICP] ICP encontrado:', icp.nome)
+    console.log('📋 [ICP] b2c_config:', JSON.stringify(icp.b2c_config, null, 2))
+    console.log('📋 [ICP] filtros_avancados:', JSON.stringify(icp.filtros_avancados, null, 2))
+
+    // Extrair dados do ICP - suportar múltiplos formatos
+    const profissao = icp.b2c_config?.profissoes?.[0] || icp.b2c_config?.profissao || 'médico'
+    const cidade = icp.b2c_config?.cidades?.[0] || icp.b2c_config?.cidade || 
+                   (icp.filtros_avancados?.estados?.[0] === 'RJ' ? 'Rio de Janeiro' : 'São Paulo')
+    const estado = icp.filtros_avancados?.estados?.[0] || icp.b2c_config?.estado || 'RJ'
+
+    console.log(`🎯 [BUSCA] Parâmetros extraídos: profissao="${profissao}", cidade="${cidade}", estado="${estado}"`)
+
+    let leads: any[] = []
     
-    console.log("✅ ICP:", icp.nome);
-    
-    // Extrair dados do ICP
-    const profissao = icp.b2c_config?.profissoes?.[0] || "médico";
-    const cidade = icp.filtros_avancados?.estados?.[0] === 'RJ' ? 'Rio de Janeiro' : 
-                   icp.b2c_config?.cidades?.[0] || "Rio de Janeiro";
-    const estado = icp.filtros_avancados?.estados?.[0] || "RJ";
-
-    console.log("🔍 Busca:", { profissao, cidade, estado });
-
-    // Verificar APIs disponíveis
-    const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
-    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY');
-    const GOOGLE_CX = Deno.env.get('GOOGLE_CX');
-    const APIFY_TOKEN = Deno.env.get('APIFY_API_KEY');
-
-    console.log("🔑 APIs configuradas:", {
-      serpapi: !!SERPAPI_KEY,
-      google: !!GOOGLE_API_KEY,
-      googleCx: !!GOOGLE_CX,
-      apify: !!APIFY_TOKEN
-    });
-
-    let leads: any[] = [];
-
-    // ==== MÉTODO 1: SERPAPI (Google Search) - MAIS CONFIÁVEL ====
-    if (SERPAPI_KEY) {
-      console.log("🔍 [SERPAPI] Iniciando busca...");
+    // ============ MÉTODO 1: SERPAPI ============
+    if (SERPAPI_KEY && SERPAPI_KEY !== 'undefined' && SERPAPI_KEY.length > 10) {
+      console.log('🔍 [SERPAPI] ========== INICIANDO SERPAPI ==========')
       
       try {
-        const queries = [
-          `site:linkedin.com/in "${profissao}" "${cidade}"`,
-          `"${profissao}" "${cidade}" consultório contato telefone`
-        ];
+        const query = `site:linkedin.com/in "${profissao}" "${cidade}"`
+        console.log('🔍 [SERPAPI] Query:', query)
+        
+        const serpUrl = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&location=Brazil&hl=pt&gl=br&num=20&api_key=${SERPAPI_KEY}`
+        console.log('🌐 [SERPAPI] URL construída (key oculta)')
+        
+        console.log('⏳ [SERPAPI] Iniciando fetch...')
+        const startTime = Date.now()
+        
+        const serpResponse = await fetch(serpUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0' }
+        })
+        
+        const fetchTime = Date.now() - startTime
+        console.log(`📡 [SERPAPI] Fetch completado em ${fetchTime}ms`)
+        console.log('📡 [SERPAPI] Status HTTP:', serpResponse.status)
+        console.log('📡 [SERPAPI] Status Text:', serpResponse.statusText)
 
-        for (const query of queries) {
-          console.log(`🔍 [SERPAPI] Query: ${query.substring(0, 60)}...`);
-          
-          const serpUrl = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&location=Brazil&hl=pt&gl=br&num=20&api_key=${SERPAPI_KEY}`;
-          
-          const serpResponse = await fetch(serpUrl);
-          const serpStatus = serpResponse.status;
-          
-          console.log(`📡 [SERPAPI] Status: ${serpStatus}`);
-          
-          if (serpResponse.ok) {
-            const serpData = await serpResponse.json();
-            const results = serpData.organic_results || [];
+        const serpText = await serpResponse.text()
+        console.log('📄 [SERPAPI] Tamanho da resposta:', serpText.length, 'bytes')
+        console.log('📄 [SERPAPI] Primeiros 800 chars:', serpText.substring(0, 800))
+
+        if (!serpResponse.ok) {
+          console.error('❌ [SERPAPI] Resposta não OK:', serpText.substring(0, 500))
+          throw new Error(`SerpAPI HTTP ${serpResponse.status}: ${serpText.substring(0, 200)}`)
+        }
+
+        let serpData
+        try {
+          serpData = JSON.parse(serpText)
+          console.log('✅ [SERPAPI] JSON parseado com sucesso')
+        } catch (e) {
+          const err = e as Error
+          console.error('❌ [SERPAPI] Erro ao fazer parse JSON:', err.message)
+          console.log('📄 [SERPAPI] Texto que falhou parse:', serpText.substring(0, 1000))
+          throw new Error('Resposta SerpAPI não é JSON válido')
+        }
+
+        console.log('📊 [SERPAPI] Keys na resposta:', Object.keys(serpData))
+        
+        if (serpData.error) {
+          console.error('❌ [SERPAPI] Erro retornado pela API:', serpData.error)
+          throw new Error(`SerpAPI error: ${serpData.error}`)
+        }
+
+        if (serpData.search_metadata) {
+          console.log('📊 [SERPAPI] search_metadata:', JSON.stringify(serpData.search_metadata, null, 2))
+        }
+
+        const results = serpData.organic_results || []
+        console.log(`📊 [SERPAPI] organic_results encontrados: ${results.length}`)
+
+        if (results.length > 0) {
+          console.log('📋 [SERPAPI] Primeiro resultado:', JSON.stringify(results[0], null, 2))
+        } else {
+          console.log('⚠️ [SERPAPI] Nenhum organic_results encontrado')
+          if (serpData.search_information) {
+            console.log('📊 [SERPAPI] search_information:', JSON.stringify(serpData.search_information, null, 2))
+          }
+        }
+
+        // Processar resultados
+        for (const result of results) {
+          if (result.link && result.link.includes('linkedin.com/in/')) {
+            const nome = result.title?.split('-')[0]?.split('|')[0]?.trim() || result.title
             
-            console.log(`📊 [SERPAPI] Resultados: ${results.length}`);
-            
-            if (serpData.error) {
-              console.error("❌ [SERPAPI] Erro na resposta:", serpData.error);
-              continue;
-            }
-            
-            for (const result of results) {
-              const isLinkedIn = result.link?.includes('linkedin.com/in/');
-              const isInstagram = result.link?.includes('instagram.com/');
-              
-              let nome = '';
-              if (isLinkedIn) {
-                nome = result.title?.split(' - ')[0]?.split(' | ')[0]?.trim() || '';
-              } else if (isInstagram) {
-                nome = result.title?.replace('@', '')?.split(' ')[0] || '';
-              } else {
-                const nomeMatch = result.snippet?.match(/(?:Dr\.|Dra\.|Dr|Dra)?\s*([A-Z][a-zà-ú]+(?:\s+[A-Z][a-zà-ú]+)+)/);
-                nome = nomeMatch?.[1] || result.title?.split(' - ')[0] || '';
-              }
-
-              if (!nome || nome.length < 3) continue;
-
-              const exists = leads.find(l => l.nome_completo?.toLowerCase() === nome.toLowerCase());
-              if (exists) {
-                if (isLinkedIn) exists.linkedin_url = result.link;
-                if (isInstagram) exists.instagram_username = result.link?.split('instagram.com/')[1]?.split('/')[0];
-                exists.score = (exists.score || 40) + 5;
-                continue;
-              }
-
-              const telefoneMatch = result.snippet?.match(/(?:\+55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}[-.\s]?\d{4}/);
-              const emailMatch = result.snippet?.match(/[\w.-]+@[\w.-]+\.\w+/);
-
+            if (nome && nome.length >= 3) {
               leads.push({
                 nome_completo: nome,
                 profissao: profissao,
-                especialidade: result.snippet?.includes('especialista') ? result.snippet.substring(0, 100) : null,
                 cidade: cidade,
                 estado: estado,
-                linkedin_url: isLinkedIn ? result.link : null,
-                instagram_username: isInstagram ? result.link?.split('instagram.com/')[1]?.split('/')[0] : null,
-                email: emailMatch?.[0] || null,
-                telefone: telefoneMatch?.[0] || null,
-                site_url: !isLinkedIn && !isInstagram ? result.link : null,
-                fonte: isLinkedIn ? 'linkedin_serpapi' : isInstagram ? 'instagram_serpapi' : 'google_serpapi',
-                fonte_url: result.link,
+                linkedin_url: result.link,
+                fonte: 'serpapi',
                 fonte_snippet: result.snippet?.substring(0, 300),
                 query_usada: query,
                 pipeline_status: 'descoberto',
-                score: isLinkedIn ? 55 : isInstagram ? 50 : 40,
-                campanha_id,
+                score: 60,
+                campanha_id: campanha_id,
                 user_id: icp.user_id
-              });
+              })
+              console.log('✅ [SERPAPI] Lead adicionado:', nome)
             }
-          } else {
-            const errorText = await serpResponse.text();
-            console.error(`❌ [SERPAPI] Erro ${serpStatus}:`, errorText.substring(0, 200));
           }
-          
-          await new Promise(r => setTimeout(r, 300));
         }
-        
-        console.log(`✅ [SERPAPI] Total: ${leads.length} leads`);
-      } catch (serpError) {
-        console.error("❌ [SERPAPI] Exception:", serpError);
+
+        console.log(`✅ [SERPAPI] Total de leads via SerpAPI: ${leads.length}`)
+
+      } catch (error) {
+        const err = error as Error
+        console.error('❌ [SERPAPI] ERRO COMPLETO:', err)
+        console.error('❌ [SERPAPI] Error message:', err.message)
+        console.error('❌ [SERPAPI] Error stack:', err.stack)
       }
     } else {
-      console.warn("⚠️ SERPAPI_KEY não configurada");
+      console.log('⚠️ [SERPAPI] SERPAPI_KEY não configurado ou inválido')
+      console.log('⚠️ [SERPAPI] Valor atual:', SERPAPI_KEY ? `"${SERPAPI_KEY.substring(0,5)}..." (${SERPAPI_KEY.length} chars)` : 'undefined/null')
     }
 
-    // ==== MÉTODO 2: GOOGLE CUSTOM SEARCH ====
-    if (GOOGLE_API_KEY && GOOGLE_CX && leads.length < 15) {
-      console.log("🔍 [GOOGLE CSE] Iniciando busca...");
+    // ============ MÉTODO 2: GOOGLE CSE ============
+    if (leads.length === 0 && GOOGLE_API_KEY && GOOGLE_CX) {
+      console.log('🔍 [GOOGLE] ========== INICIANDO GOOGLE CSE ==========')
       
       try {
-        const googleQuery = `${profissao} ${cidade} LinkedIn contato`;
-        const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(googleQuery)}&num=10`;
+        const query = `"${profissao}" "${cidade}" linkedin.com/in`
+        console.log('🔍 [GOOGLE] Query:', query)
         
-        const googleResponse = await fetch(googleUrl);
-        const googleStatus = googleResponse.status;
+        const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=10`
         
-        console.log(`📡 [GOOGLE CSE] Status: ${googleStatus}`);
+        console.log('⏳ [GOOGLE] Iniciando fetch...')
+        const googleResponse = await fetch(googleUrl)
         
-        if (googleResponse.ok) {
-          const googleData = await googleResponse.json();
-          const items = googleData.items || [];
-          
-          console.log(`📊 [GOOGLE CSE] Resultados: ${items.length}`);
-          
-          for (const item of items) {
-            const isLinkedIn = item.link?.includes('linkedin.com/in/');
-            
-            let nome = '';
-            if (isLinkedIn) {
-              nome = item.title?.split(' - ')[0]?.split(' | ')[0]?.trim() || '';
-            } else {
-              const nomeMatch = item.snippet?.match(/(?:Dr\.|Dra\.)?\s*([A-Z][a-zà-ú]+(?:\s+[A-Z][a-zà-ú]+)+)/);
-              nome = nomeMatch?.[1] || '';
-            }
+        console.log('📡 [GOOGLE] Status:', googleResponse.status)
+        
+        const googleText = await googleResponse.text()
+        console.log('📄 [GOOGLE] Primeiros 500 chars:', googleText.substring(0, 500))
 
-            if (!nome || nome.length < 3) continue;
-            
-            const exists = leads.find(l => l.nome_completo?.toLowerCase() === nome.toLowerCase());
-            if (exists) continue;
-
-            leads.push({
-              nome_completo: nome,
-              profissao: profissao,
-              cidade: cidade,
-              estado: estado,
-              linkedin_url: isLinkedIn ? item.link : null,
-              fonte: 'google_cse',
-              fonte_url: item.link,
-              fonte_snippet: item.snippet?.substring(0, 300),
-              query_usada: googleQuery,
-              pipeline_status: 'descoberto',
-              score: isLinkedIn ? 55 : 40,
-              campanha_id,
-              user_id: icp.user_id
-            });
-          }
-        } else {
-          const errorText = await googleResponse.text();
-          console.error(`❌ [GOOGLE CSE] Erro ${googleStatus}:`, errorText.substring(0, 200));
+        let googleData
+        try {
+          googleData = JSON.parse(googleText)
+        } catch (e) {
+          const err = e as Error
+          console.error('❌ [GOOGLE] Erro ao fazer parse JSON:', err.message)
+          throw new Error('Resposta Google não é JSON válido')
         }
-        
-        console.log(`✅ [GOOGLE CSE] Total agora: ${leads.length} leads`);
-      } catch (googleError) {
-        console.error("❌ [GOOGLE CSE] Exception:", googleError);
-      }
-    }
 
-    // ==== MÉTODO 3: APIFY GOOGLE SCRAPER (fallback) ====
-    if (APIFY_TOKEN && leads.length < 10) {
-      console.log("🔍 [APIFY] Iniciando busca...");
-      
-      try {
-        const apifyResponse = await fetch('https://api.apify.com/v2/acts/apify~google-search-scraper/runs?waitForFinish=60', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${APIFY_TOKEN}`
-          },
-          body: JSON.stringify({
-            queries: `site:linkedin.com/in "${profissao}" "${cidade}"`,
-            maxPagesPerQuery: 1,
-            resultsPerPage: 15,
-            languageCode: "pt",
-            countryCode: "br"
-          })
-        });
+        console.log('📊 [GOOGLE] Keys:', Object.keys(googleData))
+        console.log('📊 [GOOGLE] items count:', googleData.items?.length || 0)
 
-        console.log(`📡 [APIFY] Status: ${apifyResponse.status}`);
+        if (googleData.error) {
+          console.error('❌ [GOOGLE] Erro da API:', JSON.stringify(googleData.error))
+        }
 
-        if (apifyResponse.ok) {
-          const runData = await apifyResponse.json();
-          const runId = runData.data?.id;
-
-          if (runId) {
-            console.log(`✅ [APIFY] Run: ${runId}`);
-            
-            const resultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items`, {
-              headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
-            });
-
-            if (resultsResponse.ok) {
-              const apifyResults = await resultsResponse.json();
-              console.log(`📊 [APIFY] Resultados brutos: ${apifyResults.length}`);
-
-              for (const result of apifyResults) {
-                const organicResults = result.organicResults || [];
-                
-                for (const item of organicResults) {
-                  if (!item.url?.includes('linkedin.com/in/')) continue;
-                  
-                  const nome = item.title?.split(' - ')[0]?.split(' | ')[0]?.trim();
-                  if (!nome || nome.length < 3) continue;
-                  
-                  const exists = leads.find(l => l.nome_completo?.toLowerCase() === nome.toLowerCase());
-                  if (exists) continue;
-
-                  leads.push({
-                    nome_completo: nome,
-                    profissao: item.title?.includes('-') ? item.title.split('-')[1]?.trim() : profissao,
-                    cidade: cidade,
-                    estado: estado,
-                    linkedin_url: item.url,
-                    fonte: 'apify_google',
-                    fonte_url: item.url,
-                    fonte_snippet: item.description?.substring(0, 300),
-                    query_usada: `site:linkedin.com/in "${profissao}" "${cidade}"`,
-                    pipeline_status: 'descoberto',
-                    score: 55,
-                    campanha_id,
-                    user_id: icp.user_id
-                  });
-                }
+        if (googleData.items) {
+          for (const item of googleData.items) {
+            if (item.link?.includes('linkedin.com/in/')) {
+              const nome = item.title?.split('-')[0]?.trim()
+              
+              if (nome && nome.length >= 3) {
+                leads.push({
+                  nome_completo: nome,
+                  profissao: profissao,
+                  cidade: cidade,
+                  estado: estado,
+                  linkedin_url: item.link,
+                  fonte: 'google_cse',
+                  fonte_snippet: item.snippet?.substring(0, 300),
+                  query_usada: query,
+                  pipeline_status: 'descoberto',
+                  score: 50,
+                  campanha_id: campanha_id,
+                  user_id: icp.user_id
+                })
+                console.log('✅ [GOOGLE] Lead adicionado:', nome)
               }
             }
           }
-        } else {
-          const errorText = await apifyResponse.text();
-          console.error(`❌ [APIFY] Erro:`, errorText.substring(0, 200));
         }
-        
-        console.log(`✅ [APIFY] Total agora: ${leads.length} leads`);
-      } catch (apifyError) {
-        console.error("❌ [APIFY] Exception:", apifyError);
+
+        console.log(`✅ [GOOGLE] Total de leads via Google: ${leads.length}`)
+
+      } catch (error) {
+        const err = error as Error
+        console.error('❌ [GOOGLE] ERRO:', err.message)
       }
     }
 
-    console.log(`📊 Total final: ${leads.length} leads`);
-
-    if (leads.length === 0) {
-      console.warn("⚠️ Nenhum lead encontrado");
-      return new Response(
-        JSON.stringify({
-          success: false,
-          leads_encontrados: 0,
-          message: "Nenhum lead encontrado. Verifique os logs para detalhes sobre as APIs."
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
-      );
+    // ============ MÉTODO 3: APIFY ============
+    if (leads.length === 0 && APIFY_API_TOKEN) {
+      console.log('🔍 [APIFY] ========== INICIANDO APIFY ==========')
+      console.log('⚠️ [APIFY] SerpAPI/Google falharam, usando Apify como fallback')
     }
 
-    // ==== SALVAR LEADS ====
-    console.log(`💾 Salvando ${leads.length} leads...`);
+    // ============ SALVAR LEADS ============
+    console.log(`💾 [SALVAR] Total de leads para salvar: ${leads.length}`)
 
-    const uniqueLeads = leads.filter((lead, index, self) =>
-      index === self.findIndex(l => l.nome_completo?.toLowerCase() === lead.nome_completo?.toLowerCase())
-    );
+    if (leads.length > 0) {
+      console.log('💾 [SALVAR] Inserindo leads no banco...')
+      
+      const { data: insertData, error: insertError } = await supabase
+        .from('leads_b2c')
+        .insert(leads)
+        .select()
 
-    const { error: insertError } = await supabase
-      .from("leads_b2c")
-      .insert(uniqueLeads);
-    
-    if (insertError) {
-      console.error("❌ Erro ao salvar:", insertError);
-      throw insertError;
-    }
-
-    await supabase
-      .from("campanhas_prospeccao")
-      .update({
-        stats: {
-          descobertos: uniqueLeads.length,
-          enriquecidos: 0,
-          qualificados: 0,
-          enviados: 0,
-          responderam: 0,
-          convertidos: 0
-        }
-      })
-      .eq("id", campanha_id);
-
-    console.log(`🎉 Concluído: ${uniqueLeads.length} leads salvos!`);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        leads_encontrados: uniqueLeads.length,
-        message: `${uniqueLeads.length} leads encontrados!`
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200
+      if (insertError) {
+        console.error('❌ [DB] Erro ao salvar leads:', JSON.stringify(insertError))
+      } else {
+        console.log(`✅ [DB] ${leads.length} leads salvos com sucesso`)
       }
-    );
-    
+
+      // Atualizar stats da campanha
+      await supabase
+        .from('campanhas_prospeccao')
+        .update({
+          stats: {
+            descobertos: leads.length,
+            enriquecidos: 0,
+            qualificados: 0,
+            enviados: 0,
+            responderam: 0,
+            convertidos: 0
+          }
+        })
+        .eq('id', campanha_id)
+    }
+
+    console.log('✅ [FIM] Busca concluída com', leads.length, 'leads')
+
+    return new Response(JSON.stringify({
+      success: true,
+      leads_encontrados: leads.length,
+      fonte: leads[0]?.fonte || 'nenhuma',
+      debug: {
+        serpapi_configured: !!SERPAPI_KEY,
+        google_configured: !!(GOOGLE_API_KEY && GOOGLE_CX),
+        apify_configured: !!APIFY_API_TOKEN
+      }
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
-    console.error("❌ ERRO GERAL:", errorMessage);
+    const err = error as Error
+    console.error('❌ [ERRO FATAL]', err.message)
+    console.error('❌ [STACK]', err.stack)
     
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: errorMessage,
-        leads_encontrados: 0
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500
-      }
-    );
+    return new Response(JSON.stringify({
+      success: false,
+      error: err.message,
+      stack: err.stack
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
-});
+})
