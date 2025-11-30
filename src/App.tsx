@@ -51,6 +51,8 @@ import IAConversas from "./pages/IAConversas";
 import DashboardMetricas from "./pages/DashboardMetricas";
 import LeadsFunil from "./pages/LeadsFunil";
 import Vendedores from "./pages/Vendedores";
+import VendedorLogin from "./pages/VendedorLogin";
+import VendedorPainel from "./pages/VendedorPainel";
 
 const queryClient = new QueryClient();
 
@@ -104,6 +106,8 @@ const App = () => (
             <Route path="/ia-conversas" element={<IAConversas />} />
             <Route path="/leads-funil" element={<LeadsFunil />} />
             <Route path="/vendedores" element={<Vendedores />} />
+            <Route path="/vendedor-login" element={<VendedorLogin />} />
+            <Route path="/vendedor-painel" element={<VendedorPainel />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:slug" element={<MarketplaceProduto />} />
             <Route path="/marketplace-publico" element={<MarketplacePublico />} />

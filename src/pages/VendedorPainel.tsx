@@ -28,7 +28,7 @@ interface VendedorSession {
 
 interface Conversa {
   id: string;
-  phone: string;
+  phone_number: string;
   contact_name: string | null;
   modo_atendimento: string;
   last_message_at: string | null;
@@ -66,7 +66,6 @@ export default function VendedorPainel() {
     setVendedor(vendedorData);
     carregarConversas(vendedorData.id);
 
-    // Polling para novas conversas
     const interval = setInterval(() => {
       carregarConversas(vendedorData.id);
     }, 5000);
@@ -91,12 +90,12 @@ export default function VendedorPainel() {
   const carregarConversas = async (vendedorId: string) => {
     const { data, error } = await supabase
       .from('whatsapp_conversations')
-      .select('*')
+      .select('id, phone_number, contact_name, modo_atendimento, last_message_at, metadata, origem, tipo_contato')
       .eq('vendedor_id', vendedorId)
       .order('last_message_at', { ascending: false });
 
     if (!error && data) {
-      setConversas(data);
+      setConversas(data as Conversa[]);
       setStats({
         total: data.length,
         ia: data.filter(c => c.modo_atendimento === 'ia').length,
@@ -108,12 +107,12 @@ export default function VendedorPainel() {
   const carregarMensagens = async (conversationId: string) => {
     const { data, error } = await supabase
       .from('whatsapp_conversation_messages')
-      .select('*')
+      .select('id, content, role, created_at')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true });
 
     if (!error && data) {
-      setMensagens(data);
+      setMensagens(data as Mensagem[]);
     }
   };
 
@@ -148,10 +147,9 @@ export default function VendedorPainel() {
 
     setEnviando(true);
     try {
-      // Enviar via Wuzapi
       const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
         body: {
-          phone: conversaSelecionada.phone,
+          phone: conversaSelecionada.phone_number,
           message: inputMensagem,
           userId: vendedor.id
         }
@@ -159,7 +157,6 @@ export default function VendedorPainel() {
 
       if (sendError) throw sendError;
 
-      // Salvar mensagem no banco
       await supabase.from('whatsapp_conversation_messages').insert({
         conversation_id: conversaSelecionada.id,
         content: inputMensagem,
@@ -167,7 +164,6 @@ export default function VendedorPainel() {
         metadata: { sent_by_vendedor: vendedor.nome }
       });
 
-      // Atualizar timestamp da conversa
       await supabase
         .from('whatsapp_conversations')
         .update({ last_message_at: new Date().toISOString() })
@@ -202,7 +198,6 @@ export default function VendedorPainel() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b bg-card px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -239,9 +234,7 @@ export default function VendedorPainel() {
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex h-[calc(100vh-73px)]">
-        {/* Lista de Conversas */}
         <div className="w-80 border-r bg-card">
           <div className="p-4 border-b">
             <h2 className="font-semibold flex items-center gap-2">
@@ -269,16 +262,16 @@ export default function VendedorPainel() {
                     <div className="flex items-center gap-2">
                       <Avatar className="w-8 h-8">
                         <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                          {(conversa.contact_name || conversa.phone).charAt(0).toUpperCase()}
+                          {(conversa.contact_name || conversa.phone_number).charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div>
                         <p className="font-medium text-sm">
-                          {conversa.contact_name || formatPhone(conversa.phone)}
+                          {conversa.contact_name || formatPhone(conversa.phone_number)}
                         </p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <Phone className="w-3 h-3" />
-                          {formatPhone(conversa.phone)}
+                          {formatPhone(conversa.phone_number)}
                         </p>
                       </div>
                     </div>
@@ -305,24 +298,22 @@ export default function VendedorPainel() {
           </ScrollArea>
         </div>
 
-        {/* Área de Chat */}
         <div className="flex-1 flex flex-col">
           {conversaSelecionada ? (
             <>
-              {/* Header do Chat */}
               <div className="p-4 border-b bg-card flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Avatar>
                     <AvatarFallback className="bg-primary/10 text-primary">
-                      {(conversaSelecionada.contact_name || conversaSelecionada.phone).charAt(0).toUpperCase()}
+                      {(conversaSelecionada.contact_name || conversaSelecionada.phone_number).charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div>
                     <p className="font-semibold">
-                      {conversaSelecionada.contact_name || formatPhone(conversaSelecionada.phone)}
+                      {conversaSelecionada.contact_name || formatPhone(conversaSelecionada.phone_number)}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {formatPhone(conversaSelecionada.phone)}
+                      {formatPhone(conversaSelecionada.phone_number)}
                     </p>
                   </div>
                 </div>
@@ -342,7 +333,6 @@ export default function VendedorPainel() {
                 </div>
               </div>
 
-              {/* Mensagens */}
               <ScrollArea className="flex-1 p-4">
                 <div className="space-y-4">
                   {mensagens.map(msg => (
@@ -373,7 +363,6 @@ export default function VendedorPainel() {
                 </div>
               </ScrollArea>
 
-              {/* Input de Mensagem */}
               {conversaSelecionada.modo_atendimento === 'humano' && (
                 <div className="p-4 border-t bg-card">
                   <div className="flex gap-2">
