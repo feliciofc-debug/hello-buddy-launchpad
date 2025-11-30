@@ -1237,7 +1237,7 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
   if (loading) return <div className="p-6">Carregando...</div>;
 
   return (
-    <div className="p-6 h-screen overflow-hidden bg-background">
+    <div className="p-6 min-h-screen overflow-auto bg-background">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" onClick={() => campanhaFiltro ? navigate('/campanhas-prospeccao') : navigate('/dashboard')}>
