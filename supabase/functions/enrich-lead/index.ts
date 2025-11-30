@@ -1,357 +1,256 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-// Cliente criado dentro das funções para usar SERVICE_ROLE_KEY
-
-interface EnrichRequest {
-  lead_id: string;
-  lead_tipo: "b2c" | "b2b";
 }
 
-// ===============================
-// SERVIÇOS DE ENRIQUECIMENTO
-// ===============================
-
-// 1. Buscar LinkedIn via Google Custom Search
-async function findLinkedIn(nome: string, profissao?: string): Promise<string | null> {
-  try {
-    const query = profissao 
-      ? `${nome} ${profissao} site:linkedin.com/in`
-      : `${nome} site:linkedin.com/in`;
-    
-    const response = await fetch(
-      `https://www.googleapis.com/customsearch/v1?key=${Deno.env.get("GOOGLE_API_KEY")}&cx=${Deno.env.get("GOOGLE_CX")}&q=${encodeURIComponent(query)}`
-    );
-    
-    const data = await response.json();
-    
-    if (data.items && data.items.length > 0) {
-      const linkedinUrl = data.items[0].link;
-      return linkedinUrl;
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Erro ao buscar LinkedIn:", error);
-    return null;
-  }
-}
-
-// 2. Buscar Instagram
-async function findInstagram(nome: string, cidade?: string): Promise<string | null> {
-  try {
-    const query = cidade 
-      ? `${nome} ${cidade} site:instagram.com`
-      : `${nome} site:instagram.com`;
-    
-    const response = await fetch(
-      `https://www.googleapis.com/customsearch/v1?key=${Deno.env.get("GOOGLE_API_KEY")}&cx=${Deno.env.get("GOOGLE_CX")}&q=${encodeURIComponent(query)}`
-    );
-    
-    const data = await response.json();
-    
-    if (data.items && data.items.length > 0) {
-      const instagramUrl = data.items[0].link;
-      const match = instagramUrl.match(/instagram\.com\/([^\/\?]+)/);
-      if (match) {
-        return match[1];
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Erro ao buscar Instagram:", error);
-    return null;
-  }
-}
-
-// 3. Validar e formatar telefone/WhatsApp
-function formatPhoneNumber(phone: string): { telefone: string; whatsapp: string | null } {
-  const clean = phone.replace(/\D/g, "");
-  const isCelular = clean.length === 11 && clean[2] === "9";
-  
-  return {
-    telefone: phone,
-    whatsapp: isCelular ? clean : null,
-  };
-}
-
-// 4. Buscar email
-async function findEmail(nome: string, profissao?: string, cidade?: string): Promise<string | null> {
-  try {
-    const query = `${nome} email ${profissao || ""} ${cidade || ""}`;
-    
-    const response = await fetch(
-      `https://www.googleapis.com/customsearch/v1?key=${Deno.env.get("GOOGLE_API_KEY")}&cx=${Deno.env.get("GOOGLE_CX")}&q=${encodeURIComponent(query)}`
-    );
-    
-    const data = await response.json();
-    
-    if (data.items && data.items.length > 0) {
-      const snippet = data.items[0].snippet;
-      const emailMatch = snippet.match(/[\w.-]+@[\w.-]+\.\w+/);
-      if (emailMatch) {
-        return emailMatch[0];
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Erro ao buscar email:", error);
-    return null;
-  }
-}
-
-// 5. Enriquecer dados de empresa via CNPJ
-async function enrichCNPJ(cnpj: string): Promise<any> {
-  try {
-    const cleanCNPJ = cnpj.replace(/\D/g, "");
-    
-    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleanCNPJ}`);
-    
-    if (!response.ok) return null;
-    
-    const data = await response.json();
-    
-    return {
-      razao_social: data.razao_social,
-      nome_fantasia: data.nome_fantasia,
-      capital_social: data.capital_social,
-      situacao: data.situacao_cadastral,
-      data_constituicao: data.data_inicio_atividade,
-      natureza_juridica: data.natureza_juridica,
-      porte: data.porte,
-      endereco: `${data.logradouro}, ${data.numero} - ${data.bairro}`,
-      cidade: data.municipio,
-      estado: data.uf,
-      telefone: data.ddd_telefone_1,
-      email: data.email,
-      setor: data.cnae_fiscal_descricao,
-    };
-  } catch (error) {
-    console.error("Erro ao enriquecer CNPJ:", error);
-    return null;
-  }
-}
-
-// 6. Detectar sinais de poder aquisitivo (B2C)
-function detectPowerSignals(enrichmentData: any): string[] {
-  const signals: string[] = [];
-  
-  if (enrichmentData.linkedin_url) {
-    signals.push("Presença no LinkedIn");
-  }
-  
-  if (enrichmentData.instagram_username) {
-    signals.push("Ativo no Instagram");
-  }
-  
-  return signals;
-}
-
-// ===============================
-// FUNÇÃO PRINCIPAL DE ENRIQUECIMENTO
-// ===============================
-
-async function enrichLeadB2C(leadId: string) {
-  console.log("🔍 Enriquecendo lead B2C:", leadId);
-  
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") || "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
-  );
-  
-  const { data: lead, error } = await supabase
-    .from("leads_b2c")
-    .select("*")
-    .eq("id", leadId)
-    .maybeSingle();
-  
-  if (error || !lead) {
-    console.error("Erro ao buscar lead B2C:", error);
-    throw new Error("Lead B2C não encontrado: " + (error?.message || leadId));
-  }
-  
-  const enrichment: any = {};
-  
-  if (!lead.linkedin_url) {
-    const linkedin = await findLinkedIn(lead.nome_completo, lead.profissao);
-    if (linkedin) {
-      enrichment.linkedin_url = linkedin;
-      console.log("✅ LinkedIn encontrado:", linkedin);
-    }
-  }
-  
-  if (!lead.instagram_username) {
-    const instagram = await findInstagram(lead.nome_completo, lead.cidade);
-    if (instagram) {
-      enrichment.instagram_username = instagram;
-      console.log("✅ Instagram encontrado:", instagram);
-    }
-  }
-  
-  if (!lead.email) {
-    const email = await findEmail(lead.nome_completo, lead.profissao, lead.cidade);
-    if (email) {
-      enrichment.email = email;
-      console.log("✅ Email encontrado:", email);
-    }
-  }
-  
-  if (lead.telefone && !lead.whatsapp) {
-    const phone = formatPhoneNumber(lead.telefone);
-    if (phone.whatsapp) {
-      enrichment.whatsapp = phone.whatsapp;
-      console.log("✅ WhatsApp validado:", phone.whatsapp);
-    }
-  }
-  
-  const signals = detectPowerSignals({ ...lead, ...enrichment });
-  if (signals.length > 0) {
-    enrichment.sinais_poder_aquisitivo = signals;
-  }
-  
-  const { error: updateError } = await supabase
-    .from("leads_b2c")
-    .update({
-      ...enrichment,
-      enrichment_data: enrichment,
-      enriched_at: new Date().toISOString(),
-      pipeline_status: "enriquecido",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", leadId);
-  
-  if (updateError) {
-    throw updateError;
-  }
-  
-  console.log("✅ Lead B2C enriquecido com sucesso");
-  
-  return {
-    lead_id: leadId,
-    enrichment,
-    status: "success",
-  };
-}
-
-async function enrichLeadB2B(leadId: string) {
-  console.log("🔍 Enriquecendo lead B2B:", leadId);
-  
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") || "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
-  );
-  
-  const { data: lead, error } = await supabase
-    .from("leads_b2b")
-    .select("*")
-    .eq("id", leadId)
-    .maybeSingle();
-  
-  if (error || !lead) {
-    console.error("Erro ao buscar lead B2B:", error);
-    throw new Error("Lead B2B não encontrado: " + (error?.message || leadId));
-  }
-  
-  const cnpjData = await enrichCNPJ(lead.cnpj);
-  
-  if (!cnpjData) {
-    throw new Error("Não foi possível enriquecer CNPJ");
-  }
-  
-  let decisor = null;
-  if (cnpjData.razao_social) {
-    const linkedin = await findLinkedIn(
-      `CEO ${cnpjData.razao_social}`,
-      "CEO"
-    );
-    if (linkedin) {
-      decisor = {
-        linkedin_url: linkedin,
-        cargo: "CEO",
-      };
-      console.log("✅ Decisor encontrado no LinkedIn");
-    }
-  }
-  
-  const { error: updateError } = await supabase
-    .from("leads_b2b")
-    .update({
-      ...cnpjData,
-      contato_linkedin: decisor?.linkedin_url,
-      contato_cargo: decisor?.cargo,
-      enrichment_data: { ...cnpjData, decisor },
-      enriched_at: new Date().toISOString(),
-      pipeline_status: "enriquecido",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", leadId);
-  
-  if (updateError) {
-    throw updateError;
-  }
-  
-  console.log("✅ Lead B2B enriquecido com sucesso");
-  
-  return {
-    lead_id: leadId,
-    enrichment: { ...cnpjData, decisor },
-    status: "success",
-  };
-}
-
-// ===============================
-// HANDLER
-// ===============================
+const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY')
+const GOOGLE_CX = Deno.env.get('GOOGLE_CX')
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
-  if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
-  }
+  console.log('🔍 [ENRICH] Iniciando enriquecimento completo')
   
   try {
-    const { lead_id, lead_tipo }: EnrichRequest = await req.json();
-    
-    console.log(`🚀 Iniciando enriquecimento: ${lead_tipo.toUpperCase()} - ${lead_id}`);
-    
-    let result;
-    if (lead_tipo === "b2c") {
-      result = await enrichLeadB2C(lead_id);
-    } else if (lead_tipo === "b2b") {
-      result = await enrichLeadB2B(lead_id);
-    } else {
-      return new Response(
-        JSON.stringify({ error: "Tipo inválido" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const body = await req.json()
+    const leadId = body.leadId || body.lead_id
+    const leadTipo = body.leadTipo || body.lead_tipo
+
+    if (!leadId || !leadTipo) {
+      throw new Error('leadId e leadTipo são obrigatórios')
     }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    )
+
+    const tabela = leadTipo === 'b2c' ? 'leads_b2c' : 'leads_b2b'
+    const { data: lead, error: leadError } = await supabase
+      .from(tabela)
+      .select('*')
+      .eq('id', leadId)
+      .single()
+
+    if (leadError || !lead) {
+      console.error('❌ [LEAD] Erro:', leadError)
+      throw new Error('Lead não encontrado')
+    }
+
+    console.log('✅ [LEAD]', lead.nome_completo || lead.razao_social)
+
+    const enriched: Record<string, any> = {
+      telefone: lead.telefone || null,
+      whatsapp: lead.whatsapp || null,
+      email: lead.email || null,
+      instagram_username: lead.instagram_username || null,
+      instagram_url: null,
+      facebook_url: lead.facebook_url || null,
+      twitter_url: null,
+      site_consultorio: lead.site_url || null
+    }
+
+    const nome = lead.nome_completo || lead.razao_social || ''
+    const profissao = lead.profissao || lead.setor || ''
+    const cidade = lead.cidade || ''
+
+    // 1. BUSCAR TELEFONE + EMAIL + SITE
+    console.log('📞 [ENRICH] Buscando contatos...')
     
-    return new Response(
-      JSON.stringify(result),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
+    const queryContatos = `"${nome}" ${profissao} ${cidade} telefone contato`
+    
+    if (GOOGLE_API_KEY && GOOGLE_CX) {
+      try {
+        const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(queryContatos)}&num=5`
+        const res = await fetch(url)
+        const data = await res.json()
+
+        if (data.items) {
+          for (const item of data.items) {
+            const text = `${item.title || ''} ${item.snippet || ''}`.toLowerCase()
+            
+            // TELEFONE
+            if (!enriched.telefone) {
+              const phoneRegex = /(?:\+55|55)?[\s.-]?\(?([1-9]{2})\)?[\s.-]?(?:9[\s.-]?)?([0-9]{4})[\s.-]?([0-9]{4})/g
+              const phones = text.match(phoneRegex)
+              
+              if (phones) {
+                const clean = phones[0].replace(/\D/g, '')
+                if (clean.length >= 10) {
+                  enriched.telefone = clean.startsWith('55') ? `+${clean}` : `+55${clean}`
+                  enriched.whatsapp = enriched.telefone
+                  console.log('✅ [TEL]', enriched.telefone)
+                }
+              }
+            }
+
+            // EMAIL
+            if (!enriched.email) {
+              const emailRegex = /[\w.-]+@[\w.-]+\.\w+/g
+              const emails = text.match(emailRegex)
+              if (emails) {
+                enriched.email = emails[0]
+                console.log('✅ [EMAIL]', enriched.email)
+              }
+            }
+
+            // SITE
+            if (!enriched.site_consultorio && item.link && 
+                !item.link.includes('linkedin') && 
+                !item.link.includes('instagram') &&
+                !item.link.includes('facebook') &&
+                !item.link.includes('twitter')) {
+              enriched.site_consultorio = item.link
+              console.log('✅ [SITE]', item.link)
+            }
+          }
+        }
+      } catch (e) {
+        console.error('❌ [CONTATOS] Erro:', e)
       }
-    );
+    }
+
+    // 2. BUSCAR INSTAGRAM
+    console.log('📷 [ENRICH] Buscando Instagram...')
+    
+    if (GOOGLE_API_KEY && GOOGLE_CX && !enriched.instagram_username) {
+      try {
+        const queryInsta = `"${nome}" instagram ${profissao}`
+        const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(queryInsta)}&num=5`
+        const res = await fetch(url)
+        const data = await res.json()
+
+        if (data.items) {
+          for (const item of data.items) {
+            if (item.link?.includes('instagram.com/')) {
+              const username = item.link.split('instagram.com/')[1]?.split('/')[0]?.split('?')[0]
+              if (username && username.length > 0 && !username.includes('explore') && !username.includes('p')) {
+                enriched.instagram_username = username
+                enriched.instagram_url = `https://instagram.com/${username}`
+                console.log('✅ [INSTA]', username)
+                break
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('❌ [INSTA] Erro:', e)
+      }
+    }
+
+    // 3. BUSCAR FACEBOOK
+    console.log('📘 [ENRICH] Buscando Facebook...')
+    
+    if (GOOGLE_API_KEY && GOOGLE_CX && !enriched.facebook_url) {
+      try {
+        const queryFb = `"${nome}" facebook ${profissao}`
+        const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(queryFb)}&num=5`
+        const res = await fetch(url)
+        const data = await res.json()
+
+        if (data.items) {
+          for (const item of data.items) {
+            if (item.link?.includes('facebook.com/')) {
+              enriched.facebook_url = item.link
+              console.log('✅ [FB]', item.link)
+              break
+            }
+          }
+        }
+      } catch (e) {
+        console.error('❌ [FB] Erro:', e)
+      }
+    }
+
+    // 4. BUSCAR TWITTER/X
+    console.log('🐦 [ENRICH] Buscando Twitter...')
+    
+    if (GOOGLE_API_KEY && GOOGLE_CX && !enriched.twitter_url) {
+      try {
+        const queryTwitter = `"${nome}" twitter OR x.com ${profissao}`
+        const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(queryTwitter)}&num=3`
+        const res = await fetch(url)
+        const data = await res.json()
+
+        if (data.items) {
+          for (const item of data.items) {
+            if (item.link?.includes('twitter.com/') || item.link?.includes('x.com/')) {
+              enriched.twitter_url = item.link
+              console.log('✅ [TWITTER]', item.link)
+              break
+            }
+          }
+        }
+      } catch (e) {
+        console.error('❌ [TWITTER] Erro:', e)
+      }
+    }
+
+    // 5. CALCULAR SCORE BONUS
+    let bonus = 0
+    if (enriched.telefone && !lead.telefone) bonus += 25
+    if (enriched.email && !lead.email) bonus += 20
+    if (enriched.instagram_username && !lead.instagram_username) bonus += 15
+    if (enriched.facebook_url && !lead.facebook_url) bonus += 10
+    if (enriched.twitter_url) bonus += 5
+    if (enriched.site_consultorio && !lead.site_url) bonus += 15
+
+    const novoScore = Math.min((lead.score || 50) + bonus, 100)
+    const novoPipeline = novoScore >= 70 ? 'qualificado' : 'enriquecido'
+
+    // 6. ATUALIZAR LEAD NO BANCO
+    const updateData: Record<string, any> = {
+      score: novoScore,
+      pipeline_status: novoPipeline,
+      enriched_at: new Date().toISOString(),
+      whatsapp_verificado: !!enriched.whatsapp,
+      enrichment_data: enriched
+    }
+
+    // Só atualiza campos que encontramos e que estavam vazios
+    if (enriched.telefone && !lead.telefone) updateData.telefone = enriched.telefone
+    if (enriched.whatsapp && !lead.whatsapp) updateData.whatsapp = enriched.whatsapp
+    if (enriched.email && !lead.email) updateData.email = enriched.email
+    if (enriched.instagram_username && !lead.instagram_username) updateData.instagram_username = enriched.instagram_username
+    if (enriched.facebook_url && !lead.facebook_url) updateData.facebook_url = enriched.facebook_url
+    if (enriched.twitter_url) updateData.twitter_url = enriched.twitter_url
+    if (enriched.site_consultorio && !lead.site_url) updateData.site_url = enriched.site_consultorio
+
+    const { error: updateError } = await supabase
+      .from(tabela)
+      .update(updateData)
+      .eq('id', leadId)
+
+    if (updateError) {
+      console.error('❌ [UPDATE] Erro:', updateError)
+      throw updateError
+    }
+
+    console.log('✅ [FINAL] Score:', novoScore, 'Bonus:', bonus, 'Status:', novoPipeline)
+
+    return new Response(JSON.stringify({
+      success: true,
+      dados_encontrados: enriched,
+      bonus_aplicado: bonus,
+      score_novo: novoScore,
+      pipeline_status: novoPipeline
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
+
   } catch (error) {
-    console.error("❌ Erro ao enriquecer lead:", error);
-    const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
-    return new Response(
-      JSON.stringify({ 
-        error: errorMessage,
-        status: "failed"
-      }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    console.error('❌ [ERRO]', error)
+    return new Response(JSON.stringify({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erro desconhecido'
+    }), { 
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
-});
+})

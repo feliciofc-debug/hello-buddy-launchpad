@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink, History, Plus, FileText, Circle, Loader2, Zap, Target } from 'lucide-react';
+import { Phone, Mail, MessageSquare, TrendingUp, ArrowLeft, Calendar, ExternalLink, History, Plus, FileText, Circle, Loader2, Zap, Target, Sparkles, RefreshCw, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
@@ -41,6 +41,8 @@ interface Lead {
   linkedin_url?: string;
   instagram_username?: string;
   facebook_url?: string;
+  twitter_url?: string;
+  site_url?: string;
   especialidade?: string;
   whatsapp_status?: string;
   fonte?: string;
@@ -50,6 +52,7 @@ interface Lead {
   validado_em?: string;
   validado_por?: string;
   motivo_invalidacao?: string;
+  enriched_at?: string;
 }
 
 interface Produto {
@@ -438,6 +441,16 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
   const [mensagensGeradas, setMensagensGeradas] = useState<Record<string, { texto: string; strategy?: any; aprovado: boolean; error?: boolean }>>({});
   const [processandoMensagens, setProcessandoMensagens] = useState(false);
   const [quantidadeLeads, setQuantidadeLeads] = useState(10);
+  
+  // NOVO: Estados para enriquecimento e posts IA
+  const [enriquecendoLead, setEnriquecendoLead] = useState(false);
+  const [enriquecendoLote, setEnriquecendoLote] = useState(false);
+  const [gerandoPost, setGerandoPost] = useState(false);
+  const [postGerado, setPostGerado] = useState<{ post: string; rede: string } | null>(null);
+  const [redeSocialSelecionada, setRedeSocialSelecionada] = useState<string>('LinkedIn');
+  const [objetivoPost, setObjetivoPost] = useState<string>('gerar_curiosidade');
+  const [produtoDescricao, setProdutoDescricao] = useState('AMZ Ofertas - Sistema de Automação de Marketing');
+  const [copiado, setCopiado] = useState(false);
 
   // QUALIFICAÇÃO ATIVA + ABORDAGEM WHATSAPP COM APROVAÇÃO
   const handleQualificarEAbordar = async (lead: Lead) => {
@@ -1010,6 +1023,122 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
     }
   };
 
+  // ENRIQUECER LEAD INDIVIDUAL
+  const handleEnriquecerLead = async (lead: Lead) => {
+    setEnriquecendoLead(true);
+    
+    try {
+      toast.loading('🔍 Enriquecendo lead...', { id: 'enrich' });
+      
+      const { data, error } = await supabase.functions.invoke('enrich-lead', {
+        body: { 
+          leadId: lead.id,
+          leadTipo: lead.tipo
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success(`✅ Lead enriquecido! Score: ${data.score_novo} (+${data.bonus_aplicado})`, { id: 'enrich' });
+      
+      loadLeads(campanhaFiltro);
+      setLeadSelecionado(null);
+
+    } catch (error: any) {
+      console.error('❌ Erro ao enriquecer:', error);
+      toast.error('Erro: ' + error.message, { id: 'enrich' });
+    } finally {
+      setEnriquecendoLead(false);
+    }
+  };
+
+  // ENRIQUECER TODOS OS LEADS (LOTE)
+  const handleEnriquecerLote = async () => {
+    const todosLeads = [...leadsB2C.map(l => ({ ...l, tipo: 'b2c' as const })), ...leadsB2B.map(l => ({ ...l, tipo: 'b2b' as const }))];
+    const leadsParaEnriquecer = todosLeads.filter(l => 
+      l.pipeline_status === 'descoberto' && 
+      !l.enriched_at
+    ).slice(0, 20);
+
+    if (leadsParaEnriquecer.length === 0) {
+      toast.error('Nenhum lead para enriquecer');
+      return;
+    }
+
+    setEnriquecendoLote(true);
+    let sucesso = 0;
+    let erros = 0;
+
+    for (const lead of leadsParaEnriquecer) {
+      try {
+        toast.loading(`Enriquecendo ${sucesso + 1}/${leadsParaEnriquecer.length}...`, { id: 'enrich-lote' });
+        
+        await supabase.functions.invoke('enrich-lead', {
+          body: { 
+            leadId: lead.id,
+            leadTipo: lead.tipo
+          }
+        });
+        
+        sucesso++;
+        await new Promise(r => setTimeout(r, 2000)); // Delay entre requests
+
+      } catch (error) {
+        console.error('Erro ao enriquecer:', lead.id, error);
+        erros++;
+      }
+    }
+
+    toast.success(`✅ ${sucesso} enriquecidos | ${erros > 0 ? `❌ ${erros} erros` : ''}`, { id: 'enrich-lote' });
+    setEnriquecendoLote(false);
+    loadLeads(campanhaFiltro);
+  };
+
+  // GERAR POST PARA REDE SOCIAL COM IA
+  const handleGerarPostIA = async () => {
+    if (!leadSelecionado) return;
+    
+    setGerandoPost(true);
+    setPostGerado(null);
+    
+    try {
+      toast.loading(`🤖 Gerando post para ${redeSocialSelecionada}...`, { id: 'post' });
+      
+      const { data, error } = await supabase.functions.invoke('generate-social-post', {
+        body: {
+          lead: leadSelecionado,
+          produto: produtoDescricao,
+          objetivo: objetivoPost,
+          redeSocial: redeSocialSelecionada
+        }
+      });
+
+      if (error) throw error;
+
+      setPostGerado({
+        post: data.post,
+        rede: data.rede
+      });
+
+      toast.success(`✅ Post gerado! ${data.caracteres} caracteres`, { id: 'post' });
+
+    } catch (error: any) {
+      console.error('❌ Erro ao gerar post:', error);
+      toast.error('Erro: ' + error.message, { id: 'post' });
+    } finally {
+      setGerandoPost(false);
+    }
+  };
+
+  // COPIAR POST
+  const handleCopiarPost = () => {
+    if (!postGerado?.post) return;
+    navigator.clipboard.writeText(postGerado.post);
+    setCopiado(true);
+    toast.success('Post copiado!');
+    setTimeout(() => setCopiado(false), 2000);
+  };
+
   // VALIDAR/INVALIDAR LEAD MANUALMENTE
   const handleValidarLead = async (leadId: string, isValid: boolean) => {
     if (!leadSelecionado) return;
@@ -1129,6 +1258,19 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
         </div>
         
         <div className="flex items-center gap-4">
+          <Button 
+            variant="outline"
+            onClick={handleEnriquecerLote}
+            disabled={enriquecendoLote}
+          >
+            {enriquecendoLote ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 mr-2" />
+            )}
+            🔍 Enriquecer Lote
+          </Button>
+          
           <Button 
             variant="secondary"
             onClick={handleQualificarLote}
@@ -1556,7 +1698,129 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                 </div>
               </Card>
 
-              {/* SEÇÃO 3: VALIDAÇÃO MANUAL */}
+              {/* SEÇÃO 3: ENRIQUECIMENTO E POSTS IA */}
+              <Card className="p-4 bg-purple-50 dark:bg-purple-950/30">
+                <h3 className="font-bold mb-3 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  Enriquecimento + Posts IA
+                </h3>
+                
+                <div className="space-y-4">
+                  {/* Botão Enriquecer */}
+                  <Button 
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => handleEnriquecerLead(leadSelecionado)}
+                    disabled={enriquecendoLead}
+                  >
+                    {enriquecendoLead ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Enriquecendo...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        🔍 Enriquecer (Buscar Telefone, Email, Redes)
+                      </>
+                    )}
+                  </Button>
+
+                  {/* Gerador de Posts IA */}
+                  <div className="border-t pt-4 space-y-3">
+                    <p className="text-sm font-semibold">📱 Gerar Post para Redes Sociais</p>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground">Rede Social</label>
+                        <Select value={redeSocialSelecionada} onValueChange={setRedeSocialSelecionada}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="LinkedIn">LinkedIn</SelectItem>
+                            <SelectItem value="Instagram">Instagram</SelectItem>
+                            <SelectItem value="Facebook">Facebook</SelectItem>
+                            <SelectItem value="Twitter">Twitter/X</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div>
+                        <label className="text-xs text-muted-foreground">Objetivo</label>
+                        <Select value={objetivoPost} onValueChange={setObjetivoPost}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="gerar_curiosidade">Gerar Curiosidade</SelectItem>
+                            <SelectItem value="agendar_demo">Agendar Demo</SelectItem>
+                            <SelectItem value="networking">Networking</SelectItem>
+                            <SelectItem value="branding">Branding</SelectItem>
+                            <SelectItem value="educacao">Educar</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-muted-foreground">Seu Produto/Serviço</label>
+                      <Input 
+                        value={produtoDescricao}
+                        onChange={(e) => setProdutoDescricao(e.target.value)}
+                        placeholder="Ex: Sistema de CRM para vendas"
+                      />
+                    </div>
+
+                    <Button 
+                      className="w-full"
+                      onClick={handleGerarPostIA}
+                      disabled={gerandoPost}
+                    >
+                      {gerandoPost ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Gerando post...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          🤖 Gerar Post com IA
+                        </>
+                      )}
+                    </Button>
+
+                    {/* Post Gerado */}
+                    {postGerado && (
+                      <div className="mt-4 p-4 bg-background rounded-lg border">
+                        <div className="flex items-center justify-between mb-2">
+                          <Badge variant="secondary">{postGerado.rede}</Badge>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={handleCopiarPost}
+                          >
+                            {copiado ? (
+                              <>
+                                <Check className="w-3 h-3 mr-1" />
+                                Copiado!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3 mr-1" />
+                                Copiar
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{postGerado.post}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+
+              {/* SEÇÃO 4: VALIDAÇÃO MANUAL */}
               <Card className="p-4 bg-yellow-50 dark:bg-yellow-950/30">
                 <h3 className="font-bold mb-3">✅ Validação Manual</h3>
                 
