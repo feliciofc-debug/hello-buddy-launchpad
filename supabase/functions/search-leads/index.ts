@@ -44,201 +44,240 @@ serve(async (req) => {
 
     console.log("🔍 Buscando leads REAIS para:", { profissao, cidade, estado });
 
-    // ==== BUSCAR LEADS REAIS VIA APIFY LINKEDIN ====
     const APIFY_TOKEN = Deno.env.get('APIFY_API_KEY');
-    
-    if (!APIFY_TOKEN) {
-      console.error("❌ APIFY_API_KEY não configurada");
-      throw new Error("APIFY_API_KEY não configurada. Configure no Supabase.");
-    }
+    const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
+    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY');
+    const GOOGLE_CX = Deno.env.get('GOOGLE_CX');
 
-    console.log("🔗 Iniciando busca no LinkedIn via Apify...");
-
+    let leads: any[] = [];
     const searchQuery = `${profissao} ${cidade}`;
-    const maxResults = 30;
 
-    // Usar actor válido: harvestapi/linkedin-profile-search
-    const runResponse = await fetch('https://api.apify.com/v2/acts/harvestapi~linkedin-profile-search/runs?waitForFinish=300', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${APIFY_TOKEN}`
-      },
-      body: JSON.stringify({
-        currentJobTitles: [profissao],
-        locations: [`${cidade}, ${estado}, Brazil`],
-        startPage: 1,
-        takePages: 3
-      })
-    });
-
-    let linkedinResults: any[] = [];
-
-    if (!runResponse.ok) {
-      const errorText = await runResponse.text();
-      console.warn('⚠️ LinkedIn via harvestapi falhou:', runResponse.status, errorText);
+    // ==== MÉTODO 1: SERPAPI (Google Search) ====
+    if (SERPAPI_KEY && leads.length === 0) {
+      console.log("🔍 Tentando SerpAPI Google Search...");
       
-      // Tentar actor alternativo: powerai/linkedin-peoples-search-scraper
-      console.log("🔄 Tentando actor alternativo...");
-      
-      const altResponse = await fetch('https://api.apify.com/v2/acts/powerai~linkedin-peoples-search-scraper/runs?waitForFinish=300', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${APIFY_TOKEN}`
-        },
-        body: JSON.stringify({
-          title: profissao,
-          industry: "healthcare",
-          maxResults: maxResults
-        })
-      });
+      try {
+        const serpQueries = [
+          `site:linkedin.com/in "${profissao}" "${cidade}"`,
+          `site:instagram.com "${profissao}" "${cidade}" consultorio`,
+          `"${profissao}" "${cidade}" telefone contato`
+        ];
 
-      if (altResponse.ok) {
-        const altRunData = await altResponse.json();
-        const altRunId = altRunData.data?.id;
-        
-        if (altRunId) {
-          const altResultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${altRunId}/dataset/items`, {
-            headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
-          });
-          linkedinResults = await altResultsResponse.json();
-          console.log(`📊 LinkedIn (alt): ${linkedinResults.length} perfis encontrados`);
+        for (const query of serpQueries) {
+          const serpUrl = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&location=Brazil&hl=pt&gl=br&num=20&api_key=${SERPAPI_KEY}`;
+          
+          const serpResponse = await fetch(serpUrl);
+          
+          if (serpResponse.ok) {
+            const serpData = await serpResponse.json();
+            const results = serpData.organic_results || [];
+            
+            console.log(`📊 SerpAPI: ${results.length} resultados para: ${query.substring(0, 50)}...`);
+            
+            for (const result of results) {
+              // Extrair dados do resultado
+              const isLinkedIn = result.link?.includes('linkedin.com/in/');
+              const isInstagram = result.link?.includes('instagram.com/');
+              
+              // Extrair nome do título ou snippet
+              let nome = '';
+              if (isLinkedIn) {
+                nome = result.title?.split(' - ')[0]?.split(' | ')[0]?.trim() || '';
+              } else if (isInstagram) {
+                nome = result.title?.replace('@', '')?.split(' ')[0] || '';
+              } else {
+                // Tentar extrair nome de outros resultados
+                const nomeMatch = result.snippet?.match(/(?:Dr\.|Dra\.|Dr|Dra)?\s*([A-Z][a-zà-ú]+(?:\s+[A-Z][a-zà-ú]+)+)/);
+                nome = nomeMatch?.[1] || result.title?.split(' - ')[0] || '';
+              }
+
+              if (!nome || nome.length < 3) continue;
+
+              // Verificar se já existe
+              const exists = leads.find(l => l.nome_completo.toLowerCase() === nome.toLowerCase());
+              if (exists) {
+                // Merge dados
+                if (isLinkedIn) exists.linkedin_url = result.link;
+                if (isInstagram) exists.instagram_username = result.link?.split('instagram.com/')[1]?.split('/')[0];
+                exists.score = (exists.score || 40) + 5;
+                continue;
+              }
+
+              // Extrair telefone do snippet
+              const telefoneMatch = result.snippet?.match(/(?:\+55\s?)?(?:\(?\d{2}\)?\s?)?\d{4,5}[-.\s]?\d{4}/);
+              
+              // Extrair email do snippet
+              const emailMatch = result.snippet?.match(/[\w.-]+@[\w.-]+\.\w+/);
+
+              leads.push({
+                nome_completo: nome,
+                profissao: profissao,
+                especialidade: result.snippet?.includes('especialista') ? result.snippet.substring(0, 100) : null,
+                cidade: cidade,
+                estado: estado,
+                linkedin_url: isLinkedIn ? result.link : null,
+                instagram_username: isInstagram ? result.link?.split('instagram.com/')[1]?.split('/')[0] : null,
+                email: emailMatch?.[0] || null,
+                telefone: telefoneMatch?.[0] || null,
+                site_url: !isLinkedIn && !isInstagram ? result.link : null,
+                fonte: isLinkedIn ? 'linkedin_google' : isInstagram ? 'instagram_google' : 'google_search',
+                fonte_url: result.link,
+                fonte_snippet: result.snippet?.substring(0, 300),
+                query_usada: query,
+                pipeline_status: 'descoberto',
+                score: isLinkedIn ? 55 : isInstagram ? 50 : 40,
+                campanha_id,
+                user_id: icp.user_id
+              });
+            }
+          }
+          
+          // Pequeno delay entre requests
+          await new Promise(r => setTimeout(r, 500));
         }
+        
+        console.log(`✅ SerpAPI total: ${leads.length} leads encontrados`);
+      } catch (serpError) {
+        console.warn("⚠️ Erro SerpAPI:", serpError);
       }
-    } else {
-      const runData = await runResponse.json();
-      const runId = runData.data?.id;
+    }
 
-      console.log(`✅ Run Apify iniciada: ${runId}`);
+    // ==== MÉTODO 2: GOOGLE CUSTOM SEARCH ====
+    if (GOOGLE_API_KEY && GOOGLE_CX && leads.length < 10) {
+      console.log("🔍 Tentando Google Custom Search API...");
+      
+      try {
+        const googleQuery = `${profissao} ${cidade} LinkedIn OR Instagram contato`;
+        const googleUrl = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(googleQuery)}&num=10`;
+        
+        const googleResponse = await fetch(googleUrl);
+        
+        if (googleResponse.ok) {
+          const googleData = await googleResponse.json();
+          const items = googleData.items || [];
+          
+          console.log(`📊 Google CSE: ${items.length} resultados`);
+          
+          for (const item of items) {
+            const isLinkedIn = item.link?.includes('linkedin.com/in/');
+            const isInstagram = item.link?.includes('instagram.com/');
+            
+            let nome = '';
+            if (isLinkedIn) {
+              nome = item.title?.split(' - ')[0]?.split(' | ')[0]?.trim() || '';
+            } else {
+              const nomeMatch = item.snippet?.match(/(?:Dr\.|Dra\.)?\s*([A-Z][a-zà-ú]+(?:\s+[A-Z][a-zà-ú]+)+)/);
+              nome = nomeMatch?.[1] || '';
+            }
 
-      if (runId) {
-        // Buscar resultados do dataset
-        const resultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items`, {
-          headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
+            if (!nome || nome.length < 3) continue;
+            
+            const exists = leads.find(l => l.nome_completo.toLowerCase() === nome.toLowerCase());
+            if (exists) continue;
+
+            leads.push({
+              nome_completo: nome,
+              profissao: profissao,
+              cidade: cidade,
+              estado: estado,
+              linkedin_url: isLinkedIn ? item.link : null,
+              instagram_username: isInstagram ? item.link?.split('instagram.com/')[1]?.split('/')[0] : null,
+              fonte: 'google_cse',
+              fonte_url: item.link,
+              fonte_snippet: item.snippet?.substring(0, 300),
+              query_usada: googleQuery,
+              pipeline_status: 'descoberto',
+              score: isLinkedIn ? 55 : 40,
+              campanha_id,
+              user_id: icp.user_id
+            });
+          }
+        }
+      } catch (googleError) {
+        console.warn("⚠️ Erro Google CSE:", googleError);
+      }
+    }
+
+    // ==== MÉTODO 3: APIFY (se disponível e ainda precisar de mais leads) ====
+    if (APIFY_TOKEN && leads.length < 20) {
+      console.log("🔗 Tentando Apify...");
+      
+      try {
+        // Tentar Google Search Scraper do Apify (mais confiável)
+        const apifyResponse = await fetch('https://api.apify.com/v2/acts/apify~google-search-scraper/runs?waitForFinish=120', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${APIFY_TOKEN}`
+          },
+          body: JSON.stringify({
+            queries: `site:linkedin.com/in "${profissao}" "${cidade}"`,
+            maxPagesPerQuery: 2,
+            resultsPerPage: 20,
+            languageCode: "pt",
+            countryCode: "br"
+          })
         });
 
-        linkedinResults = await resultsResponse.json();
-        console.log(`📊 LinkedIn: ${linkedinResults.length} perfis encontrados`);
-      }
-    }
+        if (apifyResponse.ok) {
+          const runData = await apifyResponse.json();
+          const runId = runData.data?.id;
 
-    // ==== BUSCAR TAMBÉM NO INSTAGRAM (opcional) ====
-    let instagramResults: any[] = [];
-    
-    try {
-      console.log("📷 Buscando no Instagram via Apify...");
-      
-      // Actor válido do Instagram
-      const igResponse = await fetch('https://api.apify.com/v2/acts/apify~instagram-scraper/runs?waitForFinish=180', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${APIFY_TOKEN}`
-        },
-        body: JSON.stringify({
-          searchType: "hashtag",
-          search: [`${profissao}${cidade.replace(/\s/g, '')}`],
-          resultsLimit: 20
-        })
-      });
+          if (runId) {
+            console.log(`✅ Run Apify Google Search: ${runId}`);
+            
+            const resultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items`, {
+              headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
+            });
 
-      if (igResponse.ok) {
-        const igRunData = await igResponse.json();
-        const igRunId = igRunData.data?.id;
-        
-        if (igRunId) {
-          const igResultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${igRunId}/dataset/items`, {
-            headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
-          });
-          instagramResults = await igResultsResponse.json();
-          console.log(`📷 Instagram: ${instagramResults.length} perfis encontrados`);
+            const apifyResults = await resultsResponse.json();
+            console.log(`📊 Apify Google: ${apifyResults.length} resultados`);
+
+            for (const result of apifyResults) {
+              const organicResults = result.organicResults || [];
+              
+              for (const item of organicResults) {
+                if (!item.url?.includes('linkedin.com/in/')) continue;
+                
+                const nome = item.title?.split(' - ')[0]?.split(' | ')[0]?.trim();
+                if (!nome || nome.length < 3) continue;
+                
+                const exists = leads.find(l => l.nome_completo.toLowerCase() === nome.toLowerCase());
+                if (exists) continue;
+
+                leads.push({
+                  nome_completo: nome,
+                  profissao: item.title?.includes('-') ? item.title.split('-')[1]?.trim() : profissao,
+                  cidade: cidade,
+                  estado: estado,
+                  linkedin_url: item.url,
+                  fonte: 'apify_google',
+                  fonte_url: item.url,
+                  fonte_snippet: item.description?.substring(0, 300),
+                  query_usada: searchQuery,
+                  pipeline_status: 'descoberto',
+                  score: 55,
+                  campanha_id,
+                  user_id: icp.user_id
+                });
+              }
+            }
+          }
         }
-      }
-    } catch (igError) {
-      console.warn("⚠️ Busca Instagram falhou (continuando com LinkedIn):", igError);
-    }
-
-    // ==== PROCESSAR E UNIFICAR RESULTADOS ====
-    const leads: any[] = [];
-
-    // Processar LinkedIn
-    for (const profile of linkedinResults) {
-      const lead = {
-        nome_completo: profile.fullName || profile.name || profile.firstName + ' ' + profile.lastName || 'Nome não disponível',
-        profissao: profile.headline || profile.title || profile.currentJobTitle || profissao,
-        especialidade: profile.headline || null,
-        cidade: profile.location?.split(',')[0]?.trim() || profile.city || cidade,
-        estado: profile.location?.split(',')[1]?.trim() || profile.state || estado,
-        linkedin_url: profile.profileUrl || profile.url || profile.linkedinUrl || profile.profileLink,
-        linkedin_id: profile.publicIdentifier || profile.profileId || profile.id,
-        email: profile.email || null,
-        telefone: profile.phoneNumber || profile.phone || null,
-        foto_url: profile.profilePicture || profile.photoUrl || profile.avatar,
-        fonte: 'linkedin_apify',
-        fonte_url: profile.profileUrl || profile.url || profile.profileLink,
-        fonte_snippet: `${profile.headline || profissao} em ${profile.location || cidade}`,
-        query_usada: searchQuery,
-        pipeline_status: 'descoberto',
-        score: 50,
-        campanha_id,
-        user_id: icp.user_id
-      };
-
-      // Só adicionar se tiver dados válidos
-      if (lead.nome_completo && lead.nome_completo !== 'Nome não disponível') {
-        leads.push(lead);
-      }
-    }
-
-    // Processar Instagram
-    for (const profile of instagramResults) {
-      if (!profile.isBusinessAccount && !profile.isVerified && (profile.followersCount || 0) < 1000) {
-        continue;
-      }
-
-      const existingLead = leads.find(l => 
-        l.nome_completo.toLowerCase() === (profile.fullName || profile.username || '').toLowerCase()
-      );
-
-      if (existingLead) {
-        existingLead.instagram_username = profile.username;
-        existingLead.instagram_seguidores = profile.followersCount;
-        existingLead.email = existingLead.email || profile.businessEmail || profile.publicEmail;
-        existingLead.telefone = existingLead.telefone || profile.businessPhoneNumber || profile.publicPhoneNumber;
-        existingLead.score = (existingLead.score || 50) + 10;
-      } else {
-        leads.push({
-          nome_completo: profile.fullName || profile.username,
-          profissao: profile.businessCategoryName || profissao,
-          cidade: profile.businessAddressJson?.city || cidade,
-          estado: estado,
-          instagram_username: profile.username,
-          instagram_seguidores: profile.followersCount,
-          email: profile.businessEmail || profile.publicEmail,
-          telefone: profile.businessPhoneNumber || profile.publicPhoneNumber,
-          site_url: profile.externalUrl,
-          fonte: 'instagram_apify',
-          fonte_url: `https://instagram.com/${profile.username}`,
-          fonte_snippet: profile.biography?.substring(0, 200),
-          query_usada: searchQuery,
-          pipeline_status: 'descoberto',
-          score: 40,
-          campanha_id,
-          user_id: icp.user_id
-        });
+      } catch (apifyError) {
+        console.warn("⚠️ Erro Apify:", apifyError);
       }
     }
 
     console.log(`✅ Total de leads processados: ${leads.length}`);
 
     if (leads.length === 0) {
-      console.warn("⚠️ Nenhum lead encontrado");
+      console.warn("⚠️ Nenhum lead encontrado com nenhum método");
       return new Response(
         JSON.stringify({
           success: false,
           leads_encontrados: 0,
-          message: "Nenhum lead encontrado. Tente ajustar os parâmetros de busca ou verifique sua API key do Apify."
+          message: "Nenhum lead encontrado. Verifique se as APIs (SERPAPI_KEY, GOOGLE_API_KEY, APIFY_API_KEY) estão configuradas corretamente."
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
@@ -247,9 +286,14 @@ serve(async (req) => {
     // ==== SALVAR LEADS NO BANCO ====
     console.log(`💾 Salvando ${leads.length} leads REAIS no banco...`);
 
+    // Remover duplicatas por nome
+    const uniqueLeads = leads.filter((lead, index, self) =>
+      index === self.findIndex(l => l.nome_completo.toLowerCase() === lead.nome_completo.toLowerCase())
+    );
+
     const { error: insertError } = await supabase
       .from("leads_b2c")
-      .insert(leads);
+      .insert(uniqueLeads);
     
     if (insertError) {
       console.error("❌ Erro ao salvar:", insertError);
@@ -261,7 +305,7 @@ serve(async (req) => {
       .from("campanhas_prospeccao")
       .update({
         stats: {
-          descobertos: leads.length,
+          descobertos: uniqueLeads.length,
           enriquecidos: 0,
           qualificados: 0,
           enviados: 0,
@@ -271,15 +315,13 @@ serve(async (req) => {
       })
       .eq("id", campanha_id);
 
-    console.log(`🎉 Busca REAL concluída: ${leads.length} leads salvos!`);
+    console.log(`🎉 Busca REAL concluída: ${uniqueLeads.length} leads salvos!`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        leads_encontrados: leads.length,
-        leads_linkedin: linkedinResults.length,
-        leads_instagram: instagramResults.length,
-        message: `${leads.length} leads REAIS encontrados via LinkedIn e Instagram!`
+        leads_encontrados: uniqueLeads.length,
+        message: `${uniqueLeads.length} leads REAIS encontrados!`
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -290,7 +332,6 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
     console.error("❌ ERRO:", errorMessage);
-    console.error("❌ Stack:", error instanceof Error ? error.stack : '');
     
     return new Response(
       JSON.stringify({
