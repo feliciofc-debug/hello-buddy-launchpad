@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
+import { X, Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -71,13 +70,6 @@ export function WhatsAppSupportButton() {
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
     }
   };
 
@@ -152,15 +144,22 @@ export function WhatsAppSupportButton() {
           </ScrollArea>
 
           {/* Input */}
-          <div className="p-4 bg-white border-t border-gray-100">
+          <div className="p-4 bg-white border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
-              <Input
+              <input
+                type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
                 placeholder="Digite sua dúvida..."
-                className="flex-1 border-gray-200 focus:border-green-500 focus:ring-green-500"
+                className="flex-1 h-10 px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 disabled:opacity-50"
                 disabled={isLoading}
+                autoComplete="off"
               />
               <Button
                 onClick={handleSendMessage}
