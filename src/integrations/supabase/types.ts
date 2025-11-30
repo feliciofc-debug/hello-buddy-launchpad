@@ -425,6 +425,7 @@ export type Database = {
           tipo: string
           updated_at: string | null
           user_id: string
+          vendedor_id: string | null
         }
         Insert: {
           automatica?: boolean | null
@@ -447,6 +448,7 @@ export type Database = {
           tipo: string
           updated_at?: string | null
           user_id: string
+          vendedor_id?: string | null
         }
         Update: {
           automatica?: boolean | null
@@ -469,6 +471,7 @@ export type Database = {
           tipo?: string
           updated_at?: string | null
           user_id?: string
+          vendedor_id?: string | null
         }
         Relationships: [
           {
@@ -476,6 +479,13 @@ export type Database = {
             columns: ["icp_config_id"]
             isOneToOne: false
             referencedRelation: "icp_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_prospeccao_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
             referencedColumns: ["id"]
           },
         ]
@@ -499,6 +509,7 @@ export type Database = {
           ultima_execucao: string | null
           updated_at: string | null
           user_id: string
+          vendedor_id: string | null
         }
         Insert: {
           ativa?: boolean | null
@@ -518,6 +529,7 @@ export type Database = {
           ultima_execucao?: string | null
           updated_at?: string | null
           user_id: string
+          vendedor_id?: string | null
         }
         Update: {
           ativa?: boolean | null
@@ -537,6 +549,7 @@ export type Database = {
           ultima_execucao?: string | null
           updated_at?: string | null
           user_id?: string
+          vendedor_id?: string | null
         }
         Relationships: [
           {
@@ -544,6 +557,13 @@ export type Database = {
             columns: ["produto_id"]
             isOneToOne: false
             referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_recorrentes_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
             referencedColumns: ["id"]
           },
         ]
@@ -1072,6 +1092,44 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_atribuicoes: {
+        Row: {
+          atribuido_por: string | null
+          created_at: string | null
+          id: string
+          lead_id: string
+          lead_tipo: string
+          motivo: string | null
+          vendedor_id: string | null
+        }
+        Insert: {
+          atribuido_por?: string | null
+          created_at?: string | null
+          id?: string
+          lead_id: string
+          lead_tipo: string
+          motivo?: string | null
+          vendedor_id?: string | null
+        }
+        Update: {
+          atribuido_por?: string | null
+          created_at?: string | null
+          id?: string
+          lead_id?: string
+          lead_tipo?: string
+          motivo?: string | null
+          vendedor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_atribuicoes_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_history: {
         Row: {
           created_at: string | null
@@ -1206,6 +1264,7 @@ export type Database = {
           validado_em: string | null
           validado_manualmente: boolean | null
           validado_por: string | null
+          vendedor_id: string | null
           website: string | null
           whatsapp_business: boolean | null
           whatsapp_verificado: boolean | null
@@ -1274,6 +1333,7 @@ export type Database = {
           validado_em?: string | null
           validado_manualmente?: boolean | null
           validado_por?: string | null
+          vendedor_id?: string | null
           website?: string | null
           whatsapp_business?: boolean | null
           whatsapp_verificado?: boolean | null
@@ -1342,6 +1402,7 @@ export type Database = {
           validado_em?: string | null
           validado_manualmente?: boolean | null
           validado_por?: string | null
+          vendedor_id?: string | null
           website?: string | null
           whatsapp_business?: boolean | null
           whatsapp_verificado?: boolean | null
@@ -1359,6 +1420,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_b2b_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
             referencedColumns: ["id"]
           },
         ]
@@ -1423,6 +1491,7 @@ export type Database = {
           validado_em: string | null
           validado_manualmente: boolean | null
           validado_por: string | null
+          vendedor_id: string | null
           whatsapp: string | null
           whatsapp_business: boolean | null
           whatsapp_status: string | null
@@ -1487,6 +1556,7 @@ export type Database = {
           validado_em?: string | null
           validado_manualmente?: boolean | null
           validado_por?: string | null
+          vendedor_id?: string | null
           whatsapp?: string | null
           whatsapp_business?: boolean | null
           whatsapp_status?: string | null
@@ -1551,6 +1621,7 @@ export type Database = {
           validado_em?: string | null
           validado_manualmente?: boolean | null
           validado_por?: string | null
+          vendedor_id?: string | null
           whatsapp?: string | null
           whatsapp_business?: boolean | null
           whatsapp_status?: string | null
@@ -1569,6 +1640,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_b2c_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
             referencedColumns: ["id"]
           },
         ]
@@ -2009,6 +2087,7 @@ export type Database = {
           tags: string[] | null
           updated_at: string
           user_id: string
+          vendedor_id: string | null
         }
         Insert: {
           ativo?: boolean | null
@@ -2030,6 +2109,7 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           user_id: string
+          vendedor_id?: string | null
         }
         Update: {
           ativo?: boolean | null
@@ -2051,6 +2131,7 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           user_id?: string
+          vendedor_id?: string | null
         }
         Relationships: [
           {
@@ -2058,6 +2139,13 @@ export type Database = {
             columns: ["cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "produtos_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
             referencedColumns: ["id"]
           },
         ]
@@ -2622,6 +2710,92 @@ export type Database = {
         }
         Relationships: []
       }
+      vendedor_metas: {
+        Row: {
+          comissao_gerada: number | null
+          created_at: string | null
+          id: string
+          mes: string
+          meta_vendas: number | null
+          percentual_atingido: number | null
+          vendas_realizadas: number | null
+          vendedor_id: string | null
+        }
+        Insert: {
+          comissao_gerada?: number | null
+          created_at?: string | null
+          id?: string
+          mes: string
+          meta_vendas?: number | null
+          percentual_atingido?: number | null
+          vendas_realizadas?: number | null
+          vendedor_id?: string | null
+        }
+        Update: {
+          comissao_gerada?: number | null
+          created_at?: string | null
+          id?: string
+          mes?: string
+          meta_vendas?: number | null
+          percentual_atingido?: number | null
+          vendas_realizadas?: number | null
+          vendedor_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendedor_metas_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendedores: {
+        Row: {
+          ativo: boolean | null
+          comissao_percentual: number | null
+          created_at: string | null
+          email: string
+          especialidade: string | null
+          foto_url: string | null
+          id: string
+          meta_mensal: number | null
+          nome: string
+          updated_at: string | null
+          user_id: string | null
+          whatsapp: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          comissao_percentual?: number | null
+          created_at?: string | null
+          email: string
+          especialidade?: string | null
+          foto_url?: string | null
+          id?: string
+          meta_mensal?: number | null
+          nome: string
+          updated_at?: string | null
+          user_id?: string | null
+          whatsapp?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          comissao_percentual?: number | null
+          created_at?: string | null
+          email?: string
+          especialidade?: string | null
+          foto_url?: string | null
+          id?: string
+          meta_mensal?: number | null
+          nome?: string
+          updated_at?: string | null
+          user_id?: string | null
+          whatsapp?: string | null
+        }
+        Relationships: []
+      }
       voice_calls: {
         Row: {
           ai_analysis: Json | null
@@ -2937,6 +3111,7 @@ export type Database = {
           transferred_to_human: boolean | null
           updated_at: string | null
           user_id: string | null
+          vendedor_id: string | null
         }
         Insert: {
           assumido_em?: string | null
@@ -2957,6 +3132,7 @@ export type Database = {
           transferred_to_human?: boolean | null
           updated_at?: string | null
           user_id?: string | null
+          vendedor_id?: string | null
         }
         Update: {
           assumido_em?: string | null
@@ -2977,6 +3153,7 @@ export type Database = {
           transferred_to_human?: boolean | null
           updated_at?: string | null
           user_id?: string | null
+          vendedor_id?: string | null
         }
         Relationships: [
           {
@@ -2984,6 +3161,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "campanhas_prospeccao"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_conversations_vendedor_id_fkey"
+            columns: ["vendedor_id"]
+            isOneToOne: false
+            referencedRelation: "vendedores"
             referencedColumns: ["id"]
           },
         ]

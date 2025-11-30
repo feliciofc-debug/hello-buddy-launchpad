@@ -50,6 +50,7 @@ import ConfiguracaoEmpresa from "./pages/ConfiguracaoEmpresa";
 import IAConversas from "./pages/IAConversas";
 import DashboardMetricas from "./pages/DashboardMetricas";
 import LeadsFunil from "./pages/LeadsFunil";
+import Vendedores from "./pages/Vendedores";
 
 const queryClient = new QueryClient();
 
@@ -102,6 +103,7 @@ const App = () => (
             <Route path="/configuracao-empresa" element={<ConfiguracaoEmpresa />} />
             <Route path="/ia-conversas" element={<IAConversas />} />
             <Route path="/leads-funil" element={<LeadsFunil />} />
+            <Route path="/vendedores" element={<Vendedores />} />
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:slug" element={<MarketplaceProduto />} />
             <Route path="/marketplace-publico" element={<MarketplacePublico />} />
