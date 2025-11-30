@@ -250,12 +250,6 @@ function Landing() {
                   </div>
                 <p className="text-purple-300">até 12x de R$ 597,00 ou R$ 6.447,60 no PIX (10% off)</p>
                 </div>
-                <button
-                  onClick={() => navigate('/planos')}
-                  className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-4 rounded-xl font-bold text-xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
-                >
-                  🚀 CONTRATAR AGORA
-                </button>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4 mb-8">
@@ -278,10 +272,17 @@ function Landing() {
                 ))}
               </div>
 
+              <button
+                onClick={() => navigate('/planos')}
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2 mb-4"
+              >
+                🚀 CONTRATAR AGORA
+              </button>
+
               <Button 
                 size="lg" 
                 onClick={() => navigate('/cadastro')}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-xl py-8 h-auto font-bold"
+                className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-xl py-8 h-auto font-bold"
               >
                 COMEÇAR TESTE GRÁTIS
               </Button>
