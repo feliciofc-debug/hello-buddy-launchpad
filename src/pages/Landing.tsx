@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,18 @@ import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 
 function Landing() {
   const navigate = useNavigate();
+
+  // Remover qualquer resquício do Typebot que possa estar em cache
+  useEffect(() => {
+    // Remover elementos do Typebot do DOM
+    const typebotElements = document.querySelectorAll('[id*="typebot"], [class*="typebot"], typebot-bubble, typebot-standard');
+    typebotElements.forEach(el => el.remove());
+    
+    // Limpar window.Typebot se existir
+    if ((window as any).Typebot) {
+      delete (window as any).Typebot;
+    }
+  }, []);
 
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
