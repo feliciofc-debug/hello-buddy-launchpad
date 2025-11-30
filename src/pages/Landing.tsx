@@ -236,11 +236,19 @@ function Landing() {
               <div className="text-center mb-8">
                 <div className="text-6xl mb-4">🏢</div>
                 <h3 className="text-3xl font-bold mb-4">PLANO EMPRESAS</h3>
+                <div className="mb-2">
+                  <span className="bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-1 rounded-full text-sm font-bold animate-pulse">
+                    🔥 PRIMEIROS 100 CLIENTES - DESCONTO DE R$ 1.000!
+                  </span>
+                </div>
                 <div className="mb-6">
-                  <div className="text-5xl font-bold text-green-400 mb-2">
-                    R$ 447<span className="text-xl text-gray-400">/mês</span>
+                  <div className="text-2xl text-gray-500 line-through mb-1">
+                    De R$ 1.597,00
                   </div>
-                  <p className="text-purple-300">ou R$ 4.470/ano (2 meses grátis)</p>
+                  <div className="text-5xl font-bold text-green-400 mb-2">
+                    R$ 597<span className="text-xl text-gray-400">/mês</span>
+                  </div>
+                  <p className="text-purple-300">ou R$ 5.970/ano (2 meses grátis)</p>
                 </div>
               </div>
 
