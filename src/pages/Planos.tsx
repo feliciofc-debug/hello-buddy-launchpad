@@ -35,8 +35,10 @@ const Planos = () => {
   const planoEmpresa = {
     id: 'empresa',
     nome: 'Plano Empresa AMZ Ofertas',
-    precoMensal: 447,
-    precoParcela: 447,
+    precoMensal: 597,
+    precoParcela: 597,
+    precoOriginal: 1597,
+    precoPixTotal: 6447.60,
     features: [
       'Produtos ilimitados',
       'Busca automática de oportunidades',
@@ -115,6 +117,14 @@ const Planos = () => {
 
             {/* Preço */}
             <div className="mb-6">
+              <div className="mb-2">
+                <span className="bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-1 rounded-full text-sm font-bold animate-pulse">
+                  🔥 PRIMEIROS 100 CLIENTES - DESCONTO DE R$ 1.000!
+                </span>
+              </div>
+              <div className="text-xl text-gray-500 line-through mb-1">
+                De R$ {planoEmpresa.precoOriginal},00
+              </div>
               <div className="flex items-center justify-center gap-2 mb-3">
                 <span className="text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-500">
                   R$ {planoEmpresa.precoMensal}
@@ -122,10 +132,10 @@ const Planos = () => {
                 <span className="text-2xl text-gray-300">/mês</span>
               </div>
               <p className="text-orange-300 text-xl font-semibold mb-4">
-                💳 12x de R$ {planoEmpresa.precoParcela} no cartão
+                💳 até 12x de R$ {planoEmpresa.precoParcela},00 no cartão
               </p>
               <p className="text-gray-300 text-lg">
-                ou R$ {planoEmpresa.precoMensal} via PIX
+                ou R$ {planoEmpresa.precoPixTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} no PIX (10% off)
               </p>
             </div>
           </div>
