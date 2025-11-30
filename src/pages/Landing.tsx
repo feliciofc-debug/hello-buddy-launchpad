@@ -248,8 +248,14 @@ function Landing() {
                   <div className="text-5xl font-bold text-green-400 mb-2">
                     R$ 597<span className="text-xl text-gray-400">/mês</span>
                   </div>
-                  <p className="text-purple-300">ou R$ 5.970/ano (2 meses grátis)</p>
+                <p className="text-purple-300">ou R$ 5.970/ano (2 meses grátis)</p>
                 </div>
+                <button
+                  onClick={() => navigate('/planos')}
+                  className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-4 rounded-xl font-bold text-xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
+                >
+                  🚀 CONTRATAR AGORA
+                </button>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4 mb-8">
