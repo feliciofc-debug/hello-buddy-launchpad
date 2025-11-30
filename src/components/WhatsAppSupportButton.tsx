@@ -144,7 +144,7 @@ export function WhatsAppSupportButton() {
           </ScrollArea>
 
           {/* Input */}
-          <div className="p-4 bg-white border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+          <div className="p-4 bg-white border-t border-gray-100" onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -156,10 +156,12 @@ export function WhatsAppSupportButton() {
                     handleSendMessage();
                   }
                 }}
+                onFocus={(e) => e.target.select()}
                 placeholder="Digite sua dúvida..."
-                className="flex-1 h-10 px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 disabled:opacity-50"
+                className="flex-1 h-10 px-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 disabled:opacity-50 pointer-events-auto"
                 disabled={isLoading}
                 autoComplete="off"
+                style={{ WebkitUserSelect: 'text', userSelect: 'text' }}
               />
               <Button
                 onClick={handleSendMessage}
