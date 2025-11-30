@@ -248,7 +248,7 @@ function Landing() {
                   <div className="text-5xl font-bold text-green-400 mb-2">
                     R$ 597<span className="text-xl text-gray-400">/mês</span>
                   </div>
-                <p className="text-purple-300">ou R$ 5.970/ano (2 meses grátis)</p>
+                <p className="text-purple-300">até 12x de R$ 597,00 ou R$ 6.447,60 no PIX (10% off)</p>
                 </div>
                 <button
                   onClick={() => navigate('/planos')}
