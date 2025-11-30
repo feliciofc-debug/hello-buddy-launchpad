@@ -28,13 +28,24 @@ A AMZ Ofertas é uma plataforma completa de marketing digital com inteligência 
 - Perfeito para área de marketing de empresas
 - Crie artes visuais sem precisar de designer
 - Imagens de alta qualidade para campanhas
+- IMPORTANTE: As imagens devem ser salvas na área de trabalho e enviadas manualmente para redes sociais
 
-### 3. AGENDAMENTO DE POSTS
-- Agendamento para Instagram Feed e Stories
-- Agendamento para Facebook
-- Frequências: Imediato, Uma vez, Diário, Semanal, Personalizado
+### 3. POSTAGEM EM REDES SOCIAIS (IMPORTANTE!)
+- WHATSAPP: Agendamento automático de campanhas disponível!
+- INSTAGRAM e FACEBOOK: A plataforma GERA o conteúdo (textos e imagens), mas o usuário precisa COPIAR e POSTAR MANUALMENTE
+- Fluxo para Instagram/Facebook:
+  1. Gere o post com IA na plataforma
+  2. Copie o texto gerado
+  3. Salve a imagem na área de trabalho
+  4. Abra o Instagram/Facebook e poste manualmente
+- Apenas WhatsApp tem envio automático e agendado
+
+### 4. AGENDAMENTO AUTOMÁTICO (SOMENTE WHATSAPP!)
+- Agendamento automático disponível APENAS para WhatsApp
+- Frequências: Enviar Agora, Uma vez, Diário, Semanal, Personalizado
 - Múltiplos horários por dia
-- Calendário visual de publicações
+- Campanhas de WhatsApp com envio automático para listas de transmissão
+- Para Instagram e Facebook: geração de conteúdo apenas, postagem manual
 
 ### 4. CATÁLOGO DE PRODUTOS
 - Upload de fotos de produtos
