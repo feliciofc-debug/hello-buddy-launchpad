@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Message {
@@ -23,6 +22,12 @@ export function WhatsAppSupportButton() {
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll para a última mensagem
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
@@ -35,13 +40,16 @@ export function WhatsAppSupportButton() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageToSend = inputMessage;
     setInputMessage('');
     setIsLoading(true);
 
     try {
+      console.log('[CHAT] Enviando mensagem:', messageToSend);
+      
       const { data, error } = await supabase.functions.invoke('atendimento-suporte', {
         body: { 
-          message: inputMessage,
+          message: messageToSend,
           conversationHistory: messages.map(m => ({
             role: m.isUser ? 'user' : 'assistant',
             content: m.content
@@ -49,18 +57,28 @@ export function WhatsAppSupportButton() {
         }
       });
 
+      console.log('[CHAT] Resposta recebida:', data);
+      console.log('[CHAT] Erro:', error);
+
       if (error) throw error;
+
+      const responseText = data?.response || data?.message || (typeof data === 'string' ? data : null);
+      
+      if (!responseText) {
+        console.error('[CHAT] Resposta vazia ou inválida:', data);
+        throw new Error('Resposta vazia');
+      }
 
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: data.response || 'Desculpe, não consegui processar sua mensagem. Tente novamente.',
+        content: responseText,
         isUser: false,
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
-      console.error('Erro ao enviar mensagem:', error);
+      console.error('[CHAT] Erro ao enviar mensagem:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: 'Ops! Tive um problema técnico. Por favor, tente novamente ou entre em contato pelo WhatsApp: (21) 99537-9550',
@@ -109,7 +127,7 @@ export function WhatsAppSupportButton() {
           </div>
 
           {/* Messages */}
-          <ScrollArea className="h-80 p-4 bg-gray-50">
+          <div className="h-80 overflow-y-auto p-4 bg-gray-50">
             <div className="space-y-4">
               {messages.map((message) => (
                 <div
@@ -140,8 +158,9 @@ export function WhatsAppSupportButton() {
                   </div>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
-          </ScrollArea>
+          </div>
 
           {/* Input */}
           <div className="p-4 bg-white border-t border-gray-100 relative z-[10000]">
