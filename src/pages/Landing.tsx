@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
 
 function Landing() {
   const navigate = useNavigate();
@@ -486,6 +487,9 @@ function Landing() {
           </div>
         </div>
       </footer>
+
+      {/* WhatsApp Support Button */}
+      <WhatsAppSupportButton />
     </div>
   );
 }
