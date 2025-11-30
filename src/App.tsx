@@ -4,7 +4,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
-import { TypebotChat } from "@/components/TypebotChat";
 import { CampaignScheduler } from "@/components/CampaignScheduler";
 import Dashboard from "./pages/Dashboard";
 import Landing from "./pages/Landing";
@@ -114,7 +113,6 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-          <TypebotChat />
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>

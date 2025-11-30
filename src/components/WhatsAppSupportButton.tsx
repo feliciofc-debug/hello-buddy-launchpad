@@ -171,7 +171,10 @@ export function WhatsAppSupportButton() {
               </Button>
             </div>
             <p className="text-xs text-gray-400 mt-2 text-center">
-              Powered by AMZ Ofertas • WhatsApp: (21) 99537-9550
+              WhatsApp: (21) 99537-9550
+            </p>
+            <p className="text-xs text-gray-400 text-center">
+              Email: amzofertas@amzofertas.com.br
             </p>
           </div>
         </div>
