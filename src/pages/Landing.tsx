@@ -40,11 +40,17 @@ function Landing() {
               <p className="text-xs text-orange-300">Marketing Digital com IA</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <button onClick={() => scrollToSection('planos')} className="text-orange-300 hover:text-white transition">
+          <div className="flex items-center gap-2 md:gap-4">
+            <button onClick={() => scrollToSection('planos')} className="text-orange-300 hover:text-white transition text-sm md:text-base">
               Planos
             </button>
-            <button onClick={() => navigate('/login')} className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition">
+            <button onClick={() => navigate('/marketplace')} className="text-orange-300 hover:text-white transition text-sm md:text-base">
+              Marketplace
+            </button>
+            <button onClick={() => navigate('/vendedor-login')} className="border border-orange-500 text-orange-400 hover:bg-orange-500 hover:text-white px-3 md:px-4 py-2 rounded-lg font-semibold transition text-sm md:text-base">
+              Portal Vendedor
+            </button>
+            <button onClick={() => navigate('/login')} className="bg-gradient-to-r from-purple-500 to-pink-500 px-4 md:px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition text-sm md:text-base">
               Entrar
             </button>
           </div>
