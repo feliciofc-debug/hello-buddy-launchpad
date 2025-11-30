@@ -253,6 +253,8 @@ export default function ConfigurarICP() {
   
   // Geográfico
   const [estadosSelecionados, setEstadosSelecionados] = useState<string[]>([])
+  const [cidadeSelecionada, setCidadeSelecionada] = useState('')
+  const [bairrosSelecionados, setBairrosSelecionados] = useState('')
   
   // ⭐ REFINAMENTOS (campo livre)
   const [refinamentoEmpresa, setRefinamentoEmpresa] = useState('')
@@ -436,7 +438,9 @@ export default function ConfigurarICP() {
       const configB2C = (tipoProspeccao === 'b2c' || tipoProspeccao === 'ambos') ? {
         profissoes: profissoesSelecionadas,
         profissoes_customizadas: profissoesCustomizadas,
-        refinamentos: refinamentoProfissional
+        refinamentos: refinamentoProfissional,
+        cidade: cidadeSelecionada,
+        bairros: bairrosSelecionados
       } : null
 
       // 1. Salvar ICP
@@ -893,17 +897,52 @@ export default function ConfigurarICP() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>🎯 Refinamento Geográfico</CardTitle>
+                  <CardTitle>🏙️ Cidade Principal</CardTitle>
                   <CardDescription>
-                    Cidades específicas, bairros, regiões, proximidade, etc
+                    Cidade principal para busca de leads
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Input
+                    placeholder="Ex: Rio de Janeiro, São Paulo, Belo Horizonte"
+                    value={cidadeSelecionada}
+                    onChange={(e) => setCidadeSelecionada(e.target.value)}
+                  />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>📍 Bairros Específicos</CardTitle>
+                  <CardDescription>
+                    Separe os bairros por vírgula. Deixe vazio para buscar em toda a cidade.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Input
+                    placeholder="Ex: Barra da Tijuca, Jacarepaguá, Recreio dos Bandeirantes, Copacabana"
+                    value={bairrosSelecionados}
+                    onChange={(e) => setBairrosSelecionados(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 Se informar bairros, a busca será mais específica e precisa
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>🎯 Refinamento Geográfico Adicional</CardTitle>
+                  <CardDescription>
+                    Outras especificações de região, proximidade, etc
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Textarea
-                    placeholder={"Ex:\n- Capitais e regiões metropolitanas\n- Bairros nobres: Leblon, Ipanema, Jardins, Moema\n- Proximidade de shoppings de alto padrão\n- Cidades com mais de 500 mil habitantes"}
+                    placeholder={"Ex:\n- Capitais e regiões metropolitanas\n- Proximidade de shoppings de alto padrão\n- Cidades com mais de 500 mil habitantes"}
                     value={refinamentoGeografico}
                     onChange={(e) => setRefinamentoGeografico(e.target.value)}
-                    rows={6}
+                    rows={4}
                   />
                 </CardContent>
               </Card>

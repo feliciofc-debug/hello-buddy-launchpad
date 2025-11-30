@@ -213,6 +213,7 @@ export default function LeadsFunil() {
   const [chamandoLead, setChamandoLead] = useState(false);
   const [campanhaFiltro, setCampanhaFiltro] = useState<string | null>(null);
   const [filtroValidacao, setFiltroValidacao] = useState('todos');
+  const [vendedores, setVendedores] = useState<{ id: string; nome: string; especialidade?: string }[]>([]);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -222,7 +223,16 @@ export default function LeadsFunil() {
     setCampanhaFiltro(campanhaId);
     loadLeads(campanhaId);
     loadProdutos();
+    loadVendedores();
   }, [searchParams]);
+
+  const loadVendedores = async () => {
+    const { data } = await supabase
+      .from('vendedores')
+      .select('id, nome, especialidade')
+      .eq('ativo', true);
+    setVendedores(data || []);
+  };
 
   const loadProdutos = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -1854,6 +1864,53 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                   )}
                 </div>
               </Card>
+
+              {/* SEÇÃO: ATRIBUIR VENDEDOR */}
+              {vendedores.length > 0 && (
+                <Card className="p-4 bg-blue-50 dark:bg-blue-950/30">
+                  <h3 className="font-bold mb-3">👥 Atribuir Vendedor</h3>
+                  
+                  <Select
+                    value={(leadSelecionado as any).vendedor_id || 'nenhum'}
+                    onValueChange={async (v) => {
+                      const tabela = leadSelecionado.tipo === 'b2c' ? 'leads_b2c' : 'leads_b2b';
+                      const vendedorId = v === 'nenhum' ? null : v;
+                      
+                      await supabase
+                        .from(tabela)
+                        .update({ vendedor_id: vendedorId })
+                        .eq('id', leadSelecionado.id);
+
+                      // Registrar atribuição
+                      if (vendedorId) {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        await supabase.from('lead_atribuicoes').insert({
+                          lead_id: leadSelecionado.id,
+                          lead_tipo: leadSelecionado.tipo,
+                          vendedor_id: vendedorId,
+                          atribuido_por: user?.id,
+                          motivo: 'Atribuição manual'
+                        });
+                      }
+
+                      toast.success('Vendedor atribuído!');
+                      loadLeads(campanhaFiltro);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione vendedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nenhum">Sem vendedor</SelectItem>
+                      {vendedores.map(v => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.nome} {v.especialidade && `(${v.especialidade})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Card>
+              )}
 
               {/* SEÇÃO 4: CONTATOS E AÇÕES */}
               <div className="space-y-2">

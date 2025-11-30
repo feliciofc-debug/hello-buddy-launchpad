@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { ArrowLeft, Bot, User, Send, UserCheck, Target, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -21,6 +22,7 @@ interface Conversa {
   origem: string;
   tipo_contato: string;
   lead_id: string | null;
+  vendedor_id?: string | null;
 }
 
 interface Mensagem {
@@ -29,6 +31,12 @@ interface Mensagem {
   role: string;
   created_at: string;
   metadata?: any;
+}
+
+interface Vendedor {
+  id: string;
+  nome: string;
+  especialidade?: string;
 }
 
 export default function IAConversas() {
@@ -40,6 +48,8 @@ export default function IAConversas() {
   const [enviando, setEnviando] = useState(false);
   const [abaAtiva, setAbaAtiva] = useState('prospeccao');
   const [filtroModo, setFiltroModo] = useState('todas');
+  const [filtroVendedor, setFiltroVendedor] = useState('todos');
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [loading, setLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -72,9 +82,18 @@ export default function IAConversas() {
 
   useEffect(() => {
     carregarConversas();
+    loadVendedores();
     const interval = setInterval(carregarConversas, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const loadVendedores = async () => {
+    const { data } = await supabase
+      .from('vendedores')
+      .select('id, nome, especialidade')
+      .eq('ativo', true);
+    setVendedores(data || []);
+  };
 
   useEffect(() => {
     if (conversaSelecionada) {
@@ -252,6 +271,11 @@ export default function IAConversas() {
         filtroModo === 'ia' ? (c.modo_atendimento === 'ia' || !c.modo_atendimento) : c.modo_atendimento === 'humano'
       );
     }
+
+    // Filtro por vendedor
+    if (filtroVendedor !== 'todos') {
+      base = base.filter(c => c.vendedor_id === filtroVendedor);
+    }
     
     return base;
   })();
@@ -304,7 +328,7 @@ export default function IAConversas() {
       </div>
 
       {/* FILTROS DE MODO */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
         <Button
           variant={filtroModo === 'todas' ? 'default' : 'outline'}
           size="sm"
@@ -326,6 +350,22 @@ export default function IAConversas() {
         >
           <User className="w-4 h-4 mr-1" /> Você Atendendo ({countByMode('humano')})
         </Button>
+
+        {vendedores.length > 0 && (
+          <Select value={filtroVendedor} onValueChange={setFiltroVendedor}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Filtrar por vendedor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os vendedores</SelectItem>
+              {vendedores.map(v => (
+                <SelectItem key={v.id} value={v.id}>
+                  👤 {v.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
