@@ -1159,6 +1159,7 @@ export type Database = {
           decisor_nome: string | null
           email: string | null
           endereco: string | null
+          endereco_consultorio: string | null
           enriched_at: string | null
           enrichment_data: Json | null
           enviado_em: string | null
@@ -1172,6 +1173,7 @@ export type Database = {
           icp_validado: boolean | null
           id: string
           insights: string[] | null
+          instagram_url: string | null
           instagram_username: string | null
           linkedin_url: string | null
           mensagem_selecionada: string | null
@@ -1192,10 +1194,12 @@ export type Database = {
           score: number | null
           score_breakdown: Json | null
           setor: string | null
+          site_consultorio: string | null
           site_url: string | null
           situacao: string | null
           socios: Json | null
           telefone: string | null
+          twitter_url: string | null
           updated_at: string | null
           user_id: string
           validacao_icp: Json | null
@@ -1203,6 +1207,8 @@ export type Database = {
           validado_manualmente: boolean | null
           validado_por: string | null
           website: string | null
+          whatsapp_business: boolean | null
+          whatsapp_verificado: boolean | null
         }
         Insert: {
           campanha_id: string
@@ -1221,6 +1227,7 @@ export type Database = {
           decisor_nome?: string | null
           email?: string | null
           endereco?: string | null
+          endereco_consultorio?: string | null
           enriched_at?: string | null
           enrichment_data?: Json | null
           enviado_em?: string | null
@@ -1234,6 +1241,7 @@ export type Database = {
           icp_validado?: boolean | null
           id?: string
           insights?: string[] | null
+          instagram_url?: string | null
           instagram_username?: string | null
           linkedin_url?: string | null
           mensagem_selecionada?: string | null
@@ -1254,10 +1262,12 @@ export type Database = {
           score?: number | null
           score_breakdown?: Json | null
           setor?: string | null
+          site_consultorio?: string | null
           site_url?: string | null
           situacao?: string | null
           socios?: Json | null
           telefone?: string | null
+          twitter_url?: string | null
           updated_at?: string | null
           user_id: string
           validacao_icp?: Json | null
@@ -1265,6 +1275,8 @@ export type Database = {
           validado_manualmente?: boolean | null
           validado_por?: string | null
           website?: string | null
+          whatsapp_business?: boolean | null
+          whatsapp_verificado?: boolean | null
         }
         Update: {
           campanha_id?: string
@@ -1283,6 +1295,7 @@ export type Database = {
           decisor_nome?: string | null
           email?: string | null
           endereco?: string | null
+          endereco_consultorio?: string | null
           enriched_at?: string | null
           enrichment_data?: Json | null
           enviado_em?: string | null
@@ -1296,6 +1309,7 @@ export type Database = {
           icp_validado?: boolean | null
           id?: string
           insights?: string[] | null
+          instagram_url?: string | null
           instagram_username?: string | null
           linkedin_url?: string | null
           mensagem_selecionada?: string | null
@@ -1316,10 +1330,12 @@ export type Database = {
           score?: number | null
           score_breakdown?: Json | null
           setor?: string | null
+          site_consultorio?: string | null
           site_url?: string | null
           situacao?: string | null
           socios?: Json | null
           telefone?: string | null
+          twitter_url?: string | null
           updated_at?: string | null
           user_id?: string
           validacao_icp?: Json | null
@@ -1327,6 +1343,8 @@ export type Database = {
           validado_manualmente?: boolean | null
           validado_por?: string | null
           website?: string | null
+          whatsapp_business?: boolean | null
+          whatsapp_verificado?: boolean | null
         }
         Relationships: [
           {
@@ -1358,6 +1376,7 @@ export type Database = {
           dados_enriquecidos: Json | null
           email: string | null
           endereco: string | null
+          endereco_consultorio: string | null
           enriched_at: string | null
           enrichment_data: Json | null
           enviado_em: string | null
@@ -1372,6 +1391,7 @@ export type Database = {
           id: string
           insights: string[] | null
           instagram_seguidores: number | null
+          instagram_url: string | null
           instagram_username: string | null
           linkedin_id: string | null
           linkedin_url: string | null
@@ -1391,10 +1411,12 @@ export type Database = {
           score: number | null
           score_breakdown: Json | null
           sinais_poder_aquisitivo: string[] | null
+          site_consultorio: string | null
           site_url: string | null
           telefone: string | null
           tem_consultorio: boolean | null
           tipo_validado: boolean | null
+          twitter_url: string | null
           updated_at: string | null
           user_id: string
           validacao_resultado: Json | null
@@ -1402,7 +1424,9 @@ export type Database = {
           validado_manualmente: boolean | null
           validado_por: string | null
           whatsapp: string | null
+          whatsapp_business: boolean | null
           whatsapp_status: string | null
+          whatsapp_verificado: boolean | null
         }
         Insert: {
           anos_formado?: number | null
@@ -1416,6 +1440,7 @@ export type Database = {
           dados_enriquecidos?: Json | null
           email?: string | null
           endereco?: string | null
+          endereco_consultorio?: string | null
           enriched_at?: string | null
           enrichment_data?: Json | null
           enviado_em?: string | null
@@ -1430,6 +1455,7 @@ export type Database = {
           id?: string
           insights?: string[] | null
           instagram_seguidores?: number | null
+          instagram_url?: string | null
           instagram_username?: string | null
           linkedin_id?: string | null
           linkedin_url?: string | null
@@ -1449,10 +1475,12 @@ export type Database = {
           score?: number | null
           score_breakdown?: Json | null
           sinais_poder_aquisitivo?: string[] | null
+          site_consultorio?: string | null
           site_url?: string | null
           telefone?: string | null
           tem_consultorio?: boolean | null
           tipo_validado?: boolean | null
+          twitter_url?: string | null
           updated_at?: string | null
           user_id: string
           validacao_resultado?: Json | null
@@ -1460,7 +1488,9 @@ export type Database = {
           validado_manualmente?: boolean | null
           validado_por?: string | null
           whatsapp?: string | null
+          whatsapp_business?: boolean | null
           whatsapp_status?: string | null
+          whatsapp_verificado?: boolean | null
         }
         Update: {
           anos_formado?: number | null
@@ -1474,6 +1504,7 @@ export type Database = {
           dados_enriquecidos?: Json | null
           email?: string | null
           endereco?: string | null
+          endereco_consultorio?: string | null
           enriched_at?: string | null
           enrichment_data?: Json | null
           enviado_em?: string | null
@@ -1488,6 +1519,7 @@ export type Database = {
           id?: string
           insights?: string[] | null
           instagram_seguidores?: number | null
+          instagram_url?: string | null
           instagram_username?: string | null
           linkedin_id?: string | null
           linkedin_url?: string | null
@@ -1507,10 +1539,12 @@ export type Database = {
           score?: number | null
           score_breakdown?: Json | null
           sinais_poder_aquisitivo?: string[] | null
+          site_consultorio?: string | null
           site_url?: string | null
           telefone?: string | null
           tem_consultorio?: boolean | null
           tipo_validado?: boolean | null
+          twitter_url?: string | null
           updated_at?: string | null
           user_id?: string
           validacao_resultado?: Json | null
@@ -1518,7 +1552,9 @@ export type Database = {
           validado_manualmente?: boolean | null
           validado_por?: string | null
           whatsapp?: string | null
+          whatsapp_business?: boolean | null
           whatsapp_status?: string | null
+          whatsapp_verificado?: boolean | null
         }
         Relationships: [
           {
