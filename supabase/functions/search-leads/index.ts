@@ -38,8 +38,9 @@ serve(async (req) => {
     
     // Extrair dados do ICP
     const profissao = icp.b2c_config?.profissoes?.[0] || "médico";
-    const cidade = icp.b2c_config?.cidades?.[0] || "Rio de Janeiro";
-    const estado = icp.b2c_config?.estados?.[0] || "RJ";
+    const cidade = icp.filtros_avancados?.estados?.[0] === 'RJ' ? 'Rio de Janeiro' : 
+                   icp.b2c_config?.cidades?.[0] || "Rio de Janeiro";
+    const estado = icp.filtros_avancados?.estados?.[0] || "RJ";
 
     console.log("🔍 Buscando leads REAIS para:", { profissao, cidade, estado });
 
@@ -56,46 +57,71 @@ serve(async (req) => {
     const searchQuery = `${profissao} ${cidade}`;
     const maxResults = 30;
 
-    // Chamar Apify LinkedIn Scraper
-    const runResponse = await fetch('https://api.apify.com/v2/acts/bebity~linkedin-people-search/runs?waitForFinish=300', {
+    // Usar actor válido: harvestapi/linkedin-profile-search
+    const runResponse = await fetch('https://api.apify.com/v2/acts/harvestapi~linkedin-profile-search/runs?waitForFinish=300', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${APIFY_TOKEN}`
       },
       body: JSON.stringify({
-        searchTerms: [searchQuery],
-        location: 'Brazil',
-        maxResults: maxResults,
-        proxy: {
-          useApifyProxy: true,
-          apifyProxyGroups: ['RESIDENTIAL']
-        }
+        currentJobTitles: [profissao],
+        locations: [`${cidade}, ${estado}, Brazil`],
+        startPage: 1,
+        takePages: 3
       })
     });
 
+    let linkedinResults: any[] = [];
+
     if (!runResponse.ok) {
       const errorText = await runResponse.text();
-      console.error('❌ Erro Apify LinkedIn:', errorText);
-      throw new Error(`Erro Apify: ${runResponse.status} - ${errorText}`);
+      console.warn('⚠️ LinkedIn via harvestapi falhou:', runResponse.status, errorText);
+      
+      // Tentar actor alternativo: powerai/linkedin-peoples-search-scraper
+      console.log("🔄 Tentando actor alternativo...");
+      
+      const altResponse = await fetch('https://api.apify.com/v2/acts/powerai~linkedin-peoples-search-scraper/runs?waitForFinish=300', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${APIFY_TOKEN}`
+        },
+        body: JSON.stringify({
+          title: profissao,
+          industry: "healthcare",
+          maxResults: maxResults
+        })
+      });
+
+      if (altResponse.ok) {
+        const altRunData = await altResponse.json();
+        const altRunId = altRunData.data?.id;
+        
+        if (altRunId) {
+          const altResultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${altRunId}/dataset/items`, {
+            headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
+          });
+          linkedinResults = await altResultsResponse.json();
+          console.log(`📊 LinkedIn (alt): ${linkedinResults.length} perfis encontrados`);
+        }
+      }
+    } else {
+      const runData = await runResponse.json();
+      const runId = runData.data?.id;
+
+      console.log(`✅ Run Apify iniciada: ${runId}`);
+
+      if (runId) {
+        // Buscar resultados do dataset
+        const resultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items`, {
+          headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
+        });
+
+        linkedinResults = await resultsResponse.json();
+        console.log(`📊 LinkedIn: ${linkedinResults.length} perfis encontrados`);
+      }
     }
-
-    const runData = await runResponse.json();
-    const runId = runData.data?.id;
-
-    console.log(`✅ Run Apify iniciada: ${runId}`);
-
-    if (!runId) {
-      throw new Error('Não foi possível obter ID da execução Apify');
-    }
-
-    // Buscar resultados do dataset
-    const resultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items`, {
-      headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` }
-    });
-
-    const linkedinResults = await resultsResponse.json();
-    console.log(`📊 LinkedIn: ${linkedinResults.length} perfis encontrados`);
 
     // ==== BUSCAR TAMBÉM NO INSTAGRAM (opcional) ====
     let instagramResults: any[] = [];
@@ -103,17 +129,17 @@ serve(async (req) => {
     try {
       console.log("📷 Buscando no Instagram via Apify...");
       
-      const igResponse = await fetch('https://api.apify.com/v2/acts/apify~instagram-profile-scraper/runs?waitForFinish=180', {
+      // Actor válido do Instagram
+      const igResponse = await fetch('https://api.apify.com/v2/acts/apify~instagram-scraper/runs?waitForFinish=180', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${APIFY_TOKEN}`
         },
         body: JSON.stringify({
-          search: `${profissao} ${cidade}`,
-          searchType: 'hashtag',
-          resultsLimit: 20,
-          proxy: { useApifyProxy: true }
+          searchType: "hashtag",
+          search: [`${profissao}${cidade.replace(/\s/g, '')}`],
+          resultsLimit: 20
         })
       });
 
@@ -139,53 +165,49 @@ serve(async (req) => {
     // Processar LinkedIn
     for (const profile of linkedinResults) {
       const lead = {
-        nome_completo: profile.fullName || profile.name || 'Nome não disponível',
-        profissao: profile.headline || profile.title || profissao,
+        nome_completo: profile.fullName || profile.name || profile.firstName + ' ' + profile.lastName || 'Nome não disponível',
+        profissao: profile.headline || profile.title || profile.currentJobTitle || profissao,
         especialidade: profile.headline || null,
-        cidade: profile.location?.split(',')[0]?.trim() || cidade,
-        estado: profile.location?.split(',')[1]?.trim() || estado,
-        linkedin_url: profile.profileUrl || profile.url || profile.linkedinUrl,
-        linkedin_id: profile.publicIdentifier || profile.profileId,
+        cidade: profile.location?.split(',')[0]?.trim() || profile.city || cidade,
+        estado: profile.location?.split(',')[1]?.trim() || profile.state || estado,
+        linkedin_url: profile.profileUrl || profile.url || profile.linkedinUrl || profile.profileLink,
+        linkedin_id: profile.publicIdentifier || profile.profileId || profile.id,
         email: profile.email || null,
         telefone: profile.phoneNumber || profile.phone || null,
-        foto_url: profile.profilePicture || profile.photoUrl,
+        foto_url: profile.profilePicture || profile.photoUrl || profile.avatar,
         fonte: 'linkedin_apify',
-        fonte_url: profile.profileUrl || profile.url,
+        fonte_url: profile.profileUrl || profile.url || profile.profileLink,
         fonte_snippet: `${profile.headline || profissao} em ${profile.location || cidade}`,
         query_usada: searchQuery,
         pipeline_status: 'descoberto',
-        score: 50, // Score base para leads reais
+        score: 50,
         campanha_id,
         user_id: icp.user_id
       };
 
-      // Só adicionar se tiver LinkedIn URL válido
-      if (lead.linkedin_url) {
+      // Só adicionar se tiver dados válidos
+      if (lead.nome_completo && lead.nome_completo !== 'Nome não disponível') {
         leads.push(lead);
       }
     }
 
-    // Processar Instagram (merge com LinkedIn se mesmo nome)
+    // Processar Instagram
     for (const profile of instagramResults) {
-      // Verificar se é conta business ou verificada
       if (!profile.isBusinessAccount && !profile.isVerified && (profile.followersCount || 0) < 1000) {
         continue;
       }
 
-      // Verificar se já existe pelo nome
       const existingLead = leads.find(l => 
         l.nome_completo.toLowerCase() === (profile.fullName || profile.username || '').toLowerCase()
       );
 
       if (existingLead) {
-        // Merge - adicionar dados do Instagram
         existingLead.instagram_username = profile.username;
         existingLead.instagram_seguidores = profile.followersCount;
         existingLead.email = existingLead.email || profile.businessEmail || profile.publicEmail;
         existingLead.telefone = existingLead.telefone || profile.businessPhoneNumber || profile.publicPhoneNumber;
-        existingLead.score = (existingLead.score || 50) + 10; // Bonus por ter Instagram
+        existingLead.score = (existingLead.score || 50) + 10;
       } else {
-        // Novo lead apenas do Instagram
         leads.push({
           nome_completo: profile.fullName || profile.username,
           profissao: profile.businessCategoryName || profissao,
@@ -201,7 +223,7 @@ serve(async (req) => {
           fonte_snippet: profile.biography?.substring(0, 200),
           query_usada: searchQuery,
           pipeline_status: 'descoberto',
-          score: 40, // Score base para leads só do Instagram
+          score: 40,
           campanha_id,
           user_id: icp.user_id
         });
@@ -216,7 +238,7 @@ serve(async (req) => {
         JSON.stringify({
           success: false,
           leads_encontrados: 0,
-          message: "Nenhum lead encontrado. Tente ajustar os parâmetros de busca."
+          message: "Nenhum lead encontrado. Tente ajustar os parâmetros de busca ou verifique sua API key do Apify."
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
       );
@@ -239,9 +261,12 @@ serve(async (req) => {
       .from("campanhas_prospeccao")
       .update({
         stats: {
-          leads_descobertos: leads.length,
-          ultima_busca: new Date().toISOString(),
-          fonte: 'apify_linkedin_instagram'
+          descobertos: leads.length,
+          enriquecidos: 0,
+          qualificados: 0,
+          enviados: 0,
+          responderam: 0,
+          convertidos: 0
         }
       })
       .eq("id", campanha_id);
