@@ -69,10 +69,11 @@ export default function Prospects() {
 
       console.log('✅ Dados enriquecidos:', data);
       
-      // Salvar resultado no estado local
+      // Salvar resultado no estado local (edge function retorna "enrichment")
+      const enrichData = data.enrichment || data.enrichment_data || data;
       setEnrichedSocios(prev => ({
         ...prev,
-        [socioId]: data.enrichment_data || data
+        [socioId]: enrichData
       }));
 
       // Atualizar também o empresaEncontrada se existir
@@ -81,7 +82,7 @@ export default function Prospects() {
           ...prev,
           socios: prev.socios.map((s: any) => 
             s.id === socioId 
-              ? { ...s, enrichment_data: data.enrichment_data || data }
+              ? { ...s, enrichment_data: enrichData }
               : s
           )
         }));
@@ -881,7 +882,8 @@ export default function Prospects() {
                           const enrichData = socio.enrichment_data || enrichedSocios[socio.id];
                           const hasLinkedIn = enrichData?.linkedin_url || enrichData?.linkedin;
                           const hasInstagram = enrichData?.instagram_username || enrichData?.instagram;
-                          const hasNews = enrichData?.noticias?.length > 0;
+                          const newsItems = enrichData?.noticias || enrichData?.news_mentions || [];
+                          const hasNews = newsItems.length > 0;
                           
                           return (
                             <div key={idx} className="p-3 bg-background rounded-lg border space-y-2">
@@ -927,7 +929,7 @@ export default function Prospects() {
                                   {hasNews && (
                                     <Badge variant="outline" className="text-xs">
                                       <Globe className="h-3 w-3 mr-1" />
-                                      {enrichData.noticias.length} notícias
+                                      {newsItems.length} notícias
                                     </Badge>
                                   )}
                                   {!hasLinkedIn && !hasInstagram && !hasNews && (
