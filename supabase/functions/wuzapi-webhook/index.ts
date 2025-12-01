@@ -490,7 +490,7 @@ REGRAS:
 7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque ou informe "esgotado no momento"
 8. Se produto SEM ESTOQUE → informe de forma natural: "Esse tá esgotado agora 😔" ou "Acabou hoje, volta semana que vem"
 9. Se quer comprar produto COM estoque → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
-10. 🔬 CRÍTICO: Se cliente perguntar sobre FICHA TÉCNICA, TABELA NUTRICIONAL, INGREDIENTES, VALORES NUTRICIONAIS, COMPOSIÇÃO ou ESPECIFICAÇÕES - você TEM essas informações completas nas "ESPECIFICAÇÕES TÉCNICAS COMPLETAS" acima. SEMPRE responda usando esses dados exatos. Se realmente não tiver a informação específica nas especificações, diga "não tenho essa info específica na ficha", mas SE TIVER, responda com os valores exatos!
+10. 🔬 DADOS TÉCNICOS: SOMENTE responda com especificações técnicas, tabela nutricional, ingredientes ou composição SE O CLIENTE PERGUNTAR. Não mencione essas informações proativamente. Quando perguntado, use os dados das "ESPECIFICAÇÕES TÉCNICAS COMPLETAS" acima com precisão. Fora isso: atendimento normal curto e envio do link quando apropriado
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
