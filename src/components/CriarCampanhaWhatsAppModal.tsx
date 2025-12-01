@@ -91,6 +91,7 @@ export function CriarCampanhaWhatsAppModal({
   // NOVO: Estados para vendedores
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [vendedorSelecionado, setVendedorSelecionado] = useState<string>('');
+  const [vendedoresLoading, setVendedoresLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -134,6 +135,7 @@ export function CriarCampanhaWhatsAppModal({
   };
 
   const fetchVendedores = async () => {
+    setVendedoresLoading(true);
     try {
       const { data, error } = await supabase
         .from('vendedores')
@@ -147,10 +149,12 @@ export function CriarCampanhaWhatsAppModal({
         return;
       }
       
-      setVendedores(data || []);
+      setVendedores(Array.isArray(data) ? data : []);
     } catch (error) {
       console.warn('Erro ao buscar vendedores (continuando sem vendedores):', error);
       setVendedores([]);
+    } finally {
+      setVendedoresLoading(false);
     }
   };
 
@@ -628,19 +632,23 @@ export function CriarCampanhaWhatsAppModal({
           {/* 3. ATRIBUIR A UM VENDEDOR (OPCIONAL) */}
           <div className="p-4 bg-muted/30 rounded-lg">
             <Label className="text-lg font-semibold mb-3 block">3. Atribuir a um Vendedor (Opcional)</Label>
-            <Select value={vendedorSelecionado} onValueChange={setVendedorSelecionado}>
-              <SelectTrigger>
-                <SelectValue placeholder="Nenhum vendedor (padrão)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="">Nenhum vendedor</SelectItem>
-                {vendedores.map(v => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.nome} {v.email && `(${v.email})`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {vendedoresLoading ? (
+              <p className="text-sm text-muted-foreground">Carregando vendedores...</p>
+            ) : (
+              <Select value={vendedorSelecionado} onValueChange={setVendedorSelecionado}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Nenhum vendedor (padrão)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Nenhum vendedor</SelectItem>
+                  {Array.isArray(vendedores) && vendedores.map(v => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.nome} {v.email && `(${v.email})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <p className="text-xs text-muted-foreground mt-2">
               💡 Se selecionado, as conversas desta campanha serão automaticamente atribuídas ao vendedor escolhido
             </p>
