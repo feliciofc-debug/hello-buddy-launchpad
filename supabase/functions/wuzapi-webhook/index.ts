@@ -302,6 +302,27 @@ serve(async (req) => {
 
     const segmentoId = empresaConfig?.segmento || 'outros';
 
+    // ═══════════════════════════════════════
+    // 📦 BUSCAR TODOS OS PRODUTOS DISPONÍVEIS DO VENDEDOR
+    // ═══════════════════════════════════════
+    const { data: todosProdutos } = await supabaseClient
+      .from('produtos')
+      .select('nome, preco, estoque, descricao, link_marketplace')
+      .eq('user_id', contexto.user_id)
+      .eq('ativo', true)
+      .gt('estoque', 0)
+      .order('nome');
+
+    let catalogoProdutos = '';
+    if (todosProdutos && todosProdutos.length > 0) {
+      catalogoProdutos = '\n━━ OUTROS PRODUTOS DISPONÍVEIS ━━\n';
+      todosProdutos.forEach(p => {
+        catalogoProdutos += `• ${p.nome} - R$ ${Number(p.preco || 0).toFixed(2)} (estoque: ${p.estoque})\n`;
+      });
+      catalogoProdutos += '\nSe cliente perguntar sobre outro produto, você PODE oferecer!\n';
+      console.log('📋 Catálogo carregado:', todosProdutos.length, 'produtos');
+    }
+
     // BUSCAR HISTÓRICO
     const { data: historico } = await supabaseClient
       .from('whatsapp_messages')
@@ -341,11 +362,12 @@ serve(async (req) => {
     // PROMPT HUMANIZADO
     const promptIA = `Você é vendedor WhatsApp. MÁXIMO 2 LINHAS.
 
-📦 ${produtoNome} - ${produtoPreco}
+📦 PRODUTO PRINCIPAL: ${produtoNome} - ${produtoPreco}
 ${produtoDescricao}
 ${produtoEspecs ? `Especificações: ${produtoEspecs}` : ''}
 
 📊 ESTOQUE: ${infoEstoque}
+${catalogoProdutos}
 ${historicoTexto}
 
 💬 CLIENTE: "${messageText}"
@@ -356,7 +378,9 @@ REGRAS:
 3. NÃO use "tá?" no final das frases - varie a linguagem!
 4. NUNCA "Fico feliz", "Agradeço"
 5. 1 emoji só
-6. Se quer comprar → link: ${ctx.link_marketplace || '[link]'}
+6. Se cliente perguntar sobre OUTRO produto da lista, pode oferecer com preço/estoque!
+7. Se quer comprar produto principal → link: ${ctx.link_marketplace || '[link]'}
+8. Se quer comprar OUTRO produto → diga "te mando o link" (você ainda não tem link dos outros)
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
