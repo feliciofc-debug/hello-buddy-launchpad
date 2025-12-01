@@ -777,13 +777,13 @@ RESPONDA (curto e humano, sem repetir "tá"):`;
 
     // SALVAR HISTÓRICO em whatsapp_messages
     await supabaseClient.from('whatsapp_messages').insert([
-      { user_id: contexto.user_id, phone: phoneNumber, direction: 'received', message: messageText, origem },
+      { user_id: contexto.user_id, phone: phoneNumber, direction: 'received', message: messageText, origem, wuzapi_message_id: messageId },
       { user_id: contexto.user_id, phone: phoneNumber, direction: 'sent', message: respostaIA, origem }
     ]);
 
     // SALVAR TAMBÉM em whatsapp_conversation_messages (para exibir na tela IA Conversas)
     await supabaseClient.from('whatsapp_conversation_messages').insert([
-      { conversation_id: contexto.id, role: 'user', content: messageText },
+      { conversation_id: contexto.id, role: 'user', content: messageText, wuzapi_message_id: messageId },
       { conversation_id: contexto.id, role: 'assistant', content: respostaIA }
     ]);
 
