@@ -116,6 +116,38 @@ serve(async (req) => {
     console.log('📱 Telefone:', phoneNumber);
     console.log('💬 Mensagem:', messageText);
 
+    // ═══════════════════════════════════════
+    // 🔒 DEDUPLICAÇÃO DE MENSAGENS
+    // ═══════════════════════════════════════
+    // Extrair ID único da mensagem do payload
+    const messageId = webhookData.event?.Info?.ID || 
+                      webhookData.event?.Message?.ID || 
+                      webhookData.data?.id || 
+                      webhookData.message?.id ||
+                      `${phoneNumber}_${messageText.substring(0, 50)}_${Date.now()}`;
+    
+    console.log('🔑 Message ID:', messageId);
+    
+    // Verificar se já processamos esta mensagem
+    const { data: mensagemExistente } = await supabaseClient
+      .from('whatsapp_messages')
+      .select('id')
+      .eq('wuzapi_message_id', messageId)
+      .maybeSingle();
+    
+    if (mensagemExistente) {
+      console.log('⏭️ Mensagem já processada, ignorando duplicata');
+      return new Response(JSON.stringify({ 
+        status: 'ignored', 
+        reason: 'duplicate_message',
+        message_id: messageId 
+      }), { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
+    }
+    
+    console.log('✅ Mensagem nova, processando...');
+
     const isFromMe = webhookData.event?.Info?.IsFromMe || webhookData.event?.IsFromMe || webhookData.data?.fromMe || webhookData.fromMe;
 
     await supabaseClient.from('webhook_debug_logs').insert({
