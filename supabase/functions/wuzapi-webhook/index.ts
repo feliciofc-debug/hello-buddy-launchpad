@@ -307,7 +307,7 @@ serve(async (req) => {
     // ═══════════════════════════════════════
     const { data: todosProdutos } = await supabaseClient
       .from('produtos')
-      .select('nome, preco, estoque, descricao, link_marketplace')
+      .select('id, nome, preco, estoque, descricao, especificacoes, link_marketplace')
       .eq('user_id', contexto.user_id)
       .eq('ativo', true)
       .gt('estoque', 0)
@@ -321,6 +321,45 @@ serve(async (req) => {
       });
       catalogoProdutos += '\nSe cliente perguntar sobre outro produto, você PODE oferecer!\n';
       console.log('📋 Catálogo carregado:', todosProdutos.length, 'produtos');
+    }
+
+    // ═══════════════════════════════════════
+    // 🔍 DETECTAR SE CLIENTE ESTÁ PERGUNTANDO SOBRE OUTRO PRODUTO
+    // ═══════════════════════════════════════
+    let produtoSolicitado = null;
+    if (todosProdutos && todosProdutos.length > 0) {
+      const msgLower = messageText.toLowerCase();
+      for (const prod of todosProdutos) {
+        const nomeProdLower = prod.nome.toLowerCase();
+        // Detectar menções ao produto na mensagem
+        if (msgLower.includes(nomeProdLower) || 
+            msgLower.includes('tem ' + nomeProdLower) ||
+            msgLower.includes('e ' + nomeProdLower) ||
+            msgLower.includes('e o ' + nomeProdLower)) {
+          // Cliente está perguntando sobre este produto
+          produtoSolicitado = prod;
+          console.log('🎯 Produto solicitado detectado:', prod.nome);
+          
+          // Atualizar contexto para este produto
+          ctx = {
+            ...ctx,
+            produto_nome: prod.nome,
+            produto_descricao: prod.descricao,
+            produto_preco: prod.preco,
+            produto_estoque: prod.estoque,
+            produto_especificacoes: prod.especificacoes,
+            link_marketplace: prod.link_marketplace
+          };
+          
+          // Atualizar conversa com novo produto
+          await supabaseClient
+            .from('whatsapp_conversations')
+            .update({ metadata: ctx })
+            .eq('id', contexto.id);
+          
+          break;
+        }
+      }
     }
 
     // BUSCAR HISTÓRICO
@@ -362,7 +401,7 @@ serve(async (req) => {
     // PROMPT HUMANIZADO
     const promptIA = `Você é vendedor WhatsApp. MÁXIMO 2 LINHAS.
 
-📦 PRODUTO PRINCIPAL: ${produtoNome} - ${produtoPreco}
+📦 PRODUTO ATUAL: ${produtoNome} - ${produtoPreco}
 ${produtoDescricao}
 ${produtoEspecs ? `Especificações: ${produtoEspecs}` : ''}
 
@@ -378,10 +417,9 @@ REGRAS:
 3. NÃO use "tá?" no final das frases - varie a linguagem!
 4. NUNCA "Fico feliz", "Agradeço"
 5. 1 emoji só
-6. FOQUE no produto principal - NÃO ofereça outros produtos espontaneamente
-7. SOMENTE se cliente perguntar DIRETAMENTE sobre outro produto (ex: "tem feijão?", "e arroz?"), aí sim responda com preço/estoque
-8. Se quer comprar produto principal → link: ${ctx.link_marketplace || '[link]'}
-9. Se quer comprar OUTRO produto → diga "te mando o link" (você ainda não tem link dos outros)
+6. ${produtoSolicitado ? '🎯 CLIENTE PERGUNTOU SOBRE ESTE PRODUTO - responda sobre ele!' : 'FOQUE no produto principal - NÃO ofereça outros espontaneamente'}
+7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque
+8. Se quer comprar → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
