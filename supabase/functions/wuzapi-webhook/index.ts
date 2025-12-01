@@ -456,17 +456,25 @@ serve(async (req) => {
       produtoTags 
     });
     
-    console.log('⚠️ ESPECIFICAÇÕES COMPLETAS (para debug):', produtoEspecs || 'VAZIO - produto não tem especificações cadastradas');
+     console.log('⚠️ ESPECIFICAÇÕES COMPLETAS (para debug):', produtoEspecs || 'VAZIO - produto não tem especificações cadastradas');
 
     // MONTAR FICHA TÉCNICA COMPLETA - INCLUIR TODAS AS INFORMAÇÕES
     let fichaTecnicaCompleta = `📦 PRODUTO: ${produtoNome} - ${produtoPreco}\n`;
     if (produtoCategoria) fichaTecnicaCompleta += `🏷️ CATEGORIA: ${produtoCategoria}\n`;
     if (produtoSku) fichaTecnicaCompleta += `📋 SKU/CÓDIGO: ${produtoSku}\n`;
     if (produtoDescricao) fichaTecnicaCompleta += `📝 DESCRIÇÃO: ${produtoDescricao}\n`;
-    if (produtoEspecs) {
-      fichaTecnicaCompleta += `\n🔬 ESPECIFICAÇÕES TÉCNICAS COMPLETAS:\n${produtoEspecs}\n`;
-      fichaTecnicaCompleta += `⚠️ USE ESTAS ESPECIFICAÇÕES para responder perguntas sobre tabela nutricional, composição, ingredientes, valores nutricionais, etc.\n`;
+    
+    // ESPECIFICAÇÕES TÉCNICAS - CRUCIAL PARA RESPONDER PERGUNTAS TÉCNICAS
+    if (produtoEspecs && produtoEspecs.trim()) {
+      fichaTecnicaCompleta += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      fichaTecnicaCompleta += `🔬 ESPECIFICAÇÕES TÉCNICAS COMPLETAS:\n`;
+      fichaTecnicaCompleta += `${produtoEspecs}\n`;
+      fichaTecnicaCompleta += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      fichaTecnicaCompleta += `⚠️ IMPORTANTE: Você TEM estas especificações técnicas acima! Use-as para responder perguntas sobre tabela nutricional, ingredientes, composição, valores nutricionais, etc.\n`;
+    } else {
+      fichaTecnicaCompleta += `\n⚠️ ATENÇÃO: Este produto NÃO tem especificações técnicas cadastradas no sistema.\n`;
     }
+    
     if (produtoTags) fichaTecnicaCompleta += `🏷️ TAGS: ${produtoTags}\n`;
 
     // PROMPT HUMANIZADO COM FICHA TÉCNICA COMPLETA
@@ -490,7 +498,11 @@ REGRAS:
 7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque ou informe "esgotado no momento"
 8. Se produto SEM ESTOQUE → informe de forma natural: "Esse tá esgotado agora 😔" ou "Acabou hoje, volta semana que vem"
 9. Se quer comprar produto COM estoque → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
-10. 🔬 DADOS TÉCNICOS: NUNCA mencione especificações técnicas, tabela nutricional, ingredientes ou ficha técnica a menos que o cliente EXPLICITAMENTE pergunte por essas informações. Seu padrão é: atendimento curto de marketing + link
+10. 🔬 DADOS TÉCNICOS: 
+   - SE cliente perguntar EXPLICITAMENTE sobre especificações, tabela nutricional, ingredientes, composição, dados nutricionais → RESPONDA usando as "ESPECIFICAÇÕES TÉCNICAS COMPLETAS" acima
+   - Se as especificações estiverem lá em cima, você TEM essa informação! Use-a para responder
+   - Se NÃO houver especificações cadastradas (indicado no prompt), diga: "Não tenho essa info no sistema, mas posso te passar o link pra ver lá"
+   - Seu padrão normal (sem perguntas técnicas): atendimento curto de marketing + link
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
