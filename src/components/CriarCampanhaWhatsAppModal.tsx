@@ -71,7 +71,13 @@ export function CriarCampanhaWhatsAppModal({
   onSuccess,
   campanhaExistente 
 }: CriarCampanhaWhatsAppModalProps) {
-  console.log('🚀 CriarCampanhaWhatsAppModal renderizado', { open, produto });
+  console.log('🚀 MODAL INICIADO', { open, produtoNome: produto?.nome, campanhaExistente: !!campanhaExistente });
+  
+  // Proteção: se produto não existe, não renderiza nada
+  if (!produto) {
+    console.error('❌ PRODUTO INVÁLIDO - Modal não pode abrir sem produto');
+    return null;
+  }
   
   const [frequencia, setFrequencia] = useState<'agora' | 'uma_vez' | 'diario' | 'semanal' | 'personalizado' | 'teste'>('agora');
   const [dataInicio, setDataInicio] = useState('');
@@ -94,13 +100,15 @@ export function CriarCampanhaWhatsAppModal({
   // const [vendedoresLoading, setVendedoresLoading] = useState(false);
 
   useEffect(() => {
+    console.log('⚙️ useEffect EXECUTADO', { open });
     if (open) {
       try {
+        console.log('🔄 Iniciando fetch de listas...');
         fetchListas();
-        // fetchVendedores - REMOVIDO
         
         // Se tem campanha existente, carregar dados dela
         if (campanhaExistente) {
+          console.log('📝 Carregando campanha existente:', campanhaExistente.id);
           setFrequencia(campanhaExistente.frequencia as any);
           setDataInicio(campanhaExistente.data_inicio);
           setHorarios(campanhaExistente.horarios);
@@ -108,27 +116,44 @@ export function CriarCampanhaWhatsAppModal({
           setMensagem(campanhaExistente.mensagem_template);
           setListasSelecionadas(campanhaExistente.listas_ids);
         } else {
+          console.log('✨ Nova campanha - configurando template');
           // Template inicial com variáveis
           setMensagem(`Olá {{nome}}! 👋\n\nConfira nosso produto:\n\n${produto.nome}\n${produto.preco ? `💰 R$ ${produto.preco.toFixed(2)}` : ''}\n\n${produto.descricao || ''}`);
         }
+        console.log('✅ useEffect concluído com sucesso');
       } catch (error) {
-        console.error('Erro no useEffect:', error);
+        console.error('❌ ERRO CRÍTICO no useEffect:', error);
+        toast.error('Erro ao inicializar campanha');
       }
     }
   }, [open, produto, campanhaExistente]);
 
   const fetchListas = async () => {
+    console.log('📋 Buscando listas de transmissão...');
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.warn('⚠️ Usuário não autenticado');
+        return;
+      }
+
       const { data, error } = await supabase
         .from('whatsapp_groups')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Erro ao buscar listas:', error);
+        throw error;
+      }
+
+      console.log(`✅ ${data?.length || 0} listas carregadas`);
       setListas(data || []);
     } catch (error) {
-      console.error('Erro ao buscar listas:', error);
-      toast.error('Erro ao carregar listas de transmissão');
+      console.error('❌ ERRO ao buscar listas:', error);
+      toast.error('Erro ao carregar listas');
+      setListas([]);
     }
   };
 
