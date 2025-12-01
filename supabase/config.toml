@@ -161,3 +161,6 @@ verify_jwt = false
 
 [functions.atendimento-suporte]
 verify_jwt = false
+
+[functions.gerar-mensagens-linkedin]
+verify_jwt = false
