@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2, Briefcase, Heart, Zap, Sparkles, Save, Linkedin, Instagram, Globe } from 'lucide-react';
+import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2, Briefcase, Heart, Zap, Sparkles, Save, Linkedin, Instagram, Globe, Copy, Check, MessageCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -46,6 +46,16 @@ export default function Prospects() {
   // Estados para enriquecimento individual
   const [enrichingSocioId, setEnrichingSocioId] = useState<string | null>(null);
   const [enrichedSocios, setEnrichedSocios] = useState<Record<string, any>>({});
+  
+  // Estados para mensagens LinkedIn
+  const [linkedinMessageDialogOpen, setLinkedinMessageDialogOpen] = useState(false);
+  const [generatingLinkedinMessages, setGeneratingLinkedinMessages] = useState<string | null>(null);
+  const [linkedinMessages, setLinkedinMessages] = useState<{
+    socio: any;
+    empresa: any;
+    mensagens: { profissional: string; entusiasta: string; direto: string };
+  } | null>(null);
+  const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
 
   // ============================================
   // ENRIQUECER SÓCIO (LinkedIn, Instagram)
@@ -103,6 +113,67 @@ export default function Prospects() {
     } finally {
       setEnrichingSocioId(null);
     }
+  };
+
+  // ============================================
+  // GERAR MENSAGENS LINKEDIN
+  // ============================================
+  const handleGenerateLinkedinMessages = async (socio: any) => {
+    setGeneratingLinkedinMessages(socio.id);
+    
+    try {
+      toast({
+        title: 'Gerando mensagens...',
+        description: `Criando 3 variações de mensagem para ${socio.nome}`,
+      });
+
+      const { data, error } = await supabase.functions.invoke('gerar-mensagens-linkedin', {
+        body: { 
+          socio: {
+            ...socio,
+            enrichment_data: socio.enrichment_data || enrichedSocios[socio.id]
+          },
+          empresa: empresaEncontrada
+        },
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Erro ao gerar mensagens');
+
+      console.log('✅ Mensagens LinkedIn geradas:', data.mensagens);
+      
+      setLinkedinMessages({
+        socio,
+        empresa: empresaEncontrada,
+        mensagens: data.mensagens
+      });
+      setLinkedinMessageDialogOpen(true);
+
+      toast({
+        title: 'Mensagens geradas!',
+        description: 'Escolha a melhor variação para enviar no LinkedIn.',
+      });
+
+    } catch (error: any) {
+      console.error('❌ Erro ao gerar mensagens:', error);
+      toast({
+        title: 'Erro ao gerar mensagens',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setGeneratingLinkedinMessages(null);
+    }
+  };
+
+  const handleCopyMessage = (text: string, type: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMessage(type);
+    setTimeout(() => setCopiedMessage(null), 2000);
+    toast({
+      title: 'Mensagem copiada!',
+      description: 'Cole no LinkedIn para enviar.',
+    });
   };
 
   // ============================================
@@ -939,7 +1010,7 @@ export default function Prospects() {
                               )}
                               
                               {/* Botões de ação */}
-                              <div className="flex items-center gap-2 pt-2">
+                              <div className="flex flex-wrap items-center gap-2 pt-2">
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -953,13 +1024,38 @@ export default function Prospects() {
                                     </>
                                   ) : (
                                     <>
-                                      <Linkedin className="mr-1 h-3 w-3" />
-                                      Enriquecer
+                                      <Search className="mr-1 h-3 w-3" />
+                                      Buscar Redes
                                     </>
                                   )}
                                 </Button>
+                                
+                                {/* Botão Gerar Mensagens LinkedIn - só aparece se tem LinkedIn */}
+                                {hasLinkedIn && (
+                                  <Button
+                                    size="sm"
+                                    variant="default"
+                                    className="bg-blue-600 hover:bg-blue-700"
+                                    onClick={() => handleGenerateLinkedinMessages(socio)}
+                                    disabled={loading || generatingLinkedinMessages === socio.id}
+                                  >
+                                    {generatingLinkedinMessages === socio.id ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                        Gerando...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <MessageCircle className="mr-1 h-3 w-3" />
+                                        Gerar Mensagens LinkedIn
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
+                                
                                 <Button
                                   size="sm"
+                                  variant="secondary"
                                   onClick={() => processarProspect(socio.id, socio.nome)}
                                   disabled={loading}
                                 >
@@ -1701,6 +1797,174 @@ export default function Prospects() {
           ) : (
             <div className="p-8 text-center">
               <p className="text-muted-foreground">Carregando mensagens...</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Mensagens LinkedIn */}
+      <Dialog open={linkedinMessageDialogOpen} onOpenChange={setLinkedinMessageDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Linkedin className="h-5 w-5 text-blue-600" />
+              Mensagens para LinkedIn
+            </DialogTitle>
+            <DialogDescription>
+              {linkedinMessages && (
+                <>Primeiro contato com <strong>{linkedinMessages.socio.nome}</strong> da {linkedinMessages.empresa?.razao_social || linkedinMessages.empresa?.nome_fantasia}</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          {linkedinMessages && (
+            <div className="space-y-6">
+              {/* Info do contato */}
+              <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+                <div className="flex-1">
+                  <p className="font-medium">{linkedinMessages.socio.nome}</p>
+                  <p className="text-sm text-muted-foreground">{linkedinMessages.socio.qualificacao || 'Sócio'}</p>
+                  {(linkedinMessages.socio.enrichment_data?.linkedin_url || enrichedSocios[linkedinMessages.socio.id]?.linkedin_url) && (
+                    <a 
+                      href={linkedinMessages.socio.enrichment_data?.linkedin_url || enrichedSocios[linkedinMessages.socio.id]?.linkedin_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:underline flex items-center gap-1 mt-1"
+                    >
+                      <Linkedin className="h-3 w-3" />
+                      Ver perfil no LinkedIn
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* 3 Variações de Mensagem */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Profissional */}
+                <Card className="border-2 border-blue-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2 text-blue-600">
+                      <Briefcase className="h-4 w-4" />
+                      Profissional
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="bg-blue-50 p-3 rounded-lg text-sm whitespace-pre-wrap min-h-[120px]">
+                      {linkedinMessages.mensagens.profissional}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {linkedinMessages.mensagens.profissional.length}/300 caracteres
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopyMessage(linkedinMessages.mensagens.profissional, 'profissional')}
+                      >
+                        {copiedMessage === 'profissional' ? (
+                          <><Check className="h-3 w-3 mr-1" /> Copiado!</>
+                        ) : (
+                          <><Copy className="h-3 w-3 mr-1" /> Copiar</>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Entusiasta */}
+                <Card className="border-2 border-purple-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2 text-purple-600">
+                      <Zap className="h-4 w-4" />
+                      Entusiasta
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="bg-purple-50 p-3 rounded-lg text-sm whitespace-pre-wrap min-h-[120px]">
+                      {linkedinMessages.mensagens.entusiasta}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {linkedinMessages.mensagens.entusiasta.length}/300 caracteres
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopyMessage(linkedinMessages.mensagens.entusiasta, 'entusiasta')}
+                      >
+                        {copiedMessage === 'entusiasta' ? (
+                          <><Check className="h-3 w-3 mr-1" /> Copiado!</>
+                        ) : (
+                          <><Copy className="h-3 w-3 mr-1" /> Copiar</>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Direto */}
+                <Card className="border-2 border-green-200">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2 text-green-600">
+                      <Target className="h-4 w-4" />
+                      Direto
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="bg-green-50 p-3 rounded-lg text-sm whitespace-pre-wrap min-h-[120px]">
+                      {linkedinMessages.mensagens.direto}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {linkedinMessages.mensagens.direto.length}/300 caracteres
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleCopyMessage(linkedinMessages.mensagens.direto, 'direto')}
+                      >
+                        {copiedMessage === 'direto' ? (
+                          <><Check className="h-3 w-3 mr-1" /> Copiado!</>
+                        ) : (
+                          <><Copy className="h-3 w-3 mr-1" /> Copiar</>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Dica */}
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Dica:</strong> Copie a mensagem e cole diretamente no convite de conexão do LinkedIn. 
+                  Mensagens curtas e personalizadas têm maior taxa de aceitação.
+                </AlertDescription>
+              </Alert>
+
+              {/* Botões de ação */}
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setLinkedinMessageDialogOpen(false)}
+                  className="flex-1"
+                >
+                  Fechar
+                </Button>
+                {(linkedinMessages.socio.enrichment_data?.linkedin_url || enrichedSocios[linkedinMessages.socio.id]?.linkedin_url) && (
+                  <Button
+                    onClick={() => {
+                      const url = linkedinMessages.socio.enrichment_data?.linkedin_url || enrichedSocios[linkedinMessages.socio.id]?.linkedin_url;
+                      window.open(url, '_blank');
+                    }}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Linkedin className="mr-2 h-4 w-4" />
+                    Abrir LinkedIn do Contato
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
