@@ -96,7 +96,9 @@ export function CriarCampanhaWhatsAppModal({
     if (open) {
       try {
         fetchListas();
-        fetchVendedores();
+        fetchVendedores().catch(err => {
+          console.warn('Continuando sem vendedores disponíveis');
+        });
         
         // Se tem campanha existente, carregar dados dela
         if (campanhaExistente) {
@@ -140,14 +142,14 @@ export function CriarCampanhaWhatsAppModal({
         .order('nome', { ascending: true });
 
       if (error) {
-        console.error('Erro ao buscar vendedores:', error);
+        console.warn('Não foi possível carregar vendedores:', error.message);
         setVendedores([]);
         return;
       }
       
       setVendedores(data || []);
     } catch (error) {
-      console.error('Erro ao buscar vendedores:', error);
+      console.warn('Erro ao buscar vendedores (continuando sem vendedores):', error);
       setVendedores([]);
     }
   };
