@@ -490,7 +490,7 @@ REGRAS:
 7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque ou informe "esgotado no momento"
 8. Se produto SEM ESTOQUE → informe de forma natural: "Esse tá esgotado agora 😔" ou "Acabou hoje, volta semana que vem"
 9. Se quer comprar produto COM estoque → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
-10. 🔬 DADOS TÉCNICOS: SOMENTE responda com especificações técnicas, tabela nutricional, ingredientes ou composição SE O CLIENTE PERGUNTAR. Não mencione essas informações proativamente. Quando perguntado, use os dados das "ESPECIFICAÇÕES TÉCNICAS COMPLETAS" acima com precisão. Fora isso: atendimento normal curto e envio do link quando apropriado
+10. 🔬 DADOS TÉCNICOS: NUNCA mencione especificações técnicas, tabela nutricional, ingredientes ou ficha técnica a menos que o cliente EXPLICITAMENTE pergunte por essas informações. Seu padrão é: atendimento curto de marketing + link
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
@@ -566,25 +566,15 @@ RESPONDA (curto e humano, sem repetir "tá"):`;
     if (produtoSolicitado && produtoSolicitado.imagem_url) {
       console.log('📸 Cliente perguntou sobre produto com imagem, enviando foto...');
       
-      // Montar caption com descrição completa
-      const statusEstoque = produtoSolicitado.estoque > 0 
-        ? `✅ Disponível (${produtoSolicitado.estoque} unidades)` 
-        : '❌ Esgotado no momento';
-      
-      let caption = `📦 *${produtoSolicitado.nome}*\n\n`;
-      caption += `💰 R$ ${Number(produtoSolicitado.preco || 0).toFixed(2)}\n`;
-      caption += `${statusEstoque}\n\n`;
-      
-      if (produtoSolicitado.descricao) {
-        caption += `📝 ${produtoSolicitado.descricao}\n\n`;
-      }
-      
-      if (produtoSolicitado.especificacoes) {
-        caption += `📋 Especificações:\n${produtoSolicitado.especificacoes}\n\n`;
-      }
+      // Caption CURTO - apenas nome, preço e link
+      let caption = `Confira nosso produto:\n\n`;
+      caption += `${produtoSolicitado.nome}\n`;
+      caption += `💰 R$ ${Number(produtoSolicitado.preco || 0).toFixed(2)}\n\n`;
       
       if (produtoSolicitado.estoque > 0 && produtoSolicitado.link_marketplace) {
-        caption += `🛒 Link para comprar: ${produtoSolicitado.link_marketplace}`;
+        caption += `🛒 ${produtoSolicitado.link_marketplace}`;
+      } else if (produtoSolicitado.estoque === 0) {
+        caption += `❌ Esgotado no momento`;
       }
 
       console.log('📸 Caption:', caption);
