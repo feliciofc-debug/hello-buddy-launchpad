@@ -307,7 +307,7 @@ serve(async (req) => {
     // ═══════════════════════════════════════
     const { data: todosProdutos } = await supabaseClient
       .from('produtos')
-      .select('id, nome, preco, estoque, descricao, especificacoes, link_marketplace')
+      .select('id, nome, preco, estoque, descricao, especificacoes, link_marketplace, imagem_url')
       .eq('user_id', contexto.user_id)
       .eq('ativo', true)
       .order('nome');
@@ -348,7 +348,8 @@ serve(async (req) => {
             produto_preco: prod.preco,
             produto_estoque: prod.estoque,
             produto_especificacoes: prod.especificacoes,
-            link_marketplace: prod.link_marketplace
+            link_marketplace: prod.link_marketplace,
+            produto_imagem_url: prod.imagem_url
           };
           
           // Atualizar conversa com novo produto
@@ -417,7 +418,7 @@ REGRAS:
 3. NÃO use "tá?" no final das frases - varie a linguagem!
 4. NUNCA "Fico feliz", "Agradeço"
 5. 1 emoji só
-6. ${produtoSolicitado ? '🎯 CLIENTE PERGUNTOU SOBRE ESTE PRODUTO - responda sobre ele!' : 'FOQUE no produto principal - NÃO ofereça outros espontaneamente'}
+6. ${produtoSolicitado ? '🎯 PRODUTO SOLICITADO - já vai imagem com descrição completa! Seja BREVE: "Esse é o arroz que tenho! 😊" ou "Olha só 👆"' : 'FOQUE no produto principal - NÃO ofereça outros espontaneamente'}
 7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque ou informe "esgotado no momento"
 8. Se produto SEM ESTOQUE → informe de forma natural: "Esse tá esgotado agora 😔" ou "Acabou hoje, volta semana que vem"
 9. Se quer comprar produto COM estoque → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
@@ -489,6 +490,82 @@ RESPONDA (curto e humano, sem repetir "tá"):`;
     }
 
     console.log('✅ Resposta IA:', respostaIA);
+
+    // ═══════════════════════════════════════
+    // 📸 ENVIAR IMAGEM DO PRODUTO SE CLIENTE PERGUNTOU
+    // ═══════════════════════════════════════
+    if (produtoSolicitado && produtoSolicitado.imagem_url) {
+      console.log('📸 Cliente perguntou sobre produto com imagem, enviando foto...');
+      
+      // Montar caption com descrição completa
+      const statusEstoque = produtoSolicitado.estoque > 0 
+        ? `✅ Disponível (${produtoSolicitado.estoque} unidades)` 
+        : '❌ Esgotado no momento';
+      
+      let caption = `📦 *${produtoSolicitado.nome}*\n\n`;
+      caption += `💰 R$ ${Number(produtoSolicitado.preco || 0).toFixed(2)}\n`;
+      caption += `${statusEstoque}\n\n`;
+      
+      if (produtoSolicitado.descricao) {
+        caption += `📝 ${produtoSolicitado.descricao}\n\n`;
+      }
+      
+      if (produtoSolicitado.especificacoes) {
+        caption += `📋 Especificações:\n${produtoSolicitado.especificacoes}\n\n`;
+      }
+      
+      if (produtoSolicitado.estoque > 0 && produtoSolicitado.link_marketplace) {
+        caption += `🛒 Link para comprar: ${produtoSolicitado.link_marketplace}`;
+      }
+
+      console.log('📸 Caption:', caption);
+      console.log('📸 Imagem URL:', produtoSolicitado.imagem_url);
+
+      const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
+      
+      // Tentar enviar imagem via Wuzapi
+      try {
+        const urlImagem = `${baseUrl}/chat/send/image`;
+        const bodyImagem = {
+          Phone: phoneNumber,
+          Image: produtoSolicitado.imagem_url,
+          Caption: caption
+        };
+        
+        console.log('📸 Enviando para:', urlImagem);
+        console.log('📸 Body:', JSON.stringify(bodyImagem));
+        
+        const resImagem = await fetch(urlImagem, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+          body: JSON.stringify(bodyImagem)
+        });
+        
+        const textImagem = await resImagem.text();
+        console.log('📸 Status:', resImagem.status);
+        console.log('📸 Response:', textImagem);
+        
+        if (resImagem.ok) {
+          console.log('✅ Imagem enviada com sucesso!');
+          
+          // Salvar mensagem de imagem no histórico
+          await supabaseClient.from('whatsapp_messages').insert({
+            phone: phoneNumber,
+            user_id: contexto.user_id,
+            direction: 'sent',
+            message: `[Imagem] ${caption}`,
+            timestamp: new Date().toISOString()
+          });
+        } else {
+          console.error('❌ Erro ao enviar imagem:', textImagem);
+        }
+      } catch (errImagem) {
+        console.error('❌ Exceção ao enviar imagem:', errImagem);
+      }
+      
+      // Pequeno delay para não sobrepor mensagens
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     // ═══════════════════════════════════════
     // 📤 PROCESSO DE ENVIO COM DEBUG COMPLETO
