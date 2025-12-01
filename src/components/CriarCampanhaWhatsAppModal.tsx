@@ -89,17 +89,15 @@ export function CriarCampanhaWhatsAppModal({
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   
   // NOVO: Estados para vendedores
-  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
-  const [vendedorSelecionado, setVendedorSelecionado] = useState<string>('');
-  const [vendedoresLoading, setVendedoresLoading] = useState(false);
+  // const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  // const [vendedorSelecionado, setVendedorSelecionado] = useState<string>('');
+  // const [vendedoresLoading, setVendedoresLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
       try {
         fetchListas();
-        fetchVendedores().catch(err => {
-          console.warn('Continuando sem vendedores disponíveis');
-        });
+        // fetchVendedores - REMOVIDO
         
         // Se tem campanha existente, carregar dados dela
         if (campanhaExistente) {
@@ -134,29 +132,29 @@ export function CriarCampanhaWhatsAppModal({
     }
   };
 
-  const fetchVendedores = async () => {
-    setVendedoresLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('vendedores')
-        .select('id, nome, email, ativo')
-        .eq('ativo', true)
-        .order('nome', { ascending: true });
+  // const fetchVendedores = async () => {
+  //   setVendedoresLoading(true);
+  //   try {
+  //     const { data, error } = await supabase
+  //       .from('vendedores')
+  //       .select('id, nome, email, ativo')
+  //       .eq('ativo', true)
+  //       .order('nome', { ascending: true });
 
-      if (error) {
-        console.warn('Não foi possível carregar vendedores:', error.message);
-        setVendedores([]);
-        return;
-      }
+  //     if (error) {
+  //       console.warn('Não foi possível carregar vendedores:', error.message);
+  //       setVendedores([]);
+  //       return;
+  //     }
       
-      setVendedores(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.warn('Erro ao buscar vendedores (continuando sem vendedores):', error);
-      setVendedores([]);
-    } finally {
-      setVendedoresLoading(false);
-    }
-  };
+  //     setVendedores(Array.isArray(data) ? data : []);
+  //   } catch (error) {
+  //     console.warn('Erro ao buscar vendedores (continuando sem vendedores):', error);
+  //     setVendedores([]);
+  //   } finally {
+  //     setVendedoresLoading(false);
+  //   }
+  // };
 
   const addHorario = () => {
     if (horarios.length < 10) {
@@ -423,8 +421,8 @@ export function CriarCampanhaWhatsAppModal({
           dias_semana: diasSemana,
           mensagem_template: mensagem,
           ativa: true,
-          proxima_execucao: proximaExecucao,
-          vendedor_id: vendedorSelecionado || null
+          proxima_execucao: proximaExecucao
+          // vendedor_id: vendedorSelecionado || null // REMOVIDO
         })
         .eq('id', campanhaExistente.id)
         .select()
@@ -449,8 +447,8 @@ export function CriarCampanhaWhatsAppModal({
           mensagem_template: mensagem,
           ativa: true,
           proxima_execucao: proximaExecucao,
-          status: 'ativa',
-          vendedor_id: vendedorSelecionado || null
+          status: 'ativa'
+          // vendedor_id: vendedorSelecionado || null // REMOVIDO
         })
         .select()
         .single();
@@ -629,34 +627,9 @@ export function CriarCampanhaWhatsAppModal({
             </div>
           )}
 
-          {/* 3. ATRIBUIR A UM VENDEDOR (OPCIONAL) */}
+          {/* 3. LISTAS DE TRANSMISSÃO */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-3 block">3. Atribuir a um Vendedor (Opcional)</Label>
-            {vendedoresLoading ? (
-              <p className="text-sm text-muted-foreground">Carregando vendedores...</p>
-            ) : (
-              <Select value={vendedorSelecionado} onValueChange={setVendedorSelecionado}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Nenhum vendedor (padrão)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">Nenhum vendedor</SelectItem>
-                  {Array.isArray(vendedores) && vendedores.map(v => (
-                    <SelectItem key={v.id} value={v.id}>
-                      {v.nome} {v.email && `(${v.email})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <p className="text-xs text-muted-foreground mt-2">
-              💡 Se selecionado, as conversas desta campanha serão automaticamente atribuídas ao vendedor escolhido
-            </p>
-          </div>
-          
-          {/* 4. LISTAS DE TRANSMISSÃO */}
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">4. Selecione Lista(s) de Transmissão</Label>
+            <Label className="text-lg font-semibold">3. Selecione Lista(s) de Transmissão</Label>
             {listas.length === 0 ? (
               <p className="text-sm text-muted-foreground mt-3">
                 Nenhuma lista criada ainda. Crie listas na página de WhatsApp Marketing.
@@ -678,9 +651,9 @@ export function CriarCampanhaWhatsAppModal({
             )}
           </div>
 
-          {/* 5. MENSAGEM */}
+          {/* 4. MENSAGEM */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-3 block">5. Mensagem</Label>
+            <Label className="text-lg font-semibold mb-3 block">4. Mensagem</Label>
             
             {/* Campo de sugestões + Botão IA */}
             <div className="flex gap-2 mb-4">
