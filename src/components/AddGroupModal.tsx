@@ -14,18 +14,146 @@ interface AddGroupModalProps {
   onGroupAdded: () => void;
 }
 
+interface ContactWithName {
+  phone: string;
+  nome: string;
+}
+
 export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModalProps) => {
   const [pastedNumbers, setPastedNumbers] = useState('');
   const [groupName, setGroupName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
+  const cleanPhoneNumber = (phone: string): string => {
+    return phone.replace(/\D/g, '');
+  };
+
+  const isValidBrazilianPhone = (phone: string): boolean => {
+    const cleaned = cleanPhoneNumber(phone);
+    return cleaned.length >= 10 && cleaned.length <= 13;
+  };
+
+  const normalizePhoneNumber = (phone: string): string => {
+    const cleaned = cleanPhoneNumber(phone);
+    if (cleaned.length === 10 || cleaned.length === 11) {
+      return '55' + cleaned;
+    }
+    return cleaned;
+  };
+
+  // Extrai contatos no formato "numero,nome" ou só "numero"
+  const extractContactsWithNames = (text: string): ContactWithName[] => {
+    if (!text.trim()) return [];
+    
+    const contacts: ContactWithName[] = [];
+    const seenPhones = new Set<string>();
+    
+    // Separar por linhas
+    const lines = text.split('\n').filter(line => line.trim());
+    
+    for (const line of lines) {
+      // Verificar se tem vírgula (formato numero,nome)
+      if (line.includes(',')) {
+        const parts = line.split(',');
+        const phonePart = parts[0]?.trim() || '';
+        const namePart = parts.slice(1).join(',').trim(); // Nome pode ter vírgulas
+        
+        const cleanedPhone = cleanPhoneNumber(phonePart);
+        if (isValidBrazilianPhone(cleanedPhone)) {
+          const normalizedPhone = normalizePhoneNumber(cleanedPhone);
+          if (!seenPhones.has(normalizedPhone)) {
+            seenPhones.add(normalizedPhone);
+            contacts.push({
+              phone: normalizedPhone,
+              nome: namePart || ''
+            });
+          }
+        }
+      } else {
+        // Formato antigo - só números separados por espaço
+        const parts = line.split(/\s+/).filter(p => p.trim());
+        for (const part of parts) {
+          const cleanedPhone = cleanPhoneNumber(part);
+          if (isValidBrazilianPhone(cleanedPhone)) {
+            const normalizedPhone = normalizePhoneNumber(cleanedPhone);
+            if (!seenPhones.has(normalizedPhone)) {
+              seenPhones.add(normalizedPhone);
+              contacts.push({
+                phone: normalizedPhone,
+                nome: ''
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    return contacts;
+  };
+
+  // Salvar contatos automaticamente em whatsapp_contacts
+  const saveContactsToDatabase = async (userId: string, contacts: ContactWithName[]) => {
+    if (contacts.length === 0) return;
+    
+    const contactsWithNames = contacts.filter(c => c.nome);
+    if (contactsWithNames.length === 0) return;
+    
+    console.log('💾 Salvando contatos em Seus Contatos:', contactsWithNames);
+    
+    // Buscar contatos existentes para não duplicar
+    const phones = contactsWithNames.map(c => c.phone);
+    const { data: existing } = await supabase
+      .from('whatsapp_contacts')
+      .select('phone')
+      .eq('user_id', userId)
+      .in('phone', phones);
+    
+    const existingPhones = new Set(existing?.map(e => e.phone) || []);
+    
+    // Filtrar apenas novos contatos
+    const newContacts = contactsWithNames.filter(c => !existingPhones.has(c.phone));
+    
+    if (newContacts.length > 0) {
+      const contactsToInsert = newContacts.map(c => ({
+        user_id: userId,
+        phone: c.phone,
+        nome: c.nome,
+        origem: 'lista_transmissao',
+        aceita_marketing: true,
+        aceita_lancamentos: true,
+        aceita_promocoes: true
+      }));
+      
+      const { error } = await supabase
+        .from('whatsapp_contacts')
+        .insert(contactsToInsert);
+      
+      if (error) {
+        console.error('⚠️ Erro ao salvar contatos:', error);
+      } else {
+        console.log(`✅ ${newContacts.length} contatos salvos em Seus Contatos`);
+      }
+    }
+    
+    // Atualizar nomes de contatos existentes se estavam sem nome
+    const contactsToUpdate = contactsWithNames.filter(c => existingPhones.has(c.phone));
+    for (const contact of contactsToUpdate) {
+      await supabase
+        .from('whatsapp_contacts')
+        .update({ nome: contact.nome })
+        .eq('user_id', userId)
+        .eq('phone', contact.phone)
+        .is('nome', null);
+    }
+  };
+
   const handleCreateGroup = async () => {
     try {
       setIsAdding(true);
 
-      const phones = extractPhoneNumbers(pastedNumbers);
+      const contacts = extractContactsWithNames(pastedNumbers);
 
-      if (phones.length === 0) {
+      if (contacts.length === 0) {
         toast.error('Nenhum número válido encontrado');
         return;
       }
@@ -37,13 +165,15 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
       }
 
       const name = groupName.trim() || `Lista ${new Date().toLocaleString('pt-BR')}`;
+      const phones = contacts.map(c => c.phone);
 
       console.log('💾 Salvando lista:', {
         name: name,
-        numbers: phones,
-        count: phones.length
+        contacts: contacts,
+        count: contacts.length
       });
 
+      // Salvar lista de transmissão
       const { data, error } = await supabase
         .from('whatsapp_groups')
         .insert({
@@ -61,9 +191,18 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         throw error;
       }
 
+      // Salvar contatos automaticamente em "Seus Contatos"
+      await saveContactsToDatabase(user.id, contacts);
+
       console.log('✅ Lista salva:', data);
 
-      toast.success(`✅ Lista criada com ${phones.length} contatos! Veja na aba "Listas"`);
+      const contactsWithNames = contacts.filter(c => c.nome).length;
+      if (contactsWithNames > 0) {
+        toast.success(`✅ Lista criada com ${phones.length} contatos! ${contactsWithNames} nomes salvos em "Seus Contatos"`);
+      } else {
+        toast.success(`✅ Lista criada com ${phones.length} contatos!`);
+      }
+      
       setPastedNumbers('');
       setGroupName('');
       onOpenChange(false);
@@ -77,11 +216,11 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
   };
 
   const downloadCsvTemplate = () => {
-    const csv = 'telefone\n5521999998888\n5521999997777\n5528999879585';
+    const csv = 'telefone,nome\n5521999998888,João Silva\n5521999997777,Maria Santos\n5528999879585,Pedro Costa';
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'modelo.csv';
+    link.download = 'modelo_contatos.csv';
     link.click();
     toast.success('📥 Modelo baixado com sucesso!');
   };
@@ -104,15 +243,28 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
-      const numbers = lines
-        .map(line => {
-          const phone = line.split(',')[0]?.replace(/\D/g, '');
-          return phone;
-        })
-        .filter(n => n && n.length >= 10)
-        .map(n => normalizePhoneNumber(n));
+      const contacts: ContactWithName[] = [];
+      const seenPhones = new Set<string>();
 
-      if (numbers.length === 0) {
+      for (const line of lines) {
+        const parts = line.split(',');
+        const phonePart = parts[0]?.trim() || '';
+        const namePart = parts[1]?.trim() || '';
+        
+        const cleanedPhone = cleanPhoneNumber(phonePart);
+        if (isValidBrazilianPhone(cleanedPhone)) {
+          const normalizedPhone = normalizePhoneNumber(cleanedPhone);
+          if (!seenPhones.has(normalizedPhone)) {
+            seenPhones.add(normalizedPhone);
+            contacts.push({
+              phone: normalizedPhone,
+              nome: namePart
+            });
+          }
+        }
+      }
+
+      if (contacts.length === 0) {
         toast.error('CSV vazio ou inválido');
         return;
       }
@@ -123,12 +275,13 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         return;
       }
 
-      const name = `Lista CSV ${new Date().toLocaleString('pt-BR')}`;
+      const name = groupName.trim() || `Lista CSV ${new Date().toLocaleString('pt-BR')}`;
+      const phones = contacts.map(c => c.phone);
 
       console.log('💾 Salvando lista CSV:', {
         name: name,
-        numbers: numbers,
-        count: numbers.length
+        contacts: contacts,
+        count: contacts.length
       });
 
       const { data, error } = await supabase
@@ -137,8 +290,8 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
           user_id: user.id,
           group_id: `csv_${Date.now()}@g.us`,
           group_name: name,
-          member_count: numbers.length,
-          phone_numbers: numbers,
+          member_count: phones.length,
+          phone_numbers: phones,
           status: 'active'
         })
         .select();
@@ -148,9 +301,18 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         throw error;
       }
 
+      // Salvar contatos automaticamente em "Seus Contatos"
+      await saveContactsToDatabase(user.id, contacts);
+
       console.log('✅ Lista CSV salva:', data);
 
-      toast.success(`✅ ${numbers.length} contatos importados! Veja na aba "Listas"`);
+      const contactsWithNames = contacts.filter(c => c.nome).length;
+      if (contactsWithNames > 0) {
+        toast.success(`✅ ${contacts.length} contatos importados! ${contactsWithNames} nomes salvos em "Seus Contatos"`);
+      } else {
+        toast.success(`✅ ${contacts.length} contatos importados!`);
+      }
+      
       onOpenChange(false);
       onGroupAdded();
 
@@ -164,62 +326,8 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
     }
   };
 
-  const cleanPhoneNumber = (phone: string): string => {
-    return phone.replace(/\D/g, '');
-  };
-
-  const isValidBrazilianPhone = (phone: string): boolean => {
-    const cleaned = cleanPhoneNumber(phone);
-    return cleaned.length >= 10 && cleaned.length <= 13;
-  };
-
-  const normalizePhoneNumber = (phone: string): string => {
-    const cleaned = cleanPhoneNumber(phone);
-    if (cleaned.length === 10 || cleaned.length === 11) {
-      return '55' + cleaned;
-    }
-    return cleaned;
-  };
-
-  const extractPhoneNumbers = (text: string): string[] => {
-    if (!text.trim()) return [];
-    
-    const phones: string[] = [];
-    
-    // Tentar separar por delimitadores primeiro
-    const delimitedParts = text.split(/[\s,\n]+/).filter(p => p.trim());
-    
-    if (delimitedParts.length > 1 || (delimitedParts.length === 1 && text.includes(' '))) {
-      // Tem delimitadores, processar cada parte
-      delimitedParts.forEach(part => {
-        const cleanPart = cleanPhoneNumber(part);
-        if (isValidBrazilianPhone(cleanPart)) {
-          phones.push(normalizePhoneNumber(cleanPart));
-        }
-      });
-    } else {
-      // Tudo junto, dividir em blocos de 10-13 dígitos
-      const cleaned = cleanPhoneNumber(text);
-      let i = 0;
-      while (i < cleaned.length) {
-        let found = false;
-        for (let len = 13; len >= 10; len--) {
-          const block = cleaned.substring(i, i + len);
-          if (block.length === len && isValidBrazilianPhone(block)) {
-            phones.push(normalizePhoneNumber(block));
-            i += len;
-            found = true;
-            break;
-          }
-        }
-        if (!found) i++;
-      }
-    }
-
-    // Remover duplicados
-    return [...new Set(phones)];
-  };
-
+  const detectedContacts = extractContactsWithNames(pastedNumbers);
+  const contactsWithNames = detectedContacts.filter(c => c.nome).length;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -237,19 +345,24 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
           {/* ABA 1: COLAR NÚMEROS */}
           <TabsContent value="paste" className="space-y-4">
             <div>
-              <Label htmlFor="paste-numbers">Cole os números aqui</Label>
+              <Label htmlFor="paste-numbers">Cole os números aqui (com nome opcional)</Label>
               <Textarea
                 id="paste-numbers"
-                placeholder="5521999998888 5521999997777"
+                placeholder="21999998888,João Silva
+21999997777,Maria Santos
+21999996666"
                 value={pastedNumbers}
                 onChange={(e) => setPastedNumbers(e.target.value)}
                 rows={8}
                 className="font-mono text-sm"
                 disabled={isAdding}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                {extractPhoneNumbers(pastedNumbers).length} números válidos detectados
-              </p>
+              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                <span>{detectedContacts.length} números válidos</span>
+                {contactsWithNames > 0 && (
+                  <span className="text-green-600">{contactsWithNames} com nome (serão salvos em Seus Contatos)</span>
+                )}
+              </div>
             </div>
 
             <div>
@@ -272,17 +385,31 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
             </Button>
 
             <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
-              <p className="font-medium mb-2">💡 Formatos aceitos:</p>
-              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li>5521999998888</li>
-                <li>(21) 99999-8888</li>
-                <li>Separados por espaço, vírgula ou linha</li>
-              </ul>
+              <p className="font-medium mb-2">💡 Formato recomendado (uma linha por contato):</p>
+              <pre className="bg-white dark:bg-gray-900 p-2 rounded mt-1 text-xs overflow-x-auto">
+{`21999998888,João Silva
+21999997777,Maria Santos
+21999996666,Pedro Costa`}
+              </pre>
+              <p className="text-muted-foreground mt-2">
+                ✅ Contatos com nome serão salvos automaticamente em "Seus Contatos"
+              </p>
             </div>
           </TabsContent>
 
           {/* ABA 2: CSV */}
           <TabsContent value="csv" className="space-y-4">
+            <div>
+              <Label htmlFor="csv-group-name">Nome da Lista (opcional)</Label>
+              <Input
+                id="csv-group-name"
+                placeholder="Deixe vazio para gerar automático"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+                disabled={isAdding}
+              />
+            </div>
+
             <div className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors">
               <input
                 type="file"
@@ -313,11 +440,14 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
             <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-xs">
               <p className="font-medium mb-2">📋 Formato do CSV:</p>
               <pre className="bg-white dark:bg-gray-900 p-2 rounded mt-2 text-xs overflow-x-auto">
-telefone
-5521999998888
-5521999997777
-5528999879585
+{`telefone,nome
+5521999998888,João Silva
+5521999997777,Maria Santos
+5528999879585,Pedro Costa`}
               </pre>
+              <p className="text-muted-foreground mt-2">
+                ✅ Contatos serão salvos automaticamente em "Seus Contatos"
+              </p>
             </div>
           </TabsContent>
         </Tabs>
