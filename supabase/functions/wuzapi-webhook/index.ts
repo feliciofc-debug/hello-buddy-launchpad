@@ -451,17 +451,22 @@ serve(async (req) => {
       produtoNome, 
       produtoPreco, 
       produtoDescricao, 
-      produtoEspecs, 
+      produtoEspecs: produtoEspecs ? produtoEspecs.substring(0, 100) + '...' : 'sem specs',
       produtoCategoria,
       produtoTags 
     });
+    
+    console.log('⚠️ ESPECIFICAÇÕES COMPLETAS (para debug):', produtoEspecs || 'VAZIO - produto não tem especificações cadastradas');
 
-    // MONTAR FICHA TÉCNICA COMPLETA
+    // MONTAR FICHA TÉCNICA COMPLETA - INCLUIR TODAS AS INFORMAÇÕES
     let fichaTecnicaCompleta = `📦 PRODUTO: ${produtoNome} - ${produtoPreco}\n`;
     if (produtoCategoria) fichaTecnicaCompleta += `🏷️ CATEGORIA: ${produtoCategoria}\n`;
-    if (produtoSku) fichaTecnicaCompleta += `📋 SKU: ${produtoSku}\n`;
+    if (produtoSku) fichaTecnicaCompleta += `📋 SKU/CÓDIGO: ${produtoSku}\n`;
     if (produtoDescricao) fichaTecnicaCompleta += `📝 DESCRIÇÃO: ${produtoDescricao}\n`;
-    if (produtoEspecs) fichaTecnicaCompleta += `🔧 ESPECIFICAÇÕES TÉCNICAS:\n${produtoEspecs}\n`;
+    if (produtoEspecs) {
+      fichaTecnicaCompleta += `\n🔬 ESPECIFICAÇÕES TÉCNICAS COMPLETAS:\n${produtoEspecs}\n`;
+      fichaTecnicaCompleta += `⚠️ USE ESTAS ESPECIFICAÇÕES para responder perguntas sobre tabela nutricional, composição, ingredientes, valores nutricionais, etc.\n`;
+    }
     if (produtoTags) fichaTecnicaCompleta += `🏷️ TAGS: ${produtoTags}\n`;
 
     // PROMPT HUMANIZADO COM FICHA TÉCNICA COMPLETA
@@ -485,7 +490,7 @@ REGRAS:
 7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque ou informe "esgotado no momento"
 8. Se produto SEM ESTOQUE → informe de forma natural: "Esse tá esgotado agora 😔" ou "Acabou hoje, volta semana que vem"
 9. Se quer comprar produto COM estoque → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
-10. ⚠️ IMPORTANTE: Se cliente perguntar sobre FICHA TÉCNICA, TABELA NUTRICIONAL, ESPECIFICAÇÕES ou DETALHES do produto - use TODOS os dados acima para responder com precisão. Não invente informações!
+10. 🔬 CRÍTICO: Se cliente perguntar sobre FICHA TÉCNICA, TABELA NUTRICIONAL, INGREDIENTES, VALORES NUTRICIONAIS, COMPOSIÇÃO ou ESPECIFICAÇÕES - você TEM essas informações completas nas "ESPECIFICAÇÕES TÉCNICAS COMPLETAS" acima. SEMPRE responda usando esses dados exatos. Se realmente não tiver a informação específica nas especificações, diga "não tenho essa info específica na ficha", mas SE TIVER, responda com os valores exatos!
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 

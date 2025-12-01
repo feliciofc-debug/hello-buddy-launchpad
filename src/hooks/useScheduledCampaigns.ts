@@ -125,7 +125,7 @@ export function useScheduledCampaigns(userId: string | undefined) {
                     lead_tipo: 'campanha'
                   });
 
-                  // Salvar contexto COMPLETO do produto para IA
+                  // Salvar contexto COMPLETO do produto para IA (TODOS OS CAMPOS)
                   const { data: userData } = await supabase.auth.getUser();
                   const vendedorNome = userData?.user?.user_metadata?.full_name || 'Vendedor';
 
@@ -133,14 +133,20 @@ export function useScheduledCampaigns(userId: string | undefined) {
                     user_id: userId,
                     phone_number: phone,
                     origem: 'campanha',
-                    last_message_context: {
+                    metadata: {
+                      produto_id: campanha.produtos.id,
                       produto_nome: campanha.produtos.nome,
                       produto_descricao: campanha.produtos.descricao,
                       produto_preco: campanha.produtos.preco,
                       produto_estoque: campanha.produtos.estoque || 0,
                       produto_especificacoes: campanha.produtos.especificacoes || '',
+                      produto_categoria: campanha.produtos.categoria,
+                      produto_sku: campanha.produtos.sku,
+                      produto_tags: campanha.produtos.tags,
                       produto_imagens: campanha.produtos.imagens || [],
+                      produto_imagem_url: campanha.produtos.imagem_url,
                       link_marketplace: campanha.produtos.link_marketplace || '',
+                      link_produto: campanha.produtos.link,
                       vendedor_nome: vendedorNome,
                       data_envio: new Date().toISOString()
                     }
