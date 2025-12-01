@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2, Briefcase, Heart, Zap, Sparkles, Save } from 'lucide-react';
+import { Loader2, Search, TrendingUp, Users, MessageSquare, Download, AlertCircle, Clock, ArrowLeft, Filter, X, Target, Send, CheckCircle2, Briefcase, Heart, Zap, Sparkles, Save, Linkedin, Instagram, Globe } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -42,6 +42,67 @@ export default function Prospects() {
   const [currentProspectMessages, setCurrentProspectMessages] = useState<any>(null);
   const [selectedMessageType, setSelectedMessageType] = useState<string>('professional');
   const [processingStage, setProcessingStage] = useState<string>('');
+  
+  // Estados para enriquecimento individual
+  const [enrichingSocioId, setEnrichingSocioId] = useState<string | null>(null);
+  const [enrichedSocios, setEnrichedSocios] = useState<Record<string, any>>({});
+
+  // ============================================
+  // ENRIQUECER SÓCIO (LinkedIn, Instagram)
+  // ============================================
+  const handleEnrichSocio = async (socioId: string, socioNome: string) => {
+    setEnrichingSocioId(socioId);
+    
+    try {
+      toast({
+        title: 'Enriquecendo dados...',
+        description: `Buscando LinkedIn, Instagram e notícias de ${socioNome}`,
+      });
+
+      console.log('🔍 Enriquecendo sócio:', socioId, socioNome);
+      
+      const { data, error } = await supabase.functions.invoke('enrich-socio', {
+        body: { socio_id: socioId },
+      });
+
+      if (error) throw error;
+
+      console.log('✅ Dados enriquecidos:', data);
+      
+      // Salvar resultado no estado local
+      setEnrichedSocios(prev => ({
+        ...prev,
+        [socioId]: data.enrichment_data || data
+      }));
+
+      // Atualizar também o empresaEncontrada se existir
+      if (empresaEncontrada) {
+        setEmpresaEncontrada(prev => ({
+          ...prev,
+          socios: prev.socios.map((s: any) => 
+            s.id === socioId 
+              ? { ...s, enrichment_data: data.enrichment_data || data }
+              : s
+          )
+        }));
+      }
+
+      toast({
+        title: 'Enriquecimento concluído!',
+        description: `Dados de ${socioNome} atualizados com redes sociais.`,
+      });
+
+    } catch (error: any) {
+      console.error('❌ Erro no enriquecimento:', error);
+      toast({
+        title: 'Erro ao enriquecer',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setEnrichingSocioId(null);
+    }
+  };
 
   // ============================================
   // BUSCAR CNPJ (Discovery)
@@ -815,36 +876,104 @@ export default function Prospects() {
                       <Label className="text-muted-foreground mb-2 block">
                         Sócios Decisores ({empresaEncontrada.socios.length})
                       </Label>
-                      <div className="space-y-2">
-                        {empresaEncontrada.socios.map((socio: any, idx: number) => (
-                          <div key={idx} className="flex justify-between items-center p-3 bg-background rounded-lg border">
-                            <div>
-                              <p className="font-medium">{socio.nome}</p>
-                              <p className="text-xs text-muted-foreground">{socio.qualificacao}</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {socio.percentual_capital && (
-                                <Badge variant="secondary">
-                                  {socio.percentual_capital}% do capital
-                                </Badge>
+                      <div className="space-y-3">
+                        {empresaEncontrada.socios.map((socio: any, idx: number) => {
+                          const enrichData = socio.enrichment_data || enrichedSocios[socio.id];
+                          const hasLinkedIn = enrichData?.linkedin_url || enrichData?.linkedin;
+                          const hasInstagram = enrichData?.instagram_username || enrichData?.instagram;
+                          const hasNews = enrichData?.noticias?.length > 0;
+                          
+                          return (
+                            <div key={idx} className="p-3 bg-background rounded-lg border space-y-2">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <p className="font-medium">{socio.nome}</p>
+                                  <p className="text-xs text-muted-foreground">{socio.qualificacao}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {socio.percentual_capital && (
+                                    <Badge variant="secondary">
+                                      {socio.percentual_capital}% do capital
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {/* Links de redes sociais encontrados */}
+                              {enrichData && (
+                                <div className="flex flex-wrap gap-2 pt-2 border-t">
+                                  {hasLinkedIn && (
+                                    <a 
+                                      href={enrichData.linkedin_url || enrichData.linkedin} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                    >
+                                      <Linkedin className="h-3 w-3" />
+                                      LinkedIn
+                                    </a>
+                                  )}
+                                  {hasInstagram && (
+                                    <a 
+                                      href={`https://instagram.com/${enrichData.instagram_username || enrichData.instagram}`} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="flex items-center gap-1 text-xs text-pink-600 hover:underline"
+                                    >
+                                      <Instagram className="h-3 w-3" />
+                                      @{enrichData.instagram_username || enrichData.instagram}
+                                    </a>
+                                  )}
+                                  {hasNews && (
+                                    <Badge variant="outline" className="text-xs">
+                                      <Globe className="h-3 w-3 mr-1" />
+                                      {enrichData.noticias.length} notícias
+                                    </Badge>
+                                  )}
+                                  {!hasLinkedIn && !hasInstagram && !hasNews && (
+                                    <span className="text-xs text-muted-foreground">Enriquecido (sem redes encontradas)</span>
+                                  )}
+                                </div>
                               )}
-                              <Button
-                                size="sm"
-                                onClick={() => processarProspect(socio.id, socio.nome)}
-                                disabled={loading}
-                              >
-                                {loading ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <>
-                                    <Sparkles className="mr-1 h-3 w-3" />
-                                    Processar
-                                  </>
-                                )}
-                              </Button>
+                              
+                              {/* Botões de ação */}
+                              <div className="flex items-center gap-2 pt-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEnrichSocio(socio.id, socio.nome)}
+                                  disabled={loading || enrichingSocioId === socio.id}
+                                >
+                                  {enrichingSocioId === socio.id ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                                      Buscando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Linkedin className="mr-1 h-3 w-3" />
+                                      Enriquecer
+                                    </>
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => processarProspect(socio.id, socio.nome)}
+                                  disabled={loading}
+                                >
+                                  {loading && enrichingSocioId !== socio.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Sparkles className="mr-1 h-3 w-3" />
+                                      Processar Completo
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
