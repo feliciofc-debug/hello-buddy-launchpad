@@ -303,23 +303,23 @@ serve(async (req) => {
     const segmentoId = empresaConfig?.segmento || 'outros';
 
     // ═══════════════════════════════════════
-    // 📦 BUSCAR TODOS OS PRODUTOS DISPONÍVEIS DO VENDEDOR
+    // 📦 BUSCAR TODOS OS PRODUTOS (COM E SEM ESTOQUE)
     // ═══════════════════════════════════════
     const { data: todosProdutos } = await supabaseClient
       .from('produtos')
       .select('id, nome, preco, estoque, descricao, especificacoes, link_marketplace')
       .eq('user_id', contexto.user_id)
       .eq('ativo', true)
-      .gt('estoque', 0)
       .order('nome');
 
     let catalogoProdutos = '';
     if (todosProdutos && todosProdutos.length > 0) {
-      catalogoProdutos = '\n━━ OUTROS PRODUTOS DISPONÍVEIS ━━\n';
+      catalogoProdutos = '\n━━ CATÁLOGO COMPLETO ━━\n';
       todosProdutos.forEach(p => {
-        catalogoProdutos += `• ${p.nome} - R$ ${Number(p.preco || 0).toFixed(2)} (estoque: ${p.estoque})\n`;
+        const statusEstoque = p.estoque > 0 ? `✅ ${p.estoque} un.` : '❌ ESGOTADO';
+        catalogoProdutos += `• ${p.nome} - R$ ${Number(p.preco || 0).toFixed(2)} ${statusEstoque}\n`;
       });
-      catalogoProdutos += '\nSe cliente perguntar sobre outro produto, você PODE oferecer!\n';
+      catalogoProdutos += '\nSe cliente perguntar sobre produto, você PODE informar preço/estoque ou que está esgotado!\n';
       console.log('📋 Catálogo carregado:', todosProdutos.length, 'produtos');
     }
 
@@ -418,8 +418,9 @@ REGRAS:
 4. NUNCA "Fico feliz", "Agradeço"
 5. 1 emoji só
 6. ${produtoSolicitado ? '🎯 CLIENTE PERGUNTOU SOBRE ESTE PRODUTO - responda sobre ele!' : 'FOQUE no produto principal - NÃO ofereça outros espontaneamente'}
-7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque
-8. Se quer comprar → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
+7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque ou informe "esgotado no momento"
+8. Se produto SEM ESTOQUE → informe de forma natural: "Esse tá esgotado agora 😔" ou "Acabou hoje, volta semana que vem"
+9. Se quer comprar produto COM estoque → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
