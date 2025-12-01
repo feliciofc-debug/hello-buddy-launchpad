@@ -225,11 +225,19 @@ serve(async (req) => {
             modo_atendimento: 'ia',
             last_message_at: new Date().toISOString(),
             metadata: produtoInfo ? {
+              produto_id: produtoInfo.id,
               produto_nome: produtoInfo.nome,
               produto_descricao: produtoInfo.descricao,
               produto_preco: produtoInfo.preco,
               produto_estoque: produtoInfo.estoque,
+              produto_especificacoes: produtoInfo.especificacoes,
+              produto_categoria: produtoInfo.categoria,
+              produto_sku: produtoInfo.sku,
+              produto_tags: produtoInfo.tags,
+              produto_imagens: produtoInfo.imagens,
+              produto_imagem_url: produtoInfo.imagem_url,
               link_marketplace: produtoInfo.link_marketplace,
+              link_produto: produtoInfo.link,
             } : {}
           })
           .select()
@@ -307,12 +315,19 @@ serve(async (req) => {
         // IMPORTANTE: spread ctx PRIMEIRO, depois os novos valores sobrescrevem
         ctx = {
           ...ctx,
+          produto_id: prod.id,
           produto_nome: prod.nome,
           produto_descricao: prod.descricao,
           produto_preco: prod.preco,
           produto_estoque: prod.estoque,
           produto_especificacoes: prod.especificacoes,
-          link_marketplace: prod.link_marketplace
+          produto_categoria: prod.categoria,
+          produto_sku: prod.sku,
+          produto_tags: prod.tags,
+          produto_imagens: prod.imagens,
+          produto_imagem_url: prod.imagem_url,
+          link_marketplace: prod.link_marketplace,
+          link_produto: prod.link
         };
 
         // Atualizar o contexto na conversa para próximas mensagens
@@ -423,20 +438,36 @@ serve(async (req) => {
         ? `POUCO (${estoque}) - pode criar urgência` 
         : 'TEM - diga "tenho sim", nunca quantidade';
 
-    // PREPARAR DADOS DO PRODUTO COM FALLBACKS
+    // PREPARAR DADOS COMPLETOS DO PRODUTO COM FALLBACKS
     const produtoNome = ctx.produto_nome || 'Produto';
     const produtoPreco = ctx.produto_preco ? `R$ ${Number(ctx.produto_preco).toFixed(2)}` : 'consulte';
     const produtoDescricao = ctx.produto_descricao || '';
     const produtoEspecs = ctx.produto_especificacoes || '';
+    const produtoCategoria = ctx.produto_categoria || '';
+    const produtoSku = ctx.produto_sku || '';
+    const produtoTags = ctx.produto_tags ? ctx.produto_tags.join(', ') : '';
 
-    console.log('📦 Dados do produto para IA:', { produtoNome, produtoPreco, produtoDescricao });
+    console.log('📦 Dados completos do produto para IA:', { 
+      produtoNome, 
+      produtoPreco, 
+      produtoDescricao, 
+      produtoEspecs, 
+      produtoCategoria,
+      produtoTags 
+    });
 
-    // PROMPT HUMANIZADO
+    // MONTAR FICHA TÉCNICA COMPLETA
+    let fichaTecnicaCompleta = `📦 PRODUTO: ${produtoNome} - ${produtoPreco}\n`;
+    if (produtoCategoria) fichaTecnicaCompleta += `🏷️ CATEGORIA: ${produtoCategoria}\n`;
+    if (produtoSku) fichaTecnicaCompleta += `📋 SKU: ${produtoSku}\n`;
+    if (produtoDescricao) fichaTecnicaCompleta += `📝 DESCRIÇÃO: ${produtoDescricao}\n`;
+    if (produtoEspecs) fichaTecnicaCompleta += `🔧 ESPECIFICAÇÕES TÉCNICAS:\n${produtoEspecs}\n`;
+    if (produtoTags) fichaTecnicaCompleta += `🏷️ TAGS: ${produtoTags}\n`;
+
+    // PROMPT HUMANIZADO COM FICHA TÉCNICA COMPLETA
     const promptIA = `Você é vendedor WhatsApp. MÁXIMO 2 LINHAS.
 
-📦 PRODUTO ATUAL: ${produtoNome} - ${produtoPreco}
-${produtoDescricao}
-${produtoEspecs ? `Especificações: ${produtoEspecs}` : ''}
+${fichaTecnicaCompleta}
 
 📊 ESTOQUE: ${infoEstoque}
 ${catalogoProdutos}
@@ -454,6 +485,7 @@ REGRAS:
 7. SOMENTE se cliente perguntar sobre outro produto (ex: "tem feijão?"), aí sim responda com preço/estoque ou informe "esgotado no momento"
 8. Se produto SEM ESTOQUE → informe de forma natural: "Esse tá esgotado agora 😔" ou "Acabou hoje, volta semana que vem"
 9. Se quer comprar produto COM estoque → envie o link: ${ctx.link_marketplace || '[diga: te mando o link]'}
+10. ⚠️ IMPORTANTE: Se cliente perguntar sobre FICHA TÉCNICA, TABELA NUTRICIONAL, ESPECIFICAÇÕES ou DETALHES do produto - use TODOS os dados acima para responder com precisão. Não invente informações!
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
