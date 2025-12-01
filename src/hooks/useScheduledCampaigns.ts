@@ -74,6 +74,22 @@ export function useScheduledCampaigns(userId: string | undefined) {
             // ENVIAR PARA CADA CONTATO
             for (const phone of contatos) {
               try {
+                // ⚠️ VERIFICAR SE JÁ ENVIOU NOS ÚLTIMOS 5 MINUTOS
+                const cincominutos = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+                const { data: envioRecente } = await supabase
+                  .from('mensagens_enviadas')
+                  .select('id')
+                  .eq('phone', phone)
+                  .eq('user_id', userId)
+                  .gte('created_at', cincominutos)
+                  .limit(1)
+                  .maybeSingle();
+
+                if (envioRecente) {
+                  console.log(`⏭️ Pulando ${phone} - já recebeu mensagem recentemente`);
+                  continue; // PULAR ESTE CONTATO
+                }
+
                 // Buscar nome
                 const { data: contact } = await supabase
                   .from('whatsapp_contacts')
@@ -100,6 +116,14 @@ export function useScheduledCampaigns(userId: string | undefined) {
 
                 if (!sendError) {
                   enviados++;
+
+                  // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
+                  await supabase.from('mensagens_enviadas').insert({
+                    phone: phone,
+                    message: mensagem,
+                    user_id: userId,
+                    lead_tipo: 'campanha'
+                  });
 
                   // Salvar contexto COMPLETO do produto para IA
                   const { data: userData } = await supabase.auth.getUser();
