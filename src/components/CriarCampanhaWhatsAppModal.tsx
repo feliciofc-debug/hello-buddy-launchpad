@@ -96,7 +96,7 @@ export function CriarCampanhaWhatsAppModal({
     if (open) {
       try {
         fetchListas();
-        // fetchVendedores(); // TEMPORARIAMENTE DESABILITADO
+        fetchVendedores();
         
         // Se tem campanha existente, carregar dados dela
         if (campanhaExistente) {
@@ -417,8 +417,8 @@ export function CriarCampanhaWhatsAppModal({
           dias_semana: diasSemana,
           mensagem_template: mensagem,
           ativa: true,
-          proxima_execucao: proximaExecucao
-          // vendedor_id: vendedorSelecionado || null // TEMPORARIAMENTE REMOVIDO
+          proxima_execucao: proximaExecucao,
+          vendedor_id: vendedorSelecionado || null
         })
         .eq('id', campanhaExistente.id)
         .select()
@@ -443,8 +443,8 @@ export function CriarCampanhaWhatsAppModal({
           mensagem_template: mensagem,
           ativa: true,
           proxima_execucao: proximaExecucao,
-          status: 'ativa'
-          // vendedor_id: vendedorSelecionado || null // TEMPORARIAMENTE REMOVIDO
+          status: 'ativa',
+          vendedor_id: vendedorSelecionado || null
         })
         .select()
         .single();
@@ -623,11 +623,30 @@ export function CriarCampanhaWhatsAppModal({
             </div>
           )}
 
-          {/* SEÇÃO VENDEDOR TEMPORARIAMENTE REMOVIDA PARA DEBUG */}
-          
-          {/* 3. LISTAS DE TRANSMISSÃO */}
+          {/* 3. ATRIBUIR A UM VENDEDOR (OPCIONAL) */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">3. Selecione Lista(s) de Transmissão</Label>
+            <Label className="text-lg font-semibold mb-3 block">3. Atribuir a um Vendedor (Opcional)</Label>
+            <Select value={vendedorSelecionado} onValueChange={setVendedorSelecionado}>
+              <SelectTrigger>
+                <SelectValue placeholder="Nenhum vendedor (padrão)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Nenhum vendedor</SelectItem>
+                {vendedores.map(v => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.nome} {v.email && `(${v.email})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-2">
+              💡 Se selecionado, as conversas desta campanha serão automaticamente atribuídas ao vendedor escolhido
+            </p>
+          </div>
+          
+          {/* 4. LISTAS DE TRANSMISSÃO */}
+          <div className="p-4 bg-muted/30 rounded-lg">
+            <Label className="text-lg font-semibold">4. Selecione Lista(s) de Transmissão</Label>
             {listas.length === 0 ? (
               <p className="text-sm text-muted-foreground mt-3">
                 Nenhuma lista criada ainda. Crie listas na página de WhatsApp Marketing.
@@ -649,9 +668,9 @@ export function CriarCampanhaWhatsAppModal({
             )}
           </div>
 
-          {/* 4. MENSAGEM */}
+          {/* 5. MENSAGEM */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-3 block">4. Mensagem</Label>
+            <Label className="text-lg font-semibold mb-3 block">5. Mensagem</Label>
             
             {/* Campo de sugestões + Botão IA */}
             <div className="flex gap-2 mb-4">
