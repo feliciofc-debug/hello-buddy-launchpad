@@ -275,50 +275,7 @@ export function CriarCampanhaWhatsAppModal({
       return;
     }
 
-    let enviados = 0;
-    let erros = 0;
-
-    for (const phone of todosContatos) {
-      try {
-        // Buscar nome do contato
-        const { data: contact } = await supabase
-          .from('whatsapp_contacts')
-          .select('nome')
-          .eq('phone', phone)
-          .eq('user_id', user.id)
-          .maybeSingle();
-
-        const nome = contact?.nome || 'Cliente';
-        
-        // Personalizar mensagem
-        const mensagemPersonalizada = mensagem
-          .replace(/\{\{nome\}\}/gi, nome)
-          .replace(/\{\{produto\}\}/gi, produto.nome)
-          .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
-
-        // Enviar
-        const { error } = await supabase.functions.invoke('send-wuzapi-message', {
-          body: {
-            phoneNumbers: [phone],
-            message: mensagemPersonalizada,
-            imageUrl: produto.imagem_url
-          }
-        });
-
-        if (error) throw error;
-        enviados++;
-
-        // Delay entre mensagens
-        await new Promise(r => setTimeout(r, 500));
-      } catch (error) {
-        console.error('Erro ao enviar para', phone, error);
-        erros++;
-      }
-    }
-
-    toast.success(`✅ Campanha enviada! ${enviados} sucesso, ${erros} erros`);
-    
-    // Criar campanha temporária para salvar na biblioteca
+    // Criar campanha temporária para salvar na biblioteca ANTES de enviar
     const { data: campanhaTemp } = await supabase
       .from('campanhas_recorrentes')
       .insert({
@@ -328,17 +285,14 @@ export function CriarCampanhaWhatsAppModal({
         listas_ids: listasSelecionadas,
         frequencia: 'agora',
         data_inicio: new Date().toISOString().split('T')[0],
-        horarios: [new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })],
-        dias_semana: [],
+        horarios: ['00:00'],
         mensagem_template: mensagem,
         ativa: false,
-        status: 'finalizada',
-        total_enviados: enviados,
-        ultima_execucao: new Date().toISOString()
+        status: 'enviada'
       })
       .select()
       .single();
-    
+
     if (campanhaTemp) {
       await salvarCampanhaNaBiblioteca({
         produto: {
@@ -356,8 +310,57 @@ export function CriarCampanhaWhatsAppModal({
           listas_ids: listasSelecionadas
         }
       });
-      console.log('📚 Campanha imediata salva na biblioteca!');
     }
+
+    // Mostrar toast e iniciar envio em background
+    toast.success(`🚀 Iniciando envio para ${todosContatos.length} contatos...`);
+    
+    // Executar envio em background (não aguardar)
+    setTimeout(async () => {
+      let enviados = 0;
+      let erros = 0;
+
+      for (const phone of todosContatos) {
+        try {
+          // Buscar nome do contato
+          const { data: contact } = await supabase
+            .from('whatsapp_contacts')
+            .select('nome')
+            .eq('phone', phone)
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          const nome = contact?.nome || 'Cliente';
+          
+          // Personalizar mensagem
+          const mensagemPersonalizada = mensagem
+            .replace(/\{\{nome\}\}/gi, nome)
+            .replace(/\{\{produto\}\}/gi, produto.nome)
+            .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
+
+          // Enviar
+          const { error } = await supabase.functions.invoke('send-wuzapi-message', {
+            body: {
+              phoneNumbers: [phone],
+              message: mensagemPersonalizada,
+              imageUrl: produto.imagem_url
+            }
+          });
+
+          if (error) throw error;
+          enviados++;
+
+          // Delay entre mensagens
+          await new Promise(r => setTimeout(r, 500));
+        } catch (error) {
+          console.error('Erro ao enviar para', phone, error);
+          erros++;
+        }
+      }
+
+      // Toast final quando terminar
+      toast.success(`✅ Campanha concluída! ${enviados} enviados, ${erros} erros`);
+    }, 100);
   };
 
   const salvarCampanhaRecorrente = async () => {
