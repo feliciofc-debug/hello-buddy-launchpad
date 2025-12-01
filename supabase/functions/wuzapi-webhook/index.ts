@@ -378,9 +378,10 @@ REGRAS:
 3. NÃO use "tá?" no final das frases - varie a linguagem!
 4. NUNCA "Fico feliz", "Agradeço"
 5. 1 emoji só
-6. Se cliente perguntar sobre OUTRO produto da lista, pode oferecer com preço/estoque!
-7. Se quer comprar produto principal → link: ${ctx.link_marketplace || '[link]'}
-8. Se quer comprar OUTRO produto → diga "te mando o link" (você ainda não tem link dos outros)
+6. FOQUE no produto principal - NÃO ofereça outros produtos espontaneamente
+7. SOMENTE se cliente perguntar DIRETAMENTE sobre outro produto (ex: "tem feijão?", "e arroz?"), aí sim responda com preço/estoque
+8. Se quer comprar produto principal → link: ${ctx.link_marketplace || '[link]'}
+9. Se quer comprar OUTRO produto → diga "te mando o link" (você ainda não tem link dos outros)
 
 ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
