@@ -6,6 +6,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,6 +17,13 @@ interface WhatsAppGroup {
   group_name: string;
   member_count: number;
   phone_numbers: string[];
+}
+
+interface Vendedor {
+  id: string;
+  nome: string;
+  email: string;
+  ativo: boolean;
 }
 
 interface Product {
@@ -77,10 +85,15 @@ export function CriarCampanhaWhatsAppModal({
   const [isGenerating, setIsGenerating] = useState(false);
   const [sugestaoIA, setSugestaoIA] = useState(''); // Campo para sugestões personalizadas
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+  
+  // NOVO: Estados para vendedores
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [vendedorSelecionado, setVendedorSelecionado] = useState<string>('');
 
   useEffect(() => {
     if (open) {
       fetchListas();
+      fetchVendedores();
       
       // Se tem campanha existente, carregar dados dela
       if (campanhaExistente) {
@@ -109,6 +122,22 @@ export function CriarCampanhaWhatsAppModal({
     } catch (error) {
       console.error('Erro ao buscar listas:', error);
       toast.error('Erro ao carregar listas de transmissão');
+    }
+  };
+
+  const fetchVendedores = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('vendedores')
+        .select('id, nome, email, ativo')
+        .eq('ativo', true)
+        .order('nome', { ascending: true });
+
+      if (error) throw error;
+      setVendedores(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar vendedores:', error);
+      toast.error('Erro ao carregar vendedores');
     }
   };
 
@@ -377,7 +406,8 @@ export function CriarCampanhaWhatsAppModal({
           dias_semana: diasSemana,
           mensagem_template: mensagem,
           ativa: true,
-          proxima_execucao: proximaExecucao
+          proxima_execucao: proximaExecucao,
+          vendedor_id: vendedorSelecionado || null
         })
         .eq('id', campanhaExistente.id)
         .select()
@@ -402,7 +432,8 @@ export function CriarCampanhaWhatsAppModal({
           mensagem_template: mensagem,
           ativa: true,
           proxima_execucao: proximaExecucao,
-          status: 'ativa'
+          status: 'ativa',
+          vendedor_id: vendedorSelecionado || null
         })
         .select()
         .single();
@@ -581,9 +612,33 @@ export function CriarCampanhaWhatsAppModal({
             </div>
           )}
 
-          {/* 3. LISTAS DE TRANSMISSÃO */}
+          {/* 3. VENDEDOR RESPONSÁVEL */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">3. Selecione Lista(s) de Transmissão</Label>
+            <Label className="text-lg font-semibold">3. Atribuir a um Vendedor (Opcional)</Label>
+            {vendedores.length === 0 ? (
+              <p className="text-sm text-muted-foreground mt-3">
+                Nenhum vendedor cadastrado. A campanha não será atribuída a ninguém.
+              </p>
+            ) : (
+              <Select value={vendedorSelecionado} onValueChange={setVendedorSelecionado}>
+                <SelectTrigger className="mt-3">
+                  <SelectValue placeholder="Selecione um vendedor (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Nenhum (campanha não atribuída)</SelectItem>
+                  {vendedores.map(vendedor => (
+                    <SelectItem key={vendedor.id} value={vendedor.id}>
+                      {vendedor.nome} ({vendedor.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* 4. LISTAS DE TRANSMISSÃO */}
+          <div className="p-4 bg-muted/30 rounded-lg">
+            <Label className="text-lg font-semibold">4. Selecione Lista(s) de Transmissão</Label>
             {listas.length === 0 ? (
               <p className="text-sm text-muted-foreground mt-3">
                 Nenhuma lista criada ainda. Crie listas na página de WhatsApp Marketing.
@@ -605,9 +660,9 @@ export function CriarCampanhaWhatsAppModal({
             )}
           </div>
 
-          {/* 4. MENSAGEM */}
+          {/* 5. MENSAGEM */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-3 block">4. Mensagem</Label>
+            <Label className="text-lg font-semibold mb-3 block">5. Mensagem</Label>
             
             {/* Campo de sugestões + Botão IA */}
             <div className="flex gap-2 mb-4">
