@@ -3258,6 +3258,7 @@ export type Database = {
           phone: string
           timestamp: string | null
           user_id: string | null
+          wuzapi_message_id: string | null
         }
         Insert: {
           direction: string
@@ -3267,6 +3268,7 @@ export type Database = {
           phone: string
           timestamp?: string | null
           user_id?: string | null
+          wuzapi_message_id?: string | null
         }
         Update: {
           direction?: string
@@ -3276,6 +3278,7 @@ export type Database = {
           phone?: string
           timestamp?: string | null
           user_id?: string | null
+          wuzapi_message_id?: string | null
         }
         Relationships: []
       }
