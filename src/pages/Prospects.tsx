@@ -56,6 +56,9 @@ export default function Prospects() {
     mensagens: { profissional: string; entusiasta: string; direto: string };
   } | null>(null);
   const [copiedMessage, setCopiedMessage] = useState<string | null>(null);
+  const [linkedinSuggestionDialogOpen, setLinkedinSuggestionDialogOpen] = useState(false);
+  const [linkedinCustomSuggestion, setLinkedinCustomSuggestion] = useState('');
+  const [pendingLinkedinSocio, setPendingLinkedinSocio] = useState<any>(null);
 
   // ============================================
   // ENRIQUECER SÓCIO (LinkedIn, Instagram)
@@ -118,7 +121,14 @@ export default function Prospects() {
   // ============================================
   // GERAR MENSAGENS LINKEDIN
   // ============================================
-  const handleGenerateLinkedinMessages = async (socio: any) => {
+  const openLinkedinSuggestionDialog = (socio: any) => {
+    setPendingLinkedinSocio(socio);
+    setLinkedinCustomSuggestion('');
+    setLinkedinSuggestionDialogOpen(true);
+  };
+
+  const handleGenerateLinkedinMessages = async (socio: any, customSuggestion?: string) => {
+    setLinkedinSuggestionDialogOpen(false);
     setGeneratingLinkedinMessages(socio.id);
     
     try {
@@ -133,7 +143,8 @@ export default function Prospects() {
             ...socio,
             enrichment_data: socio.enrichment_data || enrichedSocios[socio.id]
           },
-          empresa: empresaEncontrada
+          empresa: empresaEncontrada,
+          contexto_adicional: customSuggestion || ''
         },
       });
 
@@ -163,6 +174,7 @@ export default function Prospects() {
       });
     } finally {
       setGeneratingLinkedinMessages(null);
+      setPendingLinkedinSocio(null);
     }
   };
 
@@ -1036,7 +1048,7 @@ export default function Prospects() {
                                     size="sm"
                                     variant="default"
                                     className="bg-blue-600 hover:bg-blue-700"
-                                    onClick={() => handleGenerateLinkedinMessages(socio)}
+                                    onClick={() => openLinkedinSuggestionDialog(socio)}
                                     disabled={loading || generatingLinkedinMessages === socio.id}
                                   >
                                     {generatingLinkedinMessages === socio.id ? (
@@ -1967,6 +1979,66 @@ export default function Prospects() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Sugestão para LinkedIn */}
+      <Dialog open={linkedinSuggestionDialogOpen} onOpenChange={setLinkedinSuggestionDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-purple-600" />
+              Personalizar Mensagens LinkedIn
+            </DialogTitle>
+            <DialogDescription>
+              {pendingLinkedinSocio && (
+                <>Mensagens para <strong>{pendingLinkedinSocio.nome}</strong></>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="linkedin-suggestion" className="text-sm font-medium">
+                Sugestão para a IA (opcional)
+              </Label>
+              <Textarea
+                id="linkedin-suggestion"
+                placeholder="Ex: Mencionar que trabalhamos com automação de marketing, tom mais casual, focar em parcerias estratégicas..."
+                value={linkedinCustomSuggestion}
+                onChange={(e) => setLinkedinCustomSuggestion(e.target.value)}
+                className="mt-2 min-h-[100px]"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Descreva como você quer que as mensagens sejam. A IA vai considerar suas sugestões.
+              </p>
+            </div>
+
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="text-sm">
+                <strong>Canais disponíveis:</strong> LinkedIn, Instagram e Facebook. 
+                Mensagens serão curtas (máx 300 caracteres) para convites de conexão.
+              </AlertDescription>
+            </Alert>
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setLinkedinSuggestionDialogOpen(false)}
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => pendingLinkedinSocio && handleGenerateLinkedinMessages(pendingLinkedinSocio, linkedinCustomSuggestion)}
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                Gerar Mensagens
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
