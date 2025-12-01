@@ -322,6 +322,21 @@ export function CriarCampanhaWhatsAppModal({
 
       for (const phone of todosContatos) {
         try {
+          // ⚠️ VERIFICAR SE JÁ ENVIOU PARA ESTE TELEFONE (última hora)
+          const umaHora = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+          const { data: envioRecente } = await supabase
+            .from('mensagens_enviadas')
+            .select('id')
+            .eq('phone', phone)
+            .eq('user_id', user.id)
+            .gte('created_at', umaHora)
+            .maybeSingle();
+
+          if (envioRecente) {
+            console.log(`⏭️ Pulando ${phone} - já recebeu mensagem recentemente`);
+            continue; // Pula este contato
+          }
+
           // Buscar nome do contato
           const { data: contact } = await supabase
             .from('whatsapp_contacts')
@@ -349,6 +364,14 @@ export function CriarCampanhaWhatsAppModal({
 
           if (error) throw error;
           enviados++;
+
+          // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
+          await supabase.from('mensagens_enviadas').insert({
+            phone: phone,
+            message: mensagemPersonalizada,
+            user_id: user.id,
+            lead_tipo: 'campanha'
+          });
 
           // Delay entre mensagens
           await new Promise(r => setTimeout(r, 500));

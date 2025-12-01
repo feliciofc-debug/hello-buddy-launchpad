@@ -74,15 +74,14 @@ export function useScheduledCampaigns(userId: string | undefined) {
             // ENVIAR PARA CADA CONTATO
             for (const phone of contatos) {
               try {
-                // ⚠️ VERIFICAR SE JÁ ENVIOU NOS ÚLTIMOS 5 MINUTOS
-                const cincominutos = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+                // ⚠️ VERIFICAR SE JÁ ENVIOU PARA ESTE TELEFONE (última hora)
+                const umaHora = new Date(Date.now() - 60 * 60 * 1000).toISOString();
                 const { data: envioRecente } = await supabase
                   .from('mensagens_enviadas')
                   .select('id')
                   .eq('phone', phone)
                   .eq('user_id', userId)
-                  .gte('created_at', cincominutos)
-                  .limit(1)
+                  .gte('created_at', umaHora)
                   .maybeSingle();
 
                 if (envioRecente) {
