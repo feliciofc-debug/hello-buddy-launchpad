@@ -11,7 +11,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -1202,21 +1203,39 @@ export default function MeusProdutos() {
                       )}
                     </div>
                     
-                    {/* BADGES DE STATUS DA CAMPANHA + ATIVO/PAUSADO */}
-                    <div className="flex flex-col items-end gap-1">
+                    {/* BADGES DE STATUS DA CAMPANHA + TOGGLE ATIVAR/PAUSAR */}
+                    <div className="flex flex-col items-end gap-2">
+                      {product.campanha && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {product.campanha.ativa ? '✅ Ativa' : '⏸️ Pausada'}
+                          </span>
+                          <Switch
+                            checked={product.campanha.ativa}
+                            onCheckedChange={async (checked) => {
+                              try {
+                                const updates: any = { ativa: checked, status: checked ? 'ativa' : 'pausada' };
+                                if (checked && !product.campanha?.proxima_execucao) {
+                                  const proximaExec = new Date();
+                                  proximaExec.setHours(proximaExec.getHours() + 1);
+                                  updates.proxima_execucao = proximaExec.toISOString();
+                                }
+                                await supabase
+                                  .from('campanhas_recorrentes')
+                                  .update(updates)
+                                  .eq('id', product.campanha?.id);
+                                toast.success(checked ? '▶️ Campanha ativada!' : '⏸️ Campanha pausada!');
+                                fetchProducts();
+                              } catch (error) {
+                                toast.error('Erro ao alterar campanha');
+                              }
+                            }}
+                          />
+                        </div>
+                      )}
                       {product.campanha && product.campanha.ativa && (
                         <Badge className="bg-green-500 text-white text-xs animate-pulse">
                           🚀 Em Campanha
-                        </Badge>
-                      )}
-                      {product.campanha && !product.campanha.ativa && product.campanha.status === 'pausada' && (
-                        <Badge className="bg-gray-500 text-white text-xs">
-                          ⏸️ Pausada
-                        </Badge>
-                      )}
-                      {product.campanha && product.campanha.status === 'encerrada' && (
-                        <Badge className="bg-gray-400 text-white text-xs">
-                          ✓ Encerrada
                         </Badge>
                       )}
                       <Badge variant={product.ativo ? 'default' : 'secondary'}>
