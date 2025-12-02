@@ -458,19 +458,19 @@ export function CriarCampanhaWhatsAppModal({
 
       // VERIFICAÇÃO FINAL: Conferir se vendedor_id foi salvo
       if (vendedorSelecionado) {
-        const { count } = await supabase
+        const { count: conversasCount } = await supabase
           .from('whatsapp_conversations')
           .select('*', { count: 'exact', head: true })
           .eq('vendedor_id', vendedorSelecionado)
           .gte('created_at', new Date(Date.now() - 120000).toISOString());
         
-        console.log(`🔍 VERIFICAÇÃO: ${count} conversas vinculadas ao vendedor`);
+        console.log(`🔍 VERIFICAÇÃO: ${conversasCount || 0} conversas vinculadas ao vendedor`);
         
-        if (count === 0) {
+        if (!conversasCount || conversasCount === 0) {
           console.error('❌ ERRO: Nenhuma conversa foi criada com vendedor_id!');
           toast.error('Erro: Conversas não foram vinculadas ao vendedor!');
-        } else if (count && count < todosContatos.length) {
-          console.warn(`⚠️ ATENÇÃO: Apenas ${count}/${todosContatos.length} conversas vinculadas`);
+        } else if (conversasCount < todosContatos.length) {
+          console.warn(`⚠️ ATENÇÃO: Apenas ${conversasCount}/${todosContatos.length} conversas vinculadas`);
         } else {
           console.log('✅ Todas as conversas foram vinculadas ao vendedor');
         }
