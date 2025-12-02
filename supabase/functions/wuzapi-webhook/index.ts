@@ -490,15 +490,23 @@ serve(async (req) => {
           const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
           const urlTexto = `${baseUrl}/chat/send/text`;
           
-          await fetch(urlTexto, {
+          const cleanPhone = phoneNumber.replace(/\D/g, '');
+          console.log('📤 ENVIANDO RESPOSTA IA AVANÇADA:');
+          console.log('   Telefone:', cleanPhone);
+          console.log('   Mensagem:', aiAssistantData.mensagem.substring(0, 50) + '...');
+          console.log('   URL:', urlTexto);
+          
+          const sendResponse = await fetch(urlTexto, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
             body: JSON.stringify({
-              phone: phoneNumber.replace(/\D/g, ''),
-              message: aiAssistantData.mensagem,
-              instance_id: WUZAPI_INSTANCE_ID
+              Phone: cleanPhone,
+              Body: aiAssistantData.mensagem
             })
           });
+          
+          const sendResult = await sendResponse.text();
+          console.log('📊 RESULTADO ENVIO IA AVANÇADA:', sendResponse.status, sendResult);
 
           // Se IA recomendou produto E deve enviar foto
           if (aiAssistantData.produto_recomendado && aiAssistantData.enviar_foto && aiAssistantData.produto_recomendado.imagem_url) {
