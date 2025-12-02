@@ -508,66 +508,110 @@ serve(async (req) => {
           const sendResult = await sendResponse.text();
           console.log('📊 RESULTADO ENVIO IA AVANÇADA:', sendResponse.status, sendResult);
 
-          // Se IA recomendou produto E deve enviar foto
-          if (aiAssistantData.produto_recomendado && aiAssistantData.enviar_foto && aiAssistantData.produto_recomendado.imagem_url) {
-            console.log('📸 Enviando foto do produto recomendado:', aiAssistantData.produto_recomendado.nome);
+          // Se deve enviar foto
+          if (aiAssistantData.enviar_foto) {
+            console.log('📸 enviar_foto = true, buscando produto para enviar imagem...');
             
-            const produto = aiAssistantData.produto_recomendado;
-            let caption = `📦 *${produto.nome}*\n`;
-            caption += `💰 *R$ ${Number(produto.preco || 0).toFixed(2)}*\n\n`;
+            let produto = aiAssistantData.produto_recomendado;
             
-            if (produto.descricao) caption += `${produto.descricao}\n\n`;
-            if (produto.beneficios) caption += `✨ ${produto.beneficios}\n\n`;
-            
-            if (produto.estoque > 0 && produto.link_marketplace) {
-              caption += `🛒 Link: ${produto.link_marketplace}`;
-            } else if (produto.estoque === 0) {
-              caption += `❌ Esgotado no momento`;
+            // Se não tem produto na resposta, buscar do contexto da conversa
+            if (!produto && ctx.produto_id) {
+              console.log('📸 Buscando produto do contexto:', ctx.produto_id);
+              const { data: produtoBuscado } = await supabaseClient
+                .from('produtos')
+                .select('*')
+                .eq('id', ctx.produto_id)
+                .single();
+              produto = produtoBuscado;
             }
+            
+            // Se ainda não tem, buscar pelo nome no contexto
+            if (!produto && ctx.produto_nome) {
+              console.log('📸 Buscando produto pelo nome:', ctx.produto_nome);
+              const { data: produtoBuscado } = await supabaseClient
+                .from('produtos')
+                .select('*')
+                .eq('user_id', contexto.user_id)
+                .ilike('nome', `%${ctx.produto_nome}%`)
+                .limit(1)
+                .maybeSingle();
+              produto = produtoBuscado;
+            }
+            
+            // Se ainda não tem, buscar produto mencionado na mensagem
+            if (!produto) {
+              console.log('📸 Buscando produto na mensagem do cliente...');
+              const { data: todosProdutos } = await supabaseClient
+                .from('produtos')
+                .select('*')
+                .eq('user_id', contexto.user_id)
+                .eq('ativo', true);
+              
+              const msgLower = messageText.toLowerCase();
+              for (const p of todosProdutos || []) {
+                if (msgLower.includes(p.nome.toLowerCase())) {
+                  produto = p;
+                  console.log('📸 Produto encontrado na mensagem:', p.nome);
+                  break;
+                }
+              }
+            }
+            
+            if (produto && produto.imagem_url) {
+              console.log('📸 Enviando foto do produto:', produto.nome);
+              console.log('📸 URL da imagem:', produto.imagem_url);
+              
+              let caption = `📦 *${produto.nome}*\n`;
+              caption += `💰 *R$ ${Number(produto.preco || 0).toFixed(2)}*\n\n`;
+              
+              if (produto.descricao) caption += `${produto.descricao}\n\n`;
+              if (produto.beneficios) caption += `✨ ${produto.beneficios}\n\n`;
+              
+              if (produto.estoque > 0 && produto.link_marketplace) {
+                caption += `🛒 Link: ${produto.link_marketplace}`;
+              } else if (produto.estoque === 0) {
+                caption += `❌ Esgotado no momento`;
+              }
 
-            // Aguardar 2 segundos antes de enviar foto (para não sobrepor)
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            const urlImagem = `${baseUrl}/chat/send/image`;
-            console.log('📸 Enviando imagem para:', urlImagem);
-            console.log('📸 URL da imagem:', produto.imagem_url);
-            
-            const imagemResponse = await fetch(urlImagem, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
-              body: JSON.stringify({
-                Phone: phoneNumber.replace(/\D/g, ''),
-                Image: produto.imagem_url,
-                Caption: caption.trim()
-              })
-            });
-            
-            const imagemResult = await imagemResponse.text();
-            console.log('📸 Resultado envio imagem:', imagemResponse.status, imagemResult);
+              // Aguardar 2 segundos antes de enviar foto
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              
+              const urlImagem = `${baseUrl}/chat/send/image`;
+              console.log('📸 Enviando para:', urlImagem);
+              
+              const imagemResponse = await fetch(urlImagem, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+                body: JSON.stringify({
+                  Phone: phoneNumber.replace(/\D/g, ''),
+                  Image: produto.imagem_url,
+                  Caption: caption.trim()
+                })
+              });
+              
+              const imagemResult = await imagemResponse.text();
+              console.log('📸 Resultado envio imagem:', imagemResponse.status, imagemResult);
 
-            // Atualizar contexto da conversa com novo produto
-            await supabaseClient
-              .from('whatsapp_conversations')
-              .update({ 
-                metadata: {
-                  ...ctx,
-                  produto_id: produto.id,
-                  produto_nome: produto.nome,
-                  produto_preco: produto.preco,
-                  produto_descricao: produto.descricao,
-                  produto_estoque: produto.estoque,
-                  link_marketplace: produto.link_marketplace,
-                  produto_imagem_url: produto.imagem_url,
-                  produto_ficha_tecnica: produto.ficha_tecnica,
-                  produto_informacao_nutricional: produto.informacao_nutricional,
-                  produto_ingredientes: produto.ingredientes,
-                  produto_modo_uso: produto.modo_uso,
-                  produto_beneficios: produto.beneficios,
-                  produto_garantia: produto.garantia
-                },
-                last_message_at: new Date().toISOString()
-              })
-              .eq('id', contexto.id);
+              // Atualizar contexto da conversa com produto
+              await supabaseClient
+                .from('whatsapp_conversations')
+                .update({ 
+                  metadata: {
+                    ...ctx,
+                    produto_id: produto.id,
+                    produto_nome: produto.nome,
+                    produto_preco: produto.preco,
+                    produto_descricao: produto.descricao,
+                    produto_estoque: produto.estoque,
+                    link_marketplace: produto.link_marketplace,
+                    produto_imagem_url: produto.imagem_url
+                  },
+                  last_message_at: new Date().toISOString()
+                })
+                .eq('id', contexto.id);
+            } else {
+              console.log('⚠️ Produto não encontrado ou sem imagem:', produto?.nome || 'null');
+            }
           }
 
           // Salvar mensagens no histórico com wuzapi_message_id
