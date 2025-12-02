@@ -465,25 +465,13 @@ serve(async (req) => {
      console.log('⚠️ ESPECIFICAÇÕES COMPLETAS (para debug):', produtoEspecs || 'VAZIO - produto não tem especificações cadastradas');
 
     // ═══════════════════════════════════════
-    // 🤖 NOVO: DETECTAR SE PRECISA IA AVANÇADA
+    // 🤖 SEMPRE USAR IA AVANÇADA (ai-product-assistant)
+    // A IA avançada conhece TODO o catálogo e responde melhor
     // ═══════════════════════════════════════
-    const msgLowerCase = messageText.toLowerCase();
-    const precisaIAAvancada = 
-      // Cliente pergunta sobre outro produto
-      msgLowerCase.includes('tem ') || msgLowerCase.includes('vende ') || msgLowerCase.includes('outro') ||
-      // Cliente quer comparar produtos
-      msgLowerCase.includes('diferença') || msgLowerCase.includes('melhor') || msgLowerCase.includes('comparar') ||
-      // Cliente pergunta técnicas complexas
-      msgLowerCase.includes('ficha técnica') || msgLowerCase.includes('ficha tecnica') || 
-      msgLowerCase.includes('especificação') || msgLowerCase.includes('especificacao') ||
-      msgLowerCase.includes('ingredientes') || msgLowerCase.includes('composição') || msgLowerCase.includes('composicao') ||
-      msgLowerCase.includes('dimensões') || msgLowerCase.includes('dimensoes') || 
-      msgLowerCase.includes('tamanho') || msgLowerCase.includes('cor') || msgLowerCase.includes('modelo') ||
-      msgLowerCase.includes('informação nutricional') || msgLowerCase.includes('informacao nutricional') ||
-      msgLowerCase.includes('tabela nutricional') || msgLowerCase.includes('modo de uso') ||
-      msgLowerCase.includes('benefícios') || msgLowerCase.includes('beneficios') || msgLowerCase.includes('garantia');
-
-    if (precisaIAAvancada && contexto.user_id) {
+    
+    // SEMPRE usar IA avançada - ela responde melhor qualquer pergunta
+    if (contexto.user_id) {
+      console.log('🚀 Usando IA Avançada (ai-product-assistant) para TODAS as mensagens');
       console.log('🚀 Usando IA Avançada (ai-product-assistant) - cliente perguntou sobre produtos/especificações');
       
       try {
