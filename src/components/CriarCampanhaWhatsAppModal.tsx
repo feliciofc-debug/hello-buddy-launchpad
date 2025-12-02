@@ -288,7 +288,8 @@ export function CriarCampanhaWhatsAppModal({
         horarios: ['00:00'],
         mensagem_template: mensagem,
         ativa: false,
-        status: 'enviada'
+        status: 'enviada',
+        vendedor_id: vendedorSelecionado || null
       })
       .select()
       .single();
@@ -356,6 +357,25 @@ export function CriarCampanhaWhatsAppModal({
             message: mensagemPersonalizada,
             user_id: user.id,
             lead_tipo: 'campanha'
+          });
+
+          // ✅ CRIAR/ATUALIZAR CONVERSA COM VENDEDOR_ID
+          await supabase.from('whatsapp_conversations').upsert({
+            user_id: user.id,
+            phone_number: phone,
+            origem: 'campanha',
+            vendedor_id: vendedorSelecionado || null,
+            contact_name: nome,
+            metadata: {
+              produto_id: produto.id,
+              produto_nome: produto.nome,
+              produto_descricao: produto.descricao,
+              produto_preco: produto.preco,
+              produto_imagem_url: produto.imagem_url,
+              data_envio: new Date().toISOString()
+            }
+          }, {
+            onConflict: 'user_id,phone_number'
           });
 
           // Delay entre mensagens

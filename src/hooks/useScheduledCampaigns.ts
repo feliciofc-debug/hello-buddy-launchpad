@@ -117,6 +117,8 @@ export function useScheduledCampaigns(userId: string | undefined) {
                     user_id: userId,
                     phone_number: phone,
                     origem: 'campanha',
+                    vendedor_id: campanha.vendedor_id || null,
+                    contact_name: nome,
                     metadata: {
                       produto_id: campanha.produtos.id,
                       produto_nome: campanha.produtos.nome,
