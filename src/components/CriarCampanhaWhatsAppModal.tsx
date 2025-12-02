@@ -283,7 +283,7 @@ export function CriarCampanhaWhatsAppModal({
         produto_id: produto.id,
         nome: `Envio Imediato - ${produto.nome}`,
         listas_ids: listasSelecionadas,
-        frequencia: 'agora',
+        frequencia: 'uma_vez', // banco só aceita: uma_vez, diario, semanal
         data_inicio: new Date().toISOString().split('T')[0],
         horarios: ['00:00'],
         mensagem_template: mensagem,
@@ -322,14 +322,14 @@ export function CriarCampanhaWhatsAppModal({
 
       for (const phone of todosContatos) {
         try {
-          // ⚠️ VERIFICAR SE JÁ ENVIOU PARA ESTE TELEFONE (última hora)
-          const umaHora = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+          // ⚠️ VERIFICAR SE JÁ ENVIOU PARA ESTE TELEFONE (últimos 15 minutos)
+          const quinzeMinutos = new Date(Date.now() - 15 * 60 * 1000).toISOString();
           const { data: envioRecente } = await supabase
             .from('mensagens_enviadas')
             .select('id')
             .eq('phone', phone)
             .eq('user_id', user.id)
-            .gte('created_at', umaHora)
+            .gte('created_at', quinzeMinutos)
             .maybeSingle();
 
           if (envioRecente) {
