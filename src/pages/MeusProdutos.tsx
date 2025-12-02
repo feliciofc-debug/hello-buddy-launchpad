@@ -74,6 +74,17 @@ interface ProductFormProps {
     link_marketplace: string;
     publicar_marketplace: boolean;
     imagens: string[];
+    tipo: string;
+    ficha_tecnica: string;
+    informacao_nutricional: string;
+    ingredientes: string;
+    modo_uso: string;
+    beneficios: string;
+    garantia: string;
+    dimensoes: string;
+    peso: string;
+    cor: string;
+    tamanhos: string;
   };
   setFormData: (data: any) => void;
   onSubmit: () => void;
@@ -276,8 +287,162 @@ const ProductForm = ({
       </div>
     </div>
 
+    {/* TIPO DE PRODUTO */}
     <div className="space-y-2">
-      <Label htmlFor="especificacoes">Especificações Técnicas</Label>
+      <Label htmlFor="tipo">Tipo de Produto/Serviço *</Label>
+      <Select
+        value={formData.tipo}
+        onValueChange={(v) => setFormData({...formData, tipo: v})}
+      >
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="fisico">📦 Produto Físico</SelectItem>
+          <SelectItem value="servico">🛠️ Serviço</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+
+    {/* CAMPOS DETALHADOS EXPANDIDOS */}
+    <details className="border rounded-lg p-4 space-y-4">
+      <summary className="cursor-pointer font-semibold mb-2">
+        📋 Informações Detalhadas (Opcional - IA usará para responder clientes)
+      </summary>
+      
+      <div className="space-y-4 mt-4">
+        
+        {/* FICHA TÉCNICA */}
+        <div className="space-y-2">
+          <Label htmlFor="ficha_tecnica">Ficha Técnica / Especificações</Label>
+          <Textarea
+            id="ficha_tecnica"
+            value={formData.ficha_tecnica}
+            onChange={(e) => setFormData({...formData, ficha_tecnica: e.target.value})}
+            placeholder="Voltagem: 110V&#10;Potência: 1500W&#10;Dimensões: 30x40x50cm"
+            rows={4}
+          />
+          <p className="text-xs text-muted-foreground">
+            💡 IA usará isso para responder perguntas técnicas dos clientes
+          </p>
+        </div>
+
+        {/* INFORMAÇÃO NUTRICIONAL */}
+        {formData.tipo === 'fisico' && (
+          <div className="space-y-2">
+            <Label htmlFor="informacao_nutricional">Informação Nutricional (Alimentos)</Label>
+            <Textarea
+              id="informacao_nutricional"
+              value={formData.informacao_nutricional}
+              onChange={(e) => setFormData({...formData, informacao_nutricional: e.target.value})}
+              placeholder="Porção: 100g&#10;Calorias: 250kcal&#10;Carboidratos: 30g&#10;Proteínas: 8g&#10;Gorduras: 10g"
+              rows={5}
+            />
+          </div>
+        )}
+
+        {/* INGREDIENTES */}
+        {formData.tipo === 'fisico' && (
+          <div className="space-y-2">
+            <Label htmlFor="ingredientes">Ingredientes</Label>
+            <Textarea
+              id="ingredientes"
+              value={formData.ingredientes}
+              onChange={(e) => setFormData({...formData, ingredientes: e.target.value})}
+              placeholder="Farinha de trigo, açúcar, ovos, leite..."
+              rows={3}
+            />
+          </div>
+        )}
+
+        {/* MODO DE USO */}
+        <div className="space-y-2">
+          <Label htmlFor="modo_uso">Modo de Uso / Como Usar</Label>
+          <Textarea
+            id="modo_uso"
+            value={formData.modo_uso}
+            onChange={(e) => setFormData({...formData, modo_uso: e.target.value})}
+            placeholder="Aplique sobre a pele limpa, massageando até completa absorção..."
+            rows={3}
+          />
+        </div>
+
+        {/* BENEFÍCIOS */}
+        <div className="space-y-2">
+          <Label htmlFor="beneficios">Benefícios / Diferenciais</Label>
+          <Textarea
+            id="beneficios"
+            value={formData.beneficios}
+            onChange={(e) => setFormData({...formData, beneficios: e.target.value})}
+            placeholder="- Alta durabilidade&#10;- Economia de energia&#10;- Design moderno"
+            rows={3}
+          />
+        </div>
+
+        {/* GARANTIA */}
+        <div className="space-y-2">
+          <Label htmlFor="garantia">Garantia</Label>
+          <Input
+            id="garantia"
+            value={formData.garantia}
+            onChange={(e) => setFormData({...formData, garantia: e.target.value})}
+            placeholder="12 meses"
+          />
+        </div>
+
+        {/* DIMENSÕES E PESO (só produtos físicos) */}
+        {formData.tipo === 'fisico' && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="dimensoes">Dimensões (cm)</Label>
+              <Input
+                id="dimensoes"
+                value={formData.dimensoes}
+                onChange={(e) => setFormData({...formData, dimensoes: e.target.value})}
+                placeholder="30x40x50"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="peso">Peso (kg)</Label>
+              <Input
+                id="peso"
+                value={formData.peso}
+                onChange={(e) => setFormData({...formData, peso: e.target.value})}
+                placeholder="2.5"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* COR E TAMANHOS */}
+        {formData.tipo === 'fisico' && (
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="cor">Cores Disponíveis</Label>
+              <Input
+                id="cor"
+                value={formData.cor}
+                onChange={(e) => setFormData({...formData, cor: e.target.value})}
+                placeholder="Preto, Branco, Azul"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tamanhos">Tamanhos Disponíveis</Label>
+              <Input
+                id="tamanhos"
+                value={formData.tamanhos}
+                onChange={(e) => setFormData({...formData, tamanhos: e.target.value})}
+                placeholder="P, M, G, GG"
+              />
+            </div>
+          </div>
+        )}
+
+      </div>
+    </details>
+
+    <div className="space-y-2">
+      <Label htmlFor="especificacoes">Especificações Técnicas (Campo Legado)</Label>
       <Textarea
         id="especificacoes"
         value={formData.especificacoes}
@@ -285,6 +450,9 @@ const ProductForm = ({
         rows={3}
         placeholder="• Peso: 500g&#10;• Validade: 30 dias&#10;• Origem: Nacional"
       />
+      <p className="text-xs text-muted-foreground">
+        ⚠️ Use o campo "Ficha Técnica" acima para detalhes completos
+      </p>
     </div>
 
     <div className="space-y-2">
@@ -441,7 +609,19 @@ export default function MeusProdutos() {
     especificacoes: '',
     link_marketplace: '',
     publicar_marketplace: true,
-    imagens: [] as string[]
+    imagens: [] as string[],
+    // NOVOS CAMPOS DETALHADOS
+    tipo: 'fisico',
+    ficha_tecnica: '',
+    informacao_nutricional: '',
+    ingredientes: '',
+    modo_uso: '',
+    beneficios: '',
+    garantia: '',
+    dimensoes: '',
+    peso: '',
+    cor: '',
+    tamanhos: ''
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -822,7 +1002,18 @@ export default function MeusProdutos() {
       especificacoes: product.especificacoes || '',
       link_marketplace: product.link_marketplace || '',
       publicar_marketplace: product.publicar_marketplace ?? true,
-      imagens: Array.isArray(product.imagens) ? product.imagens : []
+      imagens: Array.isArray(product.imagens) ? product.imagens : [],
+      tipo: (product as any).tipo || 'fisico',
+      ficha_tecnica: (product as any).ficha_tecnica || '',
+      informacao_nutricional: (product as any).informacao_nutricional || '',
+      ingredientes: (product as any).ingredientes || '',
+      modo_uso: (product as any).modo_uso || '',
+      beneficios: (product as any).beneficios || '',
+      garantia: (product as any).garantia || '',
+      dimensoes: (product as any).dimensoes || '',
+      peso: (product as any).peso || '',
+      cor: (product as any).cor || '',
+      tamanhos: (product as any).tamanhos || ''
     });
     setCurrentImageUrl(product.imagem_url);
     setImageFile(null);
@@ -843,7 +1034,18 @@ export default function MeusProdutos() {
       especificacoes: '',
       link_marketplace: '',
       publicar_marketplace: true,
-      imagens: []
+      imagens: [],
+      tipo: 'fisico',
+      ficha_tecnica: '',
+      informacao_nutricional: '',
+      ingredientes: '',
+      modo_uso: '',
+      beneficios: '',
+      garantia: '',
+      dimensoes: '',
+      peso: '',
+      cor: '',
+      tamanhos: ''
     });
     setSelectedProduct(null);
     setImageFile(null);

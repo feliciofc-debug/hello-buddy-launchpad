@@ -6,6 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Declarar env vars no topo do arquivo
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+const WUZAPI_URL = Deno.env.get('WUZAPI_URL') || '';
+const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN') || '';
+const WUZAPI_INSTANCE_ID = Deno.env.get('WUZAPI_INSTANCE_ID');
+
 const FRASES_ROBOTICAS = [
   'fico feliz', 'agradeço', 'é um prazer', 'gostaria de', 'certamente',
   'com toda certeza', 'é importante ressaltar', 'vale mencionar', 
@@ -458,6 +464,143 @@ serve(async (req) => {
     
      console.log('⚠️ ESPECIFICAÇÕES COMPLETAS (para debug):', produtoEspecs || 'VAZIO - produto não tem especificações cadastradas');
 
+    // ═══════════════════════════════════════
+    // 🤖 NOVO: DETECTAR SE PRECISA IA AVANÇADA
+    // ═══════════════════════════════════════
+    const msgLower = messageText.toLowerCase();
+    const precisaIAAvancada = 
+      // Cliente pergunta sobre outro produto
+      msgLower.includes('tem ') || msgLower.includes('vende ') || msgLower.includes('outro') ||
+      // Cliente quer comparar produtos
+      msgLower.includes('diferença') || msgLower.includes('melhor') || msgLower.includes('comparar') ||
+      // Cliente pergunta técnicas complexas
+      msgLower.includes('ficha técnica') || msgLower.includes('especificação') ||
+      msgLower.includes('ingredientes') || msgLower.includes('composição') ||
+      msgLower.includes('dimensões') || msgLower.includes('tamanho') ||
+      msgLower.includes('cor') || msgLower.includes('modelo');
+
+    if (precisaIAAvancada && contexto.user_id) {
+      console.log('🚀 Usando IA Avançada - cliente perguntou sobre produtos/especificações');
+      
+      try {
+        const { data: aiAssistantData, error: aiAssistantError } = await supabaseClient.functions.invoke('ai-product-assistant', {
+          body: {
+            mensagemCliente: messageText,
+            conversationId: contexto.id,
+            userId: contexto.user_id
+          }
+        });
+
+        if (!aiAssistantError && aiAssistantData?.success) {
+          console.log('✅ IA Avançada respondeu:', aiAssistantData.mensagem);
+          
+          // Enviar resposta texto
+          const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
+          const urlTexto = `${baseUrl}/chat/send/text`;
+          
+          await fetch(urlTexto, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+            body: JSON.stringify({
+              phone: phoneNumber.replace(/\D/g, ''),
+              message: aiAssistantData.mensagem,
+              instance_id: WUZAPI_INSTANCE_ID
+            })
+          });
+
+          // Se IA recomendou produto E deve enviar foto
+          if (aiAssistantData.produto_recomendado && aiAssistantData.enviar_foto && aiAssistantData.produto_recomendado.imagem_url) {
+            console.log('📸 Enviando foto do produto recomendado:', aiAssistantData.produto_recomendado.nome);
+            
+            const produto = aiAssistantData.produto_recomendado;
+            let caption = `📦 ${produto.nome}\n`;
+            caption += `💰 R$ ${Number(produto.preco || 0).toFixed(2)}\n\n`;
+            
+            if (produto.descricao) caption += `${produto.descricao}\n\n`;
+            if (produto.beneficios) caption += `✨ ${produto.beneficios}\n\n`;
+            
+            if (produto.estoque > 0 && produto.link_marketplace) {
+              caption += `🛒 ${produto.link_marketplace}`;
+            } else if (produto.estoque === 0) {
+              caption += `❌ Esgotado no momento`;
+            }
+
+            const urlImagem = `${baseUrl}/chat/send/image`;
+            await fetch(urlImagem, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+              body: JSON.stringify({
+                phone: phoneNumber.replace(/\D/g, ''),
+                imageUrl: produto.imagem_url,
+                caption: caption.trim(),
+                instance_id: WUZAPI_INSTANCE_ID
+              })
+            });
+
+            console.log('✅ Foto do produto enviada com sucesso');
+
+            // Atualizar contexto da conversa com novo produto
+            await supabaseClient
+              .from('whatsapp_conversations')
+              .update({ 
+                metadata: {
+                  ...ctx,
+                  produto_id: produto.id,
+                  produto_nome: produto.nome,
+                  produto_preco: produto.preco,
+                  produto_descricao: produto.descricao,
+                  produto_estoque: produto.estoque,
+                  link_marketplace: produto.link_marketplace,
+                  produto_imagem: produto.imagem_url,
+                  produto_ficha_tecnica: produto.ficha_tecnica,
+                  produto_info_nutricional: produto.informacao_nutricional
+                }
+              })
+              .eq('id', contexto.id);
+          }
+
+          // Salvar mensagens no histórico
+          await supabaseClient.from('whatsapp_messages').insert([
+            { phone: phoneNumber, direction: 'received', message: messageText, user_id: contexto.user_id, origem: contexto.origem || 'campanha' },
+            { phone: phoneNumber, direction: 'sent', message: aiAssistantData.mensagem, user_id: contexto.user_id, origem: contexto.origem || 'campanha' }
+          ]);
+
+          // Detectar lead quente
+          const keywordsHot = ['quero', 'comprar', 'pagar', 'pix', 'link', 'fechado', 'aceita', 'quanto', 'sim', 'beleza', 'ok', 'vou'];
+          const isHot = keywordsHot.some(k => messageText.toLowerCase().includes(k));
+          if (isHot && contexto.user_id) {
+            await supabaseClient.from('lead_notifications').insert({
+              user_id: contexto.user_id,
+              phone: phoneNumber,
+              produto_nome: aiAssistantData.produto_recomendado?.nome || produtoNome,
+              mensagem_cliente: messageText,
+              status: 'quente'
+            });
+          }
+
+          return new Response(JSON.stringify({ status: 'success_ai_advanced' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+      } catch (aiError) {
+        console.error('⚠️ Erro na IA Avançada, usando IA padrão como fallback:', aiError);
+        // Continua com IA padrão abaixo
+      }
+    }
+
+    // ═══════════════════════════════════════
+    // 🤖 IA PADRÃO (fallback)
+    // ═══════════════════════════════════════
+
+    console.log('📦 Dados completos do produto para IA:', { 
+      produtoNome, 
+      produtoPreco, 
+      produtoDescricao, 
+      produtoEspecs: produtoEspecs ? produtoEspecs.substring(0, 100) + '...' : 'sem specs',
+      produtoCategoria,
+      produtoTags 
+    });
+    
+    console.log('⚠️ ESPECIFICAÇÕES COMPLETAS (para debug):', produtoEspecs || 'VAZIO - produto não tem especificações cadastradas');
+
     // MONTAR FICHA TÉCNICA COMPLETA - INCLUIR TODAS AS INFORMAÇÕES
     let fichaTecnicaCompleta = `📦 PRODUTO: ${produtoNome} - ${produtoPreco}\n`;
     if (produtoCategoria) fichaTecnicaCompleta += `🏷️ CATEGORIA: ${produtoCategoria}\n`;
@@ -508,17 +651,7 @@ ${EXEMPLOS_SEGMENTO[segmentoId] || EXEMPLOS_SEGMENTO['outros']}
 
 RESPONDA (curto e humano, sem repetir "tá"):`;
 
-    console.log('🤖 Chamando IA...');
-
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
-    const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
-    const WUZAPI_INSTANCE_ID = Deno.env.get('WUZAPI_INSTANCE_ID');
-
-    if (!LOVABLE_API_KEY || !WUZAPI_URL || !WUZAPI_TOKEN) {
-      console.error('❌ Credenciais faltando');
-      return new Response(JSON.stringify({ status: 'missing_credentials' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
+    console.log('🤖 Chamando IA padrão...');
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
