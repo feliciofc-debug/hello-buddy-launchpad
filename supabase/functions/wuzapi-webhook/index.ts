@@ -644,6 +644,115 @@ serve(async (req) => {
             }
           }
 
+          // ═══════════════════════════════════════
+          // 🛒 ENVIAR LINK DE CHECKOUT SE CLIENTE QUER COMPRAR
+          // ═══════════════════════════════════════
+          if (aiAssistantData.enviar_link) {
+            console.log('🛒 Cliente quer comprar! Enviando link de checkout...');
+            
+            // Aguardar 2 segundos
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Buscar produto para enviar link
+            let produtoParaLink = aiAssistantData.produto_recomendado;
+            
+            // Se não veio produto da IA, buscar do contexto
+            if (!produtoParaLink && ctx.produto_id) {
+              const { data: produtoBuscado } = await supabaseClient
+                .from('produtos')
+                .select('*')
+                .eq('id', ctx.produto_id)
+                .single();
+              produtoParaLink = produtoBuscado;
+            }
+            
+            // Se ainda não tem, buscar pelo nome no contexto
+            if (!produtoParaLink && ctx.produto_nome) {
+              const { data: produtoBuscado } = await supabaseClient
+                .from('produtos')
+                .select('*')
+                .eq('user_id', contexto.user_id)
+                .ilike('nome', `%${ctx.produto_nome}%`)
+                .limit(1)
+                .maybeSingle();
+              produtoParaLink = produtoBuscado;
+            }
+            
+            // Buscar pela última menção na conversa
+            if (!produtoParaLink) {
+              const { data: ultimasMensagens } = await supabaseClient
+                .from('whatsapp_messages')
+                .select('message')
+                .eq('phone', phoneNumber)
+                .eq('user_id', contexto.user_id)
+                .order('timestamp', { ascending: false })
+                .limit(5);
+              
+              const { data: todosProdutosUser } = await supabaseClient
+                .from('produtos')
+                .select('*')
+                .eq('user_id', contexto.user_id)
+                .eq('ativo', true);
+              
+              const palavrasChave = ['arroz', 'feijão', 'feijao', 'farinha', 'milho', 'flocão', 'flocao', 'açúcar', 'acucar', 'óleo', 'oleo', 'sal', 'macarrão', 'macarrao', 'leite', 'café', 'cafe', 'manteiga'];
+              
+              for (const msg of ultimasMensagens || []) {
+                const msgLower = msg.message.toLowerCase();
+                for (const palavra of palavrasChave) {
+                  if (msgLower.includes(palavra)) {
+                    const encontrado = todosProdutosUser?.find(p => p.nome.toLowerCase().includes(palavra));
+                    if (encontrado) {
+                      produtoParaLink = encontrado;
+                      console.log('🎯 Produto para link encontrado no histórico:', encontrado.nome);
+                      break;
+                    }
+                  }
+                }
+                if (produtoParaLink) break;
+              }
+            }
+            
+            if (produtoParaLink && produtoParaLink.link_marketplace) {
+              console.log('📦 Enviando link para produto:', produtoParaLink.nome);
+              console.log('🔗 Link:', produtoParaLink.link_marketplace);
+              
+              const linkMessage = `🛒 *Finalize sua compra:*
+
+${produtoParaLink.link_marketplace}
+
+📦 ${produtoParaLink.nome}
+💰 R$ ${Number(produtoParaLink.preco || 0).toFixed(2)}
+
+O frete aparece na finalização! 😊
+
+Qualquer dúvida, estou aqui! 👍`;
+
+              const linkResponse = await fetch(`${baseUrl}/chat/send/text`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+                body: JSON.stringify({
+                  Phone: phoneNumber.replace(/\D/g, ''),
+                  Body: linkMessage
+                })
+              });
+              
+              const linkResult = await linkResponse.text();
+              console.log('✅ Link de checkout enviado:', linkResponse.status, linkResult);
+              
+              // Salvar que enviou link
+              await supabaseClient.from('whatsapp_messages').insert({
+                phone: phoneNumber,
+                direction: 'sent',
+                message: `[Link de compra enviado: ${produtoParaLink.nome}]`,
+                user_id: contexto.user_id,
+                origem: 'campanha'
+              });
+              
+            } else {
+              console.log('⚠️ Produto não tem link_marketplace cadastrado ou não foi identificado');
+            }
+          }
+
           // Salvar mensagens no histórico com wuzapi_message_id
           await supabaseClient.from('whatsapp_messages').insert([
             { 

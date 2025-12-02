@@ -341,6 +341,28 @@ Se o cliente perguntar sobre algo, pergunte qual produto ele quer.
 8. ✅ Sempre termine perguntando se quer algo mais
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 DETECTAR INTENÇÃO DE COMPRA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SINAIS de que cliente QUER COMPRAR:
+- "Quero" / "Quero levar"
+- "Sim" (após você oferecer)
+- "Vou levar"
+- "Como compro?" / "Como faço pra comprar?"
+- "Manda o link"
+- "Quero comprar"
+- "Fecha aí"
+- "Pode enviar"
+- "Vou querer"
+- "Fechou"
+- "Beleza"
+- "Ok, quero"
+
+QUANDO DETECTAR INTENÇÃO DE COMPRA:
+→ Responda: "Ótimo! Te envio o link agora 😊"
+→ RETORNE no JSON: "enviar_link": true
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📦 CATÁLOGO COMPLETO:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -382,8 +404,13 @@ SE PERGUNTA: "Ingredientes?"
 SE PERGUNTA: "Ficha técnica?"
 → [Dê as especificações técnicas]
 
+SE CLIENTE DIZ: "Quero" / "Sim" / "Vou levar" / "Manda o link"
+→ "Ótimo! Te envio o link agora 😊"
+→ RETORNE: enviar_link: true
+
 SE PERGUNTA: "Como comprar?" ou "Quero comprar"
-→ "Clica no link que te enviei antes: [link do produto]. Lá você finaliza a compra e vê o frete 😊"
+→ "Te envio o link agora! 😊"
+→ RETORNE: enviar_link: true
 
 SE PERGUNTA: "Quanto é o frete?" ou "CEP" ou "Entrega"
 → "O frete aparece na hora de fechar a compra no link 😊 Cada região tem um valor diferente."
@@ -415,13 +442,15 @@ SE QUER OUTRO PRODUTO:
   "mensagem": "sua resposta CURTA",
   "produto_recomendado_id": "${produtoIdentificado?.id || 'null'}",
   "produto_recomendado_nome": "${produtoIdentificado?.nome || ''}",
-  "enviar_foto": true/false
+  "enviar_foto": true/false,
+  "enviar_link": true/false
 }
 
 ⚠️ IMPORTANTE:
 - produto_recomendado_id DEVE SER: "${produtoIdentificado?.id || 'null'}"
 - produto_recomendado_nome DEVE SER: "${produtoIdentificado?.nome || ''}"
 - NÃO TROQUE O PRODUTO!
+- SE CLIENTE QUER COMPRAR → enviar_link: true
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✨ EXEMPLOS:
@@ -434,14 +463,20 @@ Cliente: "Tem arroz?"
 ✅ CORRETO: "Sim! Arroz por R$ 3,90. Quer?"
 
 Cliente: "Manda foto"
-✅ CORRETO: {"mensagem": "Já envio! 📸", "produto_recomendado_id": "[ID DO ARROZ]", "enviar_foto": true}
-❌ ERRADO: Enviar foto de feijão quando cliente falou de arroz
+✅ CORRETO: {"mensagem": "Já envio! 📸", "produto_recomendado_id": "[ID]", "enviar_foto": true}
+
+Cliente: "Quero" / "Sim" / "Vou levar"
+✅ CORRETO: {"mensagem": "Ótimo! Te envio o link agora 😊", "enviar_link": true}
+
+Cliente: "Como compro?"
+✅ CORRETO: {"mensagem": "Te envio o link! 😊", "enviar_link": true}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 LEMBRE-SE: 
 - MENOS É MAIS! Seja BREVE!
 - NUNCA TROQUE O PRODUTO!
+- CLIENTE QUER COMPRAR? → enviar_link: true
 
 Responda AGORA em JSON:`
 
@@ -540,6 +575,7 @@ Responda AGORA em JSON:`
     console.log('   Produto ID:', produtoDetalhes?.id || 'NENHUM')
     console.log('   Produto Nome:', produtoDetalhes?.nome || 'NENHUM')
     console.log('   Enviar Foto:', resposta.enviar_foto)
+    console.log('   Enviar Link:', resposta.enviar_link)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return new Response(JSON.stringify({
@@ -547,6 +583,7 @@ Responda AGORA em JSON:`
       mensagem: resposta.mensagem,
       produto_recomendado: produtoDetalhes,
       enviar_foto: resposta.enviar_foto || false,
+      enviar_link: resposta.enviar_link || false,
       tipo_informacao: resposta.tipo_informacao || 'geral'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
