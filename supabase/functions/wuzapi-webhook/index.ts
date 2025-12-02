@@ -742,13 +742,18 @@ serve(async (req) => {
               }
             }
             
-            if (produtoParaLink && produtoParaLink.link_marketplace) {
+            if (produtoParaLink) {
               console.log('📦 Enviando link para produto:', produtoParaLink.nome);
-              console.log('🔗 Link:', produtoParaLink.link_marketplace);
+              
+              // LINK FIXO SIMULADO - usar link_marketplace se existir, senão usar simulado
+              const LINK_SIMULADO = 'https://amzofertas.com.br/checkout';
+              const linkFinal = produtoParaLink.link_marketplace || LINK_SIMULADO;
+              
+              console.log('🔗 Link final:', linkFinal);
               
               const linkMessage = `🛒 *Finalize sua compra:*
 
-${produtoParaLink.link_marketplace}
+${linkFinal}
 
 📦 ${produtoParaLink.nome}
 💰 R$ ${Number(produtoParaLink.preco || 0).toFixed(2)}
@@ -773,7 +778,7 @@ Qualquer dúvida, estou aqui! 👍`;
               await supabaseClient.from('whatsapp_messages').insert({
                 phone: phoneNumber,
                 direction: 'sent',
-                message: `[Link de compra enviado: ${produtoParaLink.nome}]`,
+                message: `[Link de compra enviado: ${produtoParaLink.nome}] - ${linkFinal}`,
                 user_id: contexto.user_id,
                 origem: 'campanha'
               });
