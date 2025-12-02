@@ -262,6 +262,13 @@ export function CriarCampanhaWhatsAppModal({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📊 INICIANDO ENVIO DE CAMPANHA');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('👤 Vendedor selecionado:', vendedorSelecionado);
+    console.log('👤 Nome do vendedor:', vendedores.find(v => v.id === vendedorSelecionado)?.nome || 'Nenhum');
+    console.log('📦 Produto:', produto.nome);
+
     // Buscar contatos de todas as listas selecionadas
     const { data: listasData } = await supabase
       .from('whatsapp_groups')
@@ -269,6 +276,8 @@ export function CriarCampanhaWhatsAppModal({
       .in('id', listasSelecionadas);
 
     const todosContatos = listasData?.flatMap(l => l.phone_numbers || []) || [];
+    console.log('📋 Total contatos:', todosContatos.length);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     if (todosContatos.length === 0) {
       toast.error('Nenhum contato encontrado nas listas selecionadas');
@@ -276,14 +285,14 @@ export function CriarCampanhaWhatsAppModal({
     }
 
     // Criar campanha temporária para salvar na biblioteca ANTES de enviar
-    const { data: campanhaTemp } = await supabase
+    const { data: campanhaTemp, error: erroCampanha } = await supabase
       .from('campanhas_recorrentes')
       .insert({
         user_id: user.id,
         produto_id: produto.id,
         nome: `Envio Imediato - ${produto.nome}`,
         listas_ids: listasSelecionadas,
-        frequencia: 'uma_vez', // banco só aceita: uma_vez, diario, semanal
+        frequencia: 'uma_vez',
         data_inicio: new Date().toISOString().split('T')[0],
         horarios: ['00:00'],
         mensagem_template: mensagem,
@@ -293,6 +302,12 @@ export function CriarCampanhaWhatsAppModal({
       })
       .select()
       .single();
+
+    if (erroCampanha) {
+      console.error('❌ Erro ao criar campanha:', erroCampanha);
+    } else {
+      console.log('✅ Campanha salva:', campanhaTemp?.id, 'vendedor_id:', campanhaTemp?.vendedor_id);
+    }
 
     if (campanhaTemp) {
       await salvarCampanhaNaBiblioteca({
@@ -321,7 +336,7 @@ export function CriarCampanhaWhatsAppModal({
       let enviados = 0;
       let erros = 0;
 
-      for (const phone of todosContatos) {
+      for (const [index, phone] of todosContatos.entries()) {
         try {
           // Buscar nome do contato
           const { data: contact } = await supabase
@@ -350,6 +365,7 @@ export function CriarCampanhaWhatsAppModal({
 
           if (error) throw error;
           enviados++;
+          console.log(`[${index + 1}/${todosContatos.length}] ✅ ${phone}`);
 
           // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
           await supabase.from('mensagens_enviadas').insert({
@@ -359,30 +375,104 @@ export function CriarCampanhaWhatsAppModal({
             lead_tipo: 'campanha'
           });
 
-          // ✅ CRIAR/ATUALIZAR CONVERSA COM VENDEDOR_ID
-          await supabase.from('whatsapp_conversations').upsert({
+          // ✅ CRIAR/ATUALIZAR CONVERSA COM VENDEDOR_ID - MÉTODO CORRIGIDO
+          console.log('💬 Criando conversa com vendedor_id:', vendedorSelecionado);
+          
+          // PRIMEIRO: Verificar se conversa já existe
+          const { data: conversaExistente } = await supabase
+            .from('whatsapp_conversations')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('phone_number', phone)
+            .maybeSingle();
+
+          const conversaData = {
             user_id: user.id,
             phone_number: phone,
             origem: 'campanha',
             vendedor_id: vendedorSelecionado || null,
             contact_name: nome,
+            status: 'active',
+            last_message_at: new Date().toISOString(),
             metadata: {
               produto_id: produto.id,
               produto_nome: produto.nome,
               produto_descricao: produto.descricao,
               produto_preco: produto.preco,
               produto_imagem_url: produto.imagem_url,
+              campanha_id: campanhaTemp?.id,
               data_envio: new Date().toISOString()
             }
-          }, {
-            onConflict: 'user_id,phone_number'
-          });
+          };
+
+          if (conversaExistente) {
+            // ATUALIZAR conversa existente mantendo ou atualizando vendedor_id
+            console.log('  📝 Atualizando conversa existente:', conversaExistente.id);
+            
+            const { error: erroUpdate } = await supabase
+              .from('whatsapp_conversations')
+              .update({
+                vendedor_id: vendedorSelecionado || conversaExistente.vendedor_id,
+                last_message_at: new Date().toISOString(),
+                status: 'active',
+                metadata: {
+                  ...(typeof conversaExistente.metadata === 'object' ? conversaExistente.metadata : {}),
+                  ...conversaData.metadata
+                }
+              })
+              .eq('id', conversaExistente.id);
+            
+            if (erroUpdate) {
+              console.error('  ❌ Erro ao atualizar conversa:', erroUpdate);
+            } else {
+              console.log('  ✅ Conversa atualizada com vendedor_id:', vendedorSelecionado || conversaExistente.vendedor_id);
+            }
+          } else {
+            // CRIAR nova conversa
+            console.log('  ➕ Criando nova conversa');
+            
+            const { data: novaConversa, error: erroConversa } = await supabase
+              .from('whatsapp_conversations')
+              .insert(conversaData)
+              .select()
+              .single();
+            
+            if (erroConversa) {
+              console.error('  ❌ Erro ao criar conversa:', erroConversa);
+            } else {
+              console.log('  ✅ Conversa criada:', novaConversa?.id, 'vendedor:', novaConversa?.vendedor_id);
+            }
+          }
 
           // Delay entre mensagens
           await new Promise(r => setTimeout(r, 500));
         } catch (error) {
-          console.error('Erro ao enviar para', phone, error);
+          console.error(`[${index + 1}] ❌ ${phone}:`, error);
           erros++;
+        }
+      }
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`✅ CONCLUÍDO: ${enviados} enviados, ${erros} erros`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      // VERIFICAÇÃO FINAL: Conferir se vendedor_id foi salvo
+      if (vendedorSelecionado) {
+        const { count } = await supabase
+          .from('whatsapp_conversations')
+          .select('*', { count: 'exact', head: true })
+          .eq('vendedor_id', vendedorSelecionado)
+          .gte('created_at', new Date(Date.now() - 120000).toISOString());
+        
+        console.log(`🔍 VERIFICAÇÃO: ${count} conversas vinculadas ao vendedor`);
+        
+        if (count === 0) {
+          console.error('❌ ERRO: Nenhuma conversa foi criada com vendedor_id!');
+          toast.error('Erro: Conversas não foram vinculadas ao vendedor!');
+        } else if (count && count < todosContatos.length) {
+          console.warn(`⚠️ ATENÇÃO: Apenas ${count}/${todosContatos.length} conversas vinculadas`);
+        } else {
+          console.log('✅ Todas as conversas foram vinculadas ao vendedor');
         }
       }
 
