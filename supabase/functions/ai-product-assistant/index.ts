@@ -14,7 +14,11 @@ serve(async (req) => {
   try {
     const { mensagemCliente, conversationId, userId } = await req.json()
 
-    console.log('🤖 AI Product Assistant iniciado', { mensagemCliente, conversationId, userId })
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🤖 AI Product Assistant v2.0 - DETECÇÃO MELHORADA')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🔍 MENSAGEM DO CLIENTE:', mensagemCliente)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -37,12 +41,7 @@ serve(async (req) => {
 
     // LOG DETALHADO DOS PRODUTOS PARA DEBUG
     produtos?.forEach((p, i) => {
-      console.log(`📦 Produto ${i + 1}: ${p.nome}`)
-      console.log(`   💰 Preço: R$ ${p.preco}`)
-      console.log(`   ⚖️ Peso: ${p.peso || 'NÃO CADASTRADO'}`)
-      console.log(`   📐 Dimensões: ${p.dimensoes || 'NÃO CADASTRADO'}`)
-      console.log(`   🥗 Info Nutricional: ${p.informacao_nutricional ? 'SIM' : 'NÃO CADASTRADO'}`)
-      console.log(`   📋 Ficha Técnica: ${p.ficha_tecnica ? 'SIM' : 'NÃO CADASTRADO'}`)
+      console.log(`📦 Produto ${i + 1}: ${p.nome} (ID: ${p.id})`)
     })
 
     // Buscar histórico da conversa (últimas 10 mensagens)
@@ -56,6 +55,153 @@ serve(async (req) => {
     const historico = messages?.map(m => 
       `${m.role === 'user' ? '👤 Cliente' : '🤖 Você respondeu'}: ${m.content}`
     ).join('\n') || 'Primeira mensagem do cliente'
+
+    console.log('📜 Histórico da conversa:', historico)
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // IDENTIFICAÇÃO DE PRODUTO - LÓGICA MELHORADA
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    const msgLower = mensagemCliente.toLowerCase()
+    let produtoIdentificado: any = null
+    let metodoIdentificacao = ''
+    
+    // Lista expandida de palavras-chave de produtos
+    const palavrasChave = [
+      'arroz', 'feijão', 'feijao', 'farinha', 'milho', 'flocão', 'flocao', 
+      'açúcar', 'acucar', 'óleo', 'oleo', 'sal', 'macarrão', 'macarrao', 
+      'leite', 'café', 'cafe', 'manteiga', 'margarina', 'queijo', 'presunto',
+      'pão', 'pao', 'biscoito', 'bolacha', 'chocolate', 'doce', 'salgado',
+      'carne', 'frango', 'peixe', 'ovo', 'ovos', 'verdura', 'legume', 'fruta'
+    ]
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🔍 ETAPA 1: Procurando palavra-chave na mensagem atual')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    
+    // ETAPA 1: Procurar palavra-chave na mensagem ATUAL
+    for (const palavra of palavrasChave) {
+      if (msgLower.includes(palavra)) {
+        const produtoEncontrado = produtos?.find(p => 
+          p.nome.toLowerCase().includes(palavra)
+        )
+        if (produtoEncontrado) {
+          produtoIdentificado = produtoEncontrado
+          metodoIdentificacao = `PALAVRA-CHAVE "${palavra}" na mensagem atual`
+          console.log(`✅ Produto encontrado: "${palavra}" → ${produtoEncontrado.nome}`)
+          break
+        }
+      }
+    }
+    
+    // ETAPA 2: Se não encontrou, verificar nome completo do produto na mensagem
+    if (!produtoIdentificado) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 ETAPA 2: Procurando nome completo na mensagem')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      
+      for (const p of produtos || []) {
+        const nomeWords = p.nome.toLowerCase().split(' ')
+        for (const word of nomeWords) {
+          if (word.length > 3 && msgLower.includes(word)) {
+            produtoIdentificado = p
+            metodoIdentificacao = `NOME DO PRODUTO "${word}" na mensagem`
+            console.log(`✅ Produto encontrado: "${word}" → ${p.nome}`)
+            break
+          }
+        }
+        if (produtoIdentificado) break
+      }
+    }
+    
+    // ETAPA 3: Se não encontrou e cliente quer foto/imagem/embalagem, buscar no HISTÓRICO
+    const querFoto = msgLower.includes('foto') || msgLower.includes('imagem') || 
+                     msgLower.includes('embalagem') || msgLower.includes('ver') ||
+                     msgLower.includes('manda') || msgLower.includes('envia') ||
+                     msgLower.includes('mostra')
+    
+    if (!produtoIdentificado && querFoto) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 ETAPA 3: Cliente quer foto, buscando produto no HISTÓRICO')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      
+      const historicoLower = historico.toLowerCase()
+      
+      // Procurar qual produto foi mencionado no histórico (do mais recente pro mais antigo)
+      for (const palavra of palavrasChave) {
+        if (historicoLower.includes(palavra)) {
+          const produtoEncontrado = produtos?.find(p => 
+            p.nome.toLowerCase().includes(palavra)
+          )
+          if (produtoEncontrado) {
+            produtoIdentificado = produtoEncontrado
+            metodoIdentificacao = `HISTÓRICO - última menção de "${palavra}"`
+            console.log(`✅ Produto do histórico: "${palavra}" → ${produtoEncontrado.nome}`)
+            break
+          }
+        }
+      }
+      
+      // Se ainda não encontrou, verificar nomes de produtos no histórico
+      if (!produtoIdentificado) {
+        for (const p of produtos || []) {
+          if (historicoLower.includes(p.nome.toLowerCase())) {
+            produtoIdentificado = p
+            metodoIdentificacao = `HISTÓRICO - menção de "${p.nome}"`
+            console.log(`✅ Produto do histórico (nome completo): ${p.nome}`)
+            break
+          }
+        }
+      }
+    }
+    
+    // ETAPA 4: Se AINDA não encontrou, pegar o último produto mencionado na conversa
+    if (!produtoIdentificado && messages && messages.length > 0) {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 ETAPA 4: Buscando último produto mencionado na conversa')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      
+      // Inverter para pegar do mais recente
+      const messagesReversed = [...messages].reverse()
+      
+      for (const msg of messagesReversed) {
+        const msgContentLower = msg.content.toLowerCase()
+        
+        // Procurar palavra-chave em cada mensagem
+        for (const palavra of palavrasChave) {
+          if (msgContentLower.includes(palavra)) {
+            const produtoEncontrado = produtos?.find(p => 
+              p.nome.toLowerCase().includes(palavra)
+            )
+            if (produtoEncontrado) {
+              produtoIdentificado = produtoEncontrado
+              metodoIdentificacao = `ÚLTIMA MENÇÃO na conversa: "${palavra}"`
+              console.log(`✅ Último produto mencionado: "${palavra}" → ${produtoEncontrado.nome}`)
+              break
+            }
+          }
+        }
+        if (produtoIdentificado) break
+        
+        // Verificar nome completo do produto
+        for (const p of produtos || []) {
+          if (msgContentLower.includes(p.nome.toLowerCase())) {
+            produtoIdentificado = p
+            metodoIdentificacao = `ÚLTIMA MENÇÃO na conversa: "${p.nome}"`
+            console.log(`✅ Último produto mencionado (nome): ${p.nome}`)
+            break
+          }
+        }
+        if (produtoIdentificado) break
+      }
+    }
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📦 RESULTADO DA IDENTIFICAÇÃO:')
+    console.log('   Produto:', produtoIdentificado?.nome || 'NENHUM IDENTIFICADO')
+    console.log('   ID:', produtoIdentificado?.id || 'N/A')
+    console.log('   Método:', metodoIdentificacao || 'N/A')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Criar CATÁLOGO SUPER DETALHADO para IA
     const catalogoProdutos = produtos?.map(p => {
@@ -156,56 +302,30 @@ ${p.tamanhos ? `║ • Tamanhos disponíveis: ${p.tamanhos}` : ''}
 
     // Chamar Lovable AI
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
-    
-    // Identificar produto mencionado na mensagem ANTES de chamar IA
-    const msgLower = mensagemCliente.toLowerCase()
-    let produtoIdentificado = null
-    
-    const palavrasChave = ['arroz', 'feijão', 'feijao', 'farinha', 'milho', 'flocão', 'flocao', 'açúcar', 'acucar', 'óleo', 'oleo', 'sal', 'macarrão', 'macarrao', 'leite', 'café', 'cafe']
-    
-    for (const palavra of palavrasChave) {
-      if (msgLower.includes(palavra)) {
-        const produtoEncontrado = produtos?.find(p => 
-          p.nome.toLowerCase().includes(palavra)
-        )
-        if (produtoEncontrado) {
-          produtoIdentificado = produtoEncontrado
-          console.log(`🎯 Produto identificado na mensagem: "${palavra}" → ${produtoEncontrado.nome}`)
-          break
-        }
-      }
-    }
-    
-    // Se não encontrou por palavra-chave, verificar nome completo
-    if (!produtoIdentificado) {
-      for (const p of produtos || []) {
-        const nomeWords = p.nome.toLowerCase().split(' ')
-        for (const word of nomeWords) {
-          if (word.length > 3 && msgLower.includes(word)) {
-            produtoIdentificado = p
-            console.log(`🎯 Produto identificado por palavra: "${word}" → ${p.nome}`)
-            break
-          }
-        }
-        if (produtoIdentificado) break
-      }
-    }
-    
-    console.log('🔍 Produto identificado:', produtoIdentificado?.nome || 'NENHUM')
 
     const prompt = `Você é um vendedor atencioso da AMZ Ofertas pelo WhatsApp.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ CRÍTICO - PRODUTO IDENTIFICADO:
+⚠️ CRÍTICO - PRODUTO IDENTIFICADO PELO SISTEMA:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${produtoIdentificado ? `
-O cliente está perguntando sobre: **${produtoIdentificado.nome}**
-ID do produto: ${produtoIdentificado.id}
-Preço: R$ ${produtoIdentificado.preco}
+🎯 O CLIENTE ESTÁ FALANDO SOBRE: **${produtoIdentificado.nome}**
 
-SE FOR ENVIAR FOTO, USE ESTE ID: ${produtoIdentificado.id}
-` : 'Nenhum produto específico identificado na mensagem.'}
+📦 DADOS DO PRODUTO:
+- ID: ${produtoIdentificado.id}
+- Nome: ${produtoIdentificado.nome}
+- Preço: R$ ${produtoIdentificado.preco}
+- Descrição: ${produtoIdentificado.descricao || 'N/A'}
+
+⚠️ ATENÇÃO ABSOLUTA:
+- SE FOR ENVIAR FOTO, USE ESTE ID: ${produtoIdentificado.id}
+- SE FOR RECOMENDAR PRODUTO, USE ESTE ID: ${produtoIdentificado.id}
+- NUNCA TROQUE O PRODUTO! O cliente quer ${produtoIdentificado.nome}!
+` : `
+⚠️ Nenhum produto específico identificado.
+Se o cliente perguntar sobre algo, pergunte qual produto ele quer.
+`}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 REGRAS ABSOLUTAS:
@@ -214,25 +334,26 @@ SE FOR ENVIAR FOTO, USE ESTE ID: ${produtoIdentificado.id}
 1. ❌ NUNCA peça CEP, endereço ou calcule frete
 2. ❌ NUNCA mencione estoque/quantidade
 3. ❌ NUNCA dê informações que não foram pedidas
-4. ✅ Responda APENAS o que foi perguntado
-5. ✅ Seja breve, natural e humanizado
-6. ✅ Use emojis COM MODERAÇÃO (máximo 1-2)
-7. ✅ Sempre termine perguntando se quer algo mais
+4. ❌ NUNCA TROQUE O PRODUTO - se sistema identificou ARROZ, responda sobre ARROZ!
+5. ✅ Responda APENAS o que foi perguntado
+6. ✅ Seja breve, natural e humanizado
+7. ✅ Use emojis COM MODERAÇÃO (máximo 1-2)
+8. ✅ Sempre termine perguntando se quer algo mais
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📦 PRODUTOS DISPONÍVEIS:
+📦 CATÁLOGO COMPLETO:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${catalogoProdutos}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💬 HISTÓRICO:
+💬 HISTÓRICO DA CONVERSA:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ${historico}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-❓ CLIENTE PERGUNTOU:
+❓ MENSAGEM ATUAL DO CLIENTE:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 "${mensagemCliente}"
@@ -247,9 +368,10 @@ SE PERGUNTA: "Tem [produto]?"
 SE PERGUNTA: "Quanto custa?"
 → "R$ [PREÇO]. Quer levar?"
 
-SE PERGUNTA: "Tem foto?"
+SE PERGUNTA: "Tem foto?" / "Manda foto" / "Ver embalagem"
 → "Claro! Já envio 📸"
 → RETORNE: enviar_foto: true
+→ produto_recomendado_id: "${produtoIdentificado?.id || ''}"
 
 SE PERGUNTA: "Info nutricional?"
 → [Dê a informação nutricional do produto]
@@ -283,16 +405,7 @@ SE QUER OUTRO PRODUTO:
 - ❌ "O prazo de entrega é..."
 - ❌ Dar informações não solicitadas
 - ❌ Falar sobre entrega sem perguntar
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ SEMPRE FAÇA:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-- ✅ Seja direto e objetivo
-- ✅ Responda só o que foi pedido
-- ✅ Para frete → Direcione pro checkout/link
-- ✅ Seja natural como vendedor real
-- ✅ Termine com pergunta simples
+- ❌ TROCAR O PRODUTO (se cliente fala de arroz, não mande feijão!)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📤 FORMATO DE RESPOSTA JSON:
@@ -300,33 +413,35 @@ SE QUER OUTRO PRODUTO:
 
 {
   "mensagem": "sua resposta CURTA",
-  "produto_recomendado_id": "${produtoIdentificado?.id || 'UUID se recomendar'}",
+  "produto_recomendado_id": "${produtoIdentificado?.id || 'null'}",
+  "produto_recomendado_nome": "${produtoIdentificado?.nome || ''}",
   "enviar_foto": true/false
 }
 
+⚠️ IMPORTANTE:
+- produto_recomendado_id DEVE SER: "${produtoIdentificado?.id || 'null'}"
+- produto_recomendado_nome DEVE SER: "${produtoIdentificado?.nome || ''}"
+- NÃO TROQUE O PRODUTO!
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✨ EXEMPLOS PERFEITOS:
+✨ EXEMPLOS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Cliente: "Quanto é o frete?"
 ✅ CORRETO: "O frete aparece na hora de fechar a compra no link 😊"
-❌ ERRADO: "Me passa seu CEP que eu calculo o frete pra você"
 
 Cliente: "Tem arroz?"
 ✅ CORRETO: "Sim! Arroz por R$ 3,90. Quer?"
-❌ ERRADO: "Sim! Temos Arroz por R$ 3,90 e temos 500 unidades!"
 
-Cliente: "Como compro?"
-✅ CORRETO: "Clica no link que te enviei. Lá você finaliza e vê o frete 😊"
-❌ ERRADO: "Me passa seu endereço que eu vejo o frete"
-
-Cliente: "Tem foto?"
-✅ CORRETO: "Já envio! 📸"
-❌ ERRADO: "Sim! Vou te enviar a foto do produto agora mesmo!"
+Cliente: "Manda foto"
+✅ CORRETO: {"mensagem": "Já envio! 📸", "produto_recomendado_id": "[ID DO ARROZ]", "enviar_foto": true}
+❌ ERRADO: Enviar foto de feijão quando cliente falou de arroz
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-LEMBRE-SE: MENOS É MAIS! Seja BREVE!
+LEMBRE-SE: 
+- MENOS É MAIS! Seja BREVE!
+- NUNCA TROQUE O PRODUTO!
 
 Responda AGORA em JSON:`
 
@@ -356,7 +471,10 @@ Responda AGORA em JSON:`
     const aiData = await response.json()
     const aiText = aiData.choices[0]?.message?.content || ''
 
-    console.log('🤖 Resposta IA bruta:', aiText)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🤖 RESPOSTA DA IA:')
+    console.log(aiText)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     // Parse JSON - remover markdown se houver
     let resposta
@@ -371,24 +489,58 @@ Responda AGORA em JSON:`
       console.log('⚠️ Não foi JSON, usando texto direto')
       resposta = {
         mensagem: aiText.replace(/```json\n?/g, '').replace(/```\n?/g, '').replace(/[{}"\n]/g, ' ').trim(),
-        produto_recomendado_id: null,
-        enviar_foto: false,
-        tipo_informacao: 'geral'
+        produto_recomendado_id: produtoIdentificado?.id || null,
+        produto_recomendado_nome: produtoIdentificado?.nome || null,
+        enviar_foto: false
       }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // VALIDAÇÃO CRÍTICA: Garantir produto correto
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('🔒 VALIDAÇÃO DE PRODUTO:')
+    console.log('   IA retornou ID:', resposta.produto_recomendado_id)
+    console.log('   IA retornou Nome:', resposta.produto_recomendado_nome)
+    console.log('   Sistema identificou ID:', produtoIdentificado?.id)
+    console.log('   Sistema identificou Nome:', produtoIdentificado?.nome)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    
+    // Se sistema identificou um produto mas IA retornou outro, FORÇAR o correto
+    if (produtoIdentificado && resposta.produto_recomendado_id !== produtoIdentificado.id) {
+      console.log('⚠️ IA RETORNOU PRODUTO ERRADO! CORRIGINDO...')
+      console.log(`   IA queria: ${resposta.produto_recomendado_nome}`)
+      console.log(`   Correto é: ${produtoIdentificado.nome}`)
+      
+      resposta.produto_recomendado_id = produtoIdentificado.id
+      resposta.produto_recomendado_nome = produtoIdentificado.nome
+      
+      console.log('✅ PRODUTO CORRIGIDO PARA:', produtoIdentificado.nome)
     }
 
     // Se IA recomendou produto, buscar detalhes completos
     let produtoDetalhes = null
-    if (resposta.produto_recomendado_id) {
+    const idParaBuscar = resposta.produto_recomendado_id || produtoIdentificado?.id
+    
+    if (idParaBuscar) {
       const { data: produto } = await supabase
         .from('produtos')
         .select('*')
-        .eq('id', resposta.produto_recomendado_id)
+        .eq('id', idParaBuscar)
         .single()
       
       produtoDetalhes = produto
-      console.log('📦 Produto recomendado carregado:', produto?.nome)
+      console.log('📦 Produto final para envio:', produto?.nome)
     }
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📤 RESPOSTA FINAL:')
+    console.log('   Mensagem:', resposta.mensagem)
+    console.log('   Produto ID:', produtoDetalhes?.id || 'NENHUM')
+    console.log('   Produto Nome:', produtoDetalhes?.nome || 'NENHUM')
+    console.log('   Enviar Foto:', resposta.enviar_foto)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return new Response(JSON.stringify({
       success: true,
