@@ -187,9 +187,11 @@ serve(async (req) => {
 
     // Se não existe conversa, buscar por mensagens anteriores ou criar nova
     if (!contexto) {
-      console.log('📱 Conversa não existe, buscando contexto...');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📱 CONVERSA NÃO EXISTE para:', phoneNumber);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
-      const { data: ultimaMensagem } = await supabaseClient
+      const { data: ultimaMensagem, error: erroBuscaMensagem } = await supabaseClient
         .from('whatsapp_messages')
         .select('*')
         .eq('phone', phoneNumber)
@@ -198,10 +200,16 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
+      console.log('🔍 Busca mensagem enviada:', ultimaMensagem ? 'ENCONTROU' : 'NÃO ENCONTROU');
+      if (erroBuscaMensagem) {
+        console.error('❌ Erro ao buscar mensagem:', erroBuscaMensagem);
+      }
+
       if (ultimaMensagem) {
         userId = ultimaMensagem.user_id;
+        console.log('✅ User ID encontrado:', userId);
         
-        const { data: campanhaRecente } = await supabaseClient
+        const { data: campanhaRecente, error: erroCampanha } = await supabaseClient
           .from('campanhas_recorrentes')
           .select('*, produtos(*)')
           .eq('user_id', ultimaMensagem.user_id)
@@ -209,52 +217,74 @@ serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
+        console.log('📦 Campanha recente:', campanhaRecente?.nome || 'NENHUMA');
+        if (erroCampanha) {
+          console.error('❌ Erro ao buscar campanha:', erroCampanha);
+        }
+
         if (campanhaRecente?.produtos) {
           produtoInfo = campanhaRecente.produtos;
+          console.log('📦 Produto da campanha:', produtoInfo?.nome);
         }
+      } else {
+        console.log('⚠️ Nenhuma mensagem enviada encontrada para este telefone');
       }
 
       // Criar nova conversa se temos um user_id
       if (userId) {
-        console.log('➕ Criando nova conversa para user_id:', userId);
+        console.log('➕ CRIANDO NOVA CONVERSA...');
+        console.log('   User ID:', userId);
+        console.log('   Phone:', phoneNumber);
         
         const pushName = webhookData.event?.Info?.PushName || null;
+        console.log('   PushName:', pushName);
+        
+        const conversaData = {
+          user_id: userId,
+          phone_number: phoneNumber,
+          contact_name: pushName,
+          tipo_contato: 'lead',
+          origem: 'campanha',
+          modo_atendimento: 'ia',
+          last_message_at: new Date().toISOString(),
+          metadata: produtoInfo ? {
+            produto_id: produtoInfo.id,
+            produto_nome: produtoInfo.nome,
+            produto_descricao: produtoInfo.descricao,
+            produto_preco: produtoInfo.preco,
+            produto_estoque: produtoInfo.estoque,
+            produto_especificacoes: produtoInfo.especificacoes,
+            produto_categoria: produtoInfo.categoria,
+            produto_sku: produtoInfo.sku,
+            produto_tags: produtoInfo.tags,
+            produto_imagens: produtoInfo.imagens,
+            produto_imagem_url: produtoInfo.imagem_url,
+            link_marketplace: produtoInfo.link_marketplace,
+            link_produto: produtoInfo.link,
+          } : {}
+        };
+        console.log('   Dados:', JSON.stringify(conversaData, null, 2));
         
         const { data: novaConversa, error: erroCriar } = await supabaseClient
           .from('whatsapp_conversations')
-          .insert({
-            user_id: userId,
-            phone_number: phoneNumber,
-            contact_name: pushName,
-            tipo_contato: 'lead',
-            origem: 'campanha',
-            modo_atendimento: 'ia',
-            last_message_at: new Date().toISOString(),
-            metadata: produtoInfo ? {
-              produto_id: produtoInfo.id,
-              produto_nome: produtoInfo.nome,
-              produto_descricao: produtoInfo.descricao,
-              produto_preco: produtoInfo.preco,
-              produto_estoque: produtoInfo.estoque,
-              produto_especificacoes: produtoInfo.especificacoes,
-              produto_categoria: produtoInfo.categoria,
-              produto_sku: produtoInfo.sku,
-              produto_tags: produtoInfo.tags,
-              produto_imagens: produtoInfo.imagens,
-              produto_imagem_url: produtoInfo.imagem_url,
-              link_marketplace: produtoInfo.link_marketplace,
-              link_produto: produtoInfo.link,
-            } : {}
-          })
+          .insert(conversaData)
           .select()
           .single();
 
         if (erroCriar) {
-          console.error('❌ Erro ao criar conversa:', erroCriar);
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.error('❌ ERRO AO CRIAR CONVERSA:', JSON.stringify(erroCriar));
+          console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         } else {
-          console.log('✅ Nova conversa criada:', novaConversa?.id);
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          console.log('✅ CONVERSA CRIADA COM SUCESSO:', novaConversa?.id);
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           contexto = novaConversa;
         }
+      } else {
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.log('⚠️ SEM USER_ID - NÃO PODE CRIAR CONVERSA');
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       }
     }
 
