@@ -28,14 +28,16 @@ export default function VendedorLogin() {
     setLoading(true);
 
     try {
+      // Buscar por email (campo correto)
       const { data: vendedores, error } = await supabase
         .from('vendedores')
         .select('*')
-        .eq('login', login.toLowerCase().trim())
+        .eq('email', login.toLowerCase().trim())
         .eq('senha', senha)
         .eq('ativo', true);
 
       if (error) {
+        console.error('Erro na query:', error);
         toast.error('Erro ao verificar credenciais');
         setLoading(false);
         return;
