@@ -59,7 +59,7 @@ serve(async (req) => {
     console.log('📜 Histórico da conversa:', historico)
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // IDENTIFICAÇÃO DE PRODUTO - LÓGICA MELHORADA
+    // IDENTIFICAÇÃO DE PRODUTO - LÓGICA SUPER MELHORADA v3.0
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     
     const msgLower = mensagemCliente.toLowerCase()
@@ -68,39 +68,117 @@ serve(async (req) => {
     
     // Lista expandida de palavras-chave de produtos
     const palavrasChave = [
+      'manteiga', 'margarina', // PRIORIDADE para detectar manteiga
       'arroz', 'feijão', 'feijao', 'farinha', 'milho', 'flocão', 'flocao', 
       'açúcar', 'acucar', 'óleo', 'oleo', 'sal', 'macarrão', 'macarrao', 
-      'leite', 'café', 'cafe', 'manteiga', 'margarina', 'queijo', 'presunto',
+      'leite', 'café', 'cafe', 'queijo', 'presunto',
       'pão', 'pao', 'biscoito', 'bolacha', 'chocolate', 'doce', 'salgado',
-      'carne', 'frango', 'peixe', 'ovo', 'ovos', 'verdura', 'legume', 'fruta'
+      'carne', 'frango', 'peixe', 'ovo', 'ovos', 'verdura', 'legume', 'fruta',
+      'grão de bico', 'grao de bico', 'grão', 'grao'
     ]
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🔍 ETAPA 1: Procurando palavra-chave na mensagem atual')
+    console.log('🔍 IDENTIFICAÇÃO DE PRODUTO v3.0 - COM DETECÇÃO DE RECLAMAÇÃO')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
-    // ETAPA 1: Procurar palavra-chave na mensagem ATUAL
-    for (const palavra of palavrasChave) {
-      if (msgLower.includes(palavra)) {
-        const produtoEncontrado = produtos?.find(p => 
-          p.nome.toLowerCase().includes(palavra)
-        )
-        if (produtoEncontrado) {
-          produtoIdentificado = produtoEncontrado
-          metodoIdentificacao = `PALAVRA-CHAVE "${palavra}" na mensagem atual`
-          console.log(`✅ Produto encontrado: "${palavra}" → ${produtoEncontrado.nome}`)
-          break
+    // ⚠️ NOVA ETAPA 0: Detectar se cliente está RECLAMANDO de produto errado
+    const padroesReclamacao = [
+      /estou pedindo\s+(\w+)/i,
+      /eu quero\s+(\w+)/i,
+      /pedindo\s+(\w+)\s+e\s+(?:vc|você|voce)/i,
+      /quero\s+(\w+)\s+(?:não|nao)/i,
+      /(\w+)\s+(?:não|nao)\s+(?:é|e)\s+(?:isso|esse|arroz|feijão|feijao)/i,
+      /me\s+(?:manda|envia|passa|da)\s+(?:o|a)?\s*(?:link|foto)?.*?(?:da|do|de)?\s+(\w+)/i,
+      /quero\s+(?:a|o)?\s*(\w+)/i,
+      /(\w+)\s+por\s+favor/i
+    ]
+    
+    let produtoDesejado: string | null = null
+    let produtoReclamado: string | null = null
+    
+    // Detectar padrão de reclamação "pedindo X e vc manda Y"
+    const padraoReclamacaoCompleto = /(?:estou\s+)?pedindo\s+(\w+).*?(?:passando|mandando|enviando).*?(?:link|foto)?.*?(?:de|do|da)?\s*(\w+)/i
+    const matchReclamacao = msgLower.match(padraoReclamacaoCompleto)
+    
+    if (matchReclamacao) {
+      produtoDesejado = matchReclamacao[1]
+      produtoReclamado = matchReclamacao[2]
+      console.log('🚨 RECLAMAÇÃO DETECTADA!')
+      console.log('   Cliente QUER:', produtoDesejado)
+      console.log('   Sistema MANDOU ERRADO:', produtoReclamado)
+    }
+    
+    // Se não encontrou padrão completo, procurar padrões simples de desejo
+    if (!produtoDesejado) {
+      for (const padrao of padroesReclamacao) {
+        const match = msgLower.match(padrao)
+        if (match && match[1]) {
+          const palavraCapturada = match[1].toLowerCase()
+          // Verificar se é uma palavra-chave de produto
+          if (palavrasChave.some(p => palavraCapturada.includes(p) || p.includes(palavraCapturada))) {
+            produtoDesejado = palavraCapturada
+            console.log('🎯 Produto DESEJADO detectado:', produtoDesejado)
+            break
+          }
         }
       }
     }
     
-    // ETAPA 2: Se não encontrou, verificar nome completo do produto na mensagem
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    
+    // ETAPA 1: Se detectou produto DESEJADO, usar esse PRIMEIRO (não o reclamado!)
+    if (produtoDesejado) {
+      console.log('🔍 ETAPA 1: Buscando produto DESEJADO:', produtoDesejado)
+      
+      const produtoEncontrado = produtos?.find(p => 
+        p.nome.toLowerCase().includes(produtoDesejado!) ||
+        produtoDesejado!.includes(p.nome.toLowerCase().split(' ')[0])
+      )
+      
+      if (produtoEncontrado) {
+        produtoIdentificado = produtoEncontrado
+        metodoIdentificacao = `PRODUTO DESEJADO "${produtoDesejado}" (cliente pediu especificamente)`
+        console.log(`✅ PRODUTO CORRETO IDENTIFICADO: ${produtoEncontrado.nome}`)
+      }
+    }
+    
+    // ETAPA 2: Se não encontrou pelo desejo, procurar palavra-chave normal (IGNORANDO produto reclamado)
     if (!produtoIdentificado) {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log('🔍 ETAPA 2: Procurando nome completo na mensagem')
+      console.log('🔍 ETAPA 2: Procurando palavra-chave na mensagem (ignorando reclamação)')
+      
+      for (const palavra of palavrasChave) {
+        // IGNORAR se for o produto que cliente RECLAMOU
+        if (produtoReclamado && palavra.includes(produtoReclamado)) {
+          console.log(`⏭️ Ignorando "${palavra}" - é o produto reclamado`)
+          continue
+        }
+        
+        if (msgLower.includes(palavra)) {
+          const produtoEncontrado = produtos?.find(p => 
+            p.nome.toLowerCase().includes(palavra)
+          )
+          if (produtoEncontrado) {
+            produtoIdentificado = produtoEncontrado
+            metodoIdentificacao = `PALAVRA-CHAVE "${palavra}" na mensagem atual`
+            console.log(`✅ Produto encontrado: "${palavra}" → ${produtoEncontrado.nome}`)
+            break
+          }
+        }
+      }
+    }
+    
+    // ETAPA 3: Se não encontrou, verificar nome completo do produto na mensagem
+    if (!produtoIdentificado) {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 ETAPA 3: Procurando nome completo na mensagem')
       
       for (const p of produtos || []) {
+        // IGNORAR se for o produto reclamado
+        if (produtoReclamado && p.nome.toLowerCase().includes(produtoReclamado)) {
+          continue
+        }
+        
         const nomeWords = p.nome.toLowerCase().split(' ')
         for (const word of nomeWords) {
           if (word.length > 3 && msgLower.includes(word)) {
@@ -114,7 +192,7 @@ serve(async (req) => {
       }
     }
     
-    // ETAPA 3: Se não encontrou e cliente quer foto/imagem/embalagem, buscar no HISTÓRICO
+    // ETAPA 4: Se não encontrou e cliente quer foto/imagem/embalagem, buscar no HISTÓRICO
     const querFoto = msgLower.includes('foto') || msgLower.includes('imagem') || 
                      msgLower.includes('embalagem') || msgLower.includes('ver') ||
                      msgLower.includes('manda') || msgLower.includes('envia') ||
@@ -122,12 +200,10 @@ serve(async (req) => {
     
     if (!produtoIdentificado && querFoto) {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log('🔍 ETAPA 3: Cliente quer foto, buscando produto no HISTÓRICO')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 ETAPA 4: Cliente quer foto, buscando produto no HISTÓRICO')
       
       const historicoLower = historico.toLowerCase()
       
-      // Procurar qual produto foi mencionado no histórico (do mais recente pro mais antigo)
       for (const palavra of palavrasChave) {
         if (historicoLower.includes(palavra)) {
           const produtoEncontrado = produtos?.find(p => 
@@ -142,7 +218,6 @@ serve(async (req) => {
         }
       }
       
-      // Se ainda não encontrou, verificar nomes de produtos no histórico
       if (!produtoIdentificado) {
         for (const p of produtos || []) {
           if (historicoLower.includes(p.nome.toLowerCase())) {
@@ -155,19 +230,16 @@ serve(async (req) => {
       }
     }
     
-    // ETAPA 4: Se AINDA não encontrou, pegar o último produto mencionado na conversa
+    // ETAPA 5: Se AINDA não encontrou, pegar o último produto mencionado na conversa
     if (!produtoIdentificado && messages && messages.length > 0) {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-      console.log('🔍 ETAPA 4: Buscando último produto mencionado na conversa')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 ETAPA 5: Buscando último produto mencionado na conversa')
       
-      // Inverter para pegar do mais recente
       const messagesReversed = [...messages].reverse()
       
       for (const msg of messagesReversed) {
         const msgContentLower = msg.content.toLowerCase()
         
-        // Procurar palavra-chave em cada mensagem
         for (const palavra of palavrasChave) {
           if (msgContentLower.includes(palavra)) {
             const produtoEncontrado = produtos?.find(p => 
@@ -183,7 +255,6 @@ serve(async (req) => {
         }
         if (produtoIdentificado) break
         
-        // Verificar nome completo do produto
         for (const p of produtos || []) {
           if (msgContentLower.includes(p.nome.toLowerCase())) {
             produtoIdentificado = p
