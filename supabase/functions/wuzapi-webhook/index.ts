@@ -514,8 +514,56 @@ serve(async (req) => {
             
             let produto = aiAssistantData.produto_recomendado;
             
-            // Se não tem produto na resposta, buscar do contexto da conversa
-            if (!produto && ctx.produto_id) {
+            // VALIDAÇÃO CRÍTICA: Identificar produto correto pela mensagem
+            const msgLower = messageText.toLowerCase();
+            const palavrasChave = ['arroz', 'feijão', 'feijao', 'farinha', 'milho', 'flocão', 'flocao', 'açúcar', 'acucar', 'óleo', 'oleo', 'sal', 'macarrão', 'macarrao', 'leite', 'café', 'cafe'];
+            
+            // Buscar todos os produtos do usuário
+            const { data: todosProdutos } = await supabaseClient
+              .from('produtos')
+              .select('*')
+              .eq('user_id', contexto.user_id)
+              .eq('ativo', true);
+            
+            // Primeiro: tentar identificar produto pela mensagem atual
+            let produtoCorreto = null;
+            for (const palavra of palavrasChave) {
+              if (msgLower.includes(palavra)) {
+                const encontrado = todosProdutos?.find(p => 
+                  p.nome.toLowerCase().includes(palavra)
+                );
+                if (encontrado) {
+                  produtoCorreto = encontrado;
+                  console.log(`🎯 Produto identificado na mensagem: "${palavra}" → ${encontrado.nome}`);
+                  break;
+                }
+              }
+            }
+            
+            // Se encontrou produto na mensagem, usar esse
+            if (produtoCorreto) {
+              produto = produtoCorreto;
+            }
+            // Se não encontrou na mensagem, verificar se IA sugeriu produto correto
+            else if (produto) {
+              const produtoNomeLower = produto.nome?.toLowerCase() || '';
+              let produtoValido = false;
+              
+              for (const palavra of palavrasChave) {
+                if (msgLower.includes(palavra) && produtoNomeLower.includes(palavra)) {
+                  produtoValido = true;
+                  break;
+                }
+              }
+              
+              if (!produtoValido) {
+                console.log('⚠️ Produto da IA pode não corresponder à mensagem');
+                console.log('   Mensagem:', messageText);
+                console.log('   Produto IA:', produto.nome);
+              }
+            }
+            // Se ainda não tem, buscar do contexto
+            else if (ctx.produto_id) {
               console.log('📸 Buscando produto do contexto:', ctx.produto_id);
               const { data: produtoBuscado } = await supabaseClient
                 .from('produtos')
@@ -524,9 +572,8 @@ serve(async (req) => {
                 .single();
               produto = produtoBuscado;
             }
-            
-            // Se ainda não tem, buscar pelo nome no contexto
-            if (!produto && ctx.produto_nome) {
+            // Buscar pelo nome no contexto
+            else if (ctx.produto_nome) {
               console.log('📸 Buscando produto pelo nome:', ctx.produto_nome);
               const { data: produtoBuscado } = await supabaseClient
                 .from('produtos')
@@ -538,24 +585,7 @@ serve(async (req) => {
               produto = produtoBuscado;
             }
             
-            // Se ainda não tem, buscar produto mencionado na mensagem
-            if (!produto) {
-              console.log('📸 Buscando produto na mensagem do cliente...');
-              const { data: todosProdutos } = await supabaseClient
-                .from('produtos')
-                .select('*')
-                .eq('user_id', contexto.user_id)
-                .eq('ativo', true);
-              
-              const msgLower = messageText.toLowerCase();
-              for (const p of todosProdutos || []) {
-                if (msgLower.includes(p.nome.toLowerCase())) {
-                  produto = p;
-                  console.log('📸 Produto encontrado na mensagem:', p.nome);
-                  break;
-                }
-              }
-            }
+            console.log('📸 Produto final selecionado:', produto?.nome || 'NENHUM');
             
             if (produto && produto.imagem_url) {
               console.log('📸 Enviando foto do produto:', produto.nome);
