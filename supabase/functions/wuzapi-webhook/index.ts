@@ -525,19 +525,25 @@ serve(async (req) => {
               caption += `❌ Esgotado no momento`;
             }
 
+            // Aguardar 2 segundos antes de enviar foto (para não sobrepor)
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
             const urlImagem = `${baseUrl}/chat/send/image`;
-            await fetch(urlImagem, {
+            console.log('📸 Enviando imagem para:', urlImagem);
+            console.log('📸 URL da imagem:', produto.imagem_url);
+            
+            const imagemResponse = await fetch(urlImagem, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
               body: JSON.stringify({
-                phone: phoneNumber.replace(/\D/g, ''),
-                imageUrl: produto.imagem_url,
-                caption: caption.trim(),
-                instance_id: WUZAPI_INSTANCE_ID
+                Phone: phoneNumber.replace(/\D/g, ''),
+                Image: produto.imagem_url,
+                Caption: caption.trim()
               })
             });
-
-            console.log('✅ Foto do produto enviada com sucesso');
+            
+            const imagemResult = await imagemResponse.text();
+            console.log('📸 Resultado envio imagem:', imagemResponse.status, imagemResult);
 
             // Atualizar contexto da conversa com novo produto
             await supabaseClient
