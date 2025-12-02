@@ -322,21 +322,6 @@ export function CriarCampanhaWhatsAppModal({
 
       for (const phone of todosContatos) {
         try {
-          // ⚠️ VERIFICAR SE JÁ ENVIOU PARA ESTE TELEFONE (últimos 15 minutos)
-          const quinzeMinutos = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-          const { data: envioRecente } = await supabase
-            .from('mensagens_enviadas')
-            .select('id')
-            .eq('phone', phone)
-            .eq('user_id', user.id)
-            .gte('created_at', quinzeMinutos)
-            .maybeSingle();
-
-          if (envioRecente) {
-            console.log(`⏭️ Pulando ${phone} - já recebeu mensagem recentemente`);
-            continue; // Pula este contato
-          }
-
           // Buscar nome do contato
           const { data: contact } = await supabase
             .from('whatsapp_contacts')
