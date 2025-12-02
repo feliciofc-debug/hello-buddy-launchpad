@@ -23,6 +23,7 @@ interface Vendedor {
   id: string;
   nome: string;
   email: string;
+  especialidade?: string;
   ativo: boolean;
 }
 
@@ -94,17 +95,17 @@ export function CriarCampanhaWhatsAppModal({
   const [sugestaoIA, setSugestaoIA] = useState(''); // Campo para sugestões personalizadas
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
   
-  // NOVO: Estados para vendedores
-  // const [vendedores, setVendedores] = useState<Vendedor[]>([]);
-  // const [vendedorSelecionado, setVendedorSelecionado] = useState<string>('');
-  // const [vendedoresLoading, setVendedoresLoading] = useState(false);
+  // Estados para vendedores
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [vendedorSelecionado, setVendedorSelecionado] = useState<string>('');
 
   useEffect(() => {
     console.log('⚙️ useEffect EXECUTADO', { open });
     if (open) {
       try {
-        console.log('🔄 Iniciando fetch de listas...');
+        console.log('🔄 Iniciando fetch de listas e vendedores...');
         fetchListas();
+        fetchVendedores();
         
         // Se tem campanha existente, carregar dados dela
         if (campanhaExistente) {
@@ -157,29 +158,28 @@ export function CriarCampanhaWhatsAppModal({
     }
   };
 
-  // const fetchVendedores = async () => {
-  //   setVendedoresLoading(true);
-  //   try {
-  //     const { data, error } = await supabase
-  //       .from('vendedores')
-  //       .select('id, nome, email, ativo')
-  //       .eq('ativo', true)
-  //       .order('nome', { ascending: true });
+  const fetchVendedores = async () => {
+    console.log('👥 Buscando vendedores...');
+    try {
+      const { data, error } = await supabase
+        .from('vendedores')
+        .select('id, nome, email, especialidade, ativo')
+        .eq('ativo', true)
+        .order('nome', { ascending: true });
 
-  //     if (error) {
-  //       console.warn('Não foi possível carregar vendedores:', error.message);
-  //       setVendedores([]);
-  //       return;
-  //     }
+      if (error) {
+        console.warn('⚠️ Não foi possível carregar vendedores:', error.message);
+        setVendedores([]);
+        return;
+      }
       
-  //     setVendedores(Array.isArray(data) ? data : []);
-  //   } catch (error) {
-  //     console.warn('Erro ao buscar vendedores (continuando sem vendedores):', error);
-  //     setVendedores([]);
-  //   } finally {
-  //     setVendedoresLoading(false);
-  //   }
-  // };
+      console.log(`✅ ${data?.length || 0} vendedores carregados`);
+      setVendedores(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.warn('⚠️ Erro ao buscar vendedores:', error);
+      setVendedores([]);
+    }
+  };
 
   const addHorario = () => {
     if (horarios.length < 10) {
@@ -472,8 +472,8 @@ export function CriarCampanhaWhatsAppModal({
           dias_semana: diasSemana,
           mensagem_template: mensagem,
           ativa: true,
-          proxima_execucao: proximaExecucao
-          // vendedor_id: vendedorSelecionado || null // REMOVIDO
+          proxima_execucao: proximaExecucao,
+          vendedor_id: vendedorSelecionado || null
         })
         .eq('id', campanhaExistente.id)
         .select()
@@ -498,8 +498,8 @@ export function CriarCampanhaWhatsAppModal({
           mensagem_template: mensagem,
           ativa: true,
           proxima_execucao: proximaExecucao,
-          status: 'ativa'
-          // vendedor_id: vendedorSelecionado || null // REMOVIDO
+          status: 'ativa',
+          vendedor_id: vendedorSelecionado || null
         })
         .select()
         .single();
@@ -677,6 +677,37 @@ export function CriarCampanhaWhatsAppModal({
               )}
             </div>
           )}
+
+          {/* 2. VENDEDOR RESPONSÁVEL */}
+          <div className="p-4 bg-muted/30 rounded-lg">
+            <Label className="text-lg font-semibold mb-3 block">2. Vendedor Responsável (Opcional)</Label>
+            <Select
+              value={vendedorSelecionado || 'nenhum'}
+              onValueChange={(v) => setVendedorSelecionado(v === 'nenhum' ? '' : v)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Selecione o vendedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="nenhum">
+                  Sem vendedor atribuído
+                </SelectItem>
+                {vendedores.map(vendedor => (
+                  <SelectItem key={vendedor.id} value={vendedor.id}>
+                    👤 {vendedor.nome}
+                    {vendedor.especialidade && (
+                      <span className="text-xs text-muted-foreground ml-2">
+                        ({vendedor.especialidade})
+                      </span>
+                    )}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-2">
+              ℹ️ Conversas desta campanha serão automaticamente atribuídas a este vendedor
+            </p>
+          </div>
 
           {/* 3. LISTAS DE TRANSMISSÃO */}
           <div className="p-4 bg-muted/30 rounded-lg">
