@@ -77,12 +77,38 @@ export default function Vendedores() {
         if (error) throw error;
         toast.success('Vendedor atualizado!');
       } else {
-        const { error } = await supabase
+        // Gerar senha automática: primeiro nome + "123"
+        const primeiroNome = formData.nome.split(' ')[0];
+        const senhaGerada = primeiroNome + '123';
+        
+        const { data: novoVendedor, error } = await supabase
           .from('vendedores')
-          .insert(payload);
+          .insert({
+            ...payload,
+            senha: senhaGerada
+          })
+          .select()
+          .single();
         
         if (error) throw error;
-        toast.success('Vendedor cadastrado!');
+        
+        // Enviar credenciais via WhatsApp se tiver número
+        if (formData.whatsapp) {
+          try {
+            await supabase.functions.invoke('send-wuzapi-message', {
+              body: {
+                phoneNumber: formData.whatsapp,
+                message: `🔐 *AMZ Ofertas - Credenciais de Acesso*\n\nOlá ${primeiroNome}! 👋\n\nSeu cadastro como vendedor foi concluído!\n\n📧 *Login:* ${formData.email}\n🔑 *Senha:* ${senhaGerada}\n\n🔗 Acesse: amzofertas.com.br/vendedor-login\n\nBoas vendas! 🚀`
+              }
+            });
+            toast.success('Vendedor cadastrado! Credenciais enviadas via WhatsApp ✅');
+          } catch (whatsappError) {
+            console.error('Erro ao enviar WhatsApp:', whatsappError);
+            toast.success(`Vendedor cadastrado!\n\nCredenciais:\nLogin: ${formData.email}\nSenha: ${senhaGerada}`);
+          }
+        } else {
+          toast.success(`Vendedor cadastrado!\n\nCredenciais:\nLogin: ${formData.email}\nSenha: ${senhaGerada}`);
+        }
       }
 
       setModalAberto(false);
