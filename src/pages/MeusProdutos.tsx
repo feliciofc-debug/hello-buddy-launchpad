@@ -774,7 +774,18 @@ export default function MeusProdutos() {
           especificacoes: formData.especificacoes || null,
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
-          imagens: formData.imagens || []
+          imagens: formData.imagens || [],
+          tipo: formData.tipo || 'fisico',
+          ficha_tecnica: formData.ficha_tecnica || null,
+          informacao_nutricional: formData.informacao_nutricional || null,
+          ingredientes: formData.ingredientes || null,
+          modo_uso: formData.modo_uso || null,
+          beneficios: formData.beneficios || null,
+          garantia: formData.garantia || null,
+          dimensoes: formData.dimensoes || null,
+          peso: formData.peso || null,
+          cor: formData.cor || null,
+          tamanhos: formData.tamanhos || null
         })
         .select()
         .single();
@@ -857,7 +868,18 @@ export default function MeusProdutos() {
           especificacoes: formData.especificacoes || null,
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
-          imagens: formData.imagens || []
+          imagens: formData.imagens || [],
+          tipo: formData.tipo || 'fisico',
+          ficha_tecnica: formData.ficha_tecnica || null,
+          informacao_nutricional: formData.informacao_nutricional || null,
+          ingredientes: formData.ingredientes || null,
+          modo_uso: formData.modo_uso || null,
+          beneficios: formData.beneficios || null,
+          garantia: formData.garantia || null,
+          dimensoes: formData.dimensoes || null,
+          peso: formData.peso || null,
+          cor: formData.cor || null,
+          tamanhos: formData.tamanhos || null
         })
         .eq('id', selectedProduct.id);
 
