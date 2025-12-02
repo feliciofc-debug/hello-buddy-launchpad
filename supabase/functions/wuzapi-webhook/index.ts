@@ -467,20 +467,24 @@ serve(async (req) => {
     // ═══════════════════════════════════════
     // 🤖 NOVO: DETECTAR SE PRECISA IA AVANÇADA
     // ═══════════════════════════════════════
-    const msgLower = messageText.toLowerCase();
+    const msgLowerCase = messageText.toLowerCase();
     const precisaIAAvancada = 
       // Cliente pergunta sobre outro produto
-      msgLower.includes('tem ') || msgLower.includes('vende ') || msgLower.includes('outro') ||
+      msgLowerCase.includes('tem ') || msgLowerCase.includes('vende ') || msgLowerCase.includes('outro') ||
       // Cliente quer comparar produtos
-      msgLower.includes('diferença') || msgLower.includes('melhor') || msgLower.includes('comparar') ||
+      msgLowerCase.includes('diferença') || msgLowerCase.includes('melhor') || msgLowerCase.includes('comparar') ||
       // Cliente pergunta técnicas complexas
-      msgLower.includes('ficha técnica') || msgLower.includes('especificação') ||
-      msgLower.includes('ingredientes') || msgLower.includes('composição') ||
-      msgLower.includes('dimensões') || msgLower.includes('tamanho') ||
-      msgLower.includes('cor') || msgLower.includes('modelo');
+      msgLowerCase.includes('ficha técnica') || msgLowerCase.includes('ficha tecnica') || 
+      msgLowerCase.includes('especificação') || msgLowerCase.includes('especificacao') ||
+      msgLowerCase.includes('ingredientes') || msgLowerCase.includes('composição') || msgLowerCase.includes('composicao') ||
+      msgLowerCase.includes('dimensões') || msgLowerCase.includes('dimensoes') || 
+      msgLowerCase.includes('tamanho') || msgLowerCase.includes('cor') || msgLowerCase.includes('modelo') ||
+      msgLowerCase.includes('informação nutricional') || msgLowerCase.includes('informacao nutricional') ||
+      msgLowerCase.includes('tabela nutricional') || msgLowerCase.includes('modo de uso') ||
+      msgLowerCase.includes('benefícios') || msgLowerCase.includes('beneficios') || msgLowerCase.includes('garantia');
 
     if (precisaIAAvancada && contexto.user_id) {
-      console.log('🚀 Usando IA Avançada - cliente perguntou sobre produtos/especificações');
+      console.log('🚀 Usando IA Avançada (ai-product-assistant) - cliente perguntou sobre produtos/especificações');
       
       try {
         const { data: aiAssistantData, error: aiAssistantError } = await supabaseClient.functions.invoke('ai-product-assistant', {
@@ -513,14 +517,14 @@ serve(async (req) => {
             console.log('📸 Enviando foto do produto recomendado:', aiAssistantData.produto_recomendado.nome);
             
             const produto = aiAssistantData.produto_recomendado;
-            let caption = `📦 ${produto.nome}\n`;
-            caption += `💰 R$ ${Number(produto.preco || 0).toFixed(2)}\n\n`;
+            let caption = `📦 *${produto.nome}*\n`;
+            caption += `💰 *R$ ${Number(produto.preco || 0).toFixed(2)}*\n\n`;
             
             if (produto.descricao) caption += `${produto.descricao}\n\n`;
             if (produto.beneficios) caption += `✨ ${produto.beneficios}\n\n`;
             
             if (produto.estoque > 0 && produto.link_marketplace) {
-              caption += `🛒 ${produto.link_marketplace}`;
+              caption += `🛒 Link: ${produto.link_marketplace}`;
             } else if (produto.estoque === 0) {
               caption += `❌ Esgotado no momento`;
             }
@@ -551,22 +555,46 @@ serve(async (req) => {
                   produto_descricao: produto.descricao,
                   produto_estoque: produto.estoque,
                   link_marketplace: produto.link_marketplace,
-                  produto_imagem: produto.imagem_url,
+                  produto_imagem_url: produto.imagem_url,
                   produto_ficha_tecnica: produto.ficha_tecnica,
-                  produto_info_nutricional: produto.informacao_nutricional
-                }
+                  produto_informacao_nutricional: produto.informacao_nutricional,
+                  produto_ingredientes: produto.ingredientes,
+                  produto_modo_uso: produto.modo_uso,
+                  produto_beneficios: produto.beneficios,
+                  produto_garantia: produto.garantia
+                },
+                last_message_at: new Date().toISOString()
               })
               .eq('id', contexto.id);
           }
 
-          // Salvar mensagens no histórico
+          // Salvar mensagens no histórico com wuzapi_message_id
           await supabaseClient.from('whatsapp_messages').insert([
-            { phone: phoneNumber, direction: 'received', message: messageText, user_id: contexto.user_id, origem: contexto.origem || 'campanha' },
-            { phone: phoneNumber, direction: 'sent', message: aiAssistantData.mensagem, user_id: contexto.user_id, origem: contexto.origem || 'campanha' }
+            { 
+              phone: phoneNumber, 
+              direction: 'received', 
+              message: messageText, 
+              user_id: contexto.user_id, 
+              origem: contexto.origem || 'campanha',
+              wuzapi_message_id: messageId
+            },
+            { 
+              phone: phoneNumber, 
+              direction: 'sent', 
+              message: aiAssistantData.mensagem, 
+              user_id: contexto.user_id, 
+              origem: contexto.origem || 'campanha'
+            }
+          ]);
+
+          // Salvar também no histórico de conversação
+          await supabaseClient.from('whatsapp_conversation_messages').insert([
+            { conversation_id: contexto.id, role: 'user', content: messageText },
+            { conversation_id: contexto.id, role: 'assistant', content: aiAssistantData.mensagem }
           ]);
 
           // Detectar lead quente
-          const keywordsHot = ['quero', 'comprar', 'pagar', 'pix', 'link', 'fechado', 'aceita', 'quanto', 'sim', 'beleza', 'ok', 'vou'];
+          const keywordsHot = ['quero', 'comprar', 'pagar', 'pix', 'link', 'fechado', 'aceita', 'quanto', 'sim', 'beleza', 'ok', 'vou', 'pega'];
           const isHot = keywordsHot.some(k => messageText.toLowerCase().includes(k));
           if (isHot && contexto.user_id) {
             await supabaseClient.from('lead_notifications').insert({
@@ -576,6 +604,7 @@ serve(async (req) => {
               mensagem_cliente: messageText,
               status: 'quente'
             });
+            console.log('🔥 Lead quente detectado e registrado');
           }
 
           return new Response(JSON.stringify({ status: 'success_ai_advanced' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -589,17 +618,7 @@ serve(async (req) => {
     // ═══════════════════════════════════════
     // 🤖 IA PADRÃO (fallback)
     // ═══════════════════════════════════════
-
-    console.log('📦 Dados completos do produto para IA:', { 
-      produtoNome, 
-      produtoPreco, 
-      produtoDescricao, 
-      produtoEspecs: produtoEspecs ? produtoEspecs.substring(0, 100) + '...' : 'sem specs',
-      produtoCategoria,
-      produtoTags 
-    });
-    
-    console.log('⚠️ ESPECIFICAÇÕES COMPLETAS (para debug):', produtoEspecs || 'VAZIO - produto não tem especificações cadastradas');
+    console.log('🤖 Usando IA Padrão (Claude) para resposta');
 
     // MONTAR FICHA TÉCNICA COMPLETA - INCLUIR TODAS AS INFORMAÇÕES
     let fichaTecnicaCompleta = `📦 PRODUTO: ${produtoNome} - ${produtoPreco}\n`;

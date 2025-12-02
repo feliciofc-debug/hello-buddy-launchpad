@@ -164,3 +164,6 @@ verify_jwt = false
 
 [functions.gerar-mensagens-linkedin]
 verify_jwt = false
+
+[functions.ai-product-assistant]
+verify_jwt = false
