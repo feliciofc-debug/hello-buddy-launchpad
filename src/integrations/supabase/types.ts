@@ -2069,66 +2069,99 @@ export type Database = {
       produtos: {
         Row: {
           ativo: boolean | null
+          beneficios: string | null
           categoria: string
           cliente_id: string | null
+          cor: string | null
           created_at: string
           descricao: string | null
+          dimensoes: string | null
           especificacoes: string | null
           estoque: number | null
+          ficha_tecnica: string | null
+          garantia: string | null
           id: string
           imagem_url: string | null
           imagens: Json | null
+          informacao_nutricional: string | null
+          ingredientes: string | null
           link: string | null
           link_marketplace: string | null
+          modo_uso: string | null
           nome: string
+          peso: string | null
           preco: number | null
           publicar_marketplace: boolean | null
           sku: string | null
           tags: string[] | null
+          tamanhos: string | null
+          tipo: string | null
           updated_at: string
           user_id: string
           vendedor_id: string | null
         }
         Insert: {
           ativo?: boolean | null
+          beneficios?: string | null
           categoria: string
           cliente_id?: string | null
+          cor?: string | null
           created_at?: string
           descricao?: string | null
+          dimensoes?: string | null
           especificacoes?: string | null
           estoque?: number | null
+          ficha_tecnica?: string | null
+          garantia?: string | null
           id?: string
           imagem_url?: string | null
           imagens?: Json | null
+          informacao_nutricional?: string | null
+          ingredientes?: string | null
           link?: string | null
           link_marketplace?: string | null
+          modo_uso?: string | null
           nome: string
+          peso?: string | null
           preco?: number | null
           publicar_marketplace?: boolean | null
           sku?: string | null
           tags?: string[] | null
+          tamanhos?: string | null
+          tipo?: string | null
           updated_at?: string
           user_id: string
           vendedor_id?: string | null
         }
         Update: {
           ativo?: boolean | null
+          beneficios?: string | null
           categoria?: string
           cliente_id?: string | null
+          cor?: string | null
           created_at?: string
           descricao?: string | null
+          dimensoes?: string | null
           especificacoes?: string | null
           estoque?: number | null
+          ficha_tecnica?: string | null
+          garantia?: string | null
           id?: string
           imagem_url?: string | null
           imagens?: Json | null
+          informacao_nutricional?: string | null
+          ingredientes?: string | null
           link?: string | null
           link_marketplace?: string | null
+          modo_uso?: string | null
           nome?: string
+          peso?: string | null
           preco?: number | null
           publicar_marketplace?: boolean | null
           sku?: string | null
           tags?: string[] | null
+          tamanhos?: string | null
+          tipo?: string | null
           updated_at?: string
           user_id?: string
           vendedor_id?: string | null
