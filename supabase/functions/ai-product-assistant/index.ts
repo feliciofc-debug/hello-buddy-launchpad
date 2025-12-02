@@ -157,7 +157,55 @@ ${p.tamanhos ? `║ • Tamanhos disponíveis: ${p.tamanhos}` : ''}
     // Chamar Lovable AI
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
     
+    // Identificar produto mencionado na mensagem ANTES de chamar IA
+    const msgLower = mensagemCliente.toLowerCase()
+    let produtoIdentificado = null
+    
+    const palavrasChave = ['arroz', 'feijão', 'feijao', 'farinha', 'milho', 'flocão', 'flocao', 'açúcar', 'acucar', 'óleo', 'oleo', 'sal', 'macarrão', 'macarrao', 'leite', 'café', 'cafe']
+    
+    for (const palavra of palavrasChave) {
+      if (msgLower.includes(palavra)) {
+        const produtoEncontrado = produtos?.find(p => 
+          p.nome.toLowerCase().includes(palavra)
+        )
+        if (produtoEncontrado) {
+          produtoIdentificado = produtoEncontrado
+          console.log(`🎯 Produto identificado na mensagem: "${palavra}" → ${produtoEncontrado.nome}`)
+          break
+        }
+      }
+    }
+    
+    // Se não encontrou por palavra-chave, verificar nome completo
+    if (!produtoIdentificado) {
+      for (const p of produtos || []) {
+        const nomeWords = p.nome.toLowerCase().split(' ')
+        for (const word of nomeWords) {
+          if (word.length > 3 && msgLower.includes(word)) {
+            produtoIdentificado = p
+            console.log(`🎯 Produto identificado por palavra: "${word}" → ${p.nome}`)
+            break
+          }
+        }
+        if (produtoIdentificado) break
+      }
+    }
+    
+    console.log('🔍 Produto identificado:', produtoIdentificado?.nome || 'NENHUM')
+
     const prompt = `Você é um vendedor atencioso da AMZ Ofertas pelo WhatsApp.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ CRÍTICO - PRODUTO IDENTIFICADO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+${produtoIdentificado ? `
+O cliente está perguntando sobre: **${produtoIdentificado.nome}**
+ID do produto: ${produtoIdentificado.id}
+Preço: R$ ${produtoIdentificado.preco}
+
+SE FOR ENVIAR FOTO, USE ESTE ID: ${produtoIdentificado.id}
+` : 'Nenhum produto específico identificado na mensagem.'}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🎯 REGRAS ABSOLUTAS:
@@ -252,7 +300,7 @@ SE QUER OUTRO PRODUTO:
 
 {
   "mensagem": "sua resposta CURTA",
-  "produto_recomendado_id": "UUID se recomendar",
+  "produto_recomendado_id": "${produtoIdentificado?.id || 'UUID se recomendar'}",
   "enviar_foto": true/false
 }
 
