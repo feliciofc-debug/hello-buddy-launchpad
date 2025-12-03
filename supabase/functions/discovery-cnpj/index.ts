@@ -353,7 +353,7 @@ serve(async (req) => {
             qualificacao: socioData.qualificacao_socio || socioData.qualificacao,
             percentual_capital: socioData.percentual_capital_social || 0,
             data_entrada: socioData.data_entrada_sociedade || null,
-            linkedin_url: linkedinUrl
+            enrichment_data: linkedinUrl ? { linkedin_url: linkedinUrl } : {}
           })
           .select()
           .single()
