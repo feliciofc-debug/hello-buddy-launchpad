@@ -167,3 +167,6 @@ verify_jwt = false
 
 [functions.ai-product-assistant]
 verify_jwt = false
+
+[functions.ai-product-assistant-simple]
+verify_jwt = false

@@ -501,15 +501,17 @@ serve(async (req) => {
     
     // SEMPRE usar IA avançada - ela responde melhor qualquer pergunta
     if (contexto.user_id) {
-      console.log('🚀 Usando IA Avançada (ai-product-assistant) para TODAS as mensagens');
-      console.log('🚀 Usando IA Avançada (ai-product-assistant) - cliente perguntou sobre produtos/especificações');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🚀 USANDO IA SIMPLES (baseada em regras)');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       try {
-        const { data: aiAssistantData, error: aiAssistantError } = await supabaseClient.functions.invoke('ai-product-assistant', {
+        const { data: aiAssistantData, error: aiAssistantError } = await supabaseClient.functions.invoke('ai-product-assistant-simple', {
           body: {
             mensagemCliente: messageText,
             conversationId: contexto.id,
-            userId: contexto.user_id
+            userId: contexto.user_id,
+            phone: phoneNumber
           }
         });
 
