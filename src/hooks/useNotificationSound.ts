@@ -42,36 +42,69 @@ export function useNotificationSound() {
 
   // Tocar som
   const playSound = (soundType: 'caixa' | 'mensagem' | 'venda') => {
-    if (!enabled) return;
+    if (!enabled) {
+      console.log('🔇 Som desativado');
+      return;
+    }
+
+    console.log(`🔔 Tocando som: ${soundType}`);
 
     try {
-      // URLs de sons gratuitos online
+      // URLs de sons gratuitos que funcionam (CDN confiável)
       const sounds: Record<string, string> = {
-        caixa: 'https://www.soundjay.com/misc/sounds/cash-register-1.mp3',
-        mensagem: 'https://www.soundjay.com/buttons/sounds/button-09a.mp3',
-        venda: 'https://www.soundjay.com/human/sounds/applause-8.mp3'
+        caixa: 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3', // Cash register
+        mensagem: 'https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3', // Notification
+        venda: 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_12b0c7443c.mp3' // Success
       };
 
-      // Criar ou reusar elemento de áudio
-      if (!audioRef.current) {
-        audioRef.current = new Audio();
-      }
-
-      audioRef.current.src = sounds[soundType];
-      audioRef.current.volume = volume;
+      // Criar novo elemento de áudio sempre (evita problemas de cache)
+      const audio = new Audio();
+      audio.src = sounds[soundType];
+      audio.volume = volume;
       
-      // Tocar
-      audioRef.current.play().catch(error => {
-        console.warn('Erro ao tocar som:', error);
-        // Browser pode bloquear autoplay
-        if (error.name === 'NotAllowedError') {
-          toast({
-            title: '🔇 Sons bloqueados',
-            description: 'Clique em qualquer lugar para ativar sons',
-            variant: 'destructive'
+      // Tentar tocar
+      const playPromise = audio.play();
+      
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log(`✅ Som ${soundType} tocando!`);
+          })
+          .catch(error => {
+            console.warn('⚠️ Erro ao tocar som:', error);
+            
+            // Fallback: usar Web Audio API para beep simples
+            try {
+              const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+              const oscillator = audioContext.createOscillator();
+              const gainNode = audioContext.createGain();
+              
+              oscillator.connect(gainNode);
+              gainNode.connect(audioContext.destination);
+              
+              oscillator.frequency.value = soundType === 'caixa' ? 800 : 600;
+              oscillator.type = 'sine';
+              gainNode.gain.value = volume * 0.3;
+              
+              oscillator.start();
+              setTimeout(() => {
+                oscillator.stop();
+                console.log('🔔 Beep alternativo tocado!');
+              }, 200);
+            } catch (fallbackError) {
+              console.error('❌ Erro no fallback de som:', fallbackError);
+            }
+            
+            // Browser pode bloquear autoplay
+            if (error.name === 'NotAllowedError') {
+              toast({
+                title: '🔇 Sons bloqueados',
+                description: 'Clique em qualquer lugar para ativar sons',
+                variant: 'destructive'
+              });
+            }
           });
-        }
-      });
+      }
 
       // Vibrar dispositivo se suportado
       if ('vibrate' in navigator) {
@@ -84,7 +117,7 @@ export function useNotificationSound() {
         }
       }
     } catch (error) {
-      console.error('Erro ao tocar som:', error);
+      console.error('❌ Erro ao tocar som:', error);
     }
   };
 

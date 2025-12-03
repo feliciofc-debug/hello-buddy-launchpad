@@ -41,6 +41,7 @@ interface Conversa {
   origem: string | null;
   tipo_contato: string | null;
   ultima_mensagem_role?: string;
+  ultima_mensagem_cliente_at?: string | null; // Última msg do CLIENTE (user)
 }
 
 interface Mensagem {
@@ -66,31 +67,24 @@ export default function VendedorPainel() {
   // Hook de notificação sonora
   const { enabled: somEnabled, toggleSound, playSound, testSound } = useNotificationSound();
 
-  // Verificar se cliente está ativo (última mensagem DELE nos últimos 30 min)
+  // Verificar se cliente está ativo (enviou mensagem nos últimos 30 min)
   const isClienteAtivo = (conversa: Conversa): boolean => {
-    if (!conversa.last_message_at) {
-      console.log(`❌ ${conversa.contact_name}: sem last_message_at`);
-      return false;
-    }
+    // Usar ultima_mensagem_cliente_at (última msg do CLIENTE especificamente)
+    const dataCliente = conversa.ultima_mensagem_cliente_at;
     
-    // ✅ SÓ VERDE se última mensagem é do CLIENTE (role='user')
-    // ❌ NÃO verde se última mensagem foi do vendedor/IA (role='assistant')
-    console.log(`🔍 ${conversa.contact_name}: ultima_mensagem_role = "${conversa.ultima_mensagem_role}"`);
-    
-    if (conversa.ultima_mensagem_role !== 'user') {
-      console.log(`❌ ${conversa.contact_name}: última msg NÃO é do cliente`);
+    if (!dataCliente) {
       return false;
     }
     
     const agora = new Date();
-    const dataUltimaMensagem = new Date(conversa.last_message_at);
-    const diferencaMinutos = (agora.getTime() - dataUltimaMensagem.getTime()) / (1000 * 60);
+    const dataUltimaMensagemCliente = new Date(dataCliente);
+    const diferencaMinutos = (agora.getTime() - dataUltimaMensagemCliente.getTime()) / (1000 * 60);
     
-    console.log(`⏱️ ${conversa.contact_name}: diferença = ${Math.round(diferencaMinutos)} minutos`);
-    
-    // Ativo se mensagem do CLIENTE veio nos últimos 30 minutos
+    // 🟢 ATIVO se CLIENTE enviou mensagem nos últimos 30 minutos
+    // (independente de a IA já ter respondido ou não)
     const ativo = diferencaMinutos <= 30;
-    console.log(`${ativo ? '🟢' : '⚪'} ${conversa.contact_name}: ${ativo ? 'ATIVO!' : 'inativo'}`);
+    
+    console.log(`${ativo ? '🟢' : '⚪'} ${conversa.contact_name}: cliente enviou há ${Math.round(diferencaMinutos)} min → ${ativo ? 'ATIVO!' : 'inativo'}`);
     return ativo;
   };
 
@@ -182,20 +176,32 @@ export default function VendedorPainel() {
     console.log('📊 Total conversas encontradas:', data?.length || 0);
 
     if (!error && data) {
-      // Buscar última mensagem de cada conversa para saber se é do cliente
+      // Buscar última mensagem DO CLIENTE (role='user') de cada conversa
       const conversasComRole = await Promise.all(
         data.map(async (conv) => {
-          const { data: ultimaMensagem } = await supabase
+          // Buscar última mensagem geral
+          const { data: ultimaMensagemGeral } = await supabase
             .from('whatsapp_conversation_messages')
             .select('role')
             .eq('conversation_id', conv.id)
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
+          
+          // Buscar última mensagem do CLIENTE especificamente (role='user')
+          const { data: ultimaMensagemCliente } = await supabase
+            .from('whatsapp_conversation_messages')
+            .select('created_at')
+            .eq('conversation_id', conv.id)
+            .eq('role', 'user')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
           
           return {
             ...conv,
-            ultima_mensagem_role: ultimaMensagem?.role || null
+            ultima_mensagem_role: ultimaMensagemGeral?.role || null,
+            ultima_mensagem_cliente_at: ultimaMensagemCliente?.created_at || null
           } as Conversa;
         })
       );
