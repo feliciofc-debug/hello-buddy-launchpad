@@ -1277,18 +1277,31 @@ RESPONDA (curto e humano, sem repetir "tá"):`;
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
   } catch (error) {
-    console.error('❌ ERRO GERAL:', error);
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.error('❌ ERRO GERAL NO WEBHOOK:', error);
+    console.error('Stack:', error instanceof Error ? error.stack : 'N/A');
+    console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
-    await supabaseClient.from('webhook_debug_logs').insert({
-      payload: webhookData,
-      extracted_phone: phoneNumber || 'ERRO',
-      extracted_message: messageText || 'ERRO',
-      processing_result: `ERRO: ${error instanceof Error ? error.message : 'Erro'}`
-    });
+    // Tentar salvar log do erro
+    try {
+      await supabaseClient.from('webhook_debug_logs').insert({
+        payload: webhookData,
+        extracted_phone: phoneNumber || 'ERRO',
+        extracted_message: messageText || 'ERRO',
+        processing_result: `ERRO: ${error instanceof Error ? error.message : 'Erro desconhecido'}`
+      });
+    } catch (logError) {
+      console.error('❌ Erro ao salvar log:', logError);
+    }
 
+    // ⚠️ SEMPRE RETORNAR 200 - MESMO COM ERRO!
+    // Isso evita que o WhatsApp fique reenviando a mensagem
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Erro' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ 
+        status: 'error_handled',
+        error: error instanceof Error ? error.message : 'Erro desconhecido'
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
