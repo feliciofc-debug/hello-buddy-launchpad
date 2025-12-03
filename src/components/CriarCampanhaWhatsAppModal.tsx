@@ -267,8 +267,26 @@ _Escolha quantidade e finalize!_ ✅`);
   };
 
   const selecionarPost = (texto: string) => {
-    setMensagem(texto);
-    toast.success('Post selecionado!');
+    // SEMPRE adicionar link de checkout no final da mensagem
+    const linkProduto = produto.link_marketplace || 'https://amzofertas.com.br/checkout';
+    
+    // Verificar se o texto já contém um link
+    const jaTemLink = texto.includes('http://') || texto.includes('https://');
+    
+    let mensagemFinal = texto;
+    
+    if (!jaTemLink) {
+      // Adicionar link fixo no final
+      mensagemFinal = `${texto}
+
+🛒 *Compre agora:*
+${linkProduto}
+
+_Escolha quantidade e finalize!_ ✅`;
+    }
+    
+    setMensagem(mensagemFinal);
+    toast.success('Post selecionado com link incluído!');
   };
 
   const enviarCampanhaAgora = async () => {
