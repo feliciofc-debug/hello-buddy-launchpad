@@ -68,18 +68,30 @@ export default function VendedorPainel() {
 
   // Verificar se cliente está ativo (última mensagem DELE nos últimos 30 min)
   const isClienteAtivo = (conversa: Conversa): boolean => {
-    if (!conversa.last_message_at) return false;
+    if (!conversa.last_message_at) {
+      console.log(`❌ ${conversa.contact_name}: sem last_message_at`);
+      return false;
+    }
     
     // ✅ SÓ VERDE se última mensagem é do CLIENTE (role='user')
     // ❌ NÃO verde se última mensagem foi do vendedor/IA (role='assistant')
-    if (conversa.ultima_mensagem_role !== 'user') return false;
+    console.log(`🔍 ${conversa.contact_name}: ultima_mensagem_role = "${conversa.ultima_mensagem_role}"`);
+    
+    if (conversa.ultima_mensagem_role !== 'user') {
+      console.log(`❌ ${conversa.contact_name}: última msg NÃO é do cliente`);
+      return false;
+    }
     
     const agora = new Date();
     const dataUltimaMensagem = new Date(conversa.last_message_at);
     const diferencaMinutos = (agora.getTime() - dataUltimaMensagem.getTime()) / (1000 * 60);
     
+    console.log(`⏱️ ${conversa.contact_name}: diferença = ${Math.round(diferencaMinutos)} minutos`);
+    
     // Ativo se mensagem do CLIENTE veio nos últimos 30 minutos
-    return diferencaMinutos <= 30;
+    const ativo = diferencaMinutos <= 30;
+    console.log(`${ativo ? '🟢' : '⚪'} ${conversa.contact_name}: ${ativo ? 'ATIVO!' : 'inativo'}`);
+    return ativo;
   };
 
   useEffect(() => {
@@ -295,11 +307,29 @@ export default function VendedorPainel() {
   };
 
   const enviarMensagem = async () => {
-    if (!inputMensagem.trim() || !conversaSelecionada || !vendedor) return;
+    if (!inputMensagem.trim()) {
+      toast.error('Digite uma mensagem');
+      return;
+    }
+    if (!conversaSelecionada) {
+      toast.error('Selecione uma conversa');
+      return;
+    }
+    if (!vendedor) {
+      toast.error('Vendedor não identificado');
+      return;
+    }
+    if (conversaSelecionada.modo_atendimento !== 'humano') {
+      toast.error('Assuma a conversa primeiro para responder!');
+      return;
+    }
 
     setEnviando(true);
+    console.log('📤 Enviando mensagem para:', conversaSelecionada.phone_number);
+    
     try {
-      const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+      // 1. Enviar via edge function
+      const { data, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
         body: {
           phone: conversaSelecionada.phone_number,
           message: inputMensagem,
@@ -307,26 +337,40 @@ export default function VendedorPainel() {
         }
       });
 
-      if (sendError) throw sendError;
+      console.log('📨 Resposta do envio:', data);
+      
+      if (sendError) {
+        console.error('❌ Erro no envio:', sendError);
+        throw sendError;
+      }
 
-      await supabase.from('whatsapp_conversation_messages').insert({
+      // 2. Salvar mensagem no banco
+      const { error: insertError } = await supabase.from('whatsapp_conversation_messages').insert({
         conversation_id: conversaSelecionada.id,
         content: inputMensagem,
         role: 'assistant',
-        metadata: { sent_by_vendedor: vendedor.nome }
+        metadata: { sent_by_vendedor: vendedor.nome, vendedor_id: vendedor.id }
       });
 
+      if (insertError) {
+        console.error('❌ Erro ao salvar mensagem:', insertError);
+      }
+
+      // 3. Atualizar última mensagem da conversa
       await supabase
         .from('whatsapp_conversations')
         .update({ last_message_at: new Date().toISOString() })
         .eq('id', conversaSelecionada.id);
 
+      // 4. Limpar e recarregar
       setInputMensagem('');
-      carregarMensagens(conversaSelecionada.id);
-      toast.success('Mensagem enviada!');
-    } catch (err) {
-      console.error('Erro ao enviar:', err);
-      toast.error('Erro ao enviar mensagem');
+      await carregarMensagens(conversaSelecionada.id);
+      toast.success('✅ Mensagem enviada!');
+      
+    } catch (err: unknown) {
+      console.error('❌ Erro completo ao enviar:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido';
+      toast.error(`Erro ao enviar: ${errorMessage}`);
     } finally {
       setEnviando(false);
     }
@@ -609,19 +653,42 @@ export default function VendedorPainel() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                {/* BOTÕES BEM VISÍVEIS */}
+                <div className="flex gap-3">
                   {conversaSelecionada.modo_atendimento === 'ia' ? (
-                    <Button size="sm" onClick={() => assumirConversa(conversaSelecionada)}>
-                      <User className="w-4 h-4 mr-2" />
-                      Assumir Conversa
+                    <Button 
+                      size="lg" 
+                      onClick={() => assumirConversa(conversaSelecionada)}
+                      className="bg-green-600 hover:bg-green-700 text-white font-semibold px-6"
+                    >
+                      <User className="w-5 h-5 mr-2" />
+                      👤 Assumir Conversa
                     </Button>
                   ) : (
-                    <Button size="sm" variant="outline" onClick={() => devolverParaIA(conversaSelecionada)}>
-                      <Bot className="w-4 h-4 mr-2" />
-                      Devolver para IA
+                    <Button 
+                      size="lg" 
+                      variant="outline" 
+                      onClick={() => devolverParaIA(conversaSelecionada)}
+                      className="border-blue-500 text-blue-600 hover:bg-blue-50 font-semibold px-6"
+                    >
+                      <Bot className="w-5 h-5 mr-2" />
+                      🤖 Devolver para IA
                     </Button>
                   )}
                 </div>
+              </div>
+              
+              {/* Badge de status atual */}
+              <div className="px-4 py-2 border-b bg-muted/30">
+                {conversaSelecionada.modo_atendimento === 'humano' ? (
+                  <Badge className="bg-green-600 text-white">
+                    ✅ Você está atendendo - Campo de resposta abaixo
+                  </Badge>
+                ) : (
+                  <Badge className="bg-blue-600 text-white">
+                    🤖 IA está respondendo - Clique "Assumir" para responder manualmente
+                  </Badge>
+                )}
               </div>
 
               <ScrollArea className="flex-1 p-4">
