@@ -20,7 +20,7 @@ serve(async (req) => {
     )
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('🤖 IA SIMPLES v1.0 - BASEADA EM REGRAS')
+    console.log('🤖 IA SIMPLES v2.0 - COM LINKS AUTOMÁTICOS')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log('💬 Mensagem:', mensagemCliente)
     console.log('📱 Phone:', phone)
@@ -40,7 +40,7 @@ serve(async (req) => {
     
     console.log('📦 Total produtos:', produtos?.length || 0)
     produtos?.forEach((p, i) => {
-      console.log(`   ${i + 1}. ${p.nome} (ID: ${p.id})`)
+      console.log(`   ${i + 1}. ${p.nome} - R$ ${p.preco} (ID: ${p.id})`)
     })
     
     // Buscar histórico da conversa
@@ -238,7 +238,33 @@ serve(async (req) => {
     console.log('   agradecimento:', agradecimento)
     
     // ═══════════════════════════════════════════════════════
-    // LÓGICA 3: GERAR RESPOSTA DETERMINÍSTICA
+    // LÓGICA 3: VERIFICAR SE É PRODUTO DE ALTO VALOR
+    // ═══════════════════════════════════════════════════════
+    
+    const ehAltoValor = (produto: any) => {
+      if (!produto) return false
+      const precoNum = parseFloat(produto.preco) || 0
+      
+      // Se preço > R$ 10.000 = alto valor
+      if (precoNum > 10000) return true
+      
+      // Ou se nome indica alto valor
+      const nomeL = produto.nome.toLowerCase()
+      if (nomeL.includes('imóvel') || 
+          nomeL.includes('imovel') || 
+          nomeL.includes('casa') || 
+          nomeL.includes('apartamento') ||
+          nomeL.includes('carro') ||
+          nomeL.includes('veículo') ||
+          nomeL.includes('veiculo')) {
+        return true
+      }
+      
+      return false
+    }
+    
+    // ═══════════════════════════════════════════════════════
+    // LÓGICA 4: GERAR RESPOSTA COM LINKS AUTOMÁTICOS
     // ═══════════════════════════════════════════════════════
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
@@ -248,38 +274,86 @@ serve(async (req) => {
     let resposta = ''
     let enviarLink = false
     let enviarFoto = false
+    let linkMensagem = ''
     
     // Formatar preço
     const formatarPreco = (preco: number) => {
       return preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     }
     
+    const gerarLinkMensagem = (produto: any, altoValor: boolean) => {
+      const preco = formatarPreco(produto.preco || 0)
+      const link = produto.checkout_url || produto.link_marketplace || 'https://amzofertas.com.br/checkout'
+      
+      if (altoValor) {
+        return `📋 *${produto.nome}*
+💰 *${preco}*
+
+🔗 *Mais informações e fotos:*
+${link}
+
+Entre em contato para mais detalhes! 📞`
+      } else {
+        return `🛒 *Finalize sua compra:*
+
+${link}
+
+📦 *${produto.nome}*
+💰 *${preco}*
+
+_Escolha quantidade e finalize!_ ✅`
+      }
+    }
+    
     // CASO 1: Cliente quer comprar E temos produto identificado
     if (querComprar && produtoIdentificado) {
-      resposta = `Ótimo! Te envio o link agora 😊`
+      const altoValor = ehAltoValor(produtoIdentificado)
+      
+      if (altoValor) {
+        resposta = `Ótimo! Vou te passar o link com todas as informações e fotos 😊`
+      } else {
+        resposta = `Perfeito! Te envio o link de compra agora 😊`
+      }
+      
       enviarLink = true
+      linkMensagem = gerarLinkMensagem(produtoIdentificado, altoValor)
       console.log('   📌 CASO: Quer comprar + produto identificado')
     }
     
     // CASO 2: Cliente pergunta preço E temos produto
     else if (querPreco && produtoIdentificado) {
       const preco = formatarPreco(produtoIdentificado.preco || 0)
+      const link = produtoIdentificado.checkout_url || produtoIdentificado.link_marketplace
+      
       resposta = `${produtoIdentificado.nome} custa ${preco}. Quer levar? 😊`
+      
+      // Sempre incluir link na mensagem de preço (exceto alto valor)
+      if (link && !ehAltoValor(produtoIdentificado)) {
+        enviarLink = true
+        linkMensagem = gerarLinkMensagem(produtoIdentificado, false)
+      }
       console.log('   📌 CASO: Pergunta preço')
     }
     
     // CASO 3: Cliente quer foto E temos produto
     else if (querFoto && produtoIdentificado) {
-      resposta = `Te envio a foto! 📸`
+      resposta = `Te envio a foto agora! 📸`
       enviarFoto = true
-      console.log('   📌 CASO: Quer foto')
+      enviarLink = true // TAMBÉM enviar link junto com foto
+      linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
+      console.log('   📌 CASO: Quer foto + link')
     }
     
     // CASO 4: Cliente pergunta se tem produto E encontramos
     else if (temProduto && produtoIdentificado) {
       const preco = formatarPreco(produtoIdentificado.preco || 0)
-      resposta = `Sim! ${produtoIdentificado.nome} por ${preco} 😊 Quer?`
-      console.log('   📌 CASO: Pergunta se tem produto')
+      resposta = `Sim! ${produtoIdentificado.nome} por ${preco} 😊`
+      
+      // Enviar foto + link automaticamente quando menciona produto
+      enviarFoto = true
+      enviarLink = true
+      linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
+      console.log('   📌 CASO: Pergunta se tem produto → foto + link')
     }
     
     // CASO 5: Saudação simples
@@ -294,11 +368,16 @@ serve(async (req) => {
       console.log('   📌 CASO: Agradecimento')
     }
     
-    // CASO 7: Mencionou produto mas sem intenção clara
+    // CASO 7: Mencionou produto mas sem intenção clara → foto + link automático
     else if (produtoIdentificado) {
       const preco = formatarPreco(produtoIdentificado.preco || 0)
-      resposta = `${produtoIdentificado.nome} está ${preco}. Posso ajudar com algo mais? 😊`
-      console.log('   📌 CASO: Produto identificado, sem intenção clara')
+      resposta = `${produtoIdentificado.nome} está ${preco}. Já te envio foto e link! 😊`
+      
+      // Enviar foto + link automaticamente
+      enviarFoto = true
+      enviarLink = true
+      linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
+      console.log('   📌 CASO: Produto identificado → foto + link automático')
     }
     
     // CASO 8: Não entendeu
@@ -315,6 +394,7 @@ serve(async (req) => {
     console.log('   Enviar Link:', enviarLink)
     console.log('   Enviar Foto:', enviarFoto)
     console.log('   Checkout URL:', produtoIdentificado?.checkout_url || 'N/A')
+    console.log('   Link Marketplace:', produtoIdentificado?.link_marketplace || 'N/A')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     return new Response(JSON.stringify({
@@ -325,7 +405,8 @@ serve(async (req) => {
       produto_recomendado_nome: produtoIdentificado?.nome || null,
       enviar_link: enviarLink,
       enviar_foto: enviarFoto,
-      checkout_url: produtoIdentificado?.checkout_url || null,
+      checkout_url: produtoIdentificado?.checkout_url || produtoIdentificado?.link_marketplace || null,
+      link_mensagem: linkMensagem || null,
       metodo_identificacao: metodoIdentificacao,
       palavra_chave: palavraEncontrada
     }), {

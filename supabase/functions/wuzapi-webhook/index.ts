@@ -747,22 +747,26 @@ serve(async (req) => {
             if (produtoParaLink) {
               console.log('📦 Enviando link para produto:', produtoParaLink.nome);
               
-              // LINK FIXO SIMULADO - usar link_marketplace se existir, senão usar simulado
-              const LINK_SIMULADO = 'https://amzofertas.com.br/checkout';
-              const linkFinal = produtoParaLink.link_marketplace || LINK_SIMULADO;
+              // Usar link_mensagem da IA se disponível, senão construir
+              let linkMessage = aiAssistantData.link_mensagem;
               
-              console.log('🔗 Link final:', linkFinal);
-              
-              const linkMessage = `🛒 *Finalize sua compra:*
+              if (!linkMessage) {
+                const linkFinal = produtoParaLink.checkout_url || produtoParaLink.link_marketplace || 'https://amzofertas.com.br/checkout';
+                console.log('🔗 Link final:', linkFinal);
+                
+                linkMessage = `🛒 *Finalize sua compra:*
 
 ${linkFinal}
 
-📦 ${produtoParaLink.nome}
-💰 R$ ${Number(produtoParaLink.preco || 0).toFixed(2)}
+📦 *${produtoParaLink.nome}*
+💰 *R$ ${Number(produtoParaLink.preco || 0).toFixed(2)}*
 
-O frete aparece na finalização! 😊
+_Escolha quantidade e finalize!_ ✅
 
-Qualquer dúvida, estou aqui! 👍`;
+O frete aparece na finalização! 😊`;
+              }
+              
+              console.log('📤 Mensagem de link a enviar:', linkMessage);
 
               const linkResponse = await fetch(`${baseUrl}/chat/send/text`, {
                 method: 'POST',
@@ -777,16 +781,17 @@ Qualquer dúvida, estou aqui! 👍`;
               console.log('✅ Link de checkout enviado:', linkResponse.status, linkResult);
               
               // Salvar que enviou link
+              const linkFinalSalvo = produtoParaLink.checkout_url || produtoParaLink.link_marketplace || 'amzofertas.com.br';
               await supabaseClient.from('whatsapp_messages').insert({
                 phone: phoneNumber,
                 direction: 'sent',
-                message: `[Link de compra enviado: ${produtoParaLink.nome}] - ${linkFinal}`,
+                message: `[Link enviado: ${produtoParaLink.nome}] - ${linkFinalSalvo}`,
                 user_id: contexto.user_id,
                 origem: 'campanha'
               });
               
             } else {
-              console.log('⚠️ Produto não tem link_marketplace cadastrado ou não foi identificado');
+              console.log('⚠️ Produto não tem link cadastrado ou não foi identificado');
             }
           }
 
