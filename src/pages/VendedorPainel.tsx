@@ -72,7 +72,12 @@ export default function VendedorPainel() {
     // Usar ultima_mensagem_cliente_at (última msg do CLIENTE especificamente)
     const dataCliente = conversa.ultima_mensagem_cliente_at;
     
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔍 Verificando cliente:', conversa.contact_name || conversa.phone_number);
+    console.log('📅 ultima_mensagem_cliente_at:', dataCliente);
+    
     if (!dataCliente) {
+      console.log('❌ Sem data de última mensagem do cliente');
       return false;
     }
     
@@ -80,11 +85,16 @@ export default function VendedorPainel() {
     const dataUltimaMensagemCliente = new Date(dataCliente);
     const diferencaMinutos = (agora.getTime() - dataUltimaMensagemCliente.getTime()) / (1000 * 60);
     
+    console.log('⏰ Agora:', agora.toISOString());
+    console.log('📨 Última msg cliente:', dataUltimaMensagemCliente.toISOString());
+    console.log('⏱️ Diferença:', Math.round(diferencaMinutos), 'minutos');
+    
     // 🟢 ATIVO se CLIENTE enviou mensagem nos últimos 30 minutos
-    // (independente de a IA já ter respondido ou não)
     const ativo = diferencaMinutos <= 30;
     
-    console.log(`${ativo ? '🟢' : '⚪'} ${conversa.contact_name}: cliente enviou há ${Math.round(diferencaMinutos)} min → ${ativo ? 'ATIVO!' : 'inativo'}`);
+    console.log(ativo ? '🟢 ATIVO!' : '⚪ Inativo');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    
     return ativo;
   };
 
@@ -334,20 +344,24 @@ export default function VendedorPainel() {
     console.log('📤 Enviando mensagem para:', conversaSelecionada.phone_number);
     
     try {
-      // 1. Enviar via edge function
+      // 1. Enviar via edge function (CORRIGIDO: usar phoneNumber não phone)
+      console.log('📤 Chamando send-wuzapi-message...');
+      console.log('Phone:', conversaSelecionada.phone_number);
+      console.log('Message:', inputMensagem);
+      
       const { data, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
         body: {
-          phone: conversaSelecionada.phone_number,
-          message: inputMensagem,
-          userId: vendedor.id
+          phoneNumber: conversaSelecionada.phone_number, // ✅ CORRIGIDO: era "phone", agora é "phoneNumber"
+          message: inputMensagem
         }
       });
 
       console.log('📨 Resposta do envio:', data);
+      console.log('📨 Erro (se houver):', sendError);
       
       if (sendError) {
         console.error('❌ Erro no envio:', sendError);
-        throw sendError;
+        throw new Error(sendError.message || 'Erro ao enviar mensagem');
       }
 
       // 2. Salvar mensagem no banco
