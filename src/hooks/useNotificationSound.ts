@@ -50,15 +50,18 @@ export function useNotificationSound() {
     console.log(`🔔 Tocando som: ${soundType}`);
 
     try {
-      // URLs de sons gratuitos que funcionam (CDN confiável)
+      // URLs de sons PÚBLICOS que funcionam sem autenticação
       const sounds: Record<string, string> = {
-        caixa: 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_0625c1539c.mp3', // Cash register
-        mensagem: 'https://cdn.pixabay.com/download/audio/2022/03/10/audio_c8c8a73467.mp3', // Notification
-        venda: 'https://cdn.pixabay.com/download/audio/2021/08/04/audio_12b0c7443c.mp3' // Success
+        caixa: 'https://www.soundjay.com/misc/sounds/cash-register-1.mp3', // Cash register
+        mensagem: 'https://www.soundjay.com/buttons/sounds/button-09.mp3', // Notification beep
+        venda: 'https://www.soundjay.com/human/sounds/applause-8.mp3' // Applause
       };
 
-      // Criar novo elemento de áudio sempre (evita problemas de cache)
+      console.log(`🔊 Tentando tocar: ${sounds[soundType]}`);
+
+      // Criar novo elemento de áudio sempre
       const audio = new Audio();
+      audio.crossOrigin = 'anonymous';
       audio.src = sounds[soundType];
       audio.volume = volume;
       
