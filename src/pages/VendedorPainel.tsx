@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 import { 
   MessageSquare, 
   Send, 
@@ -16,7 +17,8 @@ import {
   LogOut, 
   Phone,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  Circle
 } from 'lucide-react';
 
 interface VendedorSession {
@@ -32,9 +34,10 @@ interface Conversa {
   contact_name: string | null;
   modo_atendimento: string;
   last_message_at: string | null;
-  metadata: any;
+  metadata: Record<string, unknown>;
   origem: string | null;
   tipo_contato: string | null;
+  ultima_mensagem_role?: string;
 }
 
 interface Mensagem {
@@ -52,8 +55,24 @@ export default function VendedorPainel() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [inputMensagem, setInputMensagem] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [stats, setStats] = useState({ total: 0, ia: 0, humano: 0 });
+  const [stats, setStats] = useState({ total: 0, ia: 0, humano: 0, ativos: 0 });
+  const [filtro, setFiltro] = useState<'todos' | 'ativos' | 'inativos'>('todos');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Verificar se cliente está ativo (última mensagem dele nos últimos 30 min)
+  const isClienteAtivo = (conversa: Conversa): boolean => {
+    if (!conversa.last_message_at) return false;
+    
+    // Se última mensagem foi do vendedor/assistant, não está ativo
+    if (conversa.ultima_mensagem_role === 'assistant') return false;
+    
+    const agora = new Date();
+    const dataUltimaMensagem = new Date(conversa.last_message_at);
+    const diferencaMinutos = (agora.getTime() - dataUltimaMensagem.getTime()) / (1000 * 60);
+    
+    // Ativo se mensagem veio nos últimos 30 minutos
+    return diferencaMinutos <= 30;
+  };
 
   useEffect(() => {
     const session = localStorage.getItem('vendedor_session');
@@ -102,17 +121,35 @@ export default function VendedorPainel() {
     console.log('📊 Total conversas encontradas:', data?.length || 0);
 
     if (!error && data) {
-      if (data.length > 0) {
-        console.log('📋 Conversas:', data.map(c => ({
+      // Buscar última mensagem de cada conversa para saber se é do cliente
+      const conversasComRole = await Promise.all(
+        data.map(async (conv) => {
+          const { data: ultimaMensagem } = await supabase
+            .from('whatsapp_conversation_messages')
+            .select('role')
+            .eq('conversation_id', conv.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          return {
+            ...conv,
+            ultima_mensagem_role: ultimaMensagem?.role || null
+          } as Conversa;
+        })
+      );
+
+      if (conversasComRole.length > 0) {
+        console.log('📋 Conversas:', conversasComRole.map(c => ({
           id: c.id,
           phone: c.phone_number,
-          vendedor: c.vendedor_id,
-          origem: c.origem
+          vendedor: (c as { vendedor_id?: string }).vendedor_id,
+          origem: c.origem,
+          ativo: isClienteAtivo(c)
         })));
       } else {
         console.log('⚠️ NENHUMA conversa encontrada para este vendedor');
         
-        // Buscar TODAS as conversas para debug
         const { data: todasConversas } = await supabase
           .from('whatsapp_conversations')
           .select('id, phone_number, vendedor_id, origem')
@@ -122,11 +159,14 @@ export default function VendedorPainel() {
         console.log('🔍 Últimas 10 conversas no banco (debug):', todasConversas);
       }
       
-      setConversas(data as Conversa[]);
+      setConversas(conversasComRole);
+      
+      const ativos = conversasComRole.filter(c => isClienteAtivo(c)).length;
       setStats({
-        total: data.length,
-        ia: data.filter(c => c.modo_atendimento === 'ia').length,
-        humano: data.filter(c => c.modo_atendimento === 'humano').length
+        total: conversasComRole.length,
+        ia: conversasComRole.filter(c => c.modo_atendimento === 'ia').length,
+        humano: conversasComRole.filter(c => c.modo_atendimento === 'humano').length,
+        ativos
       });
     }
     
@@ -146,6 +186,16 @@ export default function VendedorPainel() {
 
     if (!error && data) {
       setMensagens(data as Mensagem[]);
+      
+      // Atualizar role da última mensagem na conversa selecionada
+      if (data.length > 0) {
+        const ultimaMsg = data[data.length - 1];
+        setConversas(prev => prev.map(c => 
+          c.id === conversationId 
+            ? { ...c, ultima_mensagem_role: ultimaMsg.role }
+            : c
+        ));
+      }
     }
   };
 
@@ -227,6 +277,27 @@ export default function VendedorPainel() {
     return phone;
   };
 
+  // Filtrar e ordenar conversas (ativos primeiro)
+  const conversasFiltradas = conversas
+    .filter(conv => {
+      if (filtro === 'ativos') return isClienteAtivo(conv);
+      if (filtro === 'inativos') return !isClienteAtivo(conv);
+      return true;
+    })
+    .sort((a, b) => {
+      const ativoA = isClienteAtivo(a);
+      const ativoB = isClienteAtivo(b);
+      
+      // Ativos primeiro
+      if (ativoA && !ativoB) return -1;
+      if (!ativoA && ativoB) return 1;
+      
+      // Depois ordena por última mensagem
+      const dataA = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+      const dataB = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+      return dataB - dataA;
+    });
+
   if (!vendedor) return null;
 
   return (
@@ -250,8 +321,8 @@ export default function VendedorPainel() {
                 <p className="text-muted-foreground">Conversas</p>
               </div>
               <div className="text-center">
-                <p className="font-bold text-xl text-green-500">{stats.ia}</p>
-                <p className="text-muted-foreground">Com IA</p>
+                <p className="font-bold text-xl text-green-500">{stats.ativos}</p>
+                <p className="text-muted-foreground">🟢 Ativos</p>
               </div>
               <div className="text-center">
                 <p className="font-bold text-xl text-blue-500">{stats.humano}</p>
@@ -270,63 +341,141 @@ export default function VendedorPainel() {
       <div className="flex h-[calc(100vh-73px)]">
         <div className="w-80 border-r bg-card">
           <div className="p-4 border-b">
-            <h2 className="font-semibold flex items-center gap-2">
+            <h2 className="font-semibold flex items-center gap-2 mb-3">
               <MessageSquare className="w-4 h-4" />
               Minhas Conversas
+              {stats.ativos > 0 && (
+                <Badge className="bg-green-500 text-white animate-pulse ml-auto">
+                  🟢 {stats.ativos}
+                </Badge>
+              )}
             </h2>
+            
+            {/* Filtros */}
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant={filtro === 'todos' ? 'default' : 'outline'}
+                onClick={() => setFiltro('todos')}
+                className="flex-1 text-xs"
+              >
+                📋 Todos ({conversas.length})
+              </Button>
+              <Button
+                size="sm"
+                variant={filtro === 'ativos' ? 'default' : 'outline'}
+                onClick={() => setFiltro('ativos')}
+                className={cn("flex-1 text-xs", filtro === 'ativos' && "bg-green-500 hover:bg-green-600")}
+              >
+                🟢 Ativos ({stats.ativos})
+              </Button>
+              <Button
+                size="sm"
+                variant={filtro === 'inativos' ? 'default' : 'outline'}
+                onClick={() => setFiltro('inativos')}
+                className="flex-1 text-xs"
+              >
+                ⚪ Outros
+              </Button>
+            </div>
           </div>
 
-          <ScrollArea className="h-[calc(100vh-140px)]">
-            {conversas.length === 0 ? (
+          <ScrollArea className="h-[calc(100vh-180px)]">
+            {conversasFiltradas.length === 0 ? (
               <div className="p-6 text-center text-muted-foreground">
                 <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>Nenhuma conversa atribuída</p>
+                <p>Nenhuma conversa {filtro === 'ativos' ? 'ativa' : filtro === 'inativos' ? 'inativa' : 'atribuída'}</p>
               </div>
             ) : (
-              conversas.map(conversa => (
-                <div
-                  key={conversa.id}
-                  onClick={() => setConversaSelecionada(conversa)}
-                  className={`p-4 border-b cursor-pointer hover:bg-accent transition-colors ${
-                    conversaSelecionada?.id === conversa.id ? 'bg-accent' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="w-8 h-8">
-                        <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                          {(conversa.contact_name || conversa.phone_number).charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium text-sm">
-                          {conversa.contact_name || formatPhone(conversa.phone_number)}
-                        </p>
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Phone className="w-3 h-3" />
-                          {formatPhone(conversa.phone_number)}
-                        </p>
+              conversasFiltradas.map(conversa => {
+                const ativo = isClienteAtivo(conversa);
+                
+                return (
+                  <div
+                    key={conversa.id}
+                    onClick={() => setConversaSelecionada(conversa)}
+                    className={cn(
+                      "p-4 border-b cursor-pointer transition-all",
+                      "hover:shadow-md",
+                      // VERDE se cliente ativo
+                      ativo && "bg-green-50 dark:bg-green-950/30 border-l-4 border-l-green-500",
+                      // Normal se não ativo
+                      !ativo && "hover:bg-accent",
+                      // Destacar se selecionada
+                      conversaSelecionada?.id === conversa.id && "ring-2 ring-primary bg-accent"
+                    )}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        {/* Avatar com indicador de ativo */}
+                        <div className="relative">
+                          <Avatar className={cn(
+                            "w-8 h-8",
+                            ativo && "ring-2 ring-green-500"
+                          )}>
+                            <AvatarFallback className={cn(
+                              "text-xs",
+                              ativo ? "bg-green-100 text-green-700" : "bg-primary/10 text-primary"
+                            )}>
+                              {(conversa.contact_name || conversa.phone_number).charAt(0).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          
+                          {/* Bolinha verde pulsante */}
+                          {ativo && (
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-card animate-pulse" />
+                          )}
+                        </div>
+                        
+                        <div>
+                          <p className={cn(
+                            "font-medium text-sm",
+                            ativo && "text-green-700 dark:text-green-400"
+                          )}>
+                            {conversa.contact_name || formatPhone(conversa.phone_number)}
+                          </p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Phone className="w-3 h-3" />
+                            {formatPhone(conversa.phone_number)}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col items-end gap-1">
+                        {/* Badge de ativo */}
+                        {ativo && (
+                          <Badge className="bg-green-500 text-white text-xs">
+                            🟢 Ativo
+                          </Badge>
+                        )}
+                        
+                        {/* Badge de modo */}
+                        <Badge 
+                          variant={conversa.modo_atendimento === 'ia' ? 'secondary' : 'default'}
+                          className="text-xs"
+                        >
+                          {conversa.modo_atendimento === 'ia' ? (
+                            <><Bot className="w-3 h-3 mr-1" /> IA</>
+                          ) : (
+                            <><User className="w-3 h-3 mr-1" /> Você</>
+                          )}
+                        </Badge>
                       </div>
                     </div>
-                    <Badge 
-                      variant={conversa.modo_atendimento === 'ia' ? 'secondary' : 'default'}
-                      className="text-xs"
-                    >
-                      {conversa.modo_atendimento === 'ia' ? (
-                        <><Bot className="w-3 h-3 mr-1" /> IA</>
-                      ) : (
-                        <><User className="w-3 h-3 mr-1" /> Você</>
-                      )}
-                    </Badge>
+                    
+                    {conversa.last_message_at && (
+                      <p className={cn(
+                        "text-xs flex items-center gap-1",
+                        ativo ? "text-green-600 dark:text-green-400" : "text-muted-foreground"
+                      )}>
+                        <Clock className="w-3 h-3" />
+                        {new Date(conversa.last_message_at).toLocaleString('pt-BR')}
+                        {ativo && " • Aguardando resposta"}
+                      </p>
+                    )}
                   </div>
-                  {conversa.last_message_at && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {new Date(conversa.last_message_at).toLocaleString('pt-BR')}
-                    </p>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </ScrollArea>
         </div>
@@ -334,16 +483,36 @@ export default function VendedorPainel() {
         <div className="flex-1 flex flex-col">
           {conversaSelecionada ? (
             <>
-              <div className="p-4 border-b bg-card flex items-center justify-between">
+              <div className={cn(
+                "p-4 border-b flex items-center justify-between",
+                isClienteAtivo(conversaSelecionada) ? "bg-green-50 dark:bg-green-950/30" : "bg-card"
+              )}>
                 <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback className="bg-primary/10 text-primary">
-                      {(conversaSelecionada.contact_name || conversaSelecionada.phone_number).charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="relative">
+                    <Avatar className={cn(
+                      isClienteAtivo(conversaSelecionada) && "ring-2 ring-green-500"
+                    )}>
+                      <AvatarFallback className={cn(
+                        isClienteAtivo(conversaSelecionada) ? "bg-green-100 text-green-700" : "bg-primary/10 text-primary"
+                      )}>
+                        {(conversaSelecionada.contact_name || conversaSelecionada.phone_number).charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    {isClienteAtivo(conversaSelecionada) && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-card animate-pulse" />
+                    )}
+                  </div>
                   <div>
-                    <p className="font-semibold">
+                    <p className={cn(
+                      "font-semibold",
+                      isClienteAtivo(conversaSelecionada) && "text-green-700 dark:text-green-400"
+                    )}>
                       {conversaSelecionada.contact_name || formatPhone(conversaSelecionada.phone_number)}
+                      {isClienteAtivo(conversaSelecionada) && (
+                        <Badge className="bg-green-500 text-white text-xs ml-2">
+                          🟢 Cliente Ativo
+                        </Badge>
+                      )}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       {formatPhone(conversaSelecionada.phone_number)}
@@ -421,7 +590,7 @@ export default function VendedorPainel() {
                 <div className="p-4 border-t bg-muted/50 text-center">
                   <p className="text-sm text-muted-foreground flex items-center justify-center gap-2">
                     <Bot className="w-4 h-4" />
-                    A IA está respondendo automaticamente. Clique em "Assumir Conversa" para responder manualmente.
+                    A IA está respondendo automaticamente. Clique em &quot;Assumir Conversa&quot; para responder manualmente.
                   </p>
                 </div>
               )}
@@ -432,6 +601,11 @@ export default function VendedorPainel() {
                 <MessageSquare className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p className="text-lg font-medium">Selecione uma conversa</p>
                 <p className="text-sm">Clique em uma conversa à esquerda para visualizar</p>
+                {stats.ativos > 0 && (
+                  <Badge className="bg-green-500 text-white mt-4 animate-pulse">
+                    🟢 {stats.ativos} cliente{stats.ativos > 1 ? 's' : ''} ativo{stats.ativos > 1 ? 's' : ''} aguardando!
+                  </Badge>
+                )}
               </div>
             </div>
           )}
