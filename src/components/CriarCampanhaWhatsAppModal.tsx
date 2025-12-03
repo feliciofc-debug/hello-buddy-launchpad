@@ -117,9 +117,22 @@ export function CriarCampanhaWhatsAppModal({
           setMensagem(campanhaExistente.mensagem_template);
           setListasSelecionadas(campanhaExistente.listas_ids);
         } else {
-          console.log('✨ Nova campanha - configurando template');
-          // Template inicial com variáveis
-          setMensagem(`Olá {{nome}}! 👋\n\nConfira nosso produto:\n\n${produto.nome}\n${produto.preco ? `💰 R$ ${produto.preco.toFixed(2)}` : ''}\n\n${produto.descricao || ''}`);
+          console.log('✨ Nova campanha - configurando template COM LINK');
+          // Template inicial COM LINK INCLUÍDO
+          const linkProduto = produto.link_marketplace || 'https://amzofertas.com.br/checkout';
+          setMensagem(`Olá {{nome}}! 👋
+
+Confira nosso produto:
+
+📦 *${produto.nome}*
+${produto.preco ? `💰 *R$ ${produto.preco.toFixed(2)}*` : ''}
+
+${produto.descricao || ''}
+
+🛒 *Compre agora:*
+${linkProduto}
+
+_Escolha quantidade e finalize!_ ✅`);
         }
         console.log('✅ useEffect concluído com sucesso');
       } catch (error) {
