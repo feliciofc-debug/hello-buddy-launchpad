@@ -52,6 +52,8 @@ import LeadsFunil from "./pages/LeadsFunil";
 import Vendedores from "./pages/Vendedores";
 import VendedorLogin from "./pages/VendedorLogin";
 import VendedorPainel from "./pages/VendedorPainel";
+import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
+import CookieBanner from "./components/CookieBanner";
 
 const queryClient = new QueryClient();
 
@@ -110,9 +112,11 @@ const App = () => (
             <Route path="/marketplace" element={<Marketplace />} />
             <Route path="/marketplace/:slug" element={<MarketplaceProduto />} />
             <Route path="/marketplace-publico" element={<MarketplacePublico />} />
+            <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          <CookieBanner />
         </BrowserRouter>
       </TooltipProvider>
     </ThemeProvider>
