@@ -236,6 +236,76 @@ serve(async (req) => {
     if (existing) {
       console.log(`⚠️ Empresa já existe: ${existing.razao_social}`)
       
+      // Se não tem sócios, buscar e salvar
+      if (!existing.socios || existing.socios.length === 0) {
+        console.log(`👥 Empresa sem sócios - buscando na API...`)
+        
+        try {
+          const { source, data: empresaData } = await buscarCNPJ(cleanCNPJ)
+          const qsa = empresaData.qsa || []
+          
+          console.log(`📊 ${qsa.length} sócios encontrados na ${source}`)
+          
+          const sociosRelevantes = qsa.filter((s: any) => {
+            const qualificacao = s.qualificacao_socio || s.qualificacao || ''
+            return (
+              qualificacao.toLowerCase().includes('administrador') ||
+              qualificacao.toLowerCase().includes('diretor') ||
+              qualificacao.toLowerCase().includes('presidente') ||
+              qualificacao.toLowerCase().includes('sócio') ||
+              qualificacao.toLowerCase().includes('socio')
+            )
+          })
+          
+          const sociosInseridos = []
+          
+          for (const socioData of sociosRelevantes) {
+            const nomeSocio = socioData.nome_socio || socioData.nome
+            
+            // Buscar LinkedIn
+            let linkedinUrl = null
+            if (buscarLinkedin && nomeSocio) {
+              linkedinUrl = await buscarLinkedIn(nomeSocio, existing.razao_social)
+            }
+            
+            const { data: socio, error: socioError } = await supabaseClient
+              .from('socios')
+              .insert({
+                empresa_id: existing.id,
+                nome: nomeSocio,
+                cpf: socioData.cpf_cnpj_socio || null,
+                qualificacao: socioData.qualificacao_socio || socioData.qualificacao,
+                percentual_capital: socioData.percentual_capital_social || 0,
+                data_entrada: socioData.data_entrada_sociedade || null,
+                enrichment_data: linkedinUrl ? { linkedin_url: linkedinUrl } : {}
+              })
+              .select()
+              .single()
+            
+            if (!socioError && socio) {
+              sociosInseridos.push(socio)
+              console.log(`✅ Sócio salvo: ${socio.nome}`)
+            }
+          }
+          
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: `Sócios adicionados (${sociosInseridos.length})`,
+              empresa: existing,
+              socios: sociosInseridos
+            }),
+            { 
+              status: 200,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          )
+          
+        } catch (e) {
+          console.error('❌ Erro ao buscar sócios:', e)
+        }
+      }
+      
       return new Response(
         JSON.stringify({
           success: false,
