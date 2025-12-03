@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useNotificationSound } from '@/hooks/useNotificationSound';
 import { 
   MessageSquare, 
   Send, 
@@ -18,7 +19,9 @@ import {
   Phone,
   Clock,
   CheckCircle2,
-  Circle
+  Circle,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 interface VendedorSession {
@@ -58,6 +61,10 @@ export default function VendedorPainel() {
   const [stats, setStats] = useState({ total: 0, ia: 0, humano: 0, ativos: 0 });
   const [filtro, setFiltro] = useState<'todos' | 'ativos' | 'inativos'>('todos');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const clientesAtivosAnterioresRef = useRef<string[]>([]);
+  
+  // Hook de notificação sonora
+  const { enabled: somEnabled, toggleSound, playSound, testSound } = useNotificationSound();
 
   // Verificar se cliente está ativo (última mensagem DELE nos últimos 30 min)
   const isClienteAtivo = (conversa: Conversa): boolean => {
@@ -106,6 +113,47 @@ export default function VendedorPainel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [mensagens]);
+
+  // 💰 DETECTAR NOVOS CLIENTES ATIVOS E TOCAR SOM DE CAIXA REGISTRADORA
+  useEffect(() => {
+    if (!conversas.length) return;
+
+    // Identificar clientes ativos AGORA
+    const clientesAtivosAgora = conversas
+      .filter(isClienteAtivo)
+      .map(c => c.id);
+
+    // Identificar NOVOS clientes ativos (que não estavam antes)
+    const novosAtivos = clientesAtivosAgora.filter(
+      id => !clientesAtivosAnterioresRef.current.includes(id)
+    );
+
+    console.log('🔔 Clientes ativos anteriores:', clientesAtivosAnterioresRef.current.length);
+    console.log('🔔 Clientes ativos agora:', clientesAtivosAgora.length);
+    console.log('🆕 Novos clientes ativos:', novosAtivos.length);
+
+    if (novosAtivos.length > 0) {
+      console.log('💰 TOCANDO SOM DE CAIXA REGISTRADORA!');
+      
+      // 🎵 TOCAR SOM DE CAIXA REGISTRADORA
+      playSound('caixa');
+      
+      // Buscar nomes dos clientes novos ativos
+      const nomesClientes = conversas
+        .filter(c => novosAtivos.includes(c.id))
+        .map(c => c.contact_name || c.phone_number)
+        .join(', ');
+
+      // Toast visual
+      toast.success(`💰 Cliente interagindo!`, {
+        description: nomesClientes,
+        duration: 5000,
+      });
+    }
+
+    // Atualizar referência de ativos anteriores
+    clientesAtivosAnterioresRef.current = clientesAtivosAgora;
+  }, [conversas, playSound]);
 
   const carregarConversas = async (vendedorId: string) => {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -349,6 +397,26 @@ export default function VendedorPainel() {
                 <p className="font-bold text-xl text-blue-500">{stats.humano}</p>
                 <p className="text-muted-foreground">Assumidas</p>
               </div>
+            </div>
+
+            {/* Controle de Som */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={somEnabled ? 'default' : 'outline'}
+                size="sm"
+                onClick={toggleSound}
+                title={somEnabled ? 'Sons ativados' : 'Sons desativados'}
+              >
+                {somEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={testSound}
+                title="Testar som"
+              >
+                🔔
+              </Button>
             </div>
 
             <Button variant="outline" size="sm" onClick={handleLogout}>
