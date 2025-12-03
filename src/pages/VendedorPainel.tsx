@@ -59,18 +59,19 @@ export default function VendedorPainel() {
   const [filtro, setFiltro] = useState<'todos' | 'ativos' | 'inativos'>('todos');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Verificar se cliente está ativo (última mensagem dele nos últimos 30 min)
+  // Verificar se cliente está ativo (última mensagem DELE nos últimos 30 min)
   const isClienteAtivo = (conversa: Conversa): boolean => {
     if (!conversa.last_message_at) return false;
     
-    // Se última mensagem foi do vendedor/assistant, não está ativo
-    if (conversa.ultima_mensagem_role === 'assistant') return false;
+    // ✅ SÓ VERDE se última mensagem é do CLIENTE (role='user')
+    // ❌ NÃO verde se última mensagem foi do vendedor/IA (role='assistant')
+    if (conversa.ultima_mensagem_role !== 'user') return false;
     
     const agora = new Date();
     const dataUltimaMensagem = new Date(conversa.last_message_at);
     const diferencaMinutos = (agora.getTime() - dataUltimaMensagem.getTime()) / (1000 * 60);
     
-    // Ativo se mensagem veio nos últimos 30 minutos
+    // Ativo se mensagem do CLIENTE veio nos últimos 30 minutos
     return diferencaMinutos <= 30;
   };
 
@@ -200,7 +201,7 @@ export default function VendedorPainel() {
   };
 
   const assumirConversa = async (conversa: Conversa) => {
-    await supabase
+    const { error } = await supabase
       .from('whatsapp_conversations')
       .update({ 
         modo_atendimento: 'humano',
@@ -208,12 +209,22 @@ export default function VendedorPainel() {
       })
       .eq('id', conversa.id);
 
-    toast.success('Conversa assumida! A IA não responderá mais.');
+    if (error) {
+      toast.error('Erro ao assumir conversa');
+      return;
+    }
+
+    // ✅ ATUALIZAR ESTADO LOCAL IMEDIATAMENTE para mostrar campo de resposta
+    const conversaAtualizada = { ...conversa, modo_atendimento: 'humano' };
+    setConversaSelecionada(conversaAtualizada);
+    setConversas(prev => prev.map(c => c.id === conversa.id ? conversaAtualizada : c));
+    
+    toast.success('✅ Conversa assumida! Você pode responder agora.');
     if (vendedor) carregarConversas(vendedor.id);
   };
 
   const devolverParaIA = async (conversa: Conversa) => {
-    await supabase
+    const { error } = await supabase
       .from('whatsapp_conversations')
       .update({ 
         modo_atendimento: 'ia',
@@ -221,7 +232,17 @@ export default function VendedorPainel() {
       })
       .eq('id', conversa.id);
 
-    toast.success('Conversa devolvida para a IA');
+    if (error) {
+      toast.error('Erro ao devolver conversa');
+      return;
+    }
+
+    // ✅ ATUALIZAR ESTADO LOCAL IMEDIATAMENTE
+    const conversaAtualizada = { ...conversa, modo_atendimento: 'ia' };
+    setConversaSelecionada(conversaAtualizada);
+    setConversas(prev => prev.map(c => c.id === conversa.id ? conversaAtualizada : c));
+
+    toast.success('🤖 Conversa devolvida para a IA');
     if (vendedor) carregarConversas(vendedor.id);
   };
 
