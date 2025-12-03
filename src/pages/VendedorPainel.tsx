@@ -88,13 +88,40 @@ export default function VendedorPainel() {
   }, [mensagens]);
 
   const carregarConversas = async (vendedorId: string) => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🔍 BUSCANDO CONVERSAS DO VENDEDOR');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('👤 Vendedor logado ID:', vendedorId);
+    
     const { data, error } = await supabase
       .from('whatsapp_conversations')
-      .select('id, phone_number, contact_name, modo_atendimento, last_message_at, metadata, origem, tipo_contato')
+      .select('id, phone_number, contact_name, modo_atendimento, last_message_at, metadata, origem, tipo_contato, vendedor_id')
       .eq('vendedor_id', vendedorId)
       .order('last_message_at', { ascending: false });
 
+    console.log('📊 Total conversas encontradas:', data?.length || 0);
+
     if (!error && data) {
+      if (data.length > 0) {
+        console.log('📋 Conversas:', data.map(c => ({
+          id: c.id,
+          phone: c.phone_number,
+          vendedor: c.vendedor_id,
+          origem: c.origem
+        })));
+      } else {
+        console.log('⚠️ NENHUMA conversa encontrada para este vendedor');
+        
+        // Buscar TODAS as conversas para debug
+        const { data: todasConversas } = await supabase
+          .from('whatsapp_conversations')
+          .select('id, phone_number, vendedor_id, origem')
+          .order('created_at', { ascending: false })
+          .limit(10);
+        
+        console.log('🔍 Últimas 10 conversas no banco (debug):', todasConversas);
+      }
+      
       setConversas(data as Conversa[]);
       setStats({
         total: data.length,
@@ -102,6 +129,12 @@ export default function VendedorPainel() {
         humano: data.filter(c => c.modo_atendimento === 'humano').length
       });
     }
+    
+    if (error) {
+      console.error('❌ Erro ao buscar conversas:', error);
+    }
+    
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   };
 
   const carregarMensagens = async (conversationId: string) => {

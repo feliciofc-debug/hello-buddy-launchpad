@@ -263,10 +263,29 @@ export function CriarCampanhaWhatsAppModal({
     if (!user) return;
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📊 INICIANDO ENVIO DE CAMPANHA');
+    console.log('🎯 INICIANDO CAMPANHA COM VENDEDOR');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('👤 Vendedor selecionado:', vendedorSelecionado);
-    console.log('👤 Nome do vendedor:', vendedores.find(v => v.id === vendedorSelecionado)?.nome || 'Nenhum');
+    console.log('👤 Vendedor ID:', vendedorSelecionado);
+    
+    // Buscar nome do vendedor para confirmar
+    if (vendedorSelecionado) {
+      const { data: vendedorInfo } = await supabase
+        .from('vendedores')
+        .select('nome, email')
+        .eq('id', vendedorSelecionado)
+        .single();
+      
+      console.log('👤 Nome do vendedor:', vendedorInfo?.nome || 'NÃO ENCONTRADO');
+      console.log('📧 Email do vendedor:', vendedorInfo?.email || 'N/A');
+      
+      if (!vendedorInfo) {
+        toast.error('⚠️ ERRO: Vendedor não encontrado no banco!');
+        return;
+      }
+    } else {
+      console.log('⚠️ Nenhum vendedor selecionado');
+    }
+    
     console.log('📦 Produto:', produto.nome);
 
     // Buscar contatos de todas as listas selecionadas
@@ -306,7 +325,8 @@ export function CriarCampanhaWhatsAppModal({
     if (erroCampanha) {
       console.error('❌ Erro ao criar campanha:', erroCampanha);
     } else {
-      console.log('✅ Campanha salva:', campanhaTemp?.id, 'vendedor_id:', campanhaTemp?.vendedor_id);
+      console.log('✅ Campanha salva:', campanhaTemp?.id);
+      console.log('✅ Campanha vendedor_id:', campanhaTemp?.vendedor_id);
     }
 
     if (campanhaTemp) {
@@ -365,7 +385,6 @@ export function CriarCampanhaWhatsAppModal({
 
           if (error) throw error;
           enviados++;
-          console.log(`[${index + 1}/${todosContatos.length}] ✅ ${phone}`);
 
           // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
           await supabase.from('mensagens_enviadas').insert({
@@ -375,17 +394,7 @@ export function CriarCampanhaWhatsAppModal({
             lead_tipo: 'campanha'
           });
 
-          // ✅ CRIAR/ATUALIZAR CONVERSA COM VENDEDOR_ID - MÉTODO CORRIGIDO
-          console.log('💬 Criando conversa com vendedor_id:', vendedorSelecionado);
-          
-          // PRIMEIRO: Verificar se conversa já existe
-          const { data: conversaExistente } = await supabase
-            .from('whatsapp_conversations')
-            .select('*')
-            .eq('user_id', user.id)
-            .eq('phone_number', phone)
-            .maybeSingle();
-
+          // ✅ CRIAR CONVERSA COM GARANTIA DE VENDEDOR_ID
           const conversaData = {
             user_id: user.id,
             phone_number: phone,
@@ -405,42 +414,44 @@ export function CriarCampanhaWhatsAppModal({
             }
           };
 
-          if (conversaExistente) {
-            // ATUALIZAR conversa existente mantendo ou atualizando vendedor_id
-            console.log('  📝 Atualizando conversa existente:', conversaExistente.id);
-            
-            const { error: erroUpdate } = await supabase
-              .from('whatsapp_conversations')
-              .update({
-                vendedor_id: vendedorSelecionado || conversaExistente.vendedor_id,
-                last_message_at: new Date().toISOString(),
-                status: 'active',
-                metadata: {
-                  ...(typeof conversaExistente.metadata === 'object' ? conversaExistente.metadata : {}),
-                  ...conversaData.metadata
-                }
-              })
-              .eq('id', conversaExistente.id);
-            
-            if (erroUpdate) {
-              console.error('  ❌ Erro ao atualizar conversa:', erroUpdate);
-            } else {
-              console.log('  ✅ Conversa atualizada com vendedor_id:', vendedorSelecionado || conversaExistente.vendedor_id);
-            }
+          console.log(`[${index + 1}/${todosContatos.length}] ${phone}:`);
+          console.log('  📝 Dados conversa:', JSON.stringify({ vendedor_id: conversaData.vendedor_id }));
+
+          // DELETAR conversa antiga se existir (para garantir vendedor_id correto)
+          await supabase
+            .from('whatsapp_conversations')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('phone_number', phone);
+
+          console.log('  🗑️ Conversa antiga deletada (se existia)');
+
+          // CRIAR nova conversa com vendedor correto
+          const { data: novaConversa, error: erroConversa } = await supabase
+            .from('whatsapp_conversations')
+            .insert(conversaData)
+            .select('id, vendedor_id')
+            .single();
+
+          if (erroConversa) {
+            console.error('  ❌ Erro ao criar conversa:', erroConversa);
           } else {
-            // CRIAR nova conversa
-            console.log('  ➕ Criando nova conversa');
+            console.log('  ✅ Conversa criada:', novaConversa?.id);
+            console.log('  ✅ Vendedor confirmado:', novaConversa?.vendedor_id);
             
-            const { data: novaConversa, error: erroConversa } = await supabase
-              .from('whatsapp_conversations')
-              .insert(conversaData)
-              .select()
-              .single();
-            
-            if (erroConversa) {
-              console.error('  ❌ Erro ao criar conversa:', erroConversa);
-            } else {
-              console.log('  ✅ Conversa criada:', novaConversa?.id, 'vendedor:', novaConversa?.vendedor_id);
+            // TRIPLA VERIFICAÇÃO
+            if (vendedorSelecionado && novaConversa?.vendedor_id !== vendedorSelecionado) {
+              console.error('  🚨 ALERTA: Vendedor divergente!');
+              console.error('  🚨 Esperado:', vendedorSelecionado);
+              console.error('  🚨 Salvo:', novaConversa?.vendedor_id);
+              
+              // Forçar update
+              await supabase
+                .from('whatsapp_conversations')
+                .update({ vendedor_id: vendedorSelecionado })
+                .eq('id', novaConversa.id);
+              
+              console.log('  🔧 Vendedor corrigido manualmente');
             }
           }
 
