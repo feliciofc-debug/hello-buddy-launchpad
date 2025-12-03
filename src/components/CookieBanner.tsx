@@ -20,7 +20,7 @@ interface CookiePreferences {
 
 declare global {
   interface Window {
-    gtag?: (...args: any[]) => void;
+    gtag?: (...args: unknown[]) => void;
   }
 }
 
@@ -40,7 +40,7 @@ export default function CookieBanner() {
     if (!consent) {
       setTimeout(() => setShowBanner(true), 2000);
     } else {
-      const saved = JSON.parse(consent);
+      const saved = JSON.parse(consent) as CookiePreferences;
       setPreferences(saved);
       applyConsent(saved);
     }
@@ -99,7 +99,7 @@ export default function CookieBanner() {
 
   return (
     <>
-      {/* BANNER PRINCIPAL */}
+      {/* Banner Principal */}
       <div className="fixed bottom-0 left-0 right-0 z-50 p-4 md:p-6 animate-in slide-in-from-bottom">
         <Card className="max-w-4xl mx-auto p-6 shadow-2xl border-2 bg-card">
           <div className="flex items-start gap-4">
@@ -113,13 +113,14 @@ export default function CookieBanner() {
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
                 Usamos cookies para melhorar sua experiência, analisar o tráfego 
-                e personalizar conteúdo. Ao clicar em "Aceitar todos", você concorda 
+                e personalizar conteúdo. Ao clicar em &quot;Aceitar todos&quot;, você concorda 
                 com nosso uso de cookies.
                 {' '}
                 <a 
                   href="/privacy" 
                   className="text-primary underline"
                   target="_blank"
+                  rel="noopener noreferrer"
                 >
                   Saiba mais
                 </a>
@@ -161,7 +162,7 @@ export default function CookieBanner() {
         </Card>
       </div>
 
-      {/* MODAL DE PREFERÊNCIAS */}
+      {/* Modal de Preferências */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
