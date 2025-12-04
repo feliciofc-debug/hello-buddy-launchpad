@@ -19,16 +19,12 @@ import {
   X,
   Plus,
   Loader2,
-  Sparkles,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
   Filter,
   Zap,
-  Target,
-  AlertCircle,
-  Wand2,
-  Bot
+  Target
 } from 'lucide-react'
 
 // ===================================================================
@@ -264,14 +260,6 @@ export default function ConfigurarICP() {
   const [refinamentoGeografico, setRefinamentoGeografico] = useState('')
   const [refinamentoComportamental, setRefinamentoComportamental] = useState('')
 
-  // Sugestões da IA
-  const [sugestoesIA, setSugestoesIA] = useState<any[]>([])
-  const [loadingIA, setLoadingIA] = useState(false)
-  
-  // IA Gerador de ICP
-  const [promptIA, setPromptIA] = useState('')
-  const [configGeradaIA, setConfigGeradaIA] = useState<any>(null)
-  const [loadingGerarIA, setLoadingGerarIA] = useState(false)
 
   const profissoesFiltradas = PROFISSOES_DISPONIVEIS.filter(p => 
     p.label.toLowerCase().includes(searchProfissao.toLowerCase()) ||
@@ -314,181 +302,6 @@ export default function ConfigurarICP() {
     })
   }
 
-  // ===================================================================
-  // GERAR ICP COM IA (KEYWORD-BASED)
-  // ===================================================================
-
-  const gerarICPComIA = async () => {
-    if (!promptIA.trim()) {
-      toast({
-        title: "⚠️ Descreva seu cliente ideal",
-        description: "Informe o tipo de empresa/cliente que você quer prospectar",
-        variant: "destructive"
-      })
-      return
-    }
-
-    setLoadingGerarIA(true)
-    setConfigGeradaIA(null)
-
-    try {
-      const { data, error } = await supabase.functions.invoke('gerar-icp-ia', {
-        body: { prompt: promptIA }
-      })
-
-      if (error) throw error
-
-      if (data.success && data.configuracao) {
-        setConfigGeradaIA(data.configuracao)
-        toast({
-          title: "✨ ICP gerado com sucesso!",
-          description: "Revise e aplique a configuração"
-        })
-      }
-    } catch (error) {
-      console.error('Erro ao gerar ICP:', error)
-      toast({
-        title: "❌ Erro ao gerar ICP",
-        description: "Tente novamente",
-        variant: "destructive"
-      })
-    } finally {
-      setLoadingGerarIA(false)
-    }
-  }
-
-  const aplicarConfigIA = () => {
-    if (!configGeradaIA) return
-
-    // Aplicar nome e descrição
-    setNomeICP(configGeradaIA.nome)
-    setDescricao(configGeradaIA.descricao)
-    setTipoProspeccao(configGeradaIA.tipoProspeccao || 'b2b')
-
-    // Aplicar setores se B2B
-    if (configGeradaIA.setores && configGeradaIA.setores.length > 0) {
-      const setoresValidos = configGeradaIA.setores.filter((s: string) => 
-        SETORES_B2B.includes(s)
-      )
-      setSetoresSelecionados(setoresValidos)
-    }
-
-    // Aplicar estados
-    if (configGeradaIA.estado) {
-      setEstadosSelecionados([configGeradaIA.estado])
-    }
-
-    // Aplicar cidade
-    if (configGeradaIA.cidade) {
-      setCidadeSelecionada(configGeradaIA.cidade)
-    }
-
-    // Aplicar tipos de empresa como refinamento
-    if (configGeradaIA.tipos && configGeradaIA.tipos.length > 0) {
-      const tiposTexto = `Tipos de empresa: ${configGeradaIA.tipos.join(', ')}`
-      setRefinamentoEmpresa(tiposTexto)
-    }
-
-    // Aplicar cargos como refinamento profissional
-    if (configGeradaIA.cargos && configGeradaIA.cargos.length > 0) {
-      const cargosTexto = `Cargos-alvo: ${configGeradaIA.cargos.join(', ')}`
-      setRefinamentoProfissional(cargosTexto)
-    }
-
-    // Limpar config gerada
-    setConfigGeradaIA(null)
-    setPromptIA('')
-
-    toast({
-      title: "✅ Configuração aplicada!",
-      description: "Revise os campos e ajuste se necessário"
-    })
-  }
-
-  // ===================================================================
-  // GERAR SUGESTÕES COM IA
-  // ===================================================================
-
-  const gerarSugestoesIA = async () => {
-    setLoadingIA(true)
-    try {
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      const sugestoes = [
-        {
-          categoria: "Tamanho Empresa",
-          sugestao: "Empresas com mais de 100 funcionários",
-          motivo: "Maior poder de compra e decisão descentralizada"
-        },
-        {
-          categoria: "Cargo/Função",
-          sugestao: "Diretores, Gerentes e C-Level",
-          motivo: "Tomadores de decisão com orçamento aprovado"
-        },
-        {
-          categoria: "Faturamento",
-          sugestao: "Faturamento anual acima de R$ 5 milhões",
-          motivo: "Capacidade financeira para investir em soluções"
-        },
-        {
-          categoria: "Localização",
-          sugestao: "Regiões metropolitanas e capitais",
-          motivo: "Maior concentração de empresas e profissionais qualificados"
-        },
-        {
-          categoria: "Comportamento",
-          sugestao: "Ativos em redes sociais profissionais (LinkedIn)",
-          motivo: "Mais receptivos a abordagens modernas"
-        }
-      ]
-      
-      setSugestoesIA(sugestoes)
-      
-      toast({
-        title: "✨ Sugestões geradas com sucesso!",
-        description: `${sugestoes.length} refinamentos inteligentes prontos`
-      })
-
-    } catch (error) {
-      console.error(error)
-      toast({
-        title: "❌ Erro ao gerar sugestões",
-        description: "Tente novamente em instantes",
-        variant: "destructive"
-      })
-    } finally {
-      setLoadingIA(false)
-    }
-  }
-
-  const aplicarSugestao = (sugestao: any) => {
-    const campo = sugestao.categoria.includes('Empresa') || sugestao.categoria.includes('Tamanho') || sugestao.categoria.includes('Faturamento')
-      ? 'empresa'
-      : sugestao.categoria.includes('Cargo') || sugestao.categoria.includes('Função')
-      ? 'profissional'
-      : sugestao.categoria.includes('Localização') || sugestao.categoria.includes('Geográfico')
-      ? 'geografico'
-      : 'comportamental'
-
-    const textoSugestao = `- ${sugestao.sugestao} (${sugestao.motivo})`
-
-    if (campo === 'empresa') {
-      setRefinamentoEmpresa(prev => prev ? `${prev}\n${textoSugestao}` : textoSugestao)
-    } else if (campo === 'profissional') {
-      setRefinamentoProfissional(prev => prev ? `${prev}\n${textoSugestao}` : textoSugestao)
-    } else if (campo === 'geografico') {
-      setRefinamentoGeografico(prev => prev ? `${prev}\n${textoSugestao}` : textoSugestao)
-    } else {
-      setRefinamentoComportamental(prev => prev ? `${prev}\n${textoSugestao}` : textoSugestao)
-    }
-
-    setSugestoesIA(prev => prev.filter(s => s !== sugestao))
-    
-    toast({
-      title: "✅ Sugestão aplicada!",
-      description: `Adicionada ao refinamento`
-    })
-  }
 
   // ===================================================================
   // SALVAR ICP
@@ -635,98 +448,6 @@ export default function ConfigurarICP() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* COLUNA PRINCIPAL (3/4) */}
         <div className="lg:col-span-3 space-y-6">
-          {/* Card IA - Gerador Inteligente */}
-          <Card className="border-primary/50 bg-gradient-to-r from-primary/5 to-transparent">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Bot className="h-5 w-5 text-primary" />
-                🤖 Gerador Inteligente de ICP
-              </CardTitle>
-              <CardDescription>
-                Descreva seu cliente ideal em linguagem natural e o sistema gera a configuração automaticamente
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label>Descreva seu cliente ideal</Label>
-                <Textarea
-                  placeholder="Ex: Quero importadoras de alimentos no Rio de Janeiro, preferencialmente empresas de médio porte que trabalham com produtos agrícolas..."
-                  value={promptIA}
-                  onChange={(e) => setPromptIA(e.target.value)}
-                  rows={3}
-                  className="mt-2"
-                />
-                <p className="text-xs text-muted-foreground mt-2">
-                  💡 Dica: Mencione tipo de empresa (importadora, exportadora, trading), setor (alimentos, agrícola), e localização (RJ, SP)
-                </p>
-              </div>
-
-              <Button 
-                onClick={gerarICPComIA}
-                disabled={loadingGerarIA || !promptIA.trim()}
-                className="w-full"
-              >
-                {loadingGerarIA ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Analisando...
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className="mr-2 h-4 w-4" />
-                    Gerar ICP com IA
-                  </>
-                )}
-              </Button>
-
-              {/* Resultado da IA */}
-              {configGeradaIA && (
-                <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                  <h4 className="font-semibold text-green-800 dark:text-green-300 mb-3 flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4" />
-                    ICP Gerado com Sucesso!
-                  </h4>
-                  
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <strong>Nome:</strong> {configGeradaIA.nome}
-                    </div>
-                    {configGeradaIA.tipos?.length > 0 && (
-                      <div>
-                        <strong>Tipos de Empresa:</strong> {configGeradaIA.tipos.join(', ')}
-                      </div>
-                    )}
-                    {configGeradaIA.setores?.length > 0 && (
-                      <div>
-                        <strong>Setores:</strong> {configGeradaIA.setores.join(', ')}
-                      </div>
-                    )}
-                    <div>
-                      <strong>Localização:</strong> {configGeradaIA.localizacao} ({configGeradaIA.estado})
-                    </div>
-                    {configGeradaIA.cargos?.length > 0 && (
-                      <div>
-                        <strong>Cargos-alvo:</strong> {configGeradaIA.cargos.join(', ')}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 mt-4">
-                    <Button onClick={aplicarConfigIA} className="flex-1">
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Aplicar Configuração
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setConfigGeradaIA(null)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Card Básico */}
           <Card>
@@ -787,7 +508,7 @@ export default function ConfigurarICP() {
 
           {/* Tabs de Configuração */}
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basico">
                 <CheckCircle2 className="h-4 w-4 mr-2" />
                 Seleção Rápida
@@ -799,10 +520,6 @@ export default function ConfigurarICP() {
               <TabsTrigger value="geografico">
                 <MapPin className="h-4 w-4 mr-2" />
                 Localização
-              </TabsTrigger>
-              <TabsTrigger value="ia">
-                <Sparkles className="h-4 w-4 mr-2" />
-                IA Sugestões
               </TabsTrigger>
             </TabsList>
 
@@ -1139,73 +856,6 @@ export default function ConfigurarICP() {
               </Card>
             </TabsContent>
 
-            {/* TAB 4: IA SUGESTÕES */}
-            <TabsContent value="ia" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5 text-yellow-500" />
-                    Sugestões Inteligentes da IA
-                  </CardTitle>
-                  <CardDescription>
-                    A IA analisa seu ICP e sugere refinamentos para aumentar conversão
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <Button
-                    onClick={gerarSugestoesIA}
-                    disabled={loadingIA || totalSelecionado === 0}
-                    className="w-full"
-                    size="lg"
-                  >
-                    {loadingIA ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Analisando seu ICP...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="mr-2 h-4 w-4" />
-                        Gerar Sugestões com IA
-                      </>
-                    )}
-                  </Button>
-
-                  {sugestoesIA.length > 0 && (
-                    <div className="space-y-3 mt-6">
-                      <Label>Clique para aplicar:</Label>
-                      {sugestoesIA.map((sugestao, idx) => (
-                        <div
-                          key={idx}
-                          className="p-4 border rounded-lg hover:bg-accent cursor-pointer transition-colors"
-                          onClick={() => aplicarSugestao(sugestao)}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Badge variant="secondary">{sugestao.categoria}</Badge>
-                              </div>
-                              <p className="font-medium mb-1">{sugestao.sugestao}</p>
-                              <p className="text-sm text-muted-foreground">{sugestao.motivo}</p>
-                            </div>
-                            <Plus className="h-5 w-5 text-muted-foreground flex-shrink-0 mt-1" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {totalSelecionado === 0 && (
-                    <Alert>
-                      <AlertCircle className="h-4 w-4" />
-                      <AlertDescription>
-                        Selecione setores ou profissões primeiro para gerar sugestões inteligentes
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
           </Tabs>
         </div>
 
