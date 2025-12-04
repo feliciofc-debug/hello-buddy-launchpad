@@ -170,3 +170,6 @@ verify_jwt = false
 
 [functions.ai-product-assistant-simple]
 verify_jwt = false
+
+[functions.enrich-empresa]
+verify_jwt = false
