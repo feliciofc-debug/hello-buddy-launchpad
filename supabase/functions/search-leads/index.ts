@@ -244,8 +244,7 @@ serve(async (req) => {
                   const nome = limparNomeEmpresa(place.title)
                   
                   if (nome && !isEmpresaDuplicada(nome, place.website)) {
-                    leads.push({
-                      razao_social: nome,
+                    const leadData: any = {
                       nome_fantasia: nome,
                       telefone: place.phone || extrairTelefone(place.snippet || ''),
                       endereco: place.address,
@@ -257,11 +256,21 @@ serve(async (req) => {
                       query_usada: query,
                       pipeline_status: 'descoberto',
                       score: 70,
-                      setor: setores[0] || 'Não identificado',
                       campanha_id: campanha_id,
-                      user_id: icp.user_id,
-                      cnpj: gerarCnpjFicticio(nome, leads.length)
-                    })
+                      user_id: icp.user_id
+                    }
+                    
+                    // Campos específicos por tipo
+                    if (isB2B) {
+                      leadData.razao_social = nome
+                      leadData.setor = setores[0] || 'Não identificado'
+                      leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
+                    } else {
+                      leadData.nome_completo = nome
+                      leadData.profissao = profissao || 'Não identificado'
+                    }
+                    
+                    leads.push(leadData)
                     console.log(`✅ [LOCAL] ${nome} | ${place.phone || 'Sem tel'} | ${place.address || 'Sem end'}`)
                   }
                 }
@@ -283,8 +292,7 @@ serve(async (req) => {
                   const email = extrairEmail(result.snippet || '')
                   
                   if (nome && nome.length > 3 && !isEmpresaDuplicada(nome, result.link)) {
-                    leads.push({
-                      razao_social: nome,
+                    const leadData: any = {
                       nome_fantasia: nome,
                       telefone: telefone,
                       email: email,
@@ -296,11 +304,20 @@ serve(async (req) => {
                       query_usada: query,
                       pipeline_status: 'descoberto',
                       score: 55,
-                      setor: setores[0] || 'Não identificado',
                       campanha_id: campanha_id,
-                      user_id: icp.user_id,
-                      cnpj: gerarCnpjFicticio(nome, leads.length)
-                    })
+                      user_id: icp.user_id
+                    }
+                    
+                    if (isB2B) {
+                      leadData.razao_social = nome
+                      leadData.setor = setores[0] || 'Não identificado'
+                      leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
+                    } else {
+                      leadData.nome_completo = nome
+                      leadData.profissao = profissao || 'Não identificado'
+                    }
+                    
+                    leads.push(leadData)
                     console.log(`✅ [ORGANIC] ${nome} | ${telefone || 'Sem tel'} | ${result.link}`)
                   }
                 }
@@ -325,8 +342,7 @@ serve(async (req) => {
             const nome = limparNomeEmpresa(place.title || place.name)
             
             if (nome && !isEmpresaDuplicada(nome, place.website)) {
-              leads.push({
-                razao_social: nome,
+              const leadData: any = {
                 nome_fantasia: nome,
                 telefone: place.phone || place.phone_number,
                 endereco: place.address,
@@ -338,11 +354,20 @@ serve(async (req) => {
                 query_usada: query,
                 pipeline_status: 'descoberto',
                 score: 75,
-                setor: setores[0] || 'Não identificado',
                 campanha_id: campanha_id,
-                user_id: icp.user_id,
-                cnpj: gerarCnpjFicticio(nome, leads.length)
-              })
+                user_id: icp.user_id
+              }
+              
+              if (isB2B) {
+                leadData.razao_social = nome
+                leadData.setor = setores[0] || 'Não identificado'
+                leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
+              } else {
+                leadData.nome_completo = nome
+                leadData.profissao = profissao || 'Não identificado'
+              }
+              
+              leads.push(leadData)
               console.log(`✅ [MAPS] ${nome} | 📱 ${place.phone || 'Sem tel'} | 📍 ${place.address || 'Sem end'}`)
             }
           }
@@ -410,8 +435,7 @@ serve(async (req) => {
                 }
               }
 
-              leads.push({
-                razao_social: nome,
+              const leadData: any = {
                 nome_fantasia: nome,
                 telefone: telefone,
                 endereco: place.formatted_address,
@@ -423,11 +447,20 @@ serve(async (req) => {
                 query_usada: query,
                 pipeline_status: 'descoberto',
                 score: telefone ? 80 : 60,
-                setor: setores[0] || 'Não identificado',
                 campanha_id: campanha_id,
-                user_id: icp.user_id,
-                cnpj: gerarCnpjFicticio(nome, leads.length)
-              })
+                user_id: icp.user_id
+              }
+              
+              if (isB2B) {
+                leadData.razao_social = nome
+                leadData.setor = setores[0] || 'Não identificado'
+                leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
+              } else {
+                leadData.nome_completo = nome
+                leadData.profissao = profissao || 'Não identificado'
+              }
+              
+              leads.push(leadData)
               console.log(`✅ [PLACES] ${nome} | 📱 ${telefone || 'Sem tel'} | 🌐 ${website || 'Sem site'}`)
             }
           }
