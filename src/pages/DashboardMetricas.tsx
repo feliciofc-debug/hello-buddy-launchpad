@@ -256,7 +256,6 @@ export default function DashboardMetricas() {
     { icon: Target, label: 'Configurar ICP', path: '/configurar-icp' },
     { icon: Users, label: 'Vendedores', path: '/vendedores' },
     { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
-    { icon: Megaphone, label: 'Campanhas', path: '/campanhas' },
     { icon: TrendingUp, label: 'Google Ads', path: '/google-ads' },
     { icon: Activity, label: 'Analytics', path: '/analytics' },
     { icon: Settings, label: 'Configurações', path: '/configuracoes' },

@@ -393,19 +393,6 @@ const Dashboard = () => {
           </a>
           {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') && (
             <a
-              href="/campanhas"
-              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                window.location.pathname === '/campanhas' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              <Megaphone size={20} />
-              Campanhas Google Ads
-            </a>
-          )}
-          {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') && (
-            <a
               href="/analytics"
               className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
                 window.location.pathname === '/analytics' 
