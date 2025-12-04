@@ -147,6 +147,10 @@ export default function CampanhasProspeccao() {
         })
         .eq('id', campanhaId);
 
+      console.log('━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🚀 INICIANDO CAMPANHA')
+      console.log('Campanha:', campanhaId)
+
       const { data, error } = await supabase.functions.invoke('search-leads', {
         body: {
           campanha_id: campanhaId,
@@ -156,11 +160,24 @@ export default function CampanhasProspeccao() {
 
       if (error) throw error;
 
-      toast.success(`✅ ${data?.total_encontrados || 0} leads descobertos!`, { id: 'descoberta' });
+      console.log('📊 Resultado:', data)
+      console.log('━━━━━━━━━━━━━━━━━━━━━━')
+
+      const novos = data?.novos_encontrados || data?.total_encontrados || 0;
+      const total = data?.total_campanha || 0;
+
+      if (novos > 0) {
+        toast.success(`✅ +${novos} leads descobertos! (Total: ${total})`, { id: 'descoberta' });
+      } else if (total > 0) {
+        toast.info(`ℹ️ Nenhum novo (duplicatas). Total: ${total}`, { id: 'descoberta' });
+      } else {
+        toast.warning(`⚠️ Nenhum lead encontrado. Verifique ICP.`, { id: 'descoberta' });
+      }
+      
       loadData();
 
     } catch (error: any) {
-      console.error("Erro ao iniciar campanha:", error);
+      console.error("❌ Erro ao iniciar campanha:", error);
       toast.error(`❌ Erro: ${error.message}`, { id: 'descoberta' });
       
       await supabase
@@ -209,8 +226,14 @@ export default function CampanhasProspeccao() {
     const campanha = campanhas.find(c => c.id === campanhaId);
     if (!campanha) return;
 
+    setProcessing(campanhaId);
+    
     try {
       toast.loading("🔍 Buscando leads...", { id: 'busca' });
+      
+      console.log('━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 INÍCIO DA BUSCA')
+      console.log('Campanha:', campanhaId)
       
       const { data, error } = await supabase.functions.invoke('search-leads', {
         body: {
@@ -221,11 +244,28 @@ export default function CampanhasProspeccao() {
 
       if (error) throw error;
 
-      toast.success(`✅ ${data?.total_encontrados || 0} novos leads descobertos!`, { id: 'busca' });
+      console.log('📊 Resultado busca:', data)
+      console.log('✅ Novos:', data?.novos_encontrados || 0)
+      console.log('📊 TOTAL campanha:', data?.total_campanha || 0)
+      console.log('━━━━━━━━━━━━━━━━━━━━━━')
+
+      const novos = data?.novos_encontrados || data?.total_encontrados || 0;
+      const total = data?.total_campanha || 0;
+
+      if (novos > 0) {
+        toast.success(`✅ +${novos} novos leads! (Total: ${total})`, { id: 'busca' });
+      } else if (total > 0) {
+        toast.info(`ℹ️ Nenhum novo lead (duplicatas filtradas). Total: ${total}`, { id: 'busca' });
+      } else {
+        toast.warning(`⚠️ Nenhum lead encontrado. Verifique o ICP.`, { id: 'busca' });
+      }
+      
       loadData();
     } catch (error: any) {
-      console.error("Erro na busca:", error);
+      console.error("❌ Erro na busca:", error);
       toast.error(`❌ Erro: ${error.message}`, { id: 'busca' });
+    } finally {
+      setProcessing(null);
     }
   };
 
