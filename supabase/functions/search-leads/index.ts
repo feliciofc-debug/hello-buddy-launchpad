@@ -444,8 +444,13 @@ serve(async (req) => {
     }
 
     // ============ SALVAR LEADS ============
-    console.log(`💾 [SALVAR] Total de empresas para salvar: ${leads.length}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log(`💾 [SALVAR] NOVOS leads para salvar: ${leads.length}`)
+    console.log(`📊 [DB] Leads já existentes: ${leadsExistentes?.length || 0}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
+    let leadsNovosInseridos = 0
+    
     if (leads.length > 0) {
       const { data: insertData, error: insertError } = await supabase
         .from(tabela)
@@ -453,21 +458,24 @@ serve(async (req) => {
         .select()
 
       if (insertError) {
-        console.error('❌ [DB] Erro ao salvar:', insertError.message)
+        console.error('❌ [DB] Erro ao salvar em lote:', insertError.message)
         
         // Tentar inserir um por um
-        let salvos = 0
         for (const lead of leads) {
           const { error: singleError } = await supabase
             .from(tabela)
             .insert(lead)
           
-          if (!singleError) salvos++
-          else console.error('❌ [DB] Erro individual:', singleError.message)
+          if (!singleError) {
+            leadsNovosInseridos++
+          } else {
+            console.error('❌ [DB] Erro individual:', singleError.message, '- Lead:', lead.razao_social || lead.nome_fantasia)
+          }
         }
-        console.log(`✅ [DB] Salvos individualmente: ${salvos}/${leads.length}`)
+        console.log(`✅ [DB] Salvos individualmente: ${leadsNovosInseridos}/${leads.length}`)
       } else {
-        console.log(`✅ [DB] ${leads.length} empresas salvas com sucesso`)
+        leadsNovosInseridos = insertData?.length || leads.length
+        console.log(`✅ [DB] ${leadsNovosInseridos} empresas salvas com sucesso`)
       }
 
       // Atualizar stats da campanha
@@ -483,7 +491,7 @@ serve(async (req) => {
         .from('campanhas_prospeccao')
         .update({
           stats: {
-            descobertos: descobertosAtuais + leads.length,
+            descobertos: descobertosAtuais + leadsNovosInseridos,
             enriquecidos: (currentStats?.stats as any)?.enriquecidos || 0,
             qualificados: (currentStats?.stats as any)?.qualificados || 0,
             enviados: (currentStats?.stats as any)?.enviados || 0,
@@ -494,18 +502,27 @@ serve(async (req) => {
         .eq('id', campanha_id)
     }
 
+    // Contar TOTAL de leads da campanha no banco
+    const { count: totalLeadsCampanha } = await supabase
+      .from(tabela)
+      .select('*', { count: 'exact', head: true })
+      .eq('campanha_id', campanha_id)
+
     // Contar empresas com telefone
     const empresasComTelefone = leads.filter(l => l.telefone).length
 
-    console.log('✅ [FIM] Busca concluída:', {
-      total: leads.length,
-      com_telefone: empresasComTelefone,
-      sem_telefone: leads.length - empresasComTelefone
-    })
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('✅ [FIM] Busca concluída:')
+    console.log(`   📊 NOVOS inseridos agora: ${leadsNovosInseridos}`)
+    console.log(`   📊 TOTAL na campanha: ${totalLeadsCampanha}`)
+    console.log(`   📱 Com telefone (novos): ${empresasComTelefone}`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     return new Response(JSON.stringify({
       success: true,
-      leads_encontrados: leads.length,
+      novos_encontrados: leadsNovosInseridos,
+      total_campanha: totalLeadsCampanha || 0,
+      total_encontrados: leadsNovosInseridos, // para compatibilidade
       empresas_com_telefone: empresasComTelefone,
       tipo: isB2B ? 'B2B (Empresas)' : 'B2C',
       queries_executadas: searchQueries.length,
@@ -513,7 +530,10 @@ serve(async (req) => {
       debug: {
         serpapi_configured: !!SERPAPI_KEY,
         google_places_configured: !!GOOGLE_API_KEY,
-        queries: searchQueries
+        queries: searchQueries,
+        leads_antes: leadsExistentes?.length || 0,
+        leads_novos: leadsNovosInseridos,
+        leads_total: totalLeadsCampanha
       }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
