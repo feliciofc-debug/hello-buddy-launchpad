@@ -173,3 +173,6 @@ verify_jwt = false
 
 [functions.enrich-empresa]
 verify_jwt = false
+
+[functions.gerar-icp-ia]
+verify_jwt = false
