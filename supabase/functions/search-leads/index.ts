@@ -237,7 +237,6 @@ serve(async (req) => {
                   
                   if (nome && !isEmpresaDuplicada(nome, place.website)) {
                     const leadData: any = {
-                      nome_fantasia: nome,
                       telefone: place.phone || extrairTelefone(place.snippet || ''),
                       endereco: place.address,
                       site_url: place.website,
@@ -252,13 +251,14 @@ serve(async (req) => {
                       user_id: icp.user_id
                     }
                     
-                    // Campos específicos por tipo
+                    // Campos específicos por tipo de tabela
                     if (isB2B) {
+                      leadData.nome_fantasia = nome
                       leadData.razao_social = nome
                       leadData.setor = setores[0] || 'Não identificado'
                       leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
                     } else {
-                      // B2C - SEM CNPJ!
+                      // B2C - usa nome_completo, SEM nome_fantasia!
                       leadData.nome_completo = nome
                       leadData.profissao = profissao || 'Não identificado'
                     }
@@ -286,7 +286,6 @@ serve(async (req) => {
                   
                   if (nome && nome.length > 3 && !isEmpresaDuplicada(nome, result.link)) {
                     const leadData: any = {
-                      nome_fantasia: nome,
                       telefone: telefone,
                       email: email,
                       site_url: result.link,
@@ -302,11 +301,12 @@ serve(async (req) => {
                     }
                     
                     if (isB2B) {
+                      leadData.nome_fantasia = nome
                       leadData.razao_social = nome
                       leadData.setor = setores[0] || 'Não identificado'
                       leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
                     } else {
-                      // B2C - SEM CNPJ!
+                      // B2C - usa nome_completo, SEM nome_fantasia!
                       leadData.nome_completo = nome
                       leadData.profissao = profissao || 'Não identificado'
                     }
@@ -337,7 +337,6 @@ serve(async (req) => {
             
             if (nome && !isEmpresaDuplicada(nome, place.website)) {
               const leadData: any = {
-                nome_fantasia: nome,
                 telefone: place.phone || place.phone_number,
                 endereco: place.address,
                 site_url: place.website,
@@ -353,11 +352,12 @@ serve(async (req) => {
               }
               
               if (isB2B) {
+                leadData.nome_fantasia = nome
                 leadData.razao_social = nome
                 leadData.setor = setores[0] || 'Não identificado'
                 leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
               } else {
-                // B2C - SEM CNPJ!
+                // B2C - usa nome_completo, SEM nome_fantasia!
                 leadData.nome_completo = nome
                 leadData.profissao = profissao || 'Não identificado'
               }
@@ -431,7 +431,6 @@ serve(async (req) => {
               }
 
               const leadData: any = {
-                nome_fantasia: nome,
                 telefone: telefone,
                 endereco: place.formatted_address,
                 site_url: website,
@@ -447,11 +446,12 @@ serve(async (req) => {
               }
               
               if (isB2B) {
+                leadData.nome_fantasia = nome
                 leadData.razao_social = nome
                 leadData.setor = setores[0] || 'Não identificado'
                 leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
               } else {
-                // B2C - SEM CNPJ!
+                // B2C - usa nome_completo, SEM nome_fantasia!
                 leadData.nome_completo = nome
                 leadData.profissao = profissao || 'Não identificado'
               }
