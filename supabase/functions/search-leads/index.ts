@@ -60,6 +60,14 @@ const limparNomeEmpresa = (title: string): string => {
     .substring(0, 150)
 }
 
+// Gerar CNPJ fictício único baseado no nome da empresa
+const gerarCnpjFicticio = (nome: string, index: number): string => {
+  const hash = nome.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  const timestamp = Date.now().toString().slice(-8)
+  const cnpj = `${String(hash % 100).padStart(2, '0')}${String(index).padStart(3, '0')}${timestamp}${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`
+  return cnpj.substring(0, 14).padEnd(14, '0')
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -248,11 +256,11 @@ serve(async (req) => {
                       fonte_snippet: place.snippet?.substring(0, 300),
                       query_usada: query,
                       pipeline_status: 'descoberto',
-                      score: 70, // Empresas locais têm score maior
+                      score: 70,
                       setor: setores[0] || 'Não identificado',
                       campanha_id: campanha_id,
                       user_id: icp.user_id,
-                      cnpj: '00000000000000'
+                      cnpj: gerarCnpjFicticio(nome, leads.length)
                     })
                     console.log(`✅ [LOCAL] ${nome} | ${place.phone || 'Sem tel'} | ${place.address || 'Sem end'}`)
                   }
@@ -291,7 +299,7 @@ serve(async (req) => {
                       setor: setores[0] || 'Não identificado',
                       campanha_id: campanha_id,
                       user_id: icp.user_id,
-                      cnpj: '00000000000000'
+                      cnpj: gerarCnpjFicticio(nome, leads.length)
                     })
                     console.log(`✅ [ORGANIC] ${nome} | ${telefone || 'Sem tel'} | ${result.link}`)
                   }
@@ -329,11 +337,11 @@ serve(async (req) => {
                 fonte_snippet: `Rating: ${place.rating || 'N/A'} | Reviews: ${place.reviews || 0}`,
                 query_usada: query,
                 pipeline_status: 'descoberto',
-                score: 75, // Google Maps tem dados mais confiáveis
+                score: 75,
                 setor: setores[0] || 'Não identificado',
                 campanha_id: campanha_id,
                 user_id: icp.user_id,
-                cnpj: '00000000000000'
+                cnpj: gerarCnpjFicticio(nome, leads.length)
               })
               console.log(`✅ [MAPS] ${nome} | 📱 ${place.phone || 'Sem tel'} | 📍 ${place.address || 'Sem end'}`)
             }
@@ -414,11 +422,11 @@ serve(async (req) => {
                 fonte_snippet: `Rating: ${place.rating || 'N/A'} | ${place.user_ratings_total || 0} avaliações`,
                 query_usada: query,
                 pipeline_status: 'descoberto',
-                score: telefone ? 80 : 60, // Com telefone = score maior
+                score: telefone ? 80 : 60,
                 setor: setores[0] || 'Não identificado',
                 campanha_id: campanha_id,
                 user_id: icp.user_id,
-                cnpj: '00000000000000'
+                cnpj: gerarCnpjFicticio(nome, leads.length)
               })
               console.log(`✅ [PLACES] ${nome} | 📱 ${telefone || 'Sem tel'} | 🌐 ${website || 'Sem site'}`)
             }
