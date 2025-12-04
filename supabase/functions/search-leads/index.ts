@@ -73,7 +73,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
-  console.log('🚀 [INICIO] Função search-leads V6 - BUSCA DE EMPRESAS (não pessoas)')
+  console.log('🚀 [INICIO] Função search-leads V7 - BUSCA DE EMPRESAS (CORRIGIDO)')
   
   const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY')
   const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY')
@@ -122,35 +122,27 @@ serve(async (req) => {
     console.log('🎯 [TIPO]', isB2B ? 'B2B (EMPRESAS)' : 'B2C (Profissionais)')
     console.log('🎯 [BUSCA] Parâmetros:', { setores, profissao, cidade, estado, bairros })
 
-    // SET para evitar duplicatas
+    // SET para evitar duplicatas INTERNAS (mesma busca)
     const empresasUnicas = new Set<string>()
     let leads: any[] = []
 
-    // Verificar duplicata
+    // Verificar duplicata INTERNA (não do banco!)
     const isEmpresaDuplicada = (nome: string, website?: string): boolean => {
       const key = `${nome.toLowerCase().trim()}_${website?.toLowerCase() || ''}`
       if (empresasUnicas.has(key)) {
-        console.log('⚠️ [DUPLICATA] Ignorando:', nome)
+        console.log('⚠️ [DUPLICATA INTERNA] Ignorando:', nome)
         return true
       }
       empresasUnicas.add(key)
       return false
     }
 
-    // Buscar leads existentes
+    // Definir tabela correta
     const tabela = isB2B ? 'leads_b2b' : 'leads_b2c'
-    const { data: leadsExistentes } = await supabase
-      .from(tabela)
-      .select('razao_social, nome_fantasia, site_url')
-      .eq('campanha_id', campanha_id)
-
-    if (leadsExistentes) {
-      for (const lead of leadsExistentes) {
-        const nome = lead.razao_social || lead.nome_fantasia || ''
-        empresasUnicas.add(`${nome.toLowerCase().trim()}_${lead.site_url?.toLowerCase() || ''}`)
-      }
-      console.log('📊 [DB] Leads existentes:', leadsExistentes.length)
-    }
+    
+    // ❌ REMOVIDO: Não buscar leads existentes do banco
+    // Deixar o banco gerenciar duplicatas via constraint!
+    console.log('📊 [DB] Tabela destino:', tabela)
 
     // ============ GERAR QUERIES PARA EMPRESAS ============
     const gerarQueriesEmpresas = (): string[] => {
@@ -266,6 +258,7 @@ serve(async (req) => {
                       leadData.setor = setores[0] || 'Não identificado'
                       leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
                     } else {
+                      // B2C - SEM CNPJ!
                       leadData.nome_completo = nome
                       leadData.profissao = profissao || 'Não identificado'
                     }
@@ -313,6 +306,7 @@ serve(async (req) => {
                       leadData.setor = setores[0] || 'Não identificado'
                       leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
                     } else {
+                      // B2C - SEM CNPJ!
                       leadData.nome_completo = nome
                       leadData.profissao = profissao || 'Não identificado'
                     }
@@ -363,6 +357,7 @@ serve(async (req) => {
                 leadData.setor = setores[0] || 'Não identificado'
                 leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
               } else {
+                // B2C - SEM CNPJ!
                 leadData.nome_completo = nome
                 leadData.profissao = profissao || 'Não identificado'
               }
@@ -456,6 +451,7 @@ serve(async (req) => {
                 leadData.setor = setores[0] || 'Não identificado'
                 leadData.cnpj = gerarCnpjFicticio(nome, leads.length)
               } else {
+                // B2C - SEM CNPJ!
                 leadData.nome_completo = nome
                 leadData.profissao = profissao || 'Não identificado'
               }
@@ -479,7 +475,6 @@ serve(async (req) => {
     // ============ SALVAR LEADS ============
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log(`💾 [SALVAR] NOVOS leads para salvar: ${leads.length}`)
-    console.log(`📊 [DB] Leads já existentes: ${leadsExistentes?.length || 0}`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
 
     let leadsNovosInseridos = 0
@@ -493,7 +488,7 @@ serve(async (req) => {
       if (insertError) {
         console.error('❌ [DB] Erro ao salvar em lote:', insertError.message)
         
-        // Tentar inserir um por um
+        // Tentar inserir um por um (ignora duplicatas)
         for (const lead of leads) {
           const { error: singleError } = await supabase
             .from(tabela)
@@ -501,6 +496,9 @@ serve(async (req) => {
           
           if (!singleError) {
             leadsNovosInseridos++
+          } else if (singleError.message.includes('duplicate') || singleError.message.includes('unique')) {
+            // Duplicata é normal, não é erro
+            console.log('⚠️ [DUPLICATA DB] Ignorando:', lead.nome_fantasia || lead.razao_social)
           } else {
             console.error('❌ [DB] Erro individual:', singleError.message, '- Lead:', lead.razao_social || lead.nome_fantasia)
           }
@@ -564,7 +562,6 @@ serve(async (req) => {
         serpapi_configured: !!SERPAPI_KEY,
         google_places_configured: !!GOOGLE_API_KEY,
         queries: searchQueries,
-        leads_antes: leadsExistentes?.length || 0,
         leads_novos: leadsNovosInseridos,
         leads_total: totalLeadsCampanha
       }
