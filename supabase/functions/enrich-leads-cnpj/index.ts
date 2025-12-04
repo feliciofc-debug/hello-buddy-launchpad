@@ -245,36 +245,122 @@ serve(async (req) => {
 })
 
 // ═══════════════════════════════════════════════════════
-// FUNÇÃO: Buscar CNPJ
+// FUNÇÃO: Buscar CNPJ - MÚLTIPLAS ESTRATÉGIAS
 // ═══════════════════════════════════════════════════════
 
 async function buscarCNPJ(nomeEmpresa: string, serpApiKey: string | undefined): Promise<string | null> {
   if (!nomeEmpresa) return null
+  
+  console.log(`🔎 Iniciando busca CNPJ para: "${nomeEmpresa}"`)
 
-  // Buscar no Google via SerpAPI
+  // ESTRATÉGIA 1: Buscar CNPJ diretamente no Google
   if (serpApiKey) {
     try {
-      const query = `CNPJ "${nomeEmpresa}"`
-      const url = `https://serpapi.com/search?q=${encodeURIComponent(query)}&num=5&api_key=${serpApiKey}`
+      // Queries mais específicas
+      const queries = [
+        `"${nomeEmpresa}" CNPJ site:cnpj.info`,
+        `"${nomeEmpresa}" CNPJ site:consultacnpj.com`,
+        `"${nomeEmpresa}" CNPJ site:casadosdados.com.br`,
+        `CNPJ "${nomeEmpresa}" receita federal`,
+        `"${nomeEmpresa}" CNPJ`
+      ]
       
-      const response = await fetch(url)
-      const data = await response.json()
-      
-      // Buscar padrão CNPJ nos resultados
-      const textoCompleto = JSON.stringify(data)
-      const regex = /\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/g
-      const matches = textoCompleto.match(regex)
-      
-      if (matches && matches.length > 0) {
-        // Retornar primeiro CNPJ válido encontrado
-        return matches[0].replace(/\D/g, '')
+      for (const query of queries) {
+        console.log(`   🔍 Query: ${query}`)
+        
+        const url = `https://serpapi.com/search?q=${encodeURIComponent(query)}&num=10&gl=br&hl=pt&api_key=${serpApiKey}`
+        
+        const response = await fetch(url)
+        const data = await response.json()
+        
+        // Log completo para debug
+        console.log(`   📊 Resultados: ${data.organic_results?.length || 0}`)
+        
+        // Buscar padrão CNPJ em TODO o JSON
+        const textoCompleto = JSON.stringify(data)
+        
+        // Regex para CNPJ com ou sem formatação
+        const regexCNPJ = /\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/g
+        const matches = textoCompleto.match(regexCNPJ)
+        
+        if (matches && matches.length > 0) {
+          // Filtrar CNPJs únicos e válidos
+          const cnpjsUnicos = [...new Set(matches.map(m => m.replace(/\D/g, '')))]
+          
+          for (const cnpj of cnpjsUnicos) {
+            // Validar se CNPJ tem 14 dígitos e não é só zeros
+            if (cnpj.length === 14 && !/^0+$/.test(cnpj)) {
+              console.log(`   ✅ CNPJ encontrado: ${formatarCNPJ(cnpj)}`)
+              
+              // Validar se CNPJ é real consultando BrasilAPI
+              const valido = await validarCNPJ(cnpj)
+              if (valido) {
+                console.log(`   ✅ CNPJ validado na BrasilAPI!`)
+                return cnpj
+              } else {
+                console.log(`   ⚠️ CNPJ não encontrado na BrasilAPI, tentando próximo...`)
+              }
+            }
+          }
+        }
+        
+        // Rate limit entre queries
+        await new Promise(r => setTimeout(r, 1000))
       }
     } catch (error) {
       console.log('⚠️ Erro busca CNPJ SerpAPI:', error)
     }
   }
 
+  // ESTRATÉGIA 2: Buscar no Google Maps para pegar mais detalhes
+  if (serpApiKey) {
+    try {
+      console.log(`   🗺️ Tentando Google Maps...`)
+      const url = `https://serpapi.com/search?engine=google_maps&q=${encodeURIComponent(nomeEmpresa)}&ll=-22.9068467,-43.1728965,15z&type=search&api_key=${serpApiKey}`
+      
+      const response = await fetch(url)
+      const data = await response.json()
+      
+      if (data.local_results && data.local_results.length > 0) {
+        const local = data.local_results[0]
+        console.log(`   📍 Local encontrado: ${local.title}`)
+        
+        // Às vezes o CNPJ aparece na descrição ou extensões
+        const textoLocal = JSON.stringify(local)
+        const regexCNPJ = /\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}/g
+        const matches = textoLocal.match(regexCNPJ)
+        
+        if (matches && matches.length > 0) {
+          const cnpj = matches[0].replace(/\D/g, '')
+          if (cnpj.length === 14) {
+            console.log(`   ✅ CNPJ do Maps: ${formatarCNPJ(cnpj)}`)
+            return cnpj
+          }
+        }
+      }
+    } catch (error) {
+      console.log('⚠️ Erro Google Maps:', error)
+    }
+  }
+
+  console.log(`   ❌ CNPJ não encontrado para: ${nomeEmpresa}`)
   return null
+}
+
+// Validar CNPJ na BrasilAPI
+async function validarCNPJ(cnpj: string): Promise<boolean> {
+  try {
+    const url = `https://brasilapi.com.br/api/cnpj/v1/${cnpj}`
+    const response = await fetch(url)
+    return response.ok
+  } catch {
+    return false
+  }
+}
+
+// Formatar CNPJ para exibição
+function formatarCNPJ(cnpj: string): string {
+  return cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
 }
 
 // ═══════════════════════════════════════════════════════
