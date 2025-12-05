@@ -9,9 +9,11 @@ import { Link } from 'react-router-dom'
 
 export default function ConfiguracoesWhatsApp() {
   const [loading, setLoading] = useState(false)
+  const [checkingStatus, setCheckingStatus] = useState(true)
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
   const [phone, setPhone] = useState<string | null>(null)
+  const [accountName, setAccountName] = useState<string | null>(null)
   const [debugInfo, setDebugInfo] = useState<any>(null)
 
   useEffect(() => {
@@ -34,6 +36,7 @@ export default function ConfiguracoesWhatsApp() {
       
       if (error) {
         console.error('Erro ao verificar status:', error)
+        setCheckingStatus(false)
         return
       }
       
@@ -42,7 +45,8 @@ export default function ConfiguracoesWhatsApp() {
       
       if (data?.status === 'connected') {
         setStatus('connected')
-        setPhone(data.phone)
+        setPhone(data.phone || null)
+        setAccountName(data.name || null)
         setQrCode(null)
         if (status !== 'connected') {
           toast.success('✅ WhatsApp conectado!')
@@ -50,12 +54,12 @@ export default function ConfiguracoesWhatsApp() {
       } else if (data?.status === 'error') {
         setStatus('error')
       } else {
-        if (status === 'connected') {
-          setStatus('disconnected')
-        }
+        setStatus('disconnected')
       }
+      setCheckingStatus(false)
     } catch (error) {
       console.error('Erro ao verificar status:', error)
+      setCheckingStatus(false)
     }
   }
 
@@ -153,39 +157,49 @@ export default function ConfiguracoesWhatsApp() {
           <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
             <div>
               <p className="font-semibold">Status da Conexão</p>
+              {accountName && (
+                <p className="text-sm font-medium text-green-600">{accountName}</p>
+              )}
               {phone && (
                 <p className="text-sm text-muted-foreground">{phone}</p>
               )}
             </div>
             
-            <Badge variant={
-              status === 'connected' ? 'default' :
-              status === 'connecting' ? 'secondary' :
-              status === 'error' ? 'destructive' :
-              'outline'
-            } className={status === 'connected' ? 'bg-green-500' : ''}>
-              {status === 'connected' ? (
-                <>
-                  <CheckCircle className="h-3 w-3 mr-1" />
-                  🟢 Conectado
-                </>
-              ) : status === 'connecting' ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                  🟡 Conectando...
-                </>
-              ) : status === 'error' ? (
-                <>
-                  <XCircle className="h-3 w-3 mr-1" />
-                  ⚠️ Erro
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-3 w-3 mr-1" />
-                  🔴 Desconectado
-                </>
-              )}
-            </Badge>
+            {checkingStatus ? (
+              <Badge variant="secondary">
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                Verificando...
+              </Badge>
+            ) : (
+              <Badge variant={
+                status === 'connected' ? 'default' :
+                status === 'connecting' ? 'secondary' :
+                status === 'error' ? 'destructive' :
+                'outline'
+              } className={status === 'connected' ? 'bg-green-500' : ''}>
+                {status === 'connected' ? (
+                  <>
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    🟢 Conectado
+                  </>
+                ) : status === 'connecting' ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    🟡 Conectando...
+                  </>
+                ) : status === 'error' ? (
+                  <>
+                    <XCircle className="h-3 w-3 mr-1" />
+                    ⚠️ Erro
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-3 w-3 mr-1" />
+                    🔴 Desconectado
+                  </>
+                )}
+              </Badge>
+            )}
           </div>
 
           {/* QR Code */}
