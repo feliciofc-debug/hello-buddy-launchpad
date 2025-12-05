@@ -86,6 +86,8 @@ interface ProductFormProps {
     peso: string;
     cor: string;
     tamanhos: string;
+    brand: string;
+    attributes: Record<string, string>;
   };
   setFormData: (data: any) => void;
   onSubmit: () => void;
@@ -439,6 +441,116 @@ const ProductForm = ({
           </div>
         )}
 
+        {/* MARCA */}
+        <div className="space-y-2">
+          <Label htmlFor="brand">Marca</Label>
+          <Input
+            id="brand"
+            value={formData.brand}
+            onChange={(e) => setFormData({...formData, brand: e.target.value})}
+            placeholder="Ex: Samsung, Apple, Nike..."
+          />
+        </div>
+
+        {/* ATRIBUTOS POR CATEGORIA */}
+        {formData.categoria === 'Alimentos e Bebidas' && (
+          <div className="border p-4 rounded space-y-3">
+            <h4 className="font-semibold text-sm">🍽️ Atributos Alimentos</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                placeholder="Peso (ex: 500g)"
+                value={formData.attributes?.peso || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, peso: e.target.value}})}
+              />
+              <Input
+                placeholder="Proteínas (ex: 21g)"
+                value={formData.attributes?.proteinas || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, proteinas: e.target.value}})}
+              />
+              <Input
+                placeholder="Origem (ex: Nacional)"
+                value={formData.attributes?.origem || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, origem: e.target.value}})}
+              />
+              <div className="flex items-center gap-2">
+                <Checkbox 
+                  checked={formData.attributes?.sem_gluten === 'true'}
+                  onCheckedChange={(c) => setFormData({...formData, attributes: {...formData.attributes, sem_gluten: c ? 'true' : 'false'}})}
+                />
+                <span className="text-sm">Sem Glúten</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox 
+                  checked={formData.attributes?.vegano === 'true'}
+                  onCheckedChange={(c) => setFormData({...formData, attributes: {...formData.attributes, vegano: c ? 'true' : 'false'}})}
+                />
+                <span className="text-sm">Vegano</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {(formData.categoria === 'Automotivo') && (
+          <div className="border p-4 rounded space-y-3">
+            <h4 className="font-semibold text-sm">🚗 Atributos Veículo</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                placeholder="Ano"
+                value={formData.attributes?.ano || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, ano: e.target.value}})}
+              />
+              <Input
+                placeholder="KM"
+                value={formData.attributes?.km || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, km: e.target.value}})}
+              />
+              <Input
+                placeholder="Cor"
+                value={formData.attributes?.cor || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, cor: e.target.value}})}
+              />
+              <Input
+                placeholder="Combustível"
+                value={formData.attributes?.combustivel || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, combustivel: e.target.value}})}
+              />
+              <Input
+                placeholder="Motor"
+                value={formData.attributes?.motor || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, motor: e.target.value}})}
+              />
+              <Input
+                placeholder="Câmbio"
+                value={formData.attributes?.cambio || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, cambio: e.target.value}})}
+              />
+            </div>
+          </div>
+        )}
+
+        {formData.categoria === 'Eletrônicos' && (
+          <div className="border p-4 rounded space-y-3">
+            <h4 className="font-semibold text-sm">📱 Atributos Eletrônicos</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                placeholder="Voltagem"
+                value={formData.attributes?.voltagem || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, voltagem: e.target.value}})}
+              />
+              <Input
+                placeholder="Garantia"
+                value={formData.attributes?.garantia || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, garantia: e.target.value}})}
+              />
+              <Input
+                placeholder="Potência"
+                value={formData.attributes?.potencia || ''}
+                onChange={(e) => setFormData({...formData, attributes: {...formData.attributes, potencia: e.target.value}})}
+              />
+            </div>
+          </div>
+        )}
+
       </div>
     </details>
 
@@ -622,7 +734,9 @@ export default function MeusProdutos() {
     dimensoes: '',
     peso: '',
     cor: '',
-    tamanhos: ''
+    tamanhos: '',
+    brand: '',
+    attributes: {} as Record<string, string>
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -786,7 +900,9 @@ export default function MeusProdutos() {
           dimensoes: formData.dimensoes || null,
           peso: formData.peso || null,
           cor: formData.cor || null,
-          tamanhos: formData.tamanhos || null
+          tamanhos: formData.tamanhos || null,
+          brand: formData.brand || null,
+          attributes: formData.attributes || {}
         })
         .select()
         .single();
@@ -880,7 +996,9 @@ export default function MeusProdutos() {
           dimensoes: formData.dimensoes || null,
           peso: formData.peso || null,
           cor: formData.cor || null,
-          tamanhos: formData.tamanhos || null
+          tamanhos: formData.tamanhos || null,
+          brand: formData.brand || null,
+          attributes: formData.attributes || {}
         })
         .eq('id', selectedProduct.id);
 
@@ -1036,7 +1154,9 @@ export default function MeusProdutos() {
       dimensoes: (product as any).dimensoes || '',
       peso: (product as any).peso || '',
       cor: (product as any).cor || '',
-      tamanhos: (product as any).tamanhos || ''
+      tamanhos: (product as any).tamanhos || '',
+      brand: (product as any).brand || '',
+      attributes: (product as any).attributes || {}
     });
     setCurrentImageUrl(product.imagem_url);
     setImageFile(null);
@@ -1068,7 +1188,9 @@ export default function MeusProdutos() {
       dimensoes: '',
       peso: '',
       cor: '',
-      tamanhos: ''
+      tamanhos: '',
+      brand: '',
+      attributes: {}
     });
     setSelectedProduct(null);
     setImageFile(null);

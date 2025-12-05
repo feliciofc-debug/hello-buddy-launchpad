@@ -2069,7 +2069,9 @@ export type Database = {
       produtos: {
         Row: {
           ativo: boolean | null
+          attributes: Json | null
           beneficios: string | null
+          brand: string | null
           categoria: string
           cliente_id: string | null
           cor: string | null
@@ -2091,6 +2093,7 @@ export type Database = {
           nome: string
           peso: string | null
           preco: number | null
+          preparation: string | null
           publicar_marketplace: boolean | null
           sku: string | null
           tags: string[] | null
@@ -2099,10 +2102,13 @@ export type Database = {
           updated_at: string
           user_id: string
           vendedor_id: string | null
+          warranty: string | null
         }
         Insert: {
           ativo?: boolean | null
+          attributes?: Json | null
           beneficios?: string | null
+          brand?: string | null
           categoria: string
           cliente_id?: string | null
           cor?: string | null
@@ -2124,6 +2130,7 @@ export type Database = {
           nome: string
           peso?: string | null
           preco?: number | null
+          preparation?: string | null
           publicar_marketplace?: boolean | null
           sku?: string | null
           tags?: string[] | null
@@ -2132,10 +2139,13 @@ export type Database = {
           updated_at?: string
           user_id: string
           vendedor_id?: string | null
+          warranty?: string | null
         }
         Update: {
           ativo?: boolean | null
+          attributes?: Json | null
           beneficios?: string | null
+          brand?: string | null
           categoria?: string
           cliente_id?: string | null
           cor?: string | null
@@ -2157,6 +2167,7 @@ export type Database = {
           nome?: string
           peso?: string | null
           preco?: number | null
+          preparation?: string | null
           publicar_marketplace?: boolean | null
           sku?: string | null
           tags?: string[] | null
@@ -2165,6 +2176,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           vendedor_id?: string | null
+          warranty?: string | null
         }
         Relationships: [
           {
