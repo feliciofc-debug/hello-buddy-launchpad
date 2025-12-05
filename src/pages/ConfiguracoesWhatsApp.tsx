@@ -76,19 +76,23 @@ export default function ConfiguracoesWhatsApp() {
       
       if (data?.connected) {
         setStatus('connected')
-        setPhone(data.phone)
-        toast.success('✅ WhatsApp já conectado!', { id: 'qr' })
+        setPhone(data.phone || null)
+        toast.success('✅ WhatsApp já está conectado!', { id: 'qr' })
       } else if (data?.qrcode) {
-        // Verificar se é base64 ou string pura
-        let qrValue = data.qrcode
-        if (!qrValue.startsWith('data:')) {
-          // Se não começa com data:, pode ser base64 puro ou texto QR
-          if (qrValue.length > 100) {
-            qrValue = `data:image/png;base64,${qrValue}`
+        // Garantir que é string e verificar formato
+        const qrString = String(data.qrcode)
+        let qrValue = qrString
+        if (!qrString.startsWith('data:')) {
+          // Se não começa com data:, pode ser base64 puro
+          if (qrString.length > 100) {
+            qrValue = `data:image/png;base64,${qrString}`
           }
         }
         setQrCode(qrValue)
         toast.success('📱 Escaneie o QR Code!', { id: 'qr' })
+      } else if (data?.error) {
+        setStatus('error')
+        toast.error(`❌ ${data.error}`, { id: 'qr' })
       } else {
         setStatus('error')
         toast.error('❌ Não foi possível gerar QR Code', { id: 'qr' })
