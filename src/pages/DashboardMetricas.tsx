@@ -32,7 +32,8 @@ import {
   Flame,
   DollarSign,
   MousePointer,
-  Search
+  Search,
+  Smartphone
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import { LeadsQuentes } from '@/components/LeadsQuentes';
@@ -248,6 +249,7 @@ export default function DashboardMetricas() {
     { icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
     { icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
+    { icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
     { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
     { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
     { icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },
