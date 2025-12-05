@@ -1,72 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Loader2, Smartphone, QrCode, CheckCircle, XCircle, RefreshCw, ArrowLeft } from 'lucide-react'
+import { Loader2, Smartphone, QrCode, ArrowLeft, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 export default function ConfiguracoesWhatsApp() {
   const [loading, setLoading] = useState(false)
-  const [checkingStatus, setCheckingStatus] = useState(true)
   const [qrCode, setQrCode] = useState<string | null>(null)
-  const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected')
-  const [phone, setPhone] = useState<string | null>(null)
-  const [accountName, setAccountName] = useState<string | null>(null)
-  const [debugInfo, setDebugInfo] = useState<any>(null)
 
-  useEffect(() => {
-    checkStatus()
-    
-    // Verificar status a cada 5 segundos quando gerando QR
-    const interval = setInterval(() => {
-      if (qrCode || status === 'connecting') {
-        checkStatus()
-      }
-    }, 5000)
-    
-    return () => clearInterval(interval)
-  }, [qrCode, status])
-
-  const checkStatus = async () => {
-    try {
-      console.log('🔍 Verificando status...')
-      const { data, error } = await supabase.functions.invoke('check-whatsapp-status')
-      
-      if (error) {
-        console.error('Erro ao verificar status:', error)
-        setCheckingStatus(false)
-        return
-      }
-      
-      console.log('📱 Status recebido:', data)
-      setDebugInfo(data)
-      
-      if (data?.status === 'connected') {
-        setStatus('connected')
-        setPhone(data.phone || null)
-        setAccountName(data.name || null)
-        setQrCode(null)
-        if (status !== 'connected') {
-          toast.success('✅ WhatsApp conectado!')
-        }
-      } else if (data?.status === 'error') {
-        setStatus('error')
-      } else {
-        setStatus('disconnected')
-      }
-      setCheckingStatus(false)
-    } catch (error) {
-      console.error('Erro ao verificar status:', error)
-      setCheckingStatus(false)
-    }
-  }
-
-  const handleConectar = async () => {
+  const handleGerarQRCode = async () => {
     setLoading(true)
     setQrCode(null)
-    setStatus('connecting')
     
     try {
       toast.loading('Gerando QR Code...', { id: 'qr' })
@@ -74,20 +20,18 @@ export default function ConfiguracoesWhatsApp() {
       const { data, error } = await supabase.functions.invoke('generate-qrcode')
       
       console.log('📱 Resposta QR:', data)
-      setDebugInfo(data)
       
       if (error) throw error
       
       if (data?.connected) {
-        setStatus('connected')
-        setPhone(data.phone || null)
-        toast.success('✅ WhatsApp já está conectado!', { id: 'qr' })
-      } else if (data?.qrcode) {
-        // Garantir que é string e verificar formato
+        toast.error('⚠️ Já existe uma sessão ativa. Para conectar um novo número, é necessário configurar uma nova instância do Wuzapi no servidor.', { id: 'qr', duration: 8000 })
+        return
+      }
+      
+      if (data?.qrcode) {
         const qrString = String(data.qrcode)
         let qrValue = qrString
         if (!qrString.startsWith('data:')) {
-          // Se não começa com data:, pode ser base64 puro
           if (qrString.length > 100) {
             qrValue = `data:image/png;base64,${qrString}`
           }
@@ -95,54 +39,14 @@ export default function ConfiguracoesWhatsApp() {
         setQrCode(qrValue)
         toast.success('📱 Escaneie o QR Code!', { id: 'qr' })
       } else if (data?.error) {
-        setStatus('error')
         toast.error(`❌ ${data.error}`, { id: 'qr' })
       } else {
-        setStatus('error')
         toast.error('❌ Não foi possível gerar QR Code', { id: 'qr' })
       }
       
     } catch (error: any) {
       console.error('Erro:', error)
-      setStatus('error')
       toast.error(`❌ Erro: ${error.message}`, { id: 'qr' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleDesconectar = async () => {
-    if (!confirm('Deseja encerrar a sessão atual para conectar outro número?\n\nIsso vai deslogar o WhatsApp atual.')) return
-    
-    setLoading(true)
-    try {
-      toast.loading('Encerrando sessão...', { id: 'disconnect' })
-      
-      const { data, error } = await supabase.functions.invoke('disconnect-whatsapp')
-      
-      console.log('📱 Resposta desconexão:', data)
-      
-      if (error) throw error
-      
-      if (data?.stillConnected) {
-        toast.error('⚠️ ' + data.error, { id: 'disconnect', duration: 10000 })
-        return
-      }
-      
-      if (!data?.success) {
-        toast.error(`❌ ${data?.error || 'Erro ao desconectar'}`, { id: 'disconnect' })
-        return
-      }
-      
-      setStatus('disconnected')
-      setPhone(null)
-      setAccountName(null)
-      setQrCode(null)
-      
-      toast.success('✅ Sessão encerrada! Agora clique em "Conectar WhatsApp"', { id: 'disconnect' })
-    } catch (error: any) {
-      console.error('Erro ao desconectar:', error)
-      toast.error(`❌ Erro: ${error.message}`, { id: 'disconnect' })
     } finally {
       setLoading(false)
     }
@@ -163,65 +67,31 @@ export default function ConfiguracoesWhatsApp() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Smartphone className="h-6 w-6 text-green-500" />
-            Configurar WhatsApp
+            Conectar WhatsApp
           </CardTitle>
           <CardDescription>
-            Conecte seu número do WhatsApp para atender clientes automaticamente
+            Gere um QR Code para conectar seu número do WhatsApp
           </CardDescription>
         </CardHeader>
         
         <CardContent className="space-y-6">
-          {/* Status */}
-          <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-            <div>
-              <p className="font-semibold">Status da Conexão</p>
-              {accountName && (
-                <p className="text-sm font-medium text-green-600">{accountName}</p>
-              )}
-              {phone && (
-                <p className="text-sm text-muted-foreground">{phone}</p>
-              )}
+          {/* Aviso sobre múltiplas instâncias */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+              <div>
+                <p className="font-semibold text-amber-900 mb-1">
+                  ⚠️ Configuração necessária no servidor
+                </p>
+                <p className="text-sm text-amber-800">
+                  Para cada cliente conectar seu próprio número, é necessário criar uma instância separada do Wuzapi no servidor com seu próprio token.
+                </p>
+              </div>
             </div>
-            
-            {checkingStatus ? (
-              <Badge variant="secondary">
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                Verificando...
-              </Badge>
-            ) : (
-              <Badge variant={
-                status === 'connected' ? 'default' :
-                status === 'connecting' ? 'secondary' :
-                status === 'error' ? 'destructive' :
-                'outline'
-              } className={status === 'connected' ? 'bg-green-500' : ''}>
-                {status === 'connected' ? (
-                  <>
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    🟢 Conectado
-                  </>
-                ) : status === 'connecting' ? (
-                  <>
-                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    🟡 Conectando...
-                  </>
-                ) : status === 'error' ? (
-                  <>
-                    <XCircle className="h-3 w-3 mr-1" />
-                    ⚠️ Erro
-                  </>
-                ) : (
-                  <>
-                    <XCircle className="h-3 w-3 mr-1" />
-                    🔴 Desconectado
-                  </>
-                )}
-              </Badge>
-            )}
           </div>
 
           {/* QR Code */}
-          {qrCode && (status === 'connecting' || status === 'disconnected') && (
+          {qrCode && (
             <div className="space-y-4">
               <div className="p-6 bg-white rounded-lg border-2 border-dashed flex flex-col items-center">
                 <QrCode className="h-8 w-8 mb-4 text-muted-foreground" />
@@ -253,71 +123,25 @@ export default function ConfiguracoesWhatsApp() {
             </div>
           )}
 
-          {/* Botões */}
-          <div className="flex gap-2">
-            {(status === 'disconnected' || status === 'error') && (
-              <Button 
-                onClick={handleConectar}
-                disabled={loading}
-                className="flex-1 bg-green-600 hover:bg-green-700"
-                size="lg"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Gerando QR Code...
-                  </>
-                ) : (
-                  <>
-                    <Smartphone className="mr-2 h-4 w-4" />
-                    Conectar WhatsApp
-                  </>
-                )}
-              </Button>
-            )}
-            
-            {status === 'connecting' && (
+          {/* Botão */}
+          <Button 
+            onClick={handleGerarQRCode}
+            disabled={loading}
+            className="w-full bg-green-600 hover:bg-green-700"
+            size="lg"
+          >
+            {loading ? (
               <>
-                <Button 
-                  onClick={handleConectar}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Novo QR Code
-                </Button>
-                <Button 
-                  onClick={checkStatus}
-                  variant="secondary"
-                  className="flex-1"
-                >
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Verificar Conexão
-                </Button>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Gerando QR Code...
+              </>
+            ) : (
+              <>
+                <QrCode className="mr-2 h-4 w-4" />
+                Gerar QR Code
               </>
             )}
-            
-            {status === 'connected' && (
-              <>
-                <Button 
-                  onClick={checkStatus}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Atualizar Status
-                </Button>
-                
-                <Button 
-                  onClick={handleDesconectar}
-                  variant="destructive"
-                  className="flex-1"
-                >
-                  Desconectar
-                </Button>
-              </>
-            )}
-          </div>
+          </Button>
 
           {/* Informações */}
           <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
@@ -326,19 +150,9 @@ export default function ConfiguracoesWhatsApp() {
               <li>Use um número dedicado para atendimento</li>
               <li>Mantenha o celular com bateria e internet</li>
               <li>Não desconecte o WhatsApp Web manualmente</li>
-              <li>Se desconectar, basta gerar novo QR Code</li>
+              <li>O QR Code expira em alguns minutos</li>
             </ul>
           </div>
-
-          {/* Debug Info */}
-          {debugInfo && (
-            <details className="text-xs">
-              <summary className="cursor-pointer text-muted-foreground">🔧 Debug Info</summary>
-              <pre className="mt-2 p-2 bg-gray-900 text-green-400 rounded overflow-auto max-h-40">
-                {JSON.stringify(debugInfo, null, 2)}
-              </pre>
-            </details>
-          )}
         </CardContent>
       </Card>
     </div>
