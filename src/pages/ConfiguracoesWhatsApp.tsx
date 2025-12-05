@@ -112,21 +112,29 @@ export default function ConfiguracoesWhatsApp() {
   }
 
   const handleDesconectar = async () => {
-    if (!confirm('Deseja desconectar o WhatsApp?')) return
+    if (!confirm('Deseja desconectar o WhatsApp atual para conectar outro número?')) return
     
+    setLoading(true)
     try {
-      toast.loading('Desconectando...', { id: 'disconnect' })
+      toast.loading('Desconectando sessão atual...', { id: 'disconnect' })
       
-      // Wuzapi endpoint para desconectar
-      const { data, error } = await supabase.functions.invoke('check-whatsapp-status')
+      const { data, error } = await supabase.functions.invoke('disconnect-whatsapp')
+      
+      console.log('📱 Resposta desconexão:', data)
+      
+      if (error) throw error
       
       setStatus('disconnected')
       setPhone(null)
+      setAccountName(null)
       setQrCode(null)
       
-      toast.success('✅ Desconectado!', { id: 'disconnect' })
+      toast.success('✅ Desconectado! Clique em "Conectar WhatsApp" para gerar novo QR Code', { id: 'disconnect' })
     } catch (error: any) {
+      console.error('Erro ao desconectar:', error)
       toast.error(`❌ Erro: ${error.message}`, { id: 'disconnect' })
+    } finally {
+      setLoading(false)
     }
   }
 
