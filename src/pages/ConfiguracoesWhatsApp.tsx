@@ -112,11 +112,11 @@ export default function ConfiguracoesWhatsApp() {
   }
 
   const handleDesconectar = async () => {
-    if (!confirm('Deseja desconectar o WhatsApp atual para conectar outro número?')) return
+    if (!confirm('Deseja encerrar a sessão atual para conectar outro número?\n\nIsso vai deslogar o WhatsApp atual.')) return
     
     setLoading(true)
     try {
-      toast.loading('Desconectando sessão atual...', { id: 'disconnect' })
+      toast.loading('Encerrando sessão...', { id: 'disconnect' })
       
       const { data, error } = await supabase.functions.invoke('disconnect-whatsapp')
       
@@ -124,12 +124,22 @@ export default function ConfiguracoesWhatsApp() {
       
       if (error) throw error
       
+      if (data?.stillConnected) {
+        toast.error('⚠️ ' + data.error, { id: 'disconnect', duration: 10000 })
+        return
+      }
+      
+      if (!data?.success) {
+        toast.error(`❌ ${data?.error || 'Erro ao desconectar'}`, { id: 'disconnect' })
+        return
+      }
+      
       setStatus('disconnected')
       setPhone(null)
       setAccountName(null)
       setQrCode(null)
       
-      toast.success('✅ Desconectado! Clique em "Conectar WhatsApp" para gerar novo QR Code', { id: 'disconnect' })
+      toast.success('✅ Sessão encerrada! Agora clique em "Conectar WhatsApp"', { id: 'disconnect' })
     } catch (error: any) {
       console.error('Erro ao desconectar:', error)
       toast.error(`❌ Erro: ${error.message}`, { id: 'disconnect' })
