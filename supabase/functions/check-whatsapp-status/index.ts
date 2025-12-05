@@ -24,31 +24,39 @@ serve(async (req) => {
       }
     })
     
-    const data = await response.json()
-    console.log('📱 Status Wuzapi:', JSON.stringify(data))
+    const responseData = await response.json()
+    console.log('📱 Status Wuzapi:', JSON.stringify(responseData))
     
-    // Mapear status do Wuzapi
+    // Wuzapi retorna: { code: 200, data: { connected: true, loggedIn: true, jid: "...", name: "..." }, success: true }
+    const data = responseData.data || responseData
+    
     let status = 'disconnected'
     let phone = null
+    let name = null
     
-    if (data.Connected === true || data.connected === true) {
+    // Verificar se está conectado (data.connected ou data.loggedIn)
+    if (data.connected === true || data.loggedIn === true) {
       status = 'connected'
-      phone = data.Phone || data.phone || data.Jid || data.jid || null
       
-      // Formatar número se existir
-      if (phone && phone.includes('@')) {
-        phone = phone.split('@')[0]
-        phone = `+${phone.substring(0, 2)} (${phone.substring(2, 4)}) ${phone.substring(4, 9)}-${phone.substring(9)}`
+      // Extrair número do jid (formato: "5521995379550:6@s.whatsapp.net")
+      if (data.jid) {
+        const jidParts = data.jid.split(':')[0]
+        if (jidParts && jidParts.length >= 12) {
+          phone = `+${jidParts.substring(0, 2)} (${jidParts.substring(2, 4)}) ${jidParts.substring(4, 9)}-${jidParts.substring(9)}`
+        } else {
+          phone = jidParts
+        }
       }
-    } else if (data.LoggedIn === false) {
-      status = 'disconnected'
+      
+      name = data.name || null
     }
     
     return new Response(JSON.stringify({
       success: true,
       status,
       phone,
-      raw: data
+      name,
+      raw: responseData
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
