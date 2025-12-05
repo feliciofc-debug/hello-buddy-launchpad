@@ -15,8 +15,10 @@ serve(async (req) => {
     const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN')
     
     console.log('🔌 Desconectando WhatsApp via Wuzapi...')
+    console.log('URL:', WUZAPI_URL)
     
-    // Wuzapi endpoint para logout/desconectar
+    // 1. Primeiro tentar logout
+    console.log('📱 Tentando logout...')
     const logoutResponse = await fetch(`${WUZAPI_URL}/session/logout`, {
       method: 'POST',
       headers: {
@@ -25,27 +27,59 @@ serve(async (req) => {
       }
     })
     
-    const logoutResult = await logoutResponse.json()
-    console.log('📱 Resposta logout:', JSON.stringify(logoutResult))
+    // Pegar texto bruto primeiro (pode não ser JSON)
+    const logoutText = await logoutResponse.text()
+    console.log('📱 Resposta logout (texto):', logoutText)
     
-    // Se logout falhar, tentar disconnect
-    if (!logoutResult.success && logoutResult.error !== 'not logged in') {
-      console.log('🔄 Tentando disconnect...')
-      const disconnectResponse = await fetch(`${WUZAPI_URL}/session/disconnect`, {
-        method: 'POST',
-        headers: {
-          'Token': WUZAPI_TOKEN!,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      const disconnectResult = await disconnectResponse.json()
-      console.log('📱 Resposta disconnect:', JSON.stringify(disconnectResult))
+    // 2. Depois tentar disconnect para garantir
+    console.log('📱 Tentando disconnect...')
+    const disconnectResponse = await fetch(`${WUZAPI_URL}/session/disconnect`, {
+      method: 'POST',
+      headers: {
+        'Token': WUZAPI_TOKEN!,
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    const disconnectText = await disconnectResponse.text()
+    console.log('📱 Resposta disconnect (texto):', disconnectText)
+    
+    // Verificar se realmente desconectou
+    console.log('🔍 Verificando status após desconexão...')
+    const statusResponse = await fetch(`${WUZAPI_URL}/session/status`, {
+      method: 'GET',
+      headers: {
+        'Token': WUZAPI_TOKEN!
+      }
+    })
+    
+    const statusText = await statusResponse.text()
+    console.log('📱 Status após desconexão:', statusText)
+    
+    let connected = false
+    try {
+      const statusJson = JSON.parse(statusText)
+      connected = statusJson?.data?.connected === true || statusJson?.data?.loggedIn === true
+    } catch (e) {
+      // Se não é JSON, assume desconectado
+      connected = false
     }
     
+    if (connected) {
+      console.log('⚠️ Ainda conectado, status inesperado')
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'WhatsApp ainda está conectado. Tente novamente ou desconecte manualmente no celular.',
+        debug: { logoutText, disconnectText, statusText }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+    
+    console.log('✅ Desconectado com sucesso!')
     return new Response(JSON.stringify({
       success: true,
-      message: 'WhatsApp desconectado! Agora você pode conectar um novo número.'
+      message: 'WhatsApp desconectado! Clique em "Conectar WhatsApp" para gerar novo QR Code.'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
