@@ -21,52 +21,41 @@ export default function WhatsAppConnection() {
   });
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
-
-  const [activateCalled, setActivateCalled] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
 
   // Verificar status ao montar
   useEffect(() => {
     checkStatus();
   }, []);
 
-  // Polling enquanto aguarda conexão com QR Code
+  // Polling SIMPLIFICADO - só verifica status
   useEffect(() => {
-    if (!qrCode) return;
+    if (!isPolling) return;
 
     const interval = setInterval(async () => {
       try {
         const response = await supabase.functions.invoke("wuzapi-qrcode", {
-          body: { action: "connect" }
+          body: { action: "status" }
         });
 
-        console.log("Polling status:", response.data);
+        console.log("📡 Polling status:", response.data);
 
-        // Se já conectou
-        if (response.data?.already_connected) {
+        // Se conectou (loggedin = true)
+        if (response.data?.loggedin === true) {
           setStatus({
             connected: true,
-            phone_number: response.data.phone_number,
-            instance_name: status.instance_name
+            phone_number: response.data.jid || response.data.phone_number,
+            instance_name: response.data.instance_name || status.instance_name
           });
           setQrCode(null);
-          setActivateCalled(false);
+          setIsPolling(false);
           toast.success("WhatsApp conectado com sucesso!");
           return;
         }
 
-        // Se tem QR code, atualizar
-        if (response.data?.qr_code) {
-          setQrCode(response.data.qr_code);
-        }
-
-        // Se está conectado mas não logado - chamar activate!
-        if (response.data?.success && !response.data?.already_connected && !response.data?.qr_code && !activateCalled) {
-          console.log("🔗 QR escaneado! Ativando sessão...");
-          setActivateCalled(true);
-          
-          await supabase.functions.invoke("wuzapi-qrcode", {
-            body: { action: "activate" }
-          });
+        // Se tem QR code novo, atualizar
+        if (response.data?.qrcode) {
+          setQrCode(response.data.qrcode);
         }
 
       } catch (error) {
@@ -75,7 +64,7 @@ export default function WhatsAppConnection() {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [qrCode, status.instance_name, activateCalled]);
+  }, [isPolling, status.instance_name]);
 
   const checkStatus = async () => {
     try {
@@ -86,10 +75,20 @@ export default function WhatsAppConnection() {
         body: { action: "status" }
       });
 
-      if (response.data?.success) {
+      console.log("🔍 Status inicial:", response.data);
+
+      // Verificar se já está conectado (loggedin = true)
+      if (response.data?.loggedin === true) {
         setStatus({
-          connected: response.data.connected,
-          phone_number: response.data.phone_number,
+          connected: true,
+          phone_number: response.data.jid || response.data.phone_number,
+          instance_name: response.data.instance_name
+        });
+        toast.success("WhatsApp já conectado!");
+      } else if (response.data?.success) {
+        setStatus({
+          connected: false,
+          phone_number: null,
           instance_name: response.data.instance_name
         });
       }
@@ -103,25 +102,31 @@ export default function WhatsAppConnection() {
   const handleConnect = async () => {
     setLoading(true);
     try {
+      // Apenas pegar o status que já contém o QR Code
       const response = await supabase.functions.invoke("wuzapi-qrcode", {
-        body: { action: "connect" }
+        body: { action: "status" }
       });
 
-      if (response.data?.already_connected) {
+      console.log("🔗 Resposta connect:", response.data);
+
+      // Se já está conectado
+      if (response.data?.loggedin === true) {
         toast.success("WhatsApp já está conectado!");
         setStatus({
           connected: true,
-          phone_number: response.data.phone_number,
-          instance_name: status.instance_name
+          phone_number: response.data.jid || response.data.phone_number,
+          instance_name: response.data.instance_name || status.instance_name
         });
         return;
       }
 
-      if (response.data?.qr_code) {
-        setQrCode(response.data.qr_code);
+      // Se tem QR code
+      if (response.data?.qrcode) {
+        setQrCode(response.data.qrcode);
+        setIsPolling(true); // Iniciar polling
         toast.info("Escaneie o QR Code com seu WhatsApp");
       } else {
-        toast.error(response.data?.error || "Erro ao gerar QR Code");
+        toast.error("Erro ao gerar QR Code");
       }
     } catch (error) {
       console.error("Erro ao conectar:", error);
