@@ -108,19 +108,19 @@ export default function WhatsAppConnection() {
     setLoading(true);
     
     try {
-      // Pegar o status que já contém o QR Code
+      // Chamar action "connect" que faz POST /session/connect + busca QR
       const response = await supabase.functions.invoke("wuzapi-qrcode", {
-        body: { action: "status" }
+        body: { action: "connect" }
       });
 
       console.log("🔗 Resposta connect:", response.data);
 
       // Se já está conectado
-      if (response.data?.loggedin === true) {
+      if (response.data?.loggedin === true || response.data?.already_connected) {
         toast.success("WhatsApp já está conectado!");
         setStatus({
           connected: true,
-          phone_number: response.data.jid || response.data.phone_number,
+          phone_number: response.data.phone_number,
           instance_name: response.data.instance_name || status.instance_name
         });
         return;
@@ -131,20 +131,12 @@ export default function WhatsAppConnection() {
         setQrCode(response.data.qrcode);
         setIsPolling(true);
         toast.info("Escaneie o QR Code com seu WhatsApp");
+      } else if (response.data?.retry) {
+        // Retry automático após 2 segundos
+        toast.info("Gerando QR Code...");
+        setTimeout(() => handleConnect(), 2000);
       } else {
-        // Tentar novamente em 2 segundos
-        setTimeout(async () => {
-          const retry = await supabase.functions.invoke("wuzapi-qrcode", {
-            body: { action: "status" }
-          });
-          if (retry.data?.qrcode) {
-            setQrCode(retry.data.qrcode);
-            setIsPolling(true);
-            toast.info("Escaneie o QR Code com seu WhatsApp");
-          } else {
-            toast.error("Erro ao gerar QR Code. Tente novamente.");
-          }
-        }, 2000);
+        toast.error("Erro ao gerar QR Code. Tente novamente.");
       }
     } catch (error) {
       console.error("Erro ao conectar:", error);
