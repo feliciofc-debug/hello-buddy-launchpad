@@ -150,41 +150,22 @@ serve(async (req) => {
     // ACTION: CONNECT (iniciar sessão e gerar QR Code)
     if (action === "connect") {
       try {
-        console.log("🔄 Iniciando sessão via POST /session/connect...");
+        console.log("🔄 Iniciando conexão WhatsApp...");
         
-        // PRIMEIRO: Chamar POST /session/connect COM BODY VAZIO para iniciar a sessão
-        const connectResponse = await fetch(`${wuzapi_url}/session/connect`, {
-          method: "POST",
-          headers: { 
-            "Token": wuzapi_token,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({})  // WUZAPI EXIGE BODY JSON VAZIO!
-        });
-
-        const connectData = await connectResponse.json();
-        console.log("📡 Resposta /session/connect:", JSON.stringify(connectData, null, 2));
-
-        // Aguardar um pouco para o QR ser gerado
-        await new Promise(resolve => setTimeout(resolve, 2000));
-
-        // DEPOIS: Buscar o status com o QR Code
+        // 1. Verificar status primeiro
         const statusResponse = await fetch(`${wuzapi_url}/session/status`, {
           method: "GET",
           headers: { "Token": wuzapi_token },
         });
-
         const statusData = await statusResponse.json();
-        console.log("📊 Status após connect:", JSON.stringify(statusData, null, 2));
+        console.log("📊 Status atual:", JSON.stringify(statusData, null, 2));
 
         const data = statusData?.data || statusData;
-        const isLoggedIn = data?.loggedIn === true;
-        const qrCode = data?.qrcode || null;
-        const phoneNumber = data?.jid?.split(':')[0];
-
+        
         // Se já está logado
-        if (isLoggedIn) {
+        if (data?.loggedIn === true) {
           console.log("✅ WhatsApp já conectado!");
+          const phoneNumber = data?.jid?.split(':')[0];
           
           await supabase
             .from("wuzapi_instances")
@@ -208,9 +189,32 @@ serve(async (req) => {
           });
         }
 
-        // Se tem QR code
-        if (qrCode && qrCode.length > 0) {
-          console.log("📷 QR Code encontrado!");
+        // Se tem QR no status, retornar ele
+        if (data?.qrcode && data.qrcode.length > 50) {
+          console.log("📷 QR Code encontrado no status!");
+          return new Response(JSON.stringify({
+            success: true,
+            qrcode: data.qrcode,
+            instance_name: userInstance.instance_name,
+            message: "Escaneie o QR Code com seu WhatsApp"
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // 2. Chamar /session/qr para forçar geração de QR Code
+        console.log("📲 Chamando GET /session/qr para gerar QR...");
+        const qrResponse = await fetch(`${wuzapi_url}/session/qr`, {
+          method: "GET",
+          headers: { "Token": wuzapi_token },
+        });
+        const qrData = await qrResponse.json();
+        console.log("📷 Resposta /session/qr:", JSON.stringify(qrData, null, 2));
+
+        const qrCode = qrData?.data?.qrcode || qrData?.qrcode || qrData?.data?.QRCode || null;
+
+        if (qrCode && qrCode.length > 50) {
+          console.log("✅ QR Code gerado com sucesso!");
           return new Response(JSON.stringify({
             success: true,
             qrcode: qrCode,
@@ -221,13 +225,51 @@ serve(async (req) => {
           });
         }
 
-        // Sem QR ainda - retornar para retry
-        console.log("⏳ QR não disponível ainda, aguardando...");
+        // 3. Se não tem QR ainda, chamar /session/connect
+        console.log("📲 Chamando POST /session/connect...");
+        const connectResponse = await fetch(`${wuzapi_url}/session/connect`, {
+          method: "POST",
+          headers: { 
+            "Token": wuzapi_token,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({})
+        });
+        const connectData = await connectResponse.json();
+        console.log("📡 Resposta /session/connect:", JSON.stringify(connectData, null, 2));
+
+        // Aguardar e tentar buscar QR novamente
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const retryQrResponse = await fetch(`${wuzapi_url}/session/qr`, {
+          method: "GET",
+          headers: { "Token": wuzapi_token },
+        });
+        const retryQrData = await retryQrResponse.json();
+        console.log("📷 Retry /session/qr:", JSON.stringify(retryQrData, null, 2));
+
+        const retryQrCode = retryQrData?.data?.qrcode || retryQrData?.qrcode || retryQrData?.data?.QRCode || null;
+
+        if (retryQrCode && retryQrCode.length > 50) {
+          console.log("✅ QR Code gerado no retry!");
+          return new Response(JSON.stringify({
+            success: true,
+            qrcode: retryQrCode,
+            instance_name: userInstance.instance_name,
+            message: "Escaneie o QR Code com seu WhatsApp"
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Retornar para retry no frontend
+        console.log("⏳ QR não disponível ainda...");
         return new Response(JSON.stringify({
           success: false,
           retry: true,
-          error: "Aguardando QR Code... Tente novamente em 2 segundos.",
-          raw_response: statusData
+          error: "Aguardando QR Code...",
+          raw_status: statusData,
+          raw_qr: qrData
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
