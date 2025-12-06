@@ -152,20 +152,21 @@ serve(async (req) => {
       try {
         console.log("🔄 Iniciando sessão via POST /session/connect...");
         
-        // PRIMEIRO: Chamar POST /session/connect para iniciar a sessão
+        // PRIMEIRO: Chamar POST /session/connect COM BODY VAZIO para iniciar a sessão
         const connectResponse = await fetch(`${wuzapi_url}/session/connect`, {
           method: "POST",
           headers: { 
             "Token": wuzapi_token,
             "Content-Type": "application/json"
-          }
+          },
+          body: JSON.stringify({})  // WUZAPI EXIGE BODY JSON VAZIO!
         });
 
         const connectData = await connectResponse.json();
         console.log("📡 Resposta /session/connect:", JSON.stringify(connectData, null, 2));
 
         // Aguardar um pouco para o QR ser gerado
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         // DEPOIS: Buscar o status com o QR Code
         const statusResponse = await fetch(`${wuzapi_url}/session/status`, {
