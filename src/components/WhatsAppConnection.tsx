@@ -100,9 +100,15 @@ export default function WhatsAppConnection() {
   };
 
   const handleConnect = async () => {
+    console.log("🔵 handleConnect chamado");
+    
+    // Limpar estado antes de iniciar
+    setQrCode(null);
+    setStatus(prev => ({ ...prev, connected: false, phone_number: null }));
     setLoading(true);
+    
     try {
-      // Apenas pegar o status que já contém o QR Code
+      // Pegar o status que já contém o QR Code
       const response = await supabase.functions.invoke("wuzapi-qrcode", {
         body: { action: "status" }
       });
@@ -120,13 +126,25 @@ export default function WhatsAppConnection() {
         return;
       }
 
-      // Se tem QR code
+      // Se tem QR code, mostrar e iniciar polling
       if (response.data?.qrcode) {
         setQrCode(response.data.qrcode);
-        setIsPolling(true); // Iniciar polling
+        setIsPolling(true);
         toast.info("Escaneie o QR Code com seu WhatsApp");
       } else {
-        toast.error("Erro ao gerar QR Code");
+        // Tentar novamente em 2 segundos
+        setTimeout(async () => {
+          const retry = await supabase.functions.invoke("wuzapi-qrcode", {
+            body: { action: "status" }
+          });
+          if (retry.data?.qrcode) {
+            setQrCode(retry.data.qrcode);
+            setIsPolling(true);
+            toast.info("Escaneie o QR Code com seu WhatsApp");
+          } else {
+            toast.error("Erro ao gerar QR Code. Tente novamente.");
+          }
+        }, 2000);
       }
     } catch (error) {
       console.error("Erro ao conectar:", error);
@@ -137,26 +155,43 @@ export default function WhatsAppConnection() {
   };
 
   const handleDisconnect = async () => {
+    console.log("🔴 handleDisconnect chamado");
     setLoading(true);
+    
+    // PARAR POLLING PRIMEIRO
+    setIsPolling(false);
+    
     try {
       const response = await supabase.functions.invoke("wuzapi-qrcode", {
         body: { action: "disconnect" }
       });
 
+      console.log("📴 Resultado disconnect:", response.data);
+
+      // RESETAR TODOS OS ESTADOS
+      setStatus({
+        connected: false,
+        phone_number: null,
+        instance_name: status.instance_name
+      });
+      setQrCode(null);
+      
       if (response.data?.success) {
-        setStatus({
-          connected: false,
-          phone_number: null,
-          instance_name: status.instance_name
-        });
-        setQrCode(null);
         toast.success("WhatsApp desconectado");
       } else {
-        toast.error(response.data?.error || "Erro ao desconectar");
+        // Mesmo com erro, resetar o estado local
+        toast.warning("WhatsApp desconectado localmente");
       }
     } catch (error) {
       console.error("Erro ao desconectar:", error);
-      toast.error("Erro ao desconectar WhatsApp");
+      // Resetar estado mesmo com erro
+      setStatus({
+        connected: false,
+        phone_number: null,
+        instance_name: status.instance_name
+      });
+      setQrCode(null);
+      toast.warning("Desconectado localmente");
     } finally {
       setLoading(false);
     }

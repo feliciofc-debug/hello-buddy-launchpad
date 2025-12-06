@@ -129,7 +129,8 @@ serve(async (req) => {
           loggedin: isConnected,
           phone_number: phoneNumber,
           instance_name: userInstance.instance_name,
-          jid: data?.jid
+          jid: data?.jid,
+          qrcode: data?.qrcode || null  // Incluir QR code no status
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
