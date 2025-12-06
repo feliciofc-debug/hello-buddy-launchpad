@@ -105,8 +105,10 @@ serve(async (req) => {
         const statusData = await statusResponse.json();
         console.log("📊 Status Wuzapi:", statusData);
 
-        const isConnected = statusData?.LoggedIn === true;
-        const phoneNumber = statusData?.PhoneNumber || null;
+        // Estrutura: { code: 200, data: { connected, loggedIn, qrcode, jid } }
+        const data = statusData?.data || statusData;
+        const isConnected = data?.loggedIn === true || data?.LoggedIn === true;
+        const phoneNumber = data?.jid?.split(':')[0] || data?.PhoneNumber || null;
 
         // Atualizar status no banco se mudou
         if (userInstance.is_connected !== isConnected || userInstance.phone_number !== phoneNumber) {
@@ -124,8 +126,10 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           success: true,
           connected: isConnected,
+          loggedin: isConnected,
           phone_number: phoneNumber,
-          instance_name: userInstance.instance_name
+          instance_name: userInstance.instance_name,
+          jid: data?.jid
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
