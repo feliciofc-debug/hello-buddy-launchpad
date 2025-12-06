@@ -3408,6 +3408,48 @@ export type Database = {
         }
         Relationships: []
       }
+      wuzapi_instances: {
+        Row: {
+          assigned_to_user: string | null
+          connected_at: string | null
+          created_at: string | null
+          id: string
+          instance_name: string
+          is_connected: boolean | null
+          phone_number: string | null
+          port: number
+          updated_at: string | null
+          wuzapi_token: string
+          wuzapi_url: string
+        }
+        Insert: {
+          assigned_to_user?: string | null
+          connected_at?: string | null
+          created_at?: string | null
+          id?: string
+          instance_name: string
+          is_connected?: boolean | null
+          phone_number?: string | null
+          port: number
+          updated_at?: string | null
+          wuzapi_token: string
+          wuzapi_url: string
+        }
+        Update: {
+          assigned_to_user?: string | null
+          connected_at?: string | null
+          created_at?: string | null
+          id?: string
+          instance_name?: string
+          is_connected?: boolean | null
+          phone_number?: string | null
+          port?: number
+          updated_at?: string | null
+          wuzapi_token?: string
+          wuzapi_url?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
