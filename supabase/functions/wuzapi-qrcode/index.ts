@@ -224,6 +224,42 @@ serve(async (req) => {
       }
     }
 
+    // ACTION: ACTIVATE (chamar POST /session/connect após scan do QR)
+    if (action === "activate") {
+      try {
+        console.log("🔗 Ativando sessão via POST /session/connect...");
+        
+        const connectResponse = await fetch(`${wuzapi_url}/session/connect`, {
+          method: "POST",
+          headers: { 
+            "Token": wuzapi_token,
+            "Content-Type": "application/json"
+          }
+        });
+
+        const connectData = await connectResponse.json();
+        console.log("📡 Resposta /session/connect:", JSON.stringify(connectData, null, 2));
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: connectData,
+          message: "Sessão ativada"
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+
+      } catch (error) {
+        console.error("❌ Erro ao ativar sessão:", error);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: "Erro ao ativar sessão: " + (error instanceof Error ? error.message : String(error))
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // ACTION: DISCONNECT
     if (action === "disconnect") {
       try {
