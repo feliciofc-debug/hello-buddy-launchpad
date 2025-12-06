@@ -22,22 +22,60 @@ export default function WhatsAppConnection() {
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
 
+  const [activateCalled, setActivateCalled] = useState(false);
+
   // Verificar status ao montar
   useEffect(() => {
     checkStatus();
-    
-    // Polling enquanto aguarda conexão com QR Code
-    let interval: NodeJS.Timeout;
-    if (qrCode) {
-      interval = setInterval(() => {
-        checkStatus();
-      }, 3000);
-    }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [qrCode]);
+  }, []);
+
+  // Polling enquanto aguarda conexão com QR Code
+  useEffect(() => {
+    if (!qrCode) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await supabase.functions.invoke("wuzapi-qrcode", {
+          body: { action: "connect" }
+        });
+
+        console.log("Polling status:", response.data);
+
+        // Se já conectou
+        if (response.data?.already_connected) {
+          setStatus({
+            connected: true,
+            phone_number: response.data.phone_number,
+            instance_name: status.instance_name
+          });
+          setQrCode(null);
+          setActivateCalled(false);
+          toast.success("WhatsApp conectado com sucesso!");
+          return;
+        }
+
+        // Se tem QR code, atualizar
+        if (response.data?.qr_code) {
+          setQrCode(response.data.qr_code);
+        }
+
+        // Se está conectado mas não logado - chamar activate!
+        if (response.data?.success && !response.data?.already_connected && !response.data?.qr_code && !activateCalled) {
+          console.log("🔗 QR escaneado! Ativando sessão...");
+          setActivateCalled(true);
+          
+          await supabase.functions.invoke("wuzapi-qrcode", {
+            body: { action: "activate" }
+          });
+        }
+
+      } catch (error) {
+        console.error("Erro no polling:", error);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [qrCode, status.instance_name, activateCalled]);
 
   const checkStatus = async () => {
     try {
@@ -54,12 +92,6 @@ export default function WhatsAppConnection() {
           phone_number: response.data.phone_number,
           instance_name: response.data.instance_name
         });
-
-        // Se conectou, limpar QR Code
-        if (response.data.connected && qrCode) {
-          setQrCode(null);
-          toast.success("WhatsApp conectado com sucesso!");
-        }
       }
     } catch (error) {
       console.error("Erro ao verificar status:", error);
