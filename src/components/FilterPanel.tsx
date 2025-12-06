@@ -21,9 +21,7 @@ export interface FilterOptions {
 
 const MARKETPLACES: { value: Marketplace; label: string }[] = [
   { value: 'amazon', label: '📦 Amazon' },
-  { value: 'shopee', label: '🛍️ Shopee' },
   { value: 'aliexpress', label: '🌐 AliExpress' },
-  { value: 'lomadee', label: '🔗 Lomadee' },
   { value: 'hotmart', label: '🎓 Hotmart' },
   { value: 'eduzz', label: '💼 Eduzz' },
   { value: 'monetizze', label: '💰 Monetizze' }
@@ -53,7 +51,7 @@ const FilterPanel = ({ onFilterChange }: FilterPanelProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>({
     search: '',
-    marketplaces: ['amazon', 'shopee', 'aliexpress', 'lomadee', 'hotmart'],
+    marketplaces: ['amazon', 'aliexpress', 'hotmart'],
     categories: [],
     priceRange: { min: 0, max: 10000 },
     minCommission: 0,
@@ -84,7 +82,7 @@ const FilterPanel = ({ onFilterChange }: FilterPanelProps) => {
   const clearFilters = () => {
     const defaultFilters: FilterOptions = {
       search: '',
-      marketplaces: ['amazon', 'shopee', 'aliexpress', 'lomadee', 'hotmart'],
+      marketplaces: ['amazon', 'aliexpress', 'hotmart'],
       categories: [],
       priceRange: { min: 0, max: 10000 },
       minCommission: 0,

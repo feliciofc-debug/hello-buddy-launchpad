@@ -19,10 +19,8 @@ import Prospects from "./pages/Prospects";
 import Configuracoes from "./pages/Configuracoes";
 
 import SettingsPage from "./components/SettingsPage";
-import ShopeeCallback from "./pages/ShopeeCallback";
 import ReviewerLogin from "./pages/ReviewerLogin";
 import AuthCallbackMetaPage from "./pages/AuthCallbackMetaPage";
-import LomadeeFinder from "./pages/LomadeeFinder";
 import IAMarketing from "./pages/IAMarketing";
 import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
@@ -86,9 +84,7 @@ const App = () => (
             <Route path="/campanhas/:id" element={<CampanhaDetalhes />} />
             <Route path="/campanhas/:id/leads" element={<CampanhaLeads />} />
             <Route path="/campanhas/:campanhaId/leads-descobertos" element={<LeadsDescobertos />} />
-            <Route path="/shopee-callback" element={<ShopeeCallback />} />
             <Route path="/auth/callback/meta" element={<AuthCallbackMetaPage />} />
-            <Route path="/lomadee" element={<LomadeeFinder />} />
             <Route path="/ia-marketing" element={<IAMarketing />} />
             <Route path="/configuracoes/redes-sociais" element={<RedesSociais />} />
             <Route path="/biblioteca" element={<Biblioteca />} />
