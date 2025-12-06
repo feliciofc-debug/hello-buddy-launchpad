@@ -37,58 +37,81 @@ serve(async (req) => {
       });
     }
 
-    const { action } = await req.json();
-    console.log(`📱 [WUZAPI-QRCODE] Action: ${action}, User: ${user.id}`);
+    const { action, instanceId } = await req.json();
+    console.log(`📱 [WUZAPI-QRCODE] Action: ${action}, User: ${user.id}, InstanceId: ${instanceId || 'auto'}`);
 
-    // Buscar instância do usuário
-    let { data: userInstance, error: instanceError } = await supabase
-      .from("wuzapi_instances")
-      .select("*")
-      .eq("assigned_to_user", user.id)
-      .maybeSingle();
+    let userInstance;
 
-    // Se não tem instância, atribuir uma disponível
-    if (!userInstance) {
-      console.log("🔍 Usuário não tem instância, buscando disponível...");
-      
-      const { data: availableInstance, error: availableError } = await supabase
+    // Se instanceId foi passado, usar essa instância específica
+    if (instanceId) {
+      const { data: specificInstance, error: specificError } = await supabase
         .from("wuzapi_instances")
         .select("*")
-        .is("assigned_to_user", null)
-        .limit(1)
-        .maybeSingle();
-
-      if (availableError || !availableInstance) {
-        console.error("❌ Nenhuma instância disponível:", availableError);
-        return new Response(JSON.stringify({ 
-          error: "Nenhuma instância WhatsApp disponível. Contate o suporte." 
-        }), {
-          status: 503,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      // Atribuir instância ao usuário
-      const { data: assignedInstance, error: assignError } = await supabase
-        .from("wuzapi_instances")
-        .update({ 
-          assigned_to_user: user.id,
-          updated_at: new Date().toISOString()
-        })
-        .eq("id", availableInstance.id)
-        .select()
+        .eq("id", instanceId)
         .single();
 
-      if (assignError) {
-        console.error("❌ Erro ao atribuir instância:", assignError);
-        return new Response(JSON.stringify({ error: "Erro ao configurar WhatsApp" }), {
-          status: 500,
+      if (specificError || !specificInstance) {
+        console.error("❌ Instância não encontrada:", specificError);
+        return new Response(JSON.stringify({ error: "Instância não encontrada" }), {
+          status: 404,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
-      userInstance = assignedInstance;
-      console.log(`✅ Instância ${userInstance.instance_name} atribuída ao usuário`);
+      userInstance = specificInstance;
+      console.log(`📡 Usando instância específica: ${userInstance.instance_name}`);
+    } else {
+      // Buscar instância do usuário (comportamento original)
+      const { data: assignedInstance } = await supabase
+        .from("wuzapi_instances")
+        .select("*")
+        .eq("assigned_to_user", user.id)
+        .maybeSingle();
+
+      if (!assignedInstance) {
+        console.log("🔍 Usuário não tem instância, buscando disponível...");
+        
+        const { data: availableInstance, error: availableError } = await supabase
+          .from("wuzapi_instances")
+          .select("*")
+          .is("assigned_to_user", null)
+          .limit(1)
+          .maybeSingle();
+
+        if (availableError || !availableInstance) {
+          console.error("❌ Nenhuma instância disponível:", availableError);
+          return new Response(JSON.stringify({ 
+            error: "Nenhuma instância WhatsApp disponível. Contate o suporte." 
+          }), {
+            status: 503,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        // Atribuir instância ao usuário
+        const { data: newAssignedInstance, error: assignError } = await supabase
+          .from("wuzapi_instances")
+          .update({ 
+            assigned_to_user: user.id,
+            updated_at: new Date().toISOString()
+          })
+          .eq("id", availableInstance.id)
+          .select()
+          .single();
+
+        if (assignError) {
+          console.error("❌ Erro ao atribuir instância:", assignError);
+          return new Response(JSON.stringify({ error: "Erro ao configurar WhatsApp" }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+
+        userInstance = newAssignedInstance;
+        console.log(`✅ Instância ${userInstance.instance_name} atribuída ao usuário`);
+      } else {
+        userInstance = assignedInstance;
+      }
     }
 
     const { wuzapi_url, wuzapi_token } = userInstance;
