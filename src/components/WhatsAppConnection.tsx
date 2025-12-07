@@ -66,9 +66,29 @@ export default function WhatsAppConnection() {
 
         // Se conectou (loggedin = true)
         if (response.data?.loggedin === true) {
+          const phoneNumber = response.data.jid || response.data.phone_number;
+          
+          console.log("✅ WhatsApp conectado! Atualizando banco...");
+          
+          // 🔥 ATUALIZAR BANCO - is_connected = true
+          const { error: updateError } = await supabase
+            .from("wuzapi_instances")
+            .update({
+              is_connected: true,
+              phone_number: phoneNumber,
+              connected_at: new Date().toISOString()
+            })
+            .eq("id", selectedInstanceId);
+          
+          if (updateError) {
+            console.error("❌ Erro ao atualizar banco:", updateError);
+          } else {
+            console.log("✅ Banco atualizado! is_connected = true");
+          }
+          
           setStatus({
             connected: true,
-            phone_number: response.data.jid || response.data.phone_number,
+            phone_number: phoneNumber,
             instance_name: response.data.instance_name || status.instance_name
           });
           setQrCode(null);
@@ -168,14 +188,42 @@ export default function WhatsAppConnection() {
 
       // Verificar se já está conectado (loggedin = true)
       if (response.data?.loggedin === true) {
+        const phoneNumber = response.data.jid || response.data.phone_number;
+        
+        console.log("✅ Já conectado! Sincronizando banco...");
+        
+        // 🔥 SINCRONIZAR BANCO - garantir is_connected = true
+        const { error: updateError } = await supabase
+          .from("wuzapi_instances")
+          .update({
+            is_connected: true,
+            phone_number: phoneNumber
+          })
+          .eq("id", selectedInstanceId);
+        
+        if (updateError) {
+          console.error("❌ Erro ao sincronizar banco:", updateError);
+        } else {
+          console.log("✅ Banco sincronizado!");
+        }
+        
         setStatus({
           connected: true,
-          phone_number: response.data.jid || response.data.phone_number,
+          phone_number: phoneNumber,
           instance_name: response.data.instance_name
         });
         setQrCode(null);
         toast.success("WhatsApp já conectado!");
       } else if (response.data?.success) {
+        // 🔥 SINCRONIZAR BANCO - garantir is_connected = false
+        await supabase
+          .from("wuzapi_instances")
+          .update({
+            is_connected: false,
+            phone_number: null
+          })
+          .eq("id", selectedInstanceId);
+        
         setStatus({
           connected: false,
           phone_number: null,
@@ -256,6 +304,23 @@ export default function WhatsAppConnection() {
 
       console.log("📴 Resultado disconnect:", response.data);
 
+      // 🔥 ATUALIZAR BANCO - is_connected = false
+      console.log("📴 Atualizando banco: is_connected = false");
+      const { error: updateError } = await supabase
+        .from("wuzapi_instances")
+        .update({
+          is_connected: false,
+          phone_number: null,
+          connected_at: null
+        })
+        .eq("id", selectedInstanceId);
+      
+      if (updateError) {
+        console.error("❌ Erro ao atualizar banco:", updateError);
+      } else {
+        console.log("✅ Banco atualizado! is_connected = false");
+      }
+
       // RESETAR TODOS OS ESTADOS
       setStatus({
         connected: false,
@@ -269,9 +334,20 @@ export default function WhatsAppConnection() {
         loadInstances(); // Atualizar lista
       } else {
         toast.warning("WhatsApp desconectado localmente");
+        loadInstances(); // Atualizar lista mesmo assim
       }
     } catch (error) {
       console.error("Erro ao desconectar:", error);
+      
+      // 🔥 ATUALIZAR BANCO mesmo em caso de erro
+      await supabase
+        .from("wuzapi_instances")
+        .update({
+          is_connected: false,
+          phone_number: null
+        })
+        .eq("id", selectedInstanceId);
+      
       setStatus({
         connected: false,
         phone_number: null,
@@ -279,6 +355,7 @@ export default function WhatsAppConnection() {
       });
       setQrCode(null);
       toast.warning("Desconectado localmente");
+      loadInstances();
     } finally {
       setLoading(false);
     }
