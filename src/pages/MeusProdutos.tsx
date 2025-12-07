@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
 import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
+import StockIntegrations from '@/components/StockIntegrations';
 
 interface Campanha {
   id: string;
@@ -702,6 +703,7 @@ export default function MeusProdutos() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
+  const [isIntegrationsOpen, setIsIntegrationsOpen] = useState(false);
   const [isCampanhaModalOpen, setIsCampanhaModalOpen] = useState(false);
   const [isCampanhaWhatsAppOpen, setIsCampanhaWhatsAppOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -1232,6 +1234,10 @@ export default function MeusProdutos() {
                 <Upload className="w-4 h-4" />
                 Importar CSV
               </Button>
+              <Button onClick={() => setIsIntegrationsOpen(true)} variant="outline" className="gap-2">
+                <Plug className="w-4 h-4" />
+                Integrações
+              </Button>
               <Button variant="outline" onClick={() => navigate('/dashboard')} className="gap-2">
                 <ArrowLeft className="w-4 h-4" />
                 Dashboard
@@ -1548,6 +1554,11 @@ export default function MeusProdutos() {
         isOpen={isImportCSVOpen}
         onClose={() => setIsImportCSVOpen(false)}
         onSuccess={fetchProducts}
+      />
+
+      <StockIntegrations
+        open={isIntegrationsOpen}
+        onClose={() => setIsIntegrationsOpen(false)}
       />
 
       {selectedProduct && (
