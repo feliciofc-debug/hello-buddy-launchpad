@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Smartphone, QrCode, Wifi, WifiOff, RefreshCw, LogOut, Loader2, Server } from "lucide-react";
+import { Smartphone, QrCode, Wifi, WifiOff, RefreshCw, LogOut, Loader2, Server, AlertTriangle } from "lucide-react";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -35,9 +35,14 @@ export default function WhatsAppConnection() {
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [isPolling, setIsPolling] = useState(false);
 
-  // Carregar todas as instâncias
+  // Estado do controle da porta 8080
+  const [port8080Connected, setPort8080Connected] = useState<boolean | null>(null);
+  const [loading8080, setLoading8080] = useState(false);
+
+  // Carregar todas as instâncias e verificar 8080
   useEffect(() => {
     loadInstances();
+    checkPort8080Status();
   }, []);
 
   // Verificar status quando selecionar instância
@@ -85,6 +90,48 @@ export default function WhatsAppConnection() {
 
     return () => clearInterval(interval);
   }, [isPolling, selectedInstanceId, status.instance_name]);
+
+  // Funções de controle da porta 8080
+  const checkPort8080Status = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('wuzapi-qrcode', {
+        body: { action: 'control-8080', operation: 'status' }
+      });
+      if (error) throw error;
+      setPort8080Connected(data.connected);
+      console.log('📊 Status 8080:', data);
+    } catch (error) {
+      console.error('Erro ao verificar porta 8080:', error);
+      setPort8080Connected(null);
+    }
+  };
+
+  const disconnectPort8080 = async () => {
+    setLoading8080(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('wuzapi-qrcode', {
+        body: { action: 'control-8080', operation: 'disconnect' }
+      });
+      if (error) throw error;
+      setPort8080Connected(false);
+      toast.success('🔴 Porta 8080 desconectada! Agora pode testar as outras instâncias.');
+    } catch (error) {
+      console.error('Erro ao desconectar 8080:', error);
+      toast.error('Erro ao desconectar porta 8080');
+    } finally {
+      setLoading8080(false);
+    }
+  };
+
+  const reconnectPort8080 = async () => {
+    setLoading8080(true);
+    try {
+      await checkPort8080Status();
+      toast.info('Para reconectar a porta 8080, escaneie o QR Code no painel original (Dashboard WhatsApp)');
+    } finally {
+      setLoading8080(false);
+    }
+  };
 
   const loadInstances = async () => {
     try {
@@ -259,162 +306,209 @@ export default function WhatsAppConnection() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
+    <div className="space-y-4">
+      {/* Painel de Controle da Porta 8080 */}
+      <div className="bg-yellow-50 dark:bg-yellow-950/30 border-2 border-yellow-400 dark:border-yellow-600 rounded-lg p-4">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-full ${status.connected ? "bg-green-500/20" : "bg-muted"}`}>
-              <Smartphone className={`h-5 w-5 ${status.connected ? "text-green-500" : "text-muted-foreground"}`} />
-            </div>
+            <AlertTriangle className="h-6 w-6 text-yellow-600" />
             <div>
-              <CardTitle className="text-lg">Conexão WhatsApp</CardTitle>
-              <CardDescription>
-                Selecione uma instância para testar
-              </CardDescription>
+              <h3 className="text-lg font-bold text-yellow-800 dark:text-yellow-200">
+                🔧 Controle Instância Original (Porta 8080)
+              </h3>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                {port8080Connected === null 
+                  ? '⏳ Verificando...'
+                  : port8080Connected 
+                    ? '✅ Sua instância pessoal está conectada' 
+                    : '❌ Sua instância pessoal está desconectada'}
+              </p>
             </div>
           </div>
-          <Badge variant={status.connected ? "default" : "secondary"} className={status.connected ? "bg-green-500" : ""}>
-            {status.connected ? (
-              <><Wifi className="h-3 w-3 mr-1" /> Conectado</>
+          
+          <Button
+            onClick={port8080Connected ? disconnectPort8080 : reconnectPort8080}
+            disabled={loading8080 || port8080Connected === null}
+            variant={port8080Connected ? "destructive" : "default"}
+            className={!port8080Connected ? "bg-green-600 hover:bg-green-700" : ""}
+          >
+            {loading8080 ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Aguarde...
+              </>
             ) : (
-              <><WifiOff className="h-3 w-3 mr-1" /> Desconectado</>
+              port8080Connected ? '🔴 Desconectar 8080' : '🟢 Verificar 8080'
             )}
-          </Badge>
+          </Button>
         </div>
-      </CardHeader>
+        
+        {port8080Connected === false && (
+          <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-3 bg-yellow-100 dark:bg-yellow-900/50 p-2 rounded">
+            💡 Instância 8080 desconectada! Agora você pode testar as outras instâncias 
+            (8081-8089) com seu número sem conflito.
+          </p>
+        )}
+      </div>
 
-      <CardContent className="space-y-4">
-        {/* Seletor de Instância */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium flex items-center gap-2">
-            <Server className="h-4 w-4" />
-            Selecionar Instância
-          </label>
-          <Select value={selectedInstanceId || ""} onValueChange={setSelectedInstanceId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Escolha uma instância" />
-            </SelectTrigger>
-            <SelectContent>
-              {instances.map((instance) => (
-                <SelectItem key={instance.id} value={instance.id}>
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${instance.is_connected ? "bg-green-500" : "bg-gray-400"}`} />
-                    <span className="font-medium">{instance.instance_name}</span>
-                    <span className="text-muted-foreground text-xs">
-                      (porta {instance.port})
-                    </span>
-                    {instance.phone_number && (
-                      <span className="text-xs text-green-600">
-                        - {formatPhone(instance.phone_number)}
-                      </span>
-                    )}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedInstance && (
-            <p className="text-xs text-muted-foreground">
-              URL: {selectedInstance.wuzapi_url}
-            </p>
-          )}
-        </div>
-
-        {/* Status conectado */}
-        {status.connected && (
-          <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-green-700 dark:text-green-400">WhatsApp Ativo</p>
-                <p className="text-sm text-muted-foreground">
-                  Número: {formatPhone(status.phone_number)}
-                </p>
+      {/* Card principal de conexão */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-full ${status.connected ? "bg-green-500/20" : "bg-muted"}`}>
+                <Smartphone className={`h-5 w-5 ${status.connected ? "text-green-500" : "text-muted-foreground"}`} />
               </div>
+              <div>
+                <CardTitle className="text-lg">🧪 Testar Instâncias</CardTitle>
+                <CardDescription>
+                  Selecione uma instância para testar a conexão
+                </CardDescription>
+              </div>
+            </div>
+            <Badge variant={status.connected ? "default" : "secondary"} className={status.connected ? "bg-green-500" : ""}>
+              {status.connected ? (
+                <><Wifi className="h-3 w-3 mr-1" /> Conectado</>
+              ) : (
+                <><WifiOff className="h-3 w-3 mr-1" /> Desconectado</>
+              )}
+            </Badge>
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {/* Seletor de Instância */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <Server className="h-4 w-4" />
+              Selecionar Instância
+            </label>
+            <Select value={selectedInstanceId || ""} onValueChange={setSelectedInstanceId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Escolha uma instância" />
+              </SelectTrigger>
+              <SelectContent>
+                {instances.map((instance) => (
+                  <SelectItem key={instance.id} value={instance.id}>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${instance.is_connected ? "bg-green-500" : "bg-gray-400"}`} />
+                      <span className="font-medium">{instance.instance_name}</span>
+                      <span className="text-muted-foreground text-xs">
+                        (porta {instance.port})
+                      </span>
+                      {instance.phone_number && (
+                        <span className="text-xs text-green-600">
+                          - {formatPhone(instance.phone_number)}
+                        </span>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedInstance && (
+              <p className="text-xs text-muted-foreground">
+                URL: {selectedInstance.wuzapi_url}
+              </p>
+            )}
+          </div>
+
+          {/* Status conectado */}
+          {status.connected && (
+            <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-green-700 dark:text-green-400">WhatsApp Ativo</p>
+                  <p className="text-sm text-muted-foreground">
+                    Número: {formatPhone(status.phone_number)}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDisconnect}
+                  disabled={loading}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4 mr-1" />}
+                  Desconectar
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* QR Code */}
+          {qrCode && !status.connected && (
+            <div className="flex flex-col items-center p-6 rounded-lg bg-white border">
+              <p className="text-sm text-muted-foreground mb-4">
+                Escaneie o QR Code com seu WhatsApp
+              </p>
+              <div className="p-4 bg-white rounded-lg shadow-sm">
+                <img 
+                  src={qrCode} 
+                  alt="QR Code WhatsApp" 
+                  className="w-64 h-64"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-4">
+                O QR Code expira em ~60 segundos
+              </p>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                onClick={handleDisconnect}
+                onClick={handleConnect}
                 disabled={loading}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                className="mt-2"
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4 mr-1" />}
-                Desconectar
+                <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+                Gerar novo QR Code
               </Button>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* QR Code */}
-        {qrCode && !status.connected && (
-          <div className="flex flex-col items-center p-6 rounded-lg bg-white border">
-            <p className="text-sm text-muted-foreground mb-4">
-              Escaneie o QR Code com seu WhatsApp
-            </p>
-            <div className="p-4 bg-white rounded-lg shadow-sm">
-              <img 
-                src={qrCode} 
-                alt="QR Code WhatsApp" 
-                className="w-64 h-64"
-              />
+          {/* Botão conectar */}
+          {!status.connected && !qrCode && selectedInstanceId && (
+            <div className="flex flex-col items-center py-8">
+              <div className="p-4 rounded-full bg-muted mb-4">
+                <QrCode className="h-12 w-12 text-muted-foreground" />
+              </div>
+              <p className="text-center text-muted-foreground mb-4">
+                Conecte o WhatsApp nesta instância
+              </p>
+              <Button onClick={handleConnect} disabled={loading} size="lg">
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <QrCode className="h-4 w-4 mr-2" />
+                )}
+                Conectar WhatsApp
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-4">
-              O QR Code expira em ~60 segundos
-            </p>
+          )}
+
+          {/* Refresh manual */}
+          <div className="flex justify-center gap-2">
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleConnect}
-              disabled={loading}
-              className="mt-2"
+              onClick={checkStatus}
+              className="text-muted-foreground"
             >
-              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-              Gerar novo QR Code
+              <RefreshCw className="h-4 w-4 mr-1" />
+              Atualizar status
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={loadInstances}
+              className="text-muted-foreground"
+            >
+              <Server className="h-4 w-4 mr-1" />
+              Recarregar instâncias
             </Button>
           </div>
-        )}
-
-        {/* Botão conectar */}
-        {!status.connected && !qrCode && selectedInstanceId && (
-          <div className="flex flex-col items-center py-8">
-            <div className="p-4 rounded-full bg-muted mb-4">
-              <QrCode className="h-12 w-12 text-muted-foreground" />
-            </div>
-            <p className="text-center text-muted-foreground mb-4">
-              Conecte o WhatsApp nesta instância
-            </p>
-            <Button onClick={handleConnect} disabled={loading} size="lg">
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <QrCode className="h-4 w-4 mr-2" />
-              )}
-              Conectar WhatsApp
-            </Button>
-          </div>
-        )}
-
-        {/* Refresh manual */}
-        <div className="flex justify-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={checkStatus}
-            className="text-muted-foreground"
-          >
-            <RefreshCw className="h-4 w-4 mr-1" />
-            Atualizar status
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={loadInstances}
-            className="text-muted-foreground"
-          >
-            <Server className="h-4 w-4 mr-1" />
-            Recarregar instâncias
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
