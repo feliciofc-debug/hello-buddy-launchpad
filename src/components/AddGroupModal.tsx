@@ -231,58 +231,128 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
 
     try {
       setIsAdding(true);
+      console.log('📥 Iniciando importação CSV...');
+      console.log('📄 Arquivo:', file.name, 'Tamanho:', file.size);
 
       const text = await file.text();
+      console.log('📄 Conteúdo bruto do arquivo:', text);
+      console.log('📄 Primeiros 200 caracteres:', text.substring(0, 200));
+      
       const lines = text.split('\n').filter(line => line.trim());
-
-      // Remover header
-      if (lines.length > 0) lines.shift();
+      console.log('📋 Total de linhas (incluindo header):', lines.length);
+      console.log('📋 Linhas:', lines);
 
       if (lines.length === 0) {
-        toast.error('CSV vazio ou sem dados');
+        toast.error('❌ Arquivo vazio');
+        return;
+      }
+
+      // Detectar headers
+      const headerLine = lines[0].toLowerCase();
+      const headers = headerLine.split(',').map(h => h.trim());
+      console.log('📋 Headers detectados:', headers);
+
+      // Determinar índices das colunas (flexível)
+      let telefoneIndex = headers.findIndex(h => h === 'telefone' || h === 'phone' || h === 'numero');
+      let nomeIndex = headers.findIndex(h => h === 'nome' || h === 'name');
+      let grupoIndex = headers.findIndex(h => h === 'grupo' || h === 'group');
+
+      console.log('📋 Índices encontrados:', { telefoneIndex, nomeIndex, grupoIndex });
+
+      // Se não encontrou telefone, tentar formato inverso (nome,telefone)
+      if (telefoneIndex === -1 && headers.length >= 2) {
+        // Verificar se o segundo campo parece ser telefone
+        const secondColSample = lines[1]?.split(',')[1]?.replace(/\D/g, '');
+        if (secondColSample && secondColSample.length >= 10) {
+          telefoneIndex = 1;
+          nomeIndex = 0;
+          console.log('📋 Formato detectado: nome,telefone');
+        } else {
+          // Tentar primeiro campo como telefone
+          const firstColSample = lines[1]?.split(',')[0]?.replace(/\D/g, '');
+          if (firstColSample && firstColSample.length >= 10) {
+            telefoneIndex = 0;
+            nomeIndex = 1;
+            console.log('📋 Formato detectado: telefone,nome');
+          }
+        }
+      }
+
+      if (telefoneIndex === -1) {
+        console.error('❌ Coluna de telefone não encontrada. Headers:', headers);
+        toast.error('❌ CSV deve ter coluna "telefone" ou "nome,telefone"');
+        return;
+      }
+
+      // Remover header e processar dados
+      const dataLines = lines.slice(1);
+      console.log('📋 Linhas de dados (sem header):', dataLines.length);
+
+      if (dataLines.length === 0) {
+        toast.error('❌ CSV sem dados (apenas header encontrado)');
         return;
       }
 
       const contacts: ContactWithName[] = [];
       const seenPhones = new Set<string>();
 
-      for (const line of lines) {
-        const parts = line.split(',');
-        const phonePart = parts[0]?.trim() || '';
-        const namePart = parts[1]?.trim() || '';
-        
-        const cleanedPhone = cleanPhoneNumber(phonePart);
-        if (isValidBrazilianPhone(cleanedPhone)) {
-          const normalizedPhone = normalizePhoneNumber(cleanedPhone);
-          if (!seenPhones.has(normalizedPhone)) {
-            seenPhones.add(normalizedPhone);
-            contacts.push({
-              phone: normalizedPhone,
-              nome: namePart
-            });
-          }
+      for (let i = 0; i < dataLines.length; i++) {
+        const line = dataLines[i].trim();
+        if (!line) {
+          console.log(`⏭️ Linha ${i+2} vazia, pulando`);
+          continue;
         }
+
+        const parts = line.split(',').map(p => p.trim());
+        console.log(`📝 Linha ${i+2}:`, parts);
+
+        const phonePart = parts[telefoneIndex] || '';
+        const namePart = nomeIndex >= 0 ? (parts[nomeIndex] || '') : '';
+        
+        console.log(`📝 Linha ${i+2} extraído - telefone: "${phonePart}", nome: "${namePart}"`);
+
+        const cleanedPhone = cleanPhoneNumber(phonePart);
+        
+        if (!cleanedPhone || cleanedPhone.length < 10) {
+          console.warn(`⚠️ Linha ${i+2} telefone inválido: "${phonePart}" -> "${cleanedPhone}"`);
+          continue;
+        }
+
+        const normalizedPhone = normalizePhoneNumber(cleanedPhone);
+        
+        if (seenPhones.has(normalizedPhone)) {
+          console.log(`⏭️ Linha ${i+2} telefone duplicado: ${normalizedPhone}`);
+          continue;
+        }
+
+        seenPhones.add(normalizedPhone);
+        contacts.push({
+          phone: normalizedPhone,
+          nome: namePart
+        });
+        console.log(`✅ Linha ${i+2} contato válido:`, { phone: normalizedPhone, nome: namePart });
       }
 
+      console.log('📊 Total de contatos válidos:', contacts.length);
+      console.log('📊 Contatos:', contacts);
+
       if (contacts.length === 0) {
-        toast.error('CSV vazio ou inválido');
+        toast.error('❌ Nenhum contato válido encontrado no CSV');
         return;
       }
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        toast.error('Usuário não autenticado');
+        toast.error('❌ Usuário não autenticado');
         return;
       }
+
+      console.log('👤 User ID:', user.id);
 
       const name = groupName.trim() || `Lista CSV ${new Date().toLocaleString('pt-BR')}`;
       const phones = contacts.map(c => c.phone);
 
-      console.log('💾 Salvando lista CSV:', {
-        name: name,
-        contacts: contacts,
-        count: contacts.length
-      });
+      console.log('💾 Salvando lista:', { name, phones, count: phones.length });
 
       const { data, error } = await supabase
         .from('whatsapp_groups')
@@ -297,14 +367,14 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
         .select();
 
       if (error) {
-        console.error('❌ Erro ao salvar:', error);
+        console.error('❌ Erro ao salvar lista:', error);
         throw error;
       }
 
+      console.log('✅ Lista salva no banco:', data);
+
       // Salvar contatos automaticamente em "Seus Contatos"
       await saveContactsToDatabase(user.id, contacts);
-
-      console.log('✅ Lista CSV salva:', data);
 
       const contactsWithNames = contacts.filter(c => c.nome).length;
       if (contactsWithNames > 0) {
@@ -319,7 +389,7 @@ export const AddGroupModal = ({ open, onOpenChange, onGroupAdded }: AddGroupModa
       // Limpar input
       e.target.value = '';
     } catch (error: any) {
-      console.error('Erro ao importar CSV:', error);
+      console.error('💥 ERRO ao importar CSV:', error);
       toast.error(error.message || 'Erro ao importar CSV');
     } finally {
       setIsAdding(false);
