@@ -42,34 +42,41 @@ serve(async (req) => {
       console.log('👤 User ID (do body):', userId);
     }
 
-    // 🔥 BUSCAR INSTÂNCIA DO USUÁRIO
+    // 🔥 BUSCAR INSTÂNCIA CONECTADA DO USUÁRIO
     let instance: any = null;
     
     if (userId) {
+      // Prioridade: instância do usuário que está CONECTADA
       const { data: userInstance, error: instanceError } = await supabase
         .from('wuzapi_instances')
         .select('*')
         .eq('assigned_to_user', userId)
-        .single();
+        .eq('is_connected', true)
+        .limit(1)
+        .maybeSingle();
       
       if (!instanceError && userInstance) {
         instance = userInstance;
-        console.log('📡 Instância do usuário encontrada:', instance.instance_name);
+        console.log('📡 Instância CONECTADA do usuário:', instance.instance_name, instance.wuzapi_url);
+      } else {
+        console.log('⚠️ Nenhuma instância conectada para o usuário:', userId);
       }
     }
     
-    // Se não encontrou instância do usuário, buscar primeira disponível conectada
+    // Se não encontrou instância conectada do usuário, buscar qualquer uma conectada
     if (!instance) {
       const { data: anyInstance, error: anyError } = await supabase
         .from('wuzapi_instances')
         .select('*')
         .eq('is_connected', true)
         .limit(1)
-        .single();
+        .maybeSingle();
       
       if (!anyError && anyInstance) {
         instance = anyInstance;
-        console.log('📡 Usando instância disponível:', instance.instance_name);
+        console.log('📡 Usando instância conectada disponível:', instance.instance_name, instance.wuzapi_url);
+      } else {
+        console.log('⚠️ Nenhuma instância conectada no sistema');
       }
     }
     
