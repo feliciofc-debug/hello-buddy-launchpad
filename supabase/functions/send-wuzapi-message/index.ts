@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,28 +12,117 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumber, phoneNumbers, message, imageUrl, groupId, action } = await req.json();
-
-    // Se for ação de listar grupos, não valida phoneNumber/message
-    if (action === 'list-groups') {
-      const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
-      const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
-
-      if (!WUZAPI_URL || !WUZAPI_TOKEN) {
-        return new Response(
-          JSON.stringify({ error: 'Credenciais Wuzapi não configuradas' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
+    console.log('📥 send-wuzapi-message iniciado');
+    
+    // Criar cliente Supabase
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+    
+    // Pegar usuário autenticado
+    const authHeader = req.headers.get('Authorization');
+    let userId: string | null = null;
+    
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user }, error: userError } = await supabase.auth.getUser(token);
       
+      if (!userError && user) {
+        userId = user.id;
+        console.log('👤 User ID:', userId);
+      }
+    }
+    
+    const { phoneNumber, phoneNumbers, message, imageUrl, groupId, action, userId: bodyUserId } = await req.json();
+    
+    // Usar userId do body se não tiver do header (para chamadas internas)
+    if (!userId && bodyUserId) {
+      userId = bodyUserId;
+      console.log('👤 User ID (do body):', userId);
+    }
+
+    // 🔥 BUSCAR INSTÂNCIA DO USUÁRIO
+    let instance: any = null;
+    
+    if (userId) {
+      const { data: userInstance, error: instanceError } = await supabase
+        .from('wuzapi_instances')
+        .select('*')
+        .eq('assigned_to_user', userId)
+        .single();
+      
+      if (!instanceError && userInstance) {
+        instance = userInstance;
+        console.log('📡 Instância do usuário encontrada:', instance.instance_name);
+      }
+    }
+    
+    // Se não encontrou instância do usuário, buscar primeira disponível conectada
+    if (!instance) {
+      const { data: anyInstance, error: anyError } = await supabase
+        .from('wuzapi_instances')
+        .select('*')
+        .eq('is_connected', true)
+        .limit(1)
+        .single();
+      
+      if (!anyError && anyInstance) {
+        instance = anyInstance;
+        console.log('📡 Usando instância disponível:', instance.instance_name);
+      }
+    }
+    
+    // Se ainda não encontrou, tentar variáveis de ambiente como fallback
+    if (!instance) {
+      const envUrl = Deno.env.get('WUZAPI_URL');
+      const envToken = Deno.env.get('WUZAPI_TOKEN');
+      
+      if (envUrl && envToken) {
+        instance = {
+          wuzapi_url: envUrl,
+          wuzapi_token: envToken,
+          instance_name: 'env-fallback',
+          is_connected: true
+        };
+        console.log('📡 Usando credenciais de ambiente como fallback');
+      }
+    }
+    
+    if (!instance) {
+      console.error('❌ Nenhuma instância Wuzapi disponível');
+      return new Response(
+        JSON.stringify({ error: 'Nenhuma instância WhatsApp disponível. Conecte seu WhatsApp primeiro!' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // ✅ VERIFICAR SE ESTÁ CONECTADA
+    if (!instance.is_connected) {
+      console.error('❌ Instância não conectada:', instance.instance_name);
+      return new Response(
+        JSON.stringify({ error: 'WhatsApp não conectado! Conecte em Configurações.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const wuzapiUrl = instance.wuzapi_url;
+    const wuzapiToken = instance.wuzapi_token;
+    
+    console.log('🌐 URL:', wuzapiUrl);
+    console.log('🔑 Token:', wuzapiToken.substring(0, 10) + '...');
+    console.log('📍 Instância:', instance.instance_name);
+    
+    const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
+
+    // Se for ação de listar grupos
+    if (action === 'list-groups') {
       console.log('📋 Listando grupos do WhatsApp...');
       
       const response = await fetch(`${baseUrl}/groups`, {
         method: 'GET',
         headers: {
-          'Token': WUZAPI_TOKEN,
+          'Token': wuzapiToken,
         },
       });
 
@@ -66,7 +156,7 @@ serve(async (req) => {
     // Suporta tanto phoneNumber (single) quanto phoneNumbers (array)
     const numbersToSend = phoneNumbers || (phoneNumber ? [phoneNumber] : []);
 
-    // ⚠️ NOVA LÓGICA ADITIVA: Aceita groupId também
+    // Aceita groupId também
     if (numbersToSend.length === 0 && !groupId) {
       return new Response(
         JSON.stringify({ error: 'phoneNumber(s) ou groupId são obrigatórios' }),
@@ -80,22 +170,8 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const WUZAPI_URL = Deno.env.get('WUZAPI_URL');
-    const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN');
-    const WUZAPI_INSTANCE_ID = Deno.env.get('WUZAPI_INSTANCE_ID');
-
-    if (!WUZAPI_URL || !WUZAPI_TOKEN || !WUZAPI_INSTANCE_ID) {
-      console.error('Credenciais Wuzapi não configuradas');
-      return new Response(
-        JSON.stringify({ error: 'Credenciais Wuzapi não configuradas' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
     
-    // ⚠️ NOVA LÓGICA ADITIVA: Se for groupId, usar endpoint de grupo
+    // Se for groupId, usar endpoint de grupo
     if (groupId) {
       try {
         console.log('👥 Enviando para grupo:', groupId, imageUrl ? '(com imagem)' : '(só texto)');
@@ -119,7 +195,7 @@ serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Token': WUZAPI_TOKEN,
+            'Token': wuzapiToken,
           },
           body: JSON.stringify(payload),
         });
@@ -140,6 +216,7 @@ serve(async (req) => {
             success: response.ok, 
             groupId,
             type: 'group',
+            instance: instance.instance_name,
             data: responseData 
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -159,13 +236,13 @@ serve(async (req) => {
       }
     }
     
-    // ⚠️ LÓGICA ORIGINAL: Enviar para contatos individuais (NÃO MODIFICADA)
+    // Enviar para contatos individuais
     const results = [];
     
-    for (const phoneNumber of numbersToSend) {
+    for (const phone of numbersToSend) {
       try {
         // Formatar o número no padrão internacional (apenas dígitos)
-        let formattedPhone = phoneNumber.replace(/\D/g, '');
+        let formattedPhone = phone.replace(/\D/g, '');
         
         // Adiciona código do país +55 se não tiver
         if (!formattedPhone.startsWith('55') && formattedPhone.length === 11) {
@@ -193,7 +270,7 @@ serve(async (req) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Token': WUZAPI_TOKEN,
+            'Token': wuzapiToken,
           },
           body: JSON.stringify(payload),
         });
@@ -214,28 +291,31 @@ serve(async (req) => {
         results.push({
           phoneNumber: formattedPhone,
           success: response.ok,
+          instance: instance.instance_name,
           data: responseData
         });
 
         console.log(`✅ Enviado para ${formattedPhone}:`, response.status);
 
       } catch (error) {
-        console.error(`❌ Erro ao enviar para ${phoneNumber}:`, error);
+        console.error(`❌ Erro ao enviar para ${phone}:`, error);
         results.push({
-          phoneNumber,
+          phoneNumber: phone,
           success: false,
           error: error instanceof Error ? error.message : 'Erro desconhecido'
         });
       }
     }
 
+    console.log('✅ Envio concluído! Total:', results.length, 'mensagens');
+
     return new Response(
-      JSON.stringify({ success: true, results }),
+      JSON.stringify({ success: true, instance: instance.instance_name, results }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Erro na função send-wuzapi-message:', error);
+    console.error('💥 Erro na função send-wuzapi-message:', error);
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
