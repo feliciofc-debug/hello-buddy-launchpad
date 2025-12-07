@@ -1234,7 +1234,7 @@ export default function MeusProdutos() {
                 <Upload className="w-4 h-4" />
                 Importar CSV
               </Button>
-              <Button onClick={() => setIsIntegrationsOpen(true)} variant="outline" className="gap-2">
+              <Button onClick={() => setIsIntegrationsOpen(true)} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
                 <Plug className="w-4 h-4" />
                 Integrações
               </Button>
