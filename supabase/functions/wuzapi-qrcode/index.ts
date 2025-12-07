@@ -37,7 +37,56 @@ serve(async (req) => {
       });
     }
 
-    const { action, instanceId } = await req.json();
+    const { action, instanceId, operation } = await req.json();
+
+    // ========== CONTROLE DA PORTA 8080 (INSTÂNCIA ORIGINAL) ==========
+    if (action === 'control-8080') {
+      const PORT_8080_URL = 'http://191.252.193.73:8080';
+      const PORT_8080_TOKEN = 'crH2vyLzNlwQvaixZyC68l6sf8cZfpyc';
+      
+      console.log(`🔧 Controle 8080 - Operação: ${operation}`);
+      
+      if (operation === 'status') {
+        const statusResp = await fetch(`${PORT_8080_URL}/session/status`, {
+          headers: { 'Token': PORT_8080_TOKEN }
+        });
+        const statusData = await statusResp.json();
+        console.log('📊 Status 8080:', statusData);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            connected: statusData.data?.loggedIn || false,
+            phone: statusData.data?.number || null
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (operation === 'disconnect') {
+        console.log('🔴 Desconectando porta 8080...');
+        const logoutResp = await fetch(`${PORT_8080_URL}/session/logout`, {
+          method: 'POST',
+          headers: { 'Token': PORT_8080_TOKEN }
+        });
+        const logoutData = await logoutResp.json();
+        console.log('📤 Resultado logout 8080:', logoutData);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true,
+            connected: false,
+            message: 'Porta 8080 desconectada com sucesso'
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      return new Response(
+        JSON.stringify({ error: 'Operação inválida para control-8080' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     console.log(`📱 [WUZAPI-QRCODE] Action: ${action}, User: ${user.id}, InstanceId: ${instanceId || 'auto'}`);
 
     let userInstance;
