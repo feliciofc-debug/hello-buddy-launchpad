@@ -268,7 +268,7 @@ serve(async (req) => {
     // ═══════════════════════════════════════════════════════
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('💬 GERANDO RESPOSTA')
+    console.log('💬 GERANDO RESPOSTA PREMIUM COM LINKS')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     
     let resposta = ''
@@ -281,9 +281,18 @@ serve(async (req) => {
       return preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     }
     
+    // ═══════════════════════════════════════════════════════
+    // REGRA #1: SEMPRE INCLUIR LINK QUANDO MENCIONAR PRODUTO
+    // ═══════════════════════════════════════════════════════
+    const gerarLinkProduto = (produto: any): string => {
+      const link = produto.checkout_url || produto.link_marketplace || produto.link
+      if (!link) return ''
+      return `\n👉 Ver produto: ${link}`
+    }
+    
     const gerarLinkMensagem = (produto: any, altoValor: boolean) => {
       const preco = formatarPreco(produto.preco || 0)
-      const link = produto.checkout_url || produto.link_marketplace || 'https://amzofertas.com.br/checkout'
+      const link = produto.checkout_url || produto.link_marketplace || produto.link || 'https://amzofertas.com.br/checkout'
       
       if (altoValor) {
         return `📋 *${produto.nome}*
@@ -301,18 +310,61 @@ ${link}
 📦 *${produto.nome}*
 💰 *${preco}*
 
-_Escolha quantidade e finalize!_ ✅`
+_Escolha quantidade e finalize!_ ✅
+
+O frete aparece na finalização! 😊`
       }
     }
+    
+    // Gerar resposta com informações técnicas se perguntado
+    const perguntaTecnica = 
+      msgLower.includes('ingrediente') ||
+      msgLower.includes('nutricional') ||
+      msgLower.includes('calorias') ||
+      msgLower.includes('proteina') ||
+      msgLower.includes('ficha') ||
+      msgLower.includes('especificacao') ||
+      msgLower.includes('tecnico') ||
+      msgLower.includes('detalhe') ||
+      msgLower.includes('informacao') ||
+      msgLower.includes('composicao') ||
+      msgLower.includes('gluten') ||
+      msgLower.includes('lactose') ||
+      msgLower.includes('modo de uso') ||
+      msgLower.includes('como usa') ||
+      msgLower.includes('beneficio')
+    
+    const perguntaEstoque =
+      msgLower.includes('estoque') ||
+      msgLower.includes('disponivel') ||
+      msgLower.includes('disponível') ||
+      msgLower.includes('tem em estoque') ||
+      msgLower.includes('quantas unidades')
+    
+    const perguntaComparacao =
+      msgLower.includes('diferenca') ||
+      msgLower.includes('diferença') ||
+      msgLower.includes('melhor') ||
+      msgLower.includes('comparar') ||
+      msgLower.includes('qual escolher')
+    
+    const perguntaRecomendacao =
+      msgLower.includes('recomenda') ||
+      msgLower.includes('indica') ||
+      msgLower.includes('sugere') ||
+      msgLower.includes('pra ganhar massa') ||
+      msgLower.includes('para emagrecer') ||
+      msgLower.includes('o que voce indica')
     
     // CASO 1: Cliente quer comprar E temos produto identificado
     if (querComprar && produtoIdentificado) {
       const altoValor = ehAltoValor(produtoIdentificado)
+      const preco = formatarPreco(produtoIdentificado.preco || 0)
       
       if (altoValor) {
         resposta = `Ótimo! Vou te passar o link com todas as informações e fotos 😊`
       } else {
-        resposta = `Perfeito! Te envio o link de compra agora 😊`
+        resposta = `Perfeito! ${produtoIdentificado.nome} por ${preco}${gerarLinkProduto(produtoIdentificado)}`
       }
       
       enviarLink = true
@@ -320,74 +372,165 @@ _Escolha quantidade e finalize!_ ✅`
       console.log('   📌 CASO: Quer comprar + produto identificado')
     }
     
-    // CASO 2: Cliente pergunta preço E temos produto
+    // CASO 2: Pergunta técnica (ingredientes, nutricional, modo de uso)
+    else if (perguntaTecnica && produtoIdentificado) {
+      const p = produtoIdentificado
+      let detalhes = ''
+      
+      if (p.informacao_nutricional && (msgLower.includes('nutricional') || msgLower.includes('calorias') || msgLower.includes('proteina'))) {
+        detalhes = `📊 *Informação Nutricional:*\n${p.informacao_nutricional}`
+      } else if (p.ingredientes && (msgLower.includes('ingrediente') || msgLower.includes('composicao') || msgLower.includes('gluten') || msgLower.includes('lactose'))) {
+        detalhes = `🧪 *Ingredientes:*\n${p.ingredientes}`
+      } else if (p.modo_uso && (msgLower.includes('modo de uso') || msgLower.includes('como usa'))) {
+        detalhes = `📋 *Modo de Uso:*\n${p.modo_uso}`
+      } else if (p.beneficios && msgLower.includes('beneficio')) {
+        detalhes = `✨ *Benefícios:*\n${p.beneficios}`
+      } else if (p.ficha_tecnica) {
+        detalhes = `📋 *Ficha Técnica:*\n${p.ficha_tecnica}`
+      } else if (p.especificacoes) {
+        detalhes = `📋 *Especificações:*\n${p.especificacoes}`
+      } else {
+        detalhes = `📦 ${p.nome}\n${p.descricao || 'Produto de qualidade!'}`
+      }
+      
+      const preco = formatarPreco(p.preco || 0)
+      resposta = `${detalhes}\n\n💰 ${preco}${gerarLinkProduto(p)}`
+      
+      enviarLink = true
+      linkMensagem = gerarLinkMensagem(p, ehAltoValor(p))
+      console.log('   📌 CASO: Pergunta técnica')
+    }
+    
+    // CASO 3: Pergunta sobre estoque
+    else if (perguntaEstoque && produtoIdentificado) {
+      const p = produtoIdentificado
+      const preco = formatarPreco(p.preco || 0)
+      const estoque = p.estoque || 0
+      
+      if (estoque > 10) {
+        resposta = `Temos bastante estoque de ${p.nome}! 📦\n💰 ${preco}${gerarLinkProduto(p)}`
+      } else if (estoque > 0) {
+        resposta = `Temos ${estoque} unidades de ${p.nome}! ⚠️ Corre que tá acabando!\n💰 ${preco}${gerarLinkProduto(p)}`
+      } else {
+        resposta = `Poxa, ${p.nome} está em falta no momento 😔 Mas posso te avisar quando chegar!`
+      }
+      
+      if (estoque > 0) {
+        enviarLink = true
+        linkMensagem = gerarLinkMensagem(p, ehAltoValor(p))
+      }
+      console.log('   📌 CASO: Pergunta estoque')
+    }
+    
+    // CASO 4: Recomendação
+    else if (perguntaRecomendacao && produtos && produtos.length > 0) {
+      // Recomendar até 3 produtos relevantes
+      const produtosRecomendados = produtos.slice(0, 3)
+      let recomendacao = `Olha só o que eu recomendo! 💡\n\n`
+      
+      produtosRecomendados.forEach((p, i) => {
+        const preco = formatarPreco(p.preco || 0)
+        const link = p.checkout_url || p.link_marketplace || p.link
+        recomendacao += `${i + 1}️⃣ *${p.nome}* - ${preco}\n`
+        if (p.descricao) recomendacao += `   ${p.descricao.substring(0, 80)}...\n`
+        if (link) recomendacao += `   👉 ${link}\n`
+        recomendacao += `\n`
+      })
+      
+      recomendacao += `Qual te interessa mais? 😊`
+      resposta = recomendacao
+      console.log('   📌 CASO: Recomendação')
+    }
+    
+    // CASO 5: Cliente pergunta preço E temos produto
     else if (querPreco && produtoIdentificado) {
       const preco = formatarPreco(produtoIdentificado.preco || 0)
-      const link = produtoIdentificado.checkout_url || produtoIdentificado.link_marketplace
+      const estoque = produtoIdentificado.estoque || 0
       
-      resposta = `${produtoIdentificado.nome} custa ${preco}. Quer levar? 😊`
+      let infoEstoque = ''
+      if (estoque > 10) {
+        infoEstoque = ' Temos em estoque! 📦'
+      } else if (estoque > 0) {
+        infoEstoque = ` Últimas ${estoque} unidades! ⚠️`
+      } else {
+        infoEstoque = ' (Produto em falta no momento)'
+      }
       
-      // Sempre incluir link na mensagem de preço (exceto alto valor)
-      if (link && !ehAltoValor(produtoIdentificado)) {
+      resposta = `${produtoIdentificado.nome} custa ${preco}.${infoEstoque}${gerarLinkProduto(produtoIdentificado)}`
+      
+      if (estoque > 0) {
         enviarLink = true
-        linkMensagem = gerarLinkMensagem(produtoIdentificado, false)
+        linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
       }
       console.log('   📌 CASO: Pergunta preço')
     }
     
-    // CASO 3: Cliente quer foto E temos produto
+    // CASO 6: Cliente quer foto E temos produto
     else if (querFoto && produtoIdentificado) {
-      resposta = `Te envio a foto agora! 📸`
+      resposta = `Te envio a foto agora! 📸${gerarLinkProduto(produtoIdentificado)}`
       enviarFoto = true
-      enviarLink = true // TAMBÉM enviar link junto com foto
+      enviarLink = true
       linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
       console.log('   📌 CASO: Quer foto + link')
     }
     
-    // CASO 4: Cliente pergunta se tem produto E encontramos
+    // CASO 7: Cliente pergunta se tem produto E encontramos
     else if (temProduto && produtoIdentificado) {
       const preco = formatarPreco(produtoIdentificado.preco || 0)
-      resposta = `Sim! ${produtoIdentificado.nome} por ${preco} 😊`
+      const estoque = produtoIdentificado.estoque || 0
       
-      // Enviar foto + link automaticamente quando menciona produto
-      enviarFoto = true
-      enviarLink = true
-      linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
-      console.log('   📌 CASO: Pergunta se tem produto → foto + link')
+      if (estoque > 0) {
+        resposta = `Sim! ${produtoIdentificado.nome} por ${preco} 😊${gerarLinkProduto(produtoIdentificado)}`
+        enviarFoto = true
+        enviarLink = true
+        linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
+      } else {
+        resposta = `${produtoIdentificado.nome} está em falta no momento 😔 Mas posso te avisar quando chegar!`
+      }
+      console.log('   📌 CASO: Pergunta se tem produto')
     }
     
-    // CASO 5: Saudação simples
+    // CASO 8: Saudação simples
     else if (saudacao && !produtoIdentificado) {
-      resposta = `Oi! 😊 Como posso ajudar?`
+      resposta = `Oi! 😊 Como posso ajudar? Temos ${produtos?.length || 0} produtos disponíveis!`
       console.log('   📌 CASO: Saudação')
     }
     
-    // CASO 6: Agradecimento
+    // CASO 9: Agradecimento
     else if (agradecimento) {
       resposta = `Por nada! 😊 Qualquer dúvida é só chamar!`
       console.log('   📌 CASO: Agradecimento')
     }
     
-    // CASO 7: Mencionou produto mas sem intenção clara → foto + link automático
+    // CASO 10: Mencionou produto mas sem intenção clara → foto + link automático
     else if (produtoIdentificado) {
       const preco = formatarPreco(produtoIdentificado.preco || 0)
-      resposta = `${produtoIdentificado.nome} está ${preco}. Já te envio foto e link! 😊`
+      const estoque = produtoIdentificado.estoque || 0
       
-      // Enviar foto + link automaticamente
-      enviarFoto = true
-      enviarLink = true
-      linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
+      if (estoque > 0) {
+        resposta = `${produtoIdentificado.nome} está ${preco}! 😊${gerarLinkProduto(produtoIdentificado)}`
+        enviarFoto = true
+        enviarLink = true
+        linkMensagem = gerarLinkMensagem(produtoIdentificado, ehAltoValor(produtoIdentificado))
+      } else {
+        resposta = `${produtoIdentificado.nome} está em falta no momento 😔 Posso te avisar quando chegar?`
+      }
       console.log('   📌 CASO: Produto identificado → foto + link automático')
     }
     
-    // CASO 8: Não entendeu
+    // CASO 11: Não entendeu
     else {
-      resposta = `Desculpe, não entendi. Pode me dizer qual produto você quer? 😊`
+      if (produtos && produtos.length > 0) {
+        const lista = produtos.slice(0, 5).map(p => `• ${p.nome}`).join('\n')
+        resposta = `Temos esses produtos disponíveis:\n${lista}\n\nQual te interessa? 😊`
+      } else {
+        resposta = `Desculpe, não entendi. Pode me dizer qual produto você quer? 😊`
+      }
       console.log('   📌 CASO: Não entendeu')
     }
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-    console.log('📤 RESPOSTA FINAL:')
+    console.log('📤 RESPOSTA FINAL PREMIUM:')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log('   Mensagem:', resposta)
     console.log('   Produto:', produtoIdentificado?.nome || 'NENHUM')

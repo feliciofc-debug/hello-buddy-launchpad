@@ -185,3 +185,6 @@ verify_jwt = true
 
 [functions.sync-stock]
 verify_jwt = false
+
+[functions.get-products-for-ai]
+verify_jwt = false
