@@ -2557,6 +2557,72 @@ export type Database = {
           },
         ]
       }
+      stock_integrations: {
+        Row: {
+          active: boolean | null
+          api_key: string | null
+          api_token: string | null
+          api_url: string
+          auth_type: string | null
+          auto_sync: boolean | null
+          created_at: string | null
+          field_mapping: Json
+          id: string
+          integration_type: string
+          last_error: string | null
+          last_sync_at: string | null
+          last_sync_status: string | null
+          name: string
+          products_synced: number | null
+          sync_count: number | null
+          sync_interval: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean | null
+          api_key?: string | null
+          api_token?: string | null
+          api_url: string
+          auth_type?: string | null
+          auto_sync?: boolean | null
+          created_at?: string | null
+          field_mapping?: Json
+          id?: string
+          integration_type: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          last_sync_status?: string | null
+          name: string
+          products_synced?: number | null
+          sync_count?: number | null
+          sync_interval?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean | null
+          api_key?: string | null
+          api_token?: string | null
+          api_url?: string
+          auth_type?: string | null
+          auto_sync?: boolean | null
+          created_at?: string | null
+          field_mapping?: Json
+          id?: string
+          integration_type?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          last_sync_status?: string | null
+          name?: string
+          products_synced?: number | null
+          sync_count?: number | null
+          sync_interval?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       subscriptions: {
         Row: {
           amount: number
