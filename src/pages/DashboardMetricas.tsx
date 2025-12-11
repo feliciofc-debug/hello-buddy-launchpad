@@ -250,6 +250,8 @@ export default function DashboardMetricas() {
     { icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
     { icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
+    { icon: Users, label: '👥 Seus Cadastros', path: '/seus-cadastros' },
+    { icon: Megaphone, label: '📋 Grupos de Transmissão', path: '/grupos-transmissao' },
     { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
     { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
     { icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },

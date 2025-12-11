@@ -69,10 +69,11 @@ export default function SeusCadastros() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Buscar cadastros do usuário E cadastros públicos (sem user_id)
       const { data, error } = await supabase
         .from('cadastros')
         .select('*')
-        .eq('user_id', user.id)
+        .or(`user_id.eq.${user.id},user_id.is.null`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
