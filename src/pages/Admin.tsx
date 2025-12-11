@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw } from "lucide-react";
+import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -268,6 +268,54 @@ export default function Admin() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
+        {/* Quick Access Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <Card 
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate('/admin/importar')}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-primary/10 rounded-lg">
+                <Upload className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Importar Base</h3>
+                <p className="text-sm text-muted-foreground">Importação em massa de contatos</p>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card 
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate('/admin/produtos')}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-green-500/10 rounded-lg">
+                <Package className="h-6 w-6 text-green-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Produtos</h3>
+                <p className="text-sm text-muted-foreground">Gerenciar produtos</p>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card 
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate('/vendedores')}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-blue-500/10 rounded-lg">
+                <Users className="h-6 w-6 text-blue-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Vendedores</h3>
+                <p className="text-sm text-muted-foreground">Gerenciar equipe</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
         <Tabs defaultValue="deletions" className="w-full">
           <TabsList className="grid w-full max-w-md grid-cols-2">
             <TabsTrigger value="deletions" className="gap-2">
