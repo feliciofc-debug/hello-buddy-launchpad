@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users } from "lucide-react";
+import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -269,7 +269,37 @@ export default function Admin() {
 
       <main className="container mx-auto px-4 py-8">
         {/* Quick Access Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          <Card 
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate('/seus-cadastros')}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-purple-500/10 rounded-lg">
+                <Users className="h-6 w-6 text-purple-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Seus Cadastros</h3>
+                <p className="text-sm text-muted-foreground">Gerenciar cadastros</p>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card 
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate('/grupos-transmissao')}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-orange-500/10 rounded-lg">
+                <Send className="h-6 w-6 text-orange-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Grupos de Transmissão</h3>
+                <p className="text-sm text-muted-foreground">Organizar listas</p>
+              </div>
+            </CardContent>
+          </Card>
+          
           <Card 
             className="cursor-pointer hover:border-primary/50 transition-colors"
             onClick={() => navigate('/admin/importar')}
@@ -280,7 +310,7 @@ export default function Admin() {
               </div>
               <div>
                 <h3 className="font-semibold">Importar Base</h3>
-                <p className="text-sm text-muted-foreground">Importação em massa de contatos</p>
+                <p className="text-sm text-muted-foreground">Importação em massa</p>
               </div>
             </CardContent>
           </Card>
@@ -306,7 +336,7 @@ export default function Admin() {
           >
             <CardContent className="p-6 flex items-center gap-4">
               <div className="p-3 bg-blue-500/10 rounded-lg">
-                <Users className="h-6 w-6 text-blue-500" />
+                <ListChecks className="h-6 w-6 text-blue-500" />
               </div>
               <div>
                 <h3 className="font-semibold">Vendedores</h3>
