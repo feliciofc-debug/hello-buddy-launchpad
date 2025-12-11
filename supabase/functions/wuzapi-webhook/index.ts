@@ -73,6 +73,23 @@ serve(async (req) => {
         // Tentar como query string
         const params = new URLSearchParams(bodyText);
         webhookData = Object.fromEntries(params.entries());
+        
+        // ═══════════════════════════════════════
+        // 🔧 CORREÇÃO CRÍTICA: Parsear jsonData interno
+        // O Wuzapi envia: instanceName=amz-01&jsonData={...}&userID=xxx
+        // Precisamos extrair e parsear o jsonData
+        // ═══════════════════════════════════════
+        if (webhookData.jsonData) {
+          try {
+            const innerData = JSON.parse(webhookData.jsonData);
+            console.log('✅ jsonData parseado com sucesso');
+            // Mesclar dados internos mantendo instanceName do nível superior
+            const instanceName = webhookData.instanceName;
+            webhookData = { ...innerData, instanceName, userID: webhookData.userID };
+          } catch (jsonDataError) {
+            console.log('⚠️ Erro ao parsear jsonData:', jsonDataError);
+          }
+        }
       } else {
         console.log('❌ Formato de payload não reconhecido:', bodyText.substring(0, 100));
         return new Response(JSON.stringify({ status: 'error', reason: 'invalid_payload_format' }), { 
