@@ -2,6 +2,100 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
+const COOLDOWN_MINUTOS = 5;
+const TEMPO_SESSAO_MINUTOS = 60;
+
+/**
+ * Verifica se cliente tem sessão ativa (interagiu recentemente)
+ */
+async function verificarSessaoAtiva(whatsapp: string): Promise<boolean> {
+  const tempoLimite = new Date(Date.now() - TEMPO_SESSAO_MINUTOS * 60000).toISOString();
+  
+  const { data, error } = await supabase
+    .from('sessoes_ativas')
+    .select('*')
+    .eq('whatsapp', whatsapp)
+    .eq('ativa', true)
+    .gte('ultima_interacao', tempoLimite)
+    .maybeSingle();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Erro ao verificar sessão:', error);
+    return false;
+  }
+
+  return !!data;
+}
+
+/**
+ * Verifica cooldown entre mensagens
+ */
+async function verificarCooldown(whatsapp: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('historico_envios')
+    .select('timestamp')
+    .eq('whatsapp', whatsapp)
+    .order('timestamp', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) {
+    return true; // Pode enviar
+  }
+
+  const ultimoEnvio = new Date(data.timestamp);
+  const diffMinutos = (Date.now() - ultimoEnvio.getTime()) / 60000;
+
+  return diffMinutos >= COOLDOWN_MINUTOS;
+}
+
+/**
+ * Verifica se cliente tem campanha ativa
+ */
+async function temCampanhaAtiva(whatsapp: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('campanhas_ativas')
+    .select('id')
+    .eq('whatsapp', whatsapp)
+    .eq('aguardando_resposta', true)
+    .eq('pausado', false)
+    .limit(1)
+    .maybeSingle();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Erro ao verificar campanha:', error);
+    return false;
+  }
+
+  return !!data;
+}
+
+/**
+ * Registra envio no histórico
+ */
+async function registrarEnvio(
+  whatsapp: string, 
+  tipo: 'campanha' | 'ia' | 'manual',
+  mensagem: string,
+  sucesso: boolean = true,
+  erro?: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('historico_envios')
+    .insert({
+      whatsapp,
+      tipo,
+      mensagem: mensagem.substring(0, 500), // Limitar tamanho
+      sucesso,
+      erro: erro || null,
+      timestamp: new Date().toISOString()
+    });
+
+  if (error) {
+    console.error('Erro ao registrar envio:', error);
+  }
+}
+
 export function useScheduledCampaigns(userId: string | undefined) {
   // Lock para evitar execuções duplicadas
   const isExecuting = useRef(false);
@@ -67,13 +161,43 @@ export function useScheduledCampaigns(userId: string | undefined) {
               .in('id', campanha.listas_ids || []);
 
             const contatos = listas?.flatMap(l => l.phone_numbers || []) || [];
-            console.log(`📱 Enviando para ${contatos.length} contatos`);
+            console.log(`📱 Verificando ${contatos.length} contatos`);
 
             let enviados = 0;
+            let pulados = 0;
 
             // ENVIAR PARA CADA CONTATO
             for (const phone of contatos) {
               try {
+                // ✅ PROTEÇÃO 1: VERIFICAR SESSÃO ATIVA
+                const sessaoAtiva = await verificarSessaoAtiva(phone);
+                
+                if (sessaoAtiva) {
+                  console.log(`⏸️ SESSÃO ATIVA - Pulando ${phone} (em conversa)`);
+                  pulados++;
+                  continue;
+                }
+
+                // ✅ PROTEÇÃO 2: VERIFICAR COOLDOWN (5 minutos)
+                const podEnviar = await verificarCooldown(phone);
+                
+                if (!podEnviar) {
+                  console.log(`⏰ COOLDOWN - Pulando ${phone} (última msg < 5min)`);
+                  pulados++;
+                  continue;
+                }
+
+                // ✅ PROTEÇÃO 3: VERIFICAR CAMPANHA ATIVA
+                const campanhaAtiva = await temCampanhaAtiva(phone);
+                
+                if (campanhaAtiva) {
+                  console.log(`📋 CAMPANHA ATIVA - Pulando ${phone} (já tem campanha)`);
+                  pulados++;
+                  continue;
+                }
+
+                console.log(`✅ Verificações OK - Enviando para ${phone}`);
+
                 // Buscar nome
                 const { data: contact } = await supabase
                   .from('whatsapp_contacts')
@@ -100,6 +224,19 @@ export function useScheduledCampaigns(userId: string | undefined) {
 
                 if (!sendError) {
                   enviados++;
+
+                  // ✅ REGISTRAR ENVIO NO HISTÓRICO (para cooldown)
+                  await registrarEnvio(phone, 'campanha', mensagem, true);
+
+                  // ✅ MARCAR CAMPANHA ATIVA PARA ESTE CLIENTE
+                  await supabase.from('campanhas_ativas').insert({
+                    cliente_id: null,
+                    whatsapp: phone,
+                    tipo: 'produto',
+                    mensagem: mensagem.substring(0, 500),
+                    aguardando_resposta: true,
+                    pausado: false
+                  });
 
                   // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
                   await supabase.from('mensagens_enviadas').insert({
@@ -148,6 +285,9 @@ export function useScheduledCampaigns(userId: string | undefined) {
                     message: mensagem,
                     origem: 'campanha'
                   });
+                } else {
+                  // Registrar erro
+                  await registrarEnvio(phone, 'campanha', mensagem, false, 'Erro no envio');
                 }
 
                 await new Promise(r => setTimeout(r, 500));
@@ -157,8 +297,8 @@ export function useScheduledCampaigns(userId: string | undefined) {
               }
             }
 
-            console.log(`✅ Campanha ${campanha.nome}: ${enviados}/${contatos.length} enviados`);
-            toast.success(`✅ Campanha enviada para ${enviados} contatos!`);
+            console.log(`✅ Campanha ${campanha.nome}: ${enviados}/${contatos.length} enviados (${pulados} pulados)`);
+            toast.success(`✅ Campanha: ${enviados} enviados, ${pulados} protegidos`);
 
             // CALCULAR PRÓXIMA EXECUÇÃO
             const proximaExec = calcularProxima(campanha);

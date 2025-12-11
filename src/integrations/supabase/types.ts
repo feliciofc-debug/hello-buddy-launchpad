@@ -427,6 +427,45 @@ export type Database = {
         }
         Relationships: []
       }
+      campanhas_ativas: {
+        Row: {
+          aguardando_resposta: boolean | null
+          cliente_id: string | null
+          created_at: string | null
+          enviado_em: string | null
+          id: string
+          mensagem: string | null
+          pausado: boolean | null
+          respondeu: boolean | null
+          tipo: string | null
+          whatsapp: string
+        }
+        Insert: {
+          aguardando_resposta?: boolean | null
+          cliente_id?: string | null
+          created_at?: string | null
+          enviado_em?: string | null
+          id?: string
+          mensagem?: string | null
+          pausado?: boolean | null
+          respondeu?: boolean | null
+          tipo?: string | null
+          whatsapp: string
+        }
+        Update: {
+          aguardando_resposta?: boolean | null
+          cliente_id?: string | null
+          created_at?: string | null
+          enviado_em?: string | null
+          id?: string
+          mensagem?: string | null
+          pausado?: boolean | null
+          respondeu?: boolean | null
+          tipo?: string | null
+          whatsapp?: string
+        }
+        Relationships: []
+      }
       campanhas_multiplas_fontes: {
         Row: {
           campanha_id: string | null
@@ -1079,6 +1118,36 @@ export type Database = {
           total_membros?: number | null
           updated_at?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      historico_envios: {
+        Row: {
+          erro: string | null
+          id: string
+          mensagem: string | null
+          sucesso: boolean | null
+          timestamp: string | null
+          tipo: string | null
+          whatsapp: string
+        }
+        Insert: {
+          erro?: string | null
+          id?: string
+          mensagem?: string | null
+          sucesso?: boolean | null
+          timestamp?: string | null
+          tipo?: string | null
+          whatsapp: string
+        }
+        Update: {
+          erro?: string | null
+          id?: string
+          mensagem?: string | null
+          sucesso?: boolean | null
+          timestamp?: string | null
+          tipo?: string | null
+          whatsapp?: string
         }
         Relationships: []
       }
@@ -2812,6 +2881,39 @@ export type Database = {
           status?: string | null
           steps_to_reproduce?: string | null
           vulnerability_type?: string
+        }
+        Relationships: []
+      }
+      sessoes_ativas: {
+        Row: {
+          ativa: boolean | null
+          created_at: string | null
+          dispositivo: string | null
+          id: string
+          tipo: string | null
+          ultima_interacao: string | null
+          updated_at: string | null
+          whatsapp: string
+        }
+        Insert: {
+          ativa?: boolean | null
+          created_at?: string | null
+          dispositivo?: string | null
+          id?: string
+          tipo?: string | null
+          ultima_interacao?: string | null
+          updated_at?: string | null
+          whatsapp: string
+        }
+        Update: {
+          ativa?: boolean | null
+          created_at?: string | null
+          dispositivo?: string | null
+          id?: string
+          tipo?: string | null
+          ultima_interacao?: string | null
+          updated_at?: string | null
+          whatsapp?: string
         }
         Relationships: []
       }

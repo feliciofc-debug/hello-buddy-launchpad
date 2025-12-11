@@ -34,7 +34,8 @@ serve(async (req) => {
       }
     }
     
-    const { phoneNumber, phoneNumbers, message, imageUrl, groupId, action, userId: bodyUserId } = await req.json();
+    const body = await req.json();
+    const { phoneNumber, phoneNumbers, message, imageUrl, groupId, action, userId: bodyUserId, skipProtection } = body;
     
     // Usar userId do body se não tiver do header (para chamadas internas)
     if (!userId && bodyUserId) {
@@ -162,6 +163,65 @@ serve(async (req) => {
 
     // Suporta tanto phoneNumber (single) quanto phoneNumbers (array)
     const numbersToSend = phoneNumbers || (phoneNumber ? [phoneNumber] : []);
+
+    // ═══════════════════════════════════════
+    // 📱 PROTEÇÃO ANTI-CONFLITO IPHONE (BACKEND)
+    // ═══════════════════════════════════════
+    if (!skipProtection && numbersToSend.length > 0 && !groupId) {
+      console.log('🔍 Verificando proteções anti-conflito iPhone...');
+      
+      for (const phone of numbersToSend) {
+        const cleanPhone = phone.replace(/\D/g, '');
+        const tempoLimite = new Date(Date.now() - 60 * 60000).toISOString(); // 1 hora
+        
+        // VERIFICAR SESSÃO ATIVA
+        const { data: sessao } = await supabase
+          .from('sessoes_ativas')
+          .select('*')
+          .eq('whatsapp', cleanPhone)
+          .eq('ativa', true)
+          .gte('ultima_interacao', tempoLimite)
+          .maybeSingle();
+
+        if (sessao) {
+          console.log(`⏸️ BACKEND BLOQUEOU - Sessão ativa: ${cleanPhone}`);
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'sessao_ativa',
+              message: 'Cliente em conversa ativa - envio bloqueado para evitar conflito iPhone'
+            }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // VERIFICAR COOLDOWN (5 minutos)
+        const { data: ultimoEnvio } = await supabase
+          .from('historico_envios')
+          .select('timestamp')
+          .eq('whatsapp', cleanPhone)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (ultimoEnvio) {
+          const diffMinutos = (Date.now() - new Date(ultimoEnvio.timestamp).getTime()) / 60000;
+          
+          if (diffMinutos < 5) {
+            console.log(`⏰ BACKEND BLOQUEOU - Cooldown: ${cleanPhone} (${Math.ceil(5 - diffMinutos)} min restantes)`);
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: 'cooldown',
+                message: `Aguardar ${Math.ceil(5 - diffMinutos)} minutos entre mensagens`
+              }),
+              { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+        }
+      }
+      console.log('✅ Proteções anti-conflito OK - Prosseguindo com envio');
+    }
 
     // Aceita groupId também
     if (numbersToSend.length === 0 && !groupId) {

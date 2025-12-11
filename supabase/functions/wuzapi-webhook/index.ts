@@ -173,6 +173,50 @@ serve(async (req) => {
       return new Response(JSON.stringify({ status: 'incomplete' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // ═══════════════════════════════════════
+    // 📱 PROTEÇÃO ANTI-CONFLITO IPHONE
+    // ═══════════════════════════════════════
+    console.log('📱 Marcando sessão ativa para:', phoneNumber);
+    
+    // 1. Marcar sessão como ativa (cliente está em conversa)
+    const { error: sessaoError } = await supabaseClient
+      .from('sessoes_ativas')
+      .upsert({
+        whatsapp: phoneNumber,
+        tipo: 'ia_marketing',
+        ultima_interacao: new Date().toISOString(),
+        ativa: true
+      }, { 
+        onConflict: 'whatsapp' 
+      });
+
+    if (sessaoError) {
+      console.error('⚠️ Erro ao marcar sessão:', sessaoError);
+    } else {
+      console.log('✅ Sessão marcada como ativa');
+    }
+
+    // 2. Pausar TODAS as campanhas ativas deste cliente
+    const { error: pausarError, count } = await supabaseClient
+      .from('campanhas_ativas')
+      .update({ 
+        pausado: true, 
+        respondeu: true,
+        aguardando_resposta: false
+      })
+      .eq('whatsapp', phoneNumber)
+      .eq('aguardando_resposta', true);
+
+    if (pausarError) {
+      console.error('⚠️ Erro ao pausar campanhas:', pausarError);
+    } else {
+      console.log('✅ Campanhas pausadas para este cliente');
+    }
+
+    // ═══════════════════════════════════════
+    // 📝 CONTINUA PROCESSAMENTO NORMAL
+    // ═══════════════════════════════════════
+
     // BUSCAR OU CRIAR CONVERSA
     let { data: contexto } = await supabaseClient
       .from('whatsapp_conversations')
