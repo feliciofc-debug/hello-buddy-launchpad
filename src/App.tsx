@@ -52,6 +52,7 @@ import VendedorLogin from "./pages/VendedorLogin";
 import VendedorPainel from "./pages/VendedorPainel";
 import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
 import ConfiguracoesWhatsApp from "./pages/ConfiguracoesWhatsApp";
+import AdminImportar from "./pages/AdminImportar";
 import CookieBanner from "./components/CookieBanner";
 
 const queryClient = new QueryClient();
@@ -99,6 +100,7 @@ const App = () => (
             <Route path="/data-deletion" element={<DataDeletion />} />
             <Route path="/security" element={<Security />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/admin/importar" element={<AdminImportar />} />
             <Route path="/admin/produtos" element={<AdminProdutos />} />
             <Route path="/configuracao-empresa" element={<ConfiguracaoEmpresa />} />
             <Route path="/ia-conversas" element={<IAConversas />} />

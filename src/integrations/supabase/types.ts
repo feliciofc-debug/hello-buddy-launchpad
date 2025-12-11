@@ -993,6 +993,117 @@ export type Database = {
         }
         Relationships: []
       }
+      importacao_detalhes: {
+        Row: {
+          created_at: string | null
+          email: string | null
+          empresa: string | null
+          erro_mensagem: string | null
+          id: string
+          importacao_id: string | null
+          linha: number | null
+          nome: string | null
+          opt_in_id: string | null
+          status: string | null
+          whatsapp: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email?: string | null
+          empresa?: string | null
+          erro_mensagem?: string | null
+          id?: string
+          importacao_id?: string | null
+          linha?: number | null
+          nome?: string | null
+          opt_in_id?: string | null
+          status?: string | null
+          whatsapp?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string | null
+          empresa?: string | null
+          erro_mensagem?: string | null
+          id?: string
+          importacao_id?: string | null
+          linha?: number | null
+          nome?: string | null
+          opt_in_id?: string | null
+          status?: string | null
+          whatsapp?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "importacao_detalhes_importacao_id_fkey"
+            columns: ["importacao_id"]
+            isOneToOne: false
+            referencedRelation: "importacoes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "importacao_detalhes_opt_in_id_fkey"
+            columns: ["opt_in_id"]
+            isOneToOne: false
+            referencedRelation: "opt_ins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      importacoes: {
+        Row: {
+          arquivo_nome: string | null
+          completed_at: string | null
+          created_at: string | null
+          duplicados: number | null
+          enviar_boas_vindas: boolean | null
+          erros: number | null
+          id: string
+          origem_opt_in: string | null
+          progresso: number | null
+          status: string | null
+          tempo_decorrido_segundos: number | null
+          total_linhas: number | null
+          user_id: string
+          validos: number | null
+          velocidade: string | null
+        }
+        Insert: {
+          arquivo_nome?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          duplicados?: number | null
+          enviar_boas_vindas?: boolean | null
+          erros?: number | null
+          id?: string
+          origem_opt_in?: string | null
+          progresso?: number | null
+          status?: string | null
+          tempo_decorrido_segundos?: number | null
+          total_linhas?: number | null
+          user_id: string
+          validos?: number | null
+          velocidade?: string | null
+        }
+        Update: {
+          arquivo_nome?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          duplicados?: number | null
+          enviar_boas_vindas?: boolean | null
+          erros?: number | null
+          id?: string
+          origem_opt_in?: string | null
+          progresso?: number | null
+          status?: string | null
+          tempo_decorrido_segundos?: number | null
+          total_linhas?: number | null
+          user_id?: string
+          validos?: number | null
+          velocidade?: string | null
+        }
+        Relationships: []
+      }
       integrations: {
         Row: {
           access_token: string
