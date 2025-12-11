@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
+import FooterOptIn from "@/components/FooterOptIn";
 
 function Landing() {
   const navigate = useNavigate();
@@ -444,6 +445,9 @@ function Landing() {
           </p>
         </div>
       </section>
+
+      {/* OPT-IN NEWSLETTER WHATSAPP */}
+      <FooterOptIn />
 
       {/* FOOTER */}
       <footer className="py-12 px-6 bg-slate-950 border-t border-purple-500/20">
