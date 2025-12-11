@@ -1925,6 +1925,54 @@ export type Database = {
         }
         Relationships: []
       }
+      opt_ins: {
+        Row: {
+          created_at: string | null
+          data_cadastro: string | null
+          email: string | null
+          id: string
+          ip_address: string | null
+          nome: string
+          opt_in_aceito: boolean | null
+          origem: string | null
+          status: string | null
+          termo_aceite: string | null
+          updated_at: string | null
+          user_agent: string | null
+          whatsapp: string
+        }
+        Insert: {
+          created_at?: string | null
+          data_cadastro?: string | null
+          email?: string | null
+          id?: string
+          ip_address?: string | null
+          nome: string
+          opt_in_aceito?: boolean | null
+          origem?: string | null
+          status?: string | null
+          termo_aceite?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          whatsapp: string
+        }
+        Update: {
+          created_at?: string | null
+          data_cadastro?: string | null
+          email?: string | null
+          id?: string
+          ip_address?: string | null
+          nome?: string
+          opt_in_aceito?: boolean | null
+          origem?: string | null
+          status?: string | null
+          termo_aceite?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          whatsapp?: string
+        }
+        Relationships: []
+      }
       pipeline_stages: {
         Row: {
           created_at: string | null
