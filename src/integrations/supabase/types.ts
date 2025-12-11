@@ -137,7 +137,7 @@ export type Database = {
           total_mensagens_recebidas: number | null
           ultima_interacao: string | null
           updated_at: string | null
-          user_id: string
+          user_id: string | null
           whatsapp: string
           whatsapp_validado: boolean | null
         }
@@ -158,7 +158,7 @@ export type Database = {
           total_mensagens_recebidas?: number | null
           ultima_interacao?: string | null
           updated_at?: string | null
-          user_id: string
+          user_id?: string | null
           whatsapp: string
           whatsapp_validado?: boolean | null
         }
@@ -179,7 +179,7 @@ export type Database = {
           total_mensagens_recebidas?: number | null
           ultima_interacao?: string | null
           updated_at?: string | null
-          user_id?: string
+          user_id?: string | null
           whatsapp?: string
           whatsapp_validado?: boolean | null
         }
