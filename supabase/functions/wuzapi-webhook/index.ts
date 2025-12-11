@@ -6,11 +6,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Declarar env vars no topo do arquivo
+// Env vars globais
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-const WUZAPI_URL = Deno.env.get('WUZAPI_URL') || '';
-const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN') || '';
-const WUZAPI_INSTANCE_ID = Deno.env.get('WUZAPI_INSTANCE_ID');
+
+// Interface para instância Wuzapi
+interface WuzapiInstance {
+  id: string;
+  instance_name: string;
+  port: number;
+  wuzapi_url: string;
+  wuzapi_token: string;
+  is_connected: boolean;
+  assigned_to_user: string | null;
+}
 
 const FRASES_ROBOTICAS = [
   'fico feliz', 'agradeço', 'é um prazer', 'gostaria de', 'certamente',
@@ -171,6 +179,57 @@ serve(async (req) => {
     if (!phoneNumber || !messageText) {
       console.log('❌ Dados incompletos');
       return new Response(JSON.stringify({ status: 'incomplete' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ═══════════════════════════════════════
+    // 🔌 MULTI-INSTÂNCIA: BUSCAR INSTÂNCIA PELA PORTA
+    // ═══════════════════════════════════════
+    const webhookPort = webhookData.port || webhookData.instance_port || null;
+    console.log('📍 Porta recebida no webhook:', webhookPort);
+    
+    let WUZAPI_URL = Deno.env.get('WUZAPI_URL') || '';
+    let WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN') || '';
+    let WUZAPI_INSTANCE_ID = Deno.env.get('WUZAPI_INSTANCE_ID') || '';
+    let instanciaUsada = 'env_fallback';
+    
+    if (webhookPort) {
+      console.log('🔍 Buscando instância para porta:', webhookPort);
+      
+      const { data: instancia, error: instError } = await supabaseClient
+        .from('wuzapi_instances')
+        .select('*')
+        .eq('port', webhookPort)
+        .eq('is_connected', true)
+        .single();
+      
+      if (!instError && instancia) {
+        WUZAPI_URL = instancia.wuzapi_url;
+        WUZAPI_TOKEN = instancia.wuzapi_token;
+        WUZAPI_INSTANCE_ID = instancia.instance_name;
+        instanciaUsada = instancia.instance_name;
+        console.log(`✅ Instância encontrada: ${instancia.instance_name} (porta ${instancia.port})`);
+        console.log(`   URL: ${WUZAPI_URL}`);
+      } else {
+        console.log(`⚠️ Instância para porta ${webhookPort} não encontrada, usando fallback`);
+      }
+    } else {
+      // Tentar buscar qualquer instância conectada como fallback
+      const { data: fallbackInstancia } = await supabaseClient
+        .from('wuzapi_instances')
+        .select('*')
+        .eq('is_connected', true)
+        .limit(1)
+        .single();
+      
+      if (fallbackInstancia) {
+        WUZAPI_URL = fallbackInstancia.wuzapi_url;
+        WUZAPI_TOKEN = fallbackInstancia.wuzapi_token;
+        WUZAPI_INSTANCE_ID = fallbackInstancia.instance_name;
+        instanciaUsada = fallbackInstancia.instance_name;
+        console.log(`📌 Usando instância fallback: ${fallbackInstancia.instance_name}`);
+      } else {
+        console.log('⚠️ Nenhuma instância encontrada, usando env vars');
+      }
     }
 
     // ═══════════════════════════════════════
