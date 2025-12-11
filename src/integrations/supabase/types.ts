@@ -119,6 +119,80 @@ export type Database = {
           },
         ]
       }
+      cadastros: {
+        Row: {
+          bloqueou: boolean | null
+          created_at: string | null
+          email: string | null
+          empresa: string | null
+          id: string
+          nome: string
+          notas: string | null
+          opt_in: boolean | null
+          opt_in_id: string | null
+          origem: string | null
+          respondeu_alguma_vez: boolean | null
+          tags: string[] | null
+          total_mensagens_enviadas: number | null
+          total_mensagens_recebidas: number | null
+          ultima_interacao: string | null
+          updated_at: string | null
+          user_id: string
+          whatsapp: string
+          whatsapp_validado: boolean | null
+        }
+        Insert: {
+          bloqueou?: boolean | null
+          created_at?: string | null
+          email?: string | null
+          empresa?: string | null
+          id?: string
+          nome: string
+          notas?: string | null
+          opt_in?: boolean | null
+          opt_in_id?: string | null
+          origem?: string | null
+          respondeu_alguma_vez?: boolean | null
+          tags?: string[] | null
+          total_mensagens_enviadas?: number | null
+          total_mensagens_recebidas?: number | null
+          ultima_interacao?: string | null
+          updated_at?: string | null
+          user_id: string
+          whatsapp: string
+          whatsapp_validado?: boolean | null
+        }
+        Update: {
+          bloqueou?: boolean | null
+          created_at?: string | null
+          email?: string | null
+          empresa?: string | null
+          id?: string
+          nome?: string
+          notas?: string | null
+          opt_in?: boolean | null
+          opt_in_id?: string | null
+          origem?: string | null
+          respondeu_alguma_vez?: boolean | null
+          tags?: string[] | null
+          total_mensagens_enviadas?: number | null
+          total_mensagens_recebidas?: number | null
+          ultima_interacao?: string | null
+          updated_at?: string | null
+          user_id?: string
+          whatsapp?: string
+          whatsapp_validado?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cadastros_opt_in_id_fkey"
+            columns: ["opt_in_id"]
+            isOneToOne: false
+            referencedRelation: "opt_ins"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_queue: {
         Row: {
           attempts: number | null
@@ -930,6 +1004,81 @@ export type Database = {
           token_expires_at?: string | null
           updated_at?: string | null
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      grupo_membros: {
+        Row: {
+          adicionado_em: string | null
+          cadastro_id: string
+          grupo_id: string
+          id: string
+        }
+        Insert: {
+          adicionado_em?: string | null
+          cadastro_id: string
+          grupo_id: string
+          id?: string
+        }
+        Update: {
+          adicionado_em?: string | null
+          cadastro_id?: string
+          grupo_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grupo_membros_cadastro_id_fkey"
+            columns: ["cadastro_id"]
+            isOneToOne: false
+            referencedRelation: "cadastros"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grupo_membros_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "grupos_transmissao"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      grupos_transmissao: {
+        Row: {
+          ativo: boolean | null
+          cor: string | null
+          created_at: string | null
+          descricao: string | null
+          icone: string | null
+          id: string
+          nome: string
+          total_membros: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          cor?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          icone?: string | null
+          id?: string
+          nome: string
+          total_membros?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          cor?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          icone?: string | null
+          id?: string
+          nome?: string
+          total_membros?: number | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }

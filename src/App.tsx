@@ -53,6 +53,9 @@ import VendedorPainel from "./pages/VendedorPainel";
 import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
 import ConfiguracoesWhatsApp from "./pages/ConfiguracoesWhatsApp";
 import AdminImportar from "./pages/AdminImportar";
+import SeusCadastros from "./pages/SeusCadastros";
+import GruposTransmissao from "./pages/GruposTransmissao";
+import GrupoDetalhes from "./pages/GrupoDetalhes";
 import CookieBanner from "./components/CookieBanner";
 
 const queryClient = new QueryClient();
@@ -113,6 +116,9 @@ const App = () => (
             <Route path="/marketplace-publico" element={<MarketplacePublico />} />
             <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
             <Route path="/configuracoes-whatsapp" element={<ConfiguracoesWhatsApp />} />
+            <Route path="/seus-cadastros" element={<SeusCadastros />} />
+            <Route path="/grupos-transmissao" element={<GruposTransmissao />} />
+            <Route path="/grupos-transmissao/:id" element={<GrupoDetalhes />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
