@@ -59,7 +59,29 @@ serve(async (req) => {
   let messageText = '';
 
   try {
-    webhookData = await req.json();
+    // Ler body como texto primeiro para evitar erro de JSON inválido
+    const bodyText = await req.text();
+    console.log('📥 Body bruto recebido (primeiros 200 chars):', bodyText.substring(0, 200));
+    
+    // Tentar parsear como JSON
+    try {
+      webhookData = JSON.parse(bodyText);
+    } catch (parseError) {
+      console.log('⚠️ Body não é JSON válido, tentando extrair dados...');
+      // Se não for JSON, pode ser query string ou texto simples
+      if (bodyText.includes('=')) {
+        // Tentar como query string
+        const params = new URLSearchParams(bodyText);
+        webhookData = Object.fromEntries(params.entries());
+      } else {
+        console.log('❌ Formato de payload não reconhecido:', bodyText.substring(0, 100));
+        return new Response(JSON.stringify({ status: 'error', reason: 'invalid_payload_format' }), { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        });
+      }
+    }
+    
+    console.log('📦 Webhook data parseado:', JSON.stringify(webhookData).substring(0, 500));
     
     // ═══════════════════════════════════════
     // 🚫 FILTRAR TIPOS DE EVENTO - MUITO IMPORTANTE!
