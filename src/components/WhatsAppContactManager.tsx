@@ -23,8 +23,7 @@ import {
 
 interface GrupoTransmissao {
   id: string;
-  nome: string;
-  cor?: string;
+  group_name: string;
 }
 
 interface Contact {
@@ -103,10 +102,10 @@ export default function WhatsAppContactManager({
       if (!user) return;
 
       const { data, error } = await supabase
-        .from('grupos_transmissao')
-        .select('id, nome, cor')
+        .from('whatsapp_groups')
+        .select('id, group_name')
         .eq('user_id', user.id)
-        .order('nome');
+        .order('group_name');
 
       if (error) throw error;
       setGrupos(data || []);
@@ -119,69 +118,38 @@ export default function WhatsAppContactManager({
     if (!selectedContactForGroup) return;
 
     try {
-      // Primeiro, preciso encontrar o cadastro correspondente pelo telefone
-      const cleanPhone = selectedContactForGroup.phone.replace(/\D/g, '');
-      
-      const { data: cadastro, error: findError } = await supabase
-        .from('cadastros')
-        .select('id')
-        .or(`whatsapp.ilike.%${cleanPhone.slice(-8)}%`)
-        .limit(1)
+      // Buscar grupo atual
+      const { data: grupo, error: findError } = await supabase
+        .from('whatsapp_groups')
+        .select('phone_numbers')
+        .eq('id', grupoId)
         .single();
 
-      if (findError || !cadastro) {
-        // Se não encontrar cadastro, criar um
-        const { data: { user } } = await supabase.auth.getUser();
-        const { data: newCadastro, error: createError } = await supabase
-          .from('cadastros')
-          .insert({
-            nome: selectedContactForGroup.nome,
-            whatsapp: selectedContactForGroup.phone,
-            user_id: user?.id,
-            origem: 'whatsapp_contato'
-          })
-          .select('id')
-          .single();
+      if (findError) throw findError;
 
-        if (createError) throw createError;
+      const currentNumbers = grupo?.phone_numbers || [];
+      const phoneToAdd = selectedContactForGroup.phone;
 
-        // Adicionar ao grupo
-        const { error: addError } = await supabase
-          .from('grupo_membros')
-          .insert({
-            grupo_id: grupoId,
-            cadastro_id: newCadastro.id
-          });
-
-        if (addError) {
-          if (addError.code === '23505') {
-            toast.info('Contato já está neste grupo');
-          } else {
-            throw addError;
-          }
-        } else {
-          toast.success('✅ Contato adicionado ao grupo!');
-        }
-      } else {
-        // Adicionar ao grupo usando cadastro existente
-        const { error: addError } = await supabase
-          .from('grupo_membros')
-          .insert({
-            grupo_id: grupoId,
-            cadastro_id: cadastro.id
-          });
-
-        if (addError) {
-          if (addError.code === '23505') {
-            toast.info('Contato já está neste grupo');
-          } else {
-            throw addError;
-          }
-        } else {
-          toast.success('✅ Contato adicionado ao grupo!');
-        }
+      // Verificar se já está no grupo
+      if (currentNumbers.includes(phoneToAdd)) {
+        toast.info('Contato já está neste grupo');
+        setIsGroupDialogOpen(false);
+        setSelectedContactForGroup(null);
+        return;
       }
 
+      // Adicionar ao grupo
+      const { error: updateError } = await supabase
+        .from('whatsapp_groups')
+        .update({
+          phone_numbers: [...currentNumbers, phoneToAdd],
+          member_count: currentNumbers.length + 1
+        })
+        .eq('id', grupoId);
+
+      if (updateError) throw updateError;
+
+      toast.success('✅ Contato adicionado ao grupo!');
       setIsGroupDialogOpen(false);
       setSelectedContactForGroup(null);
     } catch (error) {
@@ -565,11 +533,8 @@ export default function WhatsAppContactManager({
                       className="w-full justify-start"
                       onClick={() => handleAddToGroup(grupo.id)}
                     >
-                      <div 
-                        className="w-3 h-3 rounded-full mr-2" 
-                        style={{ backgroundColor: grupo.cor || '#3B82F6' }}
-                      />
-                      {grupo.nome}
+                      <Users className="w-4 h-4 mr-2 text-primary" />
+                      {grupo.group_name}
                     </Button>
                   ))}
                 </div>
