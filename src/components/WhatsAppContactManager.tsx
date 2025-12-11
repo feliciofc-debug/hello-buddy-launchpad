@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Trash2, Plus, Search, Edit2 } from 'lucide-react';
+import { Trash2, Plus, Search, Edit2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -13,6 +13,19 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface GrupoTransmissao {
+  id: string;
+  nome: string;
+  cor?: string;
+}
 
 interface Contact {
   id: string;
@@ -34,10 +47,13 @@ export default function WhatsAppContactManager({
   reloadTrigger 
 }: Props) {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [grupos, setGrupos] = useState<GrupoTransmissao[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
+  const [selectedContactForGroup, setSelectedContactForGroup] = useState<Contact | null>(null);
   
   const [newContact, setNewContact] = useState({
     name: '',
@@ -49,6 +65,7 @@ export default function WhatsAppContactManager({
 
   useEffect(() => {
     loadContacts();
+    loadGrupos();
   }, []);
 
   // Reload quando o trigger mudar, mas mantém seleção
@@ -77,6 +94,99 @@ export default function WhatsAppContactManager({
       toast.error('Erro ao carregar contatos');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadGrupos = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('grupos_transmissao')
+        .select('id, nome, cor')
+        .eq('user_id', user.id)
+        .order('nome');
+
+      if (error) throw error;
+      setGrupos(data || []);
+    } catch (error) {
+      console.error('Erro ao carregar grupos:', error);
+    }
+  };
+
+  const handleAddToGroup = async (grupoId: string) => {
+    if (!selectedContactForGroup) return;
+
+    try {
+      // Primeiro, preciso encontrar o cadastro correspondente pelo telefone
+      const cleanPhone = selectedContactForGroup.phone.replace(/\D/g, '');
+      
+      const { data: cadastro, error: findError } = await supabase
+        .from('cadastros')
+        .select('id')
+        .or(`whatsapp.ilike.%${cleanPhone.slice(-8)}%`)
+        .limit(1)
+        .single();
+
+      if (findError || !cadastro) {
+        // Se não encontrar cadastro, criar um
+        const { data: { user } } = await supabase.auth.getUser();
+        const { data: newCadastro, error: createError } = await supabase
+          .from('cadastros')
+          .insert({
+            nome: selectedContactForGroup.nome,
+            whatsapp: selectedContactForGroup.phone,
+            user_id: user?.id,
+            origem: 'whatsapp_contato'
+          })
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+
+        // Adicionar ao grupo
+        const { error: addError } = await supabase
+          .from('grupo_membros')
+          .insert({
+            grupo_id: grupoId,
+            cadastro_id: newCadastro.id
+          });
+
+        if (addError) {
+          if (addError.code === '23505') {
+            toast.info('Contato já está neste grupo');
+          } else {
+            throw addError;
+          }
+        } else {
+          toast.success('✅ Contato adicionado ao grupo!');
+        }
+      } else {
+        // Adicionar ao grupo usando cadastro existente
+        const { error: addError } = await supabase
+          .from('grupo_membros')
+          .insert({
+            grupo_id: grupoId,
+            cadastro_id: cadastro.id
+          });
+
+        if (addError) {
+          if (addError.code === '23505') {
+            toast.info('Contato já está neste grupo');
+          } else {
+            throw addError;
+          }
+        } else {
+          toast.success('✅ Contato adicionado ao grupo!');
+        }
+      }
+
+      setIsGroupDialogOpen(false);
+      setSelectedContactForGroup(null);
+    } catch (error) {
+      console.error('Erro ao adicionar ao grupo:', error);
+      toast.error('Erro ao adicionar ao grupo');
     }
   };
 
@@ -372,8 +482,22 @@ export default function WhatsAppContactManager({
                     handleEditContact(contact);
                   }}
                   className="text-blue-600 hover:text-blue-700 flex-shrink-0"
+                  title="Editar contato"
                 >
                   <Edit2 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedContactForGroup(contact);
+                    setIsGroupDialogOpen(true);
+                  }}
+                  className="text-green-600 hover:text-green-700 flex-shrink-0"
+                  title="Adicionar a grupo"
+                >
+                  <Users className="h-4 w-4" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -383,6 +507,7 @@ export default function WhatsAppContactManager({
                     handleDeleteContact(contact.id);
                   }}
                   className="text-destructive hover:text-destructive flex-shrink-0"
+                  title="Excluir contato"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -413,6 +538,46 @@ export default function WhatsAppContactManager({
           </Button>
         </div>
       )}
+
+      {/* Dialog para selecionar grupo */}
+      <Dialog open={isGroupDialogOpen} onOpenChange={setIsGroupDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>👥 Adicionar a Grupo</DialogTitle>
+          </DialogHeader>
+          {selectedContactForGroup && (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Adicionar <strong>{selectedContactForGroup.nome}</strong> a qual grupo?
+              </p>
+              
+              {grupos.length === 0 ? (
+                <div className="text-center py-4 text-muted-foreground">
+                  <p>Nenhum grupo criado ainda.</p>
+                  <p className="text-xs mt-2">Vá em "Grupos de Transmissão" para criar um grupo.</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {grupos.map(grupo => (
+                    <Button
+                      key={grupo.id}
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={() => handleAddToGroup(grupo.id)}
+                    >
+                      <div 
+                        className="w-3 h-3 rounded-full mr-2" 
+                        style={{ backgroundColor: grupo.cor || '#3B82F6' }}
+                      />
+                      {grupo.nome}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
