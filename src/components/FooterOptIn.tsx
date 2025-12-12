@@ -80,27 +80,29 @@ const FooterOptIn = () => {
         console.log('Não foi possível obter IP');
       }
       
-      const { error } = await supabase
-        .from('opt_ins')
-        .insert([{
+      // Chamar edge function que registra e envia WhatsApp
+      const { data, error } = await supabase.functions.invoke('registrar-optin', {
+        body: {
           nome: nome.trim(),
           whatsapp: whatsapp,
-          opt_in_aceito: true,
+          aceite: true,
+          origem: 'site_footer',
           ip_address: ipAddress,
           user_agent: navigator.userAgent,
-          origem: 'site_footer',
           termo_aceite: 'Autorizo a AMZ Ofertas a me enviar informações, ofertas e conteúdos via WhatsApp. Posso cancelar enviando SAIR.'
-        }]);
+        }
+      });
       
       if (error) {
-        // Verificar se é duplicado
-        if (error.code === '23505') {
-          toast.warning('⚠️ Este WhatsApp já está cadastrado!');
-        } else {
-          throw error;
-        }
-      } else {
-        toast.success('✅ Cadastro confirmado! Em breve você receberá nossas ofertas.');
+        console.error('Erro edge function:', error);
+        throw new Error(error.message || 'Erro ao cadastrar');
+      }
+      
+      // Verificar resposta
+      if (data?.duplicate) {
+        toast.warning('⚠️ Este WhatsApp já está cadastrado!');
+      } else if (data?.success) {
+        toast.success('✅ Cadastro confirmado! Você receberá uma mensagem de boas-vindas no WhatsApp.');
         
         // Analytics event
         if (typeof window !== 'undefined' && (window as any).gtag) {
@@ -114,10 +116,12 @@ const FooterOptIn = () => {
         setNome('');
         setWhatsapp('');
         setAceite(false);
+      } else if (data?.error) {
+        throw new Error(data.error);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao cadastrar:', error);
-      toast.error('❌ Erro ao cadastrar. Tente novamente.');
+      toast.error('❌ ' + (error.message || 'Erro ao cadastrar. Tente novamente.'));
     } finally {
       setLoading(false);
     }
