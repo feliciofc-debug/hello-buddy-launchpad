@@ -370,26 +370,11 @@ export default function WhatsAppContactManager({
         <h3 className="text-lg font-semibold">
           📞 Seus Contatos ({contacts.length})
         </h3>
-        <div className="flex gap-2">
-          <Button 
-            size="sm" 
-            variant="outline"
-            onClick={syncToOptIn}
-            disabled={syncingOptIn || contacts.length === 0}
-            title="Sincronizar todos os contatos para Opt-in"
-          >
-            {syncingOptIn ? (
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <CheckCircle className="h-4 w-4 mr-2" />
-            )}
-            Sync Opt-in
-          </Button>
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Contato
+        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Contato
             </Button>
           </DialogTrigger>
           <DialogContent>
@@ -424,56 +409,55 @@ export default function WhatsAppContactManager({
               <Button onClick={handleAddContact} className="w-full">
                 Adicionar Contato
               </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>✏️ Editar Contato</DialogTitle>
-            </DialogHeader>
-            {editingContact && (
-              <div className="space-y-4">
-                <div>
-                  <Label>Telefone (não editável)</Label>
-                  <Input
-                    value={editingContact.phone}
-                    disabled
-                    className="bg-muted"
-                  />
-                </div>
-                <div>
-                  <Label>Nome *</Label>
-                  <Input
-                    placeholder="Ex: Maria Silva"
-                    value={editingContact.nome}
-                    onChange={(e) => setEditingContact({ 
-                      ...editingContact, 
-                      nome: e.target.value 
-                    })}
-                  />
-                </div>
-                <div>
-                  <Label>Observações (opcional)</Label>
-                  <Input
-                    placeholder="Ex: Cliente VIP"
-                    value={editingContact.notes || ''}
-                    onChange={(e) => setEditingContact({ 
-                      ...editingContact, 
-                      notes: e.target.value 
-                    })}
-                  />
-                </div>
-                <Button onClick={handleUpdateContact} className="w-full">
-                  💾 Salvar Alterações
-                </Button>
-              </div>
-            )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>✏️ Editar Contato</DialogTitle>
+          </DialogHeader>
+          {editingContact && (
+            <div className="space-y-4">
+              <div>
+                <Label>Telefone (não editável)</Label>
+                <Input
+                  value={editingContact.phone}
+                  disabled
+                  className="bg-muted"
+                />
+              </div>
+              <div>
+                <Label>Nome *</Label>
+                <Input
+                  placeholder="Ex: Maria Silva"
+                  value={editingContact.nome}
+                  onChange={(e) => setEditingContact({ 
+                    ...editingContact, 
+                    nome: e.target.value 
+                  })}
+                />
+              </div>
+              <div>
+                <Label>Observações (opcional)</Label>
+                <Input
+                  placeholder="Ex: Cliente VIP"
+                  value={editingContact.notes || ''}
+                  onChange={(e) => setEditingContact({ 
+                    ...editingContact, 
+                    notes: e.target.value 
+                  })}
+                />
+              </div>
+              <Button onClick={handleUpdateContact} className="w-full">
+                💾 Salvar Alterações
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -558,23 +542,39 @@ export default function WhatsAppContactManager({
       </div>
 
       {contacts.length > 0 && (
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={selectAll}
+              className="flex-1"
+            >
+              {selectedContacts.length === filteredContacts.length
+                ? '☐ Desmarcar Todos'
+                : '✅ Selecionar Todos'}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteSelected}
+              disabled={selectedContacts.length === 0}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Excluir ({selectedContacts.length})
+            </Button>
+          </div>
+          
+          {/* Botão principal de Sync para Opt-in */}
           <Button
-            variant="outline"
-            onClick={selectAll}
-            className="flex-1"
+            onClick={syncToOptIn}
+            disabled={syncingOptIn || contacts.length === 0}
+            className="w-full bg-green-600 hover:bg-green-700"
           >
-            {selectedContacts.length === filteredContacts.length
-              ? '☐ Desmarcar Todos'
-              : '✅ Selecionar Todos'}
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDeleteSelected}
-            disabled={selectedContacts.length === 0}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Excluir ({selectedContacts.length})
+            {syncingOptIn ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle className="h-4 w-4 mr-2" />
+            )}
+            🔄 Sincronizar TODOS ({contacts.length}) para Opt-in
           </Button>
         </div>
       )}
