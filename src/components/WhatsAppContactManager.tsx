@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Trash2, Plus, Search, Edit2, Users } from 'lucide-react';
+import { Trash2, Plus, Search, Edit2, Users, CheckCircle, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -52,6 +52,7 @@ export default function WhatsAppContactManager({
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
+  const [syncingOptIn, setSyncingOptIn] = useState(false);
   const [selectedContactForGroup, setSelectedContactForGroup] = useState<Contact | null>(null);
   
   const [newContact, setNewContact] = useState({
@@ -299,6 +300,61 @@ export default function WhatsAppContactManager({
     }
   };
 
+  // Sincronizar contatos para opt-in (cadastros)
+  const syncToOptIn = async () => {
+    if (contacts.length === 0) {
+      toast.error('Nenhum contato para sincronizar');
+      return;
+    }
+
+    setSyncingOptIn(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Usuário não autenticado');
+
+      let sincronizados = 0;
+      let atualizados = 0;
+
+      for (const contact of contacts) {
+        // Verificar se já existe em cadastros
+        const { data: existing } = await supabase
+          .from('cadastros')
+          .select('id')
+          .eq('whatsapp', contact.phone)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (existing) {
+          // Atualizar para opt_in = true
+          await supabase
+            .from('cadastros')
+            .update({ opt_in: true, updated_at: new Date().toISOString() })
+            .eq('id', existing.id);
+          atualizados++;
+        } else {
+          // Criar novo cadastro com opt_in = true
+          await supabase
+            .from('cadastros')
+            .insert({
+              user_id: user.id,
+              nome: contact.nome,
+              whatsapp: contact.phone,
+              opt_in: true,
+              origem: 'whatsapp_contacts'
+            });
+          sincronizados++;
+        }
+      }
+
+      toast.success(`✅ Sincronizado! ${sincronizados} novos, ${atualizados} atualizados`);
+    } catch (error: any) {
+      console.error('Erro ao sincronizar:', error);
+      toast.error('Erro ao sincronizar: ' + error.message);
+    } finally {
+      setSyncingOptIn(false);
+    }
+  };
+
   const filteredContacts = contacts.filter(contact =>
     contact.nome.toLowerCase().includes(search.toLowerCase()) ||
     contact.phone.includes(search.replace(/\D/g, ''))
@@ -310,15 +366,30 @@ export default function WhatsAppContactManager({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h3 className="text-lg font-semibold">
           📞 Seus Contatos ({contacts.length})
         </h3>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Contato
+        <div className="flex gap-2">
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={syncToOptIn}
+            disabled={syncingOptIn || contacts.length === 0}
+            title="Sincronizar todos os contatos para Opt-in"
+          >
+            {syncingOptIn ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle className="h-4 w-4 mr-2" />
+            )}
+            Sync Opt-in
+          </Button>
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Contato
             </Button>
           </DialogTrigger>
           <DialogContent>
@@ -353,9 +424,10 @@ export default function WhatsAppContactManager({
               <Button onClick={handleAddContact} className="w-full">
                 Adicionar Contato
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
 
         <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
           <DialogContent>
