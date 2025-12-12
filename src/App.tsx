@@ -53,6 +53,7 @@ import VendedorPainel from "./pages/VendedorPainel";
 import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
 import ConfiguracoesWhatsApp from "./pages/ConfiguracoesWhatsApp";
 import AdminImportar from "./pages/AdminImportar";
+import AdminSincronizarOptins from "./pages/AdminSincronizarOptins";
 import SeusCadastros from "./pages/SeusCadastros";
 import GruposTransmissao from "./pages/GruposTransmissao";
 import GrupoDetalhes from "./pages/GrupoDetalhes";
@@ -104,6 +105,7 @@ const App = () => (
             <Route path="/security" element={<Security />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/admin/importar" element={<AdminImportar />} />
+            <Route path="/admin/sincronizar-optins" element={<AdminSincronizarOptins />} />
             <Route path="/admin/produtos" element={<AdminProdutos />} />
             <Route path="/configuracao-empresa" element={<ConfiguracaoEmpresa />} />
             <Route path="/ia-conversas" element={<IAConversas />} />

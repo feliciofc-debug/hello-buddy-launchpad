@@ -191,3 +191,9 @@ verify_jwt = false
 
 [functions.limpar-sessoes]
 verify_jwt = false
+
+[functions.registrar-optin]
+verify_jwt = false
+
+[functions.sincronizar-optins-retroativo]
+verify_jwt = false
