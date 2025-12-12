@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Search, Plus, Upload, Users, MessageSquare, Tag, Trash2, Edit, UserPlus } from 'lucide-react';
+import { Search, Plus, Upload, Users, MessageSquare, Tag, Trash2, Edit, UserPlus, RefreshCw, Phone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Cadastro {
@@ -49,6 +49,12 @@ export default function SeusCadastros() {
   const [isGrupoModalOpen, setIsGrupoModalOpen] = useState(false);
   const [selectedGrupos, setSelectedGrupos] = useState<string[]>([]);
   const [novoCadastro, setNovoCadastro] = useState({ nome: '', whatsapp: '', email: '', empresa: '' });
+  
+  // Estado para modal de troca de número
+  const [isTrocaNumeroOpen, setIsTrocaNumeroOpen] = useState(false);
+  const [numeroNovo, setNumeroNovo] = useState('');
+  const [processandoTroca, setProcessandoTroca] = useState(false);
+  const [progressoTroca, setProgressoTroca] = useState<any>(null);
 
   const stats = {
     total: cadastros.length,
@@ -244,6 +250,45 @@ export default function SeusCadastros() {
     return `(${numbers.slice(0, 2)}) ${numbers.slice(2, 7)}-${numbers.slice(7, 11)}`;
   };
 
+  const handleTrocarNumero = async () => {
+    if (!numeroNovo) {
+      toast.error('Digite o novo número');
+      return;
+    }
+
+    const numeroLimpo = numeroNovo.replace(/\D/g, '');
+    if (numeroLimpo.length < 10) {
+      toast.error('Número inválido');
+      return;
+    }
+
+    if (!confirm(`⚠️ ATENÇÃO!\n\nNovo número: ${numeroNovo}\n\nEsta ação irá enviar mensagem de atualização para TODOS os ${stats.comOptIn} contatos com opt-in.\n\nPode demorar alguns minutos.\n\nConfirma?`)) {
+      return;
+    }
+
+    setProcessandoTroca(true);
+    setProgressoTroca(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('trocar-numero-whatsapp', {
+        body: {
+          numeroNovo: numeroLimpo.length < 13 ? '55' + numeroLimpo : numeroLimpo
+        }
+      });
+
+      if (error) throw error;
+
+      setProgressoTroca(data);
+      toast.success(`✅ ${data.mensagensEnviadas} mensagens de atualização enviadas!`);
+
+    } catch (error: any) {
+      console.error('Erro ao trocar número:', error);
+      toast.error('❌ ' + (error?.message || 'Erro ao processar'));
+    } finally {
+      setProcessandoTroca(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -314,6 +359,92 @@ export default function SeusCadastros() {
             <Button variant="outline" className="gap-2" onClick={() => navigate('/admin/importar')}>
               <Upload className="h-4 w-4" /> Importar
             </Button>
+
+            <Dialog open={isTrocaNumeroOpen} onOpenChange={setIsTrocaNumeroOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="gap-2 bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100">
+                  <Phone className="h-4 w-4" /> Trocar Número
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <RefreshCw className="h-5 w-5" /> Trocar Número WhatsApp
+                  </DialogTitle>
+                </DialogHeader>
+                
+                <div className="space-y-4">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="text-sm text-amber-800 font-medium">⚠️ IMPORTANTE:</p>
+                    <ul className="text-sm text-amber-700 mt-2 space-y-1 ml-4 list-disc">
+                      <li>Faça isso ANTES de trocar no WhatsApp</li>
+                      <li>Cada contato com opt-in receberá mensagem</li>
+                      <li>Processo pode demorar alguns minutos</li>
+                      <li>Evita banimento por número desconhecido</li>
+                    </ul>
+                  </div>
+
+                  <div>
+                    <Label>Novo Número (AMZ):</Label>
+                    <Input
+                      type="tel"
+                      value={numeroNovo}
+                      onChange={(e) => setNumeroNovo(maskWhatsApp(e.target.value))}
+                      placeholder="(21) 99999-9999"
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Digite o novo número que você vai usar
+                    </p>
+                  </div>
+
+                  {progressoTroca && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                      <p className="text-green-800 font-medium">✅ Processo concluído!</p>
+                      <div className="mt-2 text-sm text-green-700 space-y-1">
+                        <p>📊 Processados: {progressoTroca.processados}</p>
+                        <p>📱 Mensagens enviadas: {progressoTroca.mensagensEnviadas}</p>
+                        {progressoTroca.erros > 0 && (
+                          <p className="text-amber-600">⚠️ Erros: {progressoTroca.erros}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-2">
+                    <Button 
+                      variant="outline" 
+                      className="flex-1"
+                      onClick={() => {
+                        setIsTrocaNumeroOpen(false);
+                        setNumeroNovo('');
+                        setProgressoTroca(null);
+                      }}
+                      disabled={processandoTroca}
+                    >
+                      Cancelar
+                    </Button>
+                    <Button 
+                      className="flex-1 bg-amber-600 hover:bg-amber-700"
+                      onClick={handleTrocarNumero}
+                      disabled={processandoTroca || !numeroNovo}
+                    >
+                      {processandoTroca ? (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                          Processando...
+                        </>
+                      ) : (
+                        <>
+                          <Phone className="h-4 w-4 mr-2" />
+                          Notificar Contatos
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
