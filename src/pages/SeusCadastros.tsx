@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { Search, Plus, Upload, Users, MessageSquare, Tag, Trash2, Edit, UserPlus, RefreshCw, Phone } from 'lucide-react';
+import { Search, Plus, Upload, Users, MessageSquare, Tag, Trash2, Edit, UserPlus, RefreshCw, Phone, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Cadastro {
@@ -294,14 +294,19 @@ export default function SeusCadastros() {
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold flex items-center gap-2">
-              <Users className="h-8 w-8 text-primary" />
-              Seus Cadastros
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              {stats.total} cadastros • {stats.comOptIn} com opt-in • {stats.semOptIn} sem opt-in
-            </p>
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-2">
+                <Users className="h-8 w-8 text-primary" />
+                Seus Cadastros
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                {stats.total} cadastros • {stats.comOptIn} com opt-in • {stats.semOptIn} sem opt-in
+              </p>
+            </div>
           </div>
 
           <div className="flex gap-2">
