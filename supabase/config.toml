@@ -197,3 +197,6 @@ verify_jwt = false
 
 [functions.sincronizar-optins-retroativo]
 verify_jwt = false
+
+[functions.trocar-numero-whatsapp]
+verify_jwt = false
