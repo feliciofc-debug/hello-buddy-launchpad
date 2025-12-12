@@ -312,6 +312,16 @@ export default function WhatsAppContactManager({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
+      // Buscar instância Wuzapi ativa do usuário para pegar o número de envio
+      const { data: instancia } = await supabase
+        .from('wuzapi_instances')
+        .select('phone_number, instance_name')
+        .eq('assigned_to_user', user.id)
+        .maybeSingle();
+
+      const numeroEnvio = instancia?.phone_number || '5521995379550'; // fallback para número AMZ
+      const origemSync = `sync_whatsapp_${numeroEnvio}`;
+
       let sincronizados = 0;
       let atualizados = 0;
 
@@ -328,7 +338,11 @@ export default function WhatsAppContactManager({
           // Atualizar para opt_in = true
           await supabase
             .from('cadastros')
-            .update({ opt_in: true, updated_at: new Date().toISOString() })
+            .update({ 
+              opt_in: true, 
+              origem: origemSync,
+              updated_at: new Date().toISOString() 
+            })
             .eq('id', existing.id);
           atualizados++;
         } else {
@@ -340,13 +354,13 @@ export default function WhatsAppContactManager({
               nome: contact.nome,
               whatsapp: contact.phone,
               opt_in: true,
-              origem: 'whatsapp_contacts'
+              origem: origemSync
             });
           sincronizados++;
         }
       }
 
-      toast.success(`✅ Sincronizado! ${sincronizados} novos, ${atualizados} atualizados`);
+      toast.success(`✅ Sincronizado! ${sincronizados} novos, ${atualizados} atualizados (via ${numeroEnvio})`);
     } catch (error: any) {
       console.error('Erro ao sincronizar:', error);
       toast.error('Erro ao sincronizar: ' + error.message);
