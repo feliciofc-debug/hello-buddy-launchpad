@@ -115,8 +115,54 @@ serve(async (req) => {
     const setores = icp.b2b_config?.setores || icp.filtros_avancados?.setores || []
     const profissao = icp.b2c_config?.profissoes?.[0] || icp.b2c_config?.profissao || ''
     
-    const cidade = icp.b2c_config?.cidades?.[0] || icp.b2c_config?.cidade || icp.b2b_config?.cidade || 'Rio de Janeiro'
-    const estado = icp.filtros_avancados?.estados?.[0] || icp.b2c_config?.estado || icp.b2b_config?.estado || 'RJ'
+    // CORREÇÃO: Busca dinâmica de estados e cidades (SEM fallback fixo para Rio!)
+    const estadosSelecionados = icp.b2b_config?.estados || 
+                               icp.b2c_config?.estados || 
+                               icp.filtros_avancados?.estados || 
+                               [];
+
+    const cidadesSelecionadas = icp.b2b_config?.cidades || 
+                               icp.b2c_config?.cidades || 
+                               [];
+    
+    // Mapa de capitais por estado
+    const CAPITAIS: Record<string, string> = {
+      'AC': 'Rio Branco', 'AL': 'Maceió', 'AP': 'Macapá', 'AM': 'Manaus',
+      'BA': 'Salvador', 'CE': 'Fortaleza', 'DF': 'Brasília', 'ES': 'Vitória',
+      'GO': 'Goiânia', 'MA': 'São Luís', 'MT': 'Cuiabá', 'MS': 'Campo Grande',
+      'MG': 'Belo Horizonte', 'PA': 'Belém', 'PB': 'João Pessoa', 'PR': 'Curitiba',
+      'PE': 'Recife', 'PI': 'Teresina', 'RJ': 'Rio de Janeiro', 'RN': 'Natal',
+      'RS': 'Porto Alegre', 'RO': 'Porto Velho', 'RR': 'Boa Vista', 'SC': 'Florianópolis',
+      'SP': 'São Paulo', 'SE': 'Aracaju', 'TO': 'Palmas'
+    };
+
+    let cidade = '';
+    let estado = '';
+
+    if (cidadesSelecionadas.length > 0) {
+      cidade = cidadesSelecionadas[0];
+      estado = estadosSelecionados.length > 0 ? estadosSelecionados[0] : '';
+    } else if (estadosSelecionados.length > 0) {
+      estado = estadosSelecionados[0];
+      cidade = CAPITAIS[estado] || '';
+    }
+
+    // Só usar fallback se REALMENTE não tiver nada configurado
+    if (!cidade && !estado) {
+      console.warn('⚠️ [SEARCH-LEADS] Nenhuma cidade/estado configurado, usando São Paulo como fallback');
+      cidade = 'São Paulo';
+      estado = 'SP';
+    }
+
+    console.log('🔍 [SEARCH-LEADS] Debug ICP:', {
+      estadosSelecionados,
+      cidadesSelecionadas,
+      cidade_final: cidade,
+      estado_final: estado,
+      b2b_config: icp.b2b_config,
+      b2c_config: icp.b2c_config,
+      filtros_avancados: icp.filtros_avancados
+    });
     const bairros = icp.b2c_config?.bairros || icp.filtros_avancados?.bairros || ''
 
     console.log('🎯 [TIPO]', isB2B ? 'B2B (EMPRESAS)' : 'B2C (Profissionais)')

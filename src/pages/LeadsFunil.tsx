@@ -1636,13 +1636,13 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                       variant="outline"
                       onClick={() => {
                         const nome = leadSelecionado.nome_completo || leadSelecionado.razao_social || '';
+                        const profissao = leadSelecionado.profissao || '';
                         const cidade = leadSelecionado.cidade || '';
-                        const estado = leadSelecionado.estado || '';
-                        const query = encodeURIComponent(`${nome} ${cidade} ${estado}`.trim());
-                        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+                        const query = encodeURIComponent(`${nome} ${profissao} ${cidade}`.trim());
+                        window.open(`https://www.google.com/search?q=${query}`, '_blank');
                       }}
                     >
-                      📍 Ver no Maps
+                      🔍 Buscar no Google
                     </Button>
                   </div>
                 </div>

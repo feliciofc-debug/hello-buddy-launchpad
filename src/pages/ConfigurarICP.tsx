@@ -361,8 +361,9 @@ export default function ConfigurarICP() {
       const configB2B = (tipoProspeccao === 'b2b' || tipoProspeccao === 'ambos') ? {
         setores: setoresSelecionados,
         refinamentos: refinamentoEmpresa,
-        cidade: cidadeSelecionada, // Campo único para compatibilidade
-        cidades: cidadesArray, // Array de cidades
+        cidade: cidadeSelecionada,
+        cidades: cidadesArray,
+        estados: estadosSelecionados, // ADICIONADO: Estados selecionados
         bairros: bairrosSelecionados
       } : null
 
@@ -371,7 +372,8 @@ export default function ConfigurarICP() {
         profissoes_customizadas: profissoesCustomizadas,
         refinamentos: refinamentoProfissional,
         cidade: cidadeSelecionada,
-        cidades: cidadesArray, // Array de cidades
+        cidades: cidadesArray,
+        estados: estadosSelecionados, // ADICIONADO: Estados selecionados
         bairros: bairrosSelecionados
       } : null
 
