@@ -130,6 +130,7 @@ export default function LeadsImoveisEnriquecidos() {
   const [orcamentoMax, setOrcamentoMax] = useState(5000000);
   const [tiposImovel, setTiposImovel] = useState<string[]>(['apartamento', 'cobertura']);
   const [quartosMin, setQuartosMin] = useState(3);
+  const [maxLeads, setMaxLeads] = useState(50);
 
   useEffect(() => {
     carregarLeads();
@@ -200,7 +201,8 @@ export default function LeadsImoveisEnriquecidos() {
           orcamento_min: orcamentoMin,
           orcamento_max: orcamentoMax,
           tipos_imovel: tiposImovel,
-          quartos_min: quartosMin
+          quartos_min: quartosMin,
+          max_leads: maxLeads
         }
       });
 
@@ -218,7 +220,7 @@ export default function LeadsImoveisEnriquecidos() {
           foto_url: lead.foto_url || null,
           google_profile_url: lead.google_profile_url || null,
           corretoras_visitadas: lead.corretoras_visitadas || [],
-          total_corretoras: lead.total_visitas || lead.corretoras_visitadas?.length || 0,
+          total_corretoras: lead.total_corretoras || lead.total_visitas || lead.corretoras_visitadas?.length || 0,
           ultima_visita_dias: lead.ultima_visita_dias || null,
           tipo_imovel_desejado: lead.tipo_imovel_desejado || null,
           quartos_desejado: lead.quartos_desejado || null,
@@ -549,6 +551,27 @@ export default function LeadsImoveisEnriquecidos() {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Limite de Leads */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      ⚡ Quantidade Máxima de Leads:
+                    </label>
+                    <Select value={maxLeads.toString()} onValueChange={v => setMaxLeads(Number(v))}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="50">50 leads (⚡ Rápido - ~30s)</SelectItem>
+                        <SelectItem value="100">100 leads (⚡⚡ Médio - ~1min)</SelectItem>
+                        <SelectItem value="150">150 leads (⚡⚡⚡ Lento - ~2min)</SelectItem>
+                        <SelectItem value="200">200 leads (⚡⚡⚡⚡ Muito Lento - ~3min)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Quanto mais leads, mais tempo demora. Recomendado: 50-100.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -596,6 +619,8 @@ export default function LeadsImoveisEnriquecidos() {
                   <div>• Procurando quem visitou corretoras nos últimos 30 dias</div>
                   <div>• Interesse em: {tiposImovel.length > 0 ? tiposImovel.join(', ') : 'Todos os tipos'} com {quartosMin}+ quartos</div>
                   <div>• Orçamento: {formatarValor(orcamentoMin)} - {formatarValor(orcamentoMax)}</div>
+                  <div>• Máximo de leads: <strong>{maxLeads}</strong></div>
+                  <div>• Tempo estimado: {maxLeads <= 50 ? '~30 segundos' : maxLeads <= 100 ? '~1 minuto' : maxLeads <= 150 ? '~2 minutos' : '~3 minutos'}</div>
                   <div>• Vai enriquecer com: LinkedIn (cargo/empresa) + Instagram (lifestyle) + Facebook (clubes)</div>
                 </div>
               </div>
