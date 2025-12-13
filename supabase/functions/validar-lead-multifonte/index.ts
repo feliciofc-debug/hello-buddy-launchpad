@@ -91,43 +91,17 @@ serve(async (req) => {
     
     console.log(`✅ Score básico: ${scoreBasico.toFixed(1)} (contribui ${(scoreBasico * 0.15).toFixed(1)}%)`);
     
-    // Verificar score inicial para decidir nível de validação
+    // SEMPRE buscar redes sociais, independente do score
     const scoreInicial = lead.score_total || scoreBasico;
+    console.log(`📊 Score inicial: ${scoreInicial} - BUSCANDO REDES SOCIAIS SEMPRE`);
     
-    // OTIMIZAÇÃO: Pular APIs se score muito baixo
-    if (scoreInicial < 40) {
-      console.log('⚠️ Score muito baixo, validação básica apenas');
-      
-      await supabase.from('leads_imoveis_enriquecidos').update({
-        fontes_encontradas: fontes,
-        confianca_dados: Math.round(confiancaTotal),
-        status_validacao: 'validado_basico',
-        score_nome: scoreNome,
-        score_telefone: scoreTelefone,
-        score_localizacao: scoreLocalizacao,
-        log_validacao: logs,
-        data_validacao: new Date().toISOString(),
-        validado_por: 'sistema'
-      }).eq('id', leadId);
-      
-      return new Response(
-        JSON.stringify({
-          success: true,
-          confianca: Math.round(confiancaTotal),
-          status: 'validado_basico',
-          fontes,
-          logs,
-          mensagem: 'Score inicial baixo - validação básica apenas'
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // REMOVIDO: Não pular mais validação por score baixo
     
     // ═══════════════════════════════════════════
     // CAMADA 2: MARKETPLACES (OLX)
     // ═══════════════════════════════════════════
     
-    if (scoreInicial >= 50 && APIFY_API_KEY) {
+    if (APIFY_API_KEY) { // SEMPRE buscar, sem verificar score
       console.log('🏪 Camada 2: Buscando em marketplaces...');
       
       // --- OLX ---
@@ -207,7 +181,7 @@ serve(async (req) => {
     
     let scoreRedesSociais = 0;
     
-    if (scoreInicial >= 60 && APIFY_API_KEY) {
+    if (APIFY_API_KEY) { // SEMPRE buscar LinkedIn e Instagram
       console.log('📱 Camada 3: Buscando redes sociais...');
       
       // --- LINKEDIN ---
@@ -313,77 +287,75 @@ serve(async (req) => {
         });
       }
       
-      // --- INSTAGRAM (só se LinkedIn encontrou) ---
-      if (fontes.includes('linkedin')) {
-        console.log('  📸 Buscando no Instagram...');
+      // --- INSTAGRAM (SEMPRE buscar, independente de LinkedIn) ---
+      console.log('  📸 Buscando no Instagram...');
+      
+      try {
+        // Gerar possíveis usernames
+        const possibleUsernames = [
+          lead.nome.toLowerCase().replace(/\s+/g, '_'),
+          lead.nome.toLowerCase().replace(/\s+/g, ''),
+          lead.nome.split(' ')[0].toLowerCase()
+        ].filter(Boolean).slice(0, 2);
         
-        try {
-          // Gerar possíveis usernames
-          const possibleUsernames = [
-            lead.nome.toLowerCase().replace(/\s+/g, '_'),
-            lead.nome.toLowerCase().replace(/\s+/g, ''),
-            lead.nome.split(' ')[0].toLowerCase()
-          ].filter(Boolean).slice(0, 2);
+        const instagramUrl = `https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
+        
+        const instagramResponse = await fetch(instagramUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            usernames: possibleUsernames,
+            resultsLimit: 1,
+            proxyConfiguration: { useApifyProxy: true }
+          })
+        });
+        
+        if (instagramResponse.ok) {
+          const instagramData = await instagramResponse.json();
           
-          const instagramUrl = `https://api.apify.com/v2/acts/apify~instagram-profile-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
-          
-          const instagramResponse = await fetch(instagramUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              usernames: possibleUsernames,
-              resultsLimit: 1,
-              proxyConfiguration: { useApifyProxy: true }
-            })
-          });
-          
-          if (instagramResponse.ok) {
-            const instagramData = await instagramResponse.json();
+          if (instagramData && instagramData.length > 0) {
+            const profile = instagramData[0];
             
-            if (instagramData && instagramData.length > 0) {
-              const profile = instagramData[0];
-              
-              console.log(`  ✅ Instagram: @${profile.username}`);
-              
-              fontes.push('instagram');
-              
-              await supabase.from('leads_imoveis_enriquecidos').update({
-                instagram_username: profile.username,
-                instagram_url: `https://instagram.com/${profile.username}`,
-                instagram_foto: profile.profilePicUrl || profile.profilePicture,
-                instagram_followers: profile.followersCount || profile.followers,
-                instagram_bio: profile.biography || profile.bio,
-                instagram_encontrado: true
-              }).eq('id', leadId);
-              
-              scoreRedesSociais += 20;
-              confiancaTotal += 15;
-              
-              logs.push({
-                etapa: 'instagram',
-                timestamp: new Date().toISOString(),
-                resultado: 'encontrado',
-                username: profile.username,
-                followers: profile.followersCount || profile.followers,
-                contribuicao: 15
-              });
-            } else {
-              logs.push({
-                etapa: 'instagram',
-                timestamp: new Date().toISOString(),
-                resultado: 'nao_encontrado'
-              });
-            }
+            console.log(`  ✅ Instagram: @${profile.username}`);
+            
+            fontes.push('instagram');
+            
+            await supabase.from('leads_imoveis_enriquecidos').update({
+              instagram_username: profile.username,
+              instagram_url: `https://instagram.com/${profile.username}`,
+              instagram_foto: profile.profilePicUrl || profile.profilePicture,
+              instagram_followers: profile.followersCount || profile.followers,
+              instagram_bio: profile.biography || profile.bio,
+              instagram_encontrado: true
+            }).eq('id', leadId);
+            
+            scoreRedesSociais += 20;
+            confiancaTotal += 15;
+            
+            logs.push({
+              etapa: 'instagram',
+              timestamp: new Date().toISOString(),
+              resultado: 'encontrado',
+              username: profile.username,
+              followers: profile.followersCount || profile.followers,
+              contribuicao: 15
+            });
+          } else {
+            logs.push({
+              etapa: 'instagram',
+              timestamp: new Date().toISOString(),
+              resultado: 'nao_encontrado'
+            });
           }
-        } catch (instagramError: any) {
-          console.error('  ⚠️ Erro Instagram:', instagramError.message);
-          logs.push({
-            etapa: 'instagram',
-            timestamp: new Date().toISOString(),
-            resultado: 'erro',
-            erro: instagramError.message
-          });
         }
+      } catch (instagramError: any) {
+        console.error('  ⚠️ Erro Instagram:', instagramError.message);
+        logs.push({
+          etapa: 'instagram',
+          timestamp: new Date().toISOString(),
+          resultado: 'erro',
+          erro: instagramError.message
+        });
       }
     }
     
