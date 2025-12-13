@@ -190,50 +190,62 @@ serve(async (req) => {
       try {
         const linkedinUrl = `https://api.apify.com/v2/acts/apify~linkedin-profile-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
         
+        console.log('  📤 Chamando Apify LinkedIn:', lead.nome);
+        
         const linkedinResponse = await fetch(linkedinUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             searchUrls: [`https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(lead.nome)}`],
-            maxResults: 3,
+            maxResults: 5,
             proxyConfiguration: { useApifyProxy: true }
           })
         });
         
+        console.log('  📥 LinkedIn Response Status:', linkedinResponse.status);
+        
         if (linkedinResponse.ok) {
           const linkedinData = await linkedinResponse.json();
+          console.log('  📊 LinkedIn Resultados:', linkedinData?.length || 0);
           
           if (linkedinData && linkedinData.length > 0) {
-            // MATCHING INTELIGENTE
+            // Log todos os resultados para debug
+            linkedinData.forEach((p: any, i: number) => {
+              console.log(`    [${i}] ${p.fullName || p.name} - ${p.headline || 'sem cargo'}`);
+            });
+            
+            // MATCHING MENOS RESTRITIVO
             for (const profile of linkedinData) {
               let matchScore = 0;
               
-              // Nome similar?
-              const profileName = (profile.fullName || profile.name || '').toLowerCase();
-              const leadName = lead.nome.toLowerCase();
+              const profileName = (profile.fullName || profile.name || '').toLowerCase().trim();
+              const leadName = lead.nome.toLowerCase().trim();
+              const leadFirstName = leadName.split(' ')[0];
+              const leadLastName = leadName.split(' ').slice(-1)[0];
               
+              // Nome exato = 50 pontos
               if (profileName === leadName) {
+                matchScore += 50;
+              } 
+              // Primeiro e último nome = 40 pontos
+              else if (profileName.includes(leadFirstName) && profileName.includes(leadLastName)) {
                 matchScore += 40;
-              } else if (profileName.includes(leadName.split(' ')[0])) {
-                matchScore += 20;
+              }
+              // Só primeiro nome = 25 pontos
+              else if (profileName.includes(leadFirstName)) {
+                matchScore += 25;
               }
               
-              // Localização bate?
-              const profileLocation = (profile.location || '').toLowerCase();
-              const leadLocation = (lead.localizacao_desejada || '').toLowerCase();
-              
-              if (leadLocation && profileLocation.includes(leadLocation)) {
-                matchScore += 30;
-              }
-              
-              // Foto disponível?
+              // Foto disponível = +10
               if (profile.photoUrl || profile.profilePicture) {
                 matchScore += 10;
               }
               
-              // Se match > 60%, usar
-              if (matchScore >= 60) {
-                console.log(`  ✅ LinkedIn: Match ${matchScore}% - ${profile.fullName || profile.name}`);
+              console.log(`    Match ${profileName}: ${matchScore} pontos`);
+              
+              // ACEITAR com >= 35 pontos (primeiro nome + foto)
+              if (matchScore >= 35) {
+                console.log(`  ✅ LinkedIn MATCH: ${matchScore}% - ${profile.fullName || profile.name}`);
                 
                 fontes.push('linkedin');
                 
@@ -242,7 +254,8 @@ serve(async (req) => {
                   linkedin_foto: profile.photoUrl || profile.profilePicture,
                   cargo: profile.headline || profile.title,
                   empresa: profile.companyName || profile.company,
-                  linkedin_encontrado: true
+                  linkedin_encontrado: true,
+                  google_profile_url: lead.foto_url // Salvar foto Google também
                 }).eq('id', leadId);
                 
                 scoreRedesSociais += 30;
@@ -253,6 +266,7 @@ serve(async (req) => {
                   timestamp: new Date().toISOString(),
                   resultado: 'encontrado',
                   matchScore,
+                  nome_encontrado: profile.fullName || profile.name,
                   perfil: profile.profileUrl || profile.url,
                   contribuicao: 20
                 });
@@ -262,6 +276,7 @@ serve(async (req) => {
             }
             
             if (!fontes.includes('linkedin')) {
+              console.log('  ⚠️ LinkedIn: nenhum match suficiente');
               logs.push({
                 etapa: 'linkedin',
                 timestamp: new Date().toISOString(),
@@ -270,15 +285,24 @@ serve(async (req) => {
               });
             }
           } else {
+            console.log('  ⚠️ LinkedIn: 0 resultados');
             logs.push({
               etapa: 'linkedin',
               timestamp: new Date().toISOString(),
               resultado: 'nao_encontrado'
             });
           }
+        } else {
+          console.log('  ❌ LinkedIn API Error:', linkedinResponse.status);
+          logs.push({
+            etapa: 'linkedin',
+            timestamp: new Date().toISOString(),
+            resultado: 'erro_api',
+            status: linkedinResponse.status
+          });
         }
       } catch (linkedinError: any) {
-        console.error('  ⚠️ Erro LinkedIn:', linkedinError.message);
+        console.error('  ❌ Erro LinkedIn:', linkedinError.message);
         logs.push({
           etapa: 'linkedin',
           timestamp: new Date().toISOString(),
