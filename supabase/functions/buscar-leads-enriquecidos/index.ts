@@ -12,231 +12,203 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🔍 Iniciando busca AMPLIADA de leads enriquecidos...');
+    console.log('🔍 Iniciando busca via APIFY Google Maps Scraper...');
     
     const params = await req.json();
     console.log('Parâmetros recebidos:', params);
     
-    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY');
+    const APIFY_API_KEY = Deno.env.get('APIFY_API_KEY');
     
-    if (!GOOGLE_API_KEY) {
-      console.log('❌ GOOGLE_API_KEY não configurada');
+    if (!APIFY_API_KEY) {
+      console.log('❌ APIFY_API_KEY não configurada');
       return new Response(
         JSON.stringify({
           success: false,
           total: 0,
           leads: [],
-          message: 'Configure GOOGLE_API_KEY nas secrets do Supabase para buscar leads reais.'
+          message: 'Configure APIFY_API_KEY nas secrets do Supabase.'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log('✅ APIFY_API_KEY configurada');
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Extrair user_id
-    const authHeader = req.headers.get('Authorization');
-    let userId = null;
-    if (authHeader) {
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user } } = await supabase.auth.getUser(token);
-      userId = user?.id;
-    }
-
     const { estados = [], cidades = [] } = params;
     
     // ═══════════════════════════════════════
-    // CONSTRUIR QUERIES DE BUSCA AMPLIADAS
+    // MONTAR QUERIES DE BUSCA
     // ═══════════════════════════════════════
-    const regioesBusca: string[] = [];
+    const searchQueries: string[] = [];
 
     if (cidades.some((c: string) => c.toLowerCase().includes('rio')) || estados.includes('RJ')) {
       console.log('🏙️ Buscando em TODAS as zonas do Rio de Janeiro...');
       
       // Zona Sul
-      regioesBusca.push(
-        'corretora imóveis Copacabana Rio de Janeiro',
-        'corretora imóveis Ipanema Rio de Janeiro',
-        'corretora imóveis Leblon Rio de Janeiro',
-        'corretora imóveis Botafogo Rio de Janeiro',
-        'corretora imóveis Flamengo Rio de Janeiro',
+      searchQueries.push(
+        'corretora de imóveis Copacabana Rio de Janeiro',
+        'corretora de imóveis Ipanema Rio de Janeiro',
         'imobiliária Copacabana',
         'imobiliária Ipanema'
       );
       
       // Zona Oeste
-      regioesBusca.push(
-        'corretora imóveis Barra da Tijuca',
-        'corretora imóveis Recreio dos Bandeirantes',
-        'corretora imóveis Jacarepaguá',
-        'corretora imóveis Campo Grande',
-        'imobiliária Barra da Tijuca',
-        'imobiliária Recreio'
+      searchQueries.push(
+        'corretora de imóveis Barra da Tijuca',
+        'corretora de imóveis Recreio',
+        'imobiliária Barra da Tijuca'
       );
       
-      // Zona Norte (Emergentes!)
-      regioesBusca.push(
-        'corretora imóveis Tijuca',
-        'corretora imóveis Vila Isabel',
-        'corretora imóveis Grajaú',
-        'corretora imóveis Méier',
-        'corretora imóveis Madureira',
-        'corretora imóveis Penha',
-        'corretora imóveis Ilha do Governador',
-        'imobiliária Tijuca',
-        'imobiliária Méier'
+      // Zona Norte
+      searchQueries.push(
+        'corretora de imóveis Tijuca',
+        'imobiliária Tijuca'
       );
       
-      // Centro
-      regioesBusca.push(
-        'corretora imóveis Centro Rio de Janeiro',
-        'imobiliária Centro Rio de Janeiro'
+      // Investidores
+      searchQueries.push(
+        'investimento imobiliário Rio de Janeiro'
       );
-      
-      // INVESTIDORES
-      regioesBusca.push(
-        'investimento imobiliário Rio de Janeiro',
-        'investidor imóveis Rio de Janeiro',
-        'compra venda imóveis Rio de Janeiro',
-        'consultoria imobiliária Rio de Janeiro'
-      );
-    } else {
-      // Outras cidades
+    } else if (cidades.length > 0) {
       for (const cidade of cidades) {
-        regioesBusca.push(`corretora de imóveis ${cidade}`);
-        regioesBusca.push(`imobiliária ${cidade}`);
-        regioesBusca.push(`investimento imobiliário ${cidade}`);
+        searchQueries.push(`corretora de imóveis ${cidade}`);
+        searchQueries.push(`imobiliária ${cidade}`);
       }
-    }
-
-    // Se não passou cidades, buscar capitais principais
-    if (regioesBusca.length === 0) {
-      regioesBusca.push(
-        'corretora imóveis Rio de Janeiro',
-        'corretora imóveis São Paulo',
-        'imobiliária Barra da Tijuca',
-        'imobiliária Copacabana'
+    } else {
+      searchQueries.push(
+        'corretora de imóveis Rio de Janeiro',
+        'imobiliária São Paulo'
       );
     }
 
-    console.log(`🔍 Buscando em ${regioesBusca.length} regiões...`);
+    console.log(`🔍 Total de queries: ${searchQueries.length}`);
+    console.log('Queries:', searchQueries);
 
     // ═══════════════════════════════════════
-    // BUSCAR CORRETORAS NO GOOGLE PLACES
+    // CHAMAR APIFY GOOGLE MAPS SCRAPER
     // ═══════════════════════════════════════
-    const todasCorretoras: any[] = [];
-
-    for (const queryRegiao of regioesBusca.slice(0, 15)) { // Limitar a 15 queries para não exceder rate limit
-      console.log(`  Buscando: ${queryRegiao}`);
-      
-      try {
-        const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(queryRegiao)}&language=pt-BR&key=${GOOGLE_API_KEY}`;
-        
-        const response = await fetch(searchUrl);
-        const data = await response.json();
-        
-        if (data.status === 'OK' && data.results) {
-          console.log(`  ✅ ${data.results.length} resultados`);
-          todasCorretoras.push(...data.results);
-        } else {
-          console.log(`  ⚠️ Status: ${data.status}`);
-        }
-      } catch (err) {
-        console.log(`  ❌ Erro na busca: ${err}`);
-      }
-      
-      // Delay para evitar rate limit
-      await new Promise(r => setTimeout(r, 300));
+    console.log('🏢 Chamando Apify Google Maps Scraper...');
+    
+    const actorId = 'nwua9Gu5YrADL7ZDj';
+    const apifyUrl = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
+    
+    const apifyResponse = await fetch(apifyUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        searchStringsArray: searchQueries.slice(0, 8), // Limitar para economizar créditos
+        maxCrawledPlacesPerSearch: 10,
+        language: 'pt-BR',
+        includeReviews: true,
+        maxReviews: 20,
+        reviewsSort: 'newest'
+      })
+    });
+    
+    if (!apifyResponse.ok) {
+      const errorText = await apifyResponse.text();
+      console.error('❌ Erro Apify:', apifyResponse.status, errorText);
+      throw new Error(`Erro Apify: ${apifyResponse.status}`);
     }
-
-    // Remover duplicatas
-    const corretoras = Array.from(
-      new Map(todasCorretoras.map(c => [c.place_id, c])).values()
-    );
-
-    console.log('═══════════════════════════════════════');
-    console.log('RESUMO DA BUSCA:');
-    console.log(`Regiões buscadas: ${regioesBusca.length}`);
-    console.log(`Corretoras encontradas: ${corretoras.length}`);
-    console.log('═══════════════════════════════════════');
+    
+    const corretoras = await apifyResponse.json();
+    console.log(`✅ ${corretoras.length} corretoras encontradas via Apify`);
 
     // ═══════════════════════════════════════
-    // BUSCAR REVIEWS DAS CORRETORAS
+    // PROCESSAR REVIEWS
     // ═══════════════════════════════════════
+    console.log('📝 Processando reviews...');
+    
     const todosReviews: any[] = [];
-    const autores: { [key: string]: any } = {};
-
-    for (const corretora of corretoras.slice(0, 50)) { // Até 50 corretoras
-      try {
-        const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${corretora.place_id}&fields=name,reviews,formatted_address&language=pt-BR&key=${GOOGLE_API_KEY}`;
+    
+    for (const corretora of corretoras) {
+      if (corretora.reviews && corretora.reviews.length > 0) {
+        console.log(`  📍 ${corretora.title}: ${corretora.reviews.length} reviews`);
         
-        const response = await fetch(detailsUrl);
-        const data = await response.json();
-        
-        if (data.status === 'OK' && data.result?.reviews) {
-          // Filtrar reviews dos últimos 90 dias
-          const reviewsRecentes = data.result.reviews.filter((r: any) => {
-            const diasAtras = Math.floor((Date.now() / 1000 - r.time) / 86400);
-            return diasAtras <= 90; // 3 meses
-          });
+        for (const review of corretora.reviews) {
+          let diasAtras = 999;
           
-          console.log(`  ${corretora.name}: ${reviewsRecentes.length} reviews (90 dias)`);
+          if (review.publishedAtDate) {
+            const reviewDate = new Date(review.publishedAtDate);
+            diasAtras = Math.floor((Date.now() - reviewDate.getTime()) / (1000 * 60 * 60 * 24));
+          } else if (review.publishAt) {
+            const texto = (review.publishAt || '').toLowerCase();
+            if (texto.includes('dia')) diasAtras = 7;
+            else if (texto.includes('semana')) diasAtras = 21;
+            else if (texto.includes('mês') || texto.includes('mes')) diasAtras = 45;
+            else diasAtras = 90;
+          }
           
-          for (const review of reviewsRecentes) {
-            const autorId = review.author_name?.toLowerCase().replace(/\s+/g, '_') || 'anonimo';
-            
-            if (!autores[autorId]) {
-              autores[autorId] = {
-                nome: review.author_name,
-                foto_url: review.profile_photo_url,
-                corretoras_visitadas: [],
-                total_reviews: 0
-              };
-            }
-            
-            autores[autorId].corretoras_visitadas.push({
-              nome: corretora.name,
-              endereco: data.result.formatted_address,
-              review: review.text,
-              rating: review.rating,
-              data: review.relative_time_description
-            });
-            autores[autorId].total_reviews++;
-            
+          if (diasAtras <= 90) {
             todosReviews.push({
-              autor: review.author_name,
-              corretora: corretora.name,
-              texto: review.text,
-              rating: review.rating
+              author_name: review.name || review.reviewerName || 'Anônimo',
+              profile_photo_url: review.profilePhotoUrl || review.reviewerPhotoUrl,
+              rating: review.stars || review.rating,
+              text: review.text || review.reviewText,
+              dias_atras: diasAtras,
+              relative_time_description: review.publishAt || `há ${diasAtras} dias`,
+              corretora_nome: corretora.title,
+              corretora_endereco: corretora.address
             });
           }
         }
-      } catch (err) {
-        console.log(`  ❌ Erro ao buscar reviews: ${err}`);
+      }
+    }
+    
+    console.log(`📊 ${todosReviews.length} reviews dos últimos 90 dias`);
+
+    // ═══════════════════════════════════════
+    // AGRUPAR POR AUTOR
+    // ═══════════════════════════════════════
+    console.log('👤 Agrupando por autor...');
+    
+    const autores: { [key: string]: any } = {};
+    
+    for (const review of todosReviews) {
+      const autorNome = review.author_name;
+      if (!autorNome || autorNome === 'Anônimo') continue;
+      
+      const autorId = autorNome.toLowerCase().replace(/\s+/g, '_');
+      
+      if (!autores[autorId]) {
+        autores[autorId] = {
+          nome: autorNome,
+          foto_url: review.profile_photo_url,
+          corretoras_visitadas: [],
+          total_reviews: 0
+        };
       }
       
-      await new Promise(r => setTimeout(r, 200));
+      autores[autorId].corretoras_visitadas.push({
+        nome: review.corretora_nome,
+        endereco: review.corretora_endereco,
+        review: review.text,
+        rating: review.rating,
+        data: review.relative_time_description,
+        dias_atras: review.dias_atras
+      });
+      autores[autorId].total_reviews++;
     }
-
-    console.log('═══════════════════════════════════════');
-    console.log('RESUMO DOS REVIEWS:');
-    console.log(`Total reviews: ${todosReviews.length}`);
-    console.log(`Autores únicos: ${Object.keys(autores).length}`);
-    console.log('═══════════════════════════════════════');
+    
+    console.log(`👥 ${Object.keys(autores).length} autores únicos`);
 
     // ═══════════════════════════════════════
-    // CALCULAR SCORE DE CADA LEAD
+    // CALCULAR SCORE
     // ═══════════════════════════════════════
+    console.log('🎯 Calculando scores...');
+    
     const leads: any[] = [];
 
     for (const [autorId, autor] of Object.entries(autores) as any) {
       let score = 0;
       const insights: string[] = [];
       
-      // Múltiplas visitas = mais interesse
+      // Múltiplas visitas
       if (autor.total_reviews >= 3) {
         score += 30;
         insights.push(`Visitou ${autor.total_reviews} corretoras`);
@@ -247,11 +219,10 @@ serve(async (req) => {
         score += 10;
       }
       
-      // Análise do texto dos reviews
+      // Análise do texto
       for (const visita of autor.corretoras_visitadas) {
         const texto = (visita.review || '').toLowerCase();
         
-        // Interesse em compra/venda
         if (texto.includes('procurando') || texto.includes('buscando') || 
             texto.includes('interessado') || texto.includes('quero comprar') ||
             texto.includes('investir') || texto.includes('investimento')) {
@@ -259,41 +230,32 @@ serve(async (req) => {
           insights.push('Demonstrou interesse em compra');
         }
         
-        // Tipo de imóvel
         if (texto.includes('apartamento') || texto.includes('casa') || 
             texto.includes('cobertura') || texto.includes('terreno')) {
           score += 10;
           insights.push('Mencionou tipo de imóvel');
         }
         
-        // Mencionou valor
-        if (/r\$\s*[\d.,]+/.test(texto) || /\d+\s*mil/.test(texto) || /\d+\s*milhão/.test(texto)) {
+        if (/r\$\s*[\d.,]+/.test(texto) || /\d+\s*mil/.test(texto) || /milhão/.test(texto)) {
           score += 15;
           insights.push('Mencionou valores');
         }
         
-        // Localização específica
         if (texto.includes('barra') || texto.includes('recreio') ||
             texto.includes('copacabana') || texto.includes('ipanema') ||
-            texto.includes('tijuca') || texto.includes('zona norte')) {
+            texto.includes('tijuca')) {
           score += 10;
           insights.push('Mencionou localização');
         }
         
         // Recência
-        if (visita.data?.includes('dia') || visita.data?.includes('semana')) {
-          score += 15;
-        } else if (visita.data?.includes('mês')) {
-          score += 5;
-        }
+        if (visita.dias_atras <= 7) score += 15;
+        else if (visita.dias_atras <= 30) score += 10;
+        else if (visita.dias_atras <= 60) score += 5;
         
-        // Rating alto = experiência boa, pode voltar
-        if (visita.rating >= 4) {
-          score += 5;
-        }
+        if (visita.rating >= 4) score += 5;
       }
       
-      // Cap score at 100
       score = Math.min(score, 100);
       
       leads.push({
@@ -304,23 +266,23 @@ serve(async (req) => {
         corretoras_visitadas: autor.corretoras_visitadas,
         total_visitas: autor.total_reviews,
         insights: [...new Set(insights)],
-        qualificacao: score >= 70 ? 'super_quente' : score >= 40 ? 'quente' : 'morno'
+        qualificacao: score >= 70 ? 'super_quente' : score >= 40 ? 'quente' : 'morno',
+        status: 'novo'
       });
     }
 
-    // Ordenar por score
     leads.sort((a, b) => b.score_total - a.score_total);
-    
-    // Filtrar por score mínimo (20)
     const leadsQualificados = leads.filter(l => l.score_total >= 20);
 
     console.log('═══════════════════════════════════════');
-    console.log('RESUMO DOS LEADS:');
-    console.log(`Total leads: ${leads.length}`);
-    console.log(`Qualificados (>=20): ${leadsQualificados.length}`);
-    console.log(`Super Quentes (>=70): ${leads.filter(l => l.score_total >= 70).length}`);
-    console.log(`Quentes (40-69): ${leads.filter(l => l.score_total >= 40 && l.score_total < 70).length}`);
-    console.log(`Mornos (20-39): ${leads.filter(l => l.score_total >= 20 && l.score_total < 40).length}`);
+    console.log('📊 RESUMO FINAL:');
+    console.log(`Corretoras: ${corretoras.length}`);
+    console.log(`Reviews 90 dias: ${todosReviews.length}`);
+    console.log(`Autores únicos: ${Object.keys(autores).length}`);
+    console.log(`Leads qualificados: ${leadsQualificados.length}`);
+    console.log(`Super Quentes: ${leads.filter(l => l.score_total >= 70).length}`);
+    console.log(`Quentes: ${leads.filter(l => l.score_total >= 40 && l.score_total < 70).length}`);
+    console.log(`Mornos: ${leads.filter(l => l.score_total >= 20 && l.score_total < 40).length}`);
     console.log('═══════════════════════════════════════');
     
     return new Response(
@@ -329,10 +291,12 @@ serve(async (req) => {
         total: leadsQualificados.length,
         leads: leadsQualificados,
         stats: {
-          regioes_buscadas: regioesBusca.length,
           corretoras_encontradas: corretoras.length,
-          reviews_analisados: todosReviews.length,
-          autores_unicos: Object.keys(autores).length
+          reviews_90_dias: todosReviews.length,
+          autores_unicos: Object.keys(autores).length,
+          super_quentes: leads.filter(l => l.score_total >= 70).length,
+          quentes: leads.filter(l => l.score_total >= 40 && l.score_total < 70).length,
+          mornos: leads.filter(l => l.score_total >= 20 && l.score_total < 40).length
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
