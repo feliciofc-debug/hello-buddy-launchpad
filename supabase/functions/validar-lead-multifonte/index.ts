@@ -184,30 +184,52 @@ serve(async (req) => {
     if (APIFY_API_KEY) { // SEMPRE buscar LinkedIn e Instagram
       console.log('📱 Camada 3: Buscando redes sociais...');
       
-      // --- LINKEDIN ---
+      // --- LINKEDIN (MESMO CÓDIGO QUE FUNCIONA NO apify-linkedin-scraper) ---
       console.log('  💼 Buscando no LinkedIn...');
       
       try {
-        // Usar actor correto: powerai~linkedin-peoples-search-scraper
-        const linkedinUrl = `https://api.apify.com/v2/acts/powerai~linkedin-peoples-search-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
-        
-        console.log('  📤 Chamando Apify LinkedIn:', lead.nome);
-        
-        const linkedinResponse = await fetch(linkedinUrl, {
+        // Usar o mesmo actor que funciona: bebity~linkedin-people-search
+        const runResponse = await fetch('https://api.apify.com/v2/acts/bebity~linkedin-people-search/runs?waitForFinish=120', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${APIFY_API_KEY}`
+          },
           body: JSON.stringify({
-            keyword: lead.nome,
+            searchTerms: [lead.nome],
             location: 'Brazil',
-            count: 5
+            maxResults: 5,
+            proxy: {
+              useApifyProxy: true,
+              apifyProxyGroups: ['RESIDENTIAL']
+            }
           })
         });
         
-        console.log('  📥 LinkedIn Response Status:', linkedinResponse.status);
+        console.log('  📥 LinkedIn Run Response Status:', runResponse.status);
         
-        if (linkedinResponse.ok) {
-          const linkedinData = await linkedinResponse.json();
-          console.log('  📊 LinkedIn Resultados:', linkedinData?.length || 0);
+        let linkedinData: any[] = [];
+        
+        if (runResponse.ok) {
+          const runData = await runResponse.json();
+          const runId = runData.data?.id;
+          
+          console.log('  📊 LinkedIn Run ID:', runId);
+          
+          if (runId) {
+            // Buscar resultados do dataset
+            const resultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items`, {
+              headers: { 'Authorization': `Bearer ${APIFY_API_KEY}` }
+            });
+            
+            if (resultsResponse.ok) {
+              linkedinData = await resultsResponse.json();
+              console.log('  📊 LinkedIn Resultados:', linkedinData?.length || 0);
+            }
+          }
+        }
+        
+        if (linkedinData && linkedinData.length > 0) {
           
           if (linkedinData && linkedinData.length > 0) {
             // Log todos os resultados para debug
@@ -294,12 +316,12 @@ serve(async (req) => {
             });
           }
         } else {
-          console.log('  ❌ LinkedIn API Error:', linkedinResponse.status);
+          console.log('  ❌ LinkedIn API Error:', runResponse.status);
           logs.push({
             etapa: 'linkedin',
             timestamp: new Date().toISOString(),
             resultado: 'erro_api',
-            status: linkedinResponse.status
+            status: runResponse.status
           });
         }
       } catch (linkedinError: any) {
