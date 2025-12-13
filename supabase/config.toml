@@ -203,3 +203,6 @@ verify_jwt = false
 
 [functions.buscar-leads-enriquecidos]
 verify_jwt = false
+
+[functions.validar-lead-multifonte]
+verify_jwt = false

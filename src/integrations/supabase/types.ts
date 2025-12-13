@@ -2116,14 +2116,20 @@ export type Database = {
       }
       leads_imoveis_enriquecidos: {
         Row: {
+          buscas_identificadas: Json | null
           cargo: string | null
+          cnpj_empresa: string | null
+          confianca_dados: number | null
           contatado_por: string | null
           corretoras_visitadas: Json | null
+          cpf_validado: boolean | null
           created_at: string | null
           dados_completos: boolean | null
           data_contato: string | null
           data_enriquecimento: string | null
+          data_validacao: string | null
           empresa: string | null
+          empresa_validada: boolean | null
           experiencia_anos: number | null
           facebook_cidade: string | null
           facebook_clubes: string[] | null
@@ -2131,10 +2137,14 @@ export type Database = {
           facebook_foto: string | null
           facebook_trabalho: string | null
           facebook_url: string | null
+          fontes_encontradas: string[] | null
           formacao: string | null
+          foto_google_url: string | null
           foto_url: string | null
+          fotos_validadas: boolean | null
           google_profile_url: string | null
           id: string
+          imoveis_possui: Json | null
           instagram_bio: string | null
           instagram_encontrado: boolean | null
           instagram_followers: number | null
@@ -2149,9 +2159,15 @@ export type Database = {
           linkedin_foto: string | null
           linkedin_url: string | null
           localizacao_desejada: string | null
+          log_validacao: Json | null
           nome: string
           objecoes: string[] | null
           observacoes: string | null
+          olx_anuncios_ativos: number | null
+          olx_anuncios_historico: Json | null
+          olx_perfil_url: string | null
+          olx_telefone_confirmado: boolean | null
+          olx_ultima_atividade: string | null
           orcamento_max: number | null
           orcamento_min: number | null
           patrimonio_estimado: number | null
@@ -2159,26 +2175,53 @@ export type Database = {
           projeto_id: string | null
           qualificacao: string | null
           quartos_desejado: number | null
+          quintoandar_imoveis: Json | null
+          quintoandar_perfil_url: string | null
+          quintoandar_tipo: string | null
+          quintoandar_verificado: boolean | null
           renda_estimada: number | null
+          renda_oficial: number | null
+          score_atividade: number | null
+          score_foto: number | null
+          score_localizacao: number | null
+          score_nome: number | null
+          score_redes_sociais: number | null
+          score_telefone: number | null
           score_total: number | null
           setor: string | null
+          similaridade_fotos: number | null
           status: string | null
+          status_validacao: string | null
           telefone: string | null
           tipo_imovel_desejado: string | null
           total_corretoras: number | null
           ultima_visita_dias: number | null
           updated_at: string | null
           user_id: string
+          validado_por: string | null
+          vivareal_anuncios: number | null
+          vivareal_corretor: boolean | null
+          vivareal_perfil_url: string | null
+          zap_anuncios: number | null
+          zap_email: string | null
+          zap_perfil_url: string | null
+          zap_telefone: string | null
         }
         Insert: {
+          buscas_identificadas?: Json | null
           cargo?: string | null
+          cnpj_empresa?: string | null
+          confianca_dados?: number | null
           contatado_por?: string | null
           corretoras_visitadas?: Json | null
+          cpf_validado?: boolean | null
           created_at?: string | null
           dados_completos?: boolean | null
           data_contato?: string | null
           data_enriquecimento?: string | null
+          data_validacao?: string | null
           empresa?: string | null
+          empresa_validada?: boolean | null
           experiencia_anos?: number | null
           facebook_cidade?: string | null
           facebook_clubes?: string[] | null
@@ -2186,10 +2229,14 @@ export type Database = {
           facebook_foto?: string | null
           facebook_trabalho?: string | null
           facebook_url?: string | null
+          fontes_encontradas?: string[] | null
           formacao?: string | null
+          foto_google_url?: string | null
           foto_url?: string | null
+          fotos_validadas?: boolean | null
           google_profile_url?: string | null
           id?: string
+          imoveis_possui?: Json | null
           instagram_bio?: string | null
           instagram_encontrado?: boolean | null
           instagram_followers?: number | null
@@ -2204,9 +2251,15 @@ export type Database = {
           linkedin_foto?: string | null
           linkedin_url?: string | null
           localizacao_desejada?: string | null
+          log_validacao?: Json | null
           nome: string
           objecoes?: string[] | null
           observacoes?: string | null
+          olx_anuncios_ativos?: number | null
+          olx_anuncios_historico?: Json | null
+          olx_perfil_url?: string | null
+          olx_telefone_confirmado?: boolean | null
+          olx_ultima_atividade?: string | null
           orcamento_max?: number | null
           orcamento_min?: number | null
           patrimonio_estimado?: number | null
@@ -2214,26 +2267,53 @@ export type Database = {
           projeto_id?: string | null
           qualificacao?: string | null
           quartos_desejado?: number | null
+          quintoandar_imoveis?: Json | null
+          quintoandar_perfil_url?: string | null
+          quintoandar_tipo?: string | null
+          quintoandar_verificado?: boolean | null
           renda_estimada?: number | null
+          renda_oficial?: number | null
+          score_atividade?: number | null
+          score_foto?: number | null
+          score_localizacao?: number | null
+          score_nome?: number | null
+          score_redes_sociais?: number | null
+          score_telefone?: number | null
           score_total?: number | null
           setor?: string | null
+          similaridade_fotos?: number | null
           status?: string | null
+          status_validacao?: string | null
           telefone?: string | null
           tipo_imovel_desejado?: string | null
           total_corretoras?: number | null
           ultima_visita_dias?: number | null
           updated_at?: string | null
           user_id: string
+          validado_por?: string | null
+          vivareal_anuncios?: number | null
+          vivareal_corretor?: boolean | null
+          vivareal_perfil_url?: string | null
+          zap_anuncios?: number | null
+          zap_email?: string | null
+          zap_perfil_url?: string | null
+          zap_telefone?: string | null
         }
         Update: {
+          buscas_identificadas?: Json | null
           cargo?: string | null
+          cnpj_empresa?: string | null
+          confianca_dados?: number | null
           contatado_por?: string | null
           corretoras_visitadas?: Json | null
+          cpf_validado?: boolean | null
           created_at?: string | null
           dados_completos?: boolean | null
           data_contato?: string | null
           data_enriquecimento?: string | null
+          data_validacao?: string | null
           empresa?: string | null
+          empresa_validada?: boolean | null
           experiencia_anos?: number | null
           facebook_cidade?: string | null
           facebook_clubes?: string[] | null
@@ -2241,10 +2321,14 @@ export type Database = {
           facebook_foto?: string | null
           facebook_trabalho?: string | null
           facebook_url?: string | null
+          fontes_encontradas?: string[] | null
           formacao?: string | null
+          foto_google_url?: string | null
           foto_url?: string | null
+          fotos_validadas?: boolean | null
           google_profile_url?: string | null
           id?: string
+          imoveis_possui?: Json | null
           instagram_bio?: string | null
           instagram_encontrado?: boolean | null
           instagram_followers?: number | null
@@ -2259,9 +2343,15 @@ export type Database = {
           linkedin_foto?: string | null
           linkedin_url?: string | null
           localizacao_desejada?: string | null
+          log_validacao?: Json | null
           nome?: string
           objecoes?: string[] | null
           observacoes?: string | null
+          olx_anuncios_ativos?: number | null
+          olx_anuncios_historico?: Json | null
+          olx_perfil_url?: string | null
+          olx_telefone_confirmado?: boolean | null
+          olx_ultima_atividade?: string | null
           orcamento_max?: number | null
           orcamento_min?: number | null
           patrimonio_estimado?: number | null
@@ -2269,16 +2359,37 @@ export type Database = {
           projeto_id?: string | null
           qualificacao?: string | null
           quartos_desejado?: number | null
+          quintoandar_imoveis?: Json | null
+          quintoandar_perfil_url?: string | null
+          quintoandar_tipo?: string | null
+          quintoandar_verificado?: boolean | null
           renda_estimada?: number | null
+          renda_oficial?: number | null
+          score_atividade?: number | null
+          score_foto?: number | null
+          score_localizacao?: number | null
+          score_nome?: number | null
+          score_redes_sociais?: number | null
+          score_telefone?: number | null
           score_total?: number | null
           setor?: string | null
+          similaridade_fotos?: number | null
           status?: string | null
+          status_validacao?: string | null
           telefone?: string | null
           tipo_imovel_desejado?: string | null
           total_corretoras?: number | null
           ultima_visita_dias?: number | null
           updated_at?: string | null
           user_id?: string
+          validado_por?: string | null
+          vivareal_anuncios?: number | null
+          vivareal_corretor?: boolean | null
+          vivareal_perfil_url?: string | null
+          zap_anuncios?: number | null
+          zap_email?: string | null
+          zap_perfil_url?: string | null
+          zap_telefone?: string | null
         }
         Relationships: []
       }

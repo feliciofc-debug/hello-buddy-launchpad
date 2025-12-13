@@ -39,7 +39,12 @@ import {
   ChevronDown,
   ChevronUp,
   Search,
-  MapPin
+  MapPin,
+  ShieldCheck,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle
 } from "lucide-react";
 import { ESTADOS_BRASIL } from "@/constants/estados";
 
@@ -79,6 +84,14 @@ interface LeadImovel {
   dados_completos: boolean;
   status: string;
   telefone: string | null;
+  // Novos campos de validação multi-fonte
+  fontes_encontradas: string[] | null;
+  confianca_dados: number | null;
+  status_validacao: string | null;
+  log_validacao: any[] | null;
+  data_validacao: string | null;
+  olx_anuncios_ativos: number | null;
+  olx_telefone_confirmado: boolean | null;
 }
 
 const TIPOS_IMOVEL = ['apartamento', 'cobertura', 'casa', 'terreno', 'sala comercial'];
@@ -224,6 +237,49 @@ export default function LeadsImoveisEnriquecidos() {
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
       toast.error('Erro ao atualizar status');
+    }
+  };
+
+  const [validandoLead, setValidandoLead] = useState<string | null>(null);
+
+  const validarLeadMultifonte = async (leadId: string) => {
+    setValidandoLead(leadId);
+    
+    try {
+      toast.info('🔍 Iniciando validação multi-fonte...');
+      
+      const { data, error } = await supabase.functions.invoke('validar-lead-multifonte', {
+        body: { leadId }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(`✅ Validação concluída! Confiança: ${data.confianca}%`);
+        
+        // Atualizar lead na lista local
+        setLeads(leads.map(l => 
+          l.id === leadId 
+            ? { 
+                ...l, 
+                confianca_dados: data.confianca,
+                status_validacao: data.status,
+                fontes_encontradas: data.fontes,
+                log_validacao: data.logs
+              } 
+            : l
+        ));
+        
+        // Recarregar para pegar todos os dados
+        await carregarLeads();
+      } else {
+        throw new Error(data?.error || 'Erro desconhecido');
+      }
+    } catch (error: any) {
+      console.error('Erro na validação:', error);
+      toast.error(`Erro: ${error.message}`);
+    } finally {
+      setValidandoLead(null);
     }
   };
 
@@ -477,7 +533,7 @@ export default function LeadsImoveisEnriquecidos() {
 
       {/* MÉTRICAS */}
       {leads.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           <Card className="bg-red-50 dark:bg-red-950 border-2 border-red-300 dark:border-red-700 p-4">
             <div className="text-3xl font-bold text-red-600 dark:text-red-400">
               {leads.filter(l => l.qualificacao === 'SUPER QUENTE').length}
@@ -494,9 +550,16 @@ export default function LeadsImoveisEnriquecidos() {
           
           <Card className="bg-green-50 dark:bg-green-950 border-2 border-green-300 dark:border-green-700 p-4">
             <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-              {leads.filter(l => l.dados_completos).length}
+              {leads.filter(l => (l.confianca_dados || 0) >= 60).length}
             </div>
-            <div className="text-sm text-green-700 dark:text-green-300">✅ Dados Completos</div>
+            <div className="text-sm text-green-700 dark:text-green-300">✅ Validados 60%+</div>
+          </Card>
+          
+          <Card className="bg-purple-50 dark:bg-purple-950 border-2 border-purple-300 dark:border-purple-700 p-4">
+            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+              {leads.filter(l => l.status_validacao === 'pendente' || !l.status_validacao).length}
+            </div>
+            <div className="text-sm text-purple-700 dark:text-purple-300">⏳ Pendentes</div>
           </Card>
           
           <Card className="bg-blue-50 dark:bg-blue-950 border-2 border-blue-300 dark:border-blue-700 p-4">
@@ -799,27 +862,90 @@ export default function LeadsImoveisEnriquecidos() {
                       </div>
                     </TableCell>
                     
-                    {/* COLUNA 6: SCORE */}
+                    {/* COLUNA 6: SCORE + CONFIANÇA */}
                     <TableCell className="text-center">
                       <div className="text-3xl font-bold">{lead.score_total}</div>
                       <div className="text-xs text-muted-foreground">/100</div>
+                      
+                      {/* BADGE DE CONFIANÇA */}
+                      {lead.confianca_dados !== null && lead.confianca_dados !== undefined ? (
+                        <div className="mt-2">
+                          <div className={`
+                            inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold
+                            ${lead.confianca_dados >= 90 ? 'bg-green-600 text-white' : ''}
+                            ${lead.confianca_dados >= 60 && lead.confianca_dados < 90 ? 'bg-yellow-600 text-white' : ''}
+                            ${lead.confianca_dados < 60 ? 'bg-red-600 text-white' : ''}
+                          `}>
+                            {lead.confianca_dados >= 90 && <CheckCircle2 className="h-3 w-3" />}
+                            {lead.confianca_dados >= 60 && lead.confianca_dados < 90 && <AlertTriangle className="h-3 w-3" />}
+                            {lead.confianca_dados < 60 && <XCircle className="h-3 w-3" />}
+                            {lead.confianca_dados}%
+                          </div>
+                          
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {lead.status_validacao === 'validado' && '✅ Validado'}
+                            {lead.status_validacao === 'provavel' && '⚠️ Provável'}
+                            {lead.status_validacao === 'rejeitado' && '❌ Baixa conf.'}
+                            {lead.status_validacao === 'validando' && '🔄 Validando...'}
+                            {lead.status_validacao === 'pendente' && '⏳ Pendente'}
+                          </div>
+                          
+                          {/* FONTES ENCONTRADAS */}
+                          {lead.fontes_encontradas && lead.fontes_encontradas.length > 0 && (
+                            <div className="flex flex-wrap justify-center gap-1 mt-1">
+                              {lead.fontes_encontradas.map((fonte, idx) => (
+                                <span 
+                                  key={idx}
+                                  className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-[10px]"
+                                >
+                                  ✓ {fonte}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Não validado
+                        </div>
+                      )}
+                      
                       {lead.probabilidade_compra && (
                         <div className="mt-1 text-sm text-green-600 font-bold">
                           {lead.probabilidade_compra}% chance
                         </div>
                       )}
-                      <div className="mt-1 text-xs">
-                        {lead.dados_completos ? (
-                          <span className="text-green-600">✅ Completo</span>
-                        ) : (
-                          <span className="text-yellow-600">⏳ Parcial</span>
-                        )}
-                      </div>
                     </TableCell>
                     
                     {/* COLUNA 7: AÇÕES */}
                     <TableCell>
                       <div className="flex flex-col gap-2">
+                        {/* BOTÃO VALIDAR */}
+                        <Button
+                          size="sm"
+                          variant={lead.status_validacao === 'validado' ? 'outline' : 'default'}
+                          onClick={() => validarLeadMultifonte(lead.id)}
+                          disabled={validandoLead === lead.id}
+                          className="text-xs"
+                        >
+                          {validandoLead === lead.id ? (
+                            <>
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                              Validando...
+                            </>
+                          ) : lead.status_validacao === 'validado' ? (
+                            <>
+                              <ShieldCheck className="h-3 w-3 mr-1" />
+                              Revalidar
+                            </>
+                          ) : (
+                            <>
+                              <ShieldCheck className="h-3 w-3 mr-1" />
+                              Validar
+                            </>
+                          )}
+                        </Button>
+                        
                         {lead.telefone && (
                           <a 
                             href={`https://wa.me/55${lead.telefone.replace(/\D/g, '')}`}
