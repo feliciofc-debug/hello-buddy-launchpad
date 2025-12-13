@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
+import { ESTADOS_BRASIL } from '@/constants/estados'
 import { 
   Building2, 
   Users, 
@@ -232,11 +233,7 @@ const SETORES_B2B = [
   'Floricultura', 'Livraria', 'Loja de Brinquedos', 'Loja de Esportes'
 ]
 
-const ESTADOS_BRASIL = [
-  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
-  'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN',
-  'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
-]
+// ESTADOS_BRASIL importado de @/constants/estados
 
 // ===================================================================
 // COMPONENTE PRINCIPAL
@@ -797,32 +794,33 @@ export default function ConfigurarICP() {
                 <CardHeader>
                   <div className="flex justify-between items-center">
                     <CardTitle>Estados</CardTitle>
-                    <Button size="sm" variant="outline" onClick={() => setEstadosSelecionados(ESTADOS_BRASIL)}>
+                    <Button size="sm" variant="outline" onClick={() => setEstadosSelecionados(ESTADOS_BRASIL.map(e => e.sigla))}>
                       <Plus className="h-3 w-3 mr-1" />
-                      Selecionar Todos
+                      Selecionar Todos (27 Estados)
                     </Button>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {ESTADOS_BRASIL.map(estado => (
+                    {ESTADOS_BRASIL.map(uf => (
                       <Badge
-                        key={estado}
-                        variant={estadosSelecionados.includes(estado) ? 'default' : 'outline'}
+                        key={uf.sigla}
+                        variant={estadosSelecionados.includes(uf.sigla) ? 'default' : 'outline'}
                         className="cursor-pointer hover:scale-105 transition-all text-sm py-1.5 px-3"
                         onClick={() => setEstadosSelecionados(prev =>
-                          prev.includes(estado) ? prev.filter(e => e !== estado) : [...prev, estado]
+                          prev.includes(uf.sigla) ? prev.filter(e => e !== uf.sigla) : [...prev, uf.sigla]
                         )}
+                        title={uf.nome}
                       >
-                        {estado}
-                        {estadosSelecionados.includes(estado) && (
+                        {uf.sigla} - {uf.nome}
+                        {estadosSelecionados.includes(uf.sigla) && (
                           <CheckCircle2 className="h-3 w-3 ml-1" />
                         )}
                       </Badge>
                     ))}
                   </div>
                   <p className="text-xs text-muted-foreground mt-3">
-                    {estadosSelecionados.length === 0 ? 'Nenhum estado = Brasil todo' : `✅ ${estadosSelecionados.length} estado(s)`}
+                    {estadosSelecionados.length === 0 ? 'Nenhum estado = Brasil todo 🇧🇷' : `✅ ${estadosSelecionados.length} estado(s) selecionado(s)`}
                   </p>
                 </CardContent>
               </Card>

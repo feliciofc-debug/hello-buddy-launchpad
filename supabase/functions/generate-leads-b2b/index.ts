@@ -6,6 +6,28 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Mapa completo de estados brasileiros
+const ESTADOS_MAP: Record<string, string> = {
+  'AC': 'Acre', 'AL': 'Alagoas', 'AP': 'Amapá', 'AM': 'Amazonas',
+  'BA': 'Bahia', 'CE': 'Ceará', 'DF': 'Distrito Federal', 'ES': 'Espírito Santo',
+  'GO': 'Goiás', 'MA': 'Maranhão', 'MT': 'Mato Grosso', 'MS': 'Mato Grosso do Sul',
+  'MG': 'Minas Gerais', 'PA': 'Pará', 'PB': 'Paraíba', 'PR': 'Paraná',
+  'PE': 'Pernambuco', 'PI': 'Piauí', 'RJ': 'Rio de Janeiro', 'RN': 'Rio Grande do Norte',
+  'RS': 'Rio Grande do Sul', 'RO': 'Rondônia', 'RR': 'Roraima', 'SC': 'Santa Catarina',
+  'SP': 'São Paulo', 'SE': 'Sergipe', 'TO': 'Tocantins'
+};
+
+// Capitais por estado
+const CAPITAIS: Record<string, string> = {
+  'AC': 'Rio Branco', 'AL': 'Maceió', 'AP': 'Macapá', 'AM': 'Manaus',
+  'BA': 'Salvador', 'CE': 'Fortaleza', 'DF': 'Brasília', 'ES': 'Vitória',
+  'GO': 'Goiânia', 'MA': 'São Luís', 'MT': 'Cuiabá', 'MS': 'Campo Grande',
+  'MG': 'Belo Horizonte', 'PA': 'Belém', 'PB': 'João Pessoa', 'PR': 'Curitiba',
+  'PE': 'Recife', 'PI': 'Teresina', 'RJ': 'Rio de Janeiro', 'RN': 'Natal',
+  'RS': 'Porto Alegre', 'RO': 'Porto Velho', 'RR': 'Boa Vista', 'SC': 'Florianópolis',
+  'SP': 'São Paulo', 'SE': 'Aracaju', 'TO': 'Palmas'
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -95,23 +117,44 @@ serve(async (req) => {
       cidadesParaBuscar = [...new Set([...cidadesParaBuscar, ...cidadesDoInput])];
     }
     
-    // Se não tiver nenhuma cidade, usar capitais principais
+    // Se não tiver nenhuma cidade, usar capitais dos estados selecionados ou todas
     if (cidadesParaBuscar.length === 0) {
-      cidadesParaBuscar = ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba', 'Porto Alegre'];
+      const estadosSelecionados = b2bConfig.estados || [];
+      if (estadosSelecionados.length > 0) {
+        // Usar capitais dos estados selecionados
+        cidadesParaBuscar = estadosSelecionados.map((uf: string) => CAPITAIS[uf] || uf).filter(Boolean);
+      } else {
+        // Fallback: principais capitais do Brasil
+        cidadesParaBuscar = [
+          'São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Salvador', 'Fortaleza',
+          'Brasília', 'Curitiba', 'Recife', 'Porto Alegre', 'Manaus',
+          'Goiânia', 'Belém', 'Campinas', 'Guarulhos', 'Florianópolis'
+        ];
+      }
     }
     
     console.log(`[GENERATE-LEADS-B2B] Cidades para busca: ${cidadesParaBuscar.join(', ')}`);
+    console.log(`[GENERATE-LEADS-B2B] Estados selecionados: ${(b2bConfig.estados || []).join(', ') || 'Todos'}`);
     
     for (const setor of b2bConfig.setores || []) {
       for (const cidade of cidadesParaBuscar) {
+        // Determinar o estado da cidade para melhor contexto
+        const estadoNome = b2bConfig.estados?.length === 1 ? ESTADOS_MAP[b2bConfig.estados[0]] : '';
+        const estadoSuffix = estadoNome ? ` ${estadoNome}` : ' Brasil';
+        
         // Queries otimizadas para B2B
-        queries.push(`"${setor}" "${cidade}" CNPJ`);
-        queries.push(`${setor} ${cidade} razão social telefone`);
-        queries.push(`${setor} atacado ${cidade}`);
+        queries.push(`"${setor}" "${cidade}"${estadoSuffix} CNPJ`);
+        queries.push(`${setor} ${cidade}${estadoSuffix} telefone contato`);
+        queries.push(`${setor} atacado distribuidora ${cidade}`);
         
         // Queries específicas para varejo
         if (setor.toLowerCase().includes('loja') || setor.toLowerCase().includes('varejo')) {
-          queries.push(`lojas ${setor.replace('Loja ', '')} ${cidade} contato`);
+          queries.push(`lojas ${setor.replace('Loja ', '')} ${cidade} endereço telefone`);
+        }
+        
+        // Queries para distribuidoras e atacado
+        if (setor.toLowerCase().includes('distribuidora') || setor.toLowerCase().includes('atacad')) {
+          queries.push(`${setor} ${cidade} representante comercial`);
         }
       }
     }
