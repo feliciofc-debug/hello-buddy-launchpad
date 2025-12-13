@@ -23,21 +23,20 @@ serve(async (req) => {
 
     console.log(`🔍 Iniciando busca LinkedIn: "${searchQuery}" (max: ${maxResults})`)
 
-    // Usar o actor de busca de pessoas do LinkedIn
-    const runResponse = await fetch('https://api.apify.com/v2/acts/bebity~linkedin-people-search/runs?waitForFinish=300', {
+    // Usar o actor powerai~linkedin-peoples-search-scraper que funciona
+    const runResponse = await fetch('https://api.apify.com/v2/acts/powerai~linkedin-peoples-search-scraper/runs?waitForFinish=300', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${APIFY_TOKEN}`
       },
       body: JSON.stringify({
-        searchTerms: [searchQuery],
-        location: location || 'Brazil',
-        maxResults: maxResults,
-        proxy: {
-          useApifyProxy: true,
-          apifyProxyGroups: ['RESIDENTIAL']
-        }
+        first_name: searchQuery.split(' ')[0] || searchQuery,
+        last_name: searchQuery.split(' ').slice(1).join(' ') || '',
+        company: '',
+        title: '',
+        industry: '',
+        maxResults: maxResults
       })
     })
 
