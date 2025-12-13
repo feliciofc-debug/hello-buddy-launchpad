@@ -209,26 +209,62 @@ export default function LeadsImoveisEnriquecidos() {
       console.log('Resposta da busca:', data);
 
       if (data?.leads && data.leads.length > 0) {
-        // Mapear os leads para o formato esperado
+        console.log('📊 Total leads recebidos:', data.leads.length);
+        
+        // Mapear os leads para o formato esperado pela interface LeadImovel
         const leadsFormatados = data.leads.map((lead: any, index: number) => ({
           id: lead.id || `temp-${index}`,
-          nome: lead.nome,
-          foto_url: lead.foto_url,
-          score_total: lead.score_total,
-          qualificacao: lead.qualificacao,
-          status: lead.status || 'novo',
+          nome: lead.nome || 'Nome não disponível',
+          foto_url: lead.foto_url || null,
+          google_profile_url: lead.google_profile_url || null,
           corretoras_visitadas: lead.corretoras_visitadas || [],
-          total_visitas: lead.total_visitas || lead.corretoras_visitadas?.length || 0,
-          insights: lead.insights || [],
-          dados_completos: lead.dados_completos || false,
+          total_corretoras: lead.total_visitas || lead.corretoras_visitadas?.length || 0,
+          ultima_visita_dias: lead.ultima_visita_dias || null,
+          tipo_imovel_desejado: lead.tipo_imovel_desejado || null,
+          quartos_desejado: lead.quartos_desejado || null,
+          localizacao_desejada: lead.localizacao_desejada || null,
+          orcamento_min: lead.orcamento_min || null,
+          orcamento_max: lead.orcamento_max || null,
+          objecoes: lead.objecoes || null,
+          linkedin_url: lead.linkedin_url || null,
+          linkedin_foto: lead.linkedin_foto || null,
+          cargo: lead.cargo || null,
+          empresa: lead.empresa || null,
+          linkedin_connections: lead.linkedin_connections || null,
           linkedin_encontrado: lead.linkedin_encontrado || false,
+          instagram_username: lead.instagram_username || null,
+          instagram_url: lead.instagram_url || null,
+          instagram_foto: lead.instagram_foto || null,
+          instagram_followers: lead.instagram_followers || null,
+          instagram_interesses: lead.instagram_interesses || null,
           instagram_encontrado: lead.instagram_encontrado || false,
-          facebook_encontrado: lead.facebook_encontrado || false
+          facebook_url: lead.facebook_url || null,
+          facebook_clubes: lead.facebook_clubes || null,
+          facebook_encontrado: lead.facebook_encontrado || false,
+          score_total: lead.score_total || 0,
+          qualificacao: lead.qualificacao || 'morno',
+          renda_estimada: lead.renda_estimada || null,
+          probabilidade_compra: lead.probabilidade_compra || null,
+          dados_completos: lead.dados_completos || false,
+          status: lead.status || 'novo',
+          telefone: lead.telefone || null,
+          fontes_encontradas: lead.fontes_encontradas || null,
+          confianca_dados: lead.confianca_dados || null,
+          status_validacao: lead.status_validacao || null,
+          log_validacao: lead.log_validacao || null,
+          data_validacao: lead.data_validacao || null,
+          olx_anuncios_ativos: lead.olx_anuncios_ativos || null,
+          olx_telefone_confirmado: lead.olx_telefone_confirmado || null
         }));
         
+        console.log('✅ Leads formatados:', leadsFormatados.length);
         setLeads(leadsFormatados);
-        toast.success(`✅ ${data.leads.length} leads encontrados! (${data.stats?.quentes || 0} quentes, ${data.stats?.mornos || 0} mornos)`);
         setMostrarConfig(false);
+        setLoading(false);
+        
+        const quentes = leadsFormatados.filter((l: any) => l.qualificacao === 'quente').length;
+        const mornos = leadsFormatados.filter((l: any) => l.qualificacao === 'morno').length;
+        toast.success(`✅ ${data.leads.length} leads encontrados! (${quentes} quentes, ${mornos} mornos)`);
       } else {
         toast.info('Nenhum lead encontrado com esses critérios. Tente ajustar os filtros.');
       }
