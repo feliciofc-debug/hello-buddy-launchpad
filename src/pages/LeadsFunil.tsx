@@ -1634,14 +1634,15 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                     <Button 
                       size="sm"
                       variant="outline"
-                      onClick={() => window.open(
-                        `https://www.google.com/search?q=${encodeURIComponent(
-                          `${leadSelecionado.nome_completo || leadSelecionado.razao_social} ${leadSelecionado.profissao || ''} ${leadSelecionado.cidade || ''}`
-                        )}`, 
-                        '_blank'
-                      )}
+                      onClick={() => {
+                        const nome = leadSelecionado.nome_completo || leadSelecionado.razao_social || '';
+                        const cidade = leadSelecionado.cidade || '';
+                        const estado = leadSelecionado.estado || '';
+                        const query = encodeURIComponent(`${nome} ${cidade} ${estado}`.trim());
+                        window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+                      }}
                     >
-                      Buscar →
+                      📍 Ver no Maps
                     </Button>
                   </div>
                 </div>
