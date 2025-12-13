@@ -212,10 +212,24 @@ const PROFISSOES_DISPONIVEIS = [
 ]
 
 const SETORES_B2B = [
+  // Varejo Especializado
+  'Loja Presenteira', 'Loja Casa e Decoração', 'Loja Utilidades Domésticas',
+  'Loja de Presentes', 'Papelaria', 'Bazar', 'Armarinho', 'Loja de Variedades',
+  // Distribuição e Atacado
+  'Distribuidora', 'Atacadista', 'Representante Comercial', 'Importadora',
+  'Exportadora', 'Trading', 'Centro de Distribuição',
+  // Alimentação
+  'Supermercado', 'Mercado', 'Mercearia', 'Empório', 'Loja de Conveniência',
+  'Distribuidora de Alimentos', 'Frigorífico', 'Loja de Produtos Naturais',
+  // Tradicional
   'Tecnologia', 'Saúde', 'Educação', 'Financeiro', 'Varejo', 
   'Indústria', 'Construção', 'Alimentação', 'Transporte', 
   'Logística', 'Agricultura', 'Energia', 'Telecom', 'Mídia',
-  'Turismo', 'Imobiliário', 'Seguros', 'Consultoria', 'Automotivo'
+  'Turismo', 'Imobiliário', 'Seguros', 'Consultoria', 'Automotivo',
+  // Outros
+  'Pet Shop', 'Farmácia', 'Drogaria', 'Material de Construção',
+  'Loja de Roupas', 'Loja de Calçados', 'Ótica', 'Joalheria',
+  'Floricultura', 'Livraria', 'Loja de Brinquedos', 'Loja de Esportes'
 ]
 
 const ESTADOS_BRASIL = [
@@ -341,9 +355,18 @@ export default function ConfigurarICP() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Usuário não autenticado')
 
+      // Processar cidades (pode ser múltiplas separadas por vírgula)
+      const cidadesArray = cidadeSelecionada
+        .split(',')
+        .map(c => c.trim())
+        .filter(c => c.length > 0);
+
       const configB2B = (tipoProspeccao === 'b2b' || tipoProspeccao === 'ambos') ? {
         setores: setoresSelecionados,
-        refinamentos: refinamentoEmpresa
+        refinamentos: refinamentoEmpresa,
+        cidade: cidadeSelecionada, // Campo único para compatibilidade
+        cidades: cidadesArray, // Array de cidades
+        bairros: bairrosSelecionados
       } : null
 
       const configB2C = (tipoProspeccao === 'b2c' || tipoProspeccao === 'ambos') ? {
@@ -351,6 +374,7 @@ export default function ConfigurarICP() {
         profissoes_customizadas: profissoesCustomizadas,
         refinamentos: refinamentoProfissional,
         cidade: cidadeSelecionada,
+        cidades: cidadesArray, // Array de cidades
         bairros: bairrosSelecionados
       } : null
 
@@ -805,17 +829,20 @@ export default function ConfigurarICP() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>🏙️ Cidade Principal</CardTitle>
+                  <CardTitle>🏙️ Cidades (Múltiplas)</CardTitle>
                   <CardDescription>
-                    Cidade principal para busca de leads
+                    Digite as cidades separadas por vírgula. Busca em qualquer cidade do Brasil!
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Input
-                    placeholder="Ex: Rio de Janeiro, São Paulo, Belo Horizonte"
+                    placeholder="Ex: São Paulo, Campinas, Ribeirão Preto, Santos"
                     value={cidadeSelecionada}
                     onChange={(e) => setCidadeSelecionada(e.target.value)}
                   />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 Pode informar várias cidades: "São Paulo, Curitiba, Belo Horizonte, Porto Alegre"
+                  </p>
                 </CardContent>
               </Card>
 

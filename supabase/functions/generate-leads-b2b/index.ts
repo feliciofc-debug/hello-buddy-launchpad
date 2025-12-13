@@ -81,10 +81,38 @@ serve(async (req) => {
     // Gerar queries baseadas no ICP
     const queries: string[] = [];
     
+    // Extrair cidades do campo cidade (pode ser múltiplas separadas por vírgula)
+    let cidadesParaBuscar: string[] = [];
+    
+    // Primeiro checar se há cidades no array
+    if (b2bConfig.cidades && b2bConfig.cidades.length > 0) {
+      cidadesParaBuscar = b2bConfig.cidades;
+    }
+    
+    // Também checar campo cidade único (pode ter múltiplas separadas por vírgula)
+    if (b2bConfig.cidade) {
+      const cidadesDoInput = b2bConfig.cidade.split(',').map((c: string) => c.trim()).filter((c: string) => c);
+      cidadesParaBuscar = [...new Set([...cidadesParaBuscar, ...cidadesDoInput])];
+    }
+    
+    // Se não tiver nenhuma cidade, usar capitais principais
+    if (cidadesParaBuscar.length === 0) {
+      cidadesParaBuscar = ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba', 'Porto Alegre'];
+    }
+    
+    console.log(`[GENERATE-LEADS-B2B] Cidades para busca: ${cidadesParaBuscar.join(', ')}`);
+    
     for (const setor of b2bConfig.setores || []) {
-      for (const cidade of b2bConfig.cidades || []) {
-        queries.push(`empresas ${setor} ${cidade} CNPJ site:gov.br`);
-        queries.push(`${setor} ${cidade} razão social CNPJ`);
+      for (const cidade of cidadesParaBuscar) {
+        // Queries otimizadas para B2B
+        queries.push(`"${setor}" "${cidade}" CNPJ`);
+        queries.push(`${setor} ${cidade} razão social telefone`);
+        queries.push(`${setor} atacado ${cidade}`);
+        
+        // Queries específicas para varejo
+        if (setor.toLowerCase().includes('loja') || setor.toLowerCase().includes('varejo')) {
+          queries.push(`lojas ${setor.replace('Loja ', '')} ${cidade} contato`);
+        }
       }
     }
 
