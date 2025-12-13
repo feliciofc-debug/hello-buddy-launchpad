@@ -200,3 +200,6 @@ verify_jwt = false
 
 [functions.trocar-numero-whatsapp]
 verify_jwt = false
+
+[functions.buscar-leads-enriquecidos]
+verify_jwt = false
