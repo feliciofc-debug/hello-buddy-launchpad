@@ -597,10 +597,13 @@ export default function LeadsImoveisEnriquecidos() {
                 </Button>
 
                 {buscando && (
-                  <div className="text-sm text-muted-foreground">
-                    <div className="font-medium">Processando...</div>
-                    <div className="text-xs">
+                  <div className="text-sm text-muted-foreground bg-yellow-50 dark:bg-yellow-950/30 border border-yellow-300 dark:border-yellow-700 rounded-lg p-3">
+                    <div className="font-medium text-yellow-800 dark:text-yellow-200">⏳ Processando e enriquecendo leads...</div>
+                    <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
                       1. Buscando corretoras → 2. Analisando reviews → 3. Enriquecendo LinkedIn → 4. Enriquecendo Instagram
+                    </div>
+                    <div className="text-xs text-yellow-600 dark:text-yellow-400 mt-2 font-medium">
+                      ⚠️ Pode levar 2-5 minutos para {maxLeads} leads. Por favor, aguarde!
                     </div>
                   </div>
                 )}

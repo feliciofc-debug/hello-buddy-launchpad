@@ -285,11 +285,10 @@ serve(async (req) => {
     console.log('═══════════════════════════════════════');
 
     // ═══════════════════════════════════════
-    // SALVAR LEADS NO BANCO DE DADOS
+    // FASE 5: ENRIQUECER E SALVAR NO BANCO
     // ═══════════════════════════════════════
-    console.log('💾 Salvando leads no banco de dados...');
+    console.log('🔍 Iniciando enriquecimento dos leads...');
     
-    // Pegar user_id do auth header
     const authHeader = req.headers.get('authorization');
     let userId = null;
     
@@ -303,12 +302,156 @@ serve(async (req) => {
       }
     }
     
-    let leadsSalvos = 0;
-    const leadsSalvosComId: any[] = [];
+    const leadsEnriquecidos: any[] = [];
+    let processados = 0;
     
     for (const lead of leadsQualificados) {
+      processados++;
+      console.log(`\n👤 [${processados}/${leadsQualificados.length}] Enriquecendo: ${lead.nome}`);
+      
+      let telefone = null;
+      let email = null;
+      let linkedin_url = null;
+      let linkedin_foto = null;
+      let cargo = null;
+      let empresa = null;
+      let instagram_username = null;
+      let instagram_url = null;
+      let instagram_foto = null;
+      let instagram_followers = 0;
+      let linkedin_encontrado = false;
+      let instagram_encontrado = false;
+      let confianca = lead.score_total;
+      
+      // ───────────────────────────────────────────
+      // BUSCAR LINKEDIN (Apify)
+      // ───────────────────────────────────────────
       try {
-        // Verificar se já existe pelo nome + foto (para evitar duplicatas)
+        console.log('  💼 Buscando LinkedIn...');
+        
+        const linkedinActorId = 'bebity~linkedin-people-search';
+        const linkedinUrl = `https://api.apify.com/v2/acts/${linkedinActorId}/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
+        
+        const linkedinResponse = await fetch(linkedinUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            keywords: lead.nome,
+            maxResults: 2,
+            deepScrape: false
+          }),
+          signal: AbortSignal.timeout(20000)
+        });
+        
+        if (linkedinResponse.ok) {
+          const linkedinData = await linkedinResponse.json();
+          
+          if (linkedinData && linkedinData.length > 0) {
+            const profile = linkedinData[0];
+            linkedin_url = profile.url || profile.profileUrl || profile.linkedinUrl;
+            linkedin_foto = profile.profilePicture || profile.photoUrl;
+            cargo = profile.title || profile.headline || profile.currentPosition;
+            empresa = profile.company || profile.companyName;
+            email = profile.email;
+            linkedin_encontrado = true;
+            confianca += 30;
+            console.log('  ✅ LinkedIn encontrado:', linkedin_url);
+          } else {
+            console.log('  ⚠️ LinkedIn: nenhum resultado');
+          }
+        } else {
+          console.log('  ⚠️ LinkedIn API error:', linkedinResponse.status);
+        }
+      } catch (linkedinError: any) {
+        console.log('  ❌ LinkedIn timeout/erro:', linkedinError.message);
+      }
+      
+      // ───────────────────────────────────────────
+      // BUSCAR INSTAGRAM (Apify)
+      // ───────────────────────────────────────────
+      try {
+        console.log('  📸 Buscando Instagram...');
+        
+        const firstName = lead.nome.split(' ')[0]?.toLowerCase() || '';
+        const lastName = lead.nome.split(' ').slice(-1)[0]?.toLowerCase() || '';
+        
+        const possibleUsernames = [
+          firstName + lastName,
+          firstName + '_' + lastName,
+          firstName + '.' + lastName,
+          firstName
+        ].filter(u => u && u.length > 2);
+        
+        const instagramActorId = 'apify~instagram-profile-scraper';
+        const instagramUrl = `https://api.apify.com/v2/acts/${instagramActorId}/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
+        
+        const instagramResponse = await fetch(instagramUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            usernames: possibleUsernames.slice(0, 2)
+          }),
+          signal: AbortSignal.timeout(20000)
+        });
+        
+        if (instagramResponse.ok) {
+          const instagramData = await instagramResponse.json();
+          
+          if (instagramData && instagramData.length > 0) {
+            const profile = instagramData[0];
+            instagram_username = profile.username;
+            instagram_url = `https://instagram.com/${profile.username}`;
+            instagram_foto = profile.profilePicUrl || profile.profilePicture;
+            instagram_followers = profile.followersCount || 0;
+            instagram_encontrado = true;
+            confianca += 20;
+            console.log('  ✅ Instagram encontrado:', instagram_username);
+          } else {
+            console.log('  ⚠️ Instagram: nenhum resultado');
+          }
+        } else {
+          console.log('  ⚠️ Instagram API error:', instagramResponse.status);
+        }
+      } catch (instagramError: any) {
+        console.log('  ❌ Instagram timeout/erro:', instagramError.message);
+      }
+      
+      const dados_completos = linkedin_encontrado || instagram_encontrado;
+      
+      const leadEnriquecido = {
+        id: lead.id,
+        nome: lead.nome,
+        foto_url: lead.foto_url,
+        google_profile_url: lead.google_profile_url || null,
+        score_total: lead.score_total,
+        corretoras_visitadas: lead.corretoras_visitadas,
+        total_corretoras: lead.total_visitas,
+        qualificacao: lead.qualificacao,
+        insights: lead.insights,
+        status: 'novo',
+        telefone,
+        email,
+        linkedin_url,
+        linkedin_foto,
+        cargo,
+        empresa,
+        linkedin_encontrado,
+        instagram_username,
+        instagram_url,
+        instagram_foto,
+        instagram_followers,
+        instagram_encontrado,
+        facebook_encontrado: false,
+        dados_completos,
+        confianca_dados: Math.min(confianca, 100),
+        data_enriquecimento: new Date().toISOString(),
+        user_id: userId
+      };
+      
+      leadsEnriquecidos.push(leadEnriquecido);
+      
+      // Salvar no banco imediatamente
+      try {
         const { data: existente } = await supabase
           .from('leads_imoveis_enriquecidos')
           .select('id')
@@ -316,66 +459,50 @@ serve(async (req) => {
           .maybeSingle();
         
         if (existente) {
-          // Atualizar existente
-          const { error: updateError } = await supabase
+          await supabase
             .from('leads_imoveis_enriquecidos')
             .update({
-              score_total: lead.score_total,
-              corretoras_visitadas: lead.corretoras_visitadas,
-              total_corretoras: lead.total_visitas,
-              qualificacao: lead.qualificacao,
+              ...leadEnriquecido,
               updated_at: new Date().toISOString()
             })
             .eq('id', existente.id);
-          
-          if (!updateError) {
-            leadsSalvosComId.push({ ...lead, id: existente.id });
-            leadsSalvos++;
-          }
+          leadEnriquecido.id = existente.id;
         } else {
-          // Inserir novo
-          const { data: novoLead, error: insertError } = await supabase
+          const { data: novoLead } = await supabase
             .from('leads_imoveis_enriquecidos')
-            .insert({
-              nome: lead.nome,
-              foto_url: lead.foto_url,
-              google_profile_url: lead.google_profile_url || null,
-              score_total: lead.score_total,
-              corretoras_visitadas: lead.corretoras_visitadas,
-              total_corretoras: lead.total_visitas,
-              qualificacao: lead.qualificacao,
-              status: 'novo',
-              user_id: userId,
-              created_at: new Date().toISOString()
-            })
+            .insert(leadEnriquecido)
             .select('id')
             .single();
-          
-          if (!insertError && novoLead) {
-            leadsSalvosComId.push({ ...lead, id: novoLead.id });
-            leadsSalvos++;
-          }
+          if (novoLead) leadEnriquecido.id = novoLead.id;
         }
-      } catch (e) {
-        console.log(`Erro ao salvar lead ${lead.nome}:`, e);
+      } catch (saveError: any) {
+        console.log('  ⚠️ Erro ao salvar:', saveError.message);
       }
+      
+      // Delay entre leads (evitar rate limit)
+      await new Promise(r => setTimeout(r, 500));
     }
     
-    console.log(`✅ ${leadsSalvos} leads salvos no banco!`);
+    console.log('═══════════════════════════════════════');
+    console.log('📊 RESUMO ENRIQUECIMENTO:');
+    console.log(`Total processados: ${leadsEnriquecidos.length}`);
+    console.log(`Com LinkedIn: ${leadsEnriquecidos.filter(l => l.linkedin_encontrado).length}`);
+    console.log(`Com Instagram: ${leadsEnriquecidos.filter(l => l.instagram_encontrado).length}`);
+    console.log(`Dados completos: ${leadsEnriquecidos.filter(l => l.dados_completos).length}`);
+    console.log('═══════════════════════════════════════');
     
     return new Response(
       JSON.stringify({
         success: true,
-        total: leadsQualificados.length,
-        leads: leadsSalvosComId.length > 0 ? leadsSalvosComId : leadsQualificados,
+        total: leadsEnriquecidos.length,
+        leads: leadsEnriquecidos,
         stats: {
           corretoras_encontradas: corretoras.length,
           reviews_90_dias: todosReviews.length,
           autores_unicos: Object.keys(autores).length,
-          super_quentes: leads.filter(l => l.score_total >= 70).length,
-          quentes: leads.filter(l => l.score_total >= 40 && l.score_total < 70).length,
-          mornos: leads.filter(l => l.score_total >= 20 && l.score_total < 40).length,
-          salvos_banco: leadsSalvos
+          com_linkedin: leadsEnriquecidos.filter(l => l.linkedin_encontrado).length,
+          com_instagram: leadsEnriquecidos.filter(l => l.instagram_encontrado).length,
+          dados_completos: leadsEnriquecidos.filter(l => l.dados_completos).length
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
