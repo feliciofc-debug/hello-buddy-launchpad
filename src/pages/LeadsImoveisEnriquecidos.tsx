@@ -296,6 +296,92 @@ export default function LeadsImoveisEnriquecidos() {
   };
 
   const [validandoLead, setValidandoLead] = useState<string | null>(null);
+  const [buscandoLinkedin, setBuscandoLinkedin] = useState<string | null>(null);
+
+  // BUSCAR LINKEDIN DIRETO - usando a edge function que funciona
+  const buscarLinkedIn = async (lead: LeadImovel) => {
+    setBuscandoLinkedin(lead.id);
+    
+    try {
+      toast.info(`🔍 Buscando LinkedIn de ${lead.nome}...`);
+      
+      const { data, error } = await supabase.functions.invoke('apify-linkedin-scraper', {
+        body: { 
+          searchQuery: lead.nome,
+          maxResults: 5,
+          location: 'Brazil'
+        }
+      });
+
+      if (error) throw error;
+
+      console.log('LinkedIn Response:', data);
+
+      if (data?.leads && data.leads.length > 0) {
+        // Encontrar melhor match
+        const leadName = lead.nome.toLowerCase().trim();
+        const leadFirstName = leadName.split(' ')[0];
+        const leadLastName = leadName.split(' ').slice(-1)[0];
+        
+        let bestMatch = null;
+        let bestScore = 0;
+        
+        for (const profile of data.leads) {
+          const profileName = (profile.nome_completo || '').toLowerCase().trim();
+          let score = 0;
+          
+          if (profileName === leadName) score = 100;
+          else if (profileName.includes(leadFirstName) && profileName.includes(leadLastName)) score = 80;
+          else if (profileName.includes(leadFirstName)) score = 50;
+          
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = profile;
+          }
+        }
+        
+        if (bestMatch && bestScore >= 50) {
+          // Atualizar no banco
+          await supabase.from('leads_imoveis_enriquecidos').update({
+            linkedin_url: bestMatch.linkedin_url,
+            linkedin_foto: bestMatch.foto_url,
+            cargo: bestMatch.cargo_atual || bestMatch.profissao,
+            empresa: bestMatch.empresa_atual,
+            linkedin_connections: bestMatch.conexoes?.toString(),
+            linkedin_encontrado: true,
+            fontes_encontradas: [...(lead.fontes_encontradas || []), 'linkedin']
+          }).eq('id', lead.id);
+          
+          // Atualizar UI
+          setLeads(prevLeads => prevLeads.map(l => 
+            l.id === lead.id 
+              ? { 
+                  ...l, 
+                  linkedin_url: bestMatch.linkedin_url,
+                  linkedin_foto: bestMatch.foto_url,
+                  cargo: bestMatch.cargo_atual || bestMatch.profissao,
+                  empresa: bestMatch.empresa_atual,
+                  linkedin_connections: bestMatch.conexoes?.toString() || null,
+                  linkedin_encontrado: true,
+                  fontes_encontradas: [...(l.fontes_encontradas || []), 'linkedin']
+                } 
+              : l
+          ));
+          
+          toast.success(`✅ LinkedIn encontrado! ${bestMatch.nome_completo} - ${bestMatch.cargo_atual || 'Sem cargo'}`);
+        } else {
+          toast.warning(`⚠️ ${data.leads.length} perfis encontrados mas nenhum match com ${lead.nome}`);
+        }
+      } else {
+        toast.warning('Nenhum perfil encontrado no LinkedIn');
+      }
+    } catch (error: any) {
+      console.error('Erro ao buscar LinkedIn:', error);
+      toast.error(`Erro: ${error.message}`);
+    } finally {
+      setBuscandoLinkedin(null);
+    }
+  };
 
   const validarLeadMultifonte = async (leadId: string) => {
     setValidandoLead(leadId);
@@ -1069,6 +1155,29 @@ export default function LeadsImoveisEnriquecidos() {
                             <Instagram className="h-4 w-4" />
                             Instagram
                           </a>
+                        )}
+                        
+                        {/* BOTÃO BUSCAR LINKEDIN - sempre visível se não encontrado */}
+                        {!lead.linkedin_encontrado && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => buscarLinkedIn(lead)}
+                            disabled={buscandoLinkedin === lead.id}
+                            className="text-xs bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700"
+                          >
+                            {buscandoLinkedin === lead.id ? (
+                              <>
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Buscando...
+                              </>
+                            ) : (
+                              <>
+                                <Linkedin className="h-3 w-3 mr-1" />
+                                Buscar LinkedIn
+                              </>
+                            )}
+                          </Button>
                         )}
                         
                         {lead.linkedin_url && (
