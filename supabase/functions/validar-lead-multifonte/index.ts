@@ -188,8 +188,8 @@ serve(async (req) => {
       console.log('  💼 Buscando no LinkedIn...');
       
       try {
-        // Usar actor correto: linkedin-people-search
-        const linkedinUrl = `https://api.apify.com/v2/acts/curious_coder~linkedin-people-search/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
+        // Usar actor correto: powerai~linkedin-peoples-search-scraper
+        const linkedinUrl = `https://api.apify.com/v2/acts/powerai~linkedin-peoples-search-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
         
         console.log('  📤 Chamando Apify LinkedIn:', lead.nome);
         
@@ -197,9 +197,9 @@ serve(async (req) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            searchQuery: lead.nome,
+            keyword: lead.nome,
             location: 'Brazil',
-            maxResults: 5
+            count: 5
           })
         });
         
