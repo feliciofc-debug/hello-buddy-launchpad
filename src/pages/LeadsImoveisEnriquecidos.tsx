@@ -299,7 +299,7 @@ export default function LeadsImoveisEnriquecidos() {
     setValidandoLead(leadId);
     
     try {
-      toast.info('🔍 Iniciando validação multi-fonte...');
+      toast.info('🔍 Buscando LinkedIn, Instagram e dados de contato...');
       
       const { data, error } = await supabase.functions.invoke('validar-lead-multifonte', {
         body: { leadId }
@@ -308,23 +308,43 @@ export default function LeadsImoveisEnriquecidos() {
       if (error) throw error;
 
       if (data?.success) {
-        toast.success(`✅ Validação concluída! Confiança: ${data.confianca}%`);
+        const fontesEncontradas = data.fontes?.join(', ') || 'nenhuma';
+        toast.success(`✅ Validação concluída! Confiança: ${data.confianca}% | Fontes: ${fontesEncontradas}`);
         
-        // Atualizar lead na lista local
-        setLeads(leads.map(l => 
-          l.id === leadId 
-            ? { 
-                ...l, 
-                confianca_dados: data.confianca,
-                status_validacao: data.status,
-                fontes_encontradas: data.fontes,
-                log_validacao: data.logs
-              } 
-            : l
-        ));
+        // Buscar dados atualizados do lead no banco
+        const { data: leadAtualizado } = await supabase
+          .from('leads_imoveis_enriquecidos')
+          .select('*')
+          .eq('id', leadId)
+          .single();
         
-        // Recarregar para pegar todos os dados
-        await carregarLeads();
+        if (leadAtualizado) {
+          // Atualizar lead na lista local com dados mapeados
+          setLeads(prevLeads => prevLeads.map(l => 
+            l.id === leadId 
+              ? { 
+                  ...l, 
+                  confianca_dados: leadAtualizado.confianca_dados,
+                  status_validacao: leadAtualizado.status_validacao,
+                  fontes_encontradas: leadAtualizado.fontes_encontradas as string[] | null,
+                  linkedin_url: leadAtualizado.linkedin_url,
+                  linkedin_foto: leadAtualizado.linkedin_foto,
+                  cargo: leadAtualizado.cargo,
+                  empresa: leadAtualizado.empresa,
+                  linkedin_encontrado: !!leadAtualizado.linkedin_url,
+                  instagram_url: leadAtualizado.instagram_url,
+                  instagram_username: leadAtualizado.instagram_username,
+                  instagram_foto: leadAtualizado.instagram_foto,
+                  instagram_followers: leadAtualizado.instagram_followers,
+                  instagram_encontrado: !!leadAtualizado.instagram_url,
+                  facebook_url: leadAtualizado.facebook_url,
+                  facebook_encontrado: !!leadAtualizado.facebook_url,
+                  telefone: leadAtualizado.telefone,
+                  dados_completos: leadAtualizado.dados_completos || false
+                } 
+              : l
+          ));
+        }
       } else {
         throw new Error(data?.error || 'Erro desconhecido');
       }
