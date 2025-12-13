@@ -39,7 +39,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { estados = [], cidades = [] } = params;
+    const { estados = [], cidades = [], max_leads = 50 } = params;
+    console.log('📊 Max leads solicitados:', max_leads);
     
     // ═══════════════════════════════════════
     // MONTAR QUERIES DE BUSCA
@@ -272,7 +273,8 @@ serve(async (req) => {
     }
 
     leads.sort((a, b) => b.score_total - a.score_total);
-    const leadsQualificados = leads.filter(l => l.score_total >= 20);
+    const leadsQualificados = leads.filter(l => l.score_total >= 20).slice(0, max_leads);
+    console.log(`📊 Leads qualificados (limitado a ${max_leads}): ${leadsQualificados.length}`);
 
     console.log('═══════════════════════════════════════');
     console.log('📊 RESUMO FINAL:');
