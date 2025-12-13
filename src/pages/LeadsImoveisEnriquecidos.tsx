@@ -206,15 +206,32 @@ export default function LeadsImoveisEnriquecidos() {
 
       if (error) throw error;
 
+      console.log('Resposta da busca:', data);
+
       if (data?.leads && data.leads.length > 0) {
-        setLeads(data.leads);
-        toast.success(`✅ ${data.leads.length} leads encontrados e enriquecidos!`);
+        // Mapear os leads para o formato esperado
+        const leadsFormatados = data.leads.map((lead: any, index: number) => ({
+          id: lead.id || `temp-${index}`,
+          nome: lead.nome,
+          foto_url: lead.foto_url,
+          score_total: lead.score_total,
+          qualificacao: lead.qualificacao,
+          status: lead.status || 'novo',
+          corretoras_visitadas: lead.corretoras_visitadas || [],
+          total_visitas: lead.total_visitas || lead.corretoras_visitadas?.length || 0,
+          insights: lead.insights || [],
+          dados_completos: lead.dados_completos || false,
+          linkedin_encontrado: lead.linkedin_encontrado || false,
+          instagram_encontrado: lead.instagram_encontrado || false,
+          facebook_encontrado: lead.facebook_encontrado || false
+        }));
+        
+        setLeads(leadsFormatados);
+        toast.success(`✅ ${data.leads.length} leads encontrados! (${data.stats?.quentes || 0} quentes, ${data.stats?.mornos || 0} mornos)`);
         setMostrarConfig(false);
       } else {
         toast.info('Nenhum lead encontrado com esses critérios. Tente ajustar os filtros.');
       }
-
-      await carregarLeads();
     } catch (error: any) {
       console.error('Erro na busca:', error);
       toast.error(error.message || 'Erro ao buscar leads');
