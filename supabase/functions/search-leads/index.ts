@@ -125,7 +125,7 @@ serve(async (req) => {
                                icp.b2c_config?.cidades || 
                                [];
     
-    // Mapa de capitais por estado
+    // Mapa de capitais por estado - TODOS os 27 estados brasileiros
     const CAPITAIS: Record<string, string> = {
       'AC': 'Rio Branco', 'AL': 'Maceió', 'AP': 'Macapá', 'AM': 'Manaus',
       'BA': 'Salvador', 'CE': 'Fortaleza', 'DF': 'Brasília', 'ES': 'Vitória',
@@ -134,6 +134,17 @@ serve(async (req) => {
       'PE': 'Recife', 'PI': 'Teresina', 'RJ': 'Rio de Janeiro', 'RN': 'Natal',
       'RS': 'Porto Alegre', 'RO': 'Porto Velho', 'RR': 'Boa Vista', 'SC': 'Florianópolis',
       'SP': 'São Paulo', 'SE': 'Aracaju', 'TO': 'Palmas'
+    };
+
+    // Coordenadas das capitais para Google Maps (lat,lng)
+    const COORDENADAS: Record<string, string> = {
+      'AC': '-9.9754,-67.8249', 'AL': '-9.6658,-35.7350', 'AP': '0.0349,-51.0694', 'AM': '-3.1190,-60.0217',
+      'BA': '-12.9714,-38.5014', 'CE': '-3.7172,-38.5433', 'DF': '-15.7942,-47.8822', 'ES': '-20.3155,-40.3128',
+      'GO': '-16.6869,-49.2648', 'MA': '-2.5307,-44.3068', 'MT': '-15.6014,-56.0979', 'MS': '-20.4697,-54.6201',
+      'MG': '-19.9167,-43.9345', 'PA': '-1.4558,-48.4902', 'PB': '-7.1195,-34.8450', 'PR': '-25.4290,-49.2671',
+      'PE': '-8.0476,-34.8770', 'PI': '-5.0892,-42.8019', 'RJ': '-22.9068,-43.1729', 'RN': '-5.7945,-35.2110',
+      'RS': '-30.0346,-51.2177', 'RO': '-8.7612,-63.9004', 'RR': '2.8235,-60.6758', 'SC': '-27.5954,-48.5480',
+      'SP': '-23.5505,-46.6333', 'SE': '-10.9472,-37.0731', 'TO': '-10.2491,-48.3243'
     };
 
     let cidade = '';
@@ -350,7 +361,9 @@ serve(async (req) => {
             console.log('🔍 [QUERY]', query)
             
             // Busca com engine=google_maps para resultados locais
-            const serpUrl = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(query)}&ll=@-22.9068,-43.1729,11z&hl=pt-br&api_key=${SERPAPI_KEY}`
+            // Usar coordenadas dinâmicas baseadas no estado selecionado
+            const coords = COORDENADAS[estado] || COORDENADAS['SP'] || '-23.5505,-46.6333';
+            const serpUrl = `https://serpapi.com/search.json?engine=google_maps&q=${encodeURIComponent(query)}&ll=@${coords},11z&hl=pt-br&api_key=${SERPAPI_KEY}`
             
             const serpResponse = await fetch(serpUrl, {
               headers: { 'User-Agent': 'Mozilla/5.0' }
