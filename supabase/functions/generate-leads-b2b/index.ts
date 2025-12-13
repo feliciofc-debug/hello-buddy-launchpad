@@ -119,7 +119,9 @@ serve(async (req) => {
     
     // Se não tiver nenhuma cidade, usar capitais dos estados selecionados ou todas
     if (cidadesParaBuscar.length === 0) {
-      const estadosSelecionados = b2bConfig.estados || [];
+      // Buscar estados de b2bConfig OU de filtros_avancados (fallback)
+      const estadosSelecionados = b2bConfig.estados || icp.filtros_avancados?.estados || [];
+      console.log(`[GENERATE-LEADS-B2B] Estados encontrados: ${estadosSelecionados.join(', ') || 'Nenhum'}`);
       if (estadosSelecionados.length > 0) {
         // Usar capitais dos estados selecionados
         cidadesParaBuscar = estadosSelecionados.map((uf: string) => CAPITAIS[uf] || uf).filter(Boolean);
