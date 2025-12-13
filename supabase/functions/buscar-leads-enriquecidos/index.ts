@@ -280,23 +280,100 @@ serve(async (req) => {
     console.log(`Reviews 90 dias: ${todosReviews.length}`);
     console.log(`Autores únicos: ${Object.keys(autores).length}`);
     console.log(`Leads qualificados: ${leadsQualificados.length}`);
-    console.log(`Super Quentes: ${leads.filter(l => l.score_total >= 70).length}`);
-    console.log(`Quentes: ${leads.filter(l => l.score_total >= 40 && l.score_total < 70).length}`);
-    console.log(`Mornos: ${leads.filter(l => l.score_total >= 20 && l.score_total < 40).length}`);
     console.log('═══════════════════════════════════════');
+
+    // ═══════════════════════════════════════
+    // SALVAR LEADS NO BANCO DE DADOS
+    // ═══════════════════════════════════════
+    console.log('💾 Salvando leads no banco de dados...');
+    
+    // Pegar user_id do auth header
+    const authHeader = req.headers.get('authorization');
+    let userId = null;
+    
+    if (authHeader) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user } } = await supabase.auth.getUser(token);
+        userId = user?.id;
+      } catch (e) {
+        console.log('Não conseguiu extrair user_id do token');
+      }
+    }
+    
+    let leadsSalvos = 0;
+    const leadsSalvosComId: any[] = [];
+    
+    for (const lead of leadsQualificados) {
+      try {
+        // Verificar se já existe pelo nome + foto (para evitar duplicatas)
+        const { data: existente } = await supabase
+          .from('leads_imoveis_enriquecidos')
+          .select('id')
+          .eq('nome', lead.nome)
+          .maybeSingle();
+        
+        if (existente) {
+          // Atualizar existente
+          const { error: updateError } = await supabase
+            .from('leads_imoveis_enriquecidos')
+            .update({
+              score_total: lead.score_total,
+              corretoras_visitadas: lead.corretoras_visitadas,
+              total_corretoras: lead.total_visitas,
+              qualificacao: lead.qualificacao,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existente.id);
+          
+          if (!updateError) {
+            leadsSalvosComId.push({ ...lead, id: existente.id });
+            leadsSalvos++;
+          }
+        } else {
+          // Inserir novo
+          const { data: novoLead, error: insertError } = await supabase
+            .from('leads_imoveis_enriquecidos')
+            .insert({
+              nome: lead.nome,
+              foto_url: lead.foto_url,
+              google_profile_url: lead.google_profile_url || null,
+              score_total: lead.score_total,
+              corretoras_visitadas: lead.corretoras_visitadas,
+              total_corretoras: lead.total_visitas,
+              qualificacao: lead.qualificacao,
+              status: 'novo',
+              user_id: userId,
+              created_at: new Date().toISOString()
+            })
+            .select('id')
+            .single();
+          
+          if (!insertError && novoLead) {
+            leadsSalvosComId.push({ ...lead, id: novoLead.id });
+            leadsSalvos++;
+          }
+        }
+      } catch (e) {
+        console.log(`Erro ao salvar lead ${lead.nome}:`, e);
+      }
+    }
+    
+    console.log(`✅ ${leadsSalvos} leads salvos no banco!`);
     
     return new Response(
       JSON.stringify({
         success: true,
         total: leadsQualificados.length,
-        leads: leadsQualificados,
+        leads: leadsSalvosComId.length > 0 ? leadsSalvosComId : leadsQualificados,
         stats: {
           corretoras_encontradas: corretoras.length,
           reviews_90_dias: todosReviews.length,
           autores_unicos: Object.keys(autores).length,
           super_quentes: leads.filter(l => l.score_total >= 70).length,
           quentes: leads.filter(l => l.score_total >= 40 && l.score_total < 70).length,
-          mornos: leads.filter(l => l.score_total >= 20 && l.score_total < 40).length
+          mornos: leads.filter(l => l.score_total >= 20 && l.score_total < 40).length,
+          salvos_banco: leadsSalvos
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
