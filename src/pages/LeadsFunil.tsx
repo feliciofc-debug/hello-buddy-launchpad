@@ -1631,19 +1631,16 @@ IA: Perfeito! Envio por WhatsApp agora. Obrigado!`,
                         </p>
                       </div>
                     </div>
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const nome = leadSelecionado.nome_completo || leadSelecionado.razao_social || '';
-                        const profissao = leadSelecionado.profissao || '';
-                        const cidade = leadSelecionado.cidade || '';
-                        const query = encodeURIComponent(`${nome} ${profissao} ${cidade}`.trim());
-                        window.open(`https://www.google.com/search?q=${query}`, '_blank');
-                      }}
+                    <a 
+                      href={`https://www.google.com/search?q=${encodeURIComponent(
+                        `${leadSelecionado.nome_completo || leadSelecionado.razao_social || ''} ${leadSelecionado.profissao || ''} ${leadSelecionado.cidade || ''}`.trim()
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center h-9 px-3 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground text-sm font-medium"
                     >
                       🔍 Buscar no Google
-                    </Button>
+                    </a>
                   </div>
                 </div>
               </Card>
