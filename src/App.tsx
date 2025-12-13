@@ -53,6 +53,7 @@ import VendedorPainel from "./pages/VendedorPainel";
 import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
 import ConfiguracoesWhatsApp from "./pages/ConfiguracoesWhatsApp";
 import AdminImportar from "./pages/AdminImportar";
+import LeadsImoveisEnriquecidos from "./pages/LeadsImoveisEnriquecidos";
 
 import CookieBanner from "./components/CookieBanner";
 
@@ -115,6 +116,7 @@ const App = () => (
             <Route path="/marketplace-publico" element={<MarketplacePublico />} />
             <Route path="/politica-privacidade" element={<PoliticaPrivacidade />} />
             <Route path="/configuracoes-whatsapp" element={<ConfiguracoesWhatsApp />} />
+            <Route path="/imoveis/leads-enriquecidos" element={<LeadsImoveisEnriquecidos />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

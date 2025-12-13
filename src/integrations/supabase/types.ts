@@ -2114,6 +2114,174 @@ export type Database = {
           },
         ]
       }
+      leads_imoveis_enriquecidos: {
+        Row: {
+          cargo: string | null
+          contatado_por: string | null
+          corretoras_visitadas: Json | null
+          created_at: string | null
+          dados_completos: boolean | null
+          data_contato: string | null
+          data_enriquecimento: string | null
+          empresa: string | null
+          experiencia_anos: number | null
+          facebook_cidade: string | null
+          facebook_clubes: string[] | null
+          facebook_encontrado: boolean | null
+          facebook_foto: string | null
+          facebook_trabalho: string | null
+          facebook_url: string | null
+          formacao: string | null
+          foto_url: string | null
+          google_profile_url: string | null
+          id: string
+          instagram_bio: string | null
+          instagram_encontrado: boolean | null
+          instagram_followers: number | null
+          instagram_foto: string | null
+          instagram_interesses: string[] | null
+          instagram_posts: number | null
+          instagram_ultima_atividade: string | null
+          instagram_url: string | null
+          instagram_username: string | null
+          linkedin_connections: string | null
+          linkedin_encontrado: boolean | null
+          linkedin_foto: string | null
+          linkedin_url: string | null
+          localizacao_desejada: string | null
+          nome: string
+          objecoes: string[] | null
+          observacoes: string | null
+          orcamento_max: number | null
+          orcamento_min: number | null
+          patrimonio_estimado: number | null
+          probabilidade_compra: number | null
+          projeto_id: string | null
+          qualificacao: string | null
+          quartos_desejado: number | null
+          renda_estimada: number | null
+          score_total: number | null
+          setor: string | null
+          status: string | null
+          telefone: string | null
+          tipo_imovel_desejado: string | null
+          total_corretoras: number | null
+          ultima_visita_dias: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          cargo?: string | null
+          contatado_por?: string | null
+          corretoras_visitadas?: Json | null
+          created_at?: string | null
+          dados_completos?: boolean | null
+          data_contato?: string | null
+          data_enriquecimento?: string | null
+          empresa?: string | null
+          experiencia_anos?: number | null
+          facebook_cidade?: string | null
+          facebook_clubes?: string[] | null
+          facebook_encontrado?: boolean | null
+          facebook_foto?: string | null
+          facebook_trabalho?: string | null
+          facebook_url?: string | null
+          formacao?: string | null
+          foto_url?: string | null
+          google_profile_url?: string | null
+          id?: string
+          instagram_bio?: string | null
+          instagram_encontrado?: boolean | null
+          instagram_followers?: number | null
+          instagram_foto?: string | null
+          instagram_interesses?: string[] | null
+          instagram_posts?: number | null
+          instagram_ultima_atividade?: string | null
+          instagram_url?: string | null
+          instagram_username?: string | null
+          linkedin_connections?: string | null
+          linkedin_encontrado?: boolean | null
+          linkedin_foto?: string | null
+          linkedin_url?: string | null
+          localizacao_desejada?: string | null
+          nome: string
+          objecoes?: string[] | null
+          observacoes?: string | null
+          orcamento_max?: number | null
+          orcamento_min?: number | null
+          patrimonio_estimado?: number | null
+          probabilidade_compra?: number | null
+          projeto_id?: string | null
+          qualificacao?: string | null
+          quartos_desejado?: number | null
+          renda_estimada?: number | null
+          score_total?: number | null
+          setor?: string | null
+          status?: string | null
+          telefone?: string | null
+          tipo_imovel_desejado?: string | null
+          total_corretoras?: number | null
+          ultima_visita_dias?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          cargo?: string | null
+          contatado_por?: string | null
+          corretoras_visitadas?: Json | null
+          created_at?: string | null
+          dados_completos?: boolean | null
+          data_contato?: string | null
+          data_enriquecimento?: string | null
+          empresa?: string | null
+          experiencia_anos?: number | null
+          facebook_cidade?: string | null
+          facebook_clubes?: string[] | null
+          facebook_encontrado?: boolean | null
+          facebook_foto?: string | null
+          facebook_trabalho?: string | null
+          facebook_url?: string | null
+          formacao?: string | null
+          foto_url?: string | null
+          google_profile_url?: string | null
+          id?: string
+          instagram_bio?: string | null
+          instagram_encontrado?: boolean | null
+          instagram_followers?: number | null
+          instagram_foto?: string | null
+          instagram_interesses?: string[] | null
+          instagram_posts?: number | null
+          instagram_ultima_atividade?: string | null
+          instagram_url?: string | null
+          instagram_username?: string | null
+          linkedin_connections?: string | null
+          linkedin_encontrado?: boolean | null
+          linkedin_foto?: string | null
+          linkedin_url?: string | null
+          localizacao_desejada?: string | null
+          nome?: string
+          objecoes?: string[] | null
+          observacoes?: string | null
+          orcamento_max?: number | null
+          orcamento_min?: number | null
+          patrimonio_estimado?: number | null
+          probabilidade_compra?: number | null
+          projeto_id?: string | null
+          qualificacao?: string | null
+          quartos_desejado?: number | null
+          renda_estimada?: number | null
+          score_total?: number | null
+          setor?: string | null
+          status?: string | null
+          telefone?: string | null
+          tipo_imovel_desejado?: string | null
+          total_corretoras?: number | null
+          ultima_visita_dias?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       logs_analise_ia: {
         Row: {
           confianca: number | null

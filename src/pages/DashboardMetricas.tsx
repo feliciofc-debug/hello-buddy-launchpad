@@ -33,7 +33,8 @@ import {
   DollarSign,
   MousePointer,
   Search,
-  Smartphone
+  Smartphone,
+  Building2
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import { LeadsQuentes } from '@/components/LeadsQuentes';
@@ -247,6 +248,7 @@ export default function DashboardMetricas() {
 
   const menuItems = [
     { icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
+    { icon: Building2, label: '🏢 AMZ Imóveis', path: '/imoveis/leads-enriquecidos' },
     { icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
     { icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
