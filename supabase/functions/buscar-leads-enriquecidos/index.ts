@@ -513,117 +513,9 @@ serve(async (req) => {
     console.log(`📊 Leads pré-qualificados: ${leadsPreQualificados.length}`);
 
     // ═══════════════════════════════════════════
-    // NOVO: VALIDAR LINKEDIN ANTES DE MOSTRAR
+    // SALVAR LEADS NO BANCO (SEM VALIDAÇÃO LINKEDIN)
     // ═══════════════════════════════════════════
-    console.log('═══════════════════════════════════════');
-    console.log('🔍 VALIDANDO LINKEDIN DE CADA LEAD...');
-    console.log('⏳ Isso pode levar alguns minutos...');
-    console.log('═══════════════════════════════════════');
-
-    const leadsValidados: any[] = [];
-    let totalValidados = 0;
-    let totalDescartados = 0;
-    let totalSemLinkedin = 0;
-
-    // Pegar cidade e estado para validação
-    const cidadeValidacao = cidades[0] || cidadePrincipal;
-    const estadoValidacao = estados[0] || 'RJ';
-
-    // Limitar a 25 leads para evitar timeout (60s do Supabase)
-    const leadsParaValidar = leadsPreQualificados.slice(0, Math.min(max_leads, 25));
-    
-    for (const lead of leadsParaValidar) {
-      console.log(`\n👤 Validando: ${lead.nome}`);
-      
-      // ═══ BUSCAR LINKEDIN ═══
-      const linkedinData = await buscarLinkedInDetalhado(
-        lead.nome,
-        cidadeValidacao,
-        estadoValidacao
-      );
-      
-      let leadAceito = false;
-      
-      if (linkedinData) {
-        const { url: linkedinUrl, snippet } = linkedinData;
-        
-        lead.linkedin_url = linkedinUrl;
-        lead.linkedin_encontrado = true;
-        lead.confianca_dados = Math.min(lead.score_total + 30, 100);
-        
-        console.log(`  ✅ LinkedIn encontrado: ${linkedinUrl}`);
-        
-        // Verificar se é da CIDADE/ESTADO esperado
-        const localizacaoConfere = verificarLocalizacao(
-          linkedinUrl,
-          snippet,
-          cidadeValidacao,
-          estadoValidacao
-        );
-        
-        if (localizacaoConfere) {
-          console.log(`  ✅ Localização confere: ${cidadeValidacao}, ${estadoValidacao}`);
-          leadAceito = true;
-        } else {
-          console.log(`  ❌ Localização diferente (DESCARTADO)`);
-          totalDescartados++;
-        }
-        
-      } else {
-        console.log(`  ⚠️ LinkedIn não encontrado`);
-        totalSemLinkedin++;
-        
-        // Aceitar mesmo sem LinkedIn se score muito alto
-        if (lead.score_total >= 60) {
-          console.log(`  ✅ Aceito por score alto (${lead.score_total})`);
-          lead.confianca_dados = lead.score_total;
-          leadAceito = true;
-        } else {
-          console.log(`  ❌ Score baixo, descartado sem LinkedIn`);
-          totalDescartados++;
-        }
-      }
-      
-      // ═══ BUSCAR INSTAGRAM E FACEBOOK (para leads aceitos) ═══
-      if (leadAceito) {
-        // Buscar Instagram
-        const instagramData = await buscarInstagram(lead.nome, cidadeValidacao);
-        if (instagramData.url) {
-          lead.instagram_url = instagramData.url;
-          lead.instagram_username = instagramData.username;
-          lead.confianca_dados = Math.min((lead.confianca_dados || 50) + 10, 100);
-        }
-        
-        // Delay entre chamadas para não sobrecarregar API
-        await new Promise(r => setTimeout(r, 500));
-        
-        // Buscar Facebook
-        const facebookUrl = await buscarFacebook(lead.nome, cidadeValidacao);
-        if (facebookUrl) {
-          lead.facebook_url = facebookUrl;
-          lead.confianca_dados = Math.min((lead.confianca_dados || 50) + 10, 100);
-        }
-        
-        leadsValidados.push(lead);
-        totalValidados++;
-      }
-      
-      // Delay entre validações
-      await new Promise(r => setTimeout(r, 800));
-    }
-
-    console.log('\n═══════════════════════════════════════');
-    console.log('📊 VALIDAÇÃO COMPLETA:');
-    console.log(`Total pré-qualificados: ${leadsPreQualificados.length}`);
-    console.log(`✅ Validados (Brasil): ${totalValidados}`);
-    console.log(`❌ Descartados (Exterior): ${totalDescartados}`);
-    console.log(`⚠️ Sem LinkedIn: ${totalSemLinkedin}`);
-    console.log('═══════════════════════════════════════');
-
-    // ═══════════════════════════════════════
-    // SALVAR APENAS LEADS VALIDADOS
-    // ═══════════════════════════════════════
-    console.log('💾 Salvando leads VALIDADOS no banco de dados...');
+    console.log('💾 Salvando leads no banco de dados...');
     
     const authHeader = req.headers.get('authorization');
     let userId = null;
@@ -641,8 +533,12 @@ serve(async (req) => {
     let leadsSalvos = 0;
     const leadsSalvosComId: any[] = [];
     
-    for (const lead of leadsValidados) {
+    // Limitar a max_leads
+    const leadsParaSalvar = leadsPreQualificados.slice(0, max_leads);
+    
+    for (const lead of leadsParaSalvar) {
       try {
+        // Verificar se já existe
         const { data: existente } = await supabase
           .from('leads_imoveis_enriquecidos')
           .select('id')
@@ -650,6 +546,7 @@ serve(async (req) => {
           .maybeSingle();
         
         if (existente) {
+          // Atualizar existente
           const { error: updateError } = await supabase
             .from('leads_imoveis_enriquecidos')
             .update({
@@ -657,9 +554,6 @@ serve(async (req) => {
               corretoras_visitadas: lead.corretoras_visitadas,
               total_corretoras: lead.total_visitas,
               qualificacao: lead.qualificacao,
-              linkedin_url: lead.linkedin_url,
-              confianca_dados: lead.confianca_dados,
-              cidade: lead.cidade,
               updated_at: new Date().toISOString()
             })
             .eq('id', existente.id);
@@ -669,6 +563,7 @@ serve(async (req) => {
             leadsSalvos++;
           }
         } else {
+          // Inserir novo - SEM redes sociais (validar depois)
           const { data: novoLead, error: insertError } = await supabase
             .from('leads_imoveis_enriquecidos')
             .insert({
@@ -681,17 +576,26 @@ serve(async (req) => {
               qualificacao: lead.qualificacao,
               status: 'novo',
               user_id: userId,
-              linkedin_url: lead.linkedin_url,
-              confianca_dados: lead.confianca_dados,
-              cidade: lead.cidade,
+              // Redes sociais vazias (preencher via botão Validar)
+              linkedin_url: null,
+              linkedin_encontrado: false,
+              instagram_url: null,
+              instagram_username: null,
+              instagram_encontrado: false,
+              facebook_url: null,
+              facebook_encontrado: false,
+              dados_completos: false,
+              confianca_dados: lead.score_total,
               created_at: new Date().toISOString()
             })
             .select('id')
-            .single();
+            .maybeSingle();
           
           if (!insertError && novoLead) {
             leadsSalvosComId.push({ ...lead, id: novoLead.id });
             leadsSalvos++;
+          } else if (insertError) {
+            console.log(`⚠️ Erro ao salvar ${lead.nome}:`, insertError.message);
           }
         }
       } catch (e) {
@@ -699,25 +603,22 @@ serve(async (req) => {
       }
     }
     
-    console.log(`✅ ${leadsSalvos} leads VALIDADOS salvos no banco!`);
+    console.log(`✅ ${leadsSalvos}/${leadsParaSalvar.length} leads salvos no banco!`);
     
     return new Response(
       JSON.stringify({
         success: true,
-        total: leadsValidados.length,
-        leads: leadsSalvosComId.length > 0 ? leadsSalvosComId : leadsValidados,
+        total: leadsSalvos,
+        leads: leadsSalvosComId,
         stats: {
           corretoras_encontradas: corretoras.length,
           reviews_90_dias: todosReviews.length,
           autores_unicos: Object.keys(autores).length,
           pre_qualificados: leadsPreQualificados.length,
-          validados_brasil: totalValidados,
-          descartados_exterior: totalDescartados,
-          sem_linkedin: totalSemLinkedin,
-          super_quentes: leadsValidados.filter(l => l.score_total >= 70).length,
-          quentes: leadsValidados.filter(l => l.score_total >= 40 && l.score_total < 70).length,
-          mornos: leadsValidados.filter(l => l.score_total >= 20 && l.score_total < 40).length,
-          salvos_banco: leadsSalvos
+          salvos_banco: leadsSalvos,
+          super_quentes: leadsParaSalvar.filter(l => l.score_total >= 70).length,
+          quentes: leadsParaSalvar.filter(l => l.score_total >= 40 && l.score_total < 70).length,
+          mornos: leadsParaSalvar.filter(l => l.score_total >= 20 && l.score_total < 40).length
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
