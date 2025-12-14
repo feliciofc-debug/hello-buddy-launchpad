@@ -483,23 +483,57 @@ export default function LeadsImoveisEnriquecidos() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6 max-w-[1800px] mx-auto">
-      {/* HEADER */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
-            <ArrowLeft className="h-5 w-5" />
+    <div className="min-h-screen bg-background flex">
+      {/* SIDEBAR AMZ IMÓVEIS */}
+      <aside className="w-64 bg-card border-r border-border p-4 space-y-4 shrink-0">
+        <div className="flex items-center gap-2 mb-6">
+          <Building2 className="h-6 w-6 text-primary" />
+          <span className="text-lg font-bold">AMZ Imóveis</span>
+        </div>
+        
+        <nav className="space-y-1">
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2"
+            onClick={() => navigate('/dashboard')}
+          >
+            <Home className="h-4 w-4" />
+            Dashboard
           </Button>
+          
+          <Button
+            variant="secondary"
+            className="w-full justify-start gap-2 bg-primary/10"
+            onClick={() => navigate('/imoveis/leads-enriquecidos')}
+          >
+            <Building2 className="h-4 w-4" />
+            Leads Enriquecidos
+          </Button>
+          
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2"
+            onClick={() => navigate('/imoveis/seguidores-concorrentes')}
+          >
+            <Instagram className="h-4 w-4" />
+            Seguidores Concorrentes
+          </Button>
+        </nav>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <div className="flex-1 p-6 max-w-[1600px]">
+        {/* HEADER */}
+        <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-2">
               <Building2 className="h-8 w-8 text-primary" />
-              AMZ Imóveis - Leads Enriquecidos
+              Leads Enriquecidos
             </h1>
             <p className="text-muted-foreground mt-1">
               Configure ICP → Busca Google → Enriquece Redes Sociais
             </p>
           </div>
-        </div>
         <div className="flex gap-2 items-center">
           {/* BOTÃO LIMPAR LEADS */}
           {leads.length > 0 && (
@@ -1290,6 +1324,7 @@ export default function LeadsImoveisEnriquecidos() {
           </div>
         )}
       </Card>
+      </div>
     </div>
   );
 }
