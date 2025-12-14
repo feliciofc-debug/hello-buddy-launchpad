@@ -9,7 +9,7 @@ const corsHeaders = {
 // ═══════════════════════════════════════════
 // FUNÇÃO BUSCAR LINKEDIN (SERPAPI)
 // ═══════════════════════════════════════════
-async function buscarLinkedIn(nomeLead: string, empresaOuCargo?: string): Promise<string | null> {
+async function buscarLinkedIn(nomeLead: string, cidade?: string, empresaOuCargo?: string): Promise<string | null> {
   const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
   
   if (!SERPAPI_KEY) {
@@ -19,6 +19,12 @@ async function buscarLinkedIn(nomeLead: string, empresaOuCargo?: string): Promis
   
   try {
     const queryParts = [nomeLead];
+    
+    // Adicionar cidade para maior precisão
+    if (cidade) {
+      queryParts.push(cidade);
+    }
+    
     if (empresaOuCargo) {
       queryParts.push(empresaOuCargo);
     }
@@ -203,7 +209,7 @@ serve(async (req) => {
     
     if (!lead.linkedin_url) {
       console.log('💼 Buscando LinkedIn...');
-      const linkedinUrl = await buscarLinkedIn(lead.nome, lead.empresa || lead.cargo);
+      const linkedinUrl = await buscarLinkedIn(lead.nome, cidade, lead.empresa || lead.cargo);
       
       if (linkedinUrl) {
         updateData.linkedin_url = linkedinUrl;
