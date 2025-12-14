@@ -298,82 +298,49 @@ export default function LeadsImoveisEnriquecidos() {
   const [validandoLead, setValidandoLead] = useState<string | null>(null);
   const [buscandoLinkedin, setBuscandoLinkedin] = useState<string | null>(null);
 
-  // BUSCAR LINKEDIN DIRETO - usando a edge function que funciona
+  // BUSCAR LINKEDIN DIRETO - usando SerpAPI via validar-lead-multifonte
   const buscarLinkedIn = async (lead: LeadImovel) => {
     setBuscandoLinkedin(lead.id);
     
     try {
-      toast.info(`🔍 Buscando LinkedIn de ${lead.nome}...`);
+      toast.info(`🔍 Buscando LinkedIn de ${lead.nome} via SerpAPI...`);
       
-      const { data, error } = await supabase.functions.invoke('apify-linkedin-scraper', {
-        body: { 
-          searchQuery: lead.nome,
-          maxResults: 5,
-          location: 'Brazil'
-        }
+      // Chamar validar-lead-multifonte que usa SerpAPI (código que funciona!)
+      const { data, error } = await supabase.functions.invoke('validar-lead-multifonte', {
+        body: { leadId: lead.id }
       });
 
       if (error) throw error;
 
-      console.log('LinkedIn Response:', data);
+      console.log('🧪 VALIDAÇÃO RESULTADO:', data);
 
-      if (data?.leads && data.leads.length > 0) {
-        // Encontrar melhor match
-        const leadName = lead.nome.toLowerCase().trim();
-        const leadFirstName = leadName.split(' ')[0];
-        const leadLastName = leadName.split(' ').slice(-1)[0];
+      if (data?.success && data?.linkedinUrl) {
+        // Buscar dados atualizados do lead
+        const { data: leadAtualizado } = await supabase
+          .from('leads_imoveis_enriquecidos')
+          .select('*')
+          .eq('id', lead.id)
+          .single();
         
-        let bestMatch = null;
-        let bestScore = 0;
-        
-        for (const profile of data.leads) {
-          const profileName = (profile.nome_completo || '').toLowerCase().trim();
-          let score = 0;
-          
-          if (profileName === leadName) score = 100;
-          else if (profileName.includes(leadFirstName) && profileName.includes(leadLastName)) score = 80;
-          else if (profileName.includes(leadFirstName)) score = 50;
-          
-          if (score > bestScore) {
-            bestScore = score;
-            bestMatch = profile;
-          }
-        }
-        
-        if (bestMatch && bestScore >= 50) {
-          // Atualizar no banco
-          await supabase.from('leads_imoveis_enriquecidos').update({
-            linkedin_url: bestMatch.linkedin_url,
-            linkedin_foto: bestMatch.foto_url,
-            cargo: bestMatch.cargo_atual || bestMatch.profissao,
-            empresa: bestMatch.empresa_atual,
-            linkedin_connections: bestMatch.conexoes?.toString(),
-            linkedin_encontrado: true,
-            fontes_encontradas: [...(lead.fontes_encontradas || []), 'linkedin']
-          }).eq('id', lead.id);
-          
-          // Atualizar UI
+        if (leadAtualizado) {
           setLeads(prevLeads => prevLeads.map(l => 
             l.id === lead.id 
               ? { 
                   ...l, 
-                  linkedin_url: bestMatch.linkedin_url,
-                  linkedin_foto: bestMatch.foto_url,
-                  cargo: bestMatch.cargo_atual || bestMatch.profissao,
-                  empresa: bestMatch.empresa_atual,
-                  linkedin_connections: bestMatch.conexoes?.toString() || null,
+                  linkedin_url: leadAtualizado.linkedin_url,
                   linkedin_encontrado: true,
-                  fontes_encontradas: [...(l.fontes_encontradas || []), 'linkedin']
+                  confianca_dados: leadAtualizado.confianca_dados,
+                  dados_completos: leadAtualizado.dados_completos
                 } 
               : l
           ));
-          
-          toast.success(`✅ LinkedIn encontrado! ${bestMatch.nome_completo} - ${bestMatch.cargo_atual || 'Sem cargo'}`);
-        } else {
-          toast.warning(`⚠️ ${data.leads.length} perfis encontrados mas nenhum match com ${lead.nome}`);
         }
+        
+        toast.success(`✅ LinkedIn encontrado: ${data.linkedinUrl}`);
+      } else if (data?.success) {
+        toast.warning(`⚠️ LinkedIn não encontrado para ${lead.nome}`);
       } else {
-        toast.warning('Nenhum perfil encontrado no LinkedIn');
+        throw new Error(data?.error || 'Erro desconhecido');
       }
     } catch (error: any) {
       console.error('Erro ao buscar LinkedIn:', error);
