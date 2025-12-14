@@ -164,6 +164,37 @@ export default function LeadsImoveisEnriquecidos() {
     }
   };
 
+  // Função para limpar todos os leads
+  const confirmarLimparLeads = () => {
+    const confirmar = window.confirm(
+      `⚠️ TEM CERTEZA?\n\nIsso vai deletar TODOS os ${leads.length} leads da tela.\n\nEssa ação NÃO pode ser desfeita!`
+    );
+    
+    if (confirmar) {
+      limparLeads();
+    }
+  };
+
+  const limparLeads = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('leads_imoveis_enriquecidos')
+        .delete()
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      
+      setLeads([]);
+      toast.success('✅ Todos os leads foram removidos!');
+      
+    } catch (error: any) {
+      toast.error('❌ Erro ao limpar: ' + error.message);
+    }
+  };
+
   const toggleEstado = (sigla: string) => {
     setEstadosSelecionados(prev => 
       prev.includes(sigla) 
@@ -448,7 +479,17 @@ export default function LeadsImoveisEnriquecidos() {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {/* BOTÃO LIMPAR LEADS */}
+          {leads.length > 0 && (
+            <Button
+              variant="destructive"
+              onClick={confirmarLimparLeads}
+              className="gap-2"
+            >
+              🗑️ Limpar Leads ({leads.length})
+            </Button>
+          )}
           {/* BOTÃO DE TESTE LINKEDIN */}
           <Button 
             onClick={async () => {

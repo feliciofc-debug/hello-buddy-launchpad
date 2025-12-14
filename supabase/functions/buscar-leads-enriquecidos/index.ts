@@ -7,21 +7,43 @@ const corsHeaders = {
 };
 
 // ═══════════════════════════════════════════
-// FUNÇÃO: BUSCAR LINKEDIN COM CIDADE
+// MAPA DE ESTADOS
 // ═══════════════════════════════════════════
-async function buscarLinkedInComCidade(nome: string, cidade: string): Promise<{ url: string | null, snippet: string | null }> {
+const ESTADOS_MAP: Record<string, string> = {
+  'AC': 'Acre', 'AL': 'Alagoas', 'AP': 'Amapá', 'AM': 'Amazonas',
+  'BA': 'Bahia', 'CE': 'Ceará', 'DF': 'Distrito Federal',
+  'ES': 'Espírito Santo', 'GO': 'Goiás', 'MA': 'Maranhão',
+  'MT': 'Mato Grosso', 'MS': 'Mato Grosso do Sul', 'MG': 'Minas Gerais',
+  'PA': 'Pará', 'PB': 'Paraíba', 'PR': 'Paraná', 'PE': 'Pernambuco',
+  'PI': 'Piauí', 'RJ': 'Rio de Janeiro', 'RN': 'Rio Grande do Norte',
+  'RS': 'Rio Grande do Sul', 'RO': 'Rondônia', 'RR': 'Roraima',
+  'SC': 'Santa Catarina', 'SP': 'São Paulo', 'SE': 'Sergipe',
+  'TO': 'Tocantins'
+};
+
+// ═══════════════════════════════════════════
+// FUNÇÃO: BUSCAR LINKEDIN DETALHADO (COM SNIPPET)
+// ═══════════════════════════════════════════
+async function buscarLinkedInDetalhado(
+  nome: string, 
+  cidade: string,
+  estado: string
+): Promise<{ url: string, snippet: string } | null> {
   const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
   
-  if (!SERPAPI_KEY) return { url: null, snippet: null };
+  if (!SERPAPI_KEY) return null;
   
   try {
-    const query = encodeURIComponent(`${nome} ${cidade} site:linkedin.com/in/`);
+    // Query: nome + cidade + estado + linkedin
+    const query = encodeURIComponent(
+      `${nome} ${cidade} ${estado} site:linkedin.com/in/`
+    );
     const url = `https://serpapi.com/search.json?q=${query}&api_key=${SERPAPI_KEY}&num=3`;
     
-    console.log(`  🔍 Buscando LinkedIn: ${nome} ${cidade}`);
+    console.log(`  🔍 Buscando LinkedIn: ${nome} ${cidade} ${estado}`);
     
     const response = await fetch(url);
-    if (!response.ok) return { url: null, snippet: null };
+    if (!response.ok) return null;
     
     const data = await response.json();
     const results = data.organic_results || [];
@@ -29,51 +51,74 @@ async function buscarLinkedInComCidade(nome: string, cidade: string): Promise<{ 
     for (const result of results) {
       const link = result.link || '';
       if (link.includes('linkedin.com/in/')) {
-        return { 
-          url: link, 
-          snippet: result.snippet || result.title || '' 
+        return {
+          url: link,
+          snippet: result.snippet || result.title || '' // IMPORTANTE!
         };
       }
     }
     
-    return { url: null, snippet: null };
+    return null;
   } catch (e) {
     console.log(`  ❌ Erro busca LinkedIn:`, e);
-    return { url: null, snippet: null };
+    return null;
   }
 }
 
 // ═══════════════════════════════════════════
-// FUNÇÃO: VERIFICAR SE É DO BRASIL
+// FUNÇÃO: VERIFICAR LOCALIZAÇÃO POR CIDADE/ESTADO
 // ═══════════════════════════════════════════
-function verificarLocalizacaoBrasil(snippet: string, linkedinUrl: string): boolean {
-  // Verificar se perfil menciona Brasil/cidades brasileiras
+function verificarLocalizacao(
+  linkedinUrl: string, 
+  snippet: string,
+  cidadeEsperada: string,
+  estadoEsperado: string
+): boolean {
+  console.log(`  🔍 Verificando localização...`);
+  console.log(`     Esperado: ${cidadeEsperada}, ${estadoEsperado}`);
   
-  // Método 1: Pela URL (alguns perfis tem /br/)
-  if (linkedinUrl.includes('/br/')) return true;
+  const textoCompleto = (linkedinUrl + ' ' + snippet).toLowerCase();
   
-  // Método 2: Buscar no snippet do resultado
-  const textoCompleto = (snippet + ' ' + linkedinUrl).toLowerCase();
-  
-  const cidadesBrasil = [
-    'brasil', 'brazil', 'são paulo', 'sao paulo', 'rio de janeiro',
-    'belo horizonte', 'brasília', 'brasilia', 'salvador', 'fortaleza',
-    'curitiba', 'recife', 'porto alegre', 'manaus', 'belém', 'belem',
-    'goiânia', 'goiania', 'guarulhos', 'campinas', 'niterói', 'niteroi',
-    'barra da tijuca', 'copacabana', 'ipanema', 'tijuca', 'recreio',
-    'botafogo', 'leblon', 'flamengo', 'centro rj', 'zona sul rj',
-    'zona oeste rj', 'zona norte rj', 'rj, brazil', 'sp, brazil',
-    'rio, brazil', 'sp, brasil', 'rj, brasil', 'greater rio',
-    'região metropolitana', 'regiao metropolitana'
-  ];
-  
-  for (const cidade of cidadesBrasil) {
+  // Verificar CIDADE primeiro (mais específico)
+  if (cidadeEsperada) {
+    const cidade = cidadeEsperada.toLowerCase();
+    
     if (textoCompleto.includes(cidade)) {
+      console.log(`     ✅ Cidade encontrada: ${cidadeEsperada}`);
+      return true;
+    }
+    
+    // Variações da cidade (acentos)
+    const variacoes = [
+      cidade.replace(/ã/g, 'a'),
+      cidade.replace(/ô/g, 'o'),
+      cidade.replace(/é/g, 'e'),
+      cidade.replace(/í/g, 'i'),
+      cidade.replace(/ç/g, 'c'),
+      cidade.replace(/ /g, '')
+    ];
+    
+    for (const variacao of variacoes) {
+      if (textoCompleto.includes(variacao)) {
+        console.log(`     ✅ Cidade (variação): ${cidadeEsperada}`);
+        return true;
+      }
+    }
+  }
+  
+  // Verificar ESTADO
+  if (estadoEsperado) {
+    const siglaEstado = estadoEsperado.toUpperCase();
+    const nomeEstado = ESTADOS_MAP[siglaEstado]?.toLowerCase();
+    
+    if (textoCompleto.includes(siglaEstado.toLowerCase()) || 
+        (nomeEstado && textoCompleto.includes(nomeEstado))) {
+      console.log(`     ✅ Estado encontrado: ${estadoEsperado}`);
       return true;
     }
   }
   
-  // Verificar termos que indicam exterior
+  // Verificar termos que indicam exterior (descarta imediatamente)
   const termosExterior = [
     'united states', 'usa', 'new york', 'california', 'texas',
     'florida', 'los angeles', 'london', 'uk', 'europe', 'canada',
@@ -83,13 +128,13 @@ function verificarLocalizacaoBrasil(snippet: string, linkedinUrl: string): boole
   
   for (const termo of termosExterior) {
     if (textoCompleto.includes(termo)) {
-      console.log(`  ❌ Termo exterior detectado: ${termo}`);
+      console.log(`     ❌ Termo exterior detectado: ${termo}`);
       return false;
     }
   }
   
-  // Se não encontrou nada, considerar Brasil (benefício da dúvida para busca já filtrada)
-  return true;
+  console.log(`     ❌ Localização não confere (descartado)`);
+  return false;
 }
 
 serve(async (req) => {
@@ -385,31 +430,43 @@ serve(async (req) => {
     let totalDescartados = 0;
     let totalSemLinkedin = 0;
 
+    // Pegar cidade e estado para validação
+    const cidadeValidacao = cidades[0] || cidadePrincipal;
+    const estadoValidacao = estados[0] || 'RJ';
+
     for (const lead of leadsPreQualificados.slice(0, max_leads)) {
       console.log(`\n👤 Validando: ${lead.nome}`);
       
-      // Buscar LinkedIn via SerpAPI COM CIDADE
-      const { url: linkedinUrl, snippet } = await buscarLinkedInComCidade(
+      // Buscar LinkedIn via SerpAPI COM CIDADE E ESTADO
+      const linkedinData = await buscarLinkedInDetalhado(
         lead.nome,
-        cidadePrincipal
+        cidadeValidacao,
+        estadoValidacao
       );
       
-      if (linkedinUrl) {
+      if (linkedinData) {
+        const { url: linkedinUrl, snippet } = linkedinData;
+        
         lead.linkedin_url = linkedinUrl;
         lead.linkedin_encontrado = true;
         lead.confianca_dados = Math.min(lead.score_total + 30, 100);
         
         console.log(`  ✅ LinkedIn encontrado: ${linkedinUrl}`);
         
-        // Verificar se é do Brasil
-        const ehDoBrasil = verificarLocalizacaoBrasil(snippet || '', linkedinUrl);
+        // Verificar se é da CIDADE/ESTADO esperado
+        const localizacaoConfere = verificarLocalizacao(
+          linkedinUrl,
+          snippet,
+          cidadeValidacao,
+          estadoValidacao
+        );
         
-        if (ehDoBrasil) {
-          console.log(`  ✅ Localização: Brasil`);
+        if (localizacaoConfere) {
+          console.log(`  ✅ Localização confere: ${cidadeValidacao}, ${estadoValidacao}`);
           leadsValidados.push(lead);
           totalValidados++;
         } else {
-          console.log(`  ❌ Localização: Exterior (DESCARTADO)`);
+          console.log(`  ❌ Localização diferente (DESCARTADO)`);
           totalDescartados++;
         }
         
