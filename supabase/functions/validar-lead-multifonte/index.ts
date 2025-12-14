@@ -45,6 +45,7 @@ serve(async (req) => {
     let confiancaTotal = 0;
     
     const APIFY_API_KEY = Deno.env.get('APIFY_API_KEY');
+    const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
     
     // ═══════════════════════════════════════════
     // CAMADA 1: VALIDAÇÃO BÁSICA
@@ -91,25 +92,17 @@ serve(async (req) => {
     
     console.log(`✅ Score básico: ${scoreBasico.toFixed(1)} (contribui ${(scoreBasico * 0.15).toFixed(1)}%)`);
     
-    // SEMPRE buscar redes sociais, independente do score
-    const scoreInicial = lead.score_total || scoreBasico;
-    console.log(`📊 Score inicial: ${scoreInicial} - BUSCANDO REDES SOCIAIS SEMPRE`);
-    
-    // REMOVIDO: Não pular mais validação por score baixo
-    
     // ═══════════════════════════════════════════
     // CAMADA 2: MARKETPLACES (OLX)
     // ═══════════════════════════════════════════
     
-    if (APIFY_API_KEY) { // SEMPRE buscar, sem verificar score
+    if (APIFY_API_KEY) {
       console.log('🏪 Camada 2: Buscando em marketplaces...');
-      
-      // --- OLX ---
       console.log('  📦 Buscando no OLX...');
       
       try {
         const searchQuery = lead.telefone 
-          ? lead.telefone.replace(/\D/g, '').slice(-9) // Últimos 9 dígitos
+          ? lead.telefone.replace(/\D/g, '').slice(-9)
           : lead.nome;
         
         const olxUrl = `https://api.apify.com/v2/acts/dtrungtin~olx-scraper/run-sync-get-dataset-items?token=${APIFY_API_KEY}`;
@@ -133,7 +126,6 @@ serve(async (req) => {
             
             fontes.push('olx');
             
-            // Verificar se telefone bate
             const telefoneConfirmado = olxData.some((a: any) => 
               a.phone && lead.telefone && 
               a.phone.replace(/\D/g, '').includes(lead.telefone.replace(/\D/g, '').slice(-8))
@@ -141,12 +133,12 @@ serve(async (req) => {
             
             await supabase.from('leads_imoveis_enriquecidos').update({
               olx_anuncios_ativos: olxData.filter((a: any) => a.active !== false).length,
-              olx_anuncios_historico: olxData.slice(0, 10), // Máximo 10
+              olx_anuncios_historico: olxData.slice(0, 10),
               olx_telefone_confirmado: telefoneConfirmado,
               olx_ultima_atividade: new Date().toISOString()
             }).eq('id', leadId);
             
-            confiancaTotal += 15; // OLX adiciona 15%
+            confiancaTotal += 15;
             
             logs.push({
               etapa: 'olx',
@@ -181,147 +173,79 @@ serve(async (req) => {
     
     let scoreRedesSociais = 0;
     
-    if (APIFY_API_KEY) { // SEMPRE buscar LinkedIn e Instagram
-      console.log('📱 Camada 3: Buscando redes sociais...');
-      
-      // --- LINKEDIN (MESMO CÓDIGO QUE FUNCIONA NO apify-linkedin-scraper) ---
-      console.log('  💼 Buscando no LinkedIn...');
-      
+    console.log('📱 Camada 3: Buscando redes sociais...');
+    
+    // --- LINKEDIN VIA SERPAPI (CÓDIGO QUE FUNCIONA!) ---
+    console.log('  💼 Buscando no LinkedIn via SerpAPI...');
+    
+    if (SERPAPI_KEY) {
       try {
-        // Usar o mesmo actor que funciona: bebity~linkedin-people-search
-        const runResponse = await fetch('https://api.apify.com/v2/acts/bebity~linkedin-people-search/runs?waitForFinish=120', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${APIFY_API_KEY}`
-          },
-          body: JSON.stringify({
-            searchTerms: [lead.nome],
-            location: 'Brazil',
-            maxResults: 5,
-            proxy: {
-              useApifyProxy: true,
-              apifyProxyGroups: ['RESIDENTIAL']
-            }
-          })
-        });
+        // Query: Nome + empresa (se tiver) + site:linkedin.com/in/
+        const queryParts = [lead.nome];
+        if (lead.empresa) queryParts.push(lead.empresa);
+        if (lead.cargo) queryParts.push(lead.cargo);
+        queryParts.push('site:linkedin.com/in/');
         
-        console.log('  📥 LinkedIn Run Response Status:', runResponse.status);
+        const query = encodeURIComponent(queryParts.join(' '));
+        const serpUrl = `https://serpapi.com/search.json?q=${query}&api_key=${SERPAPI_KEY}&num=5`;
         
-        let linkedinData: any[] = [];
+        console.log(`  🔍 Query: ${queryParts.join(' ')}`);
         
-        if (runResponse.ok) {
-          const runData = await runResponse.json();
-          const runId = runData.data?.id;
+        const serpResponse = await fetch(serpUrl);
+        
+        if (serpResponse.ok) {
+          const serpData = await serpResponse.json();
+          const results = serpData.organic_results || [];
           
-          console.log('  📊 LinkedIn Run ID:', runId);
+          console.log(`  📊 SerpAPI retornou ${results.length} resultados`);
           
-          if (runId) {
-            // Buscar resultados do dataset
-            const resultsResponse = await fetch(`https://api.apify.com/v2/actor-runs/${runId}/dataset/items`, {
-              headers: { 'Authorization': `Bearer ${APIFY_API_KEY}` }
-            });
-            
-            if (resultsResponse.ok) {
-              linkedinData = await resultsResponse.json();
-              console.log('  📊 LinkedIn Resultados:', linkedinData?.length || 0);
-            }
-          }
-        }
-        
-        if (linkedinData && linkedinData.length > 0) {
-          
-          if (linkedinData && linkedinData.length > 0) {
-            // Log todos os resultados para debug
-            linkedinData.forEach((p: any, i: number) => {
-              console.log(`    [${i}] ${p.fullName || p.name} - ${p.headline || 'sem cargo'}`);
-            });
-            
-            // MATCHING MENOS RESTRITIVO
-            for (const profile of linkedinData) {
-              let matchScore = 0;
+          // Procurar link do LinkedIn
+          for (const result of results) {
+            const link = result.link || '';
+            if (link.includes('linkedin.com/in/')) {
+              console.log(`  ✅ LinkedIn encontrado: ${link}`);
+              console.log(`  📝 Título: ${result.title || ''}`);
               
-              const profileName = (profile.fullName || profile.name || '').toLowerCase().trim();
-              const leadName = lead.nome.toLowerCase().trim();
-              const leadFirstName = leadName.split(' ')[0];
-              const leadLastName = leadName.split(' ').slice(-1)[0];
+              fontes.push('linkedin');
               
-              // Nome exato = 50 pontos
-              if (profileName === leadName) {
-                matchScore += 50;
-              } 
-              // Primeiro e último nome = 40 pontos
-              else if (profileName.includes(leadFirstName) && profileName.includes(leadLastName)) {
-                matchScore += 40;
-              }
-              // Só primeiro nome = 25 pontos
-              else if (profileName.includes(leadFirstName)) {
-                matchScore += 25;
-              }
+              await supabase.from('leads_imoveis_enriquecidos').update({
+                linkedin_url: link,
+                linkedin_encontrado: true,
+                cargo: result.title || lead.cargo
+              }).eq('id', leadId);
               
-              // Foto disponível = +10
-              if (profile.photoUrl || profile.profilePicture) {
-                matchScore += 10;
-              }
+              scoreRedesSociais += 30;
+              confiancaTotal += 20;
               
-              console.log(`    Match ${profileName}: ${matchScore} pontos`);
-              
-              // ACEITAR com >= 35 pontos (primeiro nome + foto)
-              if (matchScore >= 35) {
-                console.log(`  ✅ LinkedIn MATCH: ${matchScore}% - ${profile.fullName || profile.name}`);
-                
-                fontes.push('linkedin');
-                
-                await supabase.from('leads_imoveis_enriquecidos').update({
-                  linkedin_url: profile.profileUrl || profile.url,
-                  linkedin_foto: profile.photoUrl || profile.profilePicture,
-                  cargo: profile.headline || profile.title,
-                  empresa: profile.companyName || profile.company,
-                  linkedin_encontrado: true,
-                  google_profile_url: lead.foto_url // Salvar foto Google também
-                }).eq('id', leadId);
-                
-                scoreRedesSociais += 30;
-                confiancaTotal += 20;
-                
-                logs.push({
-                  etapa: 'linkedin',
-                  timestamp: new Date().toISOString(),
-                  resultado: 'encontrado',
-                  matchScore,
-                  nome_encontrado: profile.fullName || profile.name,
-                  perfil: profile.profileUrl || profile.url,
-                  contribuicao: 20
-                });
-                
-                break;
-              }
-            }
-            
-            if (!fontes.includes('linkedin')) {
-              console.log('  ⚠️ LinkedIn: nenhum match suficiente');
               logs.push({
                 etapa: 'linkedin',
                 timestamp: new Date().toISOString(),
-                resultado: 'sem_match',
-                total_encontrados: linkedinData.length
+                resultado: 'encontrado',
+                url: link,
+                titulo: result.title,
+                contribuicao: 20
               });
+              
+              break;
             }
-          } else {
-            console.log('  ⚠️ LinkedIn: 0 resultados');
+          }
+          
+          if (!fontes.includes('linkedin')) {
+            console.log('  ⚠️ LinkedIn não encontrado nos resultados');
             logs.push({
               etapa: 'linkedin',
               timestamp: new Date().toISOString(),
-              resultado: 'nao_encontrado'
+              resultado: 'nao_encontrado',
+              total_resultados: results.length
             });
           }
         } else {
-          console.log('  ❌ LinkedIn API Error:', runResponse.status);
+          console.log(`  ⚠️ SerpAPI erro: ${serpResponse.status}`);
           logs.push({
             etapa: 'linkedin',
             timestamp: new Date().toISOString(),
             resultado: 'erro_api',
-            status: runResponse.status
+            status: serpResponse.status
           });
         }
       } catch (linkedinError: any) {
@@ -333,12 +257,21 @@ serve(async (req) => {
           erro: linkedinError.message
         });
       }
-      
-      // --- INSTAGRAM (SEMPRE buscar, independente de LinkedIn) ---
-      console.log('  📸 Buscando no Instagram...');
-      
+    } else {
+      console.log('  ⚠️ SERPAPI_KEY não configurada');
+      logs.push({
+        etapa: 'linkedin',
+        timestamp: new Date().toISOString(),
+        resultado: 'sem_api_key',
+        mensagem: 'SERPAPI_KEY não configurada'
+      });
+    }
+    
+    // --- INSTAGRAM ---
+    console.log('  📸 Buscando no Instagram...');
+    
+    if (APIFY_API_KEY) {
       try {
-        // Gerar possíveis usernames
         const possibleUsernames = [
           lead.nome.toLowerCase().replace(/\s+/g, '_'),
           lead.nome.toLowerCase().replace(/\s+/g, ''),
@@ -410,7 +343,6 @@ serve(async (req) => {
     // CAMADA 4: VALIDAÇÃO DE FOTO (FUTURO - Face++)
     // ═══════════════════════════════════════════
     
-    // Placeholder para implementar depois com Face++ API
     logs.push({
       etapa: 'face_recognition',
       timestamp: new Date().toISOString(),
@@ -424,30 +356,24 @@ serve(async (req) => {
     
     console.log('🎯 Camada 5: Calculando score final...');
     
-    // Confiança máxima: 100%
     confiancaTotal = Math.min(Math.round(confiancaTotal), 100);
     
-    // Status baseado em confiança
     let statusValidacao = 'rejeitado';
     if (confiancaTotal >= 90) statusValidacao = 'validado';
     else if (confiancaTotal >= 60) statusValidacao = 'provavel';
     else if (confiancaTotal >= 40) statusValidacao = 'baixa_confianca';
     
-    // Calcular score de atividade baseado nas fontes
-    const scoreAtividade = fontes.length * 20; // 20 pontos por fonte encontrada
+    const scoreAtividade = fontes.length * 20;
     
-    // Atualizar lead com todos os dados
     await supabase.from('leads_imoveis_enriquecidos').update({
       fontes_encontradas: fontes,
       confianca_dados: confiancaTotal,
       status_validacao: statusValidacao,
-      
       score_nome: scoreNome,
       score_telefone: scoreTelefone,
       score_localizacao: scoreLocalizacao,
       score_atividade: scoreAtividade,
       score_redes_sociais: scoreRedesSociais,
-      
       log_validacao: logs,
       data_validacao: new Date().toISOString(),
       validado_por: 'sistema'
@@ -463,17 +389,11 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        leadId,
         confianca: confiancaTotal,
         status: statusValidacao,
         fontes,
-        logs,
-        scores: {
-          nome: scoreNome,
-          telefone: scoreTelefone,
-          localizacao: scoreLocalizacao,
-          atividade: scoreAtividade,
-          redes_sociais: scoreRedesSociais
-        }
+        logs
       }),
       {
         status: 200,
@@ -490,7 +410,7 @@ serve(async (req) => {
         error: error.message 
       }),
       {
-        status: 200, // Sempre 200 para evitar retry
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
