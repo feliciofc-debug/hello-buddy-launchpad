@@ -6,6 +6,92 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ═══════════════════════════════════════════
+// FUNÇÃO: BUSCAR LINKEDIN COM CIDADE
+// ═══════════════════════════════════════════
+async function buscarLinkedInComCidade(nome: string, cidade: string): Promise<{ url: string | null, snippet: string | null }> {
+  const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
+  
+  if (!SERPAPI_KEY) return { url: null, snippet: null };
+  
+  try {
+    const query = encodeURIComponent(`${nome} ${cidade} site:linkedin.com/in/`);
+    const url = `https://serpapi.com/search.json?q=${query}&api_key=${SERPAPI_KEY}&num=3`;
+    
+    console.log(`  🔍 Buscando LinkedIn: ${nome} ${cidade}`);
+    
+    const response = await fetch(url);
+    if (!response.ok) return { url: null, snippet: null };
+    
+    const data = await response.json();
+    const results = data.organic_results || [];
+    
+    for (const result of results) {
+      const link = result.link || '';
+      if (link.includes('linkedin.com/in/')) {
+        return { 
+          url: link, 
+          snippet: result.snippet || result.title || '' 
+        };
+      }
+    }
+    
+    return { url: null, snippet: null };
+  } catch (e) {
+    console.log(`  ❌ Erro busca LinkedIn:`, e);
+    return { url: null, snippet: null };
+  }
+}
+
+// ═══════════════════════════════════════════
+// FUNÇÃO: VERIFICAR SE É DO BRASIL
+// ═══════════════════════════════════════════
+function verificarLocalizacaoBrasil(snippet: string, linkedinUrl: string): boolean {
+  // Verificar se perfil menciona Brasil/cidades brasileiras
+  
+  // Método 1: Pela URL (alguns perfis tem /br/)
+  if (linkedinUrl.includes('/br/')) return true;
+  
+  // Método 2: Buscar no snippet do resultado
+  const textoCompleto = (snippet + ' ' + linkedinUrl).toLowerCase();
+  
+  const cidadesBrasil = [
+    'brasil', 'brazil', 'são paulo', 'sao paulo', 'rio de janeiro',
+    'belo horizonte', 'brasília', 'brasilia', 'salvador', 'fortaleza',
+    'curitiba', 'recife', 'porto alegre', 'manaus', 'belém', 'belem',
+    'goiânia', 'goiania', 'guarulhos', 'campinas', 'niterói', 'niteroi',
+    'barra da tijuca', 'copacabana', 'ipanema', 'tijuca', 'recreio',
+    'botafogo', 'leblon', 'flamengo', 'centro rj', 'zona sul rj',
+    'zona oeste rj', 'zona norte rj', 'rj, brazil', 'sp, brazil',
+    'rio, brazil', 'sp, brasil', 'rj, brasil', 'greater rio',
+    'região metropolitana', 'regiao metropolitana'
+  ];
+  
+  for (const cidade of cidadesBrasil) {
+    if (textoCompleto.includes(cidade)) {
+      return true;
+    }
+  }
+  
+  // Verificar termos que indicam exterior
+  const termosExterior = [
+    'united states', 'usa', 'new york', 'california', 'texas',
+    'florida', 'los angeles', 'london', 'uk', 'europe', 'canada',
+    'australia', 'germany', 'france', 'spain', 'portugal', 'miami',
+    'san francisco', 'chicago', 'boston'
+  ];
+  
+  for (const termo of termosExterior) {
+    if (textoCompleto.includes(termo)) {
+      console.log(`  ❌ Termo exterior detectado: ${termo}`);
+      return false;
+    }
+  }
+  
+  // Se não encontrou nada, considerar Brasil (benefício da dúvida para busca já filtrada)
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -41,6 +127,15 @@ serve(async (req) => {
 
     const { estados = [], cidades = [], max_leads = 50 } = params;
     console.log('📊 Max leads solicitados:', max_leads);
+    
+    // Detectar cidade principal para validação
+    let cidadePrincipal = 'Rio de Janeiro';
+    if (cidades.length > 0) {
+      cidadePrincipal = cidades[0];
+    } else if (estados.includes('SP')) {
+      cidadePrincipal = 'São Paulo';
+    }
+    console.log('📍 Cidade principal para validação:', cidadePrincipal);
     
     // ═══════════════════════════════════════
     // MONTAR QUERIES DE BUSCA
@@ -268,26 +363,88 @@ serve(async (req) => {
         total_visitas: autor.total_reviews,
         insights: [...new Set(insights)],
         qualificacao: score >= 70 ? 'super_quente' : score >= 40 ? 'quente' : 'morno',
-        status: 'novo'
+        status: 'novo',
+        cidade: cidadePrincipal
       });
     }
 
     leads.sort((a, b) => b.score_total - a.score_total);
-    const leadsQualificados = leads.filter(l => l.score_total >= 20).slice(0, max_leads);
-    console.log(`📊 Leads qualificados (limitado a ${max_leads}): ${leadsQualificados.length}`);
+    const leadsPreQualificados = leads.filter(l => l.score_total >= 20);
+    console.log(`📊 Leads pré-qualificados: ${leadsPreQualificados.length}`);
 
+    // ═══════════════════════════════════════════
+    // NOVO: VALIDAR LINKEDIN ANTES DE MOSTRAR
+    // ═══════════════════════════════════════════
     console.log('═══════════════════════════════════════');
-    console.log('📊 RESUMO FINAL:');
-    console.log(`Corretoras: ${corretoras.length}`);
-    console.log(`Reviews 90 dias: ${todosReviews.length}`);
-    console.log(`Autores únicos: ${Object.keys(autores).length}`);
-    console.log(`Leads qualificados: ${leadsQualificados.length}`);
+    console.log('🔍 VALIDANDO LINKEDIN DE CADA LEAD...');
+    console.log('⏳ Isso pode levar alguns minutos...');
+    console.log('═══════════════════════════════════════');
+
+    const leadsValidados: any[] = [];
+    let totalValidados = 0;
+    let totalDescartados = 0;
+    let totalSemLinkedin = 0;
+
+    for (const lead of leadsPreQualificados.slice(0, max_leads)) {
+      console.log(`\n👤 Validando: ${lead.nome}`);
+      
+      // Buscar LinkedIn via SerpAPI COM CIDADE
+      const { url: linkedinUrl, snippet } = await buscarLinkedInComCidade(
+        lead.nome,
+        cidadePrincipal
+      );
+      
+      if (linkedinUrl) {
+        lead.linkedin_url = linkedinUrl;
+        lead.linkedin_encontrado = true;
+        lead.confianca_dados = Math.min(lead.score_total + 30, 100);
+        
+        console.log(`  ✅ LinkedIn encontrado: ${linkedinUrl}`);
+        
+        // Verificar se é do Brasil
+        const ehDoBrasil = verificarLocalizacaoBrasil(snippet || '', linkedinUrl);
+        
+        if (ehDoBrasil) {
+          console.log(`  ✅ Localização: Brasil`);
+          leadsValidados.push(lead);
+          totalValidados++;
+        } else {
+          console.log(`  ❌ Localização: Exterior (DESCARTADO)`);
+          totalDescartados++;
+        }
+        
+      } else {
+        console.log(`  ⚠️ LinkedIn não encontrado`);
+        totalSemLinkedin++;
+        
+        // Aceitar mesmo sem LinkedIn se score muito alto
+        if (lead.score_total >= 60) {
+          console.log(`  ✅ Aceito por score alto (${lead.score_total})`);
+          lead.confianca_dados = lead.score_total;
+          leadsValidados.push(lead);
+          totalValidados++;
+        } else {
+          console.log(`  ❌ Score baixo, descartado sem LinkedIn`);
+          totalDescartados++;
+        }
+      }
+      
+      // Delay entre validações para não sobrecarregar SerpAPI
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
+    console.log('\n═══════════════════════════════════════');
+    console.log('📊 VALIDAÇÃO COMPLETA:');
+    console.log(`Total pré-qualificados: ${leadsPreQualificados.length}`);
+    console.log(`✅ Validados (Brasil): ${totalValidados}`);
+    console.log(`❌ Descartados (Exterior): ${totalDescartados}`);
+    console.log(`⚠️ Sem LinkedIn: ${totalSemLinkedin}`);
     console.log('═══════════════════════════════════════');
 
     // ═══════════════════════════════════════
-    // FASE 5: SALVAR LEADS NO BANCO (SEM ENRIQUECIMENTO)
+    // SALVAR APENAS LEADS VALIDADOS
     // ═══════════════════════════════════════
-    console.log('💾 Salvando leads no banco de dados...');
+    console.log('💾 Salvando leads VALIDADOS no banco de dados...');
     
     const authHeader = req.headers.get('authorization');
     let userId = null;
@@ -305,7 +462,7 @@ serve(async (req) => {
     let leadsSalvos = 0;
     const leadsSalvosComId: any[] = [];
     
-    for (const lead of leadsQualificados) {
+    for (const lead of leadsValidados) {
       try {
         const { data: existente } = await supabase
           .from('leads_imoveis_enriquecidos')
@@ -321,6 +478,9 @@ serve(async (req) => {
               corretoras_visitadas: lead.corretoras_visitadas,
               total_corretoras: lead.total_visitas,
               qualificacao: lead.qualificacao,
+              linkedin_url: lead.linkedin_url,
+              confianca_dados: lead.confianca_dados,
+              cidade: lead.cidade,
               updated_at: new Date().toISOString()
             })
             .eq('id', existente.id);
@@ -342,6 +502,9 @@ serve(async (req) => {
               qualificacao: lead.qualificacao,
               status: 'novo',
               user_id: userId,
+              linkedin_url: lead.linkedin_url,
+              confianca_dados: lead.confianca_dados,
+              cidade: lead.cidade,
               created_at: new Date().toISOString()
             })
             .select('id')
@@ -357,21 +520,24 @@ serve(async (req) => {
       }
     }
     
-    console.log(`✅ ${leadsSalvos} leads salvos no banco!`);
-    console.log('⚠️ Leads NÃO enriquecidos - use botão Validar para enriquecer individualmente');
+    console.log(`✅ ${leadsSalvos} leads VALIDADOS salvos no banco!`);
     
     return new Response(
       JSON.stringify({
         success: true,
-        total: leadsQualificados.length,
-        leads: leadsSalvosComId.length > 0 ? leadsSalvosComId : leadsQualificados,
+        total: leadsValidados.length,
+        leads: leadsSalvosComId.length > 0 ? leadsSalvosComId : leadsValidados,
         stats: {
           corretoras_encontradas: corretoras.length,
           reviews_90_dias: todosReviews.length,
           autores_unicos: Object.keys(autores).length,
-          super_quentes: leads.filter(l => l.score_total >= 70).length,
-          quentes: leads.filter(l => l.score_total >= 40 && l.score_total < 70).length,
-          mornos: leads.filter(l => l.score_total >= 20 && l.score_total < 40).length,
+          pre_qualificados: leadsPreQualificados.length,
+          validados_brasil: totalValidados,
+          descartados_exterior: totalDescartados,
+          sem_linkedin: totalSemLinkedin,
+          super_quentes: leadsValidados.filter(l => l.score_total >= 70).length,
+          quentes: leadsValidados.filter(l => l.score_total >= 40 && l.score_total < 70).length,
+          mornos: leadsValidados.filter(l => l.score_total >= 20 && l.score_total < 40).length,
           salvos_banco: leadsSalvos
         }
       }),
