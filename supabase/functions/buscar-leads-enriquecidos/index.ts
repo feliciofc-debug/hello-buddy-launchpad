@@ -66,6 +66,101 @@ async function buscarLinkedInDetalhado(
 }
 
 // ═══════════════════════════════════════════
+// FUNÇÃO: BUSCAR INSTAGRAM (SERPAPI)
+// ═══════════════════════════════════════════
+async function buscarInstagram(nomeLead: string, cidade?: string): Promise<{ url: string | null, username: string | null }> {
+  const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
+  
+  if (!SERPAPI_KEY) {
+    console.log('⚠️ SERPAPI_KEY não configurada para Instagram');
+    return { url: null, username: null };
+  }
+  
+  try {
+    const queryParts = [nomeLead];
+    if (cidade) {
+      queryParts.push(cidade);
+    }
+    queryParts.push('site:instagram.com');
+    
+    const query = encodeURIComponent(queryParts.join(' '));
+    const url = `https://serpapi.com/search.json?q=${query}&api_key=${SERPAPI_KEY}&num=5`;
+    
+    console.log(`  📸 Buscando Instagram: ${nomeLead}`);
+    
+    const response = await fetch(url);
+    if (!response.ok) return { url: null, username: null };
+    
+    const data = await response.json();
+    const results = data.organic_results || [];
+    
+    for (const result of results) {
+      const link = result.link || '';
+      // Procurar perfis do Instagram (não posts ou reels)
+      const match = link.match(/instagram\.com\/([a-zA-Z0-9._]+)\/?$/);
+      if (match && !['p', 'reel', 'stories', 'explore', 'accounts'].includes(match[1])) {
+        const username = match[1];
+        console.log(`  ✅ Instagram encontrado: @${username}`);
+        return { url: link, username };
+      }
+    }
+    
+    return { url: null, username: null };
+  } catch (e) {
+    console.log(`  ❌ Erro busca Instagram:`, e);
+    return { url: null, username: null };
+  }
+}
+
+// ═══════════════════════════════════════════
+// FUNÇÃO: BUSCAR FACEBOOK (SERPAPI)
+// ═══════════════════════════════════════════
+async function buscarFacebook(nomeLead: string, cidade?: string): Promise<string | null> {
+  const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
+  
+  if (!SERPAPI_KEY) {
+    console.log('⚠️ SERPAPI_KEY não configurada para Facebook');
+    return null;
+  }
+  
+  try {
+    const queryParts = [nomeLead];
+    if (cidade) {
+      queryParts.push(cidade);
+    }
+    queryParts.push('site:facebook.com');
+    
+    const query = encodeURIComponent(queryParts.join(' '));
+    const url = `https://serpapi.com/search.json?q=${query}&api_key=${SERPAPI_KEY}&num=5`;
+    
+    console.log(`  👤 Buscando Facebook: ${nomeLead}`);
+    
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    const results = data.organic_results || [];
+    
+    for (const result of results) {
+      const link = result.link || '';
+      // Procurar perfis do Facebook (não páginas de posts)
+      if (link.includes('facebook.com/') && 
+          !link.includes('/posts/') && 
+          !link.includes('/photos/') &&
+          !link.includes('/videos/')) {
+        console.log(`  ✅ Facebook encontrado: ${link}`);
+        return link;
+      }
+    }
+    
+    return null;
+  } catch (e) {
+    console.log(`  ❌ Erro busca Facebook:`, e);
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════
 // FUNÇÃO: VERIFICAR LOCALIZAÇÃO POR CIDADE/ESTADO
 // ═══════════════════════════════════════════
 function verificarLocalizacao(
@@ -440,12 +535,14 @@ serve(async (req) => {
     for (const lead of leadsParaValidar) {
       console.log(`\n👤 Validando: ${lead.nome}`);
       
-      // Buscar LinkedIn via SerpAPI COM CIDADE E ESTADO
+      // ═══ BUSCAR LINKEDIN ═══
       const linkedinData = await buscarLinkedInDetalhado(
         lead.nome,
         cidadeValidacao,
         estadoValidacao
       );
+      
+      let leadAceito = false;
       
       if (linkedinData) {
         const { url: linkedinUrl, snippet } = linkedinData;
@@ -466,8 +563,7 @@ serve(async (req) => {
         
         if (localizacaoConfere) {
           console.log(`  ✅ Localização confere: ${cidadeValidacao}, ${estadoValidacao}`);
-          leadsValidados.push(lead);
-          totalValidados++;
+          leadAceito = true;
         } else {
           console.log(`  ❌ Localização diferente (DESCARTADO)`);
           totalDescartados++;
@@ -481,16 +577,39 @@ serve(async (req) => {
         if (lead.score_total >= 60) {
           console.log(`  ✅ Aceito por score alto (${lead.score_total})`);
           lead.confianca_dados = lead.score_total;
-          leadsValidados.push(lead);
-          totalValidados++;
+          leadAceito = true;
         } else {
           console.log(`  ❌ Score baixo, descartado sem LinkedIn`);
           totalDescartados++;
         }
       }
       
-      // Delay reduzido para evitar timeout (1s ao invés de 1.5s)
-      await new Promise(r => setTimeout(r, 1000));
+      // ═══ BUSCAR INSTAGRAM E FACEBOOK (para leads aceitos) ═══
+      if (leadAceito) {
+        // Buscar Instagram
+        const instagramData = await buscarInstagram(lead.nome, cidadeValidacao);
+        if (instagramData.url) {
+          lead.instagram_url = instagramData.url;
+          lead.instagram_username = instagramData.username;
+          lead.confianca_dados = Math.min((lead.confianca_dados || 50) + 10, 100);
+        }
+        
+        // Delay entre chamadas para não sobrecarregar API
+        await new Promise(r => setTimeout(r, 500));
+        
+        // Buscar Facebook
+        const facebookUrl = await buscarFacebook(lead.nome, cidadeValidacao);
+        if (facebookUrl) {
+          lead.facebook_url = facebookUrl;
+          lead.confianca_dados = Math.min((lead.confianca_dados || 50) + 10, 100);
+        }
+        
+        leadsValidados.push(lead);
+        totalValidados++;
+      }
+      
+      // Delay entre validações
+      await new Promise(r => setTimeout(r, 800));
     }
 
     console.log('\n═══════════════════════════════════════');
