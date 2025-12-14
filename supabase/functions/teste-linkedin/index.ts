@@ -24,117 +24,132 @@ serve(async (req) => {
     
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🔐 CREDENCIAIS:');
-    console.log('   GOOGLE_API_KEY existe?', !!GOOGLE_API_KEY, GOOGLE_API_KEY ? `(${GOOGLE_API_KEY.substring(0, 10)}...)` : '');
-    console.log('   GOOGLE_CX existe?', !!GOOGLE_CX, GOOGLE_CX ? `(${GOOGLE_CX})` : '');
-    console.log('   SERPAPI_KEY existe?', !!SERPAPI_KEY, SERPAPI_KEY ? `(${SERPAPI_KEY.substring(0, 10)}...)` : '');
+    console.log('   GOOGLE_API_KEY existe?', !!GOOGLE_API_KEY);
+    console.log('   GOOGLE_CX existe?', !!GOOGLE_CX);
+    console.log('   SERPAPI_KEY existe?', !!SERPAPI_KEY);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     const resultados: any = {
-      teste_google: null,
-      teste_serpapi: null,
+      queries_testadas: [],
+      perfis_encontrados: [],
       nome_buscado: nome,
       empresa_buscada: empresa
     };
 
-    // ============================================
-    // TESTE 1: Google Custom Search API
-    // ============================================
-    if (GOOGLE_API_KEY && GOOGLE_CX) {
-      console.log('');
-      console.log('🔍 TESTE 1: Google Custom Search API');
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      
-      try {
-        const queryGoogle = `"${nome}" ${empresa || ''} site:linkedin.com/in/`;
-        console.log('   Query:', queryGoogle);
-        
-        const urlGoogle = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(queryGoogle)}&num=5`;
-        console.log('   URL:', urlGoogle.substring(0, 80) + '...');
-        
-        const resGoogle = await fetch(urlGoogle);
-        console.log('   Status:', resGoogle.status, resGoogle.statusText);
-        
-        const dataGoogle = await resGoogle.json();
-        
-        if (dataGoogle.error) {
-          console.log('   ❌ ERRO:', dataGoogle.error.message);
-          resultados.teste_google = {
-            sucesso: false,
-            status: resGoogle.status,
-            erro: dataGoogle.error.message,
-            detalhes: dataGoogle.error
-          };
-        } else {
-          const items = dataGoogle.items || [];
-          console.log('   ✅ Resultados encontrados:', items.length);
-          
-          const linkedinUrls = items
-            .filter((item: any) => item.link?.includes('linkedin.com/in/'))
-            .map((item: any) => ({
-              titulo: item.title,
-              link: item.link,
-              snippet: item.snippet?.substring(0, 100)
-            }));
-          
-          console.log('   LinkedIn URLs:', linkedinUrls.length);
-          linkedinUrls.forEach((l: any, i: number) => {
-            console.log(`   ${i + 1}. ${l.link}`);
-          });
-          
-          resultados.teste_google = {
-            sucesso: true,
-            status: resGoogle.status,
-            total_resultados: items.length,
-            linkedin_encontrados: linkedinUrls.length,
-            perfis: linkedinUrls
-          };
-        }
-      } catch (e: any) {
-        console.log('   ❌ EXCEÇÃO:', e.message);
-        resultados.teste_google = {
-          sucesso: false,
-          erro: e.message
-        };
-      }
-    } else {
-      console.log('');
-      console.log('⚠️ GOOGLE API não configurada - pulando teste');
-      resultados.teste_google = {
-        sucesso: false,
-        erro: 'GOOGLE_API_KEY ou GOOGLE_CX não configurados'
-      };
+    // Múltiplas queries - do mais simples ao mais específico
+    const queries = [
+      `${nome} linkedin`,
+      `${nome} linkedin.com`,
+      `"${nome}" linkedin`,
+      `${nome} Rio de Janeiro linkedin`,
+    ];
+
+    if (empresa) {
+      queries.push(`${nome} ${empresa} linkedin`);
     }
 
-    // ============================================
-    // TESTE 2: SerpAPI (backup)
-    // ============================================
+    console.log('📝 Queries a testar:', queries.length);
+
+    // Testar com SerpAPI (mais confiável)
     if (SERPAPI_KEY) {
       console.log('');
-      console.log('🔍 TESTE 2: SerpAPI');
+      console.log('🔍 USANDO SERPAPI');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
-      try {
-        const querySerpapi = `${nome} ${empresa || ''} site:linkedin.com/in/`;
-        console.log('   Query:', querySerpapi);
+      for (const query of queries) {
+        console.log('');
+        console.log(`📌 Query: "${query}"`);
         
-        const urlSerpapi = `https://serpapi.com/search.json?q=${encodeURIComponent(querySerpapi)}&api_key=${SERPAPI_KEY}&num=5`;
-        console.log('   URL:', urlSerpapi.substring(0, 60) + '...');
-        
-        const resSerpapi = await fetch(urlSerpapi);
-        console.log('   Status:', resSerpapi.status, resSerpapi.statusText);
-        
-        const dataSerpapi = await resSerpapi.json();
-        
-        if (dataSerpapi.error) {
-          console.log('   ❌ ERRO:', dataSerpapi.error);
-          resultados.teste_serpapi = {
-            sucesso: false,
-            status: resSerpapi.status,
-            erro: dataSerpapi.error
-          };
-        } else {
+        try {
+          const urlSerpapi = `https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${SERPAPI_KEY}&num=10&engine=google`;
+          
+          const resSerpapi = await fetch(urlSerpapi);
+          const dataSerpapi = await resSerpapi.json();
+          
+          if (dataSerpapi.error) {
+            console.log('   ❌ ERRO:', dataSerpapi.error);
+            resultados.queries_testadas.push({
+              query,
+              sucesso: false,
+              erro: dataSerpapi.error
+            });
+            continue;
+          }
+          
           const items = dataSerpapi.organic_results || [];
-          console.log('   ✅ Resultados encontrados:', items.length);
+          console.log('   Total resultados:', items.length);
+          
+          // Filtrar LinkedIn
+          const linkedinUrls = items
+            .filter((item: any) => item.link?.includes('linkedin.com/in/'))
+            .map((item: any) => ({
+              titulo: item.title,
+              link: item.link,
+              snippet: item.snippet?.substring(0, 100)
+            }));
+          
+          console.log('   LinkedIn encontrados:', linkedinUrls.length);
+          
+          if (linkedinUrls.length > 0) {
+            linkedinUrls.forEach((l: any, i: number) => {
+              console.log(`   ${i + 1}. ${l.link}`);
+              console.log(`      Título: ${l.titulo}`);
+              
+              // Adiciona sem duplicar
+              if (!resultados.perfis_encontrados.find((p: any) => p.link === l.link)) {
+                resultados.perfis_encontrados.push(l);
+              }
+            });
+          }
+          
+          resultados.queries_testadas.push({
+            query,
+            sucesso: true,
+            total_resultados: items.length,
+            linkedin_encontrados: linkedinUrls.length
+          });
+          
+          // Se encontrou perfis LinkedIn, pode parar
+          if (linkedinUrls.length > 0) {
+            console.log('');
+            console.log('✅ ENCONTROU! Parando busca.');
+            break;
+          }
+          
+        } catch (e: any) {
+          console.log('   ❌ EXCEÇÃO:', e.message);
+          resultados.queries_testadas.push({
+            query,
+            sucesso: false,
+            erro: e.message
+          });
+        }
+      }
+    }
+
+    // Se não encontrou com SerpAPI, tenta Google
+    if (resultados.perfis_encontrados.length === 0 && GOOGLE_API_KEY && GOOGLE_CX) {
+      console.log('');
+      console.log('🔍 FALLBACK: Google Custom Search');
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      for (const query of queries) {
+        console.log('');
+        console.log(`📌 Query: "${query}"`);
+        
+        try {
+          const urlGoogle = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=10`;
+          
+          const resGoogle = await fetch(urlGoogle);
+          const dataGoogle = await resGoogle.json();
+          
+          if (dataGoogle.error) {
+            console.log('   ❌ ERRO:', dataGoogle.error.message);
+            continue;
+          }
+          
+          const items = dataGoogle.items || [];
+          console.log('   Total resultados:', items.length);
           
           const linkedinUrls = items
             .filter((item: any) => item.link?.includes('linkedin.com/in/'))
@@ -144,33 +159,26 @@ serve(async (req) => {
               snippet: item.snippet?.substring(0, 100)
             }));
           
-          console.log('   LinkedIn URLs:', linkedinUrls.length);
-          linkedinUrls.forEach((l: any, i: number) => {
-            console.log(`   ${i + 1}. ${l.link}`);
-          });
+          console.log('   LinkedIn encontrados:', linkedinUrls.length);
           
-          resultados.teste_serpapi = {
-            sucesso: true,
-            status: resSerpapi.status,
-            total_resultados: items.length,
-            linkedin_encontrados: linkedinUrls.length,
-            perfis: linkedinUrls
-          };
+          if (linkedinUrls.length > 0) {
+            linkedinUrls.forEach((l: any, i: number) => {
+              console.log(`   ${i + 1}. ${l.link}`);
+              
+              if (!resultados.perfis_encontrados.find((p: any) => p.link === l.link)) {
+                resultados.perfis_encontrados.push(l);
+              }
+            });
+            
+            console.log('');
+            console.log('✅ ENCONTROU! Parando busca.');
+            break;
+          }
+          
+        } catch (e: any) {
+          console.log('   ❌ EXCEÇÃO:', e.message);
         }
-      } catch (e: any) {
-        console.log('   ❌ EXCEÇÃO:', e.message);
-        resultados.teste_serpapi = {
-          sucesso: false,
-          erro: e.message
-        };
       }
-    } else {
-      console.log('');
-      console.log('⚠️ SERPAPI não configurada - pulando teste');
-      resultados.teste_serpapi = {
-        sucesso: false,
-        erro: 'SERPAPI_KEY não configurado'
-      };
     }
 
     // ============================================
@@ -178,16 +186,30 @@ serve(async (req) => {
     // ============================================
     console.log('');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📊 RESUMO DO TESTE:');
+    console.log('📊 RESUMO FINAL:');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('   Google:', resultados.teste_google?.sucesso ? `✅ ${resultados.teste_google.linkedin_encontrados} perfis` : `❌ ${resultados.teste_google?.erro}`);
-    console.log('   SerpAPI:', resultados.teste_serpapi?.sucesso ? `✅ ${resultados.teste_serpapi.linkedin_encontrados} perfis` : `❌ ${resultados.teste_serpapi?.erro}`);
+    console.log('   Nome buscado:', nome);
+    console.log('   Queries testadas:', resultados.queries_testadas.length);
+    console.log('   Perfis LinkedIn encontrados:', resultados.perfis_encontrados.length);
+    
+    if (resultados.perfis_encontrados.length > 0) {
+      console.log('');
+      console.log('🎯 PERFIS:');
+      resultados.perfis_encontrados.forEach((p: any, i: number) => {
+        console.log(`   ${i + 1}. ${p.link}`);
+      });
+    } else {
+      console.log('');
+      console.log('❌ Nenhum perfil LinkedIn encontrado para:', nome);
+    }
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     return new Response(
       JSON.stringify({
-        success: true,
-        resultados
+        success: resultados.perfis_encontrados.length > 0,
+        total_encontrados: resultados.perfis_encontrados.length,
+        perfis: resultados.perfis_encontrados,
+        detalhes: resultados
       }),
       {
         status: 200,
