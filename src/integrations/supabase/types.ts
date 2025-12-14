@@ -3163,6 +3163,81 @@ export type Database = {
         }
         Relationships: []
       }
+      seguidores_concorrentes: {
+        Row: {
+          bio: string | null
+          cargo: string | null
+          cidade_detectada: string | null
+          contatado: boolean | null
+          created_at: string | null
+          empresa: string | null
+          estado_detectado: string | null
+          foto_url: string | null
+          id: string
+          imobiliaria_url: string | null
+          instagram_url: string | null
+          instagram_username: string
+          linkedin_encontrado: boolean | null
+          linkedin_url: string | null
+          nome_completo: string | null
+          qualificacao: string | null
+          score_total: number | null
+          seguidores: number | null
+          seguindo_imobiliaria: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          bio?: string | null
+          cargo?: string | null
+          cidade_detectada?: string | null
+          contatado?: boolean | null
+          created_at?: string | null
+          empresa?: string | null
+          estado_detectado?: string | null
+          foto_url?: string | null
+          id?: string
+          imobiliaria_url?: string | null
+          instagram_url?: string | null
+          instagram_username: string
+          linkedin_encontrado?: boolean | null
+          linkedin_url?: string | null
+          nome_completo?: string | null
+          qualificacao?: string | null
+          score_total?: number | null
+          seguidores?: number | null
+          seguindo_imobiliaria?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          bio?: string | null
+          cargo?: string | null
+          cidade_detectada?: string | null
+          contatado?: boolean | null
+          created_at?: string | null
+          empresa?: string | null
+          estado_detectado?: string | null
+          foto_url?: string | null
+          id?: string
+          imobiliaria_url?: string | null
+          instagram_url?: string | null
+          instagram_username?: string
+          linkedin_encontrado?: boolean | null
+          linkedin_url?: string | null
+          nome_completo?: string | null
+          qualificacao?: string | null
+          score_total?: number | null
+          seguidores?: number | null
+          seguindo_imobiliaria?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       sessoes_ativas: {
         Row: {
           ativa: boolean | null
