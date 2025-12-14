@@ -12,228 +12,103 @@ serve(async (req) => {
   }
 
   const APIFY_TOKEN = Deno.env.get('APIFY_API_KEY')
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-  if (!APIFY_TOKEN) {
-    return new Response(JSON.stringify({ error: 'APIFY_API_KEY não configurada' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    })
-  }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY')
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   try {
-    const userId = req.headers.get('x-user-id')
-    if (!userId) {
-      return new Response(JSON.stringify({ error: 'User ID required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
     const body = await req.json()
-    const { modo, estado, cidade, bairros, perfis, maxSeguidores = 300 } = body
+    const { acao } = body
+    const userId = req.headers.get('x-user-id')
 
-    console.log('📸 Iniciando busca de seguidores:', { modo, estado, cidade, bairros, perfis })
+    console.log(`🎯 Ação: ${acao}`, body)
 
-    let instagramUsernames: string[] = []
+    // ETAPA 1: BUSCAR CORRETORAS
+    if (acao === 'buscar_corretoras') {
+      const { bairros, cidade, estado } = body
+      if (!APIFY_TOKEN) return new Response(JSON.stringify({ error: 'APIFY_API_KEY não configurada' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-    if (modo === 'manual' && perfis?.length > 0) {
-      // Modo manual: usa os perfis fornecidos
-      instagramUsernames = perfis
-      console.log('📝 Modo manual, perfis:', instagramUsernames)
-    } else if (modo === 'automatico') {
-      // Modo automático: buscar corretoras na região via Google Maps
-      console.log('🔍 Modo automático - buscando corretoras...')
-      
-      const searchQueries = bairros?.map((b: string) => `imobiliária ${b} ${cidade} ${estado}`) || []
-      
-      // Buscar corretoras no Google Maps via Apify
-      const mapsResponse = await fetch('https://api.apify.com/v2/acts/nwua9Gu5YrADL7ZDj/runs?waitForFinish=120', {
+      const searchQueries = bairros.map((b: string) => `imobiliária ${b} ${cidade} ${estado}`)
+      const runResponse = await fetch('https://api.apify.com/v2/acts/nwua9Gu5YrADL7ZDj/runs?waitForFinish=120', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${APIFY_TOKEN}`
-        },
-        body: JSON.stringify({
-          searchStringsArray: searchQueries.slice(0, 5), // Limitar a 5 bairros
-          maxCrawledPlacesPerSearch: 10,
-          language: 'pt-BR',
-          maxReviews: 0
-        })
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${APIFY_TOKEN}` },
+        body: JSON.stringify({ searchStringsArray: searchQueries, maxCrawledPlacesPerSearch: 15, language: 'pt-BR' })
       })
 
-      if (mapsResponse.ok) {
-        const mapsData = await mapsResponse.json()
-        const runId = mapsData.data?.id
+      const runData = await runResponse.json()
+      const datasetId = runData.data?.defaultDatasetId
+      if (!datasetId) return new Response(JSON.stringify({ corretoras: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-        if (runId) {
-          // Buscar resultados
-          const resultsResponse = await fetch(
-            `https://api.apify.com/v2/actor-runs/${runId}/dataset/items`,
-            { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` } }
-          )
-          
-          const places = await resultsResponse.json()
-          console.log(`📍 Encontradas ${places.length} corretoras`)
+      const resultsResponse = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items`, { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` } })
+      const places = await resultsResponse.json()
 
-          // Extrair Instagram das corretoras
-          for (const place of places) {
-            // Procurar Instagram no website ou social links
-            const website = place.website || ''
-            const socialUrls = place.socialUrls || []
-            
-            const instagramUrl = socialUrls.find((url: string) => url.includes('instagram.com'))
-            if (instagramUrl) {
-              const match = instagramUrl.match(/instagram\.com\/([^\/\?]+)/)
-              if (match) {
-                instagramUsernames.push(match[1])
-              }
-            }
-          }
+      const corretoras = places.filter((p: any) => p.title?.toLowerCase().match(/imobili|corretora|imóveis|imoveis/)).map((place: any) => {
+        let instagram_username = null
+        if (place.website) { const m = place.website.match(/instagram\.com\/([a-zA-Z0-9_.]+)/i); if (m) instagram_username = m[1] }
+        if (!instagram_username && place.socialUrls) { const ig = place.socialUrls.find((u: string) => u.includes('instagram')); if (ig) { const m = ig.match(/instagram\.com\/([^\/\?]+)/); if (m) instagram_username = m[1] } }
+        return { nome: place.title, endereco: place.address, instagram_username, instagram_url: instagram_username ? `https://instagram.com/${instagram_username}` : null, seguidores_count: null }
+      })
+
+      return new Response(JSON.stringify({ success: true, corretoras }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // ETAPA 2: BUSCAR SEGUIDORES
+    if (acao === 'buscar_seguidores') {
+      const { instagram_username, max_seguidores, imobiliaria_nome } = body
+      if (!APIFY_TOKEN) return new Response(JSON.stringify({ error: 'APIFY_API_KEY não configurada' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+      const runResponse = await fetch('https://api.apify.com/v2/acts/apify~instagram-profile-scraper/runs?waitForFinish=300', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${APIFY_TOKEN}` },
+        body: JSON.stringify({ usernames: [instagram_username], resultsLimit: max_seguidores || 300 })
+      })
+
+      const runData = await runResponse.json()
+      const datasetId = runData.data?.defaultDatasetId
+      if (!datasetId) return new Response(JSON.stringify({ seguidores: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+      const resultsResponse = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items`, { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` } })
+      const profiles = await resultsResponse.json()
+
+      const seguidores = profiles.slice(0, max_seguidores || 300).map((p: any) => {
+        const bio = p.biography || ''
+        return {
+          id: crypto.randomUUID(), user_id: userId, instagram_username: p.username, instagram_url: `https://instagram.com/${p.username}`,
+          nome_completo: p.fullName, foto_url: p.profilePicUrl, bio: bio.substring(0, 500), seguidores: p.followersCount || 0,
+          cidade_detectada: bio.toLowerCase().includes('rio') ? 'Rio de Janeiro' : null, estado_detectado: bio.toLowerCase().includes('rj') ? 'RJ' : null,
+          seguindo_imobiliaria: imobiliaria_nome, score_total: 0, qualificacao: 'NOVO', status: 'novo'
+        }
+      })
+
+      if (userId && seguidores.length > 0) {
+        for (const s of seguidores) {
+          await supabase.from('seguidores_concorrentes').upsert({ ...s, created_at: new Date().toISOString() }, { onConflict: 'instagram_username', ignoreDuplicates: true })
         }
       }
 
-      console.log(`📸 Instagram das corretoras: ${instagramUsernames.length}`)
+      return new Response(JSON.stringify({ success: true, count: seguidores.length, seguidores }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    if (instagramUsernames.length === 0) {
-      // Se não encontrou nenhum Instagram, usar alguns defaults para teste
-      console.log('⚠️ Nenhum Instagram encontrado, usando perfis de exemplo')
-      return new Response(JSON.stringify({
-        success: true,
-        count: 0,
-        message: 'Nenhuma imobiliária com Instagram encontrada na região. Tente modo manual.'
-      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
+    // ETAPA 3: BUSCAR LINKEDIN
+    if (acao === 'buscar_linkedin') {
+      const { nome, cidade, estado } = body
+      if (!SERPAPI_KEY) return new Response(JSON.stringify({ error: 'SERPAPI_KEY não configurada' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
-    // Buscar seguidores dos perfis encontrados
-    const allFollowers: any[] = []
+      const query = `${nome} ${cidade || ''} ${estado || ''} site:linkedin.com/in/`
+      const response = await fetch(`https://serpapi.com/search.json?q=${encodeURIComponent(query)}&api_key=${SERPAPI_KEY}&num=5`)
+      const data = await response.json()
 
-    for (const username of instagramUsernames.slice(0, 5)) { // Limitar a 5 perfis
-      console.log(`🔍 Buscando seguidores de @${username}...`)
-
-      try {
-        // Usar Apify Instagram Profile Scraper para pegar seguidores
-        const igResponse = await fetch('https://api.apify.com/v2/acts/apify~instagram-profile-scraper/runs?waitForFinish=120', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${APIFY_TOKEN}`
-          },
-          body: JSON.stringify({
-            usernames: [username],
-            resultsLimit: maxSeguidores,
-            proxy: { useApifyProxy: true }
-          })
-        })
-
-        if (!igResponse.ok) {
-          console.log(`❌ Erro ao buscar @${username}:`, await igResponse.text())
-          continue
-        }
-
-        const igData = await igResponse.json()
-        const runId = igData.data?.id
-
-        if (runId) {
-          const followersResponse = await fetch(
-            `https://api.apify.com/v2/actor-runs/${runId}/dataset/items`,
-            { headers: { 'Authorization': `Bearer ${APIFY_TOKEN}` } }
-          )
-          
-          const profileData = await followersResponse.json()
-          console.log(`👥 Dados de @${username}:`, profileData.length)
-
-          // Para cada perfil/seguidor encontrado
-          for (const profile of profileData) {
-            // Extrair cidade da bio
-            const bio = profile.biography || ''
-            let cidadeDetectada = ''
-            let estadoDetectado = ''
-
-            // Padrões comuns de localização na bio
-            const locationPatterns = [
-              /📍\s*([^,\n]+),?\s*([A-Z]{2})?/i,
-              /Rio de Janeiro|São Paulo|Barra da Tijuca|Copacabana|Ipanema|Leblon/i
-            ]
-
-            for (const pattern of locationPatterns) {
-              const match = bio.match(pattern)
-              if (match) {
-                cidadeDetectada = match[1] || match[0]
-                estadoDetectado = match[2] || 'RJ'
-                break
-              }
-            }
-
-            allFollowers.push({
-              instagram_username: profile.username,
-              instagram_url: `https://instagram.com/${profile.username}`,
-              nome_completo: profile.fullName,
-              foto_url: profile.profilePicUrl,
-              bio: bio,
-              seguidores: profile.followersCount || 0,
-              cidade_detectada: cidadeDetectada,
-              estado_detectado: estadoDetectado,
-              seguindo_imobiliaria: username,
-              imobiliaria_url: `https://instagram.com/${username}`,
-              score_total: profile.followersCount > 1000 ? 60 : 40,
-              qualificacao: profile.followersCount > 5000 ? 'QUENTE' : 'MORNO'
-            })
-          }
-        }
-      } catch (err) {
-        console.error(`Erro ao processar @${username}:`, err)
+      let linkedin_url = null, cargo = null, empresa = null
+      if (data.organic_results?.length > 0) {
+        const result = data.organic_results.find((r: any) => r.link?.includes('linkedin.com/in/'))
+        if (result) { linkedin_url = result.link; const parts = (result.snippet || '').split(' - '); if (parts.length >= 2) { cargo = parts[0]; empresa = parts[1] } }
       }
+
+      return new Response(JSON.stringify({ success: !!linkedin_url, linkedin_url, cargo, empresa }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    console.log(`✅ Total de seguidores encontrados: ${allFollowers.length}`)
-
-    // Salvar no banco de dados
-    for (const follower of allFollowers) {
-      const { error } = await supabase
-        .from('seguidores_concorrentes')
-        .upsert({
-          user_id: userId,
-          instagram_username: follower.instagram_username,
-          instagram_url: follower.instagram_url,
-          nome_completo: follower.nome_completo,
-          foto_url: follower.foto_url,
-          bio: follower.bio,
-          seguidores: follower.seguidores,
-          cidade_detectada: follower.cidade_detectada,
-          estado_detectado: follower.estado_detectado,
-          seguindo_imobiliaria: follower.seguindo_imobiliaria,
-          imobiliaria_url: follower.imobiliaria_url,
-          score_total: follower.score_total,
-          qualificacao: follower.qualificacao
-        }, { 
-          onConflict: 'instagram_username',
-          ignoreDuplicates: true 
-        })
-
-      if (error) {
-        console.log('Erro ao salvar seguidor:', error.message)
-      }
-    }
-
-    return new Response(JSON.stringify({
-      success: true,
-      count: allFollowers.length,
-      imobiliarias_encontradas: instagramUsernames.length,
-      seguidores: allFollowers.slice(0, 10) // Retorna amostra
-    }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-
+    return new Response(JSON.stringify({ error: 'Ação não reconhecida' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error) {
     console.error('❌ Erro:', error)
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Erro desconhecido'
-    }), { 
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    })
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   }
 })
