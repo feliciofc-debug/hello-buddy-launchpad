@@ -434,7 +434,10 @@ serve(async (req) => {
     const cidadeValidacao = cidades[0] || cidadePrincipal;
     const estadoValidacao = estados[0] || 'RJ';
 
-    for (const lead of leadsPreQualificados.slice(0, max_leads)) {
+    // Limitar a 25 leads para evitar timeout (60s do Supabase)
+    const leadsParaValidar = leadsPreQualificados.slice(0, Math.min(max_leads, 25));
+    
+    for (const lead of leadsParaValidar) {
       console.log(`\n👤 Validando: ${lead.nome}`);
       
       // Buscar LinkedIn via SerpAPI COM CIDADE E ESTADO
@@ -486,8 +489,8 @@ serve(async (req) => {
         }
       }
       
-      // Delay entre validações para não sobrecarregar SerpAPI
-      await new Promise(r => setTimeout(r, 1500));
+      // Delay reduzido para evitar timeout (1s ao invés de 1.5s)
+      await new Promise(r => setTimeout(r, 1000));
     }
 
     console.log('\n═══════════════════════════════════════');
