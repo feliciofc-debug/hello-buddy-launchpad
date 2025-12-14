@@ -180,7 +180,7 @@ serve(async (req) => {
       .from('leads_imoveis_enriquecidos')
       .select('*')
       .eq('id', leadId)
-      .single();
+      .maybeSingle();
     
     console.log('Lead encontrado?', !!lead);
     console.log('Erro na busca?', leadError?.message);
