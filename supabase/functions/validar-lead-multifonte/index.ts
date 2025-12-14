@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 // ═══════════════════════════════════════════
-// FUNÇÃO BUSCAR LINKEDIN (SERPAPI - COPIADO DO DISCOVERY-CNPJ)
+// FUNÇÃO BUSCAR LINKEDIN (SERPAPI)
 // ═══════════════════════════════════════════
 async function buscarLinkedIn(nomeLead: string, empresaOuCargo?: string): Promise<string | null> {
   const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
@@ -18,7 +18,6 @@ async function buscarLinkedIn(nomeLead: string, empresaOuCargo?: string): Promis
   }
   
   try {
-    // Query: nome + cargo/empresa + site:linkedin.com/in/
     const queryParts = [nomeLead];
     if (empresaOuCargo) {
       queryParts.push(empresaOuCargo);
@@ -29,39 +28,122 @@ async function buscarLinkedIn(nomeLead: string, empresaOuCargo?: string): Promis
     const url = `https://serpapi.com/search.json?q=${query}&api_key=${SERPAPI_KEY}&num=5`;
     
     console.log(`🔍 Buscando LinkedIn via SerpAPI: ${nomeLead}`);
-    console.log(`   Query: ${queryParts.join(' ')}`);
     
     const response = await fetch(url);
-    
-    if (!response.ok) {
-      console.log(`⚠️ SerpAPI erro: ${response.status}`);
-      return null;
-    }
+    if (!response.ok) return null;
     
     const data = await response.json();
     const results = data.organic_results || [];
     
-    console.log(`📊 SerpAPI retornou ${results.length} resultados`);
-    
-    // Procurar link do LinkedIn nos resultados
     for (const result of results) {
       const link = result.link || '';
       if (link.includes('linkedin.com/in/')) {
         console.log(`✅ LinkedIn encontrado: ${link}`);
-        
-        // Log adicional pra validar
-        const title = result.title || '';
-        console.log(`   Título: ${title}`);
-        
         return link;
       }
     }
     
     console.log(`⚠️ LinkedIn não encontrado para ${nomeLead}`);
     return null;
-    
   } catch (e) {
     console.log(`❌ Erro ao buscar LinkedIn: ${e}`);
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════
+// FUNÇÃO BUSCAR INSTAGRAM (SERPAPI)
+// ═══════════════════════════════════════════
+async function buscarInstagram(nomeLead: string, cidade?: string): Promise<{ url: string | null, username: string | null }> {
+  const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
+  
+  if (!SERPAPI_KEY) {
+    console.log('⚠️ SERPAPI_KEY não configurada');
+    return { url: null, username: null };
+  }
+  
+  try {
+    const queryParts = [nomeLead];
+    if (cidade) {
+      queryParts.push(cidade);
+    }
+    queryParts.push('site:instagram.com');
+    
+    const query = encodeURIComponent(queryParts.join(' '));
+    const url = `https://serpapi.com/search.json?q=${query}&api_key=${SERPAPI_KEY}&num=5`;
+    
+    console.log(`📸 Buscando Instagram via SerpAPI: ${nomeLead}`);
+    
+    const response = await fetch(url);
+    if (!response.ok) return { url: null, username: null };
+    
+    const data = await response.json();
+    const results = data.organic_results || [];
+    
+    for (const result of results) {
+      const link = result.link || '';
+      // Procurar perfis do Instagram (não posts ou reels)
+      const match = link.match(/instagram\.com\/([a-zA-Z0-9._]+)\/?$/);
+      if (match && !['p', 'reel', 'stories', 'explore', 'accounts'].includes(match[1])) {
+        const username = match[1];
+        console.log(`✅ Instagram encontrado: @${username}`);
+        return { url: link, username };
+      }
+    }
+    
+    console.log(`⚠️ Instagram não encontrado para ${nomeLead}`);
+    return { url: null, username: null };
+  } catch (e) {
+    console.log(`❌ Erro ao buscar Instagram: ${e}`);
+    return { url: null, username: null };
+  }
+}
+
+// ═══════════════════════════════════════════
+// FUNÇÃO BUSCAR FACEBOOK (SERPAPI)
+// ═══════════════════════════════════════════
+async function buscarFacebook(nomeLead: string, cidade?: string): Promise<string | null> {
+  const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
+  
+  if (!SERPAPI_KEY) {
+    console.log('⚠️ SERPAPI_KEY não configurada');
+    return null;
+  }
+  
+  try {
+    const queryParts = [nomeLead];
+    if (cidade) {
+      queryParts.push(cidade);
+    }
+    queryParts.push('site:facebook.com');
+    
+    const query = encodeURIComponent(queryParts.join(' '));
+    const url = `https://serpapi.com/search.json?q=${query}&api_key=${SERPAPI_KEY}&num=5`;
+    
+    console.log(`👤 Buscando Facebook via SerpAPI: ${nomeLead}`);
+    
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    const results = data.organic_results || [];
+    
+    for (const result of results) {
+      const link = result.link || '';
+      // Procurar perfis do Facebook (não páginas de posts)
+      if (link.includes('facebook.com/') && 
+          !link.includes('/posts/') && 
+          !link.includes('/photos/') &&
+          !link.includes('/videos/')) {
+        console.log(`✅ Facebook encontrado: ${link}`);
+        return link;
+      }
+    }
+    
+    console.log(`⚠️ Facebook não encontrado para ${nomeLead}`);
+    return null;
+  } catch (e) {
+    console.log(`❌ Erro ao buscar Facebook: ${e}`);
     return null;
   }
 }
@@ -101,68 +183,125 @@ serve(async (req) => {
     
     let confianca = lead.score_total || 0;
     const fontes: string[] = [];
+    const updateData: any = {};
+    
+    // Extrair cidade do lead (se disponível nas corretoras visitadas)
+    let cidade = '';
+    if (lead.corretoras_visitadas && lead.corretoras_visitadas.length > 0) {
+      const endereco = lead.corretoras_visitadas[0]?.endereco || '';
+      // Extrair cidade do endereço (ex: "Rio de Janeiro - RJ")
+      const match = endereco.match(/([A-Za-zÀ-ú\s]+)\s*-\s*[A-Z]{2}/);
+      if (match) {
+        cidade = match[1].trim();
+      }
+    }
+    console.log('Cidade detectada:', cidade || 'não identificada');
     
     // ═══════════════════════════════════════════
-    // BUSCAR LINKEDIN (SerpAPI)
+    // 1. BUSCAR LINKEDIN
     // ═══════════════════════════════════════════
     
-    console.log('💼 Buscando LinkedIn via SerpAPI...');
-    
-    const linkedinUrl = await buscarLinkedIn(
-      lead.nome,
-      lead.empresa || lead.cargo
-    );
-    
-    if (linkedinUrl) {
-      // Atualizar no banco
-      await supabase.from('leads_imoveis_enriquecidos').update({
-        linkedin_url: linkedinUrl,
-        linkedin_encontrado: true
-      }).eq('id', leadId);
+    if (!lead.linkedin_url) {
+      console.log('💼 Buscando LinkedIn...');
+      const linkedinUrl = await buscarLinkedIn(lead.nome, lead.empresa || lead.cargo);
       
-      confianca += 30;
-      fontes.push('linkedin');
-      console.log('✅ LinkedIn encontrado e salvo!');
+      if (linkedinUrl) {
+        updateData.linkedin_url = linkedinUrl;
+        updateData.linkedin_encontrado = true;
+        confianca += 30;
+        fontes.push('linkedin');
+        console.log('✅ LinkedIn encontrado e salvo!');
+      }
     } else {
-      console.log('⚠️ LinkedIn não encontrado');
+      console.log('✅ LinkedIn já existe:', lead.linkedin_url);
+      fontes.push('linkedin');
+      confianca += 30;
     }
     
     // ═══════════════════════════════════════════
-    // BUSCAR INSTAGRAM (já funciona)
+    // 2. BUSCAR INSTAGRAM
     // ═══════════════════════════════════════════
     
-    // Instagram já está funcionando, mantém como está
-    if (lead.instagram_username) {
-      console.log('✅ Instagram já encontrado:', lead.instagram_username);
+    if (!lead.instagram_username && !lead.instagram_url) {
+      console.log('📸 Buscando Instagram...');
+      const instagram = await buscarInstagram(lead.nome, cidade);
+      
+      if (instagram.url || instagram.username) {
+        updateData.instagram_url = instagram.url;
+        updateData.instagram_username = instagram.username;
+        updateData.instagram_encontrado = true;
+        confianca += 20;
+        fontes.push('instagram');
+        console.log('✅ Instagram encontrado e salvo!');
+      }
+    } else {
+      console.log('✅ Instagram já existe:', lead.instagram_username || lead.instagram_url);
       fontes.push('instagram');
       confianca += 20;
+    }
+    
+    // ═══════════════════════════════════════════
+    // 3. BUSCAR FACEBOOK
+    // ═══════════════════════════════════════════
+    
+    if (!lead.facebook_url) {
+      console.log('👤 Buscando Facebook...');
+      const facebookUrl = await buscarFacebook(lead.nome, cidade);
+      
+      if (facebookUrl) {
+        updateData.facebook_url = facebookUrl;
+        updateData.facebook_encontrado = true;
+        confianca += 15;
+        fontes.push('facebook');
+        console.log('✅ Facebook encontrado e salvo!');
+      }
+    } else {
+      console.log('✅ Facebook já existe:', lead.facebook_url);
+      fontes.push('facebook');
+      confianca += 15;
+    }
+    
+    // ═══════════════════════════════════════════
+    // 4. VERIFICAR DADOS DO GOOGLE (já temos)
+    // ═══════════════════════════════════════════
+    
+    if (lead.foto_url || lead.google_profile_url || (lead.corretoras_visitadas && lead.corretoras_visitadas.length > 0)) {
+      console.log('🌐 Dados do Google já existem');
+      fontes.push('google');
+      confianca += 25;
     }
     
     // ═══════════════════════════════════════════
     // ATUALIZAR CONFIANÇA FINAL
     // ═══════════════════════════════════════════
     
-    const dadosCompletos = fontes.length >= 1; // Pelo menos 1 rede social
+    const dadosCompletos = fontes.length >= 2; // Pelo menos 2 fontes
     
-    await supabase.from('leads_imoveis_enriquecidos').update({
-      confianca_dados: confianca,
-      dados_completos: dadosCompletos,
-      data_enriquecimento: new Date().toISOString()
-    }).eq('id', leadId);
+    updateData.confianca_dados = Math.min(confianca, 100); // Cap em 100%
+    updateData.dados_completos = dadosCompletos;
+    updateData.data_enriquecimento = new Date().toISOString();
+    updateData.fontes_encontradas = fontes;
+    
+    await supabase.from('leads_imoveis_enriquecidos')
+      .update(updateData)
+      .eq('id', leadId);
     
     console.log('═══════════════════════════════════════');
     console.log('✅ Validação concluída!');
-    console.log(`Confiança: ${confianca}%`);
+    console.log(`Confiança: ${Math.min(confianca, 100)}%`);
     console.log(`Fontes: ${fontes.join(', ')}`);
     console.log('═══════════════════════════════════════');
     
     return new Response(
       JSON.stringify({
         success: true,
-        confianca,
+        confianca: Math.min(confianca, 100),
         dadosCompletos,
         fontes,
-        linkedinUrl
+        linkedinUrl: updateData.linkedin_url || lead.linkedin_url,
+        instagramUrl: updateData.instagram_url || lead.instagram_url,
+        instagramUsername: updateData.instagram_username || lead.instagram_username,
+        facebookUrl: updateData.facebook_url || lead.facebook_url
       }),
       {
         status: 200,
