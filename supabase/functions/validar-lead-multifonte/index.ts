@@ -7,7 +7,64 @@ const corsHeaders = {
 };
 
 // ═══════════════════════════════════════════
-// FUNÇÃO BUSCAR LINKEDIN (SERPAPI)
+// FUNÇÃO NORMALIZAR NOME (para comparação)
+// ═══════════════════════════════════════════
+function normalizarNome(nome: string): string[] {
+  return nome
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+    .replace(/[^a-z\s]/g, '') // Remove caracteres especiais
+    .split(/\s+/)
+    .filter(p => p.length > 2); // Ignora partículas pequenas (de, da, do, etc)
+}
+
+// ═══════════════════════════════════════════
+// FUNÇÃO VERIFICAR SE NOMES CORRESPONDEM
+// ═══════════════════════════════════════════
+function nomesCorrespondem(nomeLead: string, nomeEncontrado: string): boolean {
+  const partesLead = normalizarNome(nomeLead);
+  const partesEncontrado = normalizarNome(nomeEncontrado);
+  
+  if (partesLead.length === 0 || partesEncontrado.length === 0) {
+    return false;
+  }
+  
+  // Verificar se primeiro nome corresponde
+  const primeiroNomeLead = partesLead[0];
+  const primeiroNomeEncontrado = partesEncontrado[0];
+  
+  // Primeiro nome deve corresponder (ou ser muito similar)
+  if (primeiroNomeLead !== primeiroNomeEncontrado) {
+    // Verificar se um começa com o outro (ex: "Lu" vs "Luciana")
+    if (!primeiroNomeLead.startsWith(primeiroNomeEncontrado.substring(0, 3)) &&
+        !primeiroNomeEncontrado.startsWith(primeiroNomeLead.substring(0, 3))) {
+      console.log(`❌ Primeiro nome não corresponde: "${primeiroNomeLead}" vs "${primeiroNomeEncontrado}"`);
+      return false;
+    }
+  }
+  
+  // Verificar se pelo menos uma parte do sobrenome corresponde
+  const sobrenomesLead = partesLead.slice(1);
+  const sobrenomesEncontrado = partesEncontrado.slice(1);
+  
+  if (sobrenomesLead.length > 0 && sobrenomesEncontrado.length > 0) {
+    const temSobrenomeEmComum = sobrenomesLead.some(s1 => 
+      sobrenomesEncontrado.some(s2 => s1 === s2 || s1.includes(s2) || s2.includes(s1))
+    );
+    
+    if (!temSobrenomeEmComum) {
+      console.log(`❌ Nenhum sobrenome em comum: ${sobrenomesLead.join(',')} vs ${sobrenomesEncontrado.join(',')}`);
+      return false;
+    }
+  }
+  
+  console.log(`✅ Nomes correspondem: "${nomeLead}" ≈ "${nomeEncontrado}"`);
+  return true;
+}
+
+// ═══════════════════════════════════════════
+// FUNÇÃO BUSCAR LINKEDIN (SERPAPI) COM VALIDAÇÃO DE NOME
 // ═══════════════════════════════════════════
 async function buscarLinkedIn(nomeLead: string, cidade?: string, empresaOuCargo?: string): Promise<string | null> {
   const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
@@ -44,12 +101,23 @@ async function buscarLinkedIn(nomeLead: string, cidade?: string, empresaOuCargo?
     for (const result of results) {
       const link = result.link || '';
       if (link.includes('linkedin.com/in/')) {
-        console.log(`✅ LinkedIn encontrado: ${link}`);
-        return link;
+        // VALIDAR NOME antes de aceitar
+        const titulo = result.title || '';
+        // LinkedIn títulos geralmente são "Nome Sobrenome - Cargo | LinkedIn"
+        const nomeDoTitulo = titulo.split(' - ')[0].split(' | ')[0].trim();
+        
+        console.log(`🔍 Verificando correspondência: "${nomeLead}" vs "${nomeDoTitulo}"`);
+        
+        if (nomesCorrespondem(nomeLead, nomeDoTitulo)) {
+          console.log(`✅ LinkedIn VALIDADO: ${link}`);
+          return link;
+        } else {
+          console.log(`⚠️ LinkedIn rejeitado (nome não corresponde): ${nomeDoTitulo}`);
+        }
       }
     }
     
-    console.log(`⚠️ LinkedIn não encontrado para ${nomeLead}`);
+    console.log(`⚠️ LinkedIn não encontrado para ${nomeLead} (nenhum resultado válido)`);
     return null;
   } catch (e) {
     console.log(`❌ Erro ao buscar LinkedIn: ${e}`);
@@ -58,7 +126,7 @@ async function buscarLinkedIn(nomeLead: string, cidade?: string, empresaOuCargo?
 }
 
 // ═══════════════════════════════════════════
-// FUNÇÃO BUSCAR INSTAGRAM (SERPAPI)
+// FUNÇÃO BUSCAR INSTAGRAM (SERPAPI) COM VALIDAÇÃO DE NOME
 // ═══════════════════════════════════════════
 async function buscarInstagram(nomeLead: string, cidade?: string): Promise<{ url: string | null, username: string | null }> {
   const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
@@ -92,8 +160,21 @@ async function buscarInstagram(nomeLead: string, cidade?: string): Promise<{ url
       const match = link.match(/instagram\.com\/([a-zA-Z0-9._]+)\/?$/);
       if (match && !['p', 'reel', 'stories', 'explore', 'accounts'].includes(match[1])) {
         const username = match[1];
-        console.log(`✅ Instagram encontrado: @${username}`);
-        return { url: link, username };
+        
+        // VALIDAR: verificar se o título/snippet contém partes do nome
+        const titulo = result.title || '';
+        const snippet = result.snippet || '';
+        const textoCompleto = `${titulo} ${snippet}`.toLowerCase();
+        
+        const partesNome = normalizarNome(nomeLead);
+        const temNomeNoTexto = partesNome.slice(0, 2).some(parte => textoCompleto.includes(parte));
+        
+        if (temNomeNoTexto) {
+          console.log(`✅ Instagram VALIDADO: @${username}`);
+          return { url: link, username };
+        } else {
+          console.log(`⚠️ Instagram rejeitado (nome não encontrado no resultado): @${username}`);
+        }
       }
     }
     
@@ -106,7 +187,7 @@ async function buscarInstagram(nomeLead: string, cidade?: string): Promise<{ url
 }
 
 // ═══════════════════════════════════════════
-// FUNÇÃO BUSCAR FACEBOOK (SERPAPI)
+// FUNÇÃO BUSCAR FACEBOOK (SERPAPI) COM VALIDAÇÃO DE NOME
 // ═══════════════════════════════════════════
 async function buscarFacebook(nomeLead: string, cidade?: string): Promise<string | null> {
   const SERPAPI_KEY = Deno.env.get('SERPAPI_KEY');
@@ -141,8 +222,20 @@ async function buscarFacebook(nomeLead: string, cidade?: string): Promise<string
           !link.includes('/posts/') && 
           !link.includes('/photos/') &&
           !link.includes('/videos/')) {
-        console.log(`✅ Facebook encontrado: ${link}`);
-        return link;
+        
+        // VALIDAR: verificar se o título contém partes do nome
+        const titulo = result.title || '';
+        const partesNome = normalizarNome(nomeLead);
+        const tituloNormalizado = titulo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        
+        const temNomeNoTitulo = partesNome.slice(0, 2).some(parte => tituloNormalizado.includes(parte));
+        
+        if (temNomeNoTitulo) {
+          console.log(`✅ Facebook VALIDADO: ${link}`);
+          return link;
+        } else {
+          console.log(`⚠️ Facebook rejeitado (nome não encontrado): ${titulo}`);
+        }
       }
     }
     
