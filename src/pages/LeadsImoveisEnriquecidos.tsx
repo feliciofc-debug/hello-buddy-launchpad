@@ -482,6 +482,49 @@ export default function LeadsImoveisEnriquecidos() {
           </div>
         </div>
         <div className="flex gap-2">
+          {/* BOTÃO DE TESTE LINKEDIN */}
+          <Button 
+            onClick={async () => {
+              toast.info('🧪 Testando busca LinkedIn...');
+              try {
+                const { data, error } = await supabase.functions.invoke('teste-linkedin', {
+                  body: { nome: 'Luana Kimilly', empresa: 'Lucrum Imobiliária' }
+                });
+                
+                console.log('🧪 TESTE LINKEDIN RESULTADO:', data);
+                
+                if (error) {
+                  toast.error(`Erro: ${error.message}`);
+                  return;
+                }
+                
+                const resultado = data?.resultados || {};
+                const googleOk = resultado.teste_google?.sucesso;
+                const serpapiOk = resultado.teste_serpapi?.sucesso;
+                
+                if (googleOk || serpapiOk) {
+                  const perfis = googleOk 
+                    ? resultado.teste_google.perfis 
+                    : resultado.teste_serpapi.perfis;
+                  
+                  toast.success(`✅ ${perfis?.length || 0} perfis LinkedIn encontrados!`);
+                  
+                  if (perfis?.[0]?.link) {
+                    window.open(perfis[0].link, '_blank');
+                  }
+                } else {
+                  toast.error('❌ Nenhuma API funcionou. Verifique GOOGLE_API_KEY, GOOGLE_CX e SERPAPI_KEY');
+                }
+              } catch (e: any) {
+                console.error('Erro teste:', e);
+                toast.error(`Erro: ${e.message}`);
+              }
+            }}
+            className="bg-purple-600 hover:bg-purple-700 text-white"
+          >
+            🧪 Testar LinkedIn (Luana Kimilly)
+          </Button>
+          
           <Button 
             onClick={() => setMostrarConfig(!mostrarConfig)} 
             variant="outline"
