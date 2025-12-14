@@ -167,6 +167,7 @@ serve(async (req) => {
     
     console.log('═══════════════════════════════════════');
     console.log('🔍 Validando lead:', leadId);
+    console.log('Tipo do ID:', typeof leadId);
     console.log('═══════════════════════════════════════');
     
     const supabase = createClient(
@@ -181,7 +182,17 @@ serve(async (req) => {
       .eq('id', leadId)
       .single();
     
+    console.log('Lead encontrado?', !!lead);
+    console.log('Erro na busca?', leadError?.message);
+    
     if (leadError || !lead) {
+      // Listar leads disponíveis para debug
+      const { data: todosLeads } = await supabase
+        .from('leads_imoveis_enriquecidos')
+        .select('id, nome')
+        .limit(5);
+      
+      console.log('❌ Lead não encontrado! IDs disponíveis:', todosLeads?.map(l => ({ id: l.id, nome: l.nome })));
       throw new Error('Lead não encontrado');
     }
     
