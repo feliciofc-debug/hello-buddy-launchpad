@@ -189,6 +189,28 @@ Deno.serve(async (req) => {
       }
     }
 
+    // =============================
+    // VALIDAÇÃO: Site acessível?
+    // =============================
+    const hasContent = 
+      (finalMarkdown && finalMarkdown.length > 100) ||
+      (finalHtml && finalHtml.length > 500) ||
+      (finalMetadata?.title && finalMetadata?.title.length > 3);
+
+    if (!hasContent) {
+      console.error('❌ Site inacessível ou sem conteúdo extraível');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Não foi possível acessar o site "${formattedUrl}". Verifique se a URL está correta e o site está no ar.`,
+          siteInacessivel: true 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('✅ Conteúdo disponível para análise');
+
     // A partir daqui, usar finalHtml/finalMarkdown/finalMetadata
 
 
