@@ -106,6 +106,62 @@ Deno.serve(async (req) => {
     console.log('🌐 HTML length:', html.length);
     console.log('🖼️ Screenshot:', screenshotUrl ? 'sim' : 'não');
 
+    // =============================
+    // FALLBACK: se Firecrawl vier "vazio", buscar HTML direto
+    // (alguns sites bloqueiam o renderer, mas liberam HTML normal)
+    // =============================
+    let finalHtml = html;
+    let finalMarkdown = markdown;
+    let finalMetadata: any = metadata;
+
+    const firecrawlSeemsEmpty =
+      (!finalMarkdown || finalMarkdown.length < 50) &&
+      (!finalHtml || finalHtml.length < 200) &&
+      !screenshotUrl;
+
+    if (firecrawlSeemsEmpty) {
+      console.log('⚠️ Firecrawl retornou conteúdo vazio. Tentando fetch direto do HTML...');
+      try {
+        const directResp = await fetch(formattedUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+          },
+        });
+
+        const directHtml = await directResp.text();
+        if (directResp.ok && directHtml && directHtml.length > 500) {
+          finalHtml = directHtml;
+
+          const titleMatch = directHtml.match(/<title[^>]*>([^<]+)<\/title>/i);
+          const descMatch = directHtml.match(
+            /<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["'][^>]*>/i
+          );
+          const ogImageMatch = directHtml.match(
+            /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i
+          );
+
+          finalMetadata = {
+            ...finalMetadata,
+            title: finalMetadata?.title || titleMatch?.[1]?.trim() || null,
+            description: finalMetadata?.description || descMatch?.[1]?.trim() || null,
+            ogImage: finalMetadata?.ogImage || ogImageMatch?.[1]?.trim() || null,
+          };
+
+          console.log('✅ Fetch direto ok. Title:', finalMetadata?.title || 'N/A');
+        } else {
+          console.log('⚠️ Fetch direto não trouxe HTML útil:', directResp.status);
+        }
+      } catch (e) {
+        console.log('⚠️ Falha no fetch direto do HTML:', e);
+      }
+    }
+
+    // A partir daqui, usar finalHtml/finalMarkdown/finalMetadata
+
+
     // ============================================
     // EXTRAÇÃO CONFIÁVEL DE LOGO (prioriza logo real)
     // ============================================
@@ -125,7 +181,6 @@ Deno.serve(async (req) => {
     const isLikelyLogo = (u: string) => {
       const s = u.toLowerCase();
       if (s.includes('sprite')) return false;
-      // evita banners/hero comuns
       if (s.includes('banner') || s.includes('hero') || s.includes('cover')) return false;
       return s.includes('logo') || s.includes('brand') || s.includes('favicon') || s.includes('icon') || s.endsWith('.svg');
     };
@@ -155,8 +210,9 @@ Deno.serve(async (req) => {
       if (abs) logoCandidates.push({ url: abs, source: 'firecrawl.branding', score: 100 });
     }
 
+
     // 2) HTML: img com class/id/alt logo (prioridade máxima)
-    if (html) {
+    if (finalHtml) {
       const patterns = [
         /<img[^>]+(?:class|id)=["'][^"']*logo[^"']*["'][^>]+src=["']([^"']+)["']/gi,
         /<img[^>]+src=["']([^"']+)["'][^>]+(?:class|id)=["'][^"']*logo[^"']*["']/gi,
@@ -165,7 +221,7 @@ Deno.serve(async (req) => {
       ];
 
       for (const pattern of patterns) {
-        const matches = [...html.matchAll(pattern)];
+        const matches = [...finalHtml.matchAll(pattern)];
         for (const m of matches) {
           const abs = m?.[1] ? toAbsoluteUrl(m[1]) : null;
           if (!abs) continue;
@@ -179,7 +235,7 @@ Deno.serve(async (req) => {
         /<link[^>]+rel=["'](?:icon|shortcut icon|apple-touch-icon)["'][^>]+href=["']([^"']+)["']/gi,
       ];
       for (const pattern of iconPatterns) {
-        const matches = [...html.matchAll(pattern)];
+        const matches = [...finalHtml.matchAll(pattern)];
         for (const m of matches) {
           const abs = m?.[1] ? toAbsoluteUrl(m[1]) : null;
           if (!abs) continue;
@@ -188,13 +244,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 4) Metadata ogImage/twitter (último recurso — pode ser banner)
-    if (metadata?.ogImage && typeof metadata.ogImage === 'string') {
-      const abs = toAbsoluteUrl(metadata.ogImage);
+    // 4) Metadata ogImage/twitter
+    if (finalMetadata?.ogImage && typeof finalMetadata.ogImage === 'string') {
+      const abs = toAbsoluteUrl(finalMetadata.ogImage);
       if (abs) logoCandidates.push({ url: abs, source: 'metadata.ogImage', score: 20 });
     }
-    if (metadata?.favicon && typeof metadata.favicon === 'string') {
-      const abs = toAbsoluteUrl(metadata.favicon);
+    if (finalMetadata?.favicon && typeof finalMetadata.favicon === 'string') {
+      const abs = toAbsoluteUrl(finalMetadata.favicon);
       if (abs) logoCandidates.push({ url: abs, source: 'metadata.favicon', score: 30 });
     }
 
@@ -263,9 +319,9 @@ Deno.serve(async (req) => {
     pushColor((branding as any)?.colors?.accent);
 
     // 2) HTML (hex)
-    if (coresPrincipais.length === 0 && html) {
+    if (coresPrincipais.length === 0 && finalHtml) {
       const found = new Set<string>();
-      for (const m of html.matchAll(/#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})\b/g)) {
+      for (const m of finalHtml.matchAll(/#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})\b/g)) {
         const color = `#${m[1]}`.toUpperCase();
         if (!['#FFFFFF', '#FFF', '#000000', '#000', '#333333', '#666666', '#999999', '#CCCCCC'].includes(color)) {
           found.add(color);
@@ -284,7 +340,7 @@ Deno.serve(async (req) => {
     // ============================================
     console.log('🤖 Gerando análise profunda com IA...');
 
-    const conteudoLimpo = markdown
+    const conteudoLimpo = finalMarkdown
       .replace(/\[.*?\]\(.*?\)/g, '')
       .replace(/!\[.*?\]\(.*?\)/g, '')
       .replace(/#{1,6}\s/g, '')
@@ -296,8 +352,8 @@ Deno.serve(async (req) => {
 
 ## Informações da Empresa (extraídas do site ${formattedUrl}):
 
-**Título:** ${metadata?.title || 'Não identificado'}
-**Descrição:** ${metadata?.description || 'Não identificada'}
+**Título:** ${finalMetadata?.title || 'Não identificado'}
+**Descrição:** ${finalMetadata?.description || 'Não identificada'}
 **URL do site:** ${formattedUrl}
 
 **Branding:**
@@ -324,7 +380,7 @@ Responda APENAS em JSON válido (sem markdown, sem crases):
 }`;
 
     // Se o site vier pobre (sem title/markdown), usa screenshot para 'estudar' visualmente.
-    const shouldUseVision = !metadata?.title && (!conteudoLimpo || conteudoLimpo.length < 300);
+    const shouldUseVision = !finalMetadata?.title && (!conteudoLimpo || conteudoLimpo.length < 300);
 
     const messages: any[] = [{ role: 'system', content: analysisPrompt }];
 
@@ -412,7 +468,7 @@ Responda APENAS em JSON válido (sem markdown, sem crases):
       console.log('🎨 Gerando imagem personalizada...');
 
       const coresHex = analise.cores_principais?.join(', ') || coresPrincipais.join(', ');
-      const nomeEmpresa = metadata.title || urlObj.hostname.replace('www.', '').split('.')[0];
+      const nomeEmpresa = finalMetadata?.title || urlObj.hostname.replace('www.', '').split('.')[0];
 
       try {
         const imagePrompt = `Create a professional marketing image for "${nomeEmpresa}".
@@ -480,16 +536,16 @@ REQUIREMENTS:
       success: true,
       site: {
         url: formattedUrl,
-        titulo: metadata.title || urlObj.hostname,
-        descricao: metadata.description || analise.segmento || 'Site analisado com sucesso',
-        screenshot: screenshot
+        titulo: finalMetadata?.title || urlObj.hostname,
+        descricao: finalMetadata?.description || analise.segmento || 'Site analisado com sucesso',
+        screenshot: screenshotUrl,
       },
       branding: {
         logo: logoUrl,
-        cores: null,
+        cores: (branding as any)?.colors || {},
         cores_principais: coresPrincipais,
-        esquema: 'light',
-        fontes: []
+        esquema: (branding as any)?.colorScheme || 'light',
+        fontes: (branding as any)?.fonts || [],
       },
       analise: {
         ...analise,
@@ -498,17 +554,19 @@ REQUIREMENTS:
       imagem_gerada: imagemGerada,
       debug: {
         firecrawl_success: true,
-        markdown_length: markdown.length,
-        html_length: html.length,
+        firecrawl_seems_empty: firecrawlSeemsEmpty,
+        markdown_length: finalMarkdown.length,
+        html_length: finalHtml.length,
         links_count: links.length,
         logo_encontrada: !!logoUrl,
-        logo_fonte: logoUrl ? 'Extração automática' : 'Não encontrada',
+        logo_fonte: logoFonte,
         cores_encontradas: coresPrincipais.length,
         imagem_gerada: !!imagemGerada,
-        metadata_title: metadata.title || null,
-        metadata_description: metadata.description || null,
-      }
+        metadata_title: finalMetadata?.title || null,
+        metadata_description: finalMetadata?.description || null,
+      },
     };
+
 
     console.log('🎉 Análise completa!');
     console.log('📊 Debug:', JSON.stringify(resultado.debug, null, 2));
