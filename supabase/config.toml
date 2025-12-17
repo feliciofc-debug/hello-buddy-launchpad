@@ -206,3 +206,6 @@ verify_jwt = false
 
 [functions.validar-lead-multifonte]
 verify_jwt = false
+
+[functions.analisar-negocio-inteligente]
+verify_jwt = false
