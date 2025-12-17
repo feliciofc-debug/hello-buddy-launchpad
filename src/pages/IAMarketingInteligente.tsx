@@ -21,7 +21,7 @@ export default function IAMarketingInteligente() {
     setResultado(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('analisar-negocio-inteligente', {
+      const { data, error } = await supabase.functions.invoke('analisar-negocio-final', {
         body: { url, prompt }
       });
 
@@ -153,6 +153,29 @@ export default function IAMarketingInteligente() {
 
             {resultado && (
               <>
+                {/* Logo e Info do Site */}
+                {resultado.logo?.url && (
+                  <div className="bg-white rounded-2xl shadow-xl p-6">
+                    <div className="flex items-center gap-4">
+                      <img 
+                        src={resultado.logo.url} 
+                        alt="Logo" 
+                        className="w-16 h-16 object-contain rounded-lg border"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = resultado.logo.fallback;
+                        }}
+                      />
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">{resultado.site?.titulo}</h2>
+                        <p className="text-sm text-gray-500">{resultado.site?.domain}</p>
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                          Logo via {resultado.logo.metodo}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Análise do Negócio */}
                 <div className="bg-white rounded-2xl shadow-xl p-6">
                   <div className="flex items-center gap-3 mb-4">
@@ -163,38 +186,24 @@ export default function IAMarketingInteligente() {
                   <div className="space-y-4">
                     <div className="bg-indigo-50 rounded-lg p-4">
                       <p className="text-sm font-medium text-indigo-900 mb-1">O que faz:</p>
-                      <p className="text-indigo-700">{resultado.analise_completa?.negocio?.oque_faz}</p>
+                      <p className="text-indigo-700">{resultado.analise?.empresa?.oque_faz}</p>
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-4">
                       <div className="bg-purple-50 rounded-lg p-4">
                         <p className="text-sm font-medium text-purple-900 mb-1">Setor:</p>
-                        <p className="text-purple-700">{resultado.analise_completa?.negocio?.setor}</p>
+                        <p className="text-purple-700">{resultado.analise?.empresa?.setor}</p>
                       </div>
                       <div className="bg-pink-50 rounded-lg p-4">
                         <p className="text-sm font-medium text-pink-900 mb-1">Cliente Alvo:</p>
-                        <p className="text-pink-700">{resultado.analise_completa?.negocio?.cliente_alvo}</p>
+                        <p className="text-pink-700">{resultado.analise?.empresa?.cliente}</p>
                       </div>
                     </div>
 
                     <div className="bg-blue-50 rounded-lg p-4">
                       <p className="text-sm font-medium text-blue-900 mb-2">Proposta de Valor:</p>
-                      <p className="text-blue-700">{resultado.analise_completa?.negocio?.proposta_valor}</p>
+                      <p className="text-blue-700">{resultado.analise?.empresa?.proposta_valor}</p>
                     </div>
-
-                    {resultado.analise_completa?.negocio?.diferenciais && (
-                      <div className="bg-green-50 rounded-lg p-4">
-                        <p className="text-sm font-medium text-green-900 mb-2">Diferenciais:</p>
-                        <ul className="space-y-1">
-                          {resultado.analise_completa.negocio.diferenciais.map((dif: string, i: number) => (
-                            <li key={i} className="text-green-700 text-sm flex items-start gap-2">
-                              <span className="text-green-500 mt-0.5">✓</span>
-                              {dif}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -209,19 +218,19 @@ export default function IAMarketingInteligente() {
                     <div className="grid md:grid-cols-2 gap-4">
                       <div className="bg-purple-50 rounded-lg p-4">
                         <p className="text-sm font-medium text-purple-900 mb-1">Estilo Visual:</p>
-                        <p className="text-purple-700 capitalize">{resultado.analise_completa?.identidade?.estilo_visual}</p>
+                        <p className="text-purple-700 capitalize">{resultado.analise?.identidade?.estilo}</p>
                       </div>
                       <div className="bg-pink-50 rounded-lg p-4">
                         <p className="text-sm font-medium text-pink-900 mb-1">Tom:</p>
-                        <p className="text-pink-700 capitalize">{resultado.analise_completa?.identidade?.tom_comunicacao}</p>
+                        <p className="text-pink-700 capitalize">{resultado.analise?.identidade?.tom}</p>
                       </div>
                     </div>
 
-                    {resultado.branding?.cores_principais && resultado.branding.cores_principais.length > 0 && (
+                    {resultado.analise?.identidade?.cores && resultado.analise.identidade.cores.length > 0 && (
                       <div className="bg-gray-50 rounded-lg p-4">
                         <p className="text-sm font-medium text-gray-900 mb-3">Paleta de Cores:</p>
                         <div className="flex gap-3 flex-wrap">
-                          {resultado.branding.cores_principais.map((cor: string, i: number) => (
+                          {resultado.analise.identidade.cores.map((cor: string, i: number) => (
                             <div key={i} className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg shadow-sm">
                               <div
                                 className="w-10 h-10 rounded-lg border-2 border-gray-200"
@@ -236,7 +245,7 @@ export default function IAMarketingInteligente() {
 
                     <div className="bg-indigo-50 rounded-lg p-4">
                       <p className="text-sm font-medium text-indigo-900 mb-1">Personalidade:</p>
-                      <p className="text-indigo-700">{resultado.analise_completa?.identidade?.personalidade}</p>
+                      <p className="text-indigo-700">{resultado.analise?.identidade?.personalidade}</p>
                     </div>
                   </div>
                 </div>
@@ -251,26 +260,26 @@ export default function IAMarketingInteligente() {
                   <div className="space-y-4">
                     <div>
                       <p className="text-indigo-100 text-sm mb-2">Título:</p>
-                      <h3 className="text-2xl font-bold">{resultado.resultado_final?.titulo}</h3>
+                      <h3 className="text-2xl font-bold">{resultado.conteudo?.titulo}</h3>
                     </div>
 
                     <div>
                       <p className="text-indigo-100 text-sm mb-2">Mensagem:</p>
                       <p className="text-lg leading-relaxed whitespace-pre-wrap">
-                        {resultado.resultado_final?.mensagem}
+                        {resultado.conteudo?.texto}
                       </p>
                     </div>
 
-                    {resultado.resultado_final?.cta && (
+                    {resultado.conteudo?.cta && (
                       <div>
                         <p className="text-indigo-100 text-sm mb-2">Call to Action:</p>
-                        <p className="text-lg font-semibold">{resultado.resultado_final.cta}</p>
+                        <p className="text-lg font-semibold">{resultado.conteudo.cta}</p>
                       </div>
                     )}
 
-                    {resultado.resultado_final?.hashtags && (
+                    {resultado.conteudo?.hashtags && (
                       <div className="flex gap-2 flex-wrap">
-                        {resultado.resultado_final.hashtags.map((tag: string, i: number) => (
+                        {resultado.conteudo.hashtags.map((tag: string, i: number) => (
                           <span key={i} className="bg-white/20 px-3 py-1 rounded-full text-sm">
                             {tag}
                           </span>
@@ -281,12 +290,17 @@ export default function IAMarketingInteligente() {
                 </div>
 
                 {/* Imagem Gerada */}
-                {resultado.resultado_final?.imagem && (
+                {resultado.imagem?.url && (
                   <div className="bg-white rounded-2xl shadow-xl p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-xl font-bold text-gray-900">Imagem Contextualizada</h2>
+                      <div>
+                        <h2 className="text-xl font-bold text-gray-900">Imagem Gerada</h2>
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                          via {resultado.imagem.metodo}
+                        </span>
+                      </div>
                       <button
-                        onClick={() => window.open(resultado.resultado_final.imagem, '_blank')}
+                        onClick={() => window.open(resultado.imagem.url, '_blank')}
                         className="flex items-center gap-2 px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
                       >
                         <Download className="w-4 h-4" />
@@ -294,7 +308,7 @@ export default function IAMarketingInteligente() {
                       </button>
                     </div>
                     <img
-                      src={resultado.resultado_final.imagem}
+                      src={resultado.imagem.url}
                       alt="Imagem gerada"
                       className="w-full rounded-lg shadow-lg"
                     />
@@ -305,7 +319,7 @@ export default function IAMarketingInteligente() {
                 {resultado.debug && (
                   <details className="bg-white/10 backdrop-blur-lg rounded-xl p-4 border border-white/20">
                     <summary className="text-sm text-white/70 cursor-pointer font-medium">
-                      Informações Técnicas
+                      Informações Técnicas (Debug)
                     </summary>
                     <pre className="mt-3 text-xs overflow-auto bg-black/30 p-3 rounded text-white/80">
                       {JSON.stringify(resultado.debug, null, 2)}
