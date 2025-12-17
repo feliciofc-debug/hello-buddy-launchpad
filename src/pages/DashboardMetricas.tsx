@@ -255,7 +255,7 @@ export default function DashboardMetricas() {
     { icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
     { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
     { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
-    { icon: Sparkles, label: '✨ IA Marketing 2.0', path: '/ia-marketing-avancada', highlight: true },
+    
     { icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },
     { icon: Search, label: 'Buscar CNPJ', path: '/prospects' },
     { icon: Flame, label: 'Funil de Leads', path: '/leads-funil' },

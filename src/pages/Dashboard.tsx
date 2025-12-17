@@ -348,17 +348,6 @@ const Dashboard = () => {
             IA Marketing
           </a>
           <a
-            href="/ia-marketing-avancada"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md hover:shadow-lg ${
-              window.location.pathname === '/ia-marketing-avancada' 
-                ? 'ring-2 ring-purple-300' 
-                : ''
-            }`}
-          >
-            <Sparkles size={20} />
-            <span className="font-semibold">✨ IA Marketing 2.0</span>
-          </a>
-          <a
             href="/whatsapp"
             className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md hover:shadow-lg ${
               window.location.pathname === '/whatsapp' 

@@ -55,8 +55,6 @@ import ConfiguracoesWhatsApp from "./pages/ConfiguracoesWhatsApp";
 import AdminImportar from "./pages/AdminImportar";
 import LeadsImoveisEnriquecidos from "./pages/LeadsImoveisEnriquecidos";
 import SeguidoresConcorrentes from "./pages/SeguidoresConcorrentes";
-import IAMarketingAvancada from "./pages/IAMarketingAvancada";
-import IAMarketingInteligente from "./pages/IAMarketingInteligente";
 
 import CookieBanner from "./components/CookieBanner";
 
@@ -121,8 +119,6 @@ const App = () => (
             <Route path="/configuracoes-whatsapp" element={<ConfiguracoesWhatsApp />} />
             <Route path="/imoveis/leads-enriquecidos" element={<LeadsImoveisEnriquecidos />} />
             <Route path="/imoveis/seguidores-concorrentes" element={<SeguidoresConcorrentes />} />
-            <Route path="/ia-marketing-avancada" element={<IAMarketingAvancada />} />
-            <Route path="/ia-marketing-inteligente" element={<IAMarketingInteligente />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
