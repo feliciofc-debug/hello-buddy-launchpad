@@ -1,11 +1,11 @@
 // ============================================
 // COMPONENTE: IA Marketing 2.0 (Avançada)
 // Análise de Sites + Geração de Imagens
-// ISOLADO - Não afeta funcionalidade atual
+// Com exibição melhorada de branding
 // ============================================
 
 import { useState } from 'react';
-import { Loader2, Globe, Sparkles, Download, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Loader2, Globe, Sparkles, Download, AlertCircle, ArrowLeft, CheckCircle2, XCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -260,7 +260,7 @@ export default function IAMarketingAvancada() {
                   <p className="text-sm mt-1 dark:text-gray-300">
                     <strong>Tom:</strong> {resultado.analise?.tom_marca || 'N/A'}
                   </p>
-                  {resultado.analise?.cores_principais && (
+                  {resultado.analise?.cores_principais && resultado.analise.cores_principais.length > 0 && (
                     <div className="flex gap-2 mt-2">
                       {resultado.analise.cores_principais.map((cor: string, idx: number) => (
                         <div
@@ -309,6 +309,103 @@ export default function IAMarketingAvancada() {
                   </div>
                 )}
 
+                {/* Branding Extraído - MELHORADO */}
+                {resultado.branding && (
+                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/30 dark:to-pink-900/30 rounded-xl p-4">
+                    <h3 className="font-semibold text-purple-900 dark:text-purple-200 mb-3 flex items-center gap-2">
+                      🎨 Branding Detectado
+                      {resultado.debug?.logo_encontrada && (
+                        <span className="text-xs bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          Logo ✓
+                        </span>
+                      )}
+                      {resultado.debug?.cores_encontradas > 0 && (
+                        <span className="text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                          {resultado.debug.cores_encontradas} cores
+                        </span>
+                      )}
+                    </h3>
+                    
+                    {/* Logo */}
+                    {resultado.branding.logo && (
+                      <div className="mb-4">
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Logo:</p>
+                        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg inline-block">
+                          <img 
+                            src={resultado.branding.logo} 
+                            alt="Logo da empresa" 
+                            className="max-h-16 object-contain"
+                            onError={(e) => {
+                              const target = e.currentTarget;
+                              target.style.display = 'none';
+                              const fallback = target.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'flex';
+                            }}
+                          />
+                          <div 
+                            className="items-center gap-2 text-xs text-gray-500 dark:text-gray-400"
+                            style={{ display: 'none' }}
+                          >
+                            <XCircle className="w-4 h-4" />
+                            Logo não carregou
+                          </div>
+                        </div>
+                        {resultado.debug?.logo_fonte && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Fonte: {resultado.debug.logo_fonte}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Cores Principais */}
+                    {resultado.branding.cores_principais?.length > 0 && (
+                      <div className="mb-4">
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Cores Principais:
+                        </p>
+                        <div className="flex gap-2 flex-wrap">
+                          {resultado.branding.cores_principais.map((cor: string, idx: number) => (
+                            <div 
+                              key={idx}
+                              className="flex items-center gap-2 bg-white dark:bg-gray-800 px-3 py-2 rounded-lg shadow-sm"
+                            >
+                              <div
+                                className="w-8 h-8 rounded-full border-2 border-gray-200 dark:border-gray-600"
+                                style={{ backgroundColor: cor }}
+                              />
+                              <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{cor}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Todas as Cores (detalhado) */}
+                    {resultado.branding.cores && Object.keys(resultado.branding.cores).length > 0 && (
+                      <details className="mt-3">
+                        <summary className="text-sm text-purple-700 dark:text-purple-300 cursor-pointer hover:underline">
+                          Ver paleta completa
+                        </summary>
+                        <div className="mt-2 bg-white dark:bg-gray-800 p-3 rounded-lg text-xs">
+                          <pre className="overflow-auto text-gray-600 dark:text-gray-400">
+                            {JSON.stringify(resultado.branding.cores, null, 2)}
+                          </pre>
+                        </div>
+                      </details>
+                    )}
+                    
+                    {/* Esquema de Cores */}
+                    {resultado.branding.esquema && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-3">
+                        <strong>Esquema:</strong>{' '}
+                        <span className="capitalize">{resultado.branding.esquema}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Screenshot do Site */}
                 {resultado.site?.screenshot && (
                   <details className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
@@ -323,30 +420,41 @@ export default function IAMarketingAvancada() {
                   </details>
                 )}
 
-                {/* Branding Extraído */}
-                {resultado.branding && (
-                  <details className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                    <summary className="font-semibold text-gray-700 dark:text-gray-200 cursor-pointer">
-                      🎨 Branding Detectado
+                {/* Debug Info */}
+                {resultado.debug && (
+                  <details className="bg-gray-100 dark:bg-gray-700 rounded-xl p-4">
+                    <summary className="font-semibold text-gray-600 dark:text-gray-300 cursor-pointer text-sm">
+                      🔧 Info Técnica (Debug)
                     </summary>
-                    <div className="mt-3 space-y-2 text-sm dark:text-gray-300">
-                      {resultado.branding.logo && (
-                        <div>
-                          <strong>Logo:</strong>
-                          <img src={resultado.branding.logo} alt="Logo" className="mt-2 h-12" />
-                        </div>
-                      )}
-                      {resultado.branding.cores && (
-                        <div>
-                          <strong>Cores:</strong>
-                          <pre className="bg-white dark:bg-gray-800 p-2 rounded mt-1 text-xs overflow-auto">
-                            {JSON.stringify(resultado.branding.cores, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                      {resultado.branding.esquema && (
-                        <p><strong>Esquema:</strong> {resultado.branding.esquema}</p>
-                      )}
+                    <div className="mt-3 space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                      <p className="flex items-center gap-2">
+                        {resultado.debug.firecrawl_branding_recebido ? 
+                          <CheckCircle2 className="w-4 h-4 text-green-500" /> : 
+                          <XCircle className="w-4 h-4 text-red-500" />
+                        }
+                        Branding do Firecrawl: {resultado.debug.firecrawl_branding_recebido ? 'Recebido' : 'Não recebido'}
+                      </p>
+                      <p className="flex items-center gap-2">
+                        {resultado.debug.logo_encontrada ? 
+                          <CheckCircle2 className="w-4 h-4 text-green-500" /> : 
+                          <XCircle className="w-4 h-4 text-red-500" />
+                        }
+                        Logo encontrada: {resultado.debug.logo_encontrada ? `Sim (${resultado.debug.logo_fonte})` : 'Não'}
+                      </p>
+                      <p className="flex items-center gap-2">
+                        {resultado.debug.cores_encontradas > 0 ? 
+                          <CheckCircle2 className="w-4 h-4 text-green-500" /> : 
+                          <XCircle className="w-4 h-4 text-yellow-500" />
+                        }
+                        Cores encontradas: {resultado.debug.cores_encontradas}
+                      </p>
+                      <p className="flex items-center gap-2">
+                        {resultado.debug.imagem_gerada ? 
+                          <CheckCircle2 className="w-4 h-4 text-green-500" /> : 
+                          <XCircle className="w-4 h-4 text-yellow-500" />
+                        }
+                        Imagem gerada: {resultado.debug.imagem_gerada ? 'Sim' : 'Não'}
+                      </p>
                     </div>
                   </details>
                 )}
