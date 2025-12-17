@@ -209,3 +209,6 @@ verify_jwt = false
 
 [functions.analisar-negocio-inteligente]
 verify_jwt = false
+
+[functions.analisar-negocio-final]
+verify_jwt = false
