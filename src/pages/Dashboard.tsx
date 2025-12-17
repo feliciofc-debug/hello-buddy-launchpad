@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2 } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2, Sparkles } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart as RechartsBarChart, Bar, Legend } from 'recharts';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from 'next-themes';
@@ -346,6 +346,17 @@ const Dashboard = () => {
           >
             <Bot size={20} />
             IA Marketing
+          </a>
+          <a
+            href="/ia-marketing-avancada"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md hover:shadow-lg ${
+              window.location.pathname === '/ia-marketing-avancada' 
+                ? 'ring-2 ring-purple-300' 
+                : ''
+            }`}
+          >
+            <Sparkles size={20} />
+            <span className="font-semibold">✨ IA Marketing 2.0</span>
           </a>
           <a
             href="/whatsapp"
