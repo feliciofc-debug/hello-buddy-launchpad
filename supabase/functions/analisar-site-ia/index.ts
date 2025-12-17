@@ -350,13 +350,12 @@ Deno.serve(async (req) => {
       }
 
       // fallback 2 (mais confiável): Clearbit logo por domínio
+      // NÃO valida com HEAD - Clearbit é serviço confiável e retorna 404 se não tiver
       if (!logoUrl) {
         const domain = urlObj.hostname.replace('www.', '');
-        const clearbitUrl = `https://logo.clearbit.com/${domain}`;
-        if (await validateImageUrl(clearbitUrl)) {
-          logoUrl = clearbitUrl;
-          logoFonte = 'fallback:clearbit';
-        }
+        logoUrl = `https://logo.clearbit.com/${domain}`;
+        logoFonte = 'fallback:clearbit';
+        console.log('🔷 Usando Clearbit Logo (sem validação):', logoUrl);
       }
 
       // fallback 3: Google Favicon (128px)
