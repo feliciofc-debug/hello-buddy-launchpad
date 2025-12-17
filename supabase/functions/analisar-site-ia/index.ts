@@ -156,6 +156,36 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         console.log('⚠️ Falha no fetch direto do HTML:', e);
+    }
+    }
+
+    // =============================
+    // FALLBACK EXTRA: Jina Reader (quando Firecrawl + fetch direto falham)
+    // =============================
+    const stillEmpty =
+      (!finalMarkdown || finalMarkdown.length < 50) &&
+      (!finalHtml || finalHtml.length < 200);
+
+    if (stillEmpty) {
+      console.log('⚠️ Conteúdo ainda vazio. Tentando Jina Reader...');
+      try {
+        const jinaUrl = `https://r.jina.ai/${formattedUrl}`;
+        const jinaResp = await fetch(jinaUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+          },
+        });
+
+        const jinaText = await jinaResp.text();
+        if (jinaResp.ok && jinaText && jinaText.length > 500) {
+          finalMarkdown = jinaText;
+          console.log('✅ Jina Reader OK. Length:', finalMarkdown.length);
+        } else {
+          console.log('⚠️ Jina Reader não trouxe conteúdo útil:', jinaResp.status);
+        }
+      } catch (e) {
+        console.log('⚠️ Falha no Jina Reader:', e);
       }
     }
 
@@ -287,16 +317,34 @@ Deno.serve(async (req) => {
     }
 
     if (!logoUrl) {
-      // fallback simples: caminhos comuns
-      const testUrl = `${baseUrl}/logo.png`;
-      if (await validateImageUrl(testUrl)) {
-        logoUrl = testUrl;
-        logoFonte = 'fallback:/logo.png';
-      } else {
-        logoUrl = testUrl; // mantém para tentativa no front, mas marca como fallback
-        logoFonte = 'fallback:unverified';
+      // fallback 1: caminhos comuns (tenta validar)
+      const commonPaths = [`${baseUrl}/logo.png`, `${baseUrl}/logo.svg`, `${baseUrl}/assets/logo.png`];
+      for (const u of commonPaths) {
+        if (await validateImageUrl(u)) {
+          logoUrl = u;
+          logoFonte = 'fallback:common-path';
+          break;
+        }
       }
-      console.log('⚠️ Logo não encontrada, usando fallback:', logoUrl);
+
+      // fallback 2 (mais confiável): Clearbit logo por domínio
+      if (!logoUrl) {
+        const domain = urlObj.hostname.replace('www.', '');
+        const clearbitUrl = `https://logo.clearbit.com/${domain}`;
+        if (await validateImageUrl(clearbitUrl)) {
+          logoUrl = clearbitUrl;
+          logoFonte = 'fallback:clearbit';
+        }
+      }
+
+      // fallback 3: Google Favicon (128px)
+      if (!logoUrl) {
+        const domain = urlObj.hostname.replace('www.', '');
+        logoUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+        logoFonte = 'fallback:google-favicon';
+      }
+
+      console.log('⚠️ Logo via fallback:', logoUrl, logoFonte);
     } else {
       console.log('✅ Logo encontrada:', logoUrl, 'via', logoFonte);
     }
@@ -502,7 +550,7 @@ REQUIREMENTS:
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'google/gemini-2.5-flash-image-preview',
+            model: 'google/gemini-2.5-flash-image',
             messages: [
               { role: 'user', content: imagePrompt }
             ],
