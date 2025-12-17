@@ -65,9 +65,10 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         url: formattedUrl,
-        formats: ['markdown', 'html', 'screenshot', 'links'],
-        onlyMainContent: false, // Pegar TODO o conteúdo
-        waitFor: 3000, // Esperar 3s para JavaScript carregar
+        // Inclui branding para pegar logo/cores oficiais quando disponível
+        formats: ['branding', 'markdown', 'html', 'screenshot', 'links'],
+        onlyMainContent: false,
+        waitFor: 3000,
         timeout: 30000,
       }),
     });
@@ -84,213 +85,260 @@ Deno.serve(async (req) => {
 
     console.log('✅ Scraping concluído');
 
-    // Extrair dados do scraping
+    // Extrair dados do scraping (Firecrawl v1 pode vir em data.*)
     const siteData = firecrawlData.data || firecrawlData;
+    const branding = siteData.branding || {};
     const markdown = siteData.markdown || '';
     const html = siteData.html || siteData.rawHtml || '';
     const screenshot = siteData.screenshot || null;
     const metadata = siteData.metadata || {};
     const links = siteData.links || [];
 
-    console.log('📄 Metadata extraída:', JSON.stringify(metadata, null, 2));
+    // Normaliza screenshot (Firecrawl normalmente retorna base64 puro)
+    const screenshotUrl =
+      typeof screenshot === 'string'
+        ? (screenshot.startsWith('data:') || screenshot.startsWith('http')
+            ? screenshot
+            : `data:image/png;base64,${screenshot}`)
+        : null;
+
     console.log('📝 Markdown length:', markdown.length);
-    console.log('🔗 Links encontrados:', links.length);
+    console.log('🌐 HTML length:', html.length);
+    console.log('🖼️ Screenshot:', screenshotUrl ? 'sim' : 'não');
 
     // ============================================
-    // EXTRAÇÃO INTELIGENTE DE LOGO
+    // EXTRAÇÃO CONFIÁVEL DE LOGO (prioriza logo real)
     // ============================================
-    let logoUrl: string | null = null;
     const urlObj = new URL(formattedUrl);
     const baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
 
-    // 1. Procurar no HTML por tags de logo
+    const toAbsoluteUrl = (candidate: string) => {
+      let u = candidate.trim();
+      if (!u) return null;
+      if (u.startsWith('data:')) return null; // não usar data URI como logo
+      if (u.startsWith('//')) u = `${urlObj.protocol}${u}`;
+      if (u.startsWith('/')) return baseUrl + u;
+      if (!u.startsWith('http')) return `${baseUrl}/${u}`;
+      return u;
+    };
+
+    const isLikelyLogo = (u: string) => {
+      const s = u.toLowerCase();
+      if (s.includes('sprite')) return false;
+      // evita banners/hero comuns
+      if (s.includes('banner') || s.includes('hero') || s.includes('cover')) return false;
+      return s.includes('logo') || s.includes('brand') || s.includes('favicon') || s.includes('icon') || s.endsWith('.svg');
+    };
+
+    const validateImageUrl = async (u: string) => {
+      try {
+        const resp = await fetch(u, { method: 'HEAD' });
+        if (!resp.ok) return false;
+        const ct = resp.headers.get('content-type') || '';
+        return ct.startsWith('image/');
+      } catch {
+        return false;
+      }
+    };
+
+    const logoCandidates: Array<{ url: string; source: string; score: number }> = [];
+
+    // 1) Branding (Firecrawl)
+    const brandingLogo =
+      (branding as any)?.images?.logo ||
+      (branding as any)?.images?.logoUrl ||
+      (branding as any)?.logo ||
+      (branding as any)?.images?.favicon;
+
+    if (typeof brandingLogo === 'string') {
+      const abs = toAbsoluteUrl(brandingLogo);
+      if (abs) logoCandidates.push({ url: abs, source: 'firecrawl.branding', score: 100 });
+    }
+
+    // 2) HTML: img com class/id/alt logo (prioridade máxima)
     if (html) {
-      const logoPatterns = [
-        // Meta tags
-        /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/gi,
-        /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/gi,
-        // Link tags
-        /<link[^>]+rel=["']icon["'][^>]+href=["']([^"']+)["']/gi,
-        /<link[^>]+rel=["']apple-touch-icon["'][^>]+href=["']([^"']+)["']/gi,
-        /<link[^>]+rel=["']shortcut icon["'][^>]+href=["']([^"']+)["']/gi,
-        // Img tags com class/id logo
+      const patterns = [
         /<img[^>]+(?:class|id)=["'][^"']*logo[^"']*["'][^>]+src=["']([^"']+)["']/gi,
         /<img[^>]+src=["']([^"']+)["'][^>]+(?:class|id)=["'][^"']*logo[^"']*["']/gi,
-        // Img tags com alt logo
         /<img[^>]+alt=["'][^"']*logo[^"']*["'][^>]+src=["']([^"']+)["']/gi,
-        /<img[^>]+src=["']([^"']+)["'][^>]+alt=["'][^"']*logo[^"']*["']/gi,
-        // Imagens no header
         /<header[^>]*>[\s\S]*?<img[^>]+src=["']([^"']+)["']/gi,
-        // Qualquer img com 'logo' na src
-        /<img[^>]+src=["']([^"']*logo[^"']+)["']/gi,
-        /<img[^>]+src=["']([^"']*brand[^"']+)["']/gi,
       ];
 
-      for (const pattern of logoPatterns) {
+      for (const pattern of patterns) {
         const matches = [...html.matchAll(pattern)];
-        for (const match of matches) {
-          if (match[1] && !match[1].includes('data:') && !match[1].includes('placeholder')) {
-            let foundLogo = match[1];
-            // Converter URLs relativas em absolutas
-            if (foundLogo.startsWith('/')) {
-              foundLogo = baseUrl + foundLogo;
-            } else if (!foundLogo.startsWith('http')) {
-              foundLogo = baseUrl + '/' + foundLogo;
-            }
-            logoUrl = foundLogo;
-            console.log('✅ Logo encontrada via HTML pattern:', logoUrl);
-            break;
-          }
+        for (const m of matches) {
+          const abs = m?.[1] ? toAbsoluteUrl(m[1]) : null;
+          if (!abs) continue;
+          const score = isLikelyLogo(abs) ? 95 : 70;
+          logoCandidates.push({ url: abs, source: 'html.img', score });
         }
-        if (logoUrl) break;
       }
-    }
 
-    // 2. Procurar nos links extraídos
-    if (!logoUrl && links.length > 0) {
-      const logoLink = links.find((link: string) => 
-        link && (
-          link.toLowerCase().includes('logo') ||
-          link.toLowerCase().includes('brand') ||
-          link.match(/\.(png|jpg|jpeg|svg|webp)$/i)
-        )
-      );
-      if (logoLink) {
-        logoUrl = logoLink.startsWith('http') ? logoLink : baseUrl + logoLink;
-        console.log('✅ Logo encontrada via links:', logoUrl);
-      }
-    }
-
-    // 3. Open Graph / Twitter Image (geralmente a imagem principal)
-    if (!logoUrl && metadata?.ogImage) {
-      logoUrl = metadata.ogImage;
-      console.log('✅ Logo encontrada via ogImage:', logoUrl);
-    }
-
-    // 4. Favicon como último recurso (mas de alta resolução)
-    if (!logoUrl && metadata?.favicon) {
-      logoUrl = metadata.favicon.startsWith('http') ? metadata.favicon : baseUrl + metadata.favicon;
-      console.log('⚠️ Usando favicon como logo:', logoUrl);
-    }
-
-    // 5. Tentar URLs comuns de logo
-    if (!logoUrl) {
-      const commonLogoPaths = [
-        '/logo.png', '/logo.svg', '/logo.jpg', '/logo.webp',
-        '/images/logo.png', '/images/logo.svg',
-        '/img/logo.png', '/img/logo.svg',
-        '/assets/logo.png', '/assets/images/logo.png',
-        '/static/logo.png', '/static/images/logo.png',
-        '/wp-content/uploads/logo.png',
+      // 3) HTML: ícones (fallback)
+      const iconPatterns = [
+        /<link[^>]+rel=["'](?:icon|shortcut icon|apple-touch-icon)["'][^>]+href=["']([^"']+)["']/gi,
       ];
-      
-      for (const path of commonLogoPaths) {
-        try {
-          const testUrl = baseUrl + path;
-          const testResponse = await fetch(testUrl, { method: 'HEAD' });
-          if (testResponse.ok && testResponse.headers.get('content-type')?.startsWith('image/')) {
-            logoUrl = testUrl;
-            console.log('✅ Logo encontrada via teste de URL:', logoUrl);
-            break;
-          }
-        } catch {
-          // Continuar tentando
+      for (const pattern of iconPatterns) {
+        const matches = [...html.matchAll(pattern)];
+        for (const m of matches) {
+          const abs = m?.[1] ? toAbsoluteUrl(m[1]) : null;
+          if (!abs) continue;
+          logoCandidates.push({ url: abs, source: 'html.icon', score: 40 });
         }
       }
     }
 
-    console.log('🖼️ Logo final:', logoUrl || 'Não encontrada');
+    // 4) Metadata ogImage/twitter (último recurso — pode ser banner)
+    if (metadata?.ogImage && typeof metadata.ogImage === 'string') {
+      const abs = toAbsoluteUrl(metadata.ogImage);
+      if (abs) logoCandidates.push({ url: abs, source: 'metadata.ogImage', score: 20 });
+    }
+    if (metadata?.favicon && typeof metadata.favicon === 'string') {
+      const abs = toAbsoluteUrl(metadata.favicon);
+      if (abs) logoCandidates.push({ url: abs, source: 'metadata.favicon', score: 30 });
+    }
+
+    // 5) Links extraídos
+    if (links?.length) {
+      for (const link of links as string[]) {
+        if (!link) continue;
+        const abs = toAbsoluteUrl(link);
+        if (!abs) continue;
+        if (!abs.match(/\.(png|jpg|jpeg|svg|webp|ico)(\?.*)?$/i)) continue;
+        const score = isLikelyLogo(abs) ? 50 : 10;
+        logoCandidates.push({ url: abs, source: 'firecrawl.links', score });
+      }
+    }
+
+    // Ordena por score e valida com HEAD
+    let logoUrl: string | null = null;
+    let logoFonte: string | null = null;
+    const uniqueCandidates = Array.from(
+      new Map(
+        logoCandidates
+          .filter((c) => !!c.url)
+          .sort((a, b) => b.score - a.score)
+          .map((c) => [c.url, c])
+      ).values()
+    );
+
+    for (const c of uniqueCandidates.slice(0, 8)) {
+      if (await validateImageUrl(c.url)) {
+        logoUrl = c.url;
+        logoFonte = c.source;
+        break;
+      }
+    }
+
+    if (!logoUrl) {
+      // fallback simples: caminhos comuns
+      const testUrl = `${baseUrl}/logo.png`;
+      if (await validateImageUrl(testUrl)) {
+        logoUrl = testUrl;
+        logoFonte = 'fallback:/logo.png';
+      } else {
+        logoUrl = testUrl; // mantém para tentativa no front, mas marca como fallback
+        logoFonte = 'fallback:unverified';
+      }
+      console.log('⚠️ Logo não encontrada, usando fallback:', logoUrl);
+    } else {
+      console.log('✅ Logo encontrada:', logoUrl, 'via', logoFonte);
+    }
 
     // ============================================
-    // EXTRAÇÃO DE CORES DO HTML/CSS
+    // EXTRAÇÃO DE CORES (branding > HTML)
     // ============================================
     let coresPrincipais: string[] = [];
 
-    if (html) {
-      // Procurar cores em estilos inline e CSS
-      const colorPatterns = [
-        // Hex colors
-        /#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})\b/g,
-        // RGB colors
-        /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/gi,
-      ];
+    const pushColor = (c?: string) => {
+      if (!c || typeof c !== 'string') return;
+      const v = c.trim();
+      if (!v) return;
+      if (!coresPrincipais.includes(v)) coresPrincipais.push(v);
+    };
 
-      const foundColors = new Set<string>();
-      
-      for (const pattern of colorPatterns) {
-        const matches = html.matchAll(pattern);
-        for (const match of matches) {
-          if (match[0].startsWith('#')) {
-            const color = match[0].toUpperCase();
-            // Ignorar cores muito comuns/genéricas
-            if (!['#FFFFFF', '#FFF', '#000000', '#000', '#333333', '#666666', '#999999', '#CCCCCC'].includes(color)) {
-              foundColors.add(color);
-            }
-          }
+    // 1) Branding Firecrawl
+    pushColor((branding as any)?.colors?.primary);
+    pushColor((branding as any)?.colors?.secondary);
+    pushColor((branding as any)?.colors?.accent);
+
+    // 2) HTML (hex)
+    if (coresPrincipais.length === 0 && html) {
+      const found = new Set<string>();
+      for (const m of html.matchAll(/#([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})\b/g)) {
+        const color = `#${m[1]}`.toUpperCase();
+        if (!['#FFFFFF', '#FFF', '#000000', '#000', '#333333', '#666666', '#999999', '#CCCCCC'].includes(color)) {
+          found.add(color);
         }
       }
-
-      // Pegar as primeiras 5 cores únicas
-      coresPrincipais = Array.from(foundColors).slice(0, 5);
-      console.log('🎨 Cores encontradas no HTML:', coresPrincipais);
+      coresPrincipais = Array.from(found).slice(0, 5);
     }
 
-    // Fallback se não encontrou cores
     if (coresPrincipais.length === 0) {
-      coresPrincipais = ['#0066CC', '#333333', '#F5F5F5'];
-      console.log('⚠️ Usando cores padrão');
+      const scheme = (branding as any)?.colorScheme;
+      coresPrincipais = scheme === 'dark' ? ['#1A1A1A', '#333333'] : ['#0066CC', '#FFFFFF'];
     }
 
     // ============================================
-    // PASSO 2: Análise PROFUNDA com IA (Gemini)
+    // PASSO 2: Análise PROFUNDA com IA (com visão)
     // ============================================
     console.log('🤖 Gerando análise profunda com IA...');
 
-    // Limpar e preparar conteúdo para análise
     const conteudoLimpo = markdown
-      .replace(/\[.*?\]\(.*?\)/g, '') // Remove links markdown
-      .replace(/!\[.*?\]\(.*?\)/g, '') // Remove imagens markdown
-      .replace(/#{1,6}\s/g, '') // Remove headers markdown
-      .replace(/\*\*/g, '') // Remove bold
-      .replace(/\n{3,}/g, '\n\n') // Remove múltiplas linhas vazias
-      .substring(0, 5000); // Mais conteúdo para análise
+      .replace(/\[.*?\]\(.*?\)/g, '')
+      .replace(/!\[.*?\]\(.*?\)/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .substring(0, 6000);
 
-    const systemPrompt = `Você é um especialista em marketing digital e análise de marcas. 
-Sua tarefa é analisar PROFUNDAMENTE o site de uma empresa e criar conteúdo de marketing ALTAMENTE personalizado.
+    const analysisPrompt = `Você é um especialista em marketing e branding. Analise as informações abaixo de uma empresa e execute a tarefa solicitada.
 
-## DADOS DO SITE ANALISADO:
+## Informações da Empresa (extraídas do site ${formattedUrl}):
 
-**URL:** ${formattedUrl}
-**Título da Página:** ${metadata.title || 'Verificar no conteúdo'}
-**Descrição Meta:** ${metadata.description || 'Verificar no conteúdo'}
-**Logo encontrada:** ${logoUrl ? 'Sim - ' + logoUrl : 'Não encontrada'}
-**Cores detectadas:** ${coresPrincipais.join(', ')}
+**Título:** ${metadata?.title || 'Não identificado'}
+**Descrição:** ${metadata?.description || 'Não identificada'}
+**URL do site:** ${formattedUrl}
 
-## CONTEÚDO EXTRAÍDO DO SITE:
-${conteudoLimpo || 'Conteúdo não disponível - analisar pela URL e nome do domínio'}
+**Branding:**
+- Logo URL: ${logoUrl || 'Não encontrada'}
+- Cores principais: ${coresPrincipais.join(', ') || 'Não identificadas'}
+- Todas as cores: ${JSON.stringify((branding as any)?.colors || {})}
+- Fontes: ${JSON.stringify((branding as any)?.fonts || [])}
+- Esquema de cores: ${(branding as any)?.colorScheme || 'Não identificado'}
 
-## SUA MISSÃO:
+**Conteúdo do site (primeiros 6000 caracteres):**
+${conteudoLimpo || 'Não disponível'}
 
-1. **IDENTIFIQUE O NEGÓCIO**: Analise o conteúdo e determine EXATAMENTE o que a empresa faz, seus produtos/serviços, público-alvo
-2. **CAPTURE A ESSÊNCIA**: Entenda o tom, valores e personalidade da marca
-3. **USE AS CORES**: As cores ${coresPrincipais.join(', ')} são da marca - use-as nas sugestões
-4. **CRIE CONTEÚDO PERSONALIZADO**: Execute a tarefa do usuário de forma que pareça ter sido criado pelo time de marketing interno da empresa
-
-## TAREFA DO USUÁRIO:
+## Tarefa do Usuário:
 ${prompt}
 
-## RESPOSTA (JSON válido, sem markdown):
+Responda APENAS em JSON válido (sem markdown, sem crases):
 {
-  "segmento": "descrição precisa do tipo de negócio e mercado de atuação",
-  "produtos_servicos": "principais produtos ou serviços identificados",
-  "publico_alvo": "perfil do público-alvo identificado",
-  "tom_marca": "tom de comunicação (ex: profissional, descontraído, premium, técnico)",
-  "valores_marca": ["valor1", "valor2", "valor3"],
+  "segmento": "tipo de mercado identificado (ex: financeira, tecnologia, saúde)",
+  "tom_marca": "descrição do tom de voz",
   "cores_principais": ${JSON.stringify(coresPrincipais)},
-  "cores_complementares": ["sugestão de cor complementar"],
-  "mensagem_gerada": "O CONTEÚDO COMPLETO solicitado pelo usuário, personalizado para esta marca específica",
-  "sugestao_visual": "Descrição DETALHADA para gerar uma imagem de marketing que represente esta marca específica. Incluir: estilo visual, elementos do segmento (ex: se for transportadora incluir caminhões, se for tech incluir elementos digitais), cores exatas a usar (${coresPrincipais.join(', ')}), composição, tipografia sugerida"
+  "cores_complementares": ["#hex3", "#hex4"],
+  "mensagem_gerada": "texto solicitado pelo usuário, altamente específico",
+  "sugestao_visual": "descrição detalhada da imagem ideal"
 }`;
+
+    // Se o site vier pobre (sem title/markdown), usa screenshot para 'estudar' visualmente.
+    const shouldUseVision = !metadata?.title && (!conteudoLimpo || conteudoLimpo.length < 300);
+
+    const messages: any[] = [{ role: 'system', content: analysisPrompt }];
+
+    if (shouldUseVision && screenshotUrl) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: `Analise visualmente o screenshot do site e identifique com precisão o negócio. Depois execute: ${prompt}` },
+          { type: 'image_url', image_url: { url: screenshotUrl } },
+        ],
+      });
+    } else {
+      messages.push({ role: 'user', content: `Analise o site ${formattedUrl} e execute: ${prompt}` });
+    }
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -300,10 +348,7 @@ ${prompt}
       },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Analise o site ${formattedUrl} e execute: ${prompt}` }
-        ],
+        messages,
       }),
     });
 
