@@ -34,7 +34,8 @@ import {
   MousePointer,
   Search,
   Smartphone,
-  Building2
+  Building2,
+  Sparkles
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import { LeadsQuentes } from '@/components/LeadsQuentes';
@@ -254,6 +255,7 @@ export default function DashboardMetricas() {
     { icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
     { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
     { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
+    { icon: Sparkles, label: '✨ IA Marketing 2.0', path: '/ia-marketing-avancada', highlight: true },
     { icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },
     { icon: Search, label: 'Buscar CNPJ', path: '/prospects' },
     { icon: Flame, label: 'Funil de Leads', path: '/leads-funil' },
@@ -353,8 +355,12 @@ export default function DashboardMetricas() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors hover:bg-muted ${
-                  item.path === '/dashboard' ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-colors ${
+                  (item as any).highlight 
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold shadow-md hover:shadow-lg' 
+                    : item.path === '/dashboard' 
+                      ? 'bg-primary/10 text-primary' 
+                      : 'text-muted-foreground hover:bg-muted'
                 }`}
                 onClick={() => setIsMenuOpen(false)}
               >
