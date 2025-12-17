@@ -8,6 +8,11 @@ import FooterOptIn from "@/components/FooterOptIn";
 function Landing() {
   const navigate = useNavigate();
 
+  // Scroll para o topo quando a página carregar
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   // Remover qualquer resquício do Typebot que possa estar em cache
   useEffect(() => {
     // Remover elementos do Typebot do DOM
