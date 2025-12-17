@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
 
     // =============================
     // VALIDAÇÃO: Site acessível?
-    // - Não bloquear quando Firecrawl trouxe branding (logo/cores), mesmo sem HTML/markdown
+    // - NÃO retornar 400 (isso quebra a UI). Em vez disso, segue com os dados disponíveis.
     // =============================
     const hasBranding = (() => {
       try {
@@ -204,28 +204,18 @@ Deno.serve(async (req) => {
       }
     })();
 
-    const hasContent =
+    const hasSomeData =
       hasBranding ||
       (finalMarkdown && finalMarkdown.length > 100) ||
       (finalHtml && finalHtml.length > 500) ||
-      (finalMetadata?.title && finalMetadata?.title.length > 3);
+      (finalMetadata?.title && finalMetadata?.title.length > 3) ||
+      screenshotUrl;
 
-    if (!hasContent) {
-      console.error('❌ Site inacessível ou sem conteúdo extraível');
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Não foi possível acessar o site "${formattedUrl}". Verifique se a URL está correta e o site está no ar.`,
-          siteInacessivel: true,
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!hasSomeData) {
+      console.warn('⚠️ Site sem conteúdo extraível via Firecrawl/fetch/Jina. Prosseguindo mesmo assim.');
+    } else {
+      console.log('✅ Conteúdo/branding disponível para análise');
     }
-
-    console.log('✅ Conteúdo/branding disponível para análise');
-
-    // A partir daqui, usar finalHtml/finalMarkdown/finalMetadata
-
 
     // ============================================
     // EXTRAÇÃO CONFIÁVEL DE LOGO (prioriza logo real)
