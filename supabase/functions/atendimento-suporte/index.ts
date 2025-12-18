@@ -151,7 +151,7 @@ A AMZ é uma plataforma completa de atendimento inteligente com IA, atendendo ta
 CENÁRIO: Cliente B2B pede produtos via WhatsApp
 
 Segunda-feira (09:15):
-📱 Cliente (Supermercado ABC) manda WhatsApp:
+📱 Cliente (Distribuidora Nova Era) manda WhatsApp:
    "Bom dia! Preciso de 10 fardos de farinha e 5 caixas de óleo"
 
 🤖 IA (AMZ) responde em 5 segundos:
@@ -209,7 +209,7 @@ Situação: IA detecta padrão de compra do cliente
 ┌────────────────────────────────────────┐
 │ 📊 ANÁLISE DE COMPORTAMENTO           │
 │                                        │
-│ Cliente: Supermercado ABC              │
+│ Cliente: Distribuidora Nova Era        │
 │ Padrão: Sempre compra farinha + óleo   │
 │ Frequência: Quinzenal                  │
 │ Ticket médio: R$ 1.200                 │
