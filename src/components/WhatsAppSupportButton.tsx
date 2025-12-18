@@ -17,6 +17,21 @@ const generateSessionId = () => {
   return `pietro_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 };
 
+const extractPhone = (text: string) => {
+  const digits = text.replace(/\D/g, '');
+  // BR: 10-13 dígitos (com/sem 55)
+  if (digits.length >= 10 && digits.length <= 13) return digits;
+  return null;
+};
+
+const extractName = (text: string) => {
+  const cleaned = text.trim();
+  if (!cleaned) return null;
+  // Heurística simples: nome curto, sem muitos números
+  if (cleaned.length > 2 && cleaned.length <= 40 && !/\d{2,}/.test(cleaned)) return cleaned;
+  return null;
+};
+
 export function WhatsAppSupportButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [sessionId] = useState(() => generateSessionId());
@@ -56,10 +71,12 @@ export function WhatsAppSupportButton() {
           session_id: sessionId,
           status: 'active',
           user_agent: navigator.userAgent,
-          visitor_name: user?.user_metadata?.nome ?? null,
+          visitor_name: (user?.user_metadata as any)?.nome ?? null,
           visitor_email: user?.email ?? null,
+          visitor_phone: (user?.user_metadata as any)?.whatsapp ?? null,
+          visitor_company: (user?.user_metadata as any)?.empresa ?? null,
         })
-        .select('id')
+        .select('id, visitor_name, visitor_phone, visitor_company')
         .single();
 
       if (error) {
@@ -97,9 +114,31 @@ export function WhatsAppSupportButton() {
       await supabase.from('pietro_messages').insert({
         conversation_id: convId,
         role,
-        content
+        content,
       });
       console.log('[PIETRO] Mensagem salva:', role);
+
+      if (role !== 'user') return;
+
+      const phone = extractPhone(content);
+      const name = extractName(content);
+
+      if (!phone && !name) return;
+
+      // Só preenche campos vazios (não sobrescreve)
+      const { data: convo } = await supabase
+        .from('pietro_conversations')
+        .select('visitor_phone, visitor_name')
+        .eq('id', convId)
+        .maybeSingle();
+
+      const update: Record<string, string> = {};
+      if (phone && !convo?.visitor_phone) update.visitor_phone = phone;
+      if (name && !convo?.visitor_name) update.visitor_name = name;
+
+      if (Object.keys(update).length === 0) return;
+
+      await supabase.from('pietro_conversations').update(update).eq('id', convId);
     } catch (err) {
       console.error('[PIETRO] Erro ao salvar mensagem:', err);
     }
