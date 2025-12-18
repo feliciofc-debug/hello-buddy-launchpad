@@ -59,44 +59,39 @@ export function WhatsAppSupportButton() {
     if (conversationId) return conversationId;
 
     try {
-      console.log('[PIETRO] Criando nova conversa...');
-
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const { data, error } = await supabase
-        .from('pietro_conversations')
-        .insert({
-          session_id: sessionId,
-          status: 'active',
-          user_agent: navigator.userAgent,
+      // Para visitante deslogado, a forma mais confiável é via função pública
+      const { data, error } = await supabase.functions.invoke('pietro-public', {
+        body: {
+          action: 'ensure',
+          sessionId,
+          userAgent: navigator.userAgent,
           visitor_name: (user?.user_metadata as any)?.nome ?? null,
           visitor_email: user?.email ?? null,
           visitor_phone: (user?.user_metadata as any)?.whatsapp ?? null,
           visitor_company: (user?.user_metadata as any)?.empresa ?? null,
-        })
-        .select('id, visitor_name, visitor_phone, visitor_company')
-        .single();
+          initialMessage: messages[0]?.content ?? null,
+        },
+      });
 
       if (error) {
-        console.error('[PIETRO] Erro ao criar conversa:', error);
+        console.error('[PIETRO] Erro ao criar conversa (public):', error);
         return null;
       }
 
-      console.log('[PIETRO] Conversa criada:', data.id);
-      setConversationId(data.id);
+      const convId = (data as any)?.conversationId as string | undefined;
+      if (!convId) {
+        console.error('[PIETRO] Função pietro-public não retornou conversationId:', data);
+        return null;
+      }
 
-      // Salvar mensagem inicial do Pietro
-      await supabase.from('pietro_messages').insert({
-        conversation_id: data.id,
-        role: 'assistant',
-        content: messages[0].content,
-      });
-
-      return data.id;
+      setConversationId(convId);
+      return convId;
     } catch (err) {
-      console.error('[PIETRO] Erro:', err);
+      console.error('[PIETRO] Erro ao criar conversa:', err);
       return null;
     }
   };
@@ -111,39 +106,27 @@ export function WhatsAppSupportButton() {
   // Salvar mensagem no banco
   const saveMessage = async (convId: string, role: 'user' | 'assistant', content: string) => {
     try {
-      await supabase.from('pietro_messages').insert({
-        conversation_id: convId,
-        role,
-        content,
+      const extracted = role === 'user'
+        ? { name: extractName(content), phone: extractPhone(content) }
+        : undefined;
+
+      const { error } = await supabase.functions.invoke('pietro-public', {
+        body: {
+          action: 'message',
+          conversationId: convId,
+          role,
+          content,
+          extracted,
+        },
       });
-      console.log('[PIETRO] Mensagem salva:', role);
 
-      if (role !== 'user') return;
-
-      const phone = extractPhone(content);
-      const name = extractName(content);
-
-      if (!phone && !name) return;
-
-      // Só preenche campos vazios (não sobrescreve)
-      const { data: convo } = await supabase
-        .from('pietro_conversations')
-        .select('visitor_phone, visitor_name')
-        .eq('id', convId)
-        .maybeSingle();
-
-      const update: Record<string, string> = {};
-      if (phone && !convo?.visitor_phone) update.visitor_phone = phone;
-      if (name && !convo?.visitor_name) update.visitor_name = name;
-
-      if (Object.keys(update).length === 0) return;
-
-      await supabase.from('pietro_conversations').update(update).eq('id', convId);
+      if (error) {
+        console.error('[PIETRO] Erro ao salvar mensagem (public):', error);
+      }
     } catch (err) {
       console.error('[PIETRO] Erro ao salvar mensagem:', err);
     }
   };
-
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
