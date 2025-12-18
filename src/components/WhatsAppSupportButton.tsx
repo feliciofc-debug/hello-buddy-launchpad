@@ -12,8 +12,15 @@ interface Message {
   showAvatar?: boolean;
 }
 
+// Gerar ID único para sessão
+const generateSessionId = () => {
+  return `pietro_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+};
+
 export function WhatsAppSupportButton() {
   const [isOpen, setIsOpen] = useState(false);
+  const [sessionId] = useState(() => generateSessionId());
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -32,6 +39,59 @@ export function WhatsAppSupportButton() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Criar conversa no banco quando chat abre pela primeira vez
+  const ensureConversation = async (): Promise<string | null> => {
+    if (conversationId) return conversationId;
+
+    try {
+      console.log('[PIETRO] Criando nova conversa...');
+      
+      const { data, error } = await supabase
+        .from('pietro_conversations')
+        .insert({
+          session_id: sessionId,
+          status: 'active',
+          user_agent: navigator.userAgent
+        })
+        .select('id')
+        .single();
+
+      if (error) {
+        console.error('[PIETRO] Erro ao criar conversa:', error);
+        return null;
+      }
+
+      console.log('[PIETRO] Conversa criada:', data.id);
+      setConversationId(data.id);
+
+      // Salvar mensagem inicial do Pietro
+      await supabase.from('pietro_messages').insert({
+        conversation_id: data.id,
+        role: 'assistant',
+        content: messages[0].content
+      });
+
+      return data.id;
+    } catch (err) {
+      console.error('[PIETRO] Erro:', err);
+      return null;
+    }
+  };
+
+  // Salvar mensagem no banco
+  const saveMessage = async (convId: string, role: 'user' | 'assistant', content: string) => {
+    try {
+      await supabase.from('pietro_messages').insert({
+        conversation_id: convId,
+        role,
+        content
+      });
+      console.log('[PIETRO] Mensagem salva:', role);
+    } catch (err) {
+      console.error('[PIETRO] Erro ao salvar mensagem:', err);
+    }
+  };
+
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || isLoading) return;
 
@@ -46,6 +106,14 @@ export function WhatsAppSupportButton() {
     const messageToSend = inputMessage;
     setInputMessage('');
     setIsLoading(true);
+
+    // Garantir que conversa existe
+    const convId = await ensureConversation();
+    
+    // Salvar mensagem do usuário
+    if (convId) {
+      await saveMessage(convId, 'user', messageToSend);
+    }
 
     try {
       console.log('[CHAT] Enviando mensagem:', messageToSend);
@@ -80,6 +148,11 @@ export function WhatsAppSupportButton() {
       };
 
       setMessages(prev => [...prev, aiMessage]);
+
+      // Salvar resposta do Pietro
+      if (convId) {
+        await saveMessage(convId, 'assistant', responseText);
+      }
     } catch (error) {
       console.error('[CHAT] Erro ao enviar mensagem:', error);
       const errorMessage: Message = {
@@ -89,6 +162,11 @@ export function WhatsAppSupportButton() {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
+
+      // Salvar erro também
+      if (convId) {
+        await saveMessage(convId, 'assistant', errorMessage.content);
+      }
     } finally {
       setIsLoading(false);
     }
