@@ -529,9 +529,6 @@ function Landing() {
           </div>
         </div>
       </footer>
-
-      {/* WhatsApp Support Button */}
-      <WhatsAppSupportButton />
     </div>
   );
 }

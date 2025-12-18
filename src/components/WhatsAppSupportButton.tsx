@@ -45,13 +45,19 @@ export function WhatsAppSupportButton() {
 
     try {
       console.log('[PIETRO] Criando nova conversa...');
-      
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       const { data, error } = await supabase
         .from('pietro_conversations')
         .insert({
           session_id: sessionId,
           status: 'active',
-          user_agent: navigator.userAgent
+          user_agent: navigator.userAgent,
+          visitor_name: user?.user_metadata?.nome ?? null,
+          visitor_email: user?.email ?? null,
         })
         .select('id')
         .single();
@@ -68,7 +74,7 @@ export function WhatsAppSupportButton() {
       await supabase.from('pietro_messages').insert({
         conversation_id: data.id,
         role: 'assistant',
-        content: messages[0].content
+        content: messages[0].content,
       });
 
       return data.id;
@@ -77,6 +83,13 @@ export function WhatsAppSupportButton() {
       return null;
     }
   };
+
+  // Garantir que a conversa exista assim que o chat abrir (para não perder conversas)
+  useEffect(() => {
+    if (!isOpen) return;
+    void ensureConversation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // Salvar mensagem no banco
   const saveMessage = async (convId: string, role: 'user' | 'assistant', content: string) => {
