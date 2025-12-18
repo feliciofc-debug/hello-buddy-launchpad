@@ -144,6 +144,113 @@ A AMZ é uma plataforma completa de atendimento inteligente com IA, atendendo ta
 
 ---
 
+# EXEMPLOS PRÁTICOS DE FLUXO COMPLETO
+
+## EXEMPLO 1: PEDIDO VIA WHATSAPP (FLUXO COMPLETO)
+
+CENÁRIO: Cliente B2B pede produtos via WhatsApp
+
+Segunda-feira (09:15):
+📱 Cliente (Supermercado ABC) manda WhatsApp:
+   "Bom dia! Preciso de 10 fardos de farinha e 5 caixas de óleo"
+
+🤖 IA (AMZ) responde em 5 segundos:
+   "Bom dia, João! Já identifiquei você! 
+   
+   Deixa eu verificar disponibilidade... ✅
+   
+   ┌────────────────────────────────────┐
+   │ 📦 PEDIDO #4521                    │
+   │                                    │
+   │ 10x Farinha Especial       R$ 45,00│
+   │ 5x Óleo Marca Premium      R$ 85,00│
+   │                                    │
+   │ TOTAL: R$ 130,00                   │
+   │                                    │
+   │ ✅ Produtos disponíveis!           │
+   └────────────────────────────────────┘
+   
+   Vou chamar nosso vendedor João para 
+   confirmar o pedido e condições de 
+   pagamento. Ele já está vendo seu histórico
+   e limite de crédito! ⚡"
+
+[Sistema notifica vendedor Paulo automaticamente]
+
+👨‍💼 Vendedor Paulo (09:17):
+   "Oi João! Vi seu pedido. Você tem 
+   R$ 20.000 disponível de limite.
+   
+   ✅ Pedido aprovado!
+   📅 Confirma entrega para quinta-feira?
+   💳 Prazo: 28 dias como sempre?"
+
+📱 Cliente (09:18):
+   "Confirmo! Obrigado pela rapidez!"
+
+🤖 Sistema:
+   → Pedido #4521 confirmado ✅
+   → Enviado pro ERP automaticamente
+   → NF sendo gerada
+   → Logística notificada
+   → Cliente receberá atualizações
+
+⏱️ TEMPO TOTAL: 3 minutos! 🚀
+   (Antes da AMZ: 2 horas de telefonemas e emails)
+
+---
+
+## EXEMPLO 2: CROSS-SELLING INTELIGENTE
+
+💡 INTELIGÊNCIA COMERCIAL DA IA:
+
+Situação: IA detecta padrão de compra do cliente
+
+┌────────────────────────────────────────┐
+│ 📊 ANÁLISE DE COMPORTAMENTO           │
+│                                        │
+│ Cliente: Supermercado ABC              │
+│ Padrão: Sempre compra farinha + óleo   │
+│ Frequência: Quinzenal                  │
+│ Ticket médio: R$ 1.200                 │
+└────────────────────────────────────────┘
+
+Próxima vez que cliente pedir:
+
+📱 Cliente: "Preciso de 10 fardos de farinha"
+
+🤖 IA responde:
+   "Oi João! 10 fardos de farinha, anotado! ✅
+   
+   💡 Percebi que você sempre compra óleo 
+   junto com a farinha...
+   
+   🔥 PROMOÇÃO ESPECIAL HOJE:
+   ┌────────────────────────────────────┐
+   │ COMBO FARINHA + ÓLEO               │
+   │                                    │
+   │ 10x Farinha ........ R$ 450,00     │
+   │ 5x Óleo ............ R$ 425,00     │
+   │                                    │
+   │ SUBTOTAL: R$ 875,00                │
+   │ DESCONTO COMBO: -10% 🎉            │
+   │                                    │
+   │ TOTAL: R$ 787,50                   │
+   │ ECONOMIA: R$ 87,50! 💰             │
+   └────────────────────────────────────┘
+   
+   Quer aproveitar o combo hoje?"
+
+📱 Cliente: "Opa, fechado!"
+
+📈 RESULTADO:
+- +30% cross-selling automático
+- Cliente satisfeito com economia
+- Ticket aumentou sem esforço
+- Relacionamento fortalecido
+
+---
+
 # PERGUNTAS FREQUENTES B2B
 
 ## TÉCNICAS
