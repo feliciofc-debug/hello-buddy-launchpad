@@ -485,6 +485,75 @@ Inclui:
 - Cancele a qualquer momento
 - Sem multa ou taxa de cancelamento
 - Seus dados ficam disponíveis por 30 dias após cancelamento
+
+---
+
+# SEGURANÇA WHATSAPP - EVITANDO BANIMENTO
+
+## COMO FUNCIONA NOSSA PROTEÇÃO
+A AMZ implementa diversas camadas de segurança para proteger sua conta do WhatsApp contra bloqueios e banimentos:
+
+### 1. OPT-IN AUTOMÁTICO
+- Sistema de opt-in automático para contatos que já são da sua base de clientes
+- Registro de consentimento de cada contato
+- Histórico de interações que comprova relacionamento prévio
+- Conformidade com políticas da Meta/WhatsApp
+
+### 2. ENVIO INTELIGENTE COM INTERVALOS
+- Intervalo de 5 a 8 segundos entre cada mensagem enviada
+- Evita detecção de spam por envio em massa agressivo
+- Simula comportamento humano natural
+- Distribuição de envios ao longo do tempo
+
+### 3. BOAS PRÁTICAS IMPLEMENTADAS
+- Não enviamos para números desconhecidos sem opt-in
+- Limite diário de mensagens por número
+- Rotação inteligente de templates
+- Monitoramento de taxas de bloqueio/report
+- Aquecimento gradual de novos números
+
+### 4. RECOMENDAÇÕES PARA O CLIENTE
+- Mantenha sua base de contatos atualizada
+- Evite comprar listas de números
+- Responda clientes que interagem
+- Use mensagens relevantes e personalizadas
+- Evite muitos emojis ou links suspeitos
+
+## PERGUNTAS FREQUENTES SOBRE WHATSAPP
+
+### "Meu WhatsApp pode ser bloqueado?"
+→ Com nossas proteções, o risco é MUITO BAIXO! Temos opt-in automático, intervalos de 5-8 segundos entre envios, e seguimos todas as diretrizes da Meta. Clientes que usam a plataforma corretamente não têm problemas.
+
+### "Vocês usam API oficial do WhatsApp?"
+→ Usamos WuzAPI que é uma solução robusta e segura. Para clientes Enterprise, oferecemos integração com WhatsApp Business API oficial da Meta.
+
+### "E se a Meta mudar as regras?"
+→ Nossa equipe monitora constantemente as políticas da Meta e ajustamos automaticamente os parâmetros de envio. Você não precisa se preocupar!
+
+### "Quantas mensagens posso enviar por dia?"
+→ Recomendamos começar com até 200-300 mensagens/dia para números novos, aumentando gradualmente. Números bem estabelecidos podem enviar mais.
+
+### "O que é opt-in e por que é importante?"
+→ Opt-in é o consentimento do cliente para receber suas mensagens. É OBRIGATÓRIO pela Meta. Nossa plataforma registra automaticamente o opt-in de clientes que já interagiram com você.
+
+### "Como funciona o intervalo de envio?"
+→ Cada mensagem é enviada com intervalo de 5 a 8 segundos (aleatório). Isso simula comportamento humano e evita que a Meta detecte como spam automatizado.
+
+### "Posso enviar para qualquer número?"
+→ ATENÇÃO: Envie apenas para sua base de clientes existentes! Números que nunca interagiram com você têm alto risco de reportar como spam.
+
+### "O que acontece se for bloqueado?"
+→ Primeiro, nosso sistema detecta e pausa os envios automaticamente. Depois, ajudamos a recuperar o número seguindo o processo da Meta. Mas com nossas proteções, isso é muito raro!
+
+## COMPARATIVO DE SEGURANÇA
+
+| Característica | AMZ | Concorrentes |
+|----------------|-----|--------------|
+| Opt-in automático | ✅ | ❌ ou manual |
+| Intervalo 5-8s | ✅ | ❌ envio rápido |
+| Monitoramento | ✅ 24/7 | ❌ básico |
+| Conformidade Meta | ✅ 100% | ⚠️ parcial |
+| Suporte banimento | ✅ incluso | ❌ extra |
 `;
 
 serve(async (req) => {
