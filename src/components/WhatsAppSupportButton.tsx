@@ -2,12 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { X, Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
+import pietroImage from '@/assets/pietro-eugenio.png';
 
 interface Message {
   id: string;
   content: string;
   isUser: boolean;
   timestamp: Date;
+  showAvatar?: boolean;
 }
 
 export function WhatsAppSupportButton() {
@@ -15,9 +17,10 @@ export function WhatsAppSupportButton() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: 'Olá! 👋 Sou a assistente virtual da AMZ Ofertas. Como posso ajudar você hoje?\n\nPosso tirar dúvidas sobre:\n• Funcionalidades da plataforma\n• Planos e preços\n• Formas de pagamento\n• Suporte técnico',
+      content: 'Olá! 👋 Sou Pietro Eugenio, consultor virtual da AMZ Ofertas!\n\nComo posso te ajudar hoje?\n\n• Funcionalidades da plataforma\n• Planos e preços\n• Formas de pagamento\n• Suporte técnico',
       isUser: false,
-      timestamp: new Date()
+      timestamp: new Date(),
+      showAvatar: true
     }
   ]);
   const [inputMessage, setInputMessage] = useState('');
@@ -134,13 +137,26 @@ export function WhatsAppSupportButton() {
                   key={message.id}
                   className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
                 >
+                  {/* Avatar do Pietro na primeira mensagem */}
+                  {message.showAvatar && !message.isUser && (
+                    <div className="flex-shrink-0 mr-2">
+                      <img 
+                        src={pietroImage} 
+                        alt="Pietro Eugenio" 
+                        className="w-12 h-12 rounded-full object-cover border-2 border-green-500 bg-white"
+                      />
+                    </div>
+                  )}
                   <div
-                    className={`max-w-[80%] p-3 rounded-2xl ${
+                    className={`max-w-[75%] p-3 rounded-2xl ${
                       message.isUser
                         ? 'bg-green-500 text-white rounded-br-md'
                         : 'bg-white text-gray-800 rounded-bl-md shadow-sm border border-gray-100'
                     }`}
                   >
+                    {message.showAvatar && !message.isUser && (
+                      <p className="text-xs font-semibold text-green-600 mb-1">Pietro Eugenio</p>
+                    )}
                     <p className="text-sm whitespace-pre-line">{message.content}</p>
                     <p className={`text-xs mt-1 ${message.isUser ? 'text-green-100' : 'text-gray-400'}`}>
                       {message.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
