@@ -324,7 +324,10 @@ function ConversationModal({
 
   useEffect(() => {
     loadMessages();
-  }, []);
+    // Auto-refresh mensagens a cada 5 segundos para capturar novas respostas
+    const interval = setInterval(loadMessages, 5000);
+    return () => clearInterval(interval);
+  }, [conversation.id]);
 
   const loadMessages = async () => {
     const { data } = await supabase
