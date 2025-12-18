@@ -595,6 +595,166 @@ Inclui:
 
 ---
 
+# EXEMPLOS PRÁTICOS B2C - VAREJO LOCAL
+
+## EXEMPLO 1: PADARIA - PÃO QUENTINHO (BROADCAST EM MASSA)
+
+CENÁRIO: Padaria envia aviso para todo o bairro
+
+🕐 06:30 da manhã:
+📢 BROADCAST para 500 clientes do bairro:
+   "🥖 PÃO QUENTINHO SAINDO AGORA!
+   
+   Bom dia vizinhos! Acabou de sair do forno:
+   • Pão francês crocante
+   • Pão de leite fofinho
+   • Croissant amanteigado
+   
+   ☕ Vem tomar café da manhã com a gente!
+   
+   📍 Padaria Sabor do Bairro
+   Rua das Flores, 123"
+
+✅ RESULTADO:
+- 500 mensagens enviadas em ~40 min (intervalo 5-8 seg)
+- 120 clientes vieram em 2 horas
+- Ticket médio: R$ 18,00 (pão + manteiga + café)
+- Faturamento extra manhã: R$ 2.160,00 🚀
+
+## EXEMPLO 2: UPSELLING - CLIENTE VEIO PRO PÃO, LEVOU MAIS
+
+CENÁRIO: Cliente veio só buscar pão, mas comprou muito mais
+
+📱 Cliente responde broadcast:
+   "Bom dia! Guarda 10 pães pra mim?"
+
+🤖 IA (AMZ) responde:
+   "Bom dia, Dona Maria! ☕
+   
+   Reservei seus 10 pãezinhos! R$ 7,00
+   
+   💡 Aproveite que acabou de chegar:
+   • Manteiga artesanal R$ 8,90
+   • Requeijão cremoso R$ 6,50
+   • Presunto fatiado R$ 12,90/kg
+   • Queijo minas fresco R$ 14,90
+   • Ovos caipira (dúzia) R$ 9,90
+   
+   Quer que eu separe algo mais? 😊"
+
+📱 Cliente:
+   "Põe a manteiga e meia dúzia de ovos!"
+
+✅ RESULTADO:
+- Veio buscar R$ 7,00 (só pão)
+- Levou R$ 20,85 (pão + manteiga + ovos)
+- Aumento de 198% no ticket! 🎯
+
+## EXEMPLO 3: PROMOÇÃO PRODUTOS PERTO DA VALIDADE
+
+CENÁRIO: Mercadinho precisa vender produtos antes do vencimento
+
+📢 BROADCAST URGENTE para toda base:
+   "🔥 SUPER PROMOÇÃO - SÓ HOJE!
+   
+   Produtos com validade curta, preço IMPERDÍVEL:
+   
+   • Iogurte (val. 3 dias) - de R$ 4,90 por R$ 1,99
+   • Leite (val. 5 dias) - de R$ 6,50 por R$ 2,99
+   • Pão de forma (val. 2 dias) - de R$ 8,90 por R$ 3,50
+   • Queijo (val. 4 dias) - de R$ 18,90 por R$ 9,90
+   
+   ⏰ CORRE que é só até acabar!
+   
+   📍 Mercadinho do João
+   WhatsApp: (21) 99999-9999"
+
+📱 Clientes respondem:
+   "Quero 4 iogurtes e 2 leites!"
+   "Separa 3 pães de forma pra mim!"
+   "Vou passar aí, guarda o queijo!"
+
+🤖 IA responde cada um:
+   "Reservado pra você! ✅
+   
+   💡 Já que vai passar, aproveita:
+   • Ovos R$ 9,90
+   • Frutas frescas R$ 5,90/kg
+   
+   Separo também? 😊"
+
+✅ RESULTADO:
+- Zero desperdício (tudo vendido!)
+- 45 clientes compraram nas promoções
+- 28 clientes levaram produtos extras
+- Faturamento do dia: +R$ 1.800,00
+- Prejuízo evitado: R$ 400,00 em produtos
+
+## EXEMPLO 4: SALÃO DE BELEZA - HORÁRIOS VAGOS
+
+CENÁRIO: Salão precisa preencher agenda do dia
+
+📢 BROADCAST manhã:
+   "💇‍♀️ HORÁRIOS ESPECIAIS HOJE!
+   
+   Meninas, sobraram horários:
+   • 10h - Escova + Hidratação R$ 49,90
+   • 14h - Manicure + Pedicure R$ 35,00
+   • 16h - Corte + Finalização R$ 55,00
+   
+   ⚡ Preço especial só pra quem responder agora!
+   
+   Qual horário você quer? 💕"
+
+📱 Clientes reservam via WhatsApp
+🤖 IA confirma e agenda automaticamente
+
+✅ RESULTADO:
+- 3 horários vagos preenchidos
+- Faturamento extra: R$ 139,90
+- Cliente das 10h fez mais unha: +R$ 35,00
+
+## EXEMPLO 5: AÇOUGUE - CHURRASCO DO FIM DE SEMANA
+
+CENÁRIO: Açougue avisa sobre carnes frescas pra churrasco
+
+📢 BROADCAST quinta-feira:
+   "🥩 CARNES FRESQUINHAS PRO CHURRAS!
+   
+   Acabou de chegar:
+   • Picanha - R$ 54,90/kg
+   • Maminha - R$ 42,90/kg
+   • Linguiça artesanal - R$ 28,90/kg
+   • Frango inteiro - R$ 14,90/kg
+   
+   🧂 + Pacote tempero especial GRÁTIS
+   em compras acima de R$ 100!
+   
+   Reserve já pro fim de semana! 🔥"
+
+📱 Cliente:
+   "Quero 2kg picanha e 1kg linguiça"
+
+🤖 IA:
+   "Reservado, Sr. Carlos! 🥩
+   
+   Picanha 2kg: R$ 109,80
+   Linguiça 1kg: R$ 28,90
+   TOTAL: R$ 138,70 ✅
+   
+   🎁 Você ganhou o pacote de tempero GRÁTIS!
+   
+   Vai querer mais alguma coisa?
+   • Carvão 5kg por R$ 24,90?
+   • Sal grosso 1kg por R$ 3,90?"
+
+✅ RESULTADO:
+- 35 reservas no dia
+- Ticket médio: R$ 145,00
+- 80% levaram carvão/sal (upselling automático!)
+
+---
+
 # SEGURANÇA WHATSAPP - EVITANDO BANIMENTO
 
 ## COMO FUNCIONA NOSSA PROTEÇÃO
