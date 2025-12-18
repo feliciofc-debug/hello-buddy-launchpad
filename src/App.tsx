@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { CampaignScheduler } from "@/components/CampaignScheduler";
-import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
+
 import Dashboard from "./pages/Dashboard";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
@@ -126,7 +126,6 @@ const App = () => (
             <Route path="*" element={<NotFound />} />
           </Routes>
             <CookieBanner />
-            <WhatsAppSupportButton />
           </BrowserRouter>
         </TooltipProvider>
     </ThemeProvider>
