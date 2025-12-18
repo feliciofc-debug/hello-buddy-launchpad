@@ -2581,6 +2581,86 @@ export type Database = {
         }
         Relationships: []
       }
+      pietro_conversations: {
+        Row: {
+          created_at: string | null
+          id: string
+          interest_score: number | null
+          private_notes: string | null
+          session_id: string
+          status: string | null
+          updated_at: string | null
+          user_agent: string | null
+          visitor_company: string | null
+          visitor_email: string | null
+          visitor_ip: string | null
+          visitor_name: string | null
+          visitor_phone: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          interest_score?: number | null
+          private_notes?: string | null
+          session_id: string
+          status?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          visitor_company?: string | null
+          visitor_email?: string | null
+          visitor_ip?: string | null
+          visitor_name?: string | null
+          visitor_phone?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          interest_score?: number | null
+          private_notes?: string | null
+          session_id?: string
+          status?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          visitor_company?: string | null
+          visitor_email?: string | null
+          visitor_ip?: string | null
+          visitor_name?: string | null
+          visitor_phone?: string | null
+        }
+        Relationships: []
+      }
+      pietro_messages: {
+        Row: {
+          content: string
+          conversation_id: string | null
+          created_at: string | null
+          id: string
+          role: string
+        }
+        Insert: {
+          content: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          role: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string | null
+          created_at?: string | null
+          id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pietro_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "pietro_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pipeline_stages: {
         Row: {
           created_at: string | null
