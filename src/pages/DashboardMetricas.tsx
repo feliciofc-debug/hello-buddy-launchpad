@@ -264,6 +264,7 @@ export default function DashboardMetricas() {
     { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
     { icon: TrendingUp, label: 'Google Ads', path: '/google-ads' },
     { icon: Activity, label: 'Analytics', path: '/analytics' },
+    { icon: Bot, label: '🤖 Pietro Dashboard', path: '/pietro-dashboard' },
     { icon: Settings, label: 'Configurações', path: '/configuracoes' },
   ];
 
