@@ -654,7 +654,7 @@ const IAMarketing = () => {
           </TabsContent>
 
           <TabsContent value="video">
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-4xl mx-auto">
               <Button
                 onClick={() => navigate('/dashboard')}
                 variant="ghost"
@@ -664,15 +664,7 @@ const IAMarketing = () => {
                 Voltar
               </Button>
               
-              <VideoGenerator 
-                productImage="https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800"
-                productName="Produto Exemplo"
-                productPrice={99.90}
-              />
-              
-              <p className="text-center text-sm text-muted-foreground mt-4">
-                💡 Dica: Primeiro gere um post na aba "Gerar Posts" para usar a imagem do produto real
-              </p>
+              <VideoGenerator />
             </div>
           </TabsContent>
 
