@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
+import { VideoGenerator } from "@/components/VideoGenerator";
 
 interface PostVariations {
   opcaoA: string;
@@ -258,8 +259,9 @@ const IAMarketing = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
         <Tabs defaultValue="gerar" className="w-full">
-          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">
+          <TabsList className="grid w-full max-w-lg mx-auto grid-cols-3 mb-8">
             <TabsTrigger value="gerar">Gerar Posts</TabsTrigger>
+            <TabsTrigger value="video">🎬 Gerar Vídeo</TabsTrigger>
             <TabsTrigger value="historico">Meus Posts</TabsTrigger>
           </TabsList>
 
@@ -649,6 +651,29 @@ const IAMarketing = () => {
                 </div>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="video">
+            <div className="max-w-2xl mx-auto">
+              <Button
+                onClick={() => navigate('/dashboard')}
+                variant="ghost"
+                className="mb-4"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Voltar
+              </Button>
+              
+              <VideoGenerator 
+                productImage="https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800"
+                productName="Produto Exemplo"
+                productPrice={99.90}
+              />
+              
+              <p className="text-center text-sm text-muted-foreground mt-4">
+                💡 Dica: Primeiro gere um post na aba "Gerar Posts" para usar a imagem do produto real
+              </p>
+            </div>
           </TabsContent>
 
           <TabsContent value="historico">
