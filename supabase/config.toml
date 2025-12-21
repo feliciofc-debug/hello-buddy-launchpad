@@ -210,3 +210,6 @@ verify_jwt = false
 [functions.pietro-public]
 verify_jwt = false
 
+[functions.generate-product-video]
+verify_jwt = false
+
