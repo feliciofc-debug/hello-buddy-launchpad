@@ -44,20 +44,20 @@ serve(async (req) => {
             content: [
               {
                 type: 'text',
-                text: `Edit this product image according to the description below.
+                text: `Edite esta imagem de produto conforme a descrição abaixo.
 
-Product: ${productName || 'Product'}
-Edit instructions: ${editPrompt}
+Produto: ${productName || 'Produto'}
+Instruções de edição: ${editPrompt}
 
-CRITICAL INSTRUCTIONS:
-- DO NOT ADD ANY TEXT, WORDS, OR LETTERS TO THE IMAGE!
-- NO typography, NO captions, NO text overlays!
-- Keep the original product clearly visible and recognizable
-- Only improve the context/background as requested
-- Maintain professional product photography quality
-- Use lighting that enhances the product
-- Pure photography only, NO graphic design text elements!
-- ABSOLUTELY ZERO TEXT IN THE OUTPUT IMAGE!`
+INSTRUÇÕES IMPORTANTES:
+- NÃO ADICIONE NENHUM TEXTO, PALAVRAS OU LETRAS NA IMAGEM!
+- Sem tipografia, sem legendas, sem sobreposição de texto!
+- Mantenha o produto original claramente visível e reconhecível
+- Apenas melhore o contexto/fundo conforme solicitado
+- Mantenha qualidade profissional de fotografia de produto
+- Use iluminação que valorize o produto
+- Apenas fotografia pura, sem elementos de design gráfico com texto!
+- ABSOLUTAMENTE ZERO TEXTO NA IMAGEM GERADA!`
               },
               {
                 type: 'image_url',
