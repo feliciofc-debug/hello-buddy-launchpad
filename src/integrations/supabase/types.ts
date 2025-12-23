@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      backup_logs: {
+        Row: {
+          arquivo_path: string | null
+          created_at: string
+          duracao_ms: number | null
+          erro: string | null
+          id: string
+          status: string
+          tabelas_backup: string[] | null
+          tamanho_bytes: number | null
+        }
+        Insert: {
+          arquivo_path?: string | null
+          created_at?: string
+          duracao_ms?: number | null
+          erro?: string | null
+          id?: string
+          status?: string
+          tabelas_backup?: string[] | null
+          tamanho_bytes?: number | null
+        }
+        Update: {
+          arquivo_path?: string | null
+          created_at?: string
+          duracao_ms?: number | null
+          erro?: string | null
+          id?: string
+          status?: string
+          tabelas_backup?: string[] | null
+          tamanho_bytes?: number | null
+        }
+        Relationships: []
+      }
       biblioteca_campanhas: {
         Row: {
           campanha_id: string | null
