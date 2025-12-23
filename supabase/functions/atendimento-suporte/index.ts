@@ -45,7 +45,7 @@ A AMZ é uma plataforma completa de atendimento inteligente com IA, atendendo ta
 - ISO 27001 (segurança da informação)
 - Criptografia TLS 1.3
 - Row Level Security (RLS)
-- Backup automático diário
+- Backup automático 3x/dia (8h, 14h, 20h)
 - SLA 99.9% uptime
 
 ## INTEGRAÇÕES ERP
@@ -270,10 +270,10 @@ Próxima vez que cliente pedir:
    → Ilimitado. Escalável automaticamente. Já testado com 1000+ simultâneos.
 
 6. "E a segurança?"
-   → LGPD compliant, SOC 2 Type II, ISO 27001, TLS 1.3, backups diários.
+   → LGPD compliant, SOC 2 Type II, ISO 27001, TLS 1.3, backups 3x/dia.
 
 7. "Como são os backups?"
-   → Automático 1x/dia, retenção 7 dias, point-in-time recovery disponível.
+    → Automático 3x/dia (8h, 14h e 20h), retenção 30 dias, point-in-time recovery disponível. Logs de auditoria completos.
 
 8. "SLA de uptime?"
    → 99.9% (Professional/Enterprise). Histórico real: 99.98%.
@@ -585,7 +585,7 @@ Inclui:
 ## SEGURANÇA
 - Dados criptografados
 - Autenticação segura
-- Backups diários
+- Backups 3x/dia (8h, 14h, 20h)
 - LGPD compliance
 
 ## CANCELAMENTO
