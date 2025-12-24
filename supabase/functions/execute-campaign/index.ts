@@ -171,13 +171,46 @@ serve(async (req) => {
 
 function calcularProxima(campanha: any): string | null {
   const agora = new Date()
-  const horario = campanha.horarios?.[0] || '09:00'
-  const [hora, minuto] = horario.split(':').map(Number)
-
+  const horarios = campanha.horarios || ['09:00']
+  
+  // Ordenar horários
+  const horariosOrdenados = [...horarios].sort()
+  
   if (campanha.frequencia === 'uma_vez') {
     return null // Não repete
   }
 
+  // Hora atual em formato HH:MM
+  const horaAtual = agora.toTimeString().slice(0, 5)
+  
+  // NOVO: Verificar se há mais horários HOJE
+  const proximoHorarioHoje = horariosOrdenados.find((h: string) => h > horaAtual)
+  
+  if (proximoHorarioHoje) {
+    // Se campanha é semanal, verificar se hoje é um dia válido
+    if (campanha.frequencia === 'semanal') {
+      const diasValidos = campanha.dias_semana || []
+      if (!diasValidos.includes(agora.getDay())) {
+        // Hoje não é válido, ir para próximo dia
+        return calcularProximoDia(campanha, horariosOrdenados[0])
+      }
+    }
+    
+    // Ainda há horário hoje
+    const [hora, minuto] = proximoHorarioHoje.split(':').map(Number)
+    const proxima = new Date()
+    proxima.setHours(hora, minuto, 0, 0)
+    console.log(`📅 Próximo horário HOJE: ${proximoHorarioHoje}`)
+    return proxima.toISOString()
+  }
+
+  // Não há mais horários hoje, calcular próximo dia
+  return calcularProximoDia(campanha, horariosOrdenados[0])
+}
+
+function calcularProximoDia(campanha: any, primeiroHorario: string): string | null {
+  const [hora, minuto] = primeiroHorario.split(':').map(Number)
+  
   if (campanha.frequencia === 'diario') {
     const proxima = new Date()
     proxima.setDate(proxima.getDate() + 1)
@@ -190,9 +223,11 @@ function calcularProxima(campanha: any): string | null {
     const diasValidos = campanha.dias_semana || []
     
     // Avançar até encontrar próximo dia válido
+    let tentativas = 0
     do {
       proxima.setDate(proxima.getDate() + 1)
-    } while (!diasValidos.includes(proxima.getDay()))
+      tentativas++
+    } while (!diasValidos.includes(proxima.getDay()) && tentativas < 8)
     
     proxima.setHours(hora, minuto, 0, 0)
     return proxima.toISOString()

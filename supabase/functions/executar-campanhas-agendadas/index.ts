@@ -204,20 +204,51 @@ serve(async (req) => {
 });
 
 // Função auxiliar para calcular próxima execução
+// CORRIGIDO: Agora suporta múltiplos horários no mesmo dia
 function calcularProximaExecucao(
   frequencia: string,
   horarios: string[],
   diasSemana: number[]
 ): string | null {
   const now = new Date();
-  const primeiroHorario = horarios[0] || '09:00';
-  const [hora, minuto] = primeiroHorario.split(':');
+  const horariosOrdenados = [...horarios].sort();
+  const horaAtual = now.toTimeString().slice(0, 5);
 
   if (frequencia === 'uma_vez') {
     return null; // Campanha única não repete
   }
 
-  if (frequencia === 'diario') {
+  // Verificar se há mais horários HOJE
+  const proximoHorarioHoje = horariosOrdenados.find((h: string) => h > horaAtual);
+
+  if (proximoHorarioHoje) {
+    // Se for semanal, verificar se hoje é dia válido
+    if (frequencia === 'semanal' && diasSemana && !diasSemana.includes(now.getDay())) {
+      // Hoje não é válido, ir para próximo dia
+      return calcularProximoDiaExecucao(frequencia, horariosOrdenados[0], diasSemana);
+    }
+
+    // Ainda há horário hoje!
+    const [hora, minuto] = proximoHorarioHoje.split(':');
+    const proxima = new Date();
+    proxima.setHours(parseInt(hora), parseInt(minuto), 0, 0);
+    console.log(`📅 Próximo horário HOJE: ${proximoHorarioHoje}`);
+    return proxima.toISOString();
+  }
+
+  // Não há mais horários hoje, ir para próximo dia
+  return calcularProximoDiaExecucao(frequencia, horariosOrdenados[0], diasSemana);
+}
+
+function calcularProximoDiaExecucao(
+  frequencia: string,
+  primeiroHorario: string,
+  diasSemana: number[]
+): string | null {
+  const now = new Date();
+  const [hora, minuto] = primeiroHorario.split(':');
+
+  if (frequencia === 'diario' || frequencia === 'personalizado') {
     const amanha = new Date(now);
     amanha.setDate(amanha.getDate() + 1);
     amanha.setHours(parseInt(hora), parseInt(minuto), 0, 0);
@@ -226,25 +257,15 @@ function calcularProximaExecucao(
 
   if (frequencia === 'semanal') {
     const proxima = new Date(now);
-    proxima.setDate(proxima.getDate() + 1);
-    
-    // Encontrar próximo dia da semana válido
     let tentativas = 0;
-    while (!diasSemana.includes(proxima.getDay()) && tentativas < 7) {
+    
+    do {
       proxima.setDate(proxima.getDate() + 1);
       tentativas++;
-    }
+    } while (diasSemana && !diasSemana.includes(proxima.getDay()) && tentativas < 8);
     
     proxima.setHours(parseInt(hora), parseInt(minuto), 0, 0);
     return proxima.toISOString();
-  }
-
-  if (frequencia === 'personalizado') {
-    // Para personalizado, assumir diário
-    const amanha = new Date(now);
-    amanha.setDate(amanha.getDate() + 1);
-    amanha.setHours(parseInt(hora), parseInt(minuto), 0, 0);
-    return amanha.toISOString();
   }
 
   return null;
