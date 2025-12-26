@@ -76,25 +76,28 @@ serve(async (req) => {
 
         console.log(`📤 Enviando para ${phone} (${nome})`)
 
-        // ENVIAR VIA WUZAPI
-        const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+        // ENVIAR VIA WUZAPI - CORRIGIDO com userId e skipProtection
+        const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
           body: {
             phoneNumbers: [phone],
             message: mensagem,
-            imageUrl: campanha.produtos?.imagens?.[0]
+            imageUrl: campanha.produtos?.imagens?.[0],
+            userId: campanha.user_id, // ✅ CRÍTICO!
+            skipProtection: true // ✅ Ignora cooldown para campanhas
           }
         })
 
-        if (!sendError) {
+        if (!sendError && sendResult?.success) {
           enviados++
+          console.log(`✅ Enviado para ${phone}`)
           
           // Salvar contexto para IA responder automaticamente
           await supabase.from('whatsapp_conversations').upsert({
             user_id: campanha.user_id,
-            phone_number: phone, // CORRIGIDO: era 'phone', agora é 'phone_number'
+            phone_number: phone,
             origem: 'campanha',
             status: 'active',
-            metadata: { // CORRIGIDO: era 'last_message_context', agora é 'metadata'
+            metadata: {
               produto_nome: campanha.produtos?.nome,
               produto_preco: campanha.produtos?.preco,
               produto_descricao: campanha.produtos?.descricao,
@@ -107,9 +110,8 @@ serve(async (req) => {
             onConflict: 'user_id,phone_number'
           })
           
-          console.log(`✅ Contexto salvo para ${phone}`)
         } else {
-          console.error(`Erro ao enviar para ${phone}:`, sendError)
+          console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult)
           erros++
         }
 
