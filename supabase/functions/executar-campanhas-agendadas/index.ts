@@ -49,9 +49,15 @@ serve(async (req) => {
     for (const campanha of campanhas || []) {
       try {
         // Verificar se o horário atual está nos horários configurados
-        const horarioMatch = campanha.horarios?.some((h: string) => h === currentTime);
+        // Suporta formatos "HH:MM" e "HH:MM:SS" vindos do banco
+        const horariosNormalizados = (campanha.horarios || []).map((h: string) =>
+          typeof h === "string" ? h.slice(0, 5) : h
+        );
+        const horarioMatch = horariosNormalizados.some((h: string) => h === currentTime);
         if (!horarioMatch) {
-          console.log(`⏭️ Campanha ${campanha.nome} - Horário não corresponde`);
+          console.log(
+            `⏭️ Campanha ${campanha.nome} - Horário não corresponde (agora=${currentTime}, horarios=${JSON.stringify(horariosNormalizados)})`
+          );
           continue;
         }
 
@@ -218,7 +224,13 @@ function calcularProximaExecucao(
   diasSemana: number[]
 ): string | null {
   const now = new Date();
-  const horariosOrdenados = [...horarios].sort();
+
+  // Normalizar horários para HH:MM (banco pode salvar HH:MM:SS)
+  const horariosNormalizados = (horarios || []).map((h: string) =>
+    typeof h === "string" ? h.slice(0, 5) : h
+  );
+
+  const horariosOrdenados = [...horariosNormalizados].sort();
   const horaAtual = now.toTimeString().slice(0, 5);
 
   if (frequencia === 'uma_vez') {
