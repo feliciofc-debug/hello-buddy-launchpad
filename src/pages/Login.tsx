@@ -27,14 +27,21 @@ export default function Login() {
 
       toast.success('Login realizado com sucesso!');
       
-      // Acesso direto APENAS para expo@atombrasildigital.com (dono)
-      if (data.user.email === 'expo@atombrasildigital.com') {
-        console.log('✅ Dono da plataforma - acesso direto ao dashboard');
+      // Verificar se é dono da plataforma OU cliente B2B (acesso direto)
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tipo')
+        .eq('id', data.user.id)
+        .maybeSingle();
+      
+      // Acesso direto para: dono da plataforma OU clientes B2B
+      if (data.user.email === 'expo@atombrasildigital.com' || profile?.tipo === 'b2b') {
+        console.log('✅ Acesso direto ao dashboard (dono ou cliente B2B)');
         navigate('/dashboard');
         return;
       }
       
-      // Todos os outros usuários precisam verificar assinatura
+      // Afiliados e outros usuários precisam verificar assinatura
       console.log('Verificando assinatura...');
       const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
       
