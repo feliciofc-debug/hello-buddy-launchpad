@@ -20,11 +20,11 @@ serve(async (req) => {
 
     const now = new Date();
     const currentTime = now.toTimeString().slice(0, 5); // HH:MM
-    const currentDay = now.getDay();
+    const currentDay = now.getDay(); // 0-6
 
-    console.log(`⏰ Hora atual: ${currentTime}, Dia: ${currentDay}`);
+    console.log(`⏰ Hora atual: ${currentTime}, Dia da semana: ${currentDay}`);
 
-    // ✅ BUSCAR CAMPANHAS QUE DEVEM RODAR AGORA
+    // Buscar campanhas ativas que devem ser executadas agora
     const { data: campanhas, error: fetchError } = await supabase
       .from("campanhas_recorrentes")
       .select(`
@@ -36,81 +36,87 @@ serve(async (req) => {
       .not("horarios", "is", null);
 
     if (fetchError) {
-      console.error("❌ Erro buscar campanhas:", fetchError);
+      console.error("❌ Erro ao buscar campanhas:", fetchError);
       throw fetchError;
     }
 
-    console.log(`📋 ${campanhas?.length || 0} campanhas ativas`);
+    console.log(`📋 Encontradas ${campanhas?.length || 0} campanhas ativas`);
 
     let executadas = 0;
     let erros = 0;
 
     for (const campanha of campanhas || []) {
       try {
-        // ✅ VERIFICAR HORÁRIO (tolerância ±2 min)
+        // ✅ VERIFICAR HORÁRIO COM TOLERÂNCIA ±3 MINUTOS
         const horariosNormalizados = (campanha.horarios || []).map((h: string) =>
           typeof h === "string" ? h.slice(0, 5) : h
         );
         
+        // Converter hora atual e configurada para minutos totais
         const [horaAtual, minutoAtual] = currentTime.split(':').map(Number);
         const minutosTotaisAgora = horaAtual * 60 + minutoAtual;
         
         let horarioMatch = false;
+        let horarioEncontrado = '';
         
-        for (const h of horariosNormalizados) {
-          const [horaConfig, minutoConfig] = h.split(':').map(Number);
+        for (const horarioConfig of horariosNormalizados) {
+          const [horaConfig, minutoConfig] = horarioConfig.split(':').map(Number);
           const minutosTotaisConfig = horaConfig * 60 + minutoConfig;
-          const diff = Math.abs(minutosTotaisAgora - minutosTotaisConfig);
+          const diferencaMinutos = Math.abs(minutosTotaisAgora - minutosTotaisConfig);
           
-          if (diff <= 2) { // ✅ Tolerância 2 minutos
+          // ✅ Tolerância de 3 minutos
+          if (diferencaMinutos <= 3) {
             horarioMatch = true;
-            console.log(`✅ Horário match: ${h} (diff: ${diff}min)`);
+            horarioEncontrado = horarioConfig;
+            console.log(`✅ Horário encontrado: ${horarioConfig} (diferença: ${diferencaMinutos}min)`);
             break;
           }
         }
         
         if (!horarioMatch) {
-          console.log(`⏭️ ${campanha.nome} - Fora do horário (${currentTime} vs ${JSON.stringify(horariosNormalizados)})`);
+          console.log(
+            `⏭️ Campanha ${campanha.nome} - Horário não corresponde (agora=${currentTime}, horarios=${JSON.stringify(horariosNormalizados)})`
+          );
           continue;
         }
 
-        // ✅ VERIFICAR DIA SEMANA
+        // Para campanhas diárias/semanais, verificar dia da semana
         if ((campanha.frequencia === 'diario' || campanha.frequencia === 'semanal') && campanha.dias_semana) {
           if (!campanha.dias_semana.includes(currentDay)) {
-            console.log(`⏭️ ${campanha.nome} - Dia inválido`);
+            console.log(`⏭️ Campanha ${campanha.nome} - Dia da semana não corresponde`);
             continue;
           }
         }
 
-        // ✅ VERIFICAR SE JÁ EXECUTOU (última 1h)
+        // ✅ VERIFICAR SE JÁ EXECUTOU NESTE HORÁRIO (última hora)
         if (campanha.ultima_execucao) {
-          const ultimaExec = new Date(campanha.ultima_execucao);
-          const diffMinutos = (now.getTime() - ultimaExec.getTime()) / 60000;
+          const ultimaExecucao = new Date(campanha.ultima_execucao);
+          const diferencaMinutos = (now.getTime() - ultimaExecucao.getTime()) / 60000;
           
-          if (diffMinutos < 60) {
-            console.log(`⏭️ ${campanha.nome} - Já executou há ${Math.round(diffMinutos)}min`);
+          if (diferencaMinutos < 55) {
+            console.log(`⏭️ Campanha ${campanha.nome} - Já executou há ${Math.round(diferencaMinutos)} minutos`);
             continue;
           }
         }
 
-        console.log(`✅ EXECUTANDO: ${campanha.nome}`);
+        console.log(`✅ Executando campanha: ${campanha.nome} (horário: ${horarioEncontrado})`);
 
-        // ✅ BUSCAR CONTATOS
+        // Buscar todos os contatos das listas
         const { data: listas } = await supabase
           .from("whatsapp_groups")
           .select("phone_numbers")
-          .in("id", campanha.listas_ids || []);
+          .in("id", campanha.listas_ids);
 
         const todosContatos = listas?.flatMap((l: any) => l.phone_numbers || []) || [];
-        console.log(`📞 ${todosContatos.length} contatos`);
+        console.log(`📞 Total de contatos: ${todosContatos.length}`);
 
         let enviados = 0;
-        let pulados = 0;
+        let errosEnvio = 0;
 
-        // ✅ ENVIAR CADA CONTATO
+        // ✅ ENVIAR PARA CADA CONTATO VIA EDGE FUNCTION
         for (const phone of todosContatos) {
           try {
-            // Buscar nome
+            // Buscar nome do contato
             const { data: contact } = await supabase
               .from("whatsapp_contacts")
               .select("nome")
@@ -121,50 +127,58 @@ serve(async (req) => {
             const nome = contact?.nome || "Cliente";
 
             // Personalizar mensagem
-            const mensagem = campanha.mensagem_template
+            const mensagemPersonalizada = campanha.mensagem_template
               .replace(/\{\{nome\}\}/gi, nome)
               .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || "")
               .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || "");
 
-            // ✅ ENVIAR VIA EDGE FUNCTION
-            const { data: result, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+            const imagemUrl = campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0];
+
+            // ✅ ENVIAR VIA EDGE FUNCTION (não fetch direto!)
+            const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
               body: {
                 phoneNumbers: [phone],
-                message: mensagem,
-                imageUrl: campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0],
-                userId: campanha.user_id,
-                skipProtection: true // ✅ Ignora cooldown
+                message: mensagemPersonalizada,
+                imageUrl: imagemUrl,
+                userId: campanha.user_id, // ✅ CRÍTICO para achar instância certa
+                skipProtection: true // ✅ Ignora cooldown entre campanhas
               }
             });
 
-            if (!sendError && result?.success) {
+            if (!sendError && sendResult?.success) {
               enviados++;
-              console.log(`✅ ${phone}`);
+              console.log(`✅ Enviado para ${phone}`);
             } else {
-              console.error(`❌ ${phone}:`, sendError || result);
-              pulados++;
+              console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult);
+              errosEnvio++;
             }
 
-            await new Promise(r => setTimeout(r, 800)); // Delay
+            // Delay entre mensagens
+            await new Promise(r => setTimeout(r, 500));
 
-          } catch (err) {
-            console.error(`❌ Erro ${phone}:`, err);
-            pulados++;
+          } catch (error) {
+            console.error(`❌ Erro ao processar ${phone}:`, error);
+            errosEnvio++;
           }
         }
 
-        console.log(`📊 ${campanha.nome}: ${enviados}/${todosContatos.length} (${pulados} erros)`);
+        console.log(`📊 Campanha ${campanha.nome}: ${enviados} enviados, ${errosEnvio} erros`);
 
-        // ✅ CALCULAR PRÓXIMA EXECUÇÃO
-        const proximaExec = calcularProxima(campanha);
+        // ✅ CALCULAR PRÓXIMA EXECUÇÃO (suporta múltiplos horários)
+        const proximaExecucao = calcularProximaExecucao(
+          campanha.frequencia,
+          campanha.horarios,
+          campanha.dias_semana
+        );
 
-        // ✅ ATUALIZAR CAMPANHA
+        // Atualizar campanha
         const updateData: any = {
           ultima_execucao: now.toISOString(),
           total_enviados: (campanha.total_enviados || 0) + enviados,
-          proxima_execucao: proximaExec
+          proxima_execucao: proximaExecucao
         };
 
+        // Se for uma_vez, desativar
         if (campanha.frequencia === 'uma_vez') {
           updateData.ativa = false;
           updateData.status = 'encerrada';
@@ -178,81 +192,110 @@ serve(async (req) => {
           .eq("id", campanha.id);
 
         executadas++;
-
       } catch (error) {
-        console.error(`❌ Erro executar ${campanha.nome}:`, error);
+        console.error(`❌ Erro ao executar campanha ${campanha.nome}:`, error);
         erros++;
       }
     }
 
-    console.log(`✅ Concluído: ${executadas} executadas, ${erros} erros`);
+    console.log(`✅ Execução concluída: ${executadas} campanhas executadas, ${erros} erros`);
 
     return new Response(
-      JSON.stringify({ success: true, executadas, erros }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        success: true,
+        executadas,
+        erros,
+        total: campanhas?.length || 0
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200
+      }
     );
 
   } catch (error: any) {
     console.error("❌ Erro geral:", error);
+    
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({
+        success: false,
+        error: error.message
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      }
     );
   }
 });
 
-// ✅ CALCULAR PRÓXIMA EXECUÇÃO
-function calcularProxima(campanha: any): string | null {
+// ✅ FUNÇÃO CORRIGIDA - SUPORTA MÚLTIPLOS HORÁRIOS NO MESMO DIA
+function calcularProximaExecucao(
+  frequencia: string,
+  horarios: string[],
+  diasSemana: number[]
+): string | null {
   const now = new Date();
-  const horarios = campanha.horarios || ['09:00'];
-  const horariosOrdenados = [...horarios].map((h: string) => h.slice(0, 5)).sort();
+
+  // Normalizar horários para HH:MM
+  const horariosNormalizados = (horarios || []).map((h: string) =>
+    typeof h === "string" ? h.slice(0, 5) : h
+  );
+
+  const horariosOrdenados = [...horariosNormalizados].sort();
   const horaAtual = now.toTimeString().slice(0, 5);
 
-  if (campanha.frequencia === 'uma_vez') return null;
+  if (frequencia === 'uma_vez') {
+    return null; // Campanha única não repete
+  }
 
-  // ✅ Verificar se há PRÓXIMO horário hoje
-  const proximoHoje = horariosOrdenados.find((h: string) => h > horaAtual);
+  // ✅ VERIFICAR SE HÁ MAIS HORÁRIOS HOJE
+  const proximoHorarioHoje = horariosOrdenados.find((h: string) => h > horaAtual);
 
-  if (proximoHoje) {
-    // Se semanal, verificar dia válido
-    if (campanha.frequencia === 'semanal' && campanha.dias_semana) {
-      if (!campanha.dias_semana.includes(now.getDay())) {
-        return calcularProximoDia(campanha, horariosOrdenados[0]);
-      }
+  if (proximoHorarioHoje) {
+    // Se for semanal, verificar se hoje é dia válido
+    if (frequencia === 'semanal' && diasSemana && !diasSemana.includes(now.getDay())) {
+      // Hoje não é válido, ir para próximo dia
+      return calcularProximoDiaExecucao(frequencia, horariosOrdenados[0], diasSemana);
     }
 
-    const [hora, minuto] = proximoHoje.split(':').map(Number);
+    // ✅ AINDA HÁ HORÁRIO HOJE!
+    const [hora, minuto] = proximoHorarioHoje.split(':');
     const proxima = new Date();
-    proxima.setHours(hora, minuto, 0, 0);
-    console.log(`📅 Próximo horário hoje: ${proximoHoje}`);
+    proxima.setHours(parseInt(hora), parseInt(minuto), 0, 0);
+    console.log(`📅 Próximo horário HOJE: ${proximoHorarioHoje}`);
     return proxima.toISOString();
   }
 
-  // Não há mais horários hoje
-  return calcularProximoDia(campanha, horariosOrdenados[0]);
+  // Não há mais horários hoje, ir para próximo dia
+  return calcularProximoDiaExecucao(frequencia, horariosOrdenados[0], diasSemana);
 }
 
-function calcularProximoDia(campanha: any, primeiroHorario: string): string | null {
-  const [hora, minuto] = primeiroHorario.split(':').map(Number);
+function calcularProximoDiaExecucao(
+  frequencia: string,
+  primeiroHorario: string,
+  diasSemana: number[]
+): string | null {
+  const now = new Date();
+  const [hora, minuto] = primeiroHorario.split(':');
 
-  if (campanha.frequencia === 'diario') {
-    const proxima = new Date();
-    proxima.setDate(proxima.getDate() + 1);
-    proxima.setHours(hora, minuto, 0, 0);
-    return proxima.toISOString();
+  if (frequencia === 'diario' || frequencia === 'personalizado') {
+    const amanha = new Date(now);
+    amanha.setDate(amanha.getDate() + 1);
+    amanha.setHours(parseInt(hora), parseInt(minuto), 0, 0);
+    return amanha.toISOString();
   }
 
-  if (campanha.frequencia === 'semanal') {
-    const proxima = new Date();
-    const diasValidos = campanha.dias_semana || [];
+  if (frequencia === 'semanal') {
+    const proxima = new Date(now);
     let tentativas = 0;
-
+    
     do {
       proxima.setDate(proxima.getDate() + 1);
       tentativas++;
-    } while (!diasValidos.includes(proxima.getDay()) && tentativas < 8);
-
-    proxima.setHours(hora, minuto, 0, 0);
+    } while (diasSemana && !diasSemana.includes(proxima.getDay()) && tentativas < 8);
+    
+    proxima.setHours(parseInt(hora), parseInt(minuto), 0, 0);
     return proxima.toISOString();
   }
 
