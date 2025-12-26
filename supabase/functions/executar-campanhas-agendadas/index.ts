@@ -25,18 +25,21 @@ serve(async (req) => {
     console.log(`⏰ Hora atual: ${currentTime}, Dia da semana: ${currentDay}`);
 
     // Buscar campanhas ativas que devem ser executadas agora
+    // NOTA: Não fazer join com whatsapp_groups pois listas_ids é um array, não FK
     const { data: campanhas, error: fetchError } = await supabase
       .from("campanhas_recorrentes")
       .select(`
         *,
-        produtos(id, nome, descricao, preco, imagem_url),
-        whatsapp_groups(id, group_name, phone_numbers)
+        produtos(id, nome, descricao, preco, imagem_url, imagens)
       `)
       .eq("ativa", true)
       .lte("data_inicio", now.toISOString().split('T')[0])
       .not("horarios", "is", null);
 
-    if (fetchError) throw fetchError;
+    if (fetchError) {
+      console.error("❌ Erro ao buscar campanhas:", fetchError);
+      throw fetchError;
+    }
 
     console.log(`📋 Encontradas ${campanhas?.length || 0} campanhas ativas`);
 
@@ -112,12 +115,16 @@ serve(async (req) => {
               Body: mensagemPersonalizada
             };
 
-            if (campanha.produtos?.imagem_url) {
-              body.Image = campanha.produtos.imagem_url;
+            // Usar imagem do produto (pode estar em imagem_url ou imagens array)
+            const imagemUrl = campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0];
+            
+            if (imagemUrl) {
+              body.Image = imagemUrl;
               body.Caption = mensagemPersonalizada;
             }
 
-            const sendResponse = await fetch(`${baseUrl}/chat/send/${campanha.produtos?.imagem_url ? 'image' : 'text'}`, {
+            const imagemProduto = campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0];
+            const sendResponse = await fetch(`${baseUrl}/chat/send/${imagemProduto ? 'image' : 'text'}`, {
               method: "POST",
               headers: {
                 "Token": wuzapiToken,
