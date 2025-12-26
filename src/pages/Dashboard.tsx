@@ -485,67 +485,6 @@ const Dashboard = () => {
               Vendedores
             </a>
           )}
-          {/* AMZ Imóveis - só para empresa/fabrica (não B2B) */}
-          {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') && (
-            <div className="space-y-1">
-              <button
-                onClick={() => {
-                  const submenu = document.getElementById('submenu-imoveis');
-                  if (submenu) {
-                    submenu.classList.toggle('hidden');
-                  }
-                }}
-                className={`w-full text-left flex items-center justify-between gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                  window.location.pathname.includes('/imoveis') 
-                    ? 'bg-blue-500 text-white' 
-                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Building2 size={20} />
-                  🏠 AMZ Imóveis
-                </div>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              <div id="submenu-imoveis" className={`pl-6 space-y-1 ${window.location.pathname.includes('/imoveis') ? '' : 'hidden'}`}>
-                <a
-                  href="/imoveis/leads-enriquecidos"
-                  className={`w-full text-left flex items-center gap-3 py-2 px-4 rounded transition duration-200 text-sm ${
-                    window.location.pathname === '/imoveis/leads-enriquecidos' 
-                      ? 'bg-blue-400 text-white' 
-                      : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <Users size={16} />
-                  Leads Enriquecidos
-                </a>
-                <a
-                  href="/imoveis/seguidores-concorrentes"
-                  className={`w-full text-left flex items-center gap-3 py-2 px-4 rounded transition duration-200 text-sm ${
-                    window.location.pathname === '/imoveis/seguidores-concorrentes' 
-                      ? 'bg-blue-400 text-white' 
-                      : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                  }`}
-                >
-                  <Instagram size={16} />
-                  Seguidores Concorrentes
-                </a>
-              </div>
-            </div>
-          )}
-          <a
-            href="/configuracoes"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/configuracoes' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <Settings size={20} />
-            Configurações API
-          </a>
         </nav>
       </aside>
 
