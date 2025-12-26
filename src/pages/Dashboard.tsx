@@ -17,6 +17,7 @@ import { TestarWuzapiDireto } from '@/components/TestarWuzapiDireto';
 import { LogsEnvioWuzapi } from '@/components/LogsEnvioWuzapi';
 import { DiagnosticoWuzapi } from '@/components/DiagnosticoWuzapi';
 import { mockProducts, type Marketplace } from '@/data/mockData';
+import { useClientMenus } from '@/hooks/useClientMenus';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -26,6 +27,9 @@ const Dashboard = () => {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // Hook para gerenciar menus baseado no tipo de cliente
+  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo);
 
   // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
   const metrics = useMemo(() => {
@@ -266,7 +270,7 @@ const Dashboard = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
           </div>
-          <span className="text-gray-900 dark:text-white text-2xl font-bold">AMZ Ofertas</span>
+          <span className="text-gray-900 dark:text-white text-xl font-bold">{empresaNome}</span>
         </a>
         <nav className="space-y-2">
           <a
@@ -336,62 +340,72 @@ const Dashboard = () => {
             </a>
           )}
           */}
-          <a
-            href="/ia-marketing"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/ia-marketing' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <Bot size={20} />
-            IA Marketing
-          </a>
-          <a
-            href="/whatsapp"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md hover:shadow-lg ${
-              window.location.pathname === '/whatsapp' 
-                ? 'ring-2 ring-green-300' 
-                : ''
-            }`}
-          >
-            <MessageCircle size={20} />
-            <span className="font-semibold">📱 WhatsApp</span>
-          </a>
-          <a
-            href="/ia-conversas"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/ia-conversas' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <Bot size={20} />
-            💬 IA Conversas
-          </a>
-          <a
-            href="/configuracoes/redes-sociais"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/configuracoes/redes-sociais' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <Instagram size={20} />
-            Redes Sociais
-          </a>
-          <a
-            href="/biblioteca"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/biblioteca' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <BookOpen size={20} />
-            Biblioteca
-          </a>
-          {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') && (
+          {isMenuAllowed('ia-marketing') && (
+            <a
+              href="/ia-marketing"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/ia-marketing' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Bot size={20} />
+              IA Marketing
+            </a>
+          )}
+          {isMenuAllowed('whatsapp') && (
+            <a
+              href="/whatsapp"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md hover:shadow-lg ${
+                window.location.pathname === '/whatsapp' 
+                  ? 'ring-2 ring-green-300' 
+                  : ''
+              }`}
+            >
+              <MessageCircle size={20} />
+              <span className="font-semibold">📱 WhatsApp</span>
+            </a>
+          )}
+          {isMenuAllowed('ia-conversas') && (
+            <a
+              href="/ia-conversas"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/ia-conversas' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Bot size={20} />
+              💬 IA Conversas
+            </a>
+          )}
+          {isMenuAllowed('redes-sociais') && (
+            <a
+              href="/configuracoes/redes-sociais"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/configuracoes/redes-sociais' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Instagram size={20} />
+              Redes Sociais
+            </a>
+          )}
+          {isMenuAllowed('biblioteca') && (
+            <a
+              href="/biblioteca"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/biblioteca' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <BookOpen size={20} />
+              Biblioteca
+            </a>
+          )}
+          {isMenuAllowed('analytics') && (userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica' || userProfile?.tipo === 'b2b') && (
             <a
               href="/analytics"
               className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -404,104 +418,122 @@ const Dashboard = () => {
               Analytics
             </a>
           )}
-          <a
-            href="/meus-produtos"
-            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-              window.location.pathname === '/meus-produtos' 
-                ? 'bg-blue-500 text-white' 
-                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-            </svg>
-            📦 Meus Produtos
-          </a>
+          {isMenuAllowed('produtos') && (
+            <a
+              href="/meus-produtos"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/meus-produtos' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+              📦 Meus Produtos
+            </a>
+          )}
+          {isMenuAllowed('buscar-cnpj') && (
+            <a
+              href="/prospects"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/prospects' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Building2 size={20} />
+              Leads Qualificados
+            </a>
+          )}
+          {isMenuAllowed('configurar-icp') && (
+            <a
+              href="/configuracoes-icp"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/configuracoes-icp' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Target size={20} />
+              Configurar ICP
+            </a>
+          )}
+          {isMenuAllowed('campanhas-prospeccao') && (
+            <a
+              href="/campanhas-prospeccao"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/campanhas-prospeccao' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Users size={20} />
+              Campanhas Ativas
+            </a>
+          )}
+          {isMenuAllowed('vendedores') && (
+            <a
+              href="/vendedores"
+              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                window.location.pathname === '/vendedores' 
+                  ? 'bg-blue-500 text-white' 
+                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <UserCircle size={20} />
+              Vendedores
+            </a>
+          )}
+          {/* AMZ Imóveis - só para empresa/fabrica (não B2B) */}
           {(userProfile?.tipo === 'empresa' || userProfile?.tipo === 'fabrica') && (
-            <>
-              <a
-                href="/prospects"
-                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                  window.location.pathname === '/prospects' 
+            <div className="space-y-1">
+              <button
+                onClick={() => {
+                  const submenu = document.getElementById('submenu-imoveis');
+                  if (submenu) {
+                    submenu.classList.toggle('hidden');
+                  }
+                }}
+                className={`w-full text-left flex items-center justify-between gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                  window.location.pathname.includes('/imoveis') 
                     ? 'bg-blue-500 text-white' 
                     : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
               >
-                <Building2 size={20} />
-                Leads Qualificados
-              </a>
-              <a
-                href="/configuracoes-icp"
-                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                  window.location.pathname === '/configuracoes-icp' 
-                    ? 'bg-blue-500 text-white' 
-                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <Target size={20} />
-                Configurar ICP
-              </a>
-              <a
-                href="/campanhas-prospeccao"
-                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                  window.location.pathname === '/campanhas-prospeccao' 
-                    ? 'bg-blue-500 text-white' 
-                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <Users size={20} />
-                Campanhas Ativas
-              </a>
-              
-              {/* AMZ Imóveis - Submenu */}
-              <div className="space-y-1">
-                <button
-                  onClick={() => {
-                    const submenu = document.getElementById('submenu-imoveis');
-                    if (submenu) {
-                      submenu.classList.toggle('hidden');
-                    }
-                  }}
-                  className={`w-full text-left flex items-center justify-between gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                    window.location.pathname.includes('/imoveis') 
-                      ? 'bg-blue-500 text-white' 
+                <div className="flex items-center gap-3">
+                  <Building2 size={20} />
+                  🏠 AMZ Imóveis
+                </div>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              <div id="submenu-imoveis" className={`pl-6 space-y-1 ${window.location.pathname.includes('/imoveis') ? '' : 'hidden'}`}>
+                <a
+                  href="/imoveis/leads-enriquecidos"
+                  className={`w-full text-left flex items-center gap-3 py-2 px-4 rounded transition duration-200 text-sm ${
+                    window.location.pathname === '/imoveis/leads-enriquecidos' 
+                      ? 'bg-blue-400 text-white' 
                       : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Building2 size={20} />
-                    🏠 AMZ Imóveis
-                  </div>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                <div id="submenu-imoveis" className={`pl-6 space-y-1 ${window.location.pathname.includes('/imoveis') ? '' : 'hidden'}`}>
-                  <a
-                    href="/imoveis/leads-enriquecidos"
-                    className={`w-full text-left flex items-center gap-3 py-2 px-4 rounded transition duration-200 text-sm ${
-                      window.location.pathname === '/imoveis/leads-enriquecidos' 
-                        ? 'bg-blue-400 text-white' 
-                        : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <Users size={16} />
-                    Leads Enriquecidos
-                  </a>
-                  <a
-                    href="/imoveis/seguidores-concorrentes"
-                    className={`w-full text-left flex items-center gap-3 py-2 px-4 rounded transition duration-200 text-sm ${
-                      window.location.pathname === '/imoveis/seguidores-concorrentes' 
-                        ? 'bg-blue-400 text-white' 
-                        : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <Instagram size={16} />
-                    Seguidores Concorrentes
-                  </a>
-                </div>
+                  <Users size={16} />
+                  Leads Enriquecidos
+                </a>
+                <a
+                  href="/imoveis/seguidores-concorrentes"
+                  className={`w-full text-left flex items-center gap-3 py-2 px-4 rounded transition duration-200 text-sm ${
+                    window.location.pathname === '/imoveis/seguidores-concorrentes' 
+                      ? 'bg-blue-400 text-white' 
+                      : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <Instagram size={16} />
+                  Seguidores Concorrentes
+                </a>
               </div>
-            </>
+            </div>
           )}
           <a
             href="/configuracoes"

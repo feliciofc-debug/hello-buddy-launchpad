@@ -213,3 +213,9 @@ verify_jwt = false
 [functions.generate-product-video]
 verify_jwt = false
 
+[functions.create-client-user]
+verify_jwt = false
+
+[functions.executar-campanhas-agendadas]
+verify_jwt = false
+
