@@ -104,7 +104,24 @@ export default function DashboardMetricas() {
     atendimentoPorTipo: []
   });
 
+
+  const [userTipo, setUserTipo] = useState<string | null>(null);
+
+  const carregarPerfil = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('tipo')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    setUserTipo((profile as any)?.tipo ?? null);
+  };
+
   useEffect(() => {
+    carregarPerfil();
     carregarMetricas();
     const interval = setInterval(carregarMetricas, 60000); // Atualiza a cada minuto
     return () => clearInterval(interval);
@@ -254,7 +271,7 @@ export default function DashboardMetricas() {
     { icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
     { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
     { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
-    
+
     { icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },
     { icon: Search, label: 'Buscar CNPJ', path: '/prospects' },
     { icon: Flame, label: 'Funil de Leads', path: '/leads-funil' },
@@ -262,10 +279,15 @@ export default function DashboardMetricas() {
     { icon: Users, label: 'Vendedores', path: '/vendedores' },
     { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
     { icon: Activity, label: 'Analytics', path: '/analytics' },
-    { icon: BarChart3, label: 'Google Ads', path: '/google-ads' },
-    { icon: Building2, label: 'AMZ Imóveis', path: '/leads-imoveis-enriquecidos' },
-    { icon: Sparkles, label: 'Pietro Dashboard', path: '/pietro-dashboard' },
-    { icon: Settings, label: 'Configurações', path: '/configuracoes' },
+
+    ...(userTipo === 'mcassab'
+      ? []
+      : [
+          { icon: BarChart3, label: 'Google Ads', path: '/google-ads' },
+          { icon: Building2, label: 'AMZ Imóveis', path: '/imoveis/leads-enriquecidos' },
+          { icon: Sparkles, label: 'Pietro Dashboard', path: '/pietro-dashboard' },
+          { icon: Settings, label: 'Configurações', path: '/configuracoes' },
+        ]),
   ];
 
   // Componente de campanhas em andamento
