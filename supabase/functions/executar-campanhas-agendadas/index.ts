@@ -142,7 +142,7 @@ serve(async (req) => {
           }
         }
 
-        console.log(`✅ Executando campanha: ${campanha.nome} (horário: ${horarioEncontrado})`);
+        console.log(`✅ Executando campanha: ${campanha.nome} (horário slot: ${horarioEncontrado}, hora atual: ${currentTime})`);
 
         // Buscar todos os contatos das listas
         const { data: listas } = await supabase
@@ -207,6 +207,12 @@ serve(async (req) => {
 
         console.log(`📊 Campanha ${campanha.nome}: ${enviados} enviados, ${errosEnvio} erros`);
 
+        // ✅ SÓ ATUALIZA SE ENVIOU PELO MENOS 1 MENSAGEM
+        if (enviados === 0 && todosContatos.length > 0) {
+          console.log(`⚠️ Campanha ${campanha.nome} - Nenhuma mensagem enviada, NÃO atualizando ultima_execucao`);
+          continue; // Não marca como executado se não enviou nada
+        }
+
         // ✅ CALCULAR PRÓXIMA EXECUÇÃO (suporta múltiplos horários)
         const proximaExecucao = calcularProximaExecucao(
           campanha.frequencia,
@@ -214,12 +220,18 @@ serve(async (req) => {
           campanha.dias_semana
         );
 
+        // ✅ GRAVAR O HORÁRIO DO SLOT EXECUTADO (não o horário atual!)
+        // Isso garante que a verificação de "já executou este slot" funcione corretamente
+        const slotExecutadoISO = new Date(`${currentDate}T${horarioEncontrado}:00-03:00`).toISOString();
+        
         // Atualizar campanha
         const updateData: any = {
-          ultima_execucao: now.toISOString(),
+          ultima_execucao: slotExecutadoISO, // ✅ USA O HORÁRIO DO SLOT, NÃO now()
           total_enviados: (campanha.total_enviados || 0) + enviados,
           proxima_execucao: proximaExecucao
         };
+        
+        console.log(`📝 Atualizando ultima_execucao para slot ${horarioEncontrado} (${slotExecutadoISO})`);
 
         // Se for uma_vez, desativar
         if (campanha.frequencia === 'uma_vez') {
