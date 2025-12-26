@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Smartphone, QrCode, Wifi, WifiOff, RefreshCw, LogOut, Loader2, Server, AlertTriangle } from "lucide-react";
+import { Smartphone, QrCode, Wifi, WifiOff, RefreshCw, LogOut, Loader2 } from "lucide-react";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -35,14 +35,9 @@ export default function WhatsAppConnection() {
   const [checkingStatus, setCheckingStatus] = useState(true);
   const [isPolling, setIsPolling] = useState(false);
 
-  // Estado do controle da porta 8080
-  const [port8080Connected, setPort8080Connected] = useState<boolean | null>(null);
-  const [loading8080, setLoading8080] = useState(false);
-
-  // Carregar todas as instâncias e verificar 8080
+  // Carregar instâncias
   useEffect(() => {
     loadInstances();
-    checkPort8080Status();
   }, []);
 
   // Verificar status quando selecionar instância
@@ -110,54 +105,12 @@ export default function WhatsAppConnection() {
 
     return () => clearInterval(interval);
   }, [isPolling, selectedInstanceId, status.instance_name]);
-
-  // Funções de controle da porta 8080
-  const checkPort8080Status = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('wuzapi-qrcode', {
-        body: { action: 'control-8080', operation: 'status' }
-      });
-      if (error) throw error;
-      setPort8080Connected(data.connected);
-      console.log('📊 Status 8080:', data);
-    } catch (error) {
-      console.error('Erro ao verificar porta 8080:', error);
-      setPort8080Connected(null);
-    }
-  };
-
-  const disconnectPort8080 = async () => {
-    setLoading8080(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('wuzapi-qrcode', {
-        body: { action: 'control-8080', operation: 'disconnect' }
-      });
-      if (error) throw error;
-      setPort8080Connected(false);
-      toast.success('🔴 Porta 8080 desconectada! Agora pode testar as outras instâncias.');
-    } catch (error) {
-      console.error('Erro ao desconectar 8080:', error);
-      toast.error('Erro ao desconectar porta 8080');
-    } finally {
-      setLoading8080(false);
-    }
-  };
-
-  const reconnectPort8080 = async () => {
-    setLoading8080(true);
-    try {
-      await checkPort8080Status();
-      toast.info('Para reconectar a porta 8080, escaneie o QR Code no painel original (Dashboard WhatsApp)');
-    } finally {
-      setLoading8080(false);
-    }
-  };
-
   const loadInstances = async () => {
     try {
       const { data, error } = await supabase
         .from("wuzapi_instances")
         .select("id, instance_name, wuzapi_url, port, is_connected, phone_number")
+        .eq("port", 8081) // Apenas porta 8081 (amz-01)
         .order("instance_name");
 
       if (error) throw error;
@@ -384,50 +337,6 @@ export default function WhatsAppConnection() {
 
   return (
     <div className="space-y-4">
-      {/* Painel de Controle da Porta 8080 */}
-      <div className="bg-yellow-50 dark:bg-yellow-950/30 border-2 border-yellow-400 dark:border-yellow-600 rounded-lg p-4">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="h-6 w-6 text-yellow-600" />
-            <div>
-              <h3 className="text-lg font-bold text-yellow-800 dark:text-yellow-200">
-                🔧 Controle Instância Original (Porta 8080)
-              </h3>
-              <p className="text-sm text-yellow-700 dark:text-yellow-300">
-                {port8080Connected === null 
-                  ? '⏳ Verificando...'
-                  : port8080Connected 
-                    ? '✅ Sua instância pessoal está conectada' 
-                    : '❌ Sua instância pessoal está desconectada'}
-              </p>
-            </div>
-          </div>
-          
-          <Button
-            onClick={port8080Connected ? disconnectPort8080 : reconnectPort8080}
-            disabled={loading8080 || port8080Connected === null}
-            variant={port8080Connected ? "destructive" : "default"}
-            className={!port8080Connected ? "bg-green-600 hover:bg-green-700" : ""}
-          >
-            {loading8080 ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                Aguarde...
-              </>
-            ) : (
-              port8080Connected ? '🔴 Desconectar 8080' : '🟢 Verificar 8080'
-            )}
-          </Button>
-        </div>
-        
-        {port8080Connected === false && (
-          <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-3 bg-yellow-100 dark:bg-yellow-900/50 p-2 rounded">
-            💡 Instância 8080 desconectada! Agora você pode testar as outras instâncias 
-            (8081-8089) com seu número sem conflito.
-          </p>
-        )}
-      </div>
-
       {/* Card principal de conexão */}
       <Card>
         <CardHeader>
@@ -437,9 +346,9 @@ export default function WhatsAppConnection() {
                 <Smartphone className={`h-5 w-5 ${status.connected ? "text-green-500" : "text-muted-foreground"}`} />
               </div>
               <div>
-                <CardTitle className="text-lg">🧪 Testar Instâncias</CardTitle>
+                <CardTitle className="text-lg">📱 Conectar WhatsApp</CardTitle>
                 <CardDescription>
-                  Selecione uma instância para testar a conexão
+                  Conecte seu WhatsApp para enviar mensagens
                 </CardDescription>
               </div>
             </div>
@@ -454,41 +363,17 @@ export default function WhatsAppConnection() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Seletor de Instância */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium flex items-center gap-2">
-              <Server className="h-4 w-4" />
-              Selecionar Instância
-            </label>
-            <Select value={selectedInstanceId || ""} onValueChange={setSelectedInstanceId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Escolha uma instância" />
-              </SelectTrigger>
-              <SelectContent>
-                {instances.map((instance) => (
-                  <SelectItem key={instance.id} value={instance.id}>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${instance.is_connected ? "bg-green-500" : "bg-gray-400"}`} />
-                      <span className="font-medium">{instance.instance_name}</span>
-                      <span className="text-muted-foreground text-xs">
-                        (porta {instance.port})
-                      </span>
-                      {instance.phone_number && (
-                        <span className="text-xs text-green-600">
-                          - {formatPhone(instance.phone_number)}
-                        </span>
-                      )}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedInstance && (
-              <p className="text-xs text-muted-foreground">
-                URL: {selectedInstance.wuzapi_url}
+          {/* Instância selecionada automaticamente */}
+          {selectedInstance && (
+            <div className="p-3 rounded-lg bg-muted/50 border">
+              <p className="text-sm font-medium">
+                Instância: <span className="text-primary">{selectedInstance.instance_name}</span>
               </p>
-            )}
-          </div>
+              <p className="text-xs text-muted-foreground">
+                Porta: {selectedInstance.port}
+              </p>
+            </div>
+          )}
 
           {/* Status conectado */}
           {status.connected && (
@@ -580,8 +465,8 @@ export default function WhatsAppConnection() {
               onClick={loadInstances}
               className="text-muted-foreground"
             >
-              <Server className="h-4 w-4 mr-1" />
-              Recarregar instâncias
+              <RefreshCw className="h-4 w-4 mr-1" />
+              Recarregar
             </Button>
           </div>
         </CardContent>
