@@ -107,14 +107,38 @@ serve(async (req) => {
           }
         }
 
-        // ✅ VERIFICAR SE JÁ EXECUTOU NESTE HORÁRIO (última hora)
+        // ✅ VERIFICAR SE JÁ EXECUTOU ESTE *SLOT* (mesmo horário agendado) HOJE (SP)
+        // (evita bloquear um horário 11:20 só porque executou 11:18, por exemplo)
         if (campanha.ultima_execucao) {
           const ultimaExecucao = new Date(campanha.ultima_execucao);
-          const diferencaMinutos = (now.getTime() - ultimaExecucao.getTime()) / 60000;
-          
-          if (diferencaMinutos < 55) {
-            console.log(`⏭️ Campanha ${campanha.nome} - Já executou há ${Math.round(diferencaMinutos)} minutos`);
-            continue;
+
+          const ultimaDateSP = new Intl.DateTimeFormat('en-CA', {
+            timeZone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+          }).format(ultimaExecucao);
+
+          const ultimaTimeSP = new Intl.DateTimeFormat('en-GB', {
+            timeZone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }).format(ultimaExecucao);
+
+          if (ultimaDateSP === currentDate) {
+            const ultimoSlotExecutado = resolveExecutedSlot(
+              ultimaTimeSP,
+              horariosNormalizados,
+              3 // mesma tolerância do cron
+            );
+
+            if (ultimoSlotExecutado && ultimoSlotExecutado === horarioEncontrado) {
+              console.log(
+                `⏭️ Campanha ${campanha.nome} - Já executou HOJE no mesmo horário (${horarioEncontrado}) (ultima=${ultimaTimeSP})`
+              );
+              continue;
+            }
           }
         }
 
@@ -247,6 +271,36 @@ serve(async (req) => {
     );
   }
 });
+
+function resolveExecutedSlot(
+  executedTimeHHMM: string,
+  scheduleHHMMList: string[],
+  toleranceMinutes: number
+): string | null {
+  const [eh, em] = executedTimeHHMM.split(':').map(Number);
+  if (Number.isNaN(eh) || Number.isNaN(em)) return null;
+  const executedTotal = eh * 60 + em;
+
+  // Normaliza e ordena
+  const schedule = (scheduleHHMMList || [])
+    .map((h) => (typeof h === 'string' ? h.slice(0, 5) : String(h)))
+    .filter((h) => /^\d{2}:\d{2}$/.test(h))
+    .sort();
+
+  // Heurística: o slot executado é o mais próximo (em até tolerance) cujo horário <= executedTime
+  let best: { h: string; diff: number } | null = null;
+  for (const h of schedule) {
+    const [sh, sm] = h.split(':').map(Number);
+    const scheduledTotal = sh * 60 + sm;
+    const diff = executedTotal - scheduledTotal;
+    if (diff < 0) continue; // executou antes do slot
+    if (diff <= toleranceMinutes) {
+      if (!best || diff < best.diff) best = { h, diff };
+    }
+  }
+
+  return best?.h ?? null;
+}
 
 // ✅ FUNÇÃO CORRIGIDA - SUPORTA MÚLTIPLOS HORÁRIOS NO MESMO DIA (FUSO SP)
 function calcularProximaExecucao(
