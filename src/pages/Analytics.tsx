@@ -10,29 +10,19 @@ export default function Analytics() {
   const navigate = useNavigate();
   const [period, setPeriod] = useState("7days");
 
-  // Mock data
+  // Dados zerados
   const metrics = {
-    visitors: { value: 12453, change: +15.3 },
-    pageViews: { value: 45621, change: +8.7 },
-    avgSession: { value: "3m 24s", change: -2.1 },
-    bounceRate: { value: "42.3%", change: -5.2 },
-    conversions: { value: 892, change: +22.1 },
-    revenue: { value: "R$ 45.830", change: +18.9 }
+    visitors: { value: 0, change: 0 },
+    pageViews: { value: 0, change: 0 },
+    avgSession: { value: "0m 0s", change: 0 },
+    bounceRate: { value: "0%", change: 0 },
+    conversions: { value: 0, change: 0 },
+    revenue: { value: "R$ 0,00", change: 0 }
   };
 
-  const topPages = [
-    { url: "/produto-a", views: 5234, conversions: 234 },
-    { url: "/produto-b", views: 4521, conversions: 198 },
-    { url: "/produto-c", views: 3892, conversions: 156 },
-    { url: "/landing-page", views: 3105, conversions: 423 },
-    { url: "/blog-post-1", views: 2876, conversions: 87 }
-  ];
+  const topPages: { url: string; views: number; conversions: number }[] = [];
 
-  const campaigns = [
-    { name: "Campanha Verão 2025", clicks: 8543, conversions: 456, roi: "320%" },
-    { name: "Black Friday", clicks: 12430, conversions: 892, roi: "450%" },
-    { name: "Lançamento Produto X", clicks: 5621, conversions: 234, roi: "280%" }
-  ];
+  const campaigns: { name: string; clicks: number; conversions: number; roi: string }[] = [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-8">
