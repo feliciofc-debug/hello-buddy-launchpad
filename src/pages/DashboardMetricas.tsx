@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useClientMenus } from '@/hooks/useClientMenus';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -103,9 +104,9 @@ export default function DashboardMetricas() {
     campanhasPorStatus: [],
     atendimentoPorTipo: []
   });
+  const [userProfile, setUserProfile] = useState<any>(null);
 
-
-  const [userTipo, setUserTipo] = useState<string | null>(null);
+  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo);
 
   const carregarPerfil = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -117,7 +118,7 @@ export default function DashboardMetricas() {
       .eq('id', user.id)
       .maybeSingle();
 
-    setUserTipo((profile as any)?.tipo ?? null);
+    setUserProfile(profile ?? null);
   };
 
   useEffect(() => {
@@ -264,31 +265,29 @@ export default function DashboardMetricas() {
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const menuItems = [
-    { icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
-    { icon: Package, label: 'Produtos', path: '/meus-produtos' },
-    { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
-    { icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
-    { icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
-    { icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
+  const menuItemsAll = [
+    { id: 'dashboard', icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
+    { id: 'produtos', icon: Package, label: 'Produtos', path: '/meus-produtos' },
+    { id: 'whatsapp', icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
+    { id: 'conectar-whatsapp', icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
+    { id: 'ia-conversas', icon: MessageSquare, label: 'IA Conversas', path: '/ia-conversas' },
+    { id: 'ia-marketing', icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
 
-    { icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },
-    { icon: Search, label: 'Buscar CNPJ', path: '/prospects' },
-    { icon: Flame, label: 'Funil de Leads', path: '/leads-funil' },
-    { icon: Target, label: 'Configurar ICP', path: '/configurar-icp' },
-    { icon: Users, label: 'Vendedores', path: '/vendedores' },
-    { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
-    { icon: Activity, label: 'Analytics', path: '/analytics' },
+    { id: 'campanhas-prospeccao', icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },
+    { id: 'buscar-cnpj', icon: Search, label: 'Buscar CNPJ', path: '/prospects' },
+    { id: 'leads-funil', icon: Flame, label: 'Funil de Leads', path: '/leads-funil' },
+    { id: 'configurar-icp', icon: Target, label: 'Configurar ICP', path: '/configurar-icp' },
+    { id: 'vendedores', icon: Users, label: 'Vendedores', path: '/vendedores' },
+    { id: 'biblioteca', icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
+    { id: 'analytics', icon: Activity, label: 'Analytics', path: '/analytics' },
 
-    ...(userTipo === 'mcassab'
-      ? []
-      : [
-          { icon: BarChart3, label: 'Google Ads', path: '/google-ads' },
-          { icon: Building2, label: 'AMZ Imóveis', path: '/imoveis/leads-enriquecidos' },
-          { icon: Sparkles, label: 'Pietro Dashboard', path: '/pietro-dashboard' },
-          { icon: Settings, label: 'Configurações', path: '/configuracoes' },
-        ]),
+    { id: 'google-ads', icon: BarChart3, label: 'Google Ads', path: '/google-ads' },
+    { id: 'amz-imoveis', icon: Building2, label: 'AMZ Imóveis', path: '/imoveis/leads-enriquecidos' },
+    { id: 'pietro-dashboard', icon: Sparkles, label: 'Pietro Dashboard', path: '/pietro-dashboard' },
+    { id: 'configuracoes', icon: Settings, label: 'Configurações', path: '/configuracoes' },
   ];
+
+  const menuItems = menuItemsAll.filter((item) => isMenuAllowed(item.id));
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
@@ -363,14 +362,14 @@ export default function DashboardMetricas() {
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-card border-r transform transition-transform duration-300 lg:translate-x-0 lg:static ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="p-4 border-b flex items-center justify-between">
-            <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-              AMZ Ofertas
-            </h2>
-            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setIsMenuOpen(false)}>
-              <X className="w-5 h-5" />
-            </Button>
-          </div>
+           <div className="p-4 border-b flex items-center justify-between">
+             <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+               {empresaNome}
+             </h2>
+             <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setIsMenuOpen(false)}>
+               <X className="w-5 h-5" />
+             </Button>
+           </div>
 
           {/* Menu Items */}
           <nav className="flex-1 p-4 space-y-1">
