@@ -18,11 +18,27 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const now = new Date();
-    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
-    const currentDay = now.getDay(); // 0-6
+    const timeZone = 'America/Sao_Paulo';
 
-    console.log(`⏰ Hora atual: ${currentTime}, Dia da semana: ${currentDay}`);
+    const now = new Date();
+    const currentDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now); // YYYY-MM-DD (no fuso de SP)
+
+    const currentTime = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(now); // HH:MM (no fuso de SP)
+
+    const spNow = new Date(`${currentDate}T${currentTime}:00-03:00`);
+    const currentDay = spNow.getDay(); // 0-6 (no fuso de SP)
+
+    console.log(`⏰ Hora atual (SP): ${currentTime}, Dia da semana (SP): ${currentDay}`);
 
     // Buscar campanhas ativas que devem ser executadas agora
     const { data: campanhas, error: fetchError } = await supabase
@@ -32,7 +48,7 @@ serve(async (req) => {
         produtos(id, nome, descricao, preco, imagem_url, imagens)
       `)
       .eq("ativa", true)
-      .lte("data_inicio", now.toISOString().split('T')[0])
+      .lte("data_inicio", currentDate)
       .not("horarios", "is", null);
 
     if (fetchError) {
@@ -229,42 +245,50 @@ serve(async (req) => {
   }
 });
 
-// ✅ FUNÇÃO CORRIGIDA - SUPORTA MÚLTIPLOS HORÁRIOS NO MESMO DIA
+// ✅ FUNÇÃO CORRIGIDA - SUPORTA MÚLTIPLOS HORÁRIOS NO MESMO DIA (FUSO SP)
 function calcularProximaExecucao(
   frequencia: string,
   horarios: string[],
   diasSemana: number[]
 ): string | null {
+  const timeZone = 'America/Sao_Paulo';
   const now = new Date();
+
+  const currentDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now); // YYYY-MM-DD (SP)
+
+  const horaAtual = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(now); // HH:MM (SP)
 
   // Normalizar horários para HH:MM
   const horariosNormalizados = (horarios || []).map((h: string) =>
-    typeof h === "string" ? h.slice(0, 5) : h
+    typeof h === 'string' ? h.slice(0, 5) : h
   );
 
   const horariosOrdenados = [...horariosNormalizados].sort();
-  const horaAtual = now.toTimeString().slice(0, 5);
 
-  if (frequencia === 'uma_vez') {
-    return null; // Campanha única não repete
-  }
+  if (frequencia === 'uma_vez') return null;
 
   // ✅ VERIFICAR SE HÁ MAIS HORÁRIOS HOJE
   const proximoHorarioHoje = horariosOrdenados.find((h: string) => h > horaAtual);
 
   if (proximoHorarioHoje) {
     // Se for semanal, verificar se hoje é dia válido
-    if (frequencia === 'semanal' && diasSemana && !diasSemana.includes(now.getDay())) {
-      // Hoje não é válido, ir para próximo dia
+    const spNow = new Date(`${currentDate}T${horaAtual}:00-03:00`);
+    if (frequencia === 'semanal' && diasSemana && !diasSemana.includes(spNow.getDay())) {
       return calcularProximoDiaExecucao(frequencia, horariosOrdenados[0], diasSemana);
     }
 
-    // ✅ AINDA HÁ HORÁRIO HOJE!
-    const [hora, minuto] = proximoHorarioHoje.split(':');
-    const proxima = new Date();
-    proxima.setHours(parseInt(hora), parseInt(minuto), 0, 0);
-    console.log(`📅 Próximo horário HOJE: ${proximoHorarioHoje}`);
-    return proxima.toISOString();
+    console.log(`📅 Próximo horário HOJE (SP): ${proximoHorarioHoje}`);
+    return new Date(`${currentDate}T${proximoHorarioHoje}:00-03:00`).toISOString();
   }
 
   // Não há mais horários hoje, ir para próximo dia
@@ -276,27 +300,50 @@ function calcularProximoDiaExecucao(
   primeiroHorario: string,
   diasSemana: number[]
 ): string | null {
+  const timeZone = 'America/Sao_Paulo';
   const now = new Date();
-  const [hora, minuto] = primeiroHorario.split(':');
+
+  const currentDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now); // YYYY-MM-DD (SP)
+
+  // Criar um Date “SP” para fazer contas de dia com segurança
+  const base = new Date(`${currentDate}T12:00:00-03:00`); // meio-dia evita edge cases
 
   if (frequencia === 'diario' || frequencia === 'personalizado') {
-    const amanha = new Date(now);
-    amanha.setDate(amanha.getDate() + 1);
-    amanha.setHours(parseInt(hora), parseInt(minuto), 0, 0);
-    return amanha.toISOString();
+    const proxima = new Date(base);
+    proxima.setDate(proxima.getDate() + 1);
+
+    const ymd = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(proxima);
+
+    return new Date(`${ymd}T${primeiroHorario.slice(0, 5)}:00-03:00`).toISOString();
   }
 
   if (frequencia === 'semanal') {
-    const proxima = new Date(now);
+    const proxima = new Date(base);
     let tentativas = 0;
-    
+
     do {
       proxima.setDate(proxima.getDate() + 1);
       tentativas++;
     } while (diasSemana && !diasSemana.includes(proxima.getDay()) && tentativas < 8);
-    
-    proxima.setHours(parseInt(hora), parseInt(minuto), 0, 0);
-    return proxima.toISOString();
+
+    const ymd = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(proxima);
+
+    return new Date(`${ymd}T${primeiroHorario.slice(0, 5)}:00-03:00`).toISOString();
   }
 
   return null;
