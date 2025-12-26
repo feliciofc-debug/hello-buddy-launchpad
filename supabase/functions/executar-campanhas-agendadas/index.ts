@@ -74,22 +74,33 @@ serve(async (req) => {
         
         let horarioMatch = false;
         let horarioEncontrado = '';
+        let menorAtraso = 999;
         
+        // ✅ CRÍTICO: Verificar TODOS os horários e pegar o MAIS PRÓXIMO (menor atraso)
+        // Isso evita que 11:56 (atraso 3min) bloqueie 11:59 (atraso 0min)
         for (const horarioConfig of horariosNormalizados) {
           const [horaConfig, minutoConfig] = horarioConfig.split(':').map(Number);
           const minutosTotaisConfig = horaConfig * 60 + minutoConfig;
           
-          // ✅ CRÍTICO: Hora atual DEVE ser >= horário configurado (nunca antes!)
+          // Hora atual DEVE ser >= horário configurado (nunca antes!)
           // E tolerância máxima de 3 minutos de ATRASO (para cobrir delays do cron)
           const diferencaMinutos = minutosTotaisAgora - minutosTotaisConfig;
           
-          // Só dispara se: horário passou (diferença >= 0) E atraso <= 3 minutos
+          // Só considera se: horário passou (diferença >= 0) E atraso <= 3 minutos
           if (diferencaMinutos >= 0 && diferencaMinutos <= 3) {
-            horarioMatch = true;
-            horarioEncontrado = horarioConfig;
-            console.log(`✅ Horário OK: ${horarioConfig} (atraso: ${diferencaMinutos}min)`);
-            break;
+            console.log(`🔍 Horário candidato: ${horarioConfig} (atraso: ${diferencaMinutos}min)`);
+            
+            // ✅ PEGA O HORÁRIO COM MENOR ATRASO (mais recente)
+            if (diferencaMinutos < menorAtraso) {
+              menorAtraso = diferencaMinutos;
+              horarioMatch = true;
+              horarioEncontrado = horarioConfig;
+            }
           }
+        }
+        
+        if (horarioMatch) {
+          console.log(`✅ Horário selecionado: ${horarioEncontrado} (atraso: ${menorAtraso}min)`);
         }
         
         if (!horarioMatch) {
