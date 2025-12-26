@@ -714,6 +714,30 @@ export type Database = {
           },
         ]
       }
+      client_menu_config: {
+        Row: {
+          created_at: string | null
+          empresa_nome: string | null
+          id: string
+          menus_permitidos: string[]
+          tipo_cliente: string
+        }
+        Insert: {
+          created_at?: string | null
+          empresa_nome?: string | null
+          id?: string
+          menus_permitidos: string[]
+          tipo_cliente: string
+        }
+        Update: {
+          created_at?: string | null
+          empresa_nome?: string | null
+          id?: string
+          menus_permitidos?: string[]
+          tipo_cliente?: string
+        }
+        Relationships: []
+      }
       clientes: {
         Row: {
           ativo: boolean | null
