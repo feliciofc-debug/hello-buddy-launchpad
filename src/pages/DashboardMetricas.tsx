@@ -249,7 +249,6 @@ export default function DashboardMetricas() {
 
   const menuItems = [
     { icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
-    { icon: Building2, label: '🏢 AMZ Imóveis', path: '/imoveis/leads-enriquecidos' },
     { icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp' },
     { icon: Smartphone, label: '📱 Conectar WhatsApp', path: '/configuracoes-whatsapp' },
@@ -262,10 +261,7 @@ export default function DashboardMetricas() {
     { icon: Target, label: 'Configurar ICP', path: '/configurar-icp' },
     { icon: Users, label: 'Vendedores', path: '/vendedores' },
     { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
-    { icon: TrendingUp, label: 'Google Ads', path: '/google-ads' },
     { icon: Activity, label: 'Analytics', path: '/analytics' },
-    { icon: Bot, label: '🤖 Pietro Dashboard', path: '/pietro-dashboard' },
-    { icon: Settings, label: 'Configurações', path: '/configuracoes' },
   ];
 
   // Componente de campanhas em andamento
