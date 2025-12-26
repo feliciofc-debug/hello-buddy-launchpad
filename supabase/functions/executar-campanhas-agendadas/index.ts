@@ -63,12 +63,12 @@ serve(async (req) => {
 
     for (const campanha of campanhas || []) {
       try {
-        // ✅ VERIFICAR HORÁRIO COM TOLERÂNCIA ±3 MINUTOS
+        // ✅ VERIFICAR HORÁRIO - SÓ EXECUTA NO HORÁRIO EXATO OU ATÉ 3MIN DEPOIS (nunca antes!)
         const horariosNormalizados = (campanha.horarios || []).map((h: string) =>
           typeof h === "string" ? h.slice(0, 5) : h
         );
         
-        // Converter hora atual e configurada para minutos totais
+        // Converter hora atual para minutos totais
         const [horaAtual, minutoAtual] = currentTime.split(':').map(Number);
         const minutosTotaisAgora = horaAtual * 60 + minutoAtual;
         
@@ -78,13 +78,16 @@ serve(async (req) => {
         for (const horarioConfig of horariosNormalizados) {
           const [horaConfig, minutoConfig] = horarioConfig.split(':').map(Number);
           const minutosTotaisConfig = horaConfig * 60 + minutoConfig;
-          const diferencaMinutos = Math.abs(minutosTotaisAgora - minutosTotaisConfig);
           
-          // ✅ Tolerância de 3 minutos
-          if (diferencaMinutos <= 3) {
+          // ✅ CRÍTICO: Hora atual DEVE ser >= horário configurado (nunca antes!)
+          // E tolerância máxima de 3 minutos de ATRASO (para cobrir delays do cron)
+          const diferencaMinutos = minutosTotaisAgora - minutosTotaisConfig;
+          
+          // Só dispara se: horário passou (diferença >= 0) E atraso <= 3 minutos
+          if (diferencaMinutos >= 0 && diferencaMinutos <= 3) {
             horarioMatch = true;
             horarioEncontrado = horarioConfig;
-            console.log(`✅ Horário encontrado: ${horarioConfig} (diferença: ${diferencaMinutos}min)`);
+            console.log(`✅ Horário OK: ${horarioConfig} (atraso: ${diferencaMinutos}min)`);
             break;
           }
         }
