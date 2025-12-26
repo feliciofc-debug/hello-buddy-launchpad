@@ -262,6 +262,10 @@ export default function DashboardMetricas() {
     { icon: Users, label: 'Vendedores', path: '/vendedores' },
     { icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
     { icon: Activity, label: 'Analytics', path: '/analytics' },
+    { icon: BarChart3, label: 'Google Ads', path: '/google-ads' },
+    { icon: Building2, label: 'AMZ Imóveis', path: '/leads-imoveis-enriquecidos' },
+    { icon: Sparkles, label: 'Pietro Dashboard', path: '/pietro-dashboard' },
+    { icon: Settings, label: 'Configurações', path: '/configuracoes' },
   ];
 
   // Componente de campanhas em andamento
