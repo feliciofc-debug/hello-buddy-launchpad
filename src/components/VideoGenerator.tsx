@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Video, Upload, Copy, Download, Instagram, MessageCircle, Facebook, Clock, Ticket, Sparkles } from "lucide-react";
+import { Loader2, Video, Upload, Copy, Download, Instagram, MessageCircle, Facebook, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface VideoResult {
   videoUrl: string;
@@ -16,70 +18,142 @@ interface VideoResult {
     tiktok: string;
     whatsapp: string;
   };
+  promptUsed?: string;
 }
 
-type Duration = 6 | 12 | 30;
-
-const DURATION_COSTS: Record<Duration, number> = { 6: 1, 12: 2, 30: 5 };
-
-const DURATION_OPTIONS = [
-  { value: 6, label: "6 segundos", credits: 1, videos: "30 vídeos" },
-  { value: 12, label: "12 segundos", credits: 2, videos: "15 vídeos" },
-  { value: 30, label: "30 segundos", credits: 5, videos: "6 vídeos" },
-];
-
 export const VideoGenerator = () => {
-  const [prompt, setPrompt] = useState("");
+  const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<VideoResult | null>(null);
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
-  const [duration, setDuration] = useState<Duration>(6);
-  const [credits, setCredits] = useState<number | null>(null);
-  const [loadingCredits, setLoadingCredits] = useState(true);
-  const [editableLegendas, setEditableLegendas] = useState({ instagram: '', facebook: '', tiktok: '', whatsapp: '' });
+  const [credits, setCredits] = useState(0);
+  const [duration, setDuration] = useState(6);
+  const [style, setStyle] = useState("automatico");
+  const [movement, setMovement] = useState("moderado");
+  const [predictionId, setPredictionId] = useState<string | null>(null);
+  
+  const [editableLegendas, setEditableLegendas] = useState({
+    instagram: '',
+    facebook: '',
+    tiktok: '',
+    whatsapp: ''
+  });
 
+  // Carregar créditos ao montar
   useEffect(() => {
-    const fetchCredits = async () => {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) { setLoadingCredits(false); return; }
-
-        const { data, error } = await supabase.from('user_video_credits').select('credits_remaining').eq('user_id', userData.user.id).single();
-
-        if (error && error.code === 'PGRST116') {
-          const { data: newCredits } = await supabase.from('user_video_credits').insert({ user_id: userData.user.id, credits_remaining: 10 }).select('credits_remaining').single();
-          setCredits(newCredits?.credits_remaining ?? 10);
-        } else if (data) {
-          setCredits(data.credits_remaining);
-        }
-      } catch (err) { console.error('Erro ao buscar créditos:', err); } finally { setLoadingCredits(false); }
-    };
-    fetchCredits();
+    loadCredits();
   }, []);
+
+  const loadCredits = async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+
+    const { data } = await supabase
+      .from('user_video_credits')
+      .select('credits_remaining')
+      .eq('user_id', userData.user.id)
+      .single();
+
+    setCredits(data?.credits_remaining || 0);
+  };
+
+  // Polling de status
+  useEffect(() => {
+    if (!predictionId || !loading) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('gerar-video', {
+          body: { predictionId }
+        });
+
+        if (error) throw error;
+
+        if (data.status === 'succeeded') {
+          clearInterval(interval);
+          
+          // Gerar legendas
+          const legendas = {
+            instagram: `🎥✨ ${url}\n\n💫 Aproveite!\n🔥 #reels #instagram #ofertas`,
+            facebook: `🎬 ${url}\n\n👉 Saiba mais!\n\n#video #facebook #promocao`,
+            tiktok: `🔥 ${url}\n\n💥 Não perca! #tiktok #viral #fyp`,
+            whatsapp: `🎥 *${url}*\n\n✅ Confira agora!`
+          };
+
+          setResultado({
+            videoUrl: data.videoUrl,
+            legendas,
+            promptUsed: data.promptUsed
+          });
+          setEditableLegendas(legendas);
+          setLoading(false);
+          setPredictionId(null);
+          
+          // Salvar no banco
+          const { data: userData } = await supabase.auth.getUser();
+          if (userData.user) {
+            await supabase
+              .from('videos')
+              .insert({
+                user_id: userData.user.id,
+                titulo: url.substring(0, 100),
+                video_url: data.videoUrl,
+                legenda_instagram: legendas.instagram,
+                legenda_facebook: legendas.facebook,
+                legenda_tiktok: legendas.tiktok,
+                legenda_whatsapp: legendas.whatsapp,
+                status: 'concluido'
+              });
+          }
+
+          await loadCredits();
+          toast.success("🎬 Vídeo gerado com sucesso!");
+        } else if (data.status === 'failed') {
+          clearInterval(interval);
+          setLoading(false);
+          setPredictionId(null);
+          toast.error(data.error || 'Falha ao gerar vídeo');
+        }
+      } catch (err: any) {
+        clearInterval(interval);
+        setLoading(false);
+        setPredictionId(null);
+        toast.error(err.message);
+      }
+    }, 3000); // Checar a cada 3 segundos
+
+    return () => clearInterval(interval);
+  }, [predictionId, loading, url]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) { toast.error('Por favor, envie apenas imagens'); return; }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor, envie apenas imagens');
+      return;
+    }
+
     setUploadedImage(file);
     toast.success('Imagem carregada!');
   };
 
-  const creditsNeeded = DURATION_COSTS[duration];
-  const hasEnoughCredits = credits !== null && credits >= creditsNeeded;
-
-  const handleGenerate = async () => {
-    if (!prompt.trim() && !uploadedImage) {
+  const handleGenerate = async (isRetry: boolean = false) => {
+    if (!url.trim() && !uploadedImage) {
       toast.error("Digite uma descrição ou envie uma imagem");
       return;
     }
-    if (!hasEnoughCredits) {
-      toast.error(`Você precisa de ${creditsNeeded} créditos. Você tem ${credits ?? 0}.`);
+
+    const creditsNeeded = duration === 6 ? 1 : duration === 12 ? 2 : 5;
+
+    if (credits < creditsNeeded && !isRetry) {
+      toast.error(`Você precisa de ${creditsNeeded} créditos. Você tem apenas ${credits}.`);
       return;
     }
 
     setLoading(true);
     setResultado(null);
+    setPredictionId(null);
 
     try {
       const { data: userData } = await supabase.auth.getUser();
@@ -89,307 +163,378 @@ export const VideoGenerator = () => {
         return;
       }
 
-      let imageBase64: string | null = null;
+      let imageBase64 = null;
       if (uploadedImage) {
-        imageBase64 = await new Promise((resolve) => {
+        imageBase64 = await new Promise<string>((resolve) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
           reader.readAsDataURL(uploadedImage);
         });
       }
 
-      // 1) Inicia a geração (retorna predictionId)
-      const { data: startData, error: startError } = await supabase.functions.invoke('gerar-video', {
+      const { data, error } = await supabase.functions.invoke('gerar-video', {
         body: {
-          prompt: prompt.trim(),
-          productUrl: prompt.includes('http') ? prompt : null,
+          prompt: url.trim(),
           image: imageBase64,
           duration,
-        },
-      });
-
-      if (startError) throw startError;
-      if (!startData?.success) throw new Error(startData?.error || 'Erro ao iniciar geração');
-
-      const predictionId = startData.predictionId as string | undefined;
-      if (!predictionId) throw new Error('Não foi possível iniciar a geração (predictionId ausente).');
-
-      toast.message('🎬 Gerando...', { description: 'Aguarde (pode levar 1-3 minutos).', duration: 4000 });
-
-      if (typeof startData.creditsRemaining === 'number') {
-        setCredits(startData.creditsRemaining);
-      }
-
-      // 2) Faz polling no frontend (evita timeout de conexão)
-      const startedAt = Date.now();
-      const timeoutMs = 4 * 60 * 1000; // 4 min
-      let videoUrl: string | null = null;
-
-      while (!videoUrl && Date.now() - startedAt < timeoutMs) {
-        await new Promise((r) => setTimeout(r, 2500));
-
-        const { data: statusData, error: statusError } = await supabase.functions.invoke('gerar-video', {
-          body: { predictionId },
-        });
-
-        if (statusError) throw statusError;
-        if (!statusData?.success) throw new Error(statusData?.error || 'Falha ao gerar vídeo');
-
-        if (statusData.status === 'succeeded' && statusData.videoUrl) {
-          videoUrl = statusData.videoUrl;
-          break;
+          style,
+          movement
         }
-      }
-
-      if (!videoUrl) throw new Error('Timeout ao gerar vídeo. Tente novamente.');
-
-      // Legendas locais (mantém igual ao comportamento anterior)
-      const legendas = {
-        instagram: `🎥✨ ${prompt.trim()}\n\n💫 Aproveite!\n🔥 Link na bio!\n\n#reels #instagram #viral`,
-        facebook: `🎬 ${prompt.trim()}\n\n👉 Clique no link!\n\n#video #facebook`,
-        tiktok: `🔥 ${prompt.trim()}\n\n💥 Não perca!\n\n#tiktok #viral #fyp`,
-        whatsapp: `🎥 *${prompt.trim()}*\n\n✅ Confira!\n\n👉 ${prompt.includes('http') ? prompt : 'Link aqui'}`,
-      };
-
-      setResultado({ videoUrl, legendas });
-      setEditableLegendas(legendas);
-
-      await supabase.from('videos').insert({
-        user_id: userData.user.id,
-        titulo: prompt.trim().substring(0, 100),
-        link_produto: prompt.includes('http') ? prompt : null,
-        video_url: videoUrl,
-        legenda_instagram: legendas.instagram,
-        legenda_facebook: legendas.facebook,
-        legenda_tiktok: legendas.tiktok,
-        legenda_whatsapp: legendas.whatsapp,
-        status: 'concluido',
       });
 
-      toast.success(`🎬 Vídeo gerado! Restam ${typeof startData.creditsRemaining === 'number' ? startData.creditsRemaining : ''} créditos`);
+      if (error) throw error;
+
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao gerar vídeo');
+      }
+
+      setPredictionId(data.predictionId);
+      setCredits(data.creditsRemaining);
+      toast.success(`⏳ Gerando vídeo... Isso pode levar até 2 minutos.`);
+
     } catch (err: any) {
       toast.error(err.message || 'Erro ao gerar vídeo');
-      console.error(err);
-    } finally {
       setLoading(false);
     }
   };
 
-  const handleCopy = (text: string, platform: string) => { 
-    navigator.clipboard.writeText(text); 
-    toast.success(`Legenda ${platform} copiada!`); 
+  const handleCopy = (text: string, platform: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`Legenda ${platform} copiada!`);
   };
 
   const handleDownload = async () => {
     if (!resultado?.videoUrl) return;
-    try { 
-      const response = await fetch(resultado.videoUrl); 
-      const blob = await response.blob(); 
-      const downloadUrl = window.URL.createObjectURL(blob); 
-      const a = document.createElement('a'); 
-      a.href = downloadUrl; 
-      a.download = `video-ia-${duration}s.mp4`; 
-      document.body.appendChild(a); 
-      a.click(); 
-      window.URL.revokeObjectURL(downloadUrl); 
-      document.body.removeChild(a); 
-      toast.success('Vídeo baixado!'); 
-    } catch { 
-      toast.error('Erro ao baixar vídeo'); 
+
+    try {
+      const response = await fetch(resultado.videoUrl);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = 'video-ia.mp4';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      toast.success('Vídeo baixado!');
+    } catch (error) {
+      toast.error('Erro ao baixar vídeo');
     }
   };
 
+  const creditsNeeded = duration === 6 ? 1 : duration === 12 ? 2 : 5;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header com créditos */}
-      <div className="text-center space-y-2">
-        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent">
-          🎬 IA Vídeos
-        </h1>
-        <p className="text-lg md:text-xl text-muted-foreground">
-          Gere vídeos ULTRA REALISTAS com IA em segundos!
-        </p>
-        <div className="flex items-center justify-center gap-2 mt-4">
-          <Ticket className="h-6 w-6 text-yellow-400" />
-          {loadingCredits ? (
-            <span className="text-muted-foreground">Carregando...</span>
-          ) : credits !== null ? (
-            <span className={`font-bold text-2xl ${credits > 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {credits} créditos disponíveis 🎟️
-            </span>
-          ) : (
-            <span className="text-muted-foreground">Faça login para ver créditos</span>
-          )}
-        </div>
-      </div>
-
-      {/* Campo Principal - igual ao de imagens */}
-      <Card className="max-w-4xl mx-auto shadow-2xl border-2">
-        <CardContent className="pt-8 space-y-6">
-          {/* Prompt */}
-          <div className="space-y-4">
-            <Textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Descreva o vídeo que você quer criar... Ex: 'um passarinho colorido amarelo azul e vermelho voando de galho em galho numa floresta verde ultra realista'"
-              className="text-lg p-6 min-h-[120px]"
-              disabled={loading}
-            />
-            
-            {/* Upload de Imagem */}
-            <div className="border-2 border-dashed rounded-lg p-6">
-              <div className="flex items-center justify-center gap-4">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="file-upload-video"
-                />
-                <label htmlFor="file-upload-video" className="cursor-pointer">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors">
-                    <Upload className="h-5 w-5" />
-                    <span className="font-medium">
-                      {uploadedImage ? uploadedImage.name : '📷 Upload Imagem (opcional)'}
-                    </span>
-                  </div>
-                </label>
-                {uploadedImage && (
-                  <Button variant="ghost" size="sm" onClick={() => setUploadedImage(null)}>
-                    ✕ Remover
-                  </Button>
-                )}
-              </div>
-              {uploadedImage && (
-                <div className="mt-4 flex justify-center">
-                  <img 
-                    src={URL.createObjectURL(uploadedImage)} 
-                    alt="Preview" 
-                    className="max-h-32 rounded-lg"
-                  />
-                </div>
-              )}
+      <Card className="shadow-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0">
+        <CardContent className="py-6">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-3">
+              <Video className="h-8 w-8" />
+              <span className="text-xl font-bold">🎬 IA Vídeos - Gere Vídeos Profissionais em Segundos!</span>
             </div>
-
-            {/* Seleção de Duração */}
-            <div className="space-y-3">
-              <label className="text-sm font-medium flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                ⏱️ Duração do vídeo:
-              </label>
-              <RadioGroup 
-                value={String(duration)} 
-                onValueChange={(v) => setDuration(Number(v) as Duration)} 
-                className="grid grid-cols-3 gap-4"
-              >
-                {DURATION_OPTIONS.map((o) => (
-                  <div key={o.value}>
-                    <RadioGroupItem value={String(o.value)} id={`d-${o.value}`} className="peer sr-only" />
-                    <Label 
-                      htmlFor={`d-${o.value}`} 
-                      className={`flex flex-col items-center rounded-lg border-2 p-4 cursor-pointer transition-all ${
-                        duration === o.value 
-                          ? 'border-purple-500 bg-purple-500/10 shadow-lg' 
-                          : 'border-border hover:border-purple-500/50'
-                      }`}
-                    >
-                      <Clock className={`h-6 w-6 mb-2 ${duration === o.value ? 'text-purple-400' : 'text-muted-foreground'}`} />
-                      <span className="font-bold">{o.label}</span>
-                      <span className="text-sm text-muted-foreground">{o.credits} crédito{o.credits > 1 ? 's' : ''}</span>
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
+            <div className="bg-white/20 backdrop-blur rounded-lg px-4 py-2">
+              <p className="text-sm opacity-90">Créditos Disponíveis</p>
+              <p className="text-2xl font-bold">🎟️ {credits}</p>
             </div>
-
-            {/* Botão Gerar */}
-            <Button 
-              onClick={handleGenerate} 
-              disabled={loading || !hasEnoughCredits || (!prompt.trim() && !uploadedImage)} 
-              size="lg"
-              className="w-full text-lg py-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Gerando vídeo ultra realista... (30-90s)
-                </>
-              ) : !hasEnoughCredits ? (
-                <>
-                  <Ticket className="mr-2 h-5 w-5" />
-                  Créditos insuficientes ({credits ?? 0}/{creditsNeeded})
-                </>
-              ) : (
-                <>
-                  ✨ GERAR VÍDEO COM IA ({creditsNeeded} crédito{creditsNeeded > 1 ? 's' : ''})
-                </>
-              )}
-            </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Formulário */}
+      <Card className="shadow-xl">
+        <CardContent className="pt-6 space-y-6">
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              💬 Descreva o vídeo que deseja criar
+            </label>
+            <Textarea
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="Ex: 'óculos de sol Ray-Ban na praia' OU 'hambúrguer gourmet com queijo derretendo' OU 'tênis Nike Air Max girando em 360 graus'"
+              className="min-h-[100px]"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              💡 Seja específico! Quanto mais detalhes, melhor o resultado.
+            </p>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              📷 Imagem de Referência (opcional)
+            </label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="file-upload"
+              />
+              <Button
+                onClick={() => document.getElementById('file-upload')?.click()}
+                variant="outline"
+                className="w-full"
+                type="button"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {uploadedImage ? uploadedImage.name : 'Escolher Imagem'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Estilo */}
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              🎨 Estilo do Vídeo
+            </label>
+            <Select value={style} onValueChange={setStyle}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o estilo" />
+              </SelectTrigger>
+              <SelectContent className="bg-background">
+                <SelectItem value="automatico">✨ Automático (Recomendado)</SelectItem>
+                <SelectItem value="comercial">📺 Comercial/Publicitário</SelectItem>
+                <SelectItem value="documental">🎥 Documental/Realista</SelectItem>
+                <SelectItem value="cinematografico">🎬 Cinematográfico/Artístico</SelectItem>
+                <SelectItem value="minimalista">⚪ Minimalista/Clean</SelectItem>
+                <SelectItem value="lifestyle">👥 Lifestyle/Natural</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Movimento */}
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              ⚡ Intensidade de Movimento
+            </label>
+            <RadioGroup value={movement} onValueChange={setMovement} className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="suave" id="mov-suave" />
+                <Label htmlFor="mov-suave" className="cursor-pointer">
+                  Suave - Movimento lento e elegante
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="moderado" id="mov-moderado" />
+                <Label htmlFor="mov-moderado" className="cursor-pointer">
+                  Moderado - Movimento natural (padrão)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="dinamico" id="mov-dinamico" />
+                <Label htmlFor="mov-dinamico" className="cursor-pointer">
+                  Dinâmico - Movimento ativo e energético
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          {/* Duração */}
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              ⏱️ Duração do Vídeo
+            </label>
+            <RadioGroup value={duration.toString()} onValueChange={(v) => setDuration(parseInt(v))} className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="6" id="dur-6" />
+                <Label htmlFor="dur-6" className="cursor-pointer">
+                  6 segundos (1 crédito)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="12" id="dur-12" />
+                <Label htmlFor="dur-12" className="cursor-pointer">
+                  12 segundos (2 créditos)
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="30" id="dur-30" />
+                <Label htmlFor="dur-30" className="cursor-pointer">
+                  30 segundos (5 créditos)
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <Button
+            onClick={() => handleGenerate(false)}
+            disabled={loading || credits < creditsNeeded}
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-lg py-6"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Gerando vídeo... Aguarde até 2 minutos
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-2 h-5 w-5" />
+                ✨ GERAR VÍDEO COM IA ({creditsNeeded} crédito{creditsNeeded > 1 ? 's' : ''})
+              </>
+            )}
+          </Button>
+
+          {credits < creditsNeeded && (
+            <p className="text-sm text-red-500 text-center">
+              ⚠️ Créditos insuficientes! Você tem {credits}, precisa de {creditsNeeded}.
+            </p>
+          )}
         </CardContent>
       </Card>
 
       {/* Resultados */}
       {resultado && (
-        <div className="max-w-7xl mx-auto space-y-6">
-          {/* Vídeo Gerado - Grande */}
-          <Card className="shadow-xl border-2 border-purple-500">
-            <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                🎬 Vídeo Gerado com IA - Ultra Realista
+        <div className="space-y-6">
+          {/* Preview Principal */}
+          <Card className="shadow-2xl border-4 border-purple-500">
+            <CardHeader className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+              <CardTitle className="flex items-center gap-2 justify-between flex-wrap">
+                <span>🎥 Vídeo Gerado com IA - Ultra Realista</span>
+                <Button
+                  onClick={() => handleGenerate(true)}
+                  variant="secondary"
+                  size="sm"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Gerar Novamente
+                </Button>
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-6 space-y-4">
-              <video 
-                src={resultado.videoUrl} 
-                controls 
-                autoPlay 
+            <CardContent className="pt-6">
+              <video
+                src={resultado.videoUrl}
+                controls
+                className="w-full rounded-lg mb-4"
+                autoPlay
                 loop
-                className="w-full rounded-lg shadow-lg max-h-[500px] object-contain bg-black"
               />
               <Button
                 onClick={handleDownload}
-                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                variant="outline"
+                className="w-full"
+                size="lg"
               >
                 <Download className="mr-2 h-5 w-5" />
                 💾 Salvar Vídeo no Computador
               </Button>
+              
+              {resultado.promptUsed && (
+                <details className="mt-4">
+                  <summary className="text-xs text-muted-foreground cursor-pointer">
+                    🔍 Ver prompt usado pela IA
+                  </summary>
+                  <p className="text-xs mt-2 p-2 bg-muted rounded">
+                    {resultado.promptUsed}
+                  </p>
+                </details>
+              )}
             </CardContent>
           </Card>
 
-          {/* Grid de Cards - 4 colunas */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { title: '📱 Instagram Reels', icon: Instagram, color: 'from-pink-500 to-purple-600', key: 'instagram' as const },
-              { title: '📘 Facebook', icon: Facebook, color: 'from-blue-500 to-blue-700', key: 'facebook' as const },
-              { title: '🎵 TikTok', icon: Video, color: 'from-gray-800 to-black', key: 'tiktok' as const },
-              { title: '💬 WhatsApp', icon: MessageCircle, color: 'from-green-500 to-emerald-600', key: 'whatsapp' as const }
-            ].map(({ title, icon: Icon, color, key }) => (
-              <Card key={key} className="shadow-xl border-2 hover:border-purple-500 transition-colors">
-                <CardHeader className={`bg-gradient-to-r ${color} text-white`}>
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <Icon className="h-4 w-4" />
-                    {title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4 space-y-3">
-                  <Textarea 
-                    value={editableLegendas[key]} 
-                    onChange={(e) => setEditableLegendas({...editableLegendas, [key]: e.target.value})} 
-                    className="min-h-[120px] text-sm" 
-                  />
-                  <Button 
-                    onClick={() => handleCopy(editableLegendas[key], title)} 
-                    variant="outline" 
-                    className="w-full"
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copiar
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+          {/* Cards de Redes Sociais */}
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Instagram */}
+            <Card className="shadow-xl border-2 hover:border-pink-500 transition-colors">
+              <CardHeader className="bg-gradient-to-r from-pink-500 to-purple-600 text-white">
+                <CardTitle className="flex items-center gap-2">
+                  <Instagram className="h-5 w-5" />
+                  📱 Instagram Reels
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                <Textarea
+                  value={editableLegendas.instagram}
+                  onChange={(e) => setEditableLegendas({...editableLegendas, instagram: e.target.value})}
+                  className="min-h-[100px]"
+                />
+                <Button
+                  onClick={() => handleCopy(editableLegendas.instagram, 'Instagram')}
+                  variant="outline"
+                  className="w-full"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar Legenda
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Facebook */}
+            <Card className="shadow-xl border-2 hover:border-blue-500 transition-colors">
+              <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-700 text-white">
+                <CardTitle className="flex items-center gap-2">
+                  <Facebook className="h-5 w-5" />
+                  📘 Facebook Vídeo
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                <Textarea
+                  value={editableLegendas.facebook}
+                  onChange={(e) => setEditableLegendas({...editableLegendas, facebook: e.target.value})}
+                  className="min-h-[100px]"
+                />
+                <Button
+                  onClick={() => handleCopy(editableLegendas.facebook, 'Facebook')}
+                  variant="outline"
+                  className="w-full"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar Legenda
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* TikTok */}
+            <Card className="shadow-xl border-2 hover:border-black transition-colors">
+              <CardHeader className="bg-gradient-to-r from-black to-gray-800 text-white">
+                <CardTitle className="flex items-center gap-2">
+                  <Video className="h-5 w-5" />
+                  🎵 TikTok
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                <Textarea
+                  value={editableLegendas.tiktok}
+                  onChange={(e) => setEditableLegendas({...editableLegendas, tiktok: e.target.value})}
+                  className="min-h-[100px]"
+                />
+                <Button
+                  onClick={() => handleCopy(editableLegendas.tiktok, 'TikTok')}
+                  variant="outline"
+                  className="w-full"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar Legenda
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* WhatsApp */}
+            <Card className="shadow-xl border-2 hover:border-green-500 transition-colors">
+              <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+                <CardTitle className="flex items-center gap-2">
+                  <MessageCircle className="h-5 w-5" />
+                  💬 WhatsApp Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-6 space-y-4">
+                <Textarea
+                  value={editableLegendas.whatsapp}
+                  onChange={(e) => setEditableLegendas({...editableLegendas, whatsapp: e.target.value})}
+                  className="min-h-[100px]"
+                />
+                <Button
+                  onClick={() => handleCopy(editableLegendas.whatsapp, 'WhatsApp')}
+                  variant="outline"
+                  className="w-full"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar Legenda
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </div>
       )}
