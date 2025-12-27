@@ -144,19 +144,35 @@ serve(async (req) => {
       )
     }
 
-    // Preparar prompt ultra realista - estilo documentário natureza (David Attenborough style)
+    // PROMPT ENGINEERING AVANÇADO - Garantir ação específica e realismo extremo
     let finalPrompt = prompt
     if (prompt) {
-      // Detectar se é sobre animais/natureza para usar prompt especializado
-      const animalKeywords = ['bird', 'passarinho', 'pássaro', 'animal', 'cat', 'dog', 'gato', 'cachorro', 'fish', 'peixe', 'butterfly', 'borboleta', 'insect', 'inseto', 'wildlife', 'nature', 'floresta', 'forest', 'jungle', 'selva']
-      const isWildlife = animalKeywords.some(kw => prompt.toLowerCase().includes(kw))
+      // Detectar se é sobre pássaros para prompt super específico
+      const birdKeywords = ['bird', 'passarinho', 'pássaro', 'ave', 'pájaro', 'colorful bird']
+      const isBird = birdKeywords.some(kw => prompt.toLowerCase().includes(kw))
       
-      if (isWildlife) {
-        // Prompt especializado para vida selvagem - estilo BBC Earth/National Geographic
-        finalPrompt = `Award-winning BBC Earth documentary footage, National Geographic photography style, shot on RED camera 8K, macro lens detail, real wildlife behavior, anatomically correct ${prompt}, natural habitat, golden hour lighting, shallow depth of field, film grain, David Attenborough documentary quality`
+      // Detectar se menciona ação de voar
+      const flyingKeywords = ['voando', 'flying', 'voa', 'fly', 'galho', 'branch', 'árvore', 'tree']
+      const hasFlyingAction = flyingKeywords.some(kw => prompt.toLowerCase().includes(kw))
+      
+      if (isBird && hasFlyingAction) {
+        // PROMPT ULTRA-ESPECÍFICO PARA PÁSSARO VOANDO
+        finalPrompt = `Hyper-realistic slow-motion wildlife documentary footage of a beautiful exotic colorful tropical bird in flight, actively flying from branch to branch in a lush tropical rainforest. The bird is mid-air with wings fully spread, showing dynamic flight movement. Shot in 8K with RED EPIC camera, 120fps slow-motion, telephoto lens 600mm, capturing every feather detail. BBC Earth Planet Earth II quality. Natural golden hour sunlight filtering through jungle canopy. The bird lands gracefully on a tree branch. Real wildlife behavior, anatomically perfect bird with realistic flight physics, not walking, not standing still, actively flying through the forest.`
+      } else if (isBird) {
+        // Pássaro genérico mas realista
+        finalPrompt = `Ultra-realistic BBC Earth documentary footage of a ${prompt}. Shot on RED camera 8K, wildlife telephoto lens, slow-motion 120fps, National Geographic photography. Real bird behavior, anatomically correct, natural movement, forest habitat, golden hour cinematic lighting, shallow depth of field, film grain texture.`
       } else {
-        // Prompt genérico ultra-realista
-        finalPrompt = `Photorealistic 8K footage, shot on ARRI Alexa cinema camera, natural lighting, professional cinematography, real-world footage style, no CGI, no animation, documentary quality: ${prompt}`
+        // Detectar outros animais/natureza
+        const animalKeywords = ['animal', 'cat', 'dog', 'gato', 'cachorro', 'fish', 'peixe', 'butterfly', 'borboleta', 'insect', 'inseto', 'wildlife', 'nature', 'floresta', 'forest', 'jungle', 'selva']
+        const isWildlife = animalKeywords.some(kw => prompt.toLowerCase().includes(kw))
+        
+        if (isWildlife) {
+          // Prompt especializado para vida selvagem
+          finalPrompt = `Hyper-realistic BBC Earth documentary footage, shot on RED EPIC 8K camera, 120fps slow-motion. ${prompt}. National Geographic photography quality, telephoto lens detail, real animal behavior with natural movement, anatomically correct, authentic habitat environment, golden hour natural lighting, shallow depth of field, cinematic film grain. No CGI, no animation, pure documentary realism.`
+        } else {
+          // Prompt genérico ultra-realista
+          finalPrompt = `Cinematic 8K footage shot on ARRI Alexa LF camera, anamorphic lens, natural lighting, professional Hollywood cinematography. ${prompt}. Photorealistic quality, no CGI, real-world footage aesthetic, documentary style.`
+        }
       }
     }
 
