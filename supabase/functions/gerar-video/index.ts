@@ -8,6 +8,113 @@ const corsHeaders = {
 
 const DURATION_COSTS: Record<number, number> = { 6: 1, 12: 2, 30: 5 }
 
+// Função para detectar categoria do conteúdo
+function detectCategory(prompt: string): string {
+  const lower = prompt.toLowerCase()
+  
+  if (/\b(óculos|relógio|tênis|roupa|sapato|bolsa|mochila|watch|glasses|shoes|bag|produto|product)\b/.test(lower)) {
+    return 'produto'
+  }
+  if (/\b(comida|bebida|pizza|hambúrguer|sushi|café|food|drink|restaurant|alimento)\b/.test(lower)) {
+    return 'alimento'
+  }
+  if (/\b(pássaro|cachorro|gato|animal|natureza|floresta|bird|dog|cat|nature|forest|wildlife)\b/.test(lower)) {
+    return 'natureza'
+  }
+  if (/\b(celular|computador|notebook|fone|gadget|phone|laptop|tech|tecnologia)\b/.test(lower)) {
+    return 'tecnologia'
+  }
+  if (/\b(carro|moto|veículo|car|motorcycle|vehicle|automóvel)\b/.test(lower)) {
+    return 'automovel'
+  }
+  if (/\b(maquiagem|perfume|creme|skincare|makeup|beauty|beleza|cosmético)\b/.test(lower)) {
+    return 'beleza'
+  }
+  if (/\b(casa|apartamento|imóvel|house|apartment|real estate|prédio)\b/.test(lower)) {
+    return 'imovel'
+  }
+  if (/\b(pessoa|modelo|fitness|yoga|people|model|lifestyle|mulher|homem)\b/.test(lower)) {
+    return 'pessoas'
+  }
+  
+  return 'generico'
+}
+
+// Templates de prompt por categoria
+function getCategoryPrompt(category: string, userPrompt: string): string {
+  const templates: Record<string, string> = {
+    'produto': `Professional product videography showcasing ${userPrompt}. 360-degree rotating view, studio lighting, clean background, 4K commercial quality, smooth camera movement revealing all angles and details. High-end advertising aesthetic.`,
+    
+    'alimento': `Appetizing food videography of ${userPrompt}. Close-up macro shots, steam rising, fresh ingredients, restaurant-quality presentation, warm cinematic lighting, mouth-watering details. Culinary commercial style.`,
+    
+    'natureza': `BBC Earth documentary style footage of ${userPrompt}. Wildlife cinematography, natural behavior, realistic movement, golden hour lighting, authentic habitat environment. National Geographic quality.`,
+    
+    'pessoas': `Lifestyle commercial footage featuring ${userPrompt}. Natural movements, authentic emotions, cinematic color grading, shallow depth of field, relatable and engaging. Professional lifestyle photography.`,
+    
+    'tecnologia': `Tech product reveal of ${userPrompt}. Sleek modern aesthetics, minimalist background, dynamic camera angles, futuristic lighting, innovation showcase. High-tech commercial style.`,
+    
+    'automovel': `Automotive commercial videography of ${userPrompt}. Dynamic shots, reflective surfaces, urban or scenic background, cinematic motion, speed and elegance. Premium car advertising quality.`,
+    
+    'imovel': `Real estate architectural videography of ${userPrompt}. Smooth gimbal movement, interior walkthrough, natural daylight, spacious feel, luxury presentation. Professional property showcase.`,
+    
+    'beleza': `Beauty product commercial for ${userPrompt}. Elegant presentation, soft diffused lighting, luxurious aesthetics, close-up detail shots, premium feel. High-end cosmetics advertising.`,
+    
+    'generico': `Cinematic high-quality footage of ${userPrompt}. Professional videography, natural movement, optimal lighting, engaging composition. Premium production value.`
+  }
+  
+  return templates[category] || templates['generico']
+}
+
+// Aplicar estilo ao prompt
+function applyStyle(basePrompt: string, style: string): string {
+  const styleModifiers: Record<string, string> = {
+    'comercial': 'Advertising quality, high-end commercial production, brand-focused presentation.',
+    'documental': 'Documentary style, authentic and natural, real-world footage aesthetic.',
+    'cinematografico': 'Cinematic color grading, film-like quality, artistic composition, movie-grade production.',
+    'minimalista': 'Minimalist aesthetic, clean composition, simple elegant design, uncluttered visuals.',
+    'lifestyle': 'Lifestyle photography, candid and relatable, everyday authenticity, human connection.'
+  }
+  
+  if (style && style !== 'automatico' && styleModifiers[style]) {
+    return `${basePrompt} ${styleModifiers[style]}`
+  }
+  
+  return basePrompt
+}
+
+// Aplicar intensidade de movimento
+function applyMovement(basePrompt: string, movement: string): string {
+  const movementModifiers: Record<string, string> = {
+    'suave': 'Slow gentle camera movement, smooth elegant transitions, subtle motion.',
+    'moderado': 'Natural camera movement, balanced pacing, professional fluidity.',
+    'dinamico': 'Dynamic camera motion, energetic movement, action-packed shots, fast-paced editing.'
+  }
+  
+  return `${basePrompt} ${movementModifiers[movement] || movementModifiers['moderado']}`
+}
+
+// Construir prompt final inteligente
+function buildIntelligentPrompt(userPrompt: string, style: string = 'automatico', movement: string = 'moderado'): string {
+  // Detectar categoria
+  const category = detectCategory(userPrompt)
+  
+  // Pegar template base
+  let finalPrompt = getCategoryPrompt(category, userPrompt)
+  
+  // Aplicar estilo
+  finalPrompt = applyStyle(finalPrompt, style)
+  
+  // Aplicar movimento
+  finalPrompt = applyMovement(finalPrompt, movement)
+  
+  // Adicionar qualidade geral
+  finalPrompt += ' Shot in 4K resolution, professional videography, optimal lighting conditions, high production value.'
+  
+  console.log('📝 Prompt construído:', { category, style, movement, finalPrompt })
+  
+  return finalPrompt
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -15,9 +122,17 @@ serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { prompt, productUrl, image, duration = 6, predictionId } = body
+    const { 
+      prompt, 
+      productUrl, 
+      image, 
+      duration = 6, 
+      predictionId,
+      style = 'automatico',
+      movement = 'moderado'
+    } = body
 
-    // Modo 1: consulta de status (evita manter conexão aberta por minutos)
+    // Modo consulta de status
     if (predictionId) {
       const REPLICATE_API_TOKEN = Deno.env.get('REPLICATE_API_KEY')
       if (!REPLICATE_API_TOKEN) {
@@ -62,7 +177,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('🎬 Gerando vídeo com:', { prompt, productUrl, duration, hasImage: !!image })
+    console.log('🎬 Gerando vídeo com:', { prompt, duration, style, movement, hasImage: !!image })
 
     if (!prompt && !image) {
       return new Response(
@@ -126,7 +241,7 @@ serve(async (req) => {
       )
     }
 
-    // Cobrar créditos na largada (evita exploração e mantém saldo consistente)
+    // Cobrar créditos
     const newCredits = currentCredits - creditsNeeded
     await supabase
       .from('user_video_credits')
@@ -144,39 +259,10 @@ serve(async (req) => {
       )
     }
 
-    // PROMPT ENGINEERING AVANÇADO - Garantir ação específica e realismo extremo
-    let finalPrompt = prompt
-    if (prompt) {
-      // Detectar se é sobre pássaros para prompt super específico
-      const birdKeywords = ['bird', 'passarinho', 'pássaro', 'ave', 'pájaro', 'colorful bird']
-      const isBird = birdKeywords.some(kw => prompt.toLowerCase().includes(kw))
-      
-      // Detectar se menciona ação de voar
-      const flyingKeywords = ['voando', 'flying', 'voa', 'fly', 'galho', 'branch', 'árvore', 'tree']
-      const hasFlyingAction = flyingKeywords.some(kw => prompt.toLowerCase().includes(kw))
-      
-      if (isBird && hasFlyingAction) {
-        // PROMPT ULTRA-ESPECÍFICO PARA PÁSSARO VOANDO
-        finalPrompt = `Hyper-realistic slow-motion wildlife documentary footage of a beautiful exotic colorful tropical bird in flight, actively flying from branch to branch in a lush tropical rainforest. The bird is mid-air with wings fully spread, showing dynamic flight movement. Shot in 8K with RED EPIC camera, 120fps slow-motion, telephoto lens 600mm, capturing every feather detail. BBC Earth Planet Earth II quality. Natural golden hour sunlight filtering through jungle canopy. The bird lands gracefully on a tree branch. Real wildlife behavior, anatomically perfect bird with realistic flight physics, not walking, not standing still, actively flying through the forest.`
-      } else if (isBird) {
-        // Pássaro genérico mas realista
-        finalPrompt = `Ultra-realistic BBC Earth documentary footage of a ${prompt}. Shot on RED camera 8K, wildlife telephoto lens, slow-motion 120fps, National Geographic photography. Real bird behavior, anatomically correct, natural movement, forest habitat, golden hour cinematic lighting, shallow depth of field, film grain texture.`
-      } else {
-        // Detectar outros animais/natureza
-        const animalKeywords = ['animal', 'cat', 'dog', 'gato', 'cachorro', 'fish', 'peixe', 'butterfly', 'borboleta', 'insect', 'inseto', 'wildlife', 'nature', 'floresta', 'forest', 'jungle', 'selva']
-        const isWildlife = animalKeywords.some(kw => prompt.toLowerCase().includes(kw))
-        
-        if (isWildlife) {
-          // Prompt especializado para vida selvagem
-          finalPrompt = `Hyper-realistic BBC Earth documentary footage, shot on RED EPIC 8K camera, 120fps slow-motion. ${prompt}. National Geographic photography quality, telephoto lens detail, real animal behavior with natural movement, anatomically correct, authentic habitat environment, golden hour natural lighting, shallow depth of field, cinematic film grain. No CGI, no animation, pure documentary realism.`
-        } else {
-          // Prompt genérico ultra-realista
-          finalPrompt = `Cinematic 8K footage shot on ARRI Alexa LF camera, anamorphic lens, natural lighting, professional Hollywood cinematography. ${prompt}. Photorealistic quality, no CGI, real-world footage aesthetic, documentary style.`
-        }
-      }
-    }
+    // 🎯 CONSTRUIR PROMPT INTELIGENTE
+    const finalPrompt = buildIntelligentPrompt(prompt, style, movement)
 
-    console.log('🚀 Chamando MiniMax video-01 (Hailuo)...')
+    console.log('🚀 Chamando MiniMax video-01...')
 
     const videoInput: any = {
       prompt: finalPrompt,
@@ -223,7 +309,6 @@ serve(async (req) => {
 
     console.log('⏳ Prediction criada:', prediction.id)
 
-    // OBS: não fazemos polling aqui para não estourar timeout/conexão; o frontend consulta status.
     return new Response(
       JSON.stringify({
         success: true,
@@ -231,6 +316,7 @@ serve(async (req) => {
         predictionId: prediction.id,
         creditsRemaining: newCredits,
         duration: validDuration,
+        promptUsed: finalPrompt
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
