@@ -1,8 +1,23 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Custo em créditos por duração
+const DURATION_COSTS: Record<number, number> = {
+  6: 1,
+  12: 2,
+  30: 5
+}
+
+// Frames por duração
+const DURATION_FRAMES: Record<number, number> = {
+  6: 25,
+  12: 50,
+  30: 125
 }
 
 serve(async (req) => {
@@ -12,9 +27,9 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, productUrl, image } = await req.json()
+    const { prompt, productUrl, image, duration = 6 } = await req.json()
 
-    console.log('🎬 Gerando vídeo com:', { prompt, productUrl, hasImage: !!image })
+    console.log('🎬 Gerando vídeo com:', { prompt, productUrl, duration, hasImage: !!image })
 
     // Validar entrada
     if (!prompt && !image) {
@@ -29,6 +44,86 @@ serve(async (req) => {
         }
       )
     }
+
+    // Validar duração
+    const validDuration = [6, 12, 30].includes(duration) ? duration : 6
+    const creditsNeeded = DURATION_COSTS[validDuration]
+    const numFrames = DURATION_FRAMES[validDuration]
+
+    // Inicializar Supabase
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseKey)
+
+    // Verificar autenticação
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Não autenticado' 
+        }),
+        { 
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token)
+
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Usuário não encontrado' 
+        }),
+        { 
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    console.log('✅ Usuário autenticado:', user.id)
+
+    // Buscar/criar créditos do usuário
+    let { data: creditsData } = await supabase
+      .from('user_video_credits')
+      .select('credits_remaining')
+      .eq('user_id', user.id)
+      .single()
+
+    // Se não existir, criar com 10 créditos
+    if (!creditsData) {
+      const { data: newCredits } = await supabase
+        .from('user_video_credits')
+        .insert({ user_id: user.id, credits_remaining: 10 })
+        .select('credits_remaining')
+        .single()
+      
+      creditsData = newCredits
+    }
+
+    const currentCredits = creditsData?.credits_remaining ?? 0
+
+    // Verificar créditos
+    if (currentCredits < creditsNeeded) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Créditos insuficientes! Você tem ${currentCredits} créditos, precisa de ${creditsNeeded}.`,
+          creditsRemaining: currentCredits
+        }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    console.log('✅ Créditos OK:', currentCredits, 'necessário:', creditsNeeded)
 
     // Configurar Replicate
     const REPLICATE_API_TOKEN = Deno.env.get('REPLICATE_API_KEY')
@@ -62,11 +157,11 @@ serve(async (req) => {
       cond_aug: 0.02,
     } : {
       prompt: finalPrompt,
-      num_frames: 25,
+      num_frames: numFrames,
       num_inference_steps: 25,
     }
 
-    console.log('🚀 Chamando Replicate API...')
+    console.log('🚀 Chamando Replicate API...', { numFrames, duration: validDuration })
 
     // Chamar Replicate API
     const response = await fetch('https://api.replicate.com/v1/predictions', {
@@ -88,12 +183,13 @@ serve(async (req) => {
     if (!response.ok) {
       console.error('❌ Replicate error:', prediction)
       
-      // Tratar erro 402 (sem créditos) especificamente
+      // Tratar erro 402 (sem créditos Replicate)
       if (response.status === 402 || prediction.status === 402) {
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: '⚠️ Créditos Replicate esgotados! Acesse replicate.com/account/billing para adicionar créditos.' 
+            error: '⚠️ Créditos Replicate esgotados! Acesse replicate.com/account/billing para adicionar créditos.',
+            creditsRemaining: currentCredits
           }),
           { 
             status: 402,
@@ -105,7 +201,8 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: prediction.detail || 'Erro ao iniciar geração de vídeo' 
+          error: prediction.detail || 'Erro ao iniciar geração de vídeo',
+          creditsRemaining: currentCredits
         }),
         { 
           status: response.status,
@@ -119,7 +216,7 @@ serve(async (req) => {
     // Polling para aguardar resultado
     let videoUrl = null
     let attempts = 0
-    const maxAttempts = 60
+    const maxAttempts = 90 // Aumentado para vídeos mais longos
 
     while (!videoUrl && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000))
@@ -143,7 +240,8 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: 'Falha ao gerar vídeo: ' + (status.error || 'Erro desconhecido')
+            error: 'Falha ao gerar vídeo: ' + (status.error || 'Erro desconhecido'),
+            creditsRemaining: currentCredits
           }),
           { 
             status: 500,
@@ -159,7 +257,8 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Timeout ao gerar vídeo (mais de 2 minutos)' 
+          error: 'Timeout ao gerar vídeo (mais de 3 minutos)',
+          creditsRemaining: currentCredits
         }),
         { 
           status: 504,
@@ -167,6 +266,15 @@ serve(async (req) => {
         }
       )
     }
+
+    // Decrementar créditos APÓS sucesso
+    const newCredits = currentCredits - creditsNeeded
+    await supabase
+      .from('user_video_credits')
+      .update({ credits_remaining: newCredits, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+
+    console.log('💳 Créditos atualizados:', newCredits)
 
     // Gerar legendas
     const legendas = {
@@ -182,7 +290,8 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         videoUrl,
-        legendas
+        legendas,
+        creditsRemaining: newCredits
       }),
       { 
         status: 200,

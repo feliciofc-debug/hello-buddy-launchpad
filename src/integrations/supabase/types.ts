@@ -3659,6 +3659,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_video_credits: {
+        Row: {
+          created_at: string | null
+          credits_remaining: number | null
+          id: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          credits_remaining?: number | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          credits_remaining?: number | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       validacoes_pedidos: {
         Row: {
           confianca_ia: number | null
