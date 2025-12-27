@@ -3814,6 +3814,54 @@ export type Database = {
         }
         Relationships: []
       }
+      videos: {
+        Row: {
+          created_at: string | null
+          id: string
+          legenda_facebook: string | null
+          legenda_instagram: string | null
+          legenda_tiktok: string | null
+          legenda_whatsapp: string | null
+          link_produto: string | null
+          status: string | null
+          thumbnail_url: string | null
+          titulo: string | null
+          updated_at: string | null
+          user_id: string
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          legenda_facebook?: string | null
+          legenda_instagram?: string | null
+          legenda_tiktok?: string | null
+          legenda_whatsapp?: string | null
+          link_produto?: string | null
+          status?: string | null
+          thumbnail_url?: string | null
+          titulo?: string | null
+          updated_at?: string | null
+          user_id: string
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          legenda_facebook?: string | null
+          legenda_instagram?: string | null
+          legenda_tiktok?: string | null
+          legenda_whatsapp?: string | null
+          link_produto?: string | null
+          status?: string | null
+          thumbnail_url?: string | null
+          titulo?: string | null
+          updated_at?: string | null
+          user_id?: string
+          video_url?: string | null
+        }
+        Relationships: []
+      }
       voice_calls: {
         Row: {
           ai_analysis: Json | null
