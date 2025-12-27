@@ -219,3 +219,5 @@ verify_jwt = false
 [functions.executar-campanhas-agendadas]
 verify_jwt = false
 
+[functions.gerar-video]
+verify_jwt = false
