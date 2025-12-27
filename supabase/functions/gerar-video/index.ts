@@ -6,12 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Custo em créditos por duração
-const DURATION_COSTS: Record<number, number> = {
-  6: 1,
-  12: 2,
-  30: 5
-}
+const DURATION_COSTS: Record<number, number> = { 6: 1, 12: 2, 30: 5 }
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -99,39 +94,26 @@ serve(async (req) => {
     // Preparar prompt ultra realista
     let finalPrompt = prompt
     if (!prompt.toLowerCase().includes('ultra') && !prompt.toLowerCase().includes('realistic')) {
-      finalPrompt = `Ultra realistic, 8K quality, cinematic, hyper-detailed, professional photography: ${prompt}`
-    }
-    
-    if (productUrl) {
-      finalPrompt = `Ultra realistic promotional video, cinematic, 8K: ${prompt}`
+      finalPrompt = `Ultra realistic, 8K quality, cinematic, hyper-detailed: ${prompt}`
     }
 
-    // Configurar duração do vídeo usando Wan2.1
-    // Wan2.1 usa "num_frames" - ~24 frames per second
-    const numFrames = validDuration === 6 ? 81 : validDuration === 12 ? 161 : 241 // Mais frames para qualidade
+    // Configurar duração - Zeroscope usa num_frames
+    const numFrames = validDuration === 6 ? 24 : validDuration === 12 ? 48 : 96
 
-    console.log('🚀 Chamando Replicate Wan2.1...', { numFrames, duration: validDuration })
+    console.log('🚀 Chamando Replicate...', { numFrames, duration: validDuration })
 
-    // Usar Wan2.1 - modelo mais realista disponível
-    const videoInput = image ? {
-      image: image,
+    // Usar o modelo zeroscope que sabemos que funciona (modelo anterior que funcionou)
+    const videoInput = {
       prompt: finalPrompt,
-      max_frames: numFrames,
-      guidance_scale: 7.5,
-    } : {
-      prompt: finalPrompt,
-      negative_prompt: "blurry, low quality, distorted, ugly, bad anatomy, cartoon, anime, illustration, painting, drawing",
+      negative_prompt: "blurry, low quality, distorted, ugly, bad anatomy, cartoon, anime",
       num_frames: numFrames,
-      fps: 16,
-      guidance_scale: 7.5,
-      num_inference_steps: 30,
+      num_inference_steps: 25,
+      fps: 8,
+      width: 576,
+      height: 320,
     }
 
-    // Usar Wan2.1 para text-to-video ultra realista
-    const modelVersion = image 
-      ? 'wavespeedai/wan-2.1-i2v-480p' // Image to video
-      : 'wavespeedai/wan-2.1-t2v-480p' // Text to video - mais realista
-
+    // CORREÇÃO: Usar "version" ao invés de "model"
     const response = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
       headers: {
@@ -139,7 +121,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: modelVersion,
+        version: '9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351',
         input: videoInput
       })
     })
@@ -175,7 +157,7 @@ serve(async (req) => {
     // Polling para aguardar resultado
     let videoUrl = null
     let attempts = 0
-    const maxAttempts = 120 // 4 minutos para vídeos longos
+    const maxAttempts = 90
 
     while (!videoUrl && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000))
@@ -189,10 +171,7 @@ serve(async (req) => {
       console.log(`⏳ Status (tentativa ${attempts + 1}):`, status.status)
 
       if (status.status === 'succeeded') {
-        // Wan2.1 retorna URL direta ou objeto com URL
-        videoUrl = typeof status.output === 'string' 
-          ? status.output 
-          : (Array.isArray(status.output) ? status.output[0] : status.output?.url || status.output)
+        videoUrl = Array.isArray(status.output) ? status.output[0] : status.output
         console.log('✅ Vídeo gerado:', videoUrl)
         break
       }
@@ -216,7 +195,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Timeout ao gerar vídeo (mais de 4 minutos)',
+          error: 'Timeout ao gerar vídeo (mais de 3 minutos)',
           creditsRemaining: currentCredits
         }),
         { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -233,13 +212,13 @@ serve(async (req) => {
     console.log('💳 Créditos atualizados:', newCredits)
 
     const legendas = {
-      instagram: `🎥✨ ${prompt}\n\n💫 Aproveite essa oferta incrível!\n🔥 Link na bio!\n\n#reels #instagram #ofertas #viral`,
-      facebook: `🎬 ${prompt}\n\n👉 Clique no link para saber mais!\n\n#video #facebook #promocao`,
-      tiktok: `🔥 ${prompt}\n\n💥 Não perca!\n\n#tiktok #viral #ofertas #fyp #trending`,
-      whatsapp: `🎥 *${prompt}*\n\n✅ Confira agora!\n\n👉 ${productUrl || 'Link aqui'}`
+      instagram: `🎥✨ ${prompt}\n\n💫 Aproveite!\n🔥 Link na bio!\n\n#reels #instagram #viral`,
+      facebook: `🎬 ${prompt}\n\n👉 Clique no link!\n\n#video #facebook`,
+      tiktok: `🔥 ${prompt}\n\n💥 Não perca!\n\n#tiktok #viral #fyp`,
+      whatsapp: `🎥 *${prompt}*\n\n✅ Confira!\n\n👉 ${productUrl || 'Link aqui'}`
     }
 
-    console.log('✅ Sucesso! Retornando vídeo')
+    console.log('✅ Sucesso!')
 
     return new Response(
       JSON.stringify({
