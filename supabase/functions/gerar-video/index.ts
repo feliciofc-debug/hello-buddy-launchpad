@@ -14,7 +14,53 @@ serve(async (req) => {
   }
 
   try {
-    const { prompt, productUrl, image, duration = 6 } = await req.json()
+    const body = await req.json()
+    const { prompt, productUrl, image, duration = 6, predictionId } = body
+
+    // Modo 1: consulta de status (evita manter conexão aberta por minutos)
+    if (predictionId) {
+      const REPLICATE_API_TOKEN = Deno.env.get('REPLICATE_API_KEY')
+      if (!REPLICATE_API_TOKEN) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'REPLICATE_API_KEY não configurada.' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const statusResponse = await fetch(
+        `https://api.replicate.com/v1/predictions/${predictionId}`,
+        { headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` } }
+      )
+      const status = await statusResponse.json()
+
+      if (!statusResponse.ok) {
+        console.error('❌ Replicate status error:', status)
+        return new Response(
+          JSON.stringify({ success: false, error: status.detail || status.error || 'Erro ao consultar status' }),
+          { status: statusResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (status.status === 'succeeded') {
+        const videoUrl = Array.isArray(status.output) ? status.output[0] : status.output
+        return new Response(
+          JSON.stringify({ success: true, status: 'succeeded', videoUrl }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      if (status.status === 'failed') {
+        return new Response(
+          JSON.stringify({ success: false, status: 'failed', error: status.error || 'Falha ao gerar vídeo' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, status: status.status || 'processing' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     console.log('🎬 Gerando vídeo com:', { prompt, productUrl, duration, hasImage: !!image })
 
@@ -71,16 +117,23 @@ serve(async (req) => {
 
     if (currentCredits < creditsNeeded) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           error: `Créditos insuficientes! Você tem ${currentCredits}, precisa de ${creditsNeeded}.`,
-          creditsRemaining: currentCredits
+          creditsRemaining: currentCredits,
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    console.log('✅ Créditos OK:', currentCredits, 'necessário:', creditsNeeded)
+    // Cobrar créditos na largada (evita exploração e mantém saldo consistente)
+    const newCredits = currentCredits - creditsNeeded
+    await supabase
+      .from('user_video_credits')
+      .update({ credits_remaining: newCredits, updated_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+
+    console.log('💳 Créditos cobrados:', creditsNeeded, 'restante:', newCredits)
 
     const REPLICATE_API_TOKEN = Deno.env.get('REPLICATE_API_KEY')
 
@@ -93,19 +146,21 @@ serve(async (req) => {
 
     // Preparar prompt ultra realista detalhado para MiniMax
     let finalPrompt = prompt
-    if (!prompt.toLowerCase().includes('ultra') && !prompt.toLowerCase().includes('realistic') && !prompt.toLowerCase().includes('cinematic')) {
+    if (
+      prompt &&
+      !prompt.toLowerCase().includes('ultra') &&
+      !prompt.toLowerCase().includes('realistic') &&
+      !prompt.toLowerCase().includes('cinematic')
+    ) {
       finalPrompt = `Ultra realistic cinematic 4K footage, hyper-detailed, photorealistic, natural lighting, professional cinematography: ${prompt}`
     }
 
     console.log('🚀 Chamando MiniMax video-01 (Hailuo)...')
 
-    // Usar o modelo MiniMax video-01 (Hailuo) - muito superior em qualidade!
-    // Referência: https://replicate.com/minimax/video-01
     const videoInput: any = {
       prompt: finalPrompt,
     }
 
-    // Se tiver imagem, usar image-to-video
     if (image) {
       videoInput.first_frame_image = image
     }
@@ -116,32 +171,30 @@ serve(async (req) => {
         'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        input: videoInput
-      })
+      body: JSON.stringify({ input: videoInput }),
     })
 
     const prediction = await response.json()
 
     if (!response.ok) {
       console.error('❌ Replicate error:', prediction)
-      
+
       if (response.status === 402 || prediction.status === 402) {
         return new Response(
-          JSON.stringify({ 
-            success: false, 
+          JSON.stringify({
+            success: false,
             error: '⚠️ Créditos Replicate esgotados! Acesse replicate.com/account/billing.',
-            creditsRemaining: currentCredits
+            creditsRemaining: currentCredits,
           }),
           { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
-      
+
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           error: prediction.detail || prediction.error || 'Erro ao iniciar geração',
-          creditsRemaining: currentCredits
+          creditsRemaining: currentCredits,
         }),
         { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -149,79 +202,14 @@ serve(async (req) => {
 
     console.log('⏳ Prediction criada:', prediction.id)
 
-    // Polling para aguardar resultado - MiniMax pode demorar 3-5 min
-    let videoUrl = null
-    let attempts = 0
-    const maxAttempts = 150 // 5 minutos (150 * 2s)
-
-    while (!videoUrl && attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      
-      const statusResponse = await fetch(
-        `https://api.replicate.com/v1/predictions/${prediction.id}`,
-        { headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` }}
-      )
-
-      const status = await statusResponse.json()
-      console.log(`⏳ Status (tentativa ${attempts + 1}):`, status.status)
-
-      if (status.status === 'succeeded') {
-        videoUrl = Array.isArray(status.output) ? status.output[0] : status.output
-        console.log('✅ Vídeo gerado:', videoUrl)
-        break
-      }
-
-      if (status.status === 'failed') {
-        console.error('❌ Falha:', status.error)
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Falha ao gerar vídeo: ' + (status.error || 'Erro desconhecido'),
-            creditsRemaining: currentCredits
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      attempts++
-    }
-
-    if (!videoUrl) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Timeout ao gerar vídeo (mais de 5 minutos)',
-          creditsRemaining: currentCredits
-        }),
-        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Decrementar créditos APÓS sucesso
-    const newCredits = currentCredits - creditsNeeded
-    await supabase
-      .from('user_video_credits')
-      .update({ credits_remaining: newCredits, updated_at: new Date().toISOString() })
-      .eq('user_id', user.id)
-
-    console.log('💳 Créditos atualizados:', newCredits)
-
-    const legendas = {
-      instagram: `🎥✨ ${prompt}\n\n💫 Aproveite!\n🔥 Link na bio!\n\n#reels #instagram #viral`,
-      facebook: `🎬 ${prompt}\n\n👉 Clique no link!\n\n#video #facebook`,
-      tiktok: `🔥 ${prompt}\n\n💥 Não perca!\n\n#tiktok #viral #fyp`,
-      whatsapp: `🎥 *${prompt}*\n\n✅ Confira!\n\n👉 ${productUrl || 'Link aqui'}`
-    }
-
-    console.log('✅ Sucesso!')
-
+    // OBS: não fazemos polling aqui para não estourar timeout/conexão; o frontend consulta status.
     return new Response(
       JSON.stringify({
         success: true,
-        videoUrl,
-        legendas,
+        status: 'processing',
+        predictionId: prediction.id,
         creditsRemaining: newCredits,
-        duration: validDuration
+        duration: validDuration,
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

@@ -69,55 +69,109 @@ export const VideoGenerator = () => {
   const hasEnoughCredits = credits !== null && credits >= creditsNeeded;
 
   const handleGenerate = async () => {
-    if (!prompt.trim() && !uploadedImage) { toast.error("Digite uma descrição ou envie uma imagem"); return; }
-    if (!hasEnoughCredits) { toast.error(`Você precisa de ${creditsNeeded} créditos. Você tem ${credits ?? 0}.`); return; }
+    if (!prompt.trim() && !uploadedImage) {
+      toast.error("Digite uma descrição ou envie uma imagem");
+      return;
+    }
+    if (!hasEnoughCredits) {
+      toast.error(`Você precisa de ${creditsNeeded} créditos. Você tem ${credits ?? 0}.`);
+      return;
+    }
 
     setLoading(true);
     setResultado(null);
 
     try {
       const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) { toast.error("Você precisa estar logado"); setLoading(false); return; }
+      if (!userData.user) {
+        toast.error("Você precisa estar logado");
+        setLoading(false);
+        return;
+      }
 
       let imageBase64: string | null = null;
       if (uploadedImage) {
-        imageBase64 = await new Promise((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve(reader.result as string); reader.readAsDataURL(uploadedImage); });
+        imageBase64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(uploadedImage);
+        });
       }
 
-      const { data, error } = await supabase.functions.invoke('gerar-video', { 
-        body: { 
-          prompt: prompt.trim(), 
-          productUrl: prompt.includes('http') ? prompt : null, 
-          image: imageBase64, 
-          duration 
-        } 
+      // 1) Inicia a geração (retorna predictionId)
+      const { data: startData, error: startError } = await supabase.functions.invoke('gerar-video', {
+        body: {
+          prompt: prompt.trim(),
+          productUrl: prompt.includes('http') ? prompt : null,
+          image: imageBase64,
+          duration,
+        },
       });
 
-      if (error) throw error;
-      if (!data.success) throw new Error(data.error || 'Erro ao gerar vídeo');
+      if (startError) throw startError;
+      if (!startData?.success) throw new Error(startData?.error || 'Erro ao iniciar geração');
 
-      setResultado({ videoUrl: data.videoUrl, legendas: data.legendas });
-      setEditableLegendas(data.legendas);
-      if (data.creditsRemaining !== undefined) setCredits(data.creditsRemaining);
+      const predictionId = startData.predictionId as string | undefined;
+      if (!predictionId) throw new Error('Não foi possível iniciar a geração (predictionId ausente).');
 
-      await supabase.from('videos').insert({ 
-        user_id: userData.user.id, 
-        titulo: prompt.trim().substring(0, 100), 
-        link_produto: prompt.includes('http') ? prompt : null, 
-        video_url: data.videoUrl, 
-        legenda_instagram: data.legendas.instagram, 
-        legenda_facebook: data.legendas.facebook, 
-        legenda_tiktok: data.legendas.tiktok, 
-        legenda_whatsapp: data.legendas.whatsapp, 
-        status: 'concluido' 
+      toast.message('🎬 Gerando...', { description: 'Aguarde (pode levar 1-3 minutos).', duration: 4000 });
+
+      if (typeof startData.creditsRemaining === 'number') {
+        setCredits(startData.creditsRemaining);
+      }
+
+      // 2) Faz polling no frontend (evita timeout de conexão)
+      const startedAt = Date.now();
+      const timeoutMs = 4 * 60 * 1000; // 4 min
+      let videoUrl: string | null = null;
+
+      while (!videoUrl && Date.now() - startedAt < timeoutMs) {
+        await new Promise((r) => setTimeout(r, 2500));
+
+        const { data: statusData, error: statusError } = await supabase.functions.invoke('gerar-video', {
+          body: { predictionId },
+        });
+
+        if (statusError) throw statusError;
+        if (!statusData?.success) throw new Error(statusData?.error || 'Falha ao gerar vídeo');
+
+        if (statusData.status === 'succeeded' && statusData.videoUrl) {
+          videoUrl = statusData.videoUrl;
+          break;
+        }
+      }
+
+      if (!videoUrl) throw new Error('Timeout ao gerar vídeo. Tente novamente.');
+
+      // Legendas locais (mantém igual ao comportamento anterior)
+      const legendas = {
+        instagram: `🎥✨ ${prompt.trim()}\n\n💫 Aproveite!\n🔥 Link na bio!\n\n#reels #instagram #viral`,
+        facebook: `🎬 ${prompt.trim()}\n\n👉 Clique no link!\n\n#video #facebook`,
+        tiktok: `🔥 ${prompt.trim()}\n\n💥 Não perca!\n\n#tiktok #viral #fyp`,
+        whatsapp: `🎥 *${prompt.trim()}*\n\n✅ Confira!\n\n👉 ${prompt.includes('http') ? prompt : 'Link aqui'}`,
+      };
+
+      setResultado({ videoUrl, legendas });
+      setEditableLegendas(legendas);
+
+      await supabase.from('videos').insert({
+        user_id: userData.user.id,
+        titulo: prompt.trim().substring(0, 100),
+        link_produto: prompt.includes('http') ? prompt : null,
+        video_url: videoUrl,
+        legenda_instagram: legendas.instagram,
+        legenda_facebook: legendas.facebook,
+        legenda_tiktok: legendas.tiktok,
+        legenda_whatsapp: legendas.whatsapp,
+        status: 'concluido',
       });
 
-      toast.success(`🎬 Vídeo ultra realista gerado! Restam ${data.creditsRemaining} créditos`);
-    } catch (err: any) { 
-      toast.error(err.message || 'Erro ao gerar vídeo'); 
-      console.error(err); 
-    } finally { 
-      setLoading(false); 
+      toast.success(`🎬 Vídeo gerado! Restam ${typeof startData.creditsRemaining === 'number' ? startData.creditsRemaining : ''} créditos`);
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao gerar vídeo');
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
