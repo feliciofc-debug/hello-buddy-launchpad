@@ -91,37 +91,32 @@ serve(async (req) => {
       )
     }
 
-    // Preparar prompt ultra realista
+    // Preparar prompt ultra realista detalhado para MiniMax
     let finalPrompt = prompt
-    if (!prompt.toLowerCase().includes('ultra') && !prompt.toLowerCase().includes('realistic')) {
-      finalPrompt = `Ultra realistic, 8K quality, cinematic, hyper-detailed: ${prompt}`
+    if (!prompt.toLowerCase().includes('ultra') && !prompt.toLowerCase().includes('realistic') && !prompt.toLowerCase().includes('cinematic')) {
+      finalPrompt = `Ultra realistic cinematic 4K footage, hyper-detailed, photorealistic, natural lighting, professional cinematography: ${prompt}`
     }
 
-    // Configurar duração - Zeroscope usa num_frames
-    const numFrames = validDuration === 6 ? 24 : validDuration === 12 ? 48 : 96
+    console.log('🚀 Chamando MiniMax video-01 (Hailuo)...')
 
-    console.log('🚀 Chamando Replicate...', { numFrames, duration: validDuration })
-
-    // Usar o modelo zeroscope que sabemos que funciona (modelo anterior que funcionou)
-    const videoInput = {
+    // Usar o modelo MiniMax video-01 (Hailuo) - muito superior em qualidade!
+    // Referência: https://replicate.com/minimax/video-01
+    const videoInput: any = {
       prompt: finalPrompt,
-      negative_prompt: "blurry, low quality, distorted, ugly, bad anatomy, cartoon, anime",
-      num_frames: numFrames,
-      num_inference_steps: 25,
-      fps: 8,
-      width: 576,
-      height: 320,
     }
 
-    // CORREÇÃO: Usar "version" ao invés de "model"
-    const response = await fetch('https://api.replicate.com/v1/predictions', {
+    // Se tiver imagem, usar image-to-video
+    if (image) {
+      videoInput.first_frame_image = image
+    }
+
+    const response = await fetch('https://api.replicate.com/v1/models/minimax/video-01/predictions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        version: '9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351',
         input: videoInput
       })
     })
@@ -154,10 +149,10 @@ serve(async (req) => {
 
     console.log('⏳ Prediction criada:', prediction.id)
 
-    // Polling para aguardar resultado
+    // Polling para aguardar resultado - MiniMax pode demorar 3-5 min
     let videoUrl = null
     let attempts = 0
-    const maxAttempts = 90
+    const maxAttempts = 150 // 5 minutos (150 * 2s)
 
     while (!videoUrl && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000))
@@ -195,7 +190,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Timeout ao gerar vídeo (mais de 3 minutos)',
+          error: 'Timeout ao gerar vídeo (mais de 5 minutos)',
           creditsRemaining: currentCredits
         }),
         { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
