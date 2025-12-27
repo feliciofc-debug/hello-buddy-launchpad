@@ -144,15 +144,20 @@ serve(async (req) => {
       )
     }
 
-    // Preparar prompt ultra realista detalhado para MiniMax
+    // Preparar prompt ultra realista - estilo documentário natureza (David Attenborough style)
     let finalPrompt = prompt
-    if (
-      prompt &&
-      !prompt.toLowerCase().includes('ultra') &&
-      !prompt.toLowerCase().includes('realistic') &&
-      !prompt.toLowerCase().includes('cinematic')
-    ) {
-      finalPrompt = `Ultra realistic cinematic 4K footage, hyper-detailed, photorealistic, natural lighting, professional cinematography: ${prompt}`
+    if (prompt) {
+      // Detectar se é sobre animais/natureza para usar prompt especializado
+      const animalKeywords = ['bird', 'passarinho', 'pássaro', 'animal', 'cat', 'dog', 'gato', 'cachorro', 'fish', 'peixe', 'butterfly', 'borboleta', 'insect', 'inseto', 'wildlife', 'nature', 'floresta', 'forest', 'jungle', 'selva']
+      const isWildlife = animalKeywords.some(kw => prompt.toLowerCase().includes(kw))
+      
+      if (isWildlife) {
+        // Prompt especializado para vida selvagem - estilo BBC Earth/National Geographic
+        finalPrompt = `Award-winning BBC Earth documentary footage, National Geographic photography style, shot on RED camera 8K, macro lens detail, real wildlife behavior, anatomically correct ${prompt}, natural habitat, golden hour lighting, shallow depth of field, film grain, David Attenborough documentary quality`
+      } else {
+        // Prompt genérico ultra-realista
+        finalPrompt = `Photorealistic 8K footage, shot on ARRI Alexa cinema camera, natural lighting, professional cinematography, real-world footage style, no CGI, no animation, documentary quality: ${prompt}`
+      }
     }
 
     console.log('🚀 Chamando MiniMax video-01 (Hailuo)...')
