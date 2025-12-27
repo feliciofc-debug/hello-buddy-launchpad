@@ -13,15 +13,7 @@ const DURATION_COSTS: Record<number, number> = {
   30: 5
 }
 
-// Frames por duração
-const DURATION_FRAMES: Record<number, number> = {
-  6: 25,
-  12: 50,
-  30: 125
-}
-
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -31,42 +23,25 @@ serve(async (req) => {
 
     console.log('🎬 Gerando vídeo com:', { prompt, productUrl, duration, hasImage: !!image })
 
-    // Validar entrada
     if (!prompt && !image) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Prompt ou imagem são obrigatórios' 
-        }),
-        { 
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ success: false, error: 'Prompt ou imagem são obrigatórios' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Validar duração
     const validDuration = [6, 12, 30].includes(duration) ? duration : 6
     const creditsNeeded = DURATION_COSTS[validDuration]
-    const numFrames = DURATION_FRAMES[validDuration]
 
-    // Inicializar Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Verificar autenticação
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Não autenticado' 
-        }),
-        { 
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ success: false, error: 'Não autenticado' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -75,105 +50,96 @@ serve(async (req) => {
 
     if (userError || !user) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Usuário não encontrado' 
-        }),
-        { 
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ success: false, error: 'Usuário não encontrado' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     console.log('✅ Usuário autenticado:', user.id)
 
-    // Buscar/criar créditos do usuário
     let { data: creditsData } = await supabase
       .from('user_video_credits')
       .select('credits_remaining')
       .eq('user_id', user.id)
       .single()
 
-    // Se não existir, criar com 10 créditos
     if (!creditsData) {
       const { data: newCredits } = await supabase
         .from('user_video_credits')
         .insert({ user_id: user.id, credits_remaining: 10 })
         .select('credits_remaining')
         .single()
-      
       creditsData = newCredits
     }
 
     const currentCredits = creditsData?.credits_remaining ?? 0
 
-    // Verificar créditos
     if (currentCredits < creditsNeeded) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: `Créditos insuficientes! Você tem ${currentCredits} créditos, precisa de ${creditsNeeded}.`,
+          error: `Créditos insuficientes! Você tem ${currentCredits}, precisa de ${creditsNeeded}.`,
           creditsRemaining: currentCredits
         }),
-        { 
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     console.log('✅ Créditos OK:', currentCredits, 'necessário:', creditsNeeded)
 
-    // Configurar Replicate
     const REPLICATE_API_TOKEN = Deno.env.get('REPLICATE_API_KEY')
 
     if (!REPLICATE_API_TOKEN) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'REPLICATE_API_KEY não configurada. Adicione nas configurações.' 
-        }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        JSON.stringify({ success: false, error: 'REPLICATE_API_KEY não configurada.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Preparar prompt final
+    // Preparar prompt ultra realista
     let finalPrompt = prompt
+    if (!prompt.toLowerCase().includes('ultra') && !prompt.toLowerCase().includes('realistic')) {
+      finalPrompt = `Ultra realistic, 8K quality, cinematic, hyper-detailed, professional photography: ${prompt}`
+    }
+    
     if (productUrl) {
-      finalPrompt = `Crie um vídeo promocional atraente para: ${prompt}`
+      finalPrompt = `Ultra realistic promotional video, cinematic, 8K: ${prompt}`
     }
 
-    // Preparar input para Replicate
+    // Configurar duração do vídeo usando Wan2.1
+    // Wan2.1 usa "num_frames" - ~24 frames per second
+    const numFrames = validDuration === 6 ? 81 : validDuration === 12 ? 161 : 241 // Mais frames para qualidade
+
+    console.log('🚀 Chamando Replicate Wan2.1...', { numFrames, duration: validDuration })
+
+    // Usar Wan2.1 - modelo mais realista disponível
     const videoInput = image ? {
-      input_image: image,
-      video_length: "14_frames_with_svd",
-      sizing_strategy: "maintain_aspect_ratio",
-      frames_per_second: 6,
-      motion_bucket_id: 127,
-      cond_aug: 0.02,
+      image: image,
+      prompt: finalPrompt,
+      max_frames: numFrames,
+      guidance_scale: 7.5,
     } : {
       prompt: finalPrompt,
+      negative_prompt: "blurry, low quality, distorted, ugly, bad anatomy, cartoon, anime, illustration, painting, drawing",
       num_frames: numFrames,
-      num_inference_steps: 25,
+      fps: 16,
+      guidance_scale: 7.5,
+      num_inference_steps: 30,
     }
 
-    console.log('🚀 Chamando Replicate API...', { numFrames, duration: validDuration })
+    // Usar Wan2.1 para text-to-video ultra realista
+    const modelVersion = image 
+      ? 'wavespeedai/wan-2.1-i2v-480p' // Image to video
+      : 'wavespeedai/wan-2.1-t2v-480p' // Text to video - mais realista
 
-    // Chamar Replicate API
     const response = await fetch('https://api.replicate.com/v1/predictions', {
       method: 'POST',
       headers: {
-        'Authorization': `Token ${REPLICATE_API_TOKEN}`,
+        'Authorization': `Bearer ${REPLICATE_API_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        version: image 
-          ? '3f0457e4619daac51203dedb472816fd4af51f3149fa7a9e0b5ffcf1b8172438'
-          : 'anotherjesse/zeroscope-v2-xl:9f747673945c62801b13b84701c783929c0ee784e4748ec062204894dda1a351',
+        model: modelVersion,
         input: videoInput
       })
     })
@@ -183,31 +149,24 @@ serve(async (req) => {
     if (!response.ok) {
       console.error('❌ Replicate error:', prediction)
       
-      // Tratar erro 402 (sem créditos Replicate)
       if (response.status === 402 || prediction.status === 402) {
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: '⚠️ Créditos Replicate esgotados! Acesse replicate.com/account/billing para adicionar créditos.',
+            error: '⚠️ Créditos Replicate esgotados! Acesse replicate.com/account/billing.',
             creditsRemaining: currentCredits
           }),
-          { 
-            status: 402,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          }
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
       
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: prediction.detail || 'Erro ao iniciar geração de vídeo',
+          error: prediction.detail || prediction.error || 'Erro ao iniciar geração',
           creditsRemaining: currentCredits
         }),
-        { 
-          status: response.status,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -216,21 +175,24 @@ serve(async (req) => {
     // Polling para aguardar resultado
     let videoUrl = null
     let attempts = 0
-    const maxAttempts = 90 // Aumentado para vídeos mais longos
+    const maxAttempts = 120 // 4 minutos para vídeos longos
 
     while (!videoUrl && attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 2000))
       
       const statusResponse = await fetch(
         `https://api.replicate.com/v1/predictions/${prediction.id}`,
-        { headers: { 'Authorization': `Token ${REPLICATE_API_TOKEN}` }}
+        { headers: { 'Authorization': `Bearer ${REPLICATE_API_TOKEN}` }}
       )
 
       const status = await statusResponse.json()
       console.log(`⏳ Status (tentativa ${attempts + 1}):`, status.status)
 
       if (status.status === 'succeeded') {
-        videoUrl = Array.isArray(status.output) ? status.output[0] : status.output
+        // Wan2.1 retorna URL direta ou objeto com URL
+        videoUrl = typeof status.output === 'string' 
+          ? status.output 
+          : (Array.isArray(status.output) ? status.output[0] : status.output?.url || status.output)
         console.log('✅ Vídeo gerado:', videoUrl)
         break
       }
@@ -243,10 +205,7 @@ serve(async (req) => {
             error: 'Falha ao gerar vídeo: ' + (status.error || 'Erro desconhecido'),
             creditsRemaining: currentCredits
           }),
-          { 
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          }
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
 
@@ -257,13 +216,10 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Timeout ao gerar vídeo (mais de 3 minutos)',
+          error: 'Timeout ao gerar vídeo (mais de 4 minutos)',
           creditsRemaining: currentCredits
         }),
-        { 
-          status: 504,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
@@ -276,40 +232,31 @@ serve(async (req) => {
 
     console.log('💳 Créditos atualizados:', newCredits)
 
-    // Gerar legendas
     const legendas = {
-      instagram: `🎥✨ ${finalPrompt}\n\n💫 Aproveite essa oferta incrível!\n🔥 Link na bio!\n\n#reels #instagram #ofertas`,
-      facebook: `🎬 ${finalPrompt}\n\n👉 Clique no link para saber mais!\n\n#video #facebook #promocao`,
-      tiktok: `🔥 ${finalPrompt}\n\n💥 Não perca!\n\n#tiktok #viral #ofertas #fyp`,
-      whatsapp: `🎥 *${finalPrompt}*\n\n✅ Confira agora!\n\n👉 ${productUrl || 'Link aqui'}`
+      instagram: `🎥✨ ${prompt}\n\n💫 Aproveite essa oferta incrível!\n🔥 Link na bio!\n\n#reels #instagram #ofertas #viral`,
+      facebook: `🎬 ${prompt}\n\n👉 Clique no link para saber mais!\n\n#video #facebook #promocao`,
+      tiktok: `🔥 ${prompt}\n\n💥 Não perca!\n\n#tiktok #viral #ofertas #fyp #trending`,
+      whatsapp: `🎥 *${prompt}*\n\n✅ Confira agora!\n\n👉 ${productUrl || 'Link aqui'}`
     }
 
-    console.log('✅ Sucesso! Retornando vídeo e legendas')
+    console.log('✅ Sucesso! Retornando vídeo')
 
     return new Response(
       JSON.stringify({
         success: true,
         videoUrl,
         legendas,
-        creditsRemaining: newCredits
+        creditsRemaining: newCredits,
+        duration: validDuration
       }),
-      { 
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error: any) {
     console.error('❌ Erro geral:', error)
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message || 'Erro desconhecido ao gerar vídeo'
-      }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ success: false, error: error.message || 'Erro desconhecido' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
