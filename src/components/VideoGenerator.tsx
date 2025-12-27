@@ -1,287 +1,378 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2, Video, Upload, Copy, Download, Instagram, MessageCircle, Facebook } from "lucide-react";
 import { toast } from "sonner";
-import { Upload, Wand2, Download, RefreshCw, Copy, Check, Image } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 
+interface VideoResult {
+  videoUrl: string;
+  legendas: {
+    instagram: string;
+    facebook: string;
+    tiktok: string;
+    whatsapp: string;
+  };
+}
+
 export const VideoGenerator = () => {
-  const [productName, setProductName] = useState("");
-  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState("");
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [generatedPosts, setGeneratedPosts] = useState<any>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [url, setUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [resultado, setResultado] = useState<VideoResult | null>(null);
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null);
+  const [editableLegendas, setEditableLegendas] = useState({
+    instagram: '',
+    facebook: '',
+    tiktok: '',
+    whatsapp: ''
+  });
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setUploadedImage(event.target?.result as string);
-        setGeneratedImage(null);
-        setGeneratedPosts(null);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Por favor, envie apenas imagens');
+      return;
     }
+
+    setUploadedImage(file);
+    toast.success('Imagem carregada!');
   };
 
   const handleGenerate = async () => {
-    if (!uploadedImage) {
-      toast.error("Por favor, faça upload de uma imagem primeiro");
+    if (!url.trim() && !uploadedImage) {
+      toast.error("Digite uma descrição ou envie uma imagem");
       return;
     }
 
-    if (!prompt.trim()) {
-      toast.error("Descreva como quer a imagem");
-      return;
-    }
-
-    setIsGenerating(true);
-    toast.info("Gerando imagem...");
+    setLoading(true);
+    setResultado(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('generate-product-video', {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.error("Você precisa estar logado");
+        setLoading(false);
+        return;
+      }
+
+      // Converter imagem para base64 se houver
+      let imageBase64: string | null = null;
+      if (uploadedImage) {
+        imageBase64 = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(uploadedImage);
+        });
+      }
+
+      // Chamar edge function
+      const { data, error } = await supabase.functions.invoke('gerar-video', {
         body: {
-          productName: productName || "Produto",
-          productImage: uploadedImage,
-          editPrompt: prompt,
-          mode: "edit"
+          prompt: url.trim(),
+          productUrl: url.includes('http') ? url : null,
+          image: imageBase64
         }
       });
 
       if (error) throw error;
 
-      if (data?.editedImage) {
-        setGeneratedImage(data.editedImage);
-        toast.success("Imagem gerada com sucesso!");
-        
-        // Gerar posts automaticamente
-        generatePosts();
-      } else {
-        throw new Error(data?.error || "Nenhuma imagem foi gerada");
+      if (!data.success) {
+        throw new Error(data.error || 'Erro ao gerar vídeo');
       }
-    } catch (error: any) {
-      console.error("Erro ao gerar:", error);
-      toast.error(error.message || "Erro ao gerar imagem");
+
+      const videoResult: VideoResult = {
+        videoUrl: data.videoUrl,
+        legendas: data.legendas
+      };
+
+      setResultado(videoResult);
+      setEditableLegendas(data.legendas);
+
+      // Salvar no banco
+      await supabase
+        .from('videos')
+        .insert({
+          user_id: userData.user.id,
+          titulo: url.trim().substring(0, 100),
+          link_produto: url.includes('http') ? url : null,
+          video_url: data.videoUrl,
+          legenda_instagram: data.legendas.instagram,
+          legenda_facebook: data.legendas.facebook,
+          legenda_tiktok: data.legendas.tiktok,
+          legenda_whatsapp: data.legendas.whatsapp,
+          status: 'concluido'
+        });
+
+      toast.success("🎬 Vídeo gerado com sucesso!");
+
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao gerar vídeo');
+      console.error(err);
     } finally {
-      setIsGenerating(false);
+      setLoading(false);
     }
   };
 
-  const generatePosts = () => {
-    const name = productName || "Produto";
-    setGeneratedPosts({
-      instagram: `🔥 ${name.toUpperCase()} 🔥\n\n✨ O produto que você estava esperando!\n\n💰 PREÇO ESPECIAL\n\n👆 Link na bio!\n\n#oferta #promocao #compras #desconto`,
-      facebook: `🎉 OFERTA IMPERDÍVEL!\n\n${name}\n\n🛒 Aproveite antes que acabe!\n\nComente "EU QUERO" para receber o link!`,
-      whatsapp: `Olá! 👋\n\nVocê viu o *${name}*?\n\n🔥 Oferta por tempo limitado!\n\nQuer saber mais? Me responda aqui!`
-    });
-  };
-
-  const handleDownloadImage = () => {
-    if (!generatedImage) return;
-    
-    const link = document.createElement('a');
-    link.href = generatedImage;
-    link.download = `${productName || 'produto'}-editado.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Imagem baixada!");
-  };
-
-  const handleCopy = (text: string, field: string) => {
+  const handleCopy = (text: string, platform: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    toast.success("Copiado!");
-    setTimeout(() => setCopiedField(null), 2000);
+    toast.success(`Legenda ${platform} copiada!`);
+  };
+
+  const handleDownload = async () => {
+    if (!resultado?.videoUrl) return;
+
+    try {
+      const response = await fetch(resultado.videoUrl);
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = 'video-ia.mp4';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
+      toast.success('Vídeo baixado!');
+    } catch (error) {
+      toast.error('Erro ao baixar vídeo');
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Image className="h-5 w-5" />
-            Gerador de Imagem para Produto
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Faça upload da foto, descreva como quer que fique e a IA irá editar/melhorar a imagem.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Upload de imagem */}
-          <div className="space-y-2">
-            <Label>📸 Foto do Produto</Label>
-            <div 
-              className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              {uploadedImage ? (
-                <div className="space-y-2">
-                  <img 
-                    src={uploadedImage} 
-                    alt="Produto" 
-                    className="max-h-48 mx-auto rounded-lg"
-                  />
-                  <p className="text-sm text-muted-foreground">Clique para trocar a imagem</p>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                  <Upload className="h-8 w-8" />
-                  <span>Clique para fazer upload da foto</span>
-                </div>
-              )}
-            </div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-          </div>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="text-center">
+        <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+          <Video className="inline-block mr-2 h-8 w-8" />
+          🎬 IA Vídeos - Gere Vídeos Incríveis em Segundos!
+        </h2>
+      </div>
 
-          {/* Nome do produto */}
-          <div className="space-y-2">
-            <Label>Nome do Produto (opcional)</Label>
-            <Input
-              placeholder="Ex: Arroz Integral Premium"
-              value={productName}
-              onChange={(e) => setProductName(e.target.value)}
-            />
-          </div>
-
-          {/* Prompt de edição */}
-          <div className="space-y-2">
-            <Label>✏️ Como quer a imagem?</Label>
+      {/* Formulário */}
+      <Card className="max-w-4xl mx-auto shadow-2xl border-2">
+        <CardContent className="pt-8 space-y-6">
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              Cole um link OU escreva uma descrição do vídeo
+            </label>
             <Textarea
-              placeholder="Descreva como quer que a imagem fique. Ex: 'Coloque um fundo de cozinha gourmet, com iluminação profissional e adicione elementos que remetam a saúde e bem-estar'"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              rows={3}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="Ex: 'crie posts para minha marca de lubrificantes automotivos' OU cole link da Shopee/Amazon"
+              className="min-h-[100px]"
             />
-            <p className="text-xs text-muted-foreground">
-              💡 Dica: Seja específico! Descreva o fundo, iluminação, elementos decorativos, etc.
-            </p>
           </div>
 
-          {/* Botão gerar */}
-          <Button 
-            onClick={handleGenerate} 
-            disabled={isGenerating || !uploadedImage}
-            className="w-full"
+          <div>
+            <label className="text-sm font-medium mb-2 block">
+              📷 Upload Fotos/Vídeos (opcional)
+            </label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+                id="file-upload-video"
+              />
+              <Button
+                onClick={() => document.getElementById('file-upload-video')?.click()}
+                variant="outline"
+                className="w-full"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {uploadedImage ? uploadedImage.name : 'Escolher Arquivo'}
+              </Button>
+            </div>
+          </div>
+
+          <Button
+            onClick={handleGenerate}
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-lg py-6"
           >
-            {isGenerating ? (
+            {loading ? (
               <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Gerando...
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Gerando vídeo com IA...
               </>
             ) : (
               <>
-                <Wand2 className="h-4 w-4 mr-2" />
-                Gerar Imagem
+                <Video className="mr-2 h-5 w-5" />
+                ✨ GERAR VÍDEO COM IA
               </>
             )}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Resultado */}
-      {generatedImage && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>✅ Imagem Gerada</span>
+      {/* Resultados */}
+      {resultado && (
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Instagram Reels */}
+          <Card className="shadow-xl border-2 hover:border-pink-500 transition-colors">
+            <CardHeader className="bg-gradient-to-r from-pink-500 to-purple-600 text-white">
+              <CardTitle className="flex items-center gap-2">
+                <Instagram className="h-5 w-5" />
+                📱 Instagram Reels
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              <video
+                src={resultado.videoUrl}
+                controls
+                className="w-full rounded-lg"
+              />
+              <Textarea
+                value={editableLegendas.instagram}
+                onChange={(e) => setEditableLegendas({...editableLegendas, instagram: e.target.value})}
+                className="min-h-[100px]"
+              />
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleGenerate} disabled={isGenerating}>
-                  <RefreshCw className={`h-4 w-4 mr-1 ${isGenerating ? 'animate-spin' : ''}`} />
-                  Refazer
+                <Button
+                  onClick={() => handleCopy(editableLegendas.instagram, 'Instagram')}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar
                 </Button>
-                <Button variant="default" size="sm" onClick={handleDownloadImage}>
-                  <Download className="h-4 w-4 mr-1" />
+                <Button
+                  onClick={handleDownload}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Download className="mr-2 h-4 w-4" />
                   Baixar
                 </Button>
               </div>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <img 
-              src={generatedImage} 
-              alt="Imagem gerada" 
-              className="w-full max-w-lg mx-auto rounded-lg shadow-lg"
-            />
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
 
-      {/* Posts gerados */}
-      {generatedPosts && (
-        <Card>
-          <CardHeader>
-            <CardTitle>📱 Posts para Redes Sociais</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {generatedPosts.instagram && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-pink-500 font-medium">📸 Instagram</Label>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => handleCopy(generatedPosts.instagram, 'instagram')}
-                  >
-                    {copiedField === 'instagram' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <p className="text-sm bg-muted p-3 rounded-lg whitespace-pre-wrap">
-                  {generatedPosts.instagram}
-                </p>
+          {/* Facebook */}
+          <Card className="shadow-xl border-2 hover:border-blue-500 transition-colors">
+            <CardHeader className="bg-gradient-to-r from-blue-500 to-blue-700 text-white">
+              <CardTitle className="flex items-center gap-2">
+                <Facebook className="h-5 w-5" />
+                📘 Facebook Vídeo
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              <video
+                src={resultado.videoUrl}
+                controls
+                className="w-full rounded-lg"
+              />
+              <Textarea
+                value={editableLegendas.facebook}
+                onChange={(e) => setEditableLegendas({...editableLegendas, facebook: e.target.value})}
+                className="min-h-[100px]"
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleCopy(editableLegendas.facebook, 'Facebook')}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar
+                </Button>
+                <Button
+                  onClick={handleDownload}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Baixar
+                </Button>
               </div>
-            )}
+            </CardContent>
+          </Card>
 
-            {generatedPosts.facebook && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-blue-500 font-medium">📘 Facebook</Label>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => handleCopy(generatedPosts.facebook, 'facebook')}
-                  >
-                    {copiedField === 'facebook' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <p className="text-sm bg-muted p-3 rounded-lg whitespace-pre-wrap">
-                  {generatedPosts.facebook}
-                </p>
+          {/* TikTok */}
+          <Card className="shadow-xl border-2 hover:border-black transition-colors">
+            <CardHeader className="bg-gradient-to-r from-black to-gray-800 text-white">
+              <CardTitle className="flex items-center gap-2">
+                <Video className="h-5 w-5" />
+                🎵 TikTok
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              <video
+                src={resultado.videoUrl}
+                controls
+                className="w-full rounded-lg"
+              />
+              <Textarea
+                value={editableLegendas.tiktok}
+                onChange={(e) => setEditableLegendas({...editableLegendas, tiktok: e.target.value})}
+                className="min-h-[100px]"
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleCopy(editableLegendas.tiktok, 'TikTok')}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar
+                </Button>
+                <Button
+                  onClick={handleDownload}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Baixar
+                </Button>
               </div>
-            )}
+            </CardContent>
+          </Card>
 
-            {generatedPosts.whatsapp && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-green-500 font-medium">💬 WhatsApp</Label>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => handleCopy(generatedPosts.whatsapp, 'whatsapp')}
-                  >
-                    {copiedField === 'whatsapp' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  </Button>
-                </div>
-                <p className="text-sm bg-muted p-3 rounded-lg whitespace-pre-wrap">
-                  {generatedPosts.whatsapp}
-                </p>
+          {/* WhatsApp */}
+          <Card className="shadow-xl border-2 hover:border-green-500 transition-colors">
+            <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+              <CardTitle className="flex items-center gap-2">
+                <MessageCircle className="h-5 w-5" />
+                💬 WhatsApp Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-6 space-y-4">
+              <video
+                src={resultado.videoUrl}
+                controls
+                className="w-full rounded-lg"
+              />
+              <Textarea
+                value={editableLegendas.whatsapp}
+                onChange={(e) => setEditableLegendas({...editableLegendas, whatsapp: e.target.value})}
+                className="min-h-[100px]"
+              />
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => handleCopy(editableLegendas.whatsapp, 'WhatsApp')}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copiar
+                </Button>
+                <Button
+                  onClick={handleDownload}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Baixar
+                </Button>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );
