@@ -66,7 +66,7 @@ import AfiliadoProdutos from "./pages/afiliado/AfiliadoProdutos";
 import AfiliadoVendas from "./pages/afiliado/AfiliadoVendas";
 import AfiliadoDisparos from "./pages/afiliado/AfiliadoDisparos";
 import AfiliadoIAMarketing from "./pages/afiliado/AfiliadoIAMarketing";
-import AfiliadoWhatsApp from "./pages/afiliado/AfiliadoWhatsApp";
+import AfiliadoWhatsApp from "./pages/afiliado/AfiliadoWhatsAppPage";
 import AfiliadoEbooks from "./pages/afiliado/AfiliadoEbooks";
 
 import CookieBanner from "./components/CookieBanner";
