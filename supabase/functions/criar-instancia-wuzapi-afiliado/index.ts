@@ -333,25 +333,38 @@ serve(async (req) => {
       const statusResult = await statusResponse.json()
       console.log('📊 Status:', statusResult)
 
-      const isConnected = statusResult.LoggedIn === true || statusResult.loggedIn === true
+      // Wuzapi retorna dados dentro de "data" quando sucesso
+      const data = statusResult.data || statusResult
+      const isConnected = data.loggedIn === true || data.LoggedIn === true || data.connected === true
+      const jid = data.jid || data.Jid || null
+      const phone = jid ? jid.split(':')[0] : null
+
+      console.log('📱 Conexão:', { isConnected, jid, phone })
 
       // Atualizar data de conexão se conectou
-      if (isConnected && !cliente.data_conexao_whatsapp) {
-        await supabase
+      if (isConnected && jid) {
+        console.log('💾 Atualizando cliente com jid:', jid)
+        const { error: updateError } = await supabase
           .from('clientes_afiliados')
           .update({ 
             data_conexao_whatsapp: new Date().toISOString(),
-            wuzapi_jid: statusResult.Jid || statusResult.jid
+            wuzapi_jid: jid
           })
           .eq('id', cliente.id)
+        
+        if (updateError) {
+          console.error('❌ Erro ao atualizar cliente:', updateError)
+        } else {
+          console.log('✅ Cliente atualizado com sucesso')
+        }
       }
 
       return new Response(
         JSON.stringify({ 
           success: true, 
           connected: isConnected,
-          jid: statusResult.Jid || statusResult.jid,
-          phone: statusResult.Phone || statusResult.phone
+          jid: jid,
+          phone: phone
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
