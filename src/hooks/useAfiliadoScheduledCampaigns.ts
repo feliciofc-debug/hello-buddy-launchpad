@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-const COOLDOWN_MINUTOS = 5;
+const COOLDOWN_MINUTOS = 0; // teste: desabilitado (volte para 5 depois)
 
 /**
  * Verifica cooldown entre mensagens
@@ -199,18 +199,54 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   .replace(/\{\{produto\}\}/gi, produto?.titulo || 'Produto')
                   .replace(/\{\{preco\}\}/gi, produto?.preco?.toString() || '0');
 
-                // ✅ Enviar via função com imagem resolvida
-                const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
-                  body: {
-                    phoneNumbers: [phone],
-                    message: mensagem,
-                    imageUrl: imageUrl, // ✅ Agora é URL de imagem válida
-                    userId: userId
-                  }
-                });
+                // ✅ Enviar DIRETO via Wuzapi Contabo
+                const token = afiliadoData?.wuzapi_token;
+                if (!token) {
+                  await registrarEnvio(phone, 'campanha', mensagem, false, 'Token Wuzapi não encontrado');
+                  console.error('❌ [AFILIADO] Token Wuzapi não encontrado');
+                  continue;
+                }
 
-                // ✅ Só contar como enviado se realmente teve sucesso
-                const ok = !sendError && (sendData?.success === true);
+                const cleanPhone = phone.replace(/\D/g, '');
+                const baseUrl = 'https://api2.amzofertas.com.br';
+
+                let ok = false;
+                let wuzapiPayload: any = null;
+
+                if (imageUrl) {
+                  const sendResponse = await fetch(`${baseUrl}/chat/send/image`, {
+                    method: 'POST',
+                    headers: {
+                      Token: token,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      Phone: cleanPhone,
+                      Caption: mensagem,
+                      Image: imageUrl,
+                    }),
+                  });
+
+                  wuzapiPayload = await sendResponse.json().catch(() => null);
+                  ok = sendResponse.ok && !!wuzapiPayload?.success;
+                  console.log(`📸 [AFILIADO] Envio com imagem para ${cleanPhone}:`, ok ? '✅' : '❌', wuzapiPayload);
+                } else {
+                  const sendResponse = await fetch(`${baseUrl}/chat/send/text`, {
+                    method: 'POST',
+                    headers: {
+                      Token: token,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      Phone: cleanPhone,
+                      Body: mensagem,
+                    }),
+                  });
+
+                  wuzapiPayload = await sendResponse.json().catch(() => null);
+                  ok = sendResponse.ok && !!wuzapiPayload?.success;
+                  console.log(`💬 [AFILIADO] Envio texto para ${cleanPhone}:`, ok ? '✅' : '❌', wuzapiPayload);
+                }
 
                 if (ok) {
                   enviados++;
