@@ -25,6 +25,61 @@ interface Produto {
   status: string;
 }
 
+// Extrai ASIN do link Amazon e retorna URL da imagem
+const getAmazonImageUrl = (url: string): string | null => {
+  if (!url) return null;
+  
+  // Padrões para extrair ASIN de URLs Amazon
+  const patterns = [
+    /\/dp\/([A-Z0-9]{10})/i,
+    /\/gp\/product\/([A-Z0-9]{10})/i,
+    /\/product\/([A-Z0-9]{10})/i,
+    /\/ASIN\/([A-Z0-9]{10})/i,
+    /amazon\.[^\/]+\/.*?([A-Z0-9]{10})(?:[\/\?]|$)/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      const asin = match[1];
+      return `https://images-na.ssl-images-amazon.com/images/P/${asin}.01._SCLZZZZZZZ_.jpg`;
+    }
+  }
+  
+  return null;
+};
+
+// Verifica se é uma URL de imagem válida
+const isValidImageUrl = (url: string | null): boolean => {
+  if (!url) return false;
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg'];
+  const lowerUrl = url.toLowerCase();
+  return imageExtensions.some(ext => lowerUrl.includes(ext)) || 
+         lowerUrl.includes('images-amazon') ||
+         lowerUrl.includes('ssl-images-amazon') ||
+         lowerUrl.includes('m.media-amazon');
+};
+
+// Obtém a melhor URL de imagem para o produto
+const getProductImageUrl = (produto: Produto): string | null => {
+  // Se já tem uma URL de imagem válida, usa ela
+  if (isValidImageUrl(produto.imagem_url)) {
+    return produto.imagem_url;
+  }
+  
+  // Tenta extrair imagem do link de afiliado Amazon
+  if (produto.marketplace === 'amazon' || produto.link_afiliado?.includes('amazon')) {
+    return getAmazonImageUrl(produto.link_afiliado);
+  }
+  
+  // Tenta extrair da imagem_url mesmo que seja um link de produto
+  if (produto.imagem_url?.includes('amazon')) {
+    return getAmazonImageUrl(produto.imagem_url);
+  }
+  
+  return null;
+};
+
 export default function AfiliadoProdutos() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -305,17 +360,25 @@ export default function AfiliadoProdutos() {
                 <CardContent className="p-0">
                   {/* Imagem */}
                   <div className="relative aspect-square bg-muted">
-                    {produto.imagem_url ? (
-                      <img 
-                        src={produto.imagem_url} 
-                        alt={produto.titulo}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <Package className="h-16 w-16 text-muted-foreground" />
-                      </div>
-                    )}
+                    {(() => {
+                      const imageUrl = getProductImageUrl(produto);
+                      return imageUrl ? (
+                        <img 
+                          src={imageUrl} 
+                          alt={produto.titulo}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = 'none';
+                            const fallback = target.nextElementSibling;
+                            if (fallback) fallback.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null;
+                    })()}
+                    <div className={`w-full h-full flex items-center justify-center ${getProductImageUrl(produto) ? 'hidden' : ''}`}>
+                      <Package className="h-16 w-16 text-muted-foreground" />
+                    </div>
                     <Badge className="absolute top-2 right-2 bg-green-500">
                       Ativo
                     </Badge>
