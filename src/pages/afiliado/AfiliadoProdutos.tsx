@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Package, Trash2, Edit, ExternalLink, Upload } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Plus, Package, Trash2, Edit, ExternalLink, Upload, Megaphone } from "lucide-react";
 import { toast } from "sonner";
 import ImportCSVAfiliadoModal from "@/components/ImportCSVAfiliadoModal";
+import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
+
 interface Produto {
   id: string;
   titulo: string;
@@ -29,6 +32,8 @@ export default function AfiliadoProdutos() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
+  const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   
   const [form, setForm] = useState({
@@ -158,6 +163,11 @@ export default function AfiliadoProdutos() {
     }
   };
 
+  const handleCriarCampanha = (produto: Produto) => {
+    setProdutoSelecionado(produto);
+    setCampanhaModalOpen(true);
+  };
+
   const marketplaces = [
     { value: 'amazon', label: 'Amazon' },
     { value: 'mercadolivre', label: 'Mercado Livre' },
@@ -178,7 +188,7 @@ export default function AfiliadoProdutos() {
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -206,76 +216,77 @@ export default function AfiliadoProdutos() {
                   Adicionar
                 </Button>
               </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Título *</Label>
-                  <Input 
-                    value={form.titulo}
-                    onChange={(e) => setForm({...form, titulo: e.target.value})}
-                    placeholder="Nome do produto"
-                  />
-                </div>
-                <div>
-                  <Label>Link de Afiliado *</Label>
-                  <Input 
-                    value={form.link_afiliado}
-                    onChange={(e) => setForm({...form, link_afiliado: e.target.value})}
-                    placeholder="https://..."
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+              <DialogContent className="max-w-lg">
+                <DialogHeader>
+                  <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
                   <div>
-                    <Label>Marketplace</Label>
-                    <Select value={form.marketplace} onValueChange={(v) => setForm({...form, marketplace: v})}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {marketplaces.map(m => (
-                          <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Preço (R$)</Label>
+                    <Label>Título *</Label>
                     <Input 
-                      type="number"
-                      value={form.preco}
-                      onChange={(e) => setForm({...form, preco: e.target.value})}
-                      placeholder="0.00"
+                      value={form.titulo}
+                      onChange={(e) => setForm({...form, titulo: e.target.value})}
+                      placeholder="Nome do produto"
                     />
                   </div>
+                  <div>
+                    <Label>Link de Afiliado *</Label>
+                    <Input 
+                      value={form.link_afiliado}
+                      onChange={(e) => setForm({...form, link_afiliado: e.target.value})}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Marketplace</Label>
+                      <Select value={form.marketplace} onValueChange={(v) => setForm({...form, marketplace: v})}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {marketplaces.map(m => (
+                            <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Preço (R$)</Label>
+                      <Input 
+                        type="number"
+                        value={form.preco}
+                        onChange={(e) => setForm({...form, preco: e.target.value})}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>URL da Imagem</Label>
+                    <Input 
+                      value={form.imagem_url}
+                      onChange={(e) => setForm({...form, imagem_url: e.target.value})}
+                      placeholder="https://..."
+                    />
+                  </div>
+                  <div>
+                    <Label>Descrição</Label>
+                    <Textarea 
+                      value={form.descricao}
+                      onChange={(e) => setForm({...form, descricao: e.target.value})}
+                      placeholder="Descrição do produto..."
+                      rows={3}
+                    />
+                  </div>
+                  <Button onClick={handleSave} disabled={saving} className="w-full">
+                    {saving ? 'Salvando...' : (editingId ? 'Atualizar' : 'Cadastrar')}
+                  </Button>
                 </div>
-                <div>
-                  <Label>URL da Imagem</Label>
-                  <Input 
-                    value={form.imagem_url}
-                    onChange={(e) => setForm({...form, imagem_url: e.target.value})}
-                    placeholder="https://..."
-                  />
-                </div>
-                <div>
-                  <Label>Descrição</Label>
-                  <Textarea 
-                    value={form.descricao}
-                    onChange={(e) => setForm({...form, descricao: e.target.value})}
-                    placeholder="Descrição do produto..."
-                    rows={3}
-                  />
-                </div>
-                <Button onClick={handleSave} disabled={saving} className="w-full">
-                  {saving ? 'Salvando...' : (editingId ? 'Atualizar' : 'Cadastrar')}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
+
         {produtos.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">
@@ -288,44 +299,65 @@ export default function AfiliadoProdutos() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {produtos.map((produto) => (
-              <Card key={produto.id}>
-                <CardContent className="p-4">
-                  <div className="flex gap-4">
-                    {produto.imagem_url && (
+              <Card key={produto.id} className="overflow-hidden">
+                <CardContent className="p-0">
+                  {/* Imagem */}
+                  <div className="relative aspect-square bg-muted">
+                    {produto.imagem_url ? (
                       <img 
                         src={produto.imagem_url} 
                         alt={produto.titulo}
-                        className="w-20 h-20 object-cover rounded-lg"
+                        className="w-full h-full object-cover"
                       />
-                    )}
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-semibold">{produto.titulo}</h3>
-                          <p className="text-sm text-muted-foreground capitalize">{produto.marketplace}</p>
-                          {produto.preco && (
-                            <p className="text-lg font-bold text-green-500 mt-1">
-                              R$ {produto.preco.toFixed(2)}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => handleEdit(produto)}>
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => window.open(produto.link_afiliado, '_blank')}>
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(produto.id)}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <Package className="h-16 w-16 text-muted-foreground" />
                       </div>
-                      {produto.descricao && (
-                        <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{produto.descricao}</p>
-                      )}
+                    )}
+                    <Badge className="absolute top-2 right-2 bg-green-500">
+                      Ativo
+                    </Badge>
+                  </div>
+
+                  {/* Info */}
+                  <div className="p-4 space-y-3">
+                    <div>
+                      <h3 className="font-semibold line-clamp-2">{produto.titulo}</h3>
+                      <p className="text-sm text-muted-foreground capitalize">{produto.marketplace}</p>
+                    </div>
+
+                    {produto.descricao && (
+                      <p className="text-sm text-muted-foreground line-clamp-2">{produto.descricao}</p>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Preço:</span>
+                      <span className="text-lg font-bold text-green-600">
+                        {produto.preco ? `R$ ${produto.preco.toFixed(2)}` : '-'}
+                      </span>
+                    </div>
+
+                    {/* Botão Criar Campanha */}
+                    <Button 
+                      className="w-full bg-primary"
+                      onClick={() => handleCriarCampanha(produto)}
+                    >
+                      <Megaphone className="h-4 w-4 mr-2" />
+                      Criar Campanha
+                    </Button>
+
+                    {/* Botões Editar/Excluir */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button variant="outline" size="sm" onClick={() => handleEdit(produto)}>
+                        <Edit className="h-4 w-4 mr-1" />
+                        Editar
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => handleDelete(produto.id)}>
+                        <Trash2 className="h-4 w-4 mr-1 text-red-500" />
+                        Excluir
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -340,6 +372,16 @@ export default function AfiliadoProdutos() {
           onClose={() => setImportModalOpen(false)}
           onSuccess={loadProdutos}
         />
+
+        {/* Modal Criar Campanha */}
+        {produtoSelecionado && (
+          <CriarCampanhaAfiliadoModal
+            open={campanhaModalOpen}
+            onOpenChange={setCampanhaModalOpen}
+            produto={produtoSelecionado}
+            onSuccess={loadProdutos}
+          />
+        )}
       </div>
     </div>
   );

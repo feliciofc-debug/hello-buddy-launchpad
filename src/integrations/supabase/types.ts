@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      afiliado_campanhas: {
+        Row: {
+          ativa: boolean | null
+          created_at: string | null
+          data_inicio: string
+          dias_semana: number[] | null
+          frequencia: string
+          horarios: string[]
+          id: string
+          mensagem_template: string
+          nome: string
+          produto_id: string | null
+          proxima_execucao: string | null
+          status: string | null
+          total_enviados: number | null
+          ultima_execucao: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativa?: boolean | null
+          created_at?: string | null
+          data_inicio: string
+          dias_semana?: number[] | null
+          frequencia?: string
+          horarios?: string[]
+          id?: string
+          mensagem_template: string
+          nome: string
+          produto_id?: string | null
+          proxima_execucao?: string | null
+          status?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativa?: boolean | null
+          created_at?: string | null
+          data_inicio?: string
+          dias_semana?: number[] | null
+          frequencia?: string
+          horarios?: string[]
+          id?: string
+          mensagem_template?: string
+          nome?: string
+          produto_id?: string | null
+          proxima_execucao?: string | null
+          status?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "afiliado_campanhas_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "afiliado_produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       afiliado_disparos: {
         Row: {
           created_at: string | null
