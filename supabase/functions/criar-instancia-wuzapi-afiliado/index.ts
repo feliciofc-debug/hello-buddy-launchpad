@@ -122,12 +122,17 @@ serve(async (req) => {
       const wuzapiResult = await wuzapiResponse.json()
       console.log('📡 Resposta Wuzapi:', wuzapiResult)
 
-      if (!wuzapiResponse.ok) {
+      // Se retornar 409 (user already exists), o token já está ativo no Wuzapi - isso é OK
+      if (!wuzapiResponse.ok && wuzapiResult.code !== 409) {
         console.error('❌ Erro Wuzapi:', wuzapiResult)
         return new Response(
           JSON.stringify({ success: false, error: 'Erro ao criar instância no servidor' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
+      }
+      
+      if (wuzapiResult.code === 409) {
+        console.log('ℹ️ Token já existe no Wuzapi - continuando...')
       }
 
       // 5. Criar ou atualizar cliente_afiliado
