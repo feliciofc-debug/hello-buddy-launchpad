@@ -221,3 +221,6 @@ verify_jwt = false
 
 [functions.gerar-video]
 verify_jwt = false
+
+[functions.criar-instancia-wuzapi-afiliado]
+verify_jwt = false
