@@ -85,15 +85,8 @@ export default function AfiliadoDashboard() {
       title: "WhatsApp", 
       icon: MessageSquare, 
       path: "/afiliado/whatsapp",
-      description: "Conversas e IA",
+      description: "Enviar mensagens",
       color: "bg-emerald-500"
-    },
-    { 
-      title: "Disparos", 
-      icon: Send, 
-      path: "/afiliado/disparos",
-      description: "Campanhas agendadas",
-      color: "bg-blue-500"
     },
     { 
       title: "IA Marketing", 
@@ -108,20 +101,6 @@ export default function AfiliadoDashboard() {
       path: "/afiliado/produtos",
       description: "Gerenciar produtos",
       color: "bg-orange-500"
-    },
-    { 
-      title: "E-books", 
-      icon: BookOpen, 
-      path: "/afiliado/ebooks",
-      description: "Materiais de apoio",
-      color: "bg-pink-500"
-    },
-    { 
-      title: "Vendas", 
-      icon: DollarSign, 
-      path: "/afiliado/vendas",
-      description: "Registrar e acompanhar",
-      color: "bg-yellow-500"
     }
   ];
 
