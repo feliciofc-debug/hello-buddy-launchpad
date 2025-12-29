@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useScheduledCampaigns } from '@/hooks/useScheduledCampaigns';
+import { useAfiliadoScheduledCampaigns } from '@/hooks/useAfiliadoScheduledCampaigns';
 
 /**
  * Componente global que executa campanhas agendadas
+ * Suporta tanto campanhas PJ (campanhas_recorrentes) quanto Afiliado (afiliado_campanhas)
  * Deve ser incluído no App.tsx para funcionar em qualquer página
  */
 export function CampaignScheduler() {
@@ -28,8 +30,11 @@ export function CampaignScheduler() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Hook que verifica e executa campanhas a cada minuto
+  // Hook para campanhas PJ (campanhas_recorrentes)
   useScheduledCampaigns(userId);
+
+  // Hook para campanhas AFILIADO (afiliado_campanhas)
+  useAfiliadoScheduledCampaigns(userId);
 
   // Componente invisível - apenas executa a lógica
   return null;
