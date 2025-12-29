@@ -3,9 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
+import { Plus, X, Sparkles, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -17,6 +18,13 @@ interface Produto {
   imagem_url: string | null;
   link_afiliado: string;
   marketplace: string;
+}
+
+interface WhatsAppGroup {
+  id: string;
+  group_name: string;
+  member_count: number;
+  phone_numbers: string[];
 }
 
 interface PostsGerados {
@@ -50,13 +58,46 @@ export function CriarCampanhaAfiliadoModal({
   const [mensagem, setMensagem] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
+  // Estados para listas de transmissão
+  const [listas, setListas] = useState<WhatsAppGroup[]>([]);
+  const [listasSelecionadas, setListasSelecionadas] = useState<string[]>([]);
+  
   const [postsGerados, setPostsGerados] = useState<PostsGerados | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [sugestaoIA, setSugestaoIA] = useState('');
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
+  // Buscar listas de transmissão ao abrir modal
+  const fetchListas = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('whatsapp_groups')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setListas(data || []);
+    } catch (error) {
+      console.error('Erro ao buscar listas:', error);
+      setListas([]);
+    }
+  };
+
+  const toggleLista = (listaId: string) => {
+    if (listasSelecionadas.includes(listaId)) {
+      setListasSelecionadas(listasSelecionadas.filter(id => id !== listaId));
+    } else {
+      setListasSelecionadas([...listasSelecionadas, listaId]);
+    }
+  };
+
   useEffect(() => {
     if (open) {
+      fetchListas();
       // Template inicial COM LINK DE AFILIADO
       setMensagem(`Olá! 👋
 
@@ -291,10 +332,62 @@ _Aproveite enquanto dura!_ ✅`;
             </RadioGroup>
           </div>
 
-          {/* 2. DATA E HORÁRIOS */}
+          {/* 2. LISTAS DE TRANSMISSÃO */}
+          <div className="p-4 bg-muted/30 rounded-lg">
+            <Label className="text-lg font-semibold flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              2. Selecione as Listas de Transmissão
+            </Label>
+            
+            {listas.length === 0 ? (
+              <div className="mt-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">
+                  ⚠️ Nenhuma lista de transmissão encontrada.
+                </p>
+                <p className="text-xs text-yellow-600 mt-1">
+                  Vá em WhatsApp → Contatos para criar suas listas primeiro.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
+                {listas.map((lista) => (
+                  <div 
+                    key={lista.id}
+                    onClick={() => toggleLista(lista.id)}
+                    className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${
+                      listasSelecionadas.includes(lista.id) 
+                        ? 'border-green-500 bg-green-50' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Checkbox 
+                        checked={listasSelecionadas.includes(lista.id)}
+                        onChange={() => {}}
+                      />
+                      <div>
+                        <p className="font-medium">{lista.group_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {lista.member_count || lista.phone_numbers?.length || 0} contatos
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {listasSelecionadas.length > 0 && (
+              <p className="text-sm text-green-600 mt-2">
+                ✅ {listasSelecionadas.length} lista(s) selecionada(s)
+              </p>
+            )}
+          </div>
+
+          {/* 3. DATA E HORÁRIOS */}
           {frequencia !== 'agora' && (
             <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
-              <Label className="text-lg font-semibold">2. Selecione Data e Horários</Label>
+              <Label className="text-lg font-semibold">3. Selecione Data e Horários</Label>
               
               <div>
                 <Label>Data de Início</Label>
@@ -353,8 +446,9 @@ _Aproveite enquanto dura!_ ✅`;
             </div>
           )}
 
-          {/* 3. MENSAGEM */}
+          {/* 4. MENSAGEM */}
           <div className="p-4 bg-muted/30 rounded-lg">
+            <Label className="text-lg font-semibold mb-3 block">4. Mensagem</Label>
             <Label className="text-lg font-semibold mb-3 block">3. Mensagem</Label>
             
             {/* Campo de sugestões + Botão IA */}
