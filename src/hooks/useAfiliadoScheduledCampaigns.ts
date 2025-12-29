@@ -231,23 +231,93 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                 // ✅ Enviar via backend (evita CORS no navegador)
                 const cleanPhone = phone.replace(/\D/g, '');
 
-                const { data: sendData, error: sendError } = await supabase.functions.invoke('wuzapi-send', {
-                  body: {
-                    phone: cleanPhone,
-                    message: mensagem,
-                    imageUrl,
-                  },
-                });
+                // Função helper para enviar
+                const enviarUmaVez = async (imgUrl: string | null) => {
+                  return await supabase.functions.invoke('wuzapi-send', {
+                    body: {
+                      phone: cleanPhone,
+                      message: mensagem,
+                      imageUrl: imgUrl,
+                    },
+                  });
+                };
 
-                const ok = !sendError && sendData?.success === true;
-                const wuzapiPayload: any = sendData?.payload ?? null;
+                let tentativaImageUrl = imageUrl;
 
-                if (imageUrl) {
+                // 1) Tenta enviar (com imagem se tiver)
+                let { data: sendData, error: sendError } = await enviarUmaVez(tentativaImageUrl);
+                let ok = !sendError && sendData?.success === true;
+                let wuzapiPayload: any = sendData?.payload ?? null;
+
+                // 2) Se falhou COM IMAGEM por erro de upload/websocket → tenta 1x SEM IMAGEM
+                if (!ok && tentativaImageUrl) {
+                  const errMsg1 =
+                    (wuzapiPayload && (wuzapiPayload.error || wuzapiPayload.message)) ||
+                    sendError?.message ||
+                    '';
+
+                  const isMediaUploadError =
+                    errMsg1.toLowerCase().includes('upload file') ||
+                    errMsg1.toLowerCase().includes('media') ||
+                    errMsg1.toLowerCase().includes('websocket') ||
+                    errMsg1.toLowerCase().includes('timed out');
+
+                  if (isMediaUploadError) {
+                    console.log('🧯 [AFILIADO] Falha com imagem, reenviando SEM imagem...');
+                    tentativaImageUrl = null;
+
+                    ({ data: sendData, error: sendError } = await enviarUmaVez(null));
+                    ok = !sendError && sendData?.success === true;
+                    wuzapiPayload = sendData?.payload ?? null;
+                  }
+                }
+
+                // 3) Se ainda falhou e for erro de sessão → reconectar 1x → REENVIAR 1x
+                if (!ok) {
+                  const errMsg2 =
+                    (wuzapiPayload && (wuzapiPayload.error || wuzapiPayload.message)) ||
+                    sendError?.message ||
+                    '';
+
+                  const isSessionError =
+                    errMsg2.toLowerCase().includes('session') ||
+                    errMsg2.toLowerCase().includes('no session');
+
+                  if (isSessionError && afiliadoData?.wuzapi_token) {
+                    console.log('🔄 [AFILIADO] Erro de sessão, reconectando 1x...');
+                    const reconectou = await tentarReconectar(afiliadoData.wuzapi_token);
+
+                    if (reconectou) {
+                      console.log('🔁 [AFILIADO] Reconectou, reenviando 1x...');
+                      await new Promise(r => setTimeout(r, 2000)); // Aguarda estabilizar
+
+                      ({ data: sendData, error: sendError } = await enviarUmaVez(tentativaImageUrl));
+                      ok = !sendError && sendData?.success === true;
+                      wuzapiPayload = sendData?.payload ?? null;
+                    }
+
+                    if (!ok) {
+                      // Pausa campanha
+                      console.log('❌ [AFILIADO] Reconexão/reenvio falhou, pausando campanha...');
+                      await supabase
+                        .from('afiliado_campanhas')
+                        .update({ ativa: false, status: 'erro_sessao' })
+                        .eq('id', campanha.id);
+
+                      toast.error('⚠️ WhatsApp desconectado! Campanha pausada — reconecte em Conectar Celular.');
+                      break;
+                    }
+                  }
+                }
+
+                // Log resultado
+                if (tentativaImageUrl) {
                   console.log(`📸 [AFILIADO] Envio com imagem para ${cleanPhone}:`, ok ? '✅' : '❌', wuzapiPayload);
                 } else {
                   console.log(`💬 [AFILIADO] Envio texto para ${cleanPhone}:`, ok ? '✅' : '❌', wuzapiPayload);
                 }
 
+                // Registrar resultado
                 if (ok) {
                   enviados++;
                   await registrarEnvio(phone, 'campanha', mensagem, true);
@@ -280,42 +350,13 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   
                   console.log(`✅ [AFILIADO] Enviado para ${phone}`);
                 } else {
-                  const errMsg =
+                  // Registrar erro final (se não foi erro de sessão que já pausou)
+                  const errFinal =
                     (wuzapiPayload && (wuzapiPayload.error || wuzapiPayload.message)) ||
+                    sendError?.message ||
                     'Falha no envio (Wuzapi)';
-                  await registrarEnvio(phone, 'campanha', mensagem, false, errMsg);
-                  console.error(`❌ [AFILIADO] Falha ao enviar para ${cleanPhone}:`, wuzapiPayload);
-
-                  // 🔄 DETECTAR ERRO DE SESSÃO E TENTAR RECONECTAR 1X
-                  const isSessionError = 
-                    errMsg.toLowerCase().includes('session') ||
-                    errMsg.toLowerCase().includes('no session') ||
-                    sendError?.message?.toLowerCase().includes('session');
-
-                  if (isSessionError && afiliadoData?.wuzapi_token) {
-                    console.log('🔄 [AFILIADO] Erro de sessão detectado, tentando reconectar...');
-                    
-                    const reconectou = await tentarReconectar(afiliadoData.wuzapi_token);
-                    
-                    if (!reconectou) {
-                      // PAUSA CAMPANHA e notifica usuário
-                      console.log('❌ [AFILIADO] Reconexão falhou, pausando campanha...');
-                      
-                      await supabase
-                        .from('afiliado_campanhas')
-                        .update({ 
-                          ativa: false, 
-                          status: 'erro_sessao'
-                        })
-                        .eq('id', campanha.id);
-                      
-                      toast.error('⚠️ WhatsApp desconectado! Reconecte em Conectar Celular.');
-                      break; // Para execução desta campanha
-                    } else {
-                      // Reconectou, continua tentando
-                      console.log('✅ [AFILIADO] Reconectado! Continuando campanha...');
-                    }
-                  }
+                  await registrarEnvio(phone, 'campanha', mensagem, false, errFinal);
+                  console.error(`❌ [AFILIADO] Falha final para ${cleanPhone}:`, errFinal);
                 }
 
                 // Delay entre envios
