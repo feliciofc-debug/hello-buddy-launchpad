@@ -280,8 +280,11 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   
                   console.log(`✅ [AFILIADO] Enviado para ${phone}`);
                 } else {
-                  await registrarEnvio(phone, 'campanha', mensagem, false, sendError?.message || sendData?.error || 'Erro no envio');
-                  console.error(`❌ [AFILIADO] Falha ao enviar para ${phone}:`, sendError || sendData);
+                  const errMsg =
+                    (wuzapiPayload && (wuzapiPayload.error || wuzapiPayload.message)) ||
+                    'Falha no envio (Wuzapi)';
+                  await registrarEnvio(phone, 'campanha', mensagem, false, errMsg);
+                  console.error(`❌ [AFILIADO] Falha ao enviar para ${cleanPhone}:`, wuzapiPayload);
                 }
 
                 // Delay entre envios
