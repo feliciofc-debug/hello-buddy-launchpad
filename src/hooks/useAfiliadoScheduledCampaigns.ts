@@ -3,6 +3,35 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 const COOLDOWN_MINUTOS = 0; // teste: desabilitado (volte para 5 depois)
+const CONTABO_WUZAPI_URL = 'https://api2.amzofertas.com.br';
+
+/**
+ * Tenta reconectar sessão Wuzapi 1 vez
+ */
+async function tentarReconectar(token: string): Promise<boolean> {
+  try {
+    console.log('🔄 [AFILIADO] Tentando reconectar Wuzapi...');
+    const resp = await fetch(`${CONTABO_WUZAPI_URL}/session/connect`, {
+      method: 'POST',
+      headers: { 
+        'Token': token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})
+    });
+    
+    if (resp.ok) {
+      console.log('✅ [AFILIADO] Reconexão bem-sucedida!');
+      return true;
+    }
+    
+    console.log('❌ [AFILIADO] Reconexão falhou, status:', resp.status);
+    return false;
+  } catch (err) {
+    console.error('❌ [AFILIADO] Erro ao reconectar:', err);
+    return false;
+  }
+}
 
 /**
  * Verifica cooldown entre mensagens
@@ -256,6 +285,37 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                     'Falha no envio (Wuzapi)';
                   await registrarEnvio(phone, 'campanha', mensagem, false, errMsg);
                   console.error(`❌ [AFILIADO] Falha ao enviar para ${cleanPhone}:`, wuzapiPayload);
+
+                  // 🔄 DETECTAR ERRO DE SESSÃO E TENTAR RECONECTAR 1X
+                  const isSessionError = 
+                    errMsg.toLowerCase().includes('session') ||
+                    errMsg.toLowerCase().includes('no session') ||
+                    sendError?.message?.toLowerCase().includes('session');
+
+                  if (isSessionError && afiliadoData?.wuzapi_token) {
+                    console.log('🔄 [AFILIADO] Erro de sessão detectado, tentando reconectar...');
+                    
+                    const reconectou = await tentarReconectar(afiliadoData.wuzapi_token);
+                    
+                    if (!reconectou) {
+                      // PAUSA CAMPANHA e notifica usuário
+                      console.log('❌ [AFILIADO] Reconexão falhou, pausando campanha...');
+                      
+                      await supabase
+                        .from('afiliado_campanhas')
+                        .update({ 
+                          ativa: false, 
+                          status: 'erro_sessao'
+                        })
+                        .eq('id', campanha.id);
+                      
+                      toast.error('⚠️ WhatsApp desconectado! Reconecte em Conectar Celular.');
+                      break; // Para execução desta campanha
+                    } else {
+                      // Reconectou, continua tentando
+                      console.log('✅ [AFILIADO] Reconectado! Continuando campanha...');
+                    }
+                  }
                 }
 
                 // Delay entre envios
