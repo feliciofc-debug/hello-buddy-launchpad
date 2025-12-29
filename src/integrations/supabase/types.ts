@@ -14,6 +14,175 @@ export type Database = {
   }
   public: {
     Tables: {
+      afiliado_disparos: {
+        Row: {
+          created_at: string | null
+          data_agendada: string
+          data_envio: string | null
+          destinatarios: string[] | null
+          id: string
+          mensagem: string | null
+          produto_id: string | null
+          status: string | null
+          tipo_envio: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          data_agendada: string
+          data_envio?: string | null
+          destinatarios?: string[] | null
+          id?: string
+          mensagem?: string | null
+          produto_id?: string | null
+          status?: string | null
+          tipo_envio?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          data_agendada?: string
+          data_envio?: string | null
+          destinatarios?: string[] | null
+          id?: string
+          mensagem?: string | null
+          produto_id?: string | null
+          status?: string | null
+          tipo_envio?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "afiliado_disparos_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "afiliado_produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      afiliado_ebooks: {
+        Row: {
+          arquivo_url: string
+          ativo: boolean | null
+          created_at: string | null
+          descricao: string | null
+          id: string
+          titulo: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          arquivo_url: string
+          ativo?: boolean | null
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          titulo: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          arquivo_url?: string
+          ativo?: boolean | null
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          titulo?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      afiliado_produtos: {
+        Row: {
+          created_at: string | null
+          descricao: string | null
+          id: string
+          imagem_url: string | null
+          link_afiliado: string
+          marketplace: string
+          preco: number | null
+          status: string | null
+          titulo: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          link_afiliado: string
+          marketplace: string
+          preco?: number | null
+          status?: string | null
+          titulo: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          link_afiliado?: string
+          marketplace?: string
+          preco?: number | null
+          status?: string | null
+          titulo?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      afiliado_vendas: {
+        Row: {
+          comprovante_url: string | null
+          created_at: string | null
+          data_venda: string | null
+          estimativa_comissao: number | null
+          id: string
+          marketplace: string
+          observacao: string | null
+          produto_id: string | null
+          user_id: string
+          valor: number
+        }
+        Insert: {
+          comprovante_url?: string | null
+          created_at?: string | null
+          data_venda?: string | null
+          estimativa_comissao?: number | null
+          id?: string
+          marketplace: string
+          observacao?: string | null
+          produto_id?: string | null
+          user_id: string
+          valor: number
+        }
+        Update: {
+          comprovante_url?: string | null
+          created_at?: string | null
+          data_venda?: string | null
+          estimativa_comissao?: number | null
+          id?: string
+          marketplace?: string
+          observacao?: string | null
+          produto_id?: string | null
+          user_id?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "afiliado_vendas_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "afiliado_produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       afiliados: {
         Row: {
           codigo_referencia: string
