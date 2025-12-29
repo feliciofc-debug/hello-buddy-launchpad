@@ -4692,6 +4692,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      increment_afiliado_indicacoes: {
+        Args: { afiliado_uuid: string }
+        Returns: undefined
+      }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
     }
     Enums: {
