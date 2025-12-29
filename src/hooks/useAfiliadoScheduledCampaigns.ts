@@ -144,6 +144,34 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
             let pulados = 0;
             const produto = campanha.afiliado_produtos;
 
+            // ✅ RESOLVER IMAGEM: se não for URL direta (.jpg/.png), buscar og:image
+            const rawImageUrl = produto?.imagem_url || null;
+            let imageUrl: string | null = null;
+
+            if (rawImageUrl && /\.(png|jpg|jpeg)$/i.test(rawImageUrl)) {
+              // Já é URL direta de imagem
+              imageUrl = rawImageUrl;
+              console.log('🖼️ [AFILIADO] Imagem direta:', imageUrl);
+            } else if (rawImageUrl) {
+              // Tentar resolver via scraping Amazon
+              console.log('🔍 [AFILIADO] Resolvendo imagem Amazon...');
+              try {
+                const { data: imgData, error: imgErr } = await supabase.functions.invoke(
+                  'resolve-amazon-image',
+                  { body: { url: rawImageUrl } }
+                );
+                
+                if (!imgErr && imgData?.success && imgData?.imageUrl) {
+                  imageUrl = imgData.imageUrl;
+                  console.log('✅ [AFILIADO] Imagem resolvida:', imageUrl);
+                } else {
+                  console.log('⚠️ [AFILIADO] Não conseguiu resolver imagem, enviando sem imagem');
+                }
+              } catch (resolveErr) {
+                console.error('❌ [AFILIADO] Erro ao resolver imagem:', resolveErr);
+              }
+            }
+
             // ENVIAR PARA CADA CONTATO
             for (const phone of contatos) {
               try {
@@ -171,17 +199,20 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   .replace(/\{\{produto\}\}/gi, produto?.titulo || 'Produto')
                   .replace(/\{\{preco\}\}/gi, produto?.preco?.toString() || '0');
 
-                // Enviar via função do afiliado
-                const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+                // ✅ Enviar via função com imagem resolvida
+                const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
                   body: {
                     phoneNumbers: [phone],
                     message: mensagem,
-                    imageUrl: produto?.imagem_url || null,
+                    imageUrl: imageUrl, // ✅ Agora é URL de imagem válida
                     userId: userId
                   }
                 });
 
-                if (!sendError) {
+                // ✅ Só contar como enviado se realmente teve sucesso
+                const ok = !sendError && (sendData?.success === true);
+
+                if (ok) {
                   enviados++;
                   await registrarEnvio(phone, 'campanha', mensagem, true);
 
@@ -210,8 +241,11 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   }, {
                     onConflict: 'user_id,phone_number'
                   });
+                  
+                  console.log(`✅ [AFILIADO] Enviado para ${phone}`);
                 } else {
-                  await registrarEnvio(phone, 'campanha', mensagem, false, 'Erro no envio');
+                  await registrarEnvio(phone, 'campanha', mensagem, false, sendError?.message || sendData?.error || 'Erro no envio');
+                  console.error(`❌ [AFILIADO] Falha ao enviar para ${phone}:`, sendError || sendData);
                 }
 
                 // Delay entre envios
