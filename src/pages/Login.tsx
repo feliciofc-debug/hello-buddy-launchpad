@@ -27,12 +27,19 @@ export default function Login() {
 
       toast.success('Login realizado com sucesso!');
       
-      // Verificar se é dono da plataforma OU cliente B2B (acesso direto)
+      // Verificar perfil do usuário
       const { data: profile } = await supabase
         .from('profiles')
         .select('tipo')
         .eq('id', data.user.id)
         .maybeSingle();
+      
+      // Afiliados vão direto para dashboard de afiliados
+      if (profile?.tipo === 'afiliado_admin' || profile?.tipo === 'afiliado') {
+        console.log('✅ Usuário afiliado - indo para dashboard afiliado');
+        navigate('/afiliado/dashboard');
+        return;
+      }
       
       // Acesso direto para: dono da plataforma OU clientes B2B
       if (data.user.email === 'expo@atombrasildigital.com' || profile?.tipo === 'b2b') {
@@ -41,7 +48,7 @@ export default function Login() {
         return;
       }
       
-      // Afiliados e outros usuários precisam verificar assinatura
+      // Outros usuários precisam verificar assinatura
       console.log('Verificando assinatura...');
       const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
       

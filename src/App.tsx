@@ -59,6 +59,16 @@ import SeguidoresConcorrentes from "./pages/SeguidoresConcorrentes";
 import PietroDashboard from "./pages/PietroDashboard";
 import PainelAfiliado from "./pages/PainelAfiliado";
 
+// Páginas Afiliados
+import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
+import AfiliadoConectarCelular from "./pages/afiliado/AfiliadoConectarCelular";
+import AfiliadoProdutos from "./pages/afiliado/AfiliadoProdutos";
+import AfiliadoVendas from "./pages/afiliado/AfiliadoVendas";
+import AfiliadoDisparos from "./pages/afiliado/AfiliadoDisparos";
+import AfiliadoIAMarketing from "./pages/afiliado/AfiliadoIAMarketing";
+import AfiliadoWhatsApp from "./pages/afiliado/AfiliadoWhatsApp";
+import AfiliadoEbooks from "./pages/afiliado/AfiliadoEbooks";
+
 import CookieBanner from "./components/CookieBanner";
 
 const queryClient = new QueryClient();
@@ -124,6 +134,17 @@ const App = () => (
             <Route path="/imoveis/seguidores-concorrentes" element={<SeguidoresConcorrentes />} />
             <Route path="/pietro-dashboard" element={<PietroDashboard />} />
             <Route path="/cliente/painel-afiliado" element={<PainelAfiliado />} />
+            
+            {/* Rotas Afiliados */}
+            <Route path="/afiliado/dashboard" element={<AfiliadoDashboard />} />
+            <Route path="/afiliado/conectar-celular" element={<AfiliadoConectarCelular />} />
+            <Route path="/afiliado/produtos" element={<AfiliadoProdutos />} />
+            <Route path="/afiliado/vendas" element={<AfiliadoVendas />} />
+            <Route path="/afiliado/disparos" element={<AfiliadoDisparos />} />
+            <Route path="/afiliado/ia-marketing" element={<AfiliadoIAMarketing />} />
+            <Route path="/afiliado/whatsapp" element={<AfiliadoWhatsApp />} />
+            <Route path="/afiliado/ebooks" element={<AfiliadoEbooks />} />
+            
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
