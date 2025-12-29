@@ -199,52 +199,23 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   .replace(/\{\{produto\}\}/gi, produto?.titulo || 'Produto')
                   .replace(/\{\{preco\}\}/gi, produto?.preco?.toString() || '0');
 
-                // ✅ Enviar DIRETO via Wuzapi Contabo
-                const token = afiliadoData?.wuzapi_token;
-                if (!token) {
-                  await registrarEnvio(phone, 'campanha', mensagem, false, 'Token Wuzapi não encontrado');
-                  console.error('❌ [AFILIADO] Token Wuzapi não encontrado');
-                  continue;
-                }
-
+                // ✅ Enviar via backend (evita CORS no navegador)
                 const cleanPhone = phone.replace(/\D/g, '');
-                const baseUrl = 'https://api2.amzofertas.com.br';
 
-                let ok = false;
-                let wuzapiPayload: any = null;
+                const { data: sendData, error: sendError } = await supabase.functions.invoke('wuzapi-send', {
+                  body: {
+                    phone: cleanPhone,
+                    message: mensagem,
+                    imageUrl,
+                  },
+                });
+
+                const ok = !sendError && sendData?.success === true;
+                const wuzapiPayload: any = sendData?.payload ?? null;
 
                 if (imageUrl) {
-                  const sendResponse = await fetch(`${baseUrl}/chat/send/image`, {
-                    method: 'POST',
-                    headers: {
-                      Token: token,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      Phone: cleanPhone,
-                      Caption: mensagem,
-                      Image: imageUrl,
-                    }),
-                  });
-
-                  wuzapiPayload = await sendResponse.json().catch(() => null);
-                  ok = sendResponse.ok && !!wuzapiPayload?.success;
                   console.log(`📸 [AFILIADO] Envio com imagem para ${cleanPhone}:`, ok ? '✅' : '❌', wuzapiPayload);
                 } else {
-                  const sendResponse = await fetch(`${baseUrl}/chat/send/text`, {
-                    method: 'POST',
-                    headers: {
-                      Token: token,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      Phone: cleanPhone,
-                      Body: mensagem,
-                    }),
-                  });
-
-                  wuzapiPayload = await sendResponse.json().catch(() => null);
-                  ok = sendResponse.ok && !!wuzapiPayload?.success;
                   console.log(`💬 [AFILIADO] Envio texto para ${cleanPhone}:`, ok ? '✅' : '❌', wuzapiPayload);
                 }
 
