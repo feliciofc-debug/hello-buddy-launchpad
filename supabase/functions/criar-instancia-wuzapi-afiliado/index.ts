@@ -261,7 +261,20 @@ serve(async (req) => {
 
         try {
           const qrJson = JSON.parse(qrText)
-          qrCode = qrJson?.QRCode || qrJson?.qrcode || null
+
+          const raw =
+            qrJson?.data?.QRCode ||
+            qrJson?.data?.qrcode ||
+            qrJson?.QRCode ||
+            qrJson?.qrcode ||
+            null
+
+          if (typeof raw === 'string' && raw.startsWith('data:image')) {
+            const idx = raw.indexOf('base64,')
+            qrCode = idx >= 0 ? raw.slice(idx + 'base64,'.length) : raw
+          } else {
+            qrCode = raw
+          }
         } catch {
           qrCode = null
         }
@@ -287,9 +300,10 @@ serve(async (req) => {
             ? 'Escaneie o QR Code com seu WhatsApp' 
             : 'QR Code não disponível. Aguarde 10 segundos e tente novamente.'
         }),
-        { 
-          status: qrCode ? 200 : 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        {
+          // Retornar 200 mesmo sem QR para evitar erro hard no front; UI trata via success=false
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       )
     }
