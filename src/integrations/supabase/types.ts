@@ -23,6 +23,7 @@ export type Database = {
           frequencia: string
           horarios: string[]
           id: string
+          listas_ids: string[] | null
           mensagem_template: string
           nome: string
           produto_id: string | null
@@ -41,6 +42,7 @@ export type Database = {
           frequencia?: string
           horarios?: string[]
           id?: string
+          listas_ids?: string[] | null
           mensagem_template: string
           nome: string
           produto_id?: string | null
@@ -59,6 +61,7 @@ export type Database = {
           frequencia?: string
           horarios?: string[]
           id?: string
+          listas_ids?: string[] | null
           mensagem_template?: string
           nome?: string
           produto_id?: string | null
