@@ -237,12 +237,21 @@ _Aproveite enquanto dura!_ ✅`;
         return;
       }
 
+      // ✅ Validação obrigatória de listas
+      if (listasSelecionadas.length === 0) {
+        toast.error('Selecione pelo menos 1 lista de transmissão');
+        setIsLoading(false);
+        return;
+      }
+
       if (frequencia !== 'agora' && !dataInicio) {
         toast.error('Selecione a data de início');
         return;
       }
 
       const proximaExecucao = frequencia === 'agora' ? new Date().toISOString() : calcularProximaExecucao();
+
+      console.log('📤 Criando campanha com listas:', listasSelecionadas);
 
       // Salvar na tabela afiliado_campanhas
       const { error } = await supabase
@@ -256,6 +265,7 @@ _Aproveite enquanto dura!_ ✅`;
           data_inicio: dataInicio || new Date().toISOString().split('T')[0],
           horarios: horarios,
           dias_semana: diasSemana,
+          listas_ids: listasSelecionadas, // ✅ INCLUIR LISTAS
           ativa: true,
           status: frequencia === 'agora' ? 'enviada' : 'ativa',
           proxima_execucao: proximaExecucao
