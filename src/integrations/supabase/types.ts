@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      afiliados: {
+        Row: {
+          codigo_referencia: string
+          conta_bancaria: Json | null
+          created_at: string | null
+          email: string
+          id: string
+          nome: string
+          status: string | null
+          taxa_comissao: number | null
+          total_comissoes: number | null
+          total_indicacoes: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          codigo_referencia: string
+          conta_bancaria?: Json | null
+          created_at?: string | null
+          email: string
+          id?: string
+          nome: string
+          status?: string | null
+          taxa_comissao?: number | null
+          total_comissoes?: number | null
+          total_indicacoes?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          codigo_referencia?: string
+          conta_bancaria?: Json | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          nome?: string
+          status?: string | null
+          taxa_comissao?: number | null
+          total_comissoes?: number | null
+          total_indicacoes?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       backup_logs: {
         Row: {
           arquivo_path: string | null
@@ -791,6 +836,116 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      clientes_afiliados: {
+        Row: {
+          afiliado_id: string | null
+          created_at: string | null
+          data_cadastro: string | null
+          data_conexao_whatsapp: string | null
+          email: string
+          id: string
+          nome: string
+          plano: string | null
+          status: string | null
+          telefone: string
+          updated_at: string | null
+          user_id: string | null
+          wuzapi_instance_id: string | null
+          wuzapi_jid: string | null
+          wuzapi_token: string | null
+        }
+        Insert: {
+          afiliado_id?: string | null
+          created_at?: string | null
+          data_cadastro?: string | null
+          data_conexao_whatsapp?: string | null
+          email: string
+          id?: string
+          nome: string
+          plano?: string | null
+          status?: string | null
+          telefone: string
+          updated_at?: string | null
+          user_id?: string | null
+          wuzapi_instance_id?: string | null
+          wuzapi_jid?: string | null
+          wuzapi_token?: string | null
+        }
+        Update: {
+          afiliado_id?: string | null
+          created_at?: string | null
+          data_cadastro?: string | null
+          data_conexao_whatsapp?: string | null
+          email?: string
+          id?: string
+          nome?: string
+          plano?: string | null
+          status?: string | null
+          telefone?: string
+          updated_at?: string | null
+          user_id?: string | null
+          wuzapi_instance_id?: string | null
+          wuzapi_jid?: string | null
+          wuzapi_token?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clientes_afiliados_afiliado_id_fkey"
+            columns: ["afiliado_id"]
+            isOneToOne: false
+            referencedRelation: "afiliados"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      comissoes: {
+        Row: {
+          afiliado_id: string | null
+          cliente_id: string | null
+          created_at: string | null
+          data_pagamento: string | null
+          id: string
+          mes_referencia: string
+          status: string | null
+          valor: number
+        }
+        Insert: {
+          afiliado_id?: string | null
+          cliente_id?: string | null
+          created_at?: string | null
+          data_pagamento?: string | null
+          id?: string
+          mes_referencia: string
+          status?: string | null
+          valor: number
+        }
+        Update: {
+          afiliado_id?: string | null
+          cliente_id?: string | null
+          created_at?: string | null
+          data_pagamento?: string | null
+          id?: string
+          mes_referencia?: string
+          status?: string | null
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "comissoes_afiliado_id_fkey"
+            columns: ["afiliado_id"]
+            isOneToOne: false
+            referencedRelation: "afiliados"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "comissoes_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes_afiliados"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       deletion_requests: {
         Row: {
@@ -4488,6 +4643,38 @@ export type Database = {
           wuzapi_url?: string
         }
         Relationships: []
+      }
+      wuzapi_tokens_afiliados: {
+        Row: {
+          cliente_afiliado_id: string | null
+          created_at: string | null
+          em_uso: boolean | null
+          id: string
+          token: string
+        }
+        Insert: {
+          cliente_afiliado_id?: string | null
+          created_at?: string | null
+          em_uso?: boolean | null
+          id?: string
+          token: string
+        }
+        Update: {
+          cliente_afiliado_id?: string | null
+          created_at?: string | null
+          em_uso?: boolean | null
+          id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wuzapi_tokens_afiliados_cliente_afiliado_id_fkey"
+            columns: ["cliente_afiliado_id"]
+            isOneToOne: false
+            referencedRelation: "clientes_afiliados"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
