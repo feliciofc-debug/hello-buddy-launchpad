@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -20,10 +20,15 @@ export default function AfiliadoWhatsAppConnection() {
   const [hasInstance, setHasInstance] = useState(false)
   const [polling, setPolling] = useState(false)
 
+  const prevConnected = useRef<boolean>(false)
+  const lastDisconnectAlertAt = useRef<number>(0)
+
   useEffect(() => {
     checkStatus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Polling rápido apenas enquanto o QR estiver na tela
   useEffect(() => {
     let interval: NodeJS.Timeout
     if (polling && qrCode) {
@@ -34,9 +39,26 @@ export default function AfiliadoWhatsAppConnection() {
     return () => {
       if (interval) clearInterval(interval)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polling, qrCode])
 
-  const checkStatus = async () => {
+  // Monitoramento contínuo quando estiver conectado (alerta se cair)
+  useEffect(() => {
+    let interval: NodeJS.Timeout | undefined
+
+    if (status.connected) {
+      interval = setInterval(() => {
+        checkStatus(true)
+      }, 15000)
+    }
+
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.connected])
+
+  const checkStatus = async (silent: boolean = false) => {
     try {
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
         body: { action: 'status' }
@@ -44,7 +66,9 @@ export default function AfiliadoWhatsAppConnection() {
 
       if (error) throw error
 
-      if (data.connected) {
+      const isConnected = Boolean(data?.connected)
+
+      if (isConnected) {
         setStatus({
           connected: true,
           jid: data.jid,
@@ -55,10 +79,25 @@ export default function AfiliadoWhatsAppConnection() {
         setHasInstance(true)
       } else {
         setStatus({ connected: false })
-        if (data.success !== false) {
+        if (data?.success !== false) {
           setHasInstance(true)
         }
       }
+
+      // ALERTA: caiu a conexão (evita spam)
+      if (prevConnected.current && !isConnected) {
+        const now = Date.now()
+        if (now - lastDisconnectAlertAt.current > 20000) {
+          lastDisconnectAlertAt.current = now
+          if (!silent) {
+            toast.error('⚠️ WhatsApp desconectou! Reconecte aqui nesta tela.')
+          } else {
+            toast.error('⚠️ WhatsApp desconectou! Reconecte em Conectar Celular.')
+          }
+        }
+      }
+
+      prevConnected.current = isConnected
     } catch (error) {
       console.error('Erro ao verificar status:', error)
     } finally {
@@ -207,7 +246,7 @@ export default function AfiliadoWhatsAppConnection() {
             <div className="flex gap-2">
               <Button 
                 variant="outline" 
-                onClick={checkStatus}
+                onClick={() => checkStatus(false)}
                 disabled={connecting}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
