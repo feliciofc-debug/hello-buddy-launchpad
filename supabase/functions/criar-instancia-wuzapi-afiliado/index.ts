@@ -218,9 +218,24 @@ serve(async (req) => {
         )
       }
 
-      // Solicitar QR Code do Wuzapi
-      console.log('📱 Solicitando QR Code...')
+      console.log('🔄 Forçando logout antes de gerar QR...')
       
+      // 1) Força logout pra garantir QR novo
+      try {
+        await fetch(`${CONTABO_WUZAPI_URL}/session/logout`, {
+          method: 'POST',
+          headers: { 'Token': cliente.wuzapi_token }
+        })
+        console.log('✅ Logout executado')
+      } catch (err) {
+        console.log('⚠️ Erro no logout (normal se não estava conectado):', err)
+      }
+
+      // Aguarda 2 segundos para limpar sessão
+      await new Promise((r) => setTimeout(r, 2000))
+
+      // 2) Conecta (gera nova sessão)
+      console.log('🔌 Conectando para gerar QR...')
       const connectResponse = await fetch(`${CONTABO_WUZAPI_URL}/session/connect`, {
         method: 'POST',
         headers: {
@@ -229,28 +244,53 @@ serve(async (req) => {
         },
         body: JSON.stringify({})
       })
+      const connectResultText = await connectResponse.text()
+      console.log('📡 Resposta connect (raw):', connectResultText)
 
-      const connectResult = await connectResponse.json()
-      console.log('📡 Resposta connect:', connectResult)
+      // 3) Tenta pegar o QR algumas vezes (às vezes demora 1-2s)
+      console.log('📷 Buscando QR Code...')
+      let qrCode: string | null = null
+      
+      for (let i = 0; i < 5; i++) {
+        const qrResponse = await fetch(`${CONTABO_WUZAPI_URL}/session/qr`, {
+          method: 'GET',
+          headers: { 'Token': cliente.wuzapi_token }
+        })
+        const qrText = await qrResponse.text()
+        console.log(`📷 QR tentativa ${i + 1} (raw):`, qrText.substring(0, 100))
 
-      // Buscar QR Code
-      const qrResponse = await fetch(`${CONTABO_WUZAPI_URL}/session/qr`, {
-        method: 'GET',
-        headers: {
-          'Token': cliente.wuzapi_token
+        try {
+          const qrJson = JSON.parse(qrText)
+          qrCode = qrJson?.QRCode || qrJson?.qrcode || null
+        } catch {
+          qrCode = null
         }
-      })
 
-      const qrResult = await qrResponse.json()
-      console.log('📷 QR Code obtido:', qrResult.QRCode ? 'Sim' : 'Não')
+        if (qrCode) {
+          console.log('✅ QR Code obtido com sucesso!')
+          break
+        }
+        
+        console.log(`⏳ Aguardando 1.2s antes de tentar novamente...`)
+        await new Promise((r) => setTimeout(r, 1200))
+      }
+
+      if (!qrCode) {
+        console.error('❌ QR Code não disponível após 5 tentativas')
+      }
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          qrCode: qrResult.QRCode || qrResult.qrcode,
-          message: 'Escaneie o QR Code com seu WhatsApp'
+        JSON.stringify({
+          success: !!qrCode,
+          qrCode,
+          message: qrCode 
+            ? 'Escaneie o QR Code com seu WhatsApp' 
+            : 'QR Code não disponível. Aguarde 10 segundos e tente novamente.'
         }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { 
+          status: qrCode ? 200 : 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
       )
     }
 
