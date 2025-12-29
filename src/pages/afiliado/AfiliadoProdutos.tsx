@@ -62,19 +62,21 @@ const isValidImageUrl = (url: string | null): boolean => {
 
 // Obtém a melhor URL de imagem para o produto
 const getProductImageUrl = (produto: Produto): string | null => {
-  // Se já tem uma URL de imagem válida, usa ela
+  // Se já tem uma URL de imagem válida (direta para imagem), usa ela
   if (isValidImageUrl(produto.imagem_url)) {
     return produto.imagem_url;
   }
   
-  // Tenta extrair imagem do link de afiliado Amazon
-  if (produto.marketplace === 'amazon' || produto.link_afiliado?.includes('amazon')) {
-    return getAmazonImageUrl(produto.link_afiliado);
+  // PRIORIDADE 1: Tenta extrair ASIN da imagem_url (que pode ser link de produto Amazon)
+  if (produto.imagem_url?.includes('amazon')) {
+    const imageFromUrl = getAmazonImageUrl(produto.imagem_url);
+    if (imageFromUrl) return imageFromUrl;
   }
   
-  // Tenta extrair da imagem_url mesmo que seja um link de produto
-  if (produto.imagem_url?.includes('amazon')) {
-    return getAmazonImageUrl(produto.imagem_url);
+  // PRIORIDADE 2: Tenta extrair do link_afiliado se for Amazon (link longo)
+  if (produto.link_afiliado?.includes('amazon.com')) {
+    const imageFromAfiliado = getAmazonImageUrl(produto.link_afiliado);
+    if (imageFromAfiliado) return imageFromAfiliado;
   }
   
   return null;
