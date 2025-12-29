@@ -116,8 +116,36 @@ const AfiliadoIAMarketing = () => {
                 <Card className="shadow-xl border-2 hover:border-blue-500"><CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white"><CardTitle className="flex items-center gap-2"><Facebook className="h-5 w-5" />📘 Facebook</CardTitle></CardHeader><CardContent className="pt-6 space-y-4"><RadioGroup value={selectedVariations.facebook} onValueChange={(v) => setSelectedVariations({...selectedVariations, facebook: v as keyof PostVariations})}><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoA" id="fa" /><Label htmlFor="fa">Opção A</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoB" id="fb" /><Label htmlFor="fb">Opção B</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoC" id="fc" /><Label htmlFor="fc">Opção C</Label></div></RadioGroup><Textarea value={editableTexts.facebook[selectedVariations.facebook]} onChange={(e) => updateText('facebook', selectedVariations.facebook, e.target.value)} className="min-h-[200px] text-sm" /><Button onClick={() => handleCopy(editableTexts.facebook[selectedVariations.facebook], 'Facebook')} variant="outline" className="w-full"><Copy className="mr-2 h-4 w-4" />Copiar</Button></CardContent></Card>
                 {/* Story */}
                 <Card className="shadow-xl border-2 hover:border-orange-500"><CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white"><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5" />📖 Story</CardTitle></CardHeader><CardContent className="pt-6 space-y-4"><RadioGroup value={selectedVariations.story} onValueChange={(v) => setSelectedVariations({...selectedVariations, story: v as keyof PostVariations})}><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoA" id="sa" /><Label htmlFor="sa">Opção A</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoB" id="sb" /><Label htmlFor="sb">Opção B</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoC" id="sc" /><Label htmlFor="sc">Opção C</Label></div></RadioGroup><Textarea value={editableTexts.story[selectedVariations.story]} onChange={(e) => updateText('story', selectedVariations.story, e.target.value)} className="min-h-[150px] text-sm" maxLength={80} /><Button onClick={() => handleCopy(editableTexts.story[selectedVariations.story], 'Story')} variant="outline" className="w-full"><Copy className="mr-2 h-4 w-4" />Copiar</Button></CardContent></Card>
-                {/* WhatsApp */}
-                <Card className="shadow-xl border-2 hover:border-green-500"><CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white"><CardTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5" />💬 WhatsApp</CardTitle></CardHeader><CardContent className="pt-6 space-y-4"><RadioGroup value={selectedVariations.whatsapp} onValueChange={(v) => setSelectedVariations({...selectedVariations, whatsapp: v as keyof PostVariations})}><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoA" id="wa" /><Label htmlFor="wa">Opção A</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoB" id="wb" /><Label htmlFor="wb">Opção B</Label></div><div className="flex items-center space-x-2"><RadioGroupItem value="opcaoC" id="wc" /><Label htmlFor="wc">Opção C</Label></div></RadioGroup><Textarea value={editableTexts.whatsapp[selectedVariations.whatsapp]} onChange={(e) => updateText('whatsapp', selectedVariations.whatsapp, e.target.value)} className="min-h-[200px] text-sm" /><Button onClick={() => handleCopy(editableTexts.whatsapp[selectedVariations.whatsapp], 'WhatsApp')} variant="outline" className="w-full"><Copy className="mr-2 h-4 w-4" />Copiar</Button><Button onClick={() => { navigate('/afiliado/whatsapp', { state: { messageTemplate: editableTexts.whatsapp[selectedVariations.whatsapp], productImage: resultado?.generatedImage || resultado?.produto?.imagem, productTitle: resultado?.produto?.titulo, fromIAMarketing: true } }); toast.success('Redirecionando...'); }} className="w-full bg-gradient-to-r from-green-600 to-emerald-600"><MessageCircle className="mr-2 h-4 w-4" />📤 Enviar WhatsApp</Button></CardContent></Card>
+                {/* WhatsApp com imagem do produto */}
+                <Card className="shadow-xl border-2 hover:border-green-500">
+                  <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">
+                    <CardTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5" />💬 Mensagem WhatsApp</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-6 space-y-4">
+                    <RadioGroup value={selectedVariations.whatsapp} onValueChange={(v) => setSelectedVariations({...selectedVariations, whatsapp: v as keyof PostVariations})}>
+                      <div className="flex items-center space-x-2"><RadioGroupItem value="opcaoA" id="wa" /><Label htmlFor="wa">Opção A: Curto e Direto</Label></div>
+                      <div className="flex items-center space-x-2"><RadioGroupItem value="opcaoB" id="wb" /><Label htmlFor="wb">Opção B: Amigável</Label></div>
+                      <div className="flex items-center space-x-2"><RadioGroupItem value="opcaoC" id="wc" /><Label htmlFor="wc">Opção C: Com Call-to-Action</Label></div>
+                    </RadioGroup>
+                    
+                    {/* Imagem do Produto */}
+                    {(resultado?.produto?.imagem || resultado?.generatedImage) && (
+                      <div className="border rounded-lg p-3 bg-muted/50">
+                        <p className="text-xs text-muted-foreground mb-2">📷 Imagem do produto:</p>
+                        <img 
+                          src={resultado.generatedImage || resultado.produto?.imagem || ''} 
+                          alt="Produto" 
+                          className="w-full max-h-32 object-contain rounded"
+                        />
+                        <p className="text-xs text-green-600 mt-2">💡 Copie esta imagem e cole no WhatsApp junto com o texto</p>
+                      </div>
+                    )}
+                    
+                    <Textarea value={editableTexts.whatsapp[selectedVariations.whatsapp]} onChange={(e) => updateText('whatsapp', selectedVariations.whatsapp, e.target.value)} className="min-h-[120px] text-sm" />
+                    <Button onClick={() => handleCopy(editableTexts.whatsapp[selectedVariations.whatsapp], 'WhatsApp')} variant="outline" className="w-full"><Copy className="mr-2 h-4 w-4" />Copiar</Button>
+                    <Button onClick={() => { navigate('/afiliado/whatsapp', { state: { messageTemplate: editableTexts.whatsapp[selectedVariations.whatsapp], productImage: resultado?.generatedImage || resultado?.produto?.imagem, productTitle: resultado?.produto?.titulo, fromIAMarketing: true } }); toast.success('Redirecionando...'); }} className="w-full bg-gradient-to-r from-green-600 to-emerald-600"><MessageCircle className="mr-2 h-4 w-4" />📤 Enviar WhatsApp</Button>
+                  </CardContent>
+                </Card>
               </div>
               <div className="flex justify-center pt-4"><Button onClick={() => setShowScheduleModal(true)} size="lg" className="bg-green-600 hover:bg-green-700 text-lg px-12 py-6"><CalendarIcon className="mr-2 h-6 w-6" />📅 AGENDAR</Button></div>
             </div>}
