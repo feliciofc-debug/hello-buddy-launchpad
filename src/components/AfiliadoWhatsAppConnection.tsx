@@ -1,0 +1,299 @@
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Loader2, Smartphone, QrCode, CheckCircle, XCircle, RefreshCw, LogOut } from 'lucide-react'
+import { supabase } from '@/integrations/supabase/client'
+import { toast } from 'sonner'
+
+interface ConnectionStatus {
+  connected: boolean
+  jid?: string
+  phone?: string
+}
+
+export default function AfiliadoWhatsAppConnection() {
+  const [loading, setLoading] = useState(true)
+  const [connecting, setConnecting] = useState(false)
+  const [status, setStatus] = useState<ConnectionStatus>({ connected: false })
+  const [qrCode, setQrCode] = useState<string | null>(null)
+  const [hasInstance, setHasInstance] = useState(false)
+  const [polling, setPolling] = useState(false)
+
+  useEffect(() => {
+    checkStatus()
+  }, [])
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    if (polling && qrCode) {
+      interval = setInterval(() => {
+        checkStatus()
+      }, 3000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [polling, qrCode])
+
+  const checkStatus = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
+        body: { action: 'status' }
+      })
+
+      if (error) throw error
+
+      if (data.connected) {
+        setStatus({
+          connected: true,
+          jid: data.jid,
+          phone: data.phone
+        })
+        setQrCode(null)
+        setPolling(false)
+        setHasInstance(true)
+      } else {
+        setStatus({ connected: false })
+        if (data.success !== false) {
+          setHasInstance(true)
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao verificar status:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const createInstance = async () => {
+    setConnecting(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toast.error('Usuário não autenticado')
+        return
+      }
+
+      const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
+        body: { 
+          action: 'criar-instancia',
+          nome: user.user_metadata?.nome || user.email?.split('@')[0],
+          email: user.email,
+          telefone: ''
+        }
+      })
+
+      if (error) throw error
+
+      if (data.success) {
+        toast.success('Instância criada! Agora conecte seu WhatsApp.')
+        setHasInstance(true)
+        await handleConnect()
+      } else {
+        toast.error(data.error || 'Erro ao criar instância')
+      }
+    } catch (error: any) {
+      console.error('Erro:', error)
+      toast.error(error.message || 'Erro ao criar instância')
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const handleConnect = async () => {
+    setConnecting(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
+        body: { action: 'conectar' }
+      })
+
+      if (error) throw error
+
+      if (data.qrCode) {
+        setQrCode(data.qrCode)
+        setPolling(true)
+        toast.info('Escaneie o QR Code com seu WhatsApp')
+      } else {
+        toast.error('QR Code não disponível. Tente novamente.')
+      }
+    } catch (error: any) {
+      console.error('Erro:', error)
+      toast.error(error.message || 'Erro ao conectar')
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    setConnecting(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
+        body: { action: 'desconectar' }
+      })
+
+      if (error) throw error
+
+      setStatus({ connected: false })
+      setQrCode(null)
+      toast.success('WhatsApp desconectado')
+    } catch (error: any) {
+      console.error('Erro:', error)
+      toast.error(error.message || 'Erro ao desconectar')
+    } finally {
+      setConnecting(false)
+    }
+  }
+
+  const formatPhone = (phone?: string) => {
+    if (!phone) return ''
+    const clean = phone.replace(/\D/g, '')
+    if (clean.length === 13) {
+      return `+${clean.slice(0, 2)} (${clean.slice(2, 4)}) ${clean.slice(4, 9)}-${clean.slice(9)}`
+    }
+    return phone
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Smartphone className="h-5 w-5" />
+              Conexão WhatsApp
+            </CardTitle>
+            <CardDescription>
+              Conecte seu WhatsApp para enviar mensagens automáticas
+            </CardDescription>
+          </div>
+          <Badge variant={status.connected ? 'default' : 'secondary'}>
+            {status.connected ? (
+              <><CheckCircle className="h-3 w-3 mr-1" /> Conectado</>
+            ) : (
+              <><XCircle className="h-3 w-3 mr-1" /> Desconectado</>
+            )}
+          </Badge>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {status.connected ? (
+          <div className="space-y-4">
+            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="h-8 w-8 text-green-500" />
+                <div>
+                  <p className="font-medium text-green-700 dark:text-green-400">
+                    WhatsApp Conectado
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatPhone(status.phone)}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={checkStatus}
+                disabled={connecting}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Atualizar Status
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDisconnect}
+                disabled={connecting}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Desconectar
+              </Button>
+            </div>
+          </div>
+        ) : qrCode ? (
+          <div className="space-y-4">
+            <div className="flex flex-col items-center gap-4 p-4 bg-muted/50 rounded-lg">
+              <p className="text-sm text-muted-foreground text-center">
+                Escaneie o QR Code abaixo com seu WhatsApp
+              </p>
+              <div className="bg-white p-4 rounded-lg shadow-sm">
+                <img 
+                  src={`data:image/png;base64,${qrCode}`} 
+                  alt="QR Code WhatsApp" 
+                  className="w-64 h-64"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                O QR Code expira em ~60 segundos
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={handleConnect}
+                disabled={connecting}
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Novo QR Code
+              </Button>
+              <Button 
+                variant="ghost" 
+                onClick={() => { setQrCode(null); setPolling(false) }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        ) : !hasInstance ? (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Você ainda não tem uma instância WhatsApp configurada. Clique abaixo para criar.
+            </p>
+            <Button 
+              onClick={createInstance}
+              disabled={connecting}
+              className="w-full"
+            >
+              {connecting ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Criando...</>
+              ) : (
+                <><QrCode className="h-4 w-4 mr-2" /> Criar Instância</>
+              )}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Clique abaixo para conectar seu WhatsApp e começar a enviar mensagens.
+            </p>
+            <Button 
+              onClick={handleConnect}
+              disabled={connecting}
+              className="w-full"
+            >
+              {connecting ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Conectando...</>
+              ) : (
+                <><QrCode className="h-4 w-4 mr-2" /> Conectar WhatsApp</>
+              )}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}

@@ -1,7 +1,7 @@
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Link } from 'react-router-dom'
-import WhatsAppConnection from '@/components/WhatsAppConnection'
+import AfiliadoWhatsAppConnection from '@/components/AfiliadoWhatsAppConnection'
 
 export default function AfiliadoConectarCelular() {
   return (
@@ -15,7 +15,7 @@ export default function AfiliadoConectarCelular() {
         </Link>
       </div>
 
-      <WhatsAppConnection />
+      <AfiliadoWhatsAppConnection />
 
       <div className="mt-6 bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
         <p className="font-semibold mb-2">📱 Como conectar:</p>
