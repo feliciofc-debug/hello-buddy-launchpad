@@ -53,7 +53,19 @@ const AfiliadoIAMarketing = () => {
       const { data, error } = await supabase.functions.invoke('analisar-produto', { body: { url: url.trim(), images: imagesBase64, source: url.trim().toLowerCase().includes('shopee.com') ? 'shopee' : 'generic' } });
       if (error) throw error;
       if (!data.success) throw new Error(data.error || 'Erro ao analisar produto');
-      const analysisResult: ProductAnalysis = { produto: data.produto || { titulo: "Produto", preco: "0", url: url, originalUrl: url }, instagram: data.instagram || { opcaoA: '', opcaoB: '', opcaoC: '' }, facebook: data.facebook || { opcaoA: '', opcaoB: '', opcaoC: '' }, story: data.story || { opcaoA: '', opcaoB: '', opcaoC: '' }, whatsapp: data.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' }, generatedImage: data.generatedImage || null };
+      
+      // Story e WhatsApp vêm aninhados dentro do instagram
+      const storyData = data.instagram?.story || data.story || { opcaoA: '', opcaoB: '', opcaoC: '' };
+      const whatsappData = data.instagram?.whatsapp || data.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' };
+      
+      const analysisResult: ProductAnalysis = { 
+        produto: data.produto || { titulo: "Produto", preco: "0", url: url, originalUrl: url, imagem: null }, 
+        instagram: { opcaoA: data.instagram?.opcaoA || '', opcaoB: data.instagram?.opcaoB || '', opcaoC: data.instagram?.opcaoC || '' }, 
+        facebook: data.facebook || { opcaoA: '', opcaoB: '', opcaoC: '' }, 
+        story: storyData, 
+        whatsapp: whatsappData, 
+        generatedImage: data.generatedImage || null 
+      };
       setResultado(analysisResult);
       if (data.generatedImage) toast.success("🎨 Imagem gerada com IA!");
       setEditableTexts({ instagram: analysisResult.instagram, facebook: analysisResult.facebook, story: analysisResult.story, whatsapp: analysisResult.whatsapp });
