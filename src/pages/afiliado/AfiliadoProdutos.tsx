@@ -8,9 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { ArrowLeft, Plus, Package, Trash2, Edit, ExternalLink } from "lucide-react";
+import { ArrowLeft, Plus, Package, Trash2, Edit, ExternalLink, Upload } from "lucide-react";
 import { toast } from "sonner";
-
+import ImportCSVAfiliadoModal from "@/components/ImportCSVAfiliadoModal";
 interface Produto {
   id: string;
   titulo: string;
@@ -28,6 +28,7 @@ export default function AfiliadoProdutos() {
   const [saving, setSaving] = useState(false);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importModalOpen, setImportModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
   const [form, setForm] = useState({
@@ -190,16 +191,21 @@ export default function AfiliadoProdutos() {
             </div>
           </div>
           
-          <Dialog open={dialogOpen} onOpenChange={(open) => {
-            setDialogOpen(open);
-            if (!open) resetForm();
-          }}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar
-              </Button>
-            </DialogTrigger>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setImportModalOpen(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Importar CSV
+            </Button>
+            <Dialog open={dialogOpen} onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) resetForm();
+            }}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar
+                </Button>
+              </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
@@ -268,9 +274,8 @@ export default function AfiliadoProdutos() {
               </div>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
-
-        {/* Lista de Produtos */}
         {produtos.length === 0 ? (
           <Card>
             <CardContent className="p-8 text-center">
@@ -328,6 +333,13 @@ export default function AfiliadoProdutos() {
             ))}
           </div>
         )}
+
+        {/* Modal Importar CSV */}
+        <ImportCSVAfiliadoModal
+          isOpen={importModalOpen}
+          onClose={() => setImportModalOpen(false)}
+          onSuccess={loadProdutos}
+        />
       </div>
     </div>
   );
