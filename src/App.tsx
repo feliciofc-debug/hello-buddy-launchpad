@@ -57,6 +57,7 @@ import AdminImportar from "./pages/AdminImportar";
 import LeadsImoveisEnriquecidos from "./pages/LeadsImoveisEnriquecidos";
 import SeguidoresConcorrentes from "./pages/SeguidoresConcorrentes";
 import PietroDashboard from "./pages/PietroDashboard";
+import PainelAfiliado from "./pages/PainelAfiliado";
 
 import CookieBanner from "./components/CookieBanner";
 
@@ -122,6 +123,7 @@ const App = () => (
             <Route path="/imoveis/leads-enriquecidos" element={<LeadsImoveisEnriquecidos />} />
             <Route path="/imoveis/seguidores-concorrentes" element={<SeguidoresConcorrentes />} />
             <Route path="/pietro-dashboard" element={<PietroDashboard />} />
+            <Route path="/cliente/painel-afiliado" element={<PainelAfiliado />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
