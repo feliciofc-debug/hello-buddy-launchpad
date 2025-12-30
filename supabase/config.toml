@@ -227,3 +227,6 @@ verify_jwt = false
 
 [functions.send-wuzapi-message-afiliado]
 verify_jwt = false
+
+[functions.insert-produto-afiliado]
+verify_jwt = false
