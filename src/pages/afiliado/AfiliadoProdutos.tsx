@@ -259,6 +259,47 @@ export default function AfiliadoProdutos() {
           </div>
           
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                console.log("🧪 Testando edge function...");
+
+                const { data: authData, error: authErr } = await supabase.auth.getUser();
+                if (authErr) {
+                  toast.error(`Erro auth: ${authErr.message}`);
+                  return;
+                }
+
+                const user = authData.user;
+                if (!user) {
+                  toast.error("Você precisa estar logado");
+                  return;
+                }
+
+                const { data, error } = await supabase.functions.invoke(
+                  "send-wuzapi-message-afiliado",
+                  {
+                    body: {
+                      phoneNumbers: ["5521967520706"],
+                      message: "🧪 TESTE EDGE FUNCTION AFILIADO",
+                      imageUrl: null,
+                      userId: user.id,
+                    },
+                  }
+                );
+
+                console.log("📡 Resultado:", { data, error });
+
+                if (error) {
+                  toast.error("Erro: " + error.message);
+                } else {
+                  toast.success("Resultado: " + JSON.stringify(data));
+                }
+              }}
+            >
+              🧪 Testar Envio Direto
+            </Button>
+
             <Button variant="outline" onClick={() => setImportModalOpen(true)}>
               <Upload className="h-4 w-4 mr-2" />
               Importar CSV
