@@ -86,6 +86,7 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
   const lastExecutionTime = useRef<number>(0);
 
   useEffect(() => {
+    console.log('🔄 [HOOK] useAfiliadoScheduledCampaigns iniciado, userId:', userId);
     if (!userId) return;
 
     console.log('🔄 [AFILIADO] Iniciando verificador de campanhas');
