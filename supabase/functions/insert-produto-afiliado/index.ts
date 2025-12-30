@@ -1,0 +1,104 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+    const body = await req.json();
+    const { user_id, titulo, preco, imagem_url, link_afiliado, marketplace, descricao } = body;
+
+    console.log('📦 Recebendo produto:', { user_id, titulo, marketplace });
+
+    // Validações básicas
+    if (!user_id) {
+      console.error('❌ user_id não fornecido');
+      return new Response(
+        JSON.stringify({ error: 'user_id é obrigatório' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!titulo || !link_afiliado || !marketplace) {
+      console.error('❌ Campos obrigatórios faltando:', { titulo, link_afiliado, marketplace });
+      return new Response(
+        JSON.stringify({ error: 'titulo, link_afiliado e marketplace são obrigatórios' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validar se user_id existe em clientes_afiliados
+    const { data: cliente, error: clienteError } = await supabaseAdmin
+      .from('clientes_afiliados')
+      .select('id, nome')
+      .eq('user_id', user_id)
+      .single();
+
+    if (clienteError || !cliente) {
+      console.error('❌ Cliente afiliado não encontrado:', clienteError);
+      return new Response(
+        JSON.stringify({ error: 'Usuário não é um cliente afiliado válido' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('✅ Cliente afiliado validado:', cliente.nome);
+
+    // Inserir produto usando service role (bypassa RLS)
+    const { data: produto, error: insertError } = await supabaseAdmin
+      .from('afiliado_produtos')
+      .insert({
+        user_id,
+        titulo: titulo.substring(0, 500), // Limitar tamanho
+        preco: preco ? parseFloat(preco) : null,
+        imagem_url: imagem_url || null,
+        link_afiliado,
+        marketplace: marketplace.substring(0, 50),
+        descricao: descricao ? descricao.substring(0, 2000) : null,
+        status: 'ativo'
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('❌ Erro ao inserir produto:', insertError);
+      return new Response(
+        JSON.stringify({ error: 'Erro ao salvar produto', details: insertError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('✅ Produto inserido com sucesso:', produto.id);
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Produto salvo com sucesso!',
+        produto: {
+          id: produto.id,
+          titulo: produto.titulo,
+          marketplace: produto.marketplace
+        }
+      }),
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('❌ Erro geral:', error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Erro desconhecido' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
