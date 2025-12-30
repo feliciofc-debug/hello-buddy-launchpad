@@ -57,7 +57,9 @@ const isValidImageUrl = (url: string | null): boolean => {
   return imageExtensions.some(ext => lowerUrl.includes(ext)) || 
          lowerUrl.includes('images-amazon') ||
          lowerUrl.includes('ssl-images-amazon') ||
-         lowerUrl.includes('m.media-amazon');
+         lowerUrl.includes('m.media-amazon') ||
+         lowerUrl.includes('supabase.co/storage') || // Imagens do Storage (Shopee)
+         lowerUrl.includes('susercontent.com'); // Imagens da Shopee
 };
 
 // Obtém a melhor URL de imagem para o produto
