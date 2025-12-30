@@ -61,6 +61,7 @@ Deno.serve(async (req) => {
     if (imagem_base64) {
       try {
         console.log('📸 Processando imagem base64...');
+        console.log('📸 Tamanho do base64 recebido:', imagem_base64.length);
         
         // Remover prefixo data:image/...;base64, se existir
         let base64Data = imagem_base64;
@@ -69,20 +70,29 @@ Deno.serve(async (req) => {
         if (imagem_base64.includes(',')) {
           const parts = imagem_base64.split(',');
           base64Data = parts[1];
+          console.log('📸 Prefixo removido, novo tamanho:', base64Data.length);
           
           // Extrair mime type
           const mimeMatch = parts[0].match(/data:([^;]+);/);
           if (mimeMatch) {
             mimeType = mimeMatch[1];
+            console.log('📸 MIME type detectado:', mimeType);
           }
         }
 
-        // Decodificar base64 para bytes
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+        // Limpar caracteres inválidos do base64 (espaços, quebras de linha)
+        base64Data = base64Data.replace(/[\s\r\n]/g, '');
+        console.log('📸 Base64 limpo, tamanho final:', base64Data.length);
+
+        // Usar decode nativo do Deno (mais robusto que atob)
+        const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+        console.log('📸 Bytes decodificados:', binaryData.length);
+        
+        // Verificar se é uma imagem válida (JPEG começa com FF D8, PNG com 89 50)
+        if (binaryData.length < 10) {
+          throw new Error('Dados da imagem muito pequenos');
         }
+        console.log('📸 Primeiros bytes:', Array.from(binaryData.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join(' '));
 
         // Gerar filename único
         const extension = mimeType.split('/')[1] || 'jpg';
@@ -94,7 +104,7 @@ Deno.serve(async (req) => {
         // Upload para Storage
         const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
           .from('produto-imagens')
-          .upload(filePath, bytes, {
+          .upload(filePath, binaryData, {
             contentType: mimeType,
             upsert: false
           });
