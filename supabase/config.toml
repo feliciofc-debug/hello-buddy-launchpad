@@ -230,3 +230,6 @@ verify_jwt = false
 
 [functions.insert-produto-afiliado]
 verify_jwt = false
+
+[functions.insert-produto-shopee]
+verify_jwt = false
