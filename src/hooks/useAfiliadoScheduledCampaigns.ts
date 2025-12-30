@@ -229,153 +229,68 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   .replace(/\{\{produto\}\}/gi, produto?.titulo || 'Produto')
                   .replace(/\{\{preco\}\}/gi, produto?.preco?.toString() || '0');
 
-                // ✅ ENVIAR DIRETO VIA WUZAPI CONTABO (sem Edge Function intermediária)
+                // ✅ ENVIAR VIA EDGE FUNCTION (evita CORS)
                 const cleanPhone = phone.replace(/\D/g, '');
-                const wuzapiToken = afiliadoData.wuzapi_token;
-
-                if (!wuzapiToken) {
-                  console.error('❌ [AFILIADO] Token Wuzapi não encontrado');
-                  pulados++;
-                  continue;
-                }
-
-                console.log(`📞 [AFILIADO] Enviando para ${cleanPhone}...`);
+                console.log(`📞 [AFILIADO] Enviando para ${cleanPhone} via Edge Function...`);
 
                 let ok = false;
-                let wuzapiPayload: any = null;
-                let tentativaImageUrl = imageUrl;
+                let sendResult: any = null;
 
                 try {
-                  // 1) Tenta enviar (com imagem se tiver)
-                  if (tentativaImageUrl) {
-                    console.log(`🖼️ [AFILIADO] Enviando com imagem: ${tentativaImageUrl.substring(0, 50)}...`);
-                    
-                    const imgResponse = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/image`, {
-                      method: 'POST',
-                      headers: {
-                        'Token': wuzapiToken,
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({
-                        Phone: cleanPhone,
-                        Caption: mensagem,
-                        Image: tentativaImageUrl
-                      })
-                    });
-
-                    wuzapiPayload = await imgResponse.json();
-                    ok = imgResponse.ok && wuzapiPayload?.success !== false;
-                    
-                    console.log(`📸 [AFILIADO] Resposta imagem:`, { ok, status: imgResponse.status, response: wuzapiPayload });
-                    
-                    // 2) Se falhou COM IMAGEM por erro de upload → tenta SEM IMAGEM
-                    if (!ok) {
-                      const errMsg = wuzapiPayload?.error || wuzapiPayload?.message || '';
-                      const isMediaUploadError =
-                        errMsg.toLowerCase().includes('upload') ||
-                        errMsg.toLowerCase().includes('media') ||
-                        errMsg.toLowerCase().includes('websocket') ||
-                        errMsg.toLowerCase().includes('timed out');
-
-                      if (isMediaUploadError) {
-                        console.log('🧯 [AFILIADO] Falha com imagem, reenviando SEM imagem...');
-                        tentativaImageUrl = null;
-                        
-                        const txtResponse = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/text`, {
-                          method: 'POST',
-                          headers: {
-                            'Token': wuzapiToken,
-                            'Content-Type': 'application/json'
-                          },
-                          body: JSON.stringify({
-                            Phone: cleanPhone,
-                            Body: mensagem
-                          })
-                        });
-
-                        wuzapiPayload = await txtResponse.json();
-                        ok = txtResponse.ok && wuzapiPayload?.success !== false;
-                        console.log(`💬 [AFILIADO] Resposta texto (retry):`, { ok, response: wuzapiPayload });
+                  const { data: sendData, error: sendError } = await supabase.functions.invoke(
+                    'send-wuzapi-message-afiliado',
+                    {
+                      body: {
+                        phoneNumbers: [cleanPhone],
+                        message: mensagem,
+                        imageUrl: imageUrl,
+                        userId: userId
                       }
                     }
-                  } else {
-                    // Enviar SEM imagem (só texto)
-                    console.log(`💬 [AFILIADO] Enviando só texto`);
-                    
-                    const txtResponse = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/text`, {
-                      method: 'POST',
-                      headers: {
-                        'Token': wuzapiToken,
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({
-                        Phone: cleanPhone,
-                        Body: mensagem
-                      })
-                    });
+                  );
 
-                    wuzapiPayload = await txtResponse.json();
-                    ok = txtResponse.ok && wuzapiPayload?.success !== false;
-                    
-                    console.log(`💬 [AFILIADO] Resposta texto:`, { ok, response: wuzapiPayload });
+                  if (sendError) {
+                    console.error(`❌ [AFILIADO] Erro na Edge Function:`, sendError);
+                    sendResult = { error: sendError.message };
+                    ok = false;
+                  } else {
+                    sendResult = sendData;
+                    // Verificar se o primeiro resultado foi sucesso
+                    ok = sendData?.success && sendData?.results?.[0]?.success;
+                    console.log(`📊 [AFILIADO] Resultado Edge Function:`, sendData);
                   }
 
-                  // 3) Se ainda falhou e for erro de sessão → reconectar 1x → REENVIAR 1x
-                  if (!ok) {
-                    const errMsg = wuzapiPayload?.error || wuzapiPayload?.message || '';
+                  // Se falhou por erro de sessão, pausar campanha
+                  if (!ok && sendResult) {
+                    const errMsg = sendResult?.results?.[0]?.response?.error || 
+                                   sendResult?.results?.[0]?.error ||
+                                   sendResult?.error || '';
+                    
                     const isSessionError =
                       errMsg.toLowerCase().includes('session') ||
-                      errMsg.toLowerCase().includes('no session');
+                      errMsg.toLowerCase().includes('no session') ||
+                      errMsg.toLowerCase().includes('not connected');
 
                     if (isSessionError) {
-                      console.log('🔄 [AFILIADO] Erro de sessão, reconectando 1x...');
-                      const reconectou = await tentarReconectar(wuzapiToken);
+                      console.log('❌ [AFILIADO] Erro de sessão, pausando campanha...');
+                      await supabase
+                        .from('afiliado_campanhas')
+                        .update({ ativa: false, status: 'erro_sessao' })
+                        .eq('id', campanha.id);
 
-                      if (reconectou) {
-                        console.log('🔁 [AFILIADO] Reconectou, reenviando 1x...');
-                        await new Promise(r => setTimeout(r, 2000));
-
-                        // Reenviar
-                        if (tentativaImageUrl) {
-                          const retryResp = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/image`, {
-                            method: 'POST',
-                            headers: { 'Token': wuzapiToken, 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ Phone: cleanPhone, Caption: mensagem, Image: tentativaImageUrl })
-                          });
-                          wuzapiPayload = await retryResp.json();
-                          ok = retryResp.ok && wuzapiPayload?.success !== false;
-                        } else {
-                          const retryResp = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/text`, {
-                            method: 'POST',
-                            headers: { 'Token': wuzapiToken, 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ Phone: cleanPhone, Body: mensagem })
-                          });
-                          wuzapiPayload = await retryResp.json();
-                          ok = retryResp.ok && wuzapiPayload?.success !== false;
-                        }
-                      }
-
-                      if (!ok) {
-                        console.log('❌ [AFILIADO] Reconexão/reenvio falhou, pausando campanha...');
-                        await supabase
-                          .from('afiliado_campanhas')
-                          .update({ ativa: false, status: 'erro_sessao' })
-                          .eq('id', campanha.id);
-
-                        toast.error('⚠️ WhatsApp desconectado! Campanha pausada — reconecte em Conectar Celular.');
-                        break;
-                      }
+                      toast.error('⚠️ WhatsApp desconectado! Campanha pausada — reconecte em Conectar Celular.');
+                      break;
                     }
                   }
 
-                } catch (fetchErr: any) {
-                  console.error(`❌ [AFILIADO] Erro fetch para ${cleanPhone}:`, fetchErr);
-                  wuzapiPayload = { error: fetchErr.message };
+                } catch (invokeErr: any) {
+                  console.error(`❌ [AFILIADO] Erro ao invocar Edge Function:`, invokeErr);
+                  sendResult = { error: invokeErr.message };
                   ok = false;
                 }
 
                 // Log resultado final
-                console.log(`${ok ? '✅' : '❌'} [AFILIADO] Resultado para ${cleanPhone}:`, wuzapiPayload);
+                console.log(`${ok ? '✅' : '❌'} [AFILIADO] Resultado para ${cleanPhone}:`, sendResult);
 
                 // Registrar resultado
                 if (ok) {
@@ -410,10 +325,12 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   
                   console.log(`✅ [AFILIADO] Enviado para ${phone}`);
                 } else {
-                  // Registrar erro final (se não foi erro de sessão que já pausou)
+                  // Registrar erro final
                   const errFinal =
-                    (wuzapiPayload && (wuzapiPayload.error || wuzapiPayload.message)) ||
-                    'Falha no envio (Wuzapi Contabo)';
+                    sendResult?.results?.[0]?.response?.error ||
+                    sendResult?.results?.[0]?.error ||
+                    sendResult?.error ||
+                    'Falha no envio (Edge Function Afiliado)';
                   await registrarEnvio(phone, 'campanha', mensagem, false, errFinal);
                   console.error(`❌ [AFILIADO] Falha final para ${cleanPhone}:`, errFinal);
                 }
