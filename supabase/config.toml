@@ -224,3 +224,6 @@ verify_jwt = false
 
 [functions.criar-instancia-wuzapi-afiliado]
 verify_jwt = false
+
+[functions.send-wuzapi-message-afiliado]
+verify_jwt = false
