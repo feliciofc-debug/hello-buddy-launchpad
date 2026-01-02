@@ -948,40 +948,34 @@ async function logEbookDelivery(supabase: any, delivery: any) {
 }
 
 // ============================================
-// WHATSAPP: SEND MESSAGE (via Contabo)
+// WHATSAPP: SEND MESSAGE
 // ============================================
-async function sendWhatsAppMessage(to: string, message: string, customToken?: string | null) {
-  // Usar infraestrutura Contabo para afiliados
-  const WUZAPI_URL = Deno.env.get('CONTABO_WUZAPI_URL') || Deno.env.get('WUZAPI_URL')
-  const WUZAPI_TOKEN = customToken || Deno.env.get('CONTABO_WUZAPI_ADMIN_TOKEN') || Deno.env.get('WUZAPI_TOKEN')
+async function sendWhatsAppMessage(to: string, message: string, _customToken?: string | null) {
+  const WUZAPI_URL = Deno.env.get('WUZAPI_URL')
+  const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN')
 
   if (!WUZAPI_URL || !WUZAPI_TOKEN) {
     console.error('❌ [AFILIADO-EBOOK] WUZAPI_URL ou WUZAPI_TOKEN não configurado!')
     return
   }
 
-  // Limpar número
-  const cleanPhone = to.replace(/\D/g, '')
-
   try {
-    const response = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+    const response = await fetch(`${WUZAPI_URL}/send-message`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'token': WUZAPI_TOKEN
+        'Authorization': `Bearer ${WUZAPI_TOKEN}`
       },
       body: JSON.stringify({
-        phone: cleanPhone,
+        to: to,
         message: message
       })
     })
 
-    const responseText = await response.text()
-    
     if (!response.ok) {
-      console.error('❌ [AFILIADO-EBOOK] Erro ao enviar mensagem:', responseText)
+      console.error('❌ [AFILIADO-EBOOK] Erro ao enviar mensagem:', await response.text())
     } else {
-      console.log('✅ [AFILIADO-EBOOK] Mensagem enviada para:', cleanPhone)
+      console.log('✅ [AFILIADO-EBOOK] Mensagem enviada para:', to)
     }
   } catch (error) {
     console.error('❌ [AFILIADO-EBOOK] Erro ao enviar mensagem:', error)
@@ -989,11 +983,11 @@ async function sendWhatsAppMessage(to: string, message: string, customToken?: st
 }
 
 // ============================================
-// WHATSAPP: SEND PDF (via Contabo)
+// WHATSAPP: SEND PDF
 // ============================================
-async function sendWhatsAppPDF(to: string, filename: string, caption: string, customToken?: string | null) {
-  const WUZAPI_URL = Deno.env.get('CONTABO_WUZAPI_URL') || Deno.env.get('WUZAPI_URL')
-  const WUZAPI_TOKEN = customToken || Deno.env.get('CONTABO_WUZAPI_ADMIN_TOKEN') || Deno.env.get('WUZAPI_TOKEN')
+async function sendWhatsAppPDF(to: string, filename: string, caption: string, _customToken?: string | null) {
+  const WUZAPI_URL = Deno.env.get('WUZAPI_URL')
+  const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN')
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 
   if (!WUZAPI_URL || !WUZAPI_TOKEN || !SUPABASE_URL) {
@@ -1003,44 +997,33 @@ async function sendWhatsAppPDF(to: string, filename: string, caption: string, cu
 
   // URL pública do PDF no Supabase Storage
   const pdfUrl = `${SUPABASE_URL}/storage/v1/object/public/ebooks/${filename}`
-  const cleanPhone = to.replace(/\D/g, '')
 
   try {
-    const response = await fetch(`${WUZAPI_URL}/chat/send/document`, {
+    const response = await fetch(`${WUZAPI_URL}/send-file`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'token': WUZAPI_TOKEN
+        'Authorization': `Bearer ${WUZAPI_TOKEN}`
       },
       body: JSON.stringify({
-        phone: cleanPhone,
-        document: pdfUrl,
+        to: to,
+        fileUrl: pdfUrl,
         caption: `📚 ${caption}`,
         filename: filename
       })
     })
 
-    const responseText = await response.text()
-    
     if (!response.ok) {
-      console.error('❌ [AFILIADO-EBOOK] Erro ao enviar PDF:', responseText)
+      console.error('❌ [AFILIADO-EBOOK] Erro ao enviar PDF:', await response.text())
       // Fallback: enviar link
-      await sendWhatsAppMessage(
-        to,
-        `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`,
-        customToken
-      )
+      await sendWhatsAppMessage(to, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
     } else {
-      console.log('✅ [AFILIADO-EBOOK] PDF enviado para:', cleanPhone)
+      console.log('✅ [AFILIADO-EBOOK] PDF enviado para:', to)
     }
   } catch (error) {
     console.error('❌ [AFILIADO-EBOOK] Erro ao enviar PDF:', error)
     // Fallback: enviar link
-    await sendWhatsAppMessage(
-      to,
-      `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`,
-      customToken
-    )
+    await sendWhatsAppMessage(to, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
   }
 }
 
