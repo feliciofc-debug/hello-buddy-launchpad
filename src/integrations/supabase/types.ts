@@ -14,6 +14,84 @@ export type Database = {
   }
   public: {
     Tables: {
+      afiliado_analytics_ebooks: {
+        Row: {
+          categoria: string | null
+          cliente_phone: string | null
+          confianca: number | null
+          ebook_id: string | null
+          evento: string
+          id: string
+          loja: string | null
+          metadata: Json | null
+          motivo: string | null
+          produto: string | null
+          timestamp: string | null
+          user_id: string | null
+          valor: number | null
+        }
+        Insert: {
+          categoria?: string | null
+          cliente_phone?: string | null
+          confianca?: number | null
+          ebook_id?: string | null
+          evento: string
+          id?: string
+          loja?: string | null
+          metadata?: Json | null
+          motivo?: string | null
+          produto?: string | null
+          timestamp?: string | null
+          user_id?: string | null
+          valor?: number | null
+        }
+        Update: {
+          categoria?: string | null
+          cliente_phone?: string | null
+          confianca?: number | null
+          ebook_id?: string | null
+          evento?: string
+          id?: string
+          loja?: string | null
+          metadata?: Json | null
+          motivo?: string | null
+          produto?: string | null
+          timestamp?: string | null
+          user_id?: string | null
+          valor?: number | null
+        }
+        Relationships: []
+      }
+      afiliado_blacklist_ebooks: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          motivo: string
+          phone: string
+          tentativas_fraude: number | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          motivo: string
+          phone: string
+          tentativas_fraude?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          motivo?: string
+          phone?: string
+          tentativas_fraude?: number | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       afiliado_campanhas: {
         Row: {
           ativa: boolean | null
@@ -82,6 +160,54 @@ export type Database = {
           },
         ]
       }
+      afiliado_clientes_ebooks: {
+        Row: {
+          categorias_preferidas: Json | null
+          created_at: string | null
+          id: string
+          nome: string | null
+          phone: string
+          primeira_compra_at: string | null
+          total_compras: number | null
+          total_ebooks: number | null
+          ultima_compra_at: string | null
+          updated_at: string | null
+          user_id: string | null
+          valor_total_compras: number | null
+          vip: boolean | null
+        }
+        Insert: {
+          categorias_preferidas?: Json | null
+          created_at?: string | null
+          id?: string
+          nome?: string | null
+          phone: string
+          primeira_compra_at?: string | null
+          total_compras?: number | null
+          total_ebooks?: number | null
+          ultima_compra_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          valor_total_compras?: number | null
+          vip?: boolean | null
+        }
+        Update: {
+          categorias_preferidas?: Json | null
+          created_at?: string | null
+          id?: string
+          nome?: string | null
+          phone?: string
+          primeira_compra_at?: string | null
+          total_compras?: number | null
+          total_ebooks?: number | null
+          ultima_compra_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          valor_total_compras?: number | null
+          vip?: boolean | null
+        }
+        Relationships: []
+      }
       afiliado_disparos: {
         Row: {
           created_at: string | null
@@ -125,6 +251,59 @@ export type Database = {
             columns: ["produto_id"]
             isOneToOne: false
             referencedRelation: "afiliado_produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      afiliado_ebook_deliveries: {
+        Row: {
+          categoria: string | null
+          comprovante_url: string | null
+          created_at: string | null
+          ebook_filename: string
+          ebook_id: string | null
+          ebook_titulo: string
+          id: string
+          loja: string | null
+          phone: string
+          produto: string | null
+          user_id: string | null
+          valor_compra: number | null
+        }
+        Insert: {
+          categoria?: string | null
+          comprovante_url?: string | null
+          created_at?: string | null
+          ebook_filename: string
+          ebook_id?: string | null
+          ebook_titulo: string
+          id?: string
+          loja?: string | null
+          phone: string
+          produto?: string | null
+          user_id?: string | null
+          valor_compra?: number | null
+        }
+        Update: {
+          categoria?: string | null
+          comprovante_url?: string | null
+          created_at?: string | null
+          ebook_filename?: string
+          ebook_id?: string | null
+          ebook_titulo?: string
+          id?: string
+          loja?: string | null
+          phone?: string
+          produto?: string | null
+          user_id?: string | null
+          valor_compra?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "afiliado_ebook_deliveries_ebook_id_fkey"
+            columns: ["ebook_id"]
+            isOneToOne: false
+            referencedRelation: "afiliado_ebooks"
             referencedColumns: ["id"]
           },
         ]
@@ -201,6 +380,33 @@ export type Database = {
           titulo?: string
           updated_at?: string | null
           user_id?: string
+        }
+        Relationships: []
+      }
+      afiliado_user_states: {
+        Row: {
+          created_at: string | null
+          id: string
+          phone: string
+          state: Json
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          phone: string
+          state?: Json
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          phone?: string
+          state?: Json
+          status?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -4918,6 +5124,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      adicionar_blacklist_afiliado: {
+        Args: {
+          p_created_by?: string
+          p_motivo: string
+          p_phone: string
+          p_user_id?: string
+        }
+        Returns: undefined
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -4933,7 +5148,16 @@ export type Database = {
         Args: { afiliado_uuid: string }
         Returns: undefined
       }
+      limpar_estados_antigos_afiliado: { Args: never; Returns: number }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
+      verificar_blacklist_afiliado: {
+        Args: { p_phone: string }
+        Returns: boolean
+      }
+      verificar_rate_limit_afiliado: {
+        Args: { p_phone: string }
+        Returns: number
+      }
     }
     Enums: {
       app_role: "admin" | "empresa" | "afiliado"
