@@ -1,5 +1,5 @@
 // supabase/functions/wuzapi-webhook-afiliados/index.ts
-// FASE 2: Webhook para sistema de eBooks de afiliados
+// FASE 3: Webhook com Gemini Vision para validação automática de comprovantes
 // Infraestrutura: Contabo (api2.amzofertas.com.br)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -37,6 +37,17 @@ interface UserState {
     user_id?: string | null
     recebido_em?: string
   }
+}
+
+interface ComprovanteAnalysis {
+  valido: boolean
+  loja: string
+  valor: number
+  produto: string
+  data: string
+  categoria: string
+  confianca: number
+  motivo_invalido?: string
 }
 
 // ============================================
@@ -266,6 +277,253 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
 }
 
 // ============================================
+// GEMINI VISION: ANÁLISE DE COMPROVANTE
+// ============================================
+async function analyzeComprovanteGemini(imageUrl: string): Promise<ComprovanteAnalysis> {
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
+  
+  if (!GEMINI_API_KEY) {
+    console.error('❌ [AFILIADO-EBOOK] GEMINI_API_KEY não configurada!')
+    throw new Error('GEMINI_API_KEY não configurada')
+  }
+
+  console.log('🧠 [AFILIADO-EBOOK] Analisando comprovante com Gemini Vision...')
+  console.log('🖼️ [AFILIADO-EBOOK] URL da imagem:', imageUrl)
+
+  try {
+    // Download da imagem
+    const imageResponse = await fetch(imageUrl)
+    if (!imageResponse.ok) {
+      throw new Error(`Falha ao baixar imagem: ${imageResponse.status}`)
+    }
+    
+    const imageBuffer = await imageResponse.arrayBuffer()
+    const base64Image = btoa(
+      new Uint8Array(imageBuffer).reduce(
+        (data, byte) => data + String.fromCharCode(byte),
+        ''
+      )
+    )
+
+    console.log('📥 [AFILIADO-EBOOK] Imagem baixada, tamanho:', imageBuffer.byteLength, 'bytes')
+
+    // Prompt estruturado para Gemini
+    const prompt = `Analise esta imagem de comprovante de compra e extraia as seguintes informações em formato JSON:
+
+{
+  "valido": true ou false,
+  "loja": "Amazon" ou "Magazine Luiza" ou "Mercado Livre" ou "Outra" ou "Não identificado",
+  "valor": valor em número (ex: 150.50),
+  "produto": "nome do produto principal",
+  "data": "data da compra no formato DD/MM/YYYY",
+  "categoria": "Cozinha" ou "Beleza" ou "Fitness" ou "Bebê" ou "Tech" ou "Casa" ou "Pet" ou "Moda" ou "Livros" ou "Jardim",
+  "confianca": número de 0 a 100 (quão confiante você está na análise),
+  "motivo_invalido": "razão se não for válido"
+}
+
+REGRAS DE VALIDAÇÃO:
+- valido = true APENAS SE for claramente um comprovante de compra de e-commerce
+- loja deve ser identificada pelo logo ou texto
+- valor deve ser o total da compra
+- categoria baseada no produto principal
+- confianca deve ser honesta (70+ = muito confiante, 50-70 = confiante, <50 = duvidoso)
+- Se não conseguir ler claramente, marque valido=false
+
+Retorne APENAS o JSON, sem texto adicional.`
+
+    // Chamada para Gemini 1.5 Pro Vision
+    const geminiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: prompt
+                },
+                {
+                  inline_data: {
+                    mime_type: 'image/jpeg',
+                    data: base64Image
+                  }
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 1024
+          }
+        })
+      }
+    )
+
+    if (!geminiResponse.ok) {
+      const errorText = await geminiResponse.text()
+      console.error('❌ [AFILIADO-EBOOK] Erro Gemini:', errorText)
+      throw new Error(`Gemini API error: ${geminiResponse.status}`)
+    }
+
+    const geminiData = await geminiResponse.json()
+    console.log('📥 [AFILIADO-EBOOK] Resposta Gemini recebida')
+
+    // Extrair texto da resposta
+    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+    
+    if (!responseText) {
+      console.error('❌ [AFILIADO-EBOOK] Resposta Gemini vazia:', JSON.stringify(geminiData))
+      throw new Error('Resposta Gemini vazia')
+    }
+
+    console.log('📝 [AFILIADO-EBOOK] Resposta Gemini:', responseText)
+
+    // Parse JSON (remover markdown se houver)
+    let jsonText = responseText.trim()
+    if (jsonText.startsWith('```json')) {
+      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '')
+    } else if (jsonText.startsWith('```')) {
+      jsonText = jsonText.replace(/```\n?/g, '')
+    }
+
+    const analysis: ComprovanteAnalysis = JSON.parse(jsonText)
+    console.log('✅ [AFILIADO-EBOOK] Análise extraída:', analysis)
+
+    return analysis
+
+  } catch (error) {
+    console.error('❌ [AFILIADO-EBOOK] Erro na análise Gemini:', error)
+    // Retornar análise inválida em caso de erro
+    return {
+      valido: false,
+      loja: 'Não identificado',
+      valor: 0,
+      produto: '',
+      data: '',
+      categoria: 'Tech',
+      confianca: 0,
+      motivo_invalido: error instanceof Error ? error.message : 'Erro ao processar imagem'
+    }
+  }
+}
+
+// ============================================
+// VALIDAÇÃO ANTI-FRAUDE
+// ============================================
+function validateComprovante(analysis: ComprovanteAnalysis): { valid: boolean; reason?: string } {
+  console.log('🔍 [AFILIADO-EBOOK] Validando comprovante...')
+
+  // Regra 1: Gemini marcou como inválido
+  if (!analysis.valido) {
+    return {
+      valid: false,
+      reason: analysis.motivo_invalido || 'Comprovante não reconhecido'
+    }
+  }
+
+  // Regra 2: Confiança muito baixa
+  if (analysis.confianca < 70) {
+    return {
+      valid: false,
+      reason: 'Imagem não está clara o suficiente. Tire outra foto mais nítida.'
+    }
+  }
+
+  // Regra 3: Loja não suportada
+  const lojasValidas = ['Amazon', 'Magazine Luiza', 'Mercado Livre']
+  if (!lojasValidas.includes(analysis.loja)) {
+    return {
+      valid: false,
+      reason: 'Loja não suportada. Aceitamos: Amazon, Magazine Luiza e Mercado Livre.'
+    }
+  }
+
+  // Regra 4: Valor muito baixo (mínimo R$ 50)
+  if (analysis.valor < 50) {
+    return {
+      valid: false,
+      reason: 'Valor mínimo de compra: R$ 50,00'
+    }
+  }
+
+  // Regra 5: Categoria não identificada - usar padrão
+  const categoriasValidas = [
+    'Cozinha', 'Beleza', 'Fitness', 'Bebê', 'Tech',
+    'Casa', 'Pet', 'Moda', 'Livros', 'Jardim'
+  ]
+  if (!categoriasValidas.includes(analysis.categoria)) {
+    analysis.categoria = 'Tech' // Categoria padrão
+  }
+
+  console.log('✅ [AFILIADO-EBOOK] Comprovante válido!')
+  return { valid: true }
+}
+
+// ============================================
+// SISTEMA DE EBOOKS POR CATEGORIA
+// ============================================
+function getEbooksByCategory(categoria: string): any[] {
+  const ebooks: Record<string, any[]> = {
+    'Cozinha': [
+      { id: 1, titulo: '50 Receitas Airfryer', arquivo: 'cozinha-receitas-airfryer.pdf' },
+      { id: 2, titulo: 'Guia Completo de Panelas', arquivo: 'cozinha-guia-panelas.pdf' },
+      { id: 3, titulo: 'Técnicas de Corte Profissional', arquivo: 'cozinha-tecnicas-corte.pdf' }
+    ],
+    'Beleza': [
+      { id: 11, titulo: 'Rotina Skincare Completa', arquivo: 'beleza-skincare-rotina.pdf' },
+      { id: 12, titulo: 'Maquiagem para Iniciantes', arquivo: 'beleza-maquiagem-iniciante.pdf' },
+      { id: 13, titulo: 'Cabelos: Guia Definitivo', arquivo: 'beleza-cabelos-guia.pdf' }
+    ],
+    'Fitness': [
+      { id: 21, titulo: 'Treino em Casa Sem Equipamentos', arquivo: 'fitness-treino-casa.pdf' },
+      { id: 22, titulo: 'Dieta Flexível: Guia Completo', arquivo: 'fitness-dieta-flexivel.pdf' },
+      { id: 23, titulo: 'Alongamentos Diários', arquivo: 'fitness-alongamentos.pdf' }
+    ],
+    'Bebê': [
+      { id: 31, titulo: 'Primeiros 6 Meses do Bebê', arquivo: 'bebe-primeiros-meses.pdf' },
+      { id: 32, titulo: 'Alimentação Infantil Saudável', arquivo: 'bebe-alimentacao.pdf' },
+      { id: 33, titulo: 'Sono do Bebê: Guia Prático', arquivo: 'bebe-sono-guia.pdf' }
+    ],
+    'Tech': [
+      { id: 41, titulo: '50 Apps Essenciais', arquivo: 'tech-apps-essenciais.pdf' },
+      { id: 42, titulo: 'Produtividade Digital', arquivo: 'tech-produtividade.pdf' },
+      { id: 43, titulo: 'Fotografia com Celular', arquivo: 'tech-fotografia-celular.pdf' }
+    ],
+    'Casa': [
+      { id: 51, titulo: 'Organização da Casa: Marie Kondo', arquivo: 'casa-organizacao.pdf' },
+      { id: 52, titulo: 'Decoração com Pouco Dinheiro', arquivo: 'casa-decoracao.pdf' },
+      { id: 53, titulo: 'Limpeza Profunda: Checklist', arquivo: 'casa-limpeza.pdf' }
+    ],
+    'Pet': [
+      { id: 61, titulo: 'Guia Completo: Cachorro Filhote', arquivo: 'pet-cachorro-guia.pdf' },
+      { id: 62, titulo: 'Cuidados com Gatos', arquivo: 'pet-gato-cuidados.pdf' },
+      { id: 63, titulo: 'Adestramento Positivo', arquivo: 'pet-adestramento.pdf' }
+    ],
+    'Moda': [
+      { id: 71, titulo: 'Guarda-Roupa Cápsula', arquivo: 'moda-guarda-roupa-capsula.pdf' },
+      { id: 72, titulo: 'Combinações Perfeitas', arquivo: 'moda-combinacoes.pdf' },
+      { id: 73, titulo: 'Estilo Pessoal: Descubra o Seu', arquivo: 'moda-estilo-pessoal.pdf' }
+    ],
+    'Livros': [
+      { id: 81, titulo: 'Top 50 Livros Clássicos', arquivo: 'livros-top-50-classicos.pdf' },
+      { id: 82, titulo: 'Como Ler Mais: Técnicas', arquivo: 'livros-ler-mais.pdf' },
+      { id: 83, titulo: 'Resumos: Best Sellers 2024', arquivo: 'livros-resumos-bestsellers.pdf' }
+    ],
+    'Jardim': [
+      { id: 91, titulo: 'Horta Caseira: 10 Plantas Fáceis', arquivo: 'jardim-horta-caseira.pdf' },
+      { id: 92, titulo: 'Jardinagem para Iniciantes', arquivo: 'jardim-iniciantes.pdf' },
+      { id: 93, titulo: 'Plantas de Interior', arquivo: 'jardim-plantas-interior.pdf' }
+    ]
+  }
+
+  return ebooks[categoria] || ebooks['Tech']
+}
+
+// ============================================
 // HANDLER: MENSAGEM DE TEXTO
 // ============================================
 async function handleTextMessage(
@@ -327,7 +585,7 @@ async function handleTextMessage(
 }
 
 // ============================================
-// HANDLER: MENSAGEM DE IMAGEM
+// HANDLER: MENSAGEM DE IMAGEM (COM GEMINI VISION)
 // ============================================
 async function handleImageMessage(
   supabase: any, 
@@ -335,60 +593,147 @@ async function handleImageMessage(
   wuzapiToken: string | null,
   userId: string | null
 ) {
-  console.log('📸 [AFILIADO-EBOOK] Processando imagem de:', message.from)
+  console.log('📸 [AFILIADO-EBOOK] Processando comprovante de:', message.from)
 
-  // Salvar URL da imagem no estado do usuário
-  await saveUserState(supabase, message.from, {
-    status: 'processando',
-    state: {
-      comprovante_url: message.imageUrl,
-      recebido_em: new Date().toISOString(),
-      user_id: userId
-    }
-  })
+  try {
+    // Salvar estado inicial
+    await saveUserState(supabase, message.from, {
+      status: 'processando',
+      state: {
+        comprovante_url: message.imageUrl,
+        recebido_em: new Date().toISOString(),
+        user_id: userId
+      }
+    })
 
-  // Mensagem temporária (validação real será na FASE 3)
-  await sendWhatsAppMessage(
-    message.from,
-    '📸 *Comprovante recebido!*\n\n⏳ Analisando...\n\n_Validação automática com IA será implementada na próxima fase._\n\nPor enquanto, envie o número *1* para receber um eBook de teste!',
-    wuzapiToken
-  )
+    // Mensagem de aguardo
+    await sendWhatsAppMessage(
+      message.from,
+      '⏳ *Analisando seu comprovante...*\n\nAguarde alguns segundos enquanto nossa IA valida sua compra...',
+      wuzapiToken
+    )
 
-  // Atualizar estado para aguardando escolha (simulado)
-  await saveUserState(supabase, message.from, {
-    status: 'aguardando_escolha',
-    state: {
-      comprovante_url: message.imageUrl,
+    // Log: comprovante recebido
+    await logEvent(supabase, {
+      evento: 'comprovante_recebido',
+      cliente_phone: message.from,
       user_id: userId,
-      ebooks_disponiveis: [
-        { id: 1, titulo: 'Receitas Airfryer', arquivo: 'cozinha-receitas-airfryer.pdf' },
-        { id: 2, titulo: 'Skincare Rotina', arquivo: 'beleza-skincare-rotina.pdf' },
-        { id: 3, titulo: 'Treino em Casa', arquivo: 'fitness-treino-casa.pdf' }
-      ]
+      metadata: { imageUrl: message.imageUrl }
+    })
+
+    // ANÁLISE COM GEMINI VISION
+    const analysis = await analyzeComprovanteGemini(message.imageUrl!)
+    console.log('🧠 [AFILIADO-EBOOK] Análise completa:', analysis)
+
+    // VALIDAÇÃO ANTI-FRAUDE
+    const validation = validateComprovante(analysis)
+
+    if (!validation.valid) {
+      // COMPROVANTE INVÁLIDO
+      await sendWhatsAppMessage(
+        message.from,
+        `❌ *Comprovante não validado*\n\n` +
+        `📋 Motivo: ${validation.reason}\n\n` +
+        `💡 *Dicas:*\n` +
+        `• Tire uma foto mais nítida\n` +
+        `• Certifique-se que é um comprovante de compra\n` +
+        `• Valor mínimo: R$ 50\n` +
+        `• Lojas aceitas: Amazon, Magazine Luiza, Mercado Livre\n\n` +
+        `Tente novamente!`,
+        wuzapiToken
+      )
+
+      // Log: comprovante rejeitado
+      await logEvent(supabase, {
+        evento: 'comprovante_rejeitado',
+        cliente_phone: message.from,
+        loja: analysis.loja,
+        valor: analysis.valor,
+        motivo: validation.reason,
+        confianca: analysis.confianca,
+        user_id: userId,
+        metadata: analysis
+      })
+
+      // Limpar estado
+      await clearUserState(supabase, message.from)
+      return
     }
-  })
 
-  // Enviar opções (simulado)
-  await sendWhatsAppMessage(
-    message.from,
-    '🎁 *Escolha seu eBook GRÁTIS!*\n\n' +
-    '*1* - 🍳 Receitas Airfryer\n' +
-    '*2* - ✨ Skincare Rotina\n' +
-    '*3* - 💪 Treino em Casa\n\n' +
-    'Digite o *número* do eBook que deseja!',
-    wuzapiToken
-  )
+    // COMPROVANTE VÁLIDO!
+    console.log('✅ [AFILIADO-EBOOK] Comprovante validado:', analysis)
 
-  await logEvent(supabase, {
-    evento: 'comprovante_recebido',
-    cliente_phone: message.from,
-    user_id: userId,
-    metadata: { imageUrl: message.imageUrl }
-  })
+    // Buscar eBooks da categoria
+    const ebooks = getEbooksByCategory(analysis.categoria)
+
+    // Salvar estado (aguardando escolha)
+    await saveUserState(supabase, message.from, {
+      status: 'aguardando_escolha',
+      state: {
+        comprovante_url: message.imageUrl,
+        ebooks_disponiveis: ebooks,
+        compra_info: analysis,
+        user_id: userId
+      }
+    })
+
+    // Montar mensagem com opções de eBooks
+    let mensagem = `✅ *Comprovante validado!*\n\n`
+    mensagem += `🏪 Loja: ${analysis.loja}\n`
+    mensagem += `💰 Valor: R$ ${analysis.valor.toFixed(2)}\n`
+    mensagem += `📦 Produto: ${analysis.produto}\n`
+    mensagem += `📊 Confiança: ${analysis.confianca}%\n\n`
+    mensagem += `━━━━━━━━━━━━━━━━━━\n\n`
+    mensagem += `🎁 *Escolha seu eBook GRÁTIS!*\n\n`
+    mensagem += `Categoria: *${analysis.categoria}*\n\n`
+
+    ebooks.forEach((ebook: any, index: number) => {
+      mensagem += `*${index + 1}* - ${ebook.titulo}\n`
+    })
+
+    mensagem += `\n━━━━━━━━━━━━━━━━━━\n\n`
+    mensagem += `💬 Digite o *número* do eBook que deseja!\n\n`
+    mensagem += `Exemplo: *1*`
+
+    await sendWhatsAppMessage(message.from, mensagem, wuzapiToken)
+
+    // Log: comprovante validado
+    await logEvent(supabase, {
+      evento: 'comprovante_validado',
+      cliente_phone: message.from,
+      loja: analysis.loja,
+      valor: analysis.valor,
+      categoria: analysis.categoria,
+      produto: analysis.produto,
+      confianca: analysis.confianca,
+      user_id: userId,
+      metadata: analysis
+    })
+
+  } catch (error) {
+    console.error('❌ [AFILIADO-EBOOK] Erro ao processar comprovante:', error)
+
+    await sendWhatsAppMessage(
+      message.from,
+      '❌ *Erro ao processar comprovante*\n\n' +
+      'Tente novamente em alguns instantes.\n\n' +
+      'Se o problema persistir, entre em contato com suporte.',
+      wuzapiToken
+    )
+
+    await logEvent(supabase, {
+      evento: 'erro_processamento',
+      cliente_phone: message.from,
+      user_id: userId,
+      metadata: { erro: error instanceof Error ? error.message : 'Erro desconhecido' }
+    })
+
+    await clearUserState(supabase, message.from)
+  }
 }
 
 // ============================================
-// HANDLER: ESCOLHA DE EBOOK
+// HANDLER: ESCOLHA DE EBOOK (VERSÃO FINAL)
 // ============================================
 async function handleEbookChoice(
   supabase: any, 
@@ -398,17 +743,19 @@ async function handleEbookChoice(
   userId: string | null
 ) {
   const escolha = parseInt(message.text!)
+  const ebooks = userState.state.ebooks_disponiveis || []
 
-  if (isNaN(escolha) || escolha < 1 || escolha > 3) {
+  if (isNaN(escolha) || escolha < 1 || escolha > ebooks.length) {
     await sendWhatsAppMessage(
       message.from,
-      '❌ *Escolha inválida!*\n\nDigite *1*, *2* ou *3*',
+      `❌ *Escolha inválida!*\n\nDigite um número de *1* a *${ebooks.length}*`,
       wuzapiToken
     )
     return
   }
 
-  const ebook = userState.state.ebooks_disponiveis![escolha - 1]
+  const ebook = ebooks[escolha - 1]
+  const compraInfo = userState.state.compra_info || {}
 
   // Enviar PDF
   await sendWhatsAppPDF(message.from, ebook.arquivo, ebook.titulo, wuzapiToken)
@@ -416,9 +763,14 @@ async function handleEbookChoice(
   // Mensagem de sucesso
   await sendWhatsAppMessage(
     message.from,
-    `✅ *eBook enviado!*\n\n📚 ${ebook.titulo}\n\n` +
-    `Aproveite seu eBook!\n\n` +
-    `💡 *Dica:* Faça mais compras e ganhe mais eBooks! 🎁`,
+    `✅ *eBook enviado com sucesso!*\n\n` +
+    `📚 ${ebook.titulo}\n\n` +
+    `Aproveite seu eBook exclusivo!\n\n` +
+    `━━━━━━━━━━━━━━━━━━\n\n` +
+    `💡 *Faça mais compras e ganhe mais eBooks!*\n\n` +
+    `🎁 A cada compra validada, você escolhe um novo eBook.\n\n` +
+    `⭐ Após 5 compras, você se torna VIP e recebe benefícios exclusivos!\n\n` +
+    `Obrigado por comprar conosco! 💙`,
     wuzapiToken
   )
 
@@ -427,22 +779,46 @@ async function handleEbookChoice(
     phone: message.from,
     ebook_titulo: ebook.titulo,
     ebook_filename: ebook.arquivo,
-    loja: 'Teste',
-    valor_compra: 0,
-    categoria: 'Teste',
+    loja: compraInfo.loja,
+    valor_compra: compraInfo.valor,
+    categoria: compraInfo.categoria,
     comprovante_url: userState.state.comprovante_url,
     user_id: userId
+  })
+
+  // Log evento
+  await logEvent(supabase, {
+    evento: 'ebook_entregue',
+    cliente_phone: message.from,
+    loja: compraInfo.loja,
+    valor: compraInfo.valor,
+    categoria: compraInfo.categoria,
+    user_id: userId,
+    metadata: { ebook: ebook.titulo, arquivo: ebook.arquivo }
   })
 
   // Limpar estado
   await clearUserState(supabase, message.from)
 
-  await logEvent(supabase, {
-    evento: 'ebook_entregue',
-    cliente_phone: message.from,
-    user_id: userId,
-    metadata: { titulo: ebook.titulo, arquivo: ebook.arquivo }
-  })
+  // Verificar se virou VIP
+  const { data: clienteData } = await supabase
+    .from('afiliado_clientes_ebooks')
+    .select('total_compras')
+    .eq('phone', message.from)
+    .single()
+
+  if (clienteData && clienteData.total_compras >= 5) {
+    await sendWhatsAppMessage(
+      message.from,
+      `🌟 *PARABÉNS! VOCÊ É VIP!*\n\n` +
+      `Você fez 5+ compras e agora tem benefícios exclusivos:\n\n` +
+      `✅ Acesso prioritário a novos eBooks\n` +
+      `✅ eBooks premium exclusivos\n` +
+      `✅ Suporte VIP\n\n` +
+      `Obrigado pela confiança! 💙`,
+      wuzapiToken
+    )
+  }
 }
 
 // ============================================
