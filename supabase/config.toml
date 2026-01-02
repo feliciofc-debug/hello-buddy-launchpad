@@ -233,3 +233,6 @@ verify_jwt = false
 
 [functions.insert-produto-shopee]
 verify_jwt = false
+
+[functions.wuzapi-webhook-afiliados]
+verify_jwt = false
