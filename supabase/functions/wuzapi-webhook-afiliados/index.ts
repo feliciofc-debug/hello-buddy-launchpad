@@ -948,7 +948,7 @@ async function logEbookDelivery(supabase: any, delivery: any) {
 }
 
 // ============================================
-// WHATSAPP: SEND MESSAGE
+// WHATSAPP: SEND MESSAGE (Wuzapi formato original)
 // ============================================
 async function sendWhatsAppMessage(to: string, message: string, _customToken?: string | null) {
   const WUZAPI_URL = Deno.env.get('WUZAPI_URL')
@@ -959,23 +959,28 @@ async function sendWhatsAppMessage(to: string, message: string, _customToken?: s
     return
   }
 
+  // Limpar número de telefone
+  const cleanPhone = to.replace(/\D/g, '')
+
   try {
-    const response = await fetch(`${WUZAPI_URL}/send-message`, {
+    const response = await fetch(`${WUZAPI_URL}/chat/send/text`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${WUZAPI_TOKEN}`
+        'token': WUZAPI_TOKEN
       },
       body: JSON.stringify({
-        to: to,
+        phone: cleanPhone,
         message: message
       })
     })
 
+    const responseText = await response.text()
+    
     if (!response.ok) {
-      console.error('❌ [AFILIADO-EBOOK] Erro ao enviar mensagem:', await response.text())
+      console.error('❌ [AFILIADO-EBOOK] Erro ao enviar mensagem:', responseText)
     } else {
-      console.log('✅ [AFILIADO-EBOOK] Mensagem enviada para:', to)
+      console.log('✅ [AFILIADO-EBOOK] Mensagem enviada para:', cleanPhone)
     }
   } catch (error) {
     console.error('❌ [AFILIADO-EBOOK] Erro ao enviar mensagem:', error)
@@ -983,7 +988,7 @@ async function sendWhatsAppMessage(to: string, message: string, _customToken?: s
 }
 
 // ============================================
-// WHATSAPP: SEND PDF
+// WHATSAPP: SEND PDF (Wuzapi formato original)
 // ============================================
 async function sendWhatsAppPDF(to: string, filename: string, caption: string, _customToken?: string | null) {
   const WUZAPI_URL = Deno.env.get('WUZAPI_URL')
@@ -997,28 +1002,32 @@ async function sendWhatsAppPDF(to: string, filename: string, caption: string, _c
 
   // URL pública do PDF no Supabase Storage
   const pdfUrl = `${SUPABASE_URL}/storage/v1/object/public/ebooks/${filename}`
+  
+  // Limpar número de telefone
+  const cleanPhone = to.replace(/\D/g, '')
 
   try {
-    const response = await fetch(`${WUZAPI_URL}/send-file`, {
+    const response = await fetch(`${WUZAPI_URL}/chat/send/file`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${WUZAPI_TOKEN}`
+        'token': WUZAPI_TOKEN
       },
       body: JSON.stringify({
-        to: to,
-        fileUrl: pdfUrl,
-        caption: `📚 ${caption}`,
-        filename: filename
+        phone: cleanPhone,
+        url: pdfUrl,
+        caption: `📚 ${caption}`
       })
     })
 
+    const responseText = await response.text()
+    
     if (!response.ok) {
-      console.error('❌ [AFILIADO-EBOOK] Erro ao enviar PDF:', await response.text())
+      console.error('❌ [AFILIADO-EBOOK] Erro ao enviar PDF:', responseText)
       // Fallback: enviar link
       await sendWhatsAppMessage(to, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
     } else {
-      console.log('✅ [AFILIADO-EBOOK] PDF enviado para:', to)
+      console.log('✅ [AFILIADO-EBOOK] PDF enviado para:', cleanPhone)
     }
   } catch (error) {
     console.error('❌ [AFILIADO-EBOOK] Erro ao enviar PDF:', error)
