@@ -160,6 +160,114 @@ export type Database = {
           },
         ]
       }
+      afiliado_cashback: {
+        Row: {
+          compras_total: number | null
+          created_at: string | null
+          id: string
+          phone: string
+          saldo_atual: number | null
+          total_acumulado: number | null
+          total_resgatado: number | null
+          ultimo_resgate_at: string | null
+          updated_at: string | null
+          valor_compras_total: number | null
+        }
+        Insert: {
+          compras_total?: number | null
+          created_at?: string | null
+          id?: string
+          phone: string
+          saldo_atual?: number | null
+          total_acumulado?: number | null
+          total_resgatado?: number | null
+          ultimo_resgate_at?: string | null
+          updated_at?: string | null
+          valor_compras_total?: number | null
+        }
+        Update: {
+          compras_total?: number | null
+          created_at?: string | null
+          id?: string
+          phone?: string
+          saldo_atual?: number | null
+          total_acumulado?: number | null
+          total_resgatado?: number | null
+          ultimo_resgate_at?: string | null
+          updated_at?: string | null
+          valor_compras_total?: number | null
+        }
+        Relationships: []
+      }
+      afiliado_cashback_historico: {
+        Row: {
+          created_at: string | null
+          descricao: string | null
+          id: string
+          metadata: Json | null
+          phone: string
+          saldo_anterior: number | null
+          saldo_novo: number | null
+          tipo: string
+          valor: number
+        }
+        Insert: {
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          metadata?: Json | null
+          phone: string
+          saldo_anterior?: number | null
+          saldo_novo?: number | null
+          tipo: string
+          valor: number
+        }
+        Update: {
+          created_at?: string | null
+          descricao?: string | null
+          id?: string
+          metadata?: Json | null
+          phone?: string
+          saldo_anterior?: number | null
+          saldo_novo?: number | null
+          tipo?: string
+          valor?: number
+        }
+        Relationships: []
+      }
+      afiliado_cliente_preferencias: {
+        Row: {
+          categorias_ativas: Json | null
+          categorias_bloqueadas: Json | null
+          created_at: string | null
+          freq_ofertas: string | null
+          id: string
+          phone: string
+          ultima_oferta_enviada_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          categorias_ativas?: Json | null
+          categorias_bloqueadas?: Json | null
+          created_at?: string | null
+          freq_ofertas?: string | null
+          id?: string
+          phone: string
+          ultima_oferta_enviada_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          categorias_ativas?: Json | null
+          categorias_bloqueadas?: Json | null
+          created_at?: string | null
+          freq_ofertas?: string | null
+          id?: string
+          phone?: string
+          ultima_oferta_enviada_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       afiliado_clientes_ebooks: {
         Row: {
           categorias_preferidas: Json | null
@@ -340,6 +448,122 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      afiliado_ofertas: {
+        Row: {
+          ativa: boolean | null
+          categoria: string
+          created_at: string | null
+          desconto_percent: number | null
+          descricao: string | null
+          id: string
+          imagem_url: string | null
+          loja: string
+          marca: string | null
+          preco_oferta: number
+          preco_original: number
+          produto: string | null
+          titulo: string
+          total_cliques: number | null
+          total_enviados: number | null
+          total_vendas: number | null
+          updated_at: string | null
+          url_afiliado: string
+          validade_fim: string | null
+          validade_inicio: string | null
+        }
+        Insert: {
+          ativa?: boolean | null
+          categoria: string
+          created_at?: string | null
+          desconto_percent?: number | null
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          loja: string
+          marca?: string | null
+          preco_oferta: number
+          preco_original: number
+          produto?: string | null
+          titulo: string
+          total_cliques?: number | null
+          total_enviados?: number | null
+          total_vendas?: number | null
+          updated_at?: string | null
+          url_afiliado: string
+          validade_fim?: string | null
+          validade_inicio?: string | null
+        }
+        Update: {
+          ativa?: boolean | null
+          categoria?: string
+          created_at?: string | null
+          desconto_percent?: number | null
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          loja?: string
+          marca?: string | null
+          preco_oferta?: number
+          preco_original?: number
+          produto?: string | null
+          titulo?: string
+          total_cliques?: number | null
+          total_enviados?: number | null
+          total_vendas?: number | null
+          updated_at?: string | null
+          url_afiliado?: string
+          validade_fim?: string | null
+          validade_inicio?: string | null
+        }
+        Relationships: []
+      }
+      afiliado_ofertas_enviadas: {
+        Row: {
+          clicou: boolean | null
+          clicou_at: string | null
+          comprou: boolean | null
+          comprou_at: string | null
+          enviado_at: string | null
+          feedback: string | null
+          id: string
+          oferta_id: string | null
+          phone: string
+          valor_compra: number | null
+        }
+        Insert: {
+          clicou?: boolean | null
+          clicou_at?: string | null
+          comprou?: boolean | null
+          comprou_at?: string | null
+          enviado_at?: string | null
+          feedback?: string | null
+          id?: string
+          oferta_id?: string | null
+          phone: string
+          valor_compra?: number | null
+        }
+        Update: {
+          clicou?: boolean | null
+          clicou_at?: string | null
+          comprou?: boolean | null
+          comprou_at?: string | null
+          enviado_at?: string | null
+          feedback?: string | null
+          id?: string
+          oferta_id?: string | null
+          phone?: string
+          valor_compra?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "afiliado_ofertas_enviadas_oferta_id_fkey"
+            columns: ["oferta_id"]
+            isOneToOne: false
+            referencedRelation: "afiliado_ofertas"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       afiliado_produtos: {
         Row: {
