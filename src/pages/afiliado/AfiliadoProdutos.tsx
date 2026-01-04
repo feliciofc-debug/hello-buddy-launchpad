@@ -10,7 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, Plus, Package, Trash2, Edit, Upload, Megaphone, ChefHat, Home, Smartphone, Gamepad2, Baby, Sparkles, Dumbbell, Wrench, Cat, Shirt, Car, Palette, LayoutGrid } from "lucide-react";
+import { 
+  ArrowLeft, Plus, Package, Trash2, Edit, Upload, Megaphone, 
+  ChefHat, Home, Smartphone, Gamepad2, Baby, Sparkles, Dumbbell, 
+  Wrench, Cat, Shirt, Car, LayoutGrid, Sofa, BookOpen, BookMarked,
+  Briefcase, Leaf, Tv, ShowerHead, Zap
+} from "lucide-react";
 import { toast } from "sonner";
 import ImportCSVAfiliadoModal from "@/components/ImportCSVAfiliadoModal";
 import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
@@ -27,22 +32,29 @@ interface Produto {
   categoria?: string | null;
 }
 
-// Categorias com ícones - Outros no topo para fácil análise
+// 20 Categorias Amazon + Todos
 const CATEGORIAS = [
   { value: 'Todos', label: 'Todos', icon: LayoutGrid, color: 'bg-gray-500' },
-  { value: 'Outros', label: '⚠️ Outros (Revisar)', icon: Package, color: 'bg-yellow-500' },
-  { value: 'Cozinha', label: 'Cozinha', icon: ChefHat, color: 'bg-orange-500' },
-  { value: 'Casa', label: 'Casa', icon: Home, color: 'bg-blue-500' },
-  { value: 'Tech', label: 'Tech', icon: Smartphone, color: 'bg-purple-500' },
-  { value: 'Gamer', label: 'Gamer', icon: Gamepad2, color: 'bg-green-500' },
-  { value: 'Bebê', label: 'Bebê', icon: Baby, color: 'bg-pink-500' },
-  { value: 'Beleza', label: 'Beleza', icon: Sparkles, color: 'bg-rose-500' },
-  { value: 'Fitness', label: 'Fitness', icon: Dumbbell, color: 'bg-red-500' },
-  { value: 'Ferramentas', label: 'Ferramentas', icon: Wrench, color: 'bg-amber-600' },
-  { value: 'Pet', label: 'Pet', icon: Cat, color: 'bg-teal-500' },
-  { value: 'Moda', label: 'Moda', icon: Shirt, color: 'bg-indigo-500' },
   { value: 'Automotivo', label: 'Automotivo', icon: Car, color: 'bg-slate-600' },
-  { value: 'Decoração', label: 'Decoração', icon: Palette, color: 'bg-cyan-500' },
+  { value: 'Bebê', label: 'Bebê', icon: Baby, color: 'bg-pink-400' },
+  { value: 'Beleza', label: 'Beleza', icon: Sparkles, color: 'bg-rose-500' },
+  { value: 'Brinquedos', label: 'Brinquedos', icon: Gamepad2, color: 'bg-purple-400' },
+  { value: 'Casa', label: 'Casa', icon: Home, color: 'bg-blue-500' },
+  { value: 'Cozinha', label: 'Cozinha', icon: ChefHat, color: 'bg-orange-500' },
+  { value: 'Cuidados Pessoais', label: 'Cuidados Pessoais', icon: ShowerHead, color: 'bg-cyan-500' },
+  { value: 'Eletrodomésticos', label: 'Eletrodomésticos', icon: Zap, color: 'bg-yellow-500' },
+  { value: 'Eletrônicos', label: 'Eletrônicos', icon: Tv, color: 'bg-indigo-500' },
+  { value: 'Esporte', label: 'Esporte', icon: Dumbbell, color: 'bg-red-500' },
+  { value: 'Ferramentas', label: 'Ferramentas', icon: Wrench, color: 'bg-amber-600' },
+  { value: 'Informática', label: 'Informática', icon: Smartphone, color: 'bg-violet-500' },
+  { value: 'Jardim', label: 'Jardim', icon: Leaf, color: 'bg-green-500' },
+  { value: 'Livros', label: 'Livros', icon: BookOpen, color: 'bg-amber-700' },
+  { value: 'eBooks', label: 'eBooks', icon: BookMarked, color: 'bg-teal-500' },
+  { value: 'Moda', label: 'Moda', icon: Shirt, color: 'bg-fuchsia-500' },
+  { value: 'Móveis', label: 'Móveis', icon: Sofa, color: 'bg-stone-500' },
+  { value: 'Escritório', label: 'Escritório', icon: Briefcase, color: 'bg-gray-600' },
+  { value: 'Pet', label: 'Pet', icon: Cat, color: 'bg-teal-600' },
+  { value: 'Video Game', label: 'Video Game', icon: Gamepad2, color: 'bg-emerald-500' },
 ];
 
 // Extrai ASIN do link Amazon e retorna URL da imagem
@@ -120,7 +132,7 @@ export default function AfiliadoProdutos() {
     link_afiliado: '',
     marketplace: 'amazon',
     descricao: '',
-    categoria: 'Outros'
+    categoria: 'Casa' // Default Amazon
   });
 
   // Reclassificar produto rapidamente
@@ -184,7 +196,7 @@ export default function AfiliadoProdutos() {
       link_afiliado: '',
       marketplace: 'amazon',
       descricao: '',
-      categoria: 'Outros'
+      categoria: 'Casa' // Default Amazon
     });
     setEditingId(null);
   };
@@ -197,7 +209,7 @@ export default function AfiliadoProdutos() {
       link_afiliado: produto.link_afiliado,
       marketplace: produto.marketplace,
       descricao: produto.descricao || '',
-      categoria: produto.categoria || 'Outros'
+      categoria: produto.categoria || 'Casa'
     });
     setEditingId(produto.id);
     setDialogOpen(true);
@@ -221,7 +233,7 @@ export default function AfiliadoProdutos() {
         link_afiliado: form.link_afiliado,
         marketplace: form.marketplace,
         descricao: form.descricao || null,
-        categoria: form.categoria || 'Outros',
+        categoria: form.categoria || 'Casa',
         user_id: user.id
       };
 
@@ -289,13 +301,13 @@ export default function AfiliadoProdutos() {
     if (cat.value === 'Todos') {
       return { ...cat, count: produtos.length };
     }
-    return { ...cat, count: produtos.filter(p => (p.categoria || 'Outros') === cat.value).length };
+    return { ...cat, count: produtos.filter(p => (p.categoria || 'Casa') === cat.value).length };
   });
 
   // Produtos filtrados
   const produtosFiltrados = categoriaFiltro === 'Todos' 
     ? produtos 
-    : produtos.filter(p => (p.categoria || 'Outros') === categoriaFiltro);
+    : produtos.filter(p => (p.categoria || 'Casa') === categoriaFiltro);
 
   if (loading) {
     return (
