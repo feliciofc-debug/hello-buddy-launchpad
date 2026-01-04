@@ -449,6 +449,81 @@ export type Database = {
         }
         Relationships: []
       }
+      afiliado_lista_membros: {
+        Row: {
+          adicionado_em: string | null
+          id: string
+          lead_id: string
+          lista_id: string
+        }
+        Insert: {
+          adicionado_em?: string | null
+          id?: string
+          lead_id: string
+          lista_id: string
+        }
+        Update: {
+          adicionado_em?: string | null
+          id?: string
+          lead_id?: string
+          lista_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "afiliado_lista_membros_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_ebooks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "afiliado_lista_membros_lista_id_fkey"
+            columns: ["lista_id"]
+            isOneToOne: false
+            referencedRelation: "afiliado_listas_categoria"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      afiliado_listas_categoria: {
+        Row: {
+          ativa: boolean | null
+          cor: string | null
+          created_at: string | null
+          descricao: string | null
+          icone: string | null
+          id: string
+          nome: string
+          total_membros: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          ativa?: boolean | null
+          cor?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          icone?: string | null
+          id?: string
+          nome: string
+          total_membros?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          ativa?: boolean | null
+          cor?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          icone?: string | null
+          id?: string
+          nome?: string
+          total_membros?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       afiliado_ofertas: {
         Row: {
           ativa: boolean | null
@@ -2992,6 +3067,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      leads_ebooks: {
+        Row: {
+          cashback_ativo: boolean | null
+          created_at: string | null
+          ebook_recebido: string | null
+          id: string
+          nome: string | null
+          origem: string | null
+          origem_detalhe: string | null
+          phone: string
+          primeiro_contato_at: string | null
+          total_interacoes: number | null
+          ultimo_contato_at: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          cashback_ativo?: boolean | null
+          created_at?: string | null
+          ebook_recebido?: string | null
+          id?: string
+          nome?: string | null
+          origem?: string | null
+          origem_detalhe?: string | null
+          phone: string
+          primeiro_contato_at?: string | null
+          total_interacoes?: number | null
+          ultimo_contato_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          cashback_ativo?: boolean | null
+          created_at?: string | null
+          ebook_recebido?: string | null
+          id?: string
+          nome?: string | null
+          origem?: string | null
+          origem_detalhe?: string | null
+          phone?: string
+          primeiro_contato_at?: string | null
+          total_interacoes?: number | null
+          ultimo_contato_at?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       leads_imoveis_enriquecidos: {
         Row: {
