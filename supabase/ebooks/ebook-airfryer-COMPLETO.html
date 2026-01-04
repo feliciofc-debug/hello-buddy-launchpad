@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>50 Receitas Airfryer - AMZ Ofertas</title>
+    <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Open Sans', sans-serif;
+            line-height: 1.8;
+            color: #333;
+            background: #fff;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px 120px 20px;
+            position: relative;
+        }
+        
+        /* MARCA D'ÁGUA */
+        body::before {
+            content: "AMZ OFERTAS";
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            font-size: 80px;
+            font-weight: 800;
+            color: rgba(0, 0, 0, 0.02);
+            z-index: -1;
+            pointer-events: none;
+        }
+        
+        /* RODAPÉ FIXO */
+        .footer-fixed {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+            font-size: 0.85em;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        
+        .footer-fixed a {
+            color: #ffd700;
+            text-decoration: none;
+            font-weight: 600;
+            margin: 0 8px;
+            transition: all 0.3s;
+        }
+        
+        .footer-fixed a:hover {
+            color: white;
+            transform: scale(1.05);
+        }
+        
+        /* EMOJIS NOS LINKS */
+        .footer-fixed .emoji {
+            font-size: 1.2em;
+            margin-right: 3px;
+        }
+        
+        /* CAPA */
+        .cover {
+            text-align: center;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            margin-bottom: 50px;
+            page-break-after: always;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        
+        .cover .brand {
+            font-size: 3.5em;
+            font-weight: 800;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+            letter-spacing: 2px;
+        }
+        
+        .cover .brand-subtitle {
+            font-size: 1.2em;
+            opacity: 0.95;
+            margin-bottom: 40px;
+            font-weight: 300;
+        }
+        
+        .cover h1 {
+            color: white;
+            font-size: 2.8em;
+            margin: 30px 0 20px;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .cover p {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin: 15px 0;
+        }
+        
+        .cover .emoji {
+            font-size: 5em;
+            margin: 30px 0;
+        }
+        
+        /* CAIXA DE CADASTRO WHATSAPP */
+        .cover .signup-box {
+            background: linear-gradient(135deg, #25D366 0%, #128C7E 100%);
+            padding: 40px;
+            border-radius: 20px;
+            margin: 40px auto;
+            max-width: 600px;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.4);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+        }
+        
+        .cover .signup-box h3 {
+            color: white;
+            font-size: 2em;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        }
+        
+        .cover .signup-box p {
+            font-size: 1.1em;
+            margin: 15px 0;
+            line-height: 1.6;
+        }
+        
+        /* BOTÃO WHATSAPP GIGANTE */
+        .whatsapp-button {
+            display: inline-block;
+            background: white;
+            color: #25D366;
+            padding: 25px 60px;
+            border-radius: 60px;
+            text-decoration: none;
+            font-weight: 800;
+            font-size: 1.5em;
+            margin: 25px 10px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+            transition: all 0.3s;
+            border: 4px solid white;
+        }
+        
+        .whatsapp-button:hover {
+            transform: translateY(-5px) scale(1.05);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            background: #25D366;
+            color: white;
+        }
+        
+        .whatsapp-button .btn-emoji {
+            font-size: 1.3em;
+            margin-right: 12px;
+        }
+        
+        /* CAIXA REDES SOCIAIS */
+        .cover .social-box {
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 15px;
+            margin: 40px auto 30px;
+            max-width: 600px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        
+        .cover .social-box h3 {
+            color: #ffd700;
+            font-size: 1.5em;
+            margin-bottom: 20px;
+        }
+        
+        .cover .social-links {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 25px 0;
+        }
+        
+        /* BOTÕES INSTAGRAM E FACEBOOK */
+        .social-link {
+            background: white;
+            color: #667eea;
+            padding: 15px 35px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1.1em;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .social-link:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+        
+        .social-link.instagram {
+            background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);
+            color: white;
+        }
+        
+        .social-link.instagram:hover {
+            background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);
+            filter: brightness(1.1);
+        }
+        
+        .social-link.facebook {
+            background: #1877f2;
+            color: white;
+        }
+        
+        .social-link.facebook:hover {
+            background: #1565c0;
+        }
+        
+        .social-link .btn-emoji {
+            font-size: 1.4em;
+        }
+        
+        /* FLUXO VISUAL */
+        .cover .flow-steps {
+            background: rgba(255,255,255,0.1);
+            padding: 25px;
+            border-radius: 15px;
+            margin: 30px auto;
+            max-width: 550px;
+            text-align: left;
+        }
+        
+        .cover .flow-steps .step {
+            display: flex;
+            align-items: center;
+            margin: 15px 0;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+        
+        .cover .flow-steps .step-number {
+            background: #ffd700;
+            color: #333;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        
+        h1, h2, h3 {
+            font-family: 'Merriweather', serif;
+            color: #2c3e50;
+            margin: 30px 0 20px;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            text-align: center;
+            color: #e74c3c;
+        }
+        
+        /* PÁGINA FINAL */
+        .viral-cta-page {
+            page-break-before: always;
+            text-align: center;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 50%, #c44569 100%);
+            color: white;
+            border-radius: 15px;
+            margin: 50px 0;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.3);
+        }
+        
+        .viral-cta-page h2 {
+            color: white;
+            font-size: 3em;
+            margin-bottom: 20px;
+            border: none;
+        }
+        
+        .viral-cta-page .action-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: white;
+            color: #667eea;
+            padding: 20px 45px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1.3em;
+            margin: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+        }
+        
+        .viral-cta-page .action-button:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+        }
+        
+        .viral-cta-page .action-button.instagram {
+            background: linear-gradient(45deg, #f09433 0%,#e6683c 25%,#dc2743 50%,#cc2366 75%,#bc1888 100%);
+            color: white;
+        }
+        
+        .viral-cta-page .action-button.facebook {
+            background: #1877f2;
+            color: white;
+        }
+        
+        .viral-cta-page .action-button.whatsapp {
+            background: #25D366;
+            color: white;
+            font-size: 1.6em;
+            padding: 25px 60px;
+        }
+        
+        .viral-cta-page .action-button .btn-emoji {
+            font-size: 1.5em;
+        }
+        
+        @media print {
+            .footer-fixed {
+                position: fixed;
+                bottom: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- RODAPÉ FIXO COM EMOJIS -->
+    <div class="footer-fixed">
+        <a href="https://wa.me/5521967520706?text=Quero%20receber%20ofertas%20AMZ!" target="_blank">
+            <span class="emoji">💬</span>WhatsApp
+        </a> • 
+        <a href="https://www.instagram.com/amzofertas" target="_blank">
+            <span class="emoji">📸</span>@amzofertas
+        </a> • 
+        <a href="https://www.facebook.com/profile.php?id=61582389697928" target="_blank">
+            <span class="emoji">👍</span>Facebook
+        </a>
+    </div>
+
+    <!-- CAPA -->
+    <div class="cover">
+        <div class="brand">AMZ OFERTAS</div>
+        <div class="brand-subtitle">As Melhores Ofertas dos Maiores Marketplaces do Brasil</div>
+        
+        <div class="emoji">🍳</div>
+        
+        <h1>50 Receitas Airfryer</h1>
+        <p style="font-size: 1.5em; font-weight: 600;">Do Básico ao Gourmet</p>
+        <p>Transforme sua cozinha com receitas práticas, saudáveis e deliciosas</p>
+        
+        <!-- CAIXA CADASTRO WHATSAPP -->
+        <div class="signup-box">
+            <h3>🎁 GANHE MAIS EBOOKS + OFERTAS!</h3>
+            
+            <p><strong>Clique no botão abaixo e cadastre-se no WhatsApp:</strong></p>
+            
+            <a href="https://wa.me/5521967520706?text=Ol%C3%A1!%20Quero%20me%20cadastrar%20no%20AMZ%20Ofertas%20para%20receber%20eBooks%20gr%C3%A1tis%20e%20as%20melhores%20ofertas!" 
+               target="_blank" 
+               class="whatsapp-button">
+                <span class="btn-emoji">💬</span>CLIQUE AQUI PARA CADASTRAR
+            </a>
+            
+            <!-- FLUXO PASSO A PASSO -->
+            <div class="flow-steps">
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div>Clique no botão do WhatsApp</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div>Escolha suas categorias favoritas</div>
+                </div>
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div>Receba ofertas personalizadas!</div>
+                </div>
+            </div>
+            
+            <p style="margin-top: 25px; font-size: 1.05em;">
+                ✨ Receba <strong>APENAS</strong> as ofertas que você quer<br>
+                🎁 eBooks grátis toda semana<br>
+                🔥 Promoções exclusivas até 80% OFF
+            </p>
+        </div>
+        
+        <!-- REDES SOCIAIS -->
+        <div class="social-box">
+            <h3>📱 Siga-nos nas Redes Sociais</h3>
+            
+            <div class="social-links">
+                <a href="https://www.instagram.com/amzofertas" target="_blank" class="social-link instagram">
+                    <span class="btn-emoji">📸</span>Instagram
+                </a>
+                <a href="https://www.facebook.com/profile.php?id=61582389697928" target="_blank" class="social-link facebook">
+                    <span class="btn-emoji">👍</span>Facebook
+                </a>
+            </div>
+            
+            <p style="margin-top: 20px; font-size: 0.95em; opacity: 0.9;">
+                Acompanhe dicas, novidades e ofertas relâmpago!
+            </p>
+        </div>
+        
+        <p style="margin-top: 40px; font-size: 0.9em; opacity: 0.8;">
+            Material exclusivo AMZ Ofertas | Compartilhe com quem você ama! ❤️
+        </p>
+    </div>
+
+    <!-- AQUI VÃO TODAS AS 50 RECEITAS -->
+    
+    <!-- PÁGINA FINAL COM EMOJIS -->
+    <div class="viral-cta-page">
+        <h2>🎉 GOSTOU DESTE EBOOK? 🎉</h2>
+        
+        <div style="font-size: 6em; margin: 30px 0;">🎁</div>
+        
+        <div style="background: rgba(255,255,255,0.95); color: #333; padding: 30px; border-radius: 15px; margin: 40px auto; max-width: 600px; font-size: 1.1em; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+            <strong style="font-size: 1.3em; display: block; margin-bottom: 15px;">
+                COMPARTILHE COM QUEM VOCÊ AMA!
+            </strong>
+            Este eBook foi feito com muito carinho para você. Se gostou, compartilhe com amigos, 
+            família, grupos de WhatsApp! Quanto mais pessoas aproveitarem, melhor! 💙
+        </div>
+        
+        <!-- BOTÃO WHATSAPP PÁGINA FINAL -->
+        <div style="background: #25D366; padding: 40px; border-radius: 20px; margin: 40px auto; max-width: 600px; box-shadow: 0 15px 40px rgba(0,0,0,0.4);">
+            <h3 style="font-size: 2.2em; margin-bottom: 20px;">
+                💬 RECEBA OFERTAS NO WHATSAPP
+            </h3>
+            
+            <p style="font-size: 1.2em; margin: 20px 0;">
+                Cadastre-se AGORA e escolha suas categorias favoritas!
+            </p>
+            
+            <a href="https://wa.me/5521967520706?text=Ol%C3%A1!%20Quero%20me%20cadastrar%20no%20AMZ%20Ofertas!" 
+               target="_blank" 
+               class="action-button whatsapp">
+                <span class="btn-emoji">💬</span>CADASTRAR AGORA
+            </a>
+            
+            <p style="font-size: 1em; margin-top: 20px; opacity: 0.95;">
+                ⚡ Resposta em segundos • 🎁 100% gratuito • 🔒 Dados seguros
+            </p>
+        </div>
+        
+        <!-- REDES SOCIAIS PÁGINA FINAL -->
+        <div style="margin: 40px 0;">
+            <p style="font-size: 1.3em; margin-bottom: 25px;">
+                📱 Siga-nos também nas redes:
+            </p>
+            
+            <a href="https://www.instagram.com/amzofertas" target="_blank" class="action-button instagram">
+                <span class="btn-emoji">📸</span>@amzofertas
+            </a>
+            
+            <a href="https://www.facebook.com/profile.php?id=61582389697928" target="_blank" class="action-button facebook">
+                <span class="btn-emoji">👍</span>Facebook
+            </a>
+        </div>
+        
+        <div style="margin-top: 50px; font-size: 1.2em; font-weight: 600;">
+            <p>🏪 OFERTAS DE:</p>
+            <p style="margin-top: 15px; font-size: 1.5em;">
+                Amazon • Magazine Luiza • Mercado Livre • Shopee
+            </p>
+        </div>
+        
+        <p style="margin-top: 40px; font-size: 1.8em; font-weight: 700;">
+            🚀 NÃO PERCA NENHUMA OFERTA!
+        </p>
+    </div>
+
+</body>
+</html>
