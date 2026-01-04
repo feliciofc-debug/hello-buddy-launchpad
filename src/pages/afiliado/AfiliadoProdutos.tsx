@@ -111,6 +111,7 @@ export default function AfiliadoProdutos() {
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todos');
+  const [reclassificando, setReclassificando] = useState<string | null>(null);
   
   const [form, setForm] = useState({
     titulo: '',
@@ -121,6 +122,31 @@ export default function AfiliadoProdutos() {
     descricao: '',
     categoria: 'Outros'
   });
+
+  // Reclassificar produto rapidamente
+  const handleReclassificar = async (produtoId: string, novaCategoria: string) => {
+    setReclassificando(produtoId);
+    try {
+      const { error } = await supabase
+        .from('afiliado_produtos')
+        .update({ categoria: novaCategoria })
+        .eq('id', produtoId);
+      
+      if (error) throw error;
+      
+      // Atualiza localmente
+      setProdutos(prev => prev.map(p => 
+        p.id === produtoId ? { ...p, categoria: novaCategoria } : p
+      ));
+      
+      toast.success(`Produto movido para ${novaCategoria}`);
+    } catch (error: any) {
+      console.error('Erro ao reclassificar:', error);
+      toast.error('Erro ao reclassificar produto');
+    } finally {
+      setReclassificando(null);
+    }
+  };
 
   useEffect(() => {
     loadProdutos();
@@ -538,6 +564,37 @@ export default function AfiliadoProdutos() {
                             {produto.preco ? `R$ ${produto.preco.toFixed(2)}` : '-'}
                           </span>
                         </div>
+
+                        {/* Dropdown de Reclassificação - só aparece em Outros */}
+                        {(produto.categoria === 'Outros' || !produto.categoria) && (
+                          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2">
+                            <Label className="text-xs text-yellow-700 dark:text-yellow-400 mb-1 block">
+                              📌 Mover para categoria:
+                            </Label>
+                            <Select 
+                              value="" 
+                              onValueChange={(v) => handleReclassificar(produto.id, v)}
+                              disabled={reclassificando === produto.id}
+                            >
+                              <SelectTrigger className="h-8 text-sm">
+                                <SelectValue placeholder={reclassificando === produto.id ? "Movendo..." : "Selecionar categoria..."} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CATEGORIAS.filter(c => c.value !== 'Todos' && c.value !== 'Outros').map(c => {
+                                  const CIcon = c.icon;
+                                  return (
+                                    <SelectItem key={c.value} value={c.value}>
+                                      <div className="flex items-center gap-2">
+                                        <CIcon className="h-4 w-4" />
+                                        {c.label}
+                                      </div>
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
 
                         <Button 
                           className="w-full bg-primary"
