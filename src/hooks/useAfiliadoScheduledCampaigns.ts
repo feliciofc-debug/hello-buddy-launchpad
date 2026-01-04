@@ -174,31 +174,42 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
             let pulados = 0;
             const produto = campanha.afiliado_produtos;
 
-            // ✅ RESOLVER IMAGEM: se não for URL direta (.jpg/.png), buscar og:image
+            // ✅ RESOLVER IMAGEM: verificar se é URL direta de imagem válida
             const rawImageUrl = produto?.imagem_url || null;
             let imageUrl: string | null = null;
 
-            if (rawImageUrl && /\.(png|jpg|jpeg)$/i.test(rawImageUrl)) {
-              // Já é URL direta de imagem
-              imageUrl = rawImageUrl;
-              console.log('🖼️ [AFILIADO] Imagem direta:', imageUrl);
-            } else if (rawImageUrl) {
-              // Tentar resolver via scraping Amazon
-              console.log('🔍 [AFILIADO] Resolvendo imagem Amazon...');
-              try {
-                const { data: imgData, error: imgErr } = await supabase.functions.invoke(
-                  'resolve-amazon-image',
-                  { body: { url: rawImageUrl } }
-                );
-                
-                if (!imgErr && imgData?.success && imgData?.imageUrl) {
-                  imageUrl = imgData.imageUrl;
-                  console.log('✅ [AFILIADO] Imagem resolvida:', imageUrl);
-                } else {
-                  console.log('⚠️ [AFILIADO] Não conseguiu resolver imagem, enviando sem imagem');
+            if (rawImageUrl) {
+              // Verificar se é URL de imagem direta (incluindo webp e URLs do ML)
+              const isDirectImageUrl = 
+                /\.(png|jpg|jpeg|webp|gif)(\?.*)?$/i.test(rawImageUrl) ||
+                rawImageUrl.includes('mlstatic.com') ||
+                rawImageUrl.includes('http2.mlstatic.com');
+
+              if (isDirectImageUrl) {
+                imageUrl = rawImageUrl;
+                console.log('🖼️ [AFILIADO] Imagem direta detectada:', imageUrl.substring(0, 60));
+              } else if (rawImageUrl.includes('amazon.com') || rawImageUrl.includes('amzn.')) {
+                // Tentar resolver via scraping Amazon
+                console.log('🔍 [AFILIADO] Resolvendo imagem Amazon...');
+                try {
+                  const { data: imgData, error: imgErr } = await supabase.functions.invoke(
+                    'resolve-amazon-image',
+                    { body: { url: rawImageUrl } }
+                  );
+                  
+                  if (!imgErr && imgData?.success && imgData?.imageUrl) {
+                    imageUrl = imgData.imageUrl;
+                    console.log('✅ [AFILIADO] Imagem resolvida:', imageUrl);
+                  } else {
+                    console.log('⚠️ [AFILIADO] Não conseguiu resolver imagem Amazon');
+                  }
+                } catch (resolveErr) {
+                  console.error('❌ [AFILIADO] Erro ao resolver imagem:', resolveErr);
                 }
-              } catch (resolveErr) {
-                console.error('❌ [AFILIADO] Erro ao resolver imagem:', resolveErr);
+              } else {
+                // URL não reconhecida, usa como está
+                imageUrl = rawImageUrl;
+                console.log('🖼️ [AFILIADO] Usando imagem como está:', imageUrl.substring(0, 60));
               }
             }
 
