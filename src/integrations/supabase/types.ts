@@ -5483,6 +5483,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      auto_classificar_produto_afiliado: {
+        Args: { p_categoria?: string; p_titulo: string }
+        Returns: string
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -5500,6 +5504,7 @@ export type Database = {
       }
       limpar_estados_antigos_afiliado: { Args: never; Returns: number }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
+      unaccent: { Args: { "": string }; Returns: string }
       verificar_blacklist_afiliado: {
         Args: { p_phone: string }
         Returns: boolean
