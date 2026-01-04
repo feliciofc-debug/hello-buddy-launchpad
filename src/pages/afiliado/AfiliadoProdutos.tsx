@@ -27,9 +27,10 @@ interface Produto {
   categoria?: string | null;
 }
 
-// Categorias com ícones
+// Categorias com ícones - Outros no topo para fácil análise
 const CATEGORIAS = [
   { value: 'Todos', label: 'Todos', icon: LayoutGrid, color: 'bg-gray-500' },
+  { value: 'Outros', label: '⚠️ Outros (Revisar)', icon: Package, color: 'bg-yellow-500' },
   { value: 'Cozinha', label: 'Cozinha', icon: ChefHat, color: 'bg-orange-500' },
   { value: 'Casa', label: 'Casa', icon: Home, color: 'bg-blue-500' },
   { value: 'Tech', label: 'Tech', icon: Smartphone, color: 'bg-purple-500' },
@@ -42,7 +43,6 @@ const CATEGORIAS = [
   { value: 'Moda', label: 'Moda', icon: Shirt, color: 'bg-indigo-500' },
   { value: 'Automotivo', label: 'Automotivo', icon: Car, color: 'bg-slate-600' },
   { value: 'Decoração', label: 'Decoração', icon: Palette, color: 'bg-cyan-500' },
-  { value: 'Outros', label: 'Outros', icon: Package, color: 'bg-gray-400' },
 ];
 
 // Extrai ASIN do link Amazon e retorna URL da imagem
