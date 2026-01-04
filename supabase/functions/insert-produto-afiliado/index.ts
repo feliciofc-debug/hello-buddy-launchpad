@@ -21,12 +21,13 @@ Deno.serve(async (req) => {
 
     console.log('📦 Recebendo produto:', { user_id, titulo, marketplace, categoria });
 
-    // 20 categorias Amazon válidas
+    // 22 categorias Amazon válidas (nomes exatos)
     const CATEGORIAS_VALIDAS = [
-      'Automotivo', 'Bebê', 'Beleza', 'Brinquedos', 'Casa', 'Cozinha',
-      'Cuidados Pessoais', 'Eletrodomésticos', 'Eletrônicos', 'Esporte',
-      'Ferramentas', 'Informática', 'Jardim', 'Livros', 'eBooks',
-      'Moda', 'Móveis', 'Escritório', 'Pet', 'Video Game'
+      'Alimentos e Bebidas', 'Automotivo', 'Bebês', 'Beleza', 'Brinquedos e Jogos',
+      'Casa', 'Construção', 'Cozinha', 'Cuidados Pessoais e Limpeza', 'Eletrodomésticos',
+      'Eletrônicos e Celulares', 'Esportes e Aventura', 'Ferramentas e Construção',
+      'Informática', 'Jardim e Piscina', 'Livros', 'eBooks', 'Moda', 'Móveis',
+      'Papelaria e Escritório', 'Pet Shop', 'Video Games'
     ];
 
     // Validações básicas
