@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -13,58 +13,85 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [sendingReset, setSendingReset] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
+      const email = formData.email.trim().toLowerCase();
+      const password = formData.password;
+
       const { error, data } = await supabase.auth.signInWithPassword({
-        email: formData.email,
-        password: formData.password,
+        email,
+        password,
       });
 
       if (error) throw error;
 
       toast.success('Login realizado com sucesso!');
-      
+
       // Verificar perfil do usuário
       const { data: profile } = await supabase
         .from('profiles')
         .select('tipo')
         .eq('id', data.user.id)
         .maybeSingle();
-      
+
       // Afiliados vão direto para dashboard de afiliados
       if (profile?.tipo === 'afiliado_admin' || profile?.tipo === 'afiliado') {
-        console.log('✅ Usuário afiliado - indo para dashboard afiliado');
         navigate('/afiliado/dashboard');
         return;
       }
-      
+
       // Acesso direto para: dono da plataforma OU clientes B2B
       if (data.user.email === 'expo@atombrasildigital.com' || profile?.tipo === 'b2b') {
-        console.log('✅ Acesso direto ao dashboard (dono ou cliente B2B)');
         navigate('/dashboard');
         return;
       }
-      
+
       // Outros usuários precisam verificar assinatura
-      console.log('Verificando assinatura...');
       const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
-      
-      console.log('Resultado da verificação:', subscriptionCheck);
 
       if (subscriptionCheck?.hasActiveSubscription) {
-        console.log('✅ Tem assinatura ativa - indo para dashboard');
         navigate('/dashboard');
       } else {
-        console.log('❌ Sem assinatura - indo para planos');
         navigate('/planos');
       }
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao fazer login');
+      const msg = String(error?.message || 'Erro ao fazer login');
+      if (msg.toLowerCase().includes('invalid login credentials')) {
+        toast.error('Email ou senha incorretos. Se precisar, redefina sua senha.');
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSendReset = async () => {
+    const email = forgotEmail.trim().toLowerCase();
+    if (!email) {
+      toast.error('Informe seu email.');
+      return;
+    }
+
+    setSendingReset(true);
+    try {
+      const redirectTo = `${window.location.origin}/reset-password`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) throw error;
+
+      toast.success('Enviamos um link de redefinição para seu email.');
+      setShowForgot(false);
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao enviar link de redefinição');
+    } finally {
+      setSendingReset(false);
     }
   };
 
@@ -140,7 +167,14 @@ export default function Login() {
 
             {/* Esqueci Senha */}
             <div className="text-right">
-              <button type="button" className="text-sm text-purple-400 hover:text-purple-300 transition">
+              <button
+                type="button"
+                onClick={() => {
+                  setForgotEmail(formData.email);
+                  setShowForgot(true);
+                }}
+                className="text-sm text-purple-400 hover:text-purple-300 transition"
+              >
                 Esqueci minha senha
               </button>
             </div>
@@ -186,6 +220,65 @@ export default function Login() {
             </button>
           </div>
         </div>
+
+        {/* Modal: Redefinir senha */}
+        {showForgot && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => (sendingReset ? null : setShowForgot(false))}
+            />
+            <div className="relative w-full max-w-md bg-slate-900 border border-purple-500/30 rounded-2xl p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white">Redefinir senha</h2>
+                  <p className="text-purple-300 text-sm mt-1">
+                    Vamos enviar um link para você criar uma nova senha.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowForgot(false)}
+                  className="text-purple-300 hover:text-white transition"
+                  disabled={sendingReset}
+                  aria-label="Fechar"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="mt-5">
+                <label className="block text-sm font-medium text-purple-300 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  className="w-full bg-slate-700/50 text-white px-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
+                  placeholder="seu@email.com"
+                />
+              </div>
+
+              <div className="mt-6 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowForgot(false)}
+                  disabled={sendingReset}
+                  className="w-full border-2 border-purple-500/50 text-purple-300 py-3 rounded-lg font-semibold hover:bg-purple-500/10 transition disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendReset}
+                  disabled={sendingReset}
+                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
+                >
+                  {sendingReset ? 'Enviando...' : 'Enviar link'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
