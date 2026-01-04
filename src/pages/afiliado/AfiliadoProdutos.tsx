@@ -9,7 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Plus, Package, Trash2, Edit, ExternalLink, Upload, Megaphone } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ArrowLeft, Plus, Package, Trash2, Edit, Upload, Megaphone, ChefHat, Home, Smartphone, Gamepad2, Baby, Sparkles, Dumbbell, Wrench, Cat, Shirt, Car, Palette, LayoutGrid } from "lucide-react";
 import { toast } from "sonner";
 import ImportCSVAfiliadoModal from "@/components/ImportCSVAfiliadoModal";
 import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
@@ -23,13 +24,31 @@ interface Produto {
   marketplace: string;
   descricao: string | null;
   status: string;
+  categoria?: string | null;
 }
+
+// Categorias com ícones
+const CATEGORIAS = [
+  { value: 'Todos', label: 'Todos', icon: LayoutGrid, color: 'bg-gray-500' },
+  { value: 'Cozinha', label: 'Cozinha', icon: ChefHat, color: 'bg-orange-500' },
+  { value: 'Casa', label: 'Casa', icon: Home, color: 'bg-blue-500' },
+  { value: 'Tech', label: 'Tech', icon: Smartphone, color: 'bg-purple-500' },
+  { value: 'Gamer', label: 'Gamer', icon: Gamepad2, color: 'bg-green-500' },
+  { value: 'Bebê', label: 'Bebê', icon: Baby, color: 'bg-pink-500' },
+  { value: 'Beleza', label: 'Beleza', icon: Sparkles, color: 'bg-rose-500' },
+  { value: 'Fitness', label: 'Fitness', icon: Dumbbell, color: 'bg-red-500' },
+  { value: 'Ferramentas', label: 'Ferramentas', icon: Wrench, color: 'bg-amber-600' },
+  { value: 'Pet', label: 'Pet', icon: Cat, color: 'bg-teal-500' },
+  { value: 'Moda', label: 'Moda', icon: Shirt, color: 'bg-indigo-500' },
+  { value: 'Automotivo', label: 'Automotivo', icon: Car, color: 'bg-slate-600' },
+  { value: 'Decoração', label: 'Decoração', icon: Palette, color: 'bg-cyan-500' },
+  { value: 'Outros', label: 'Outros', icon: Package, color: 'bg-gray-400' },
+];
 
 // Extrai ASIN do link Amazon e retorna URL da imagem
 const getAmazonImageUrl = (url: string): string | null => {
   if (!url) return null;
   
-  // Padrões para extrair ASIN de URLs Amazon
   const patterns = [
     /\/dp\/([A-Z0-9]{10})/i,
     /\/gp\/product\/([A-Z0-9]{10})/i,
@@ -58,24 +77,21 @@ const isValidImageUrl = (url: string | null): boolean => {
          lowerUrl.includes('images-amazon') ||
          lowerUrl.includes('ssl-images-amazon') ||
          lowerUrl.includes('m.media-amazon') ||
-         lowerUrl.includes('supabase.co/storage') || // Imagens do Storage (Shopee)
-         lowerUrl.includes('susercontent.com'); // Imagens da Shopee
+         lowerUrl.includes('supabase.co/storage') ||
+         lowerUrl.includes('susercontent.com');
 };
 
 // Obtém a melhor URL de imagem para o produto
 const getProductImageUrl = (produto: Produto): string | null => {
-  // Se já tem uma URL de imagem válida (direta para imagem), usa ela
   if (isValidImageUrl(produto.imagem_url)) {
     return produto.imagem_url;
   }
   
-  // PRIORIDADE 1: Tenta extrair ASIN da imagem_url (que pode ser link de produto Amazon)
   if (produto.imagem_url?.includes('amazon')) {
     const imageFromUrl = getAmazonImageUrl(produto.imagem_url);
     if (imageFromUrl) return imageFromUrl;
   }
   
-  // PRIORIDADE 2: Tenta extrair do link_afiliado se for Amazon (link longo)
   if (produto.link_afiliado?.includes('amazon.com')) {
     const imageFromAfiliado = getAmazonImageUrl(produto.link_afiliado);
     if (imageFromAfiliado) return imageFromAfiliado;
@@ -94,6 +110,7 @@ export default function AfiliadoProdutos() {
   const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [categoriaFiltro, setCategoriaFiltro] = useState('Todos');
   
   const [form, setForm] = useState({
     titulo: '',
@@ -101,7 +118,8 @@ export default function AfiliadoProdutos() {
     preco: '',
     link_afiliado: '',
     marketplace: 'amazon',
-    descricao: ''
+    descricao: '',
+    categoria: 'Outros'
   });
 
   useEffect(() => {
@@ -139,7 +157,8 @@ export default function AfiliadoProdutos() {
       preco: '',
       link_afiliado: '',
       marketplace: 'amazon',
-      descricao: ''
+      descricao: '',
+      categoria: 'Outros'
     });
     setEditingId(null);
   };
@@ -151,7 +170,8 @@ export default function AfiliadoProdutos() {
       preco: produto.preco?.toString() || '',
       link_afiliado: produto.link_afiliado,
       marketplace: produto.marketplace,
-      descricao: produto.descricao || ''
+      descricao: produto.descricao || '',
+      categoria: produto.categoria || 'Outros'
     });
     setEditingId(produto.id);
     setDialogOpen(true);
@@ -175,6 +195,7 @@ export default function AfiliadoProdutos() {
         link_afiliado: form.link_afiliado,
         marketplace: form.marketplace,
         descricao: form.descricao || null,
+        categoria: form.categoria || 'Outros',
         user_id: user.id
       };
 
@@ -237,6 +258,19 @@ export default function AfiliadoProdutos() {
     { value: 'outro', label: 'Outro' }
   ];
 
+  // Contagem por categoria
+  const contadorCategorias = CATEGORIAS.map(cat => {
+    if (cat.value === 'Todos') {
+      return { ...cat, count: produtos.length };
+    }
+    return { ...cat, count: produtos.filter(p => (p.categoria || 'Outros') === cat.value).length };
+  });
+
+  // Produtos filtrados
+  const produtosFiltrados = categoriaFiltro === 'Todos' 
+    ? produtos 
+    : produtos.filter(p => (p.categoria || 'Outros') === categoriaFiltro);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -246,251 +280,311 @@ export default function AfiliadoProdutos() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/afiliado/dashboard')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">Produtos</h1>
-              <p className="text-muted-foreground">Gerencie seus produtos de afiliado</p>
-            </div>
+    <div className="min-h-screen bg-background flex">
+      {/* Sidebar de Categorias */}
+      <aside className="w-64 bg-card border-r border-border p-4 hidden md:block">
+        <div className="flex items-center gap-2 mb-6">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/afiliado/dashboard')}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h2 className="font-semibold text-lg">Categorias</h2>
+        </div>
+        
+        <ScrollArea className="h-[calc(100vh-150px)]">
+          <div className="space-y-1">
+            {contadorCategorias.map((cat) => {
+              const Icon = cat.icon;
+              const isActive = categoriaFiltro === cat.value;
+              return (
+                <button
+                  key={cat.value}
+                  onClick={() => setCategoriaFiltro(cat.value)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                    isActive 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'hover:bg-muted text-foreground'
+                  }`}
+                >
+                  <div className={`p-1.5 rounded ${isActive ? 'bg-primary-foreground/20' : cat.color}`}>
+                    <Icon className={`h-4 w-4 ${isActive ? '' : 'text-white'}`} />
+                  </div>
+                  <span className="flex-1 font-medium">{cat.label}</span>
+                  <Badge variant={isActive ? "secondary" : "outline"} className="text-xs">
+                    {cat.count}
+                  </Badge>
+                </button>
+              );
+            })}
           </div>
-          
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                console.log("🧪 Testando edge function...");
+        </ScrollArea>
+      </aside>
 
-                const { data: authData, error: authErr } = await supabase.auth.getUser();
-                if (authErr) {
-                  toast.error(`Erro auth: ${authErr.message}`);
-                  return;
-                }
-
-                const user = authData.user;
-                if (!user) {
-                  toast.error("Você precisa estar logado");
-                  return;
-                }
-
-                const { data, error } = await supabase.functions.invoke(
-                  "send-wuzapi-message-afiliado",
-                  {
-                    body: {
-                      phoneNumbers: ["5521967520706"],
-                      message: "🧪 TESTE EDGE FUNCTION AFILIADO",
-                      imageUrl: null,
-                      userId: user.id,
-                    },
-                  }
-                );
-
-                console.log("📡 Resultado:", { data, error });
-
-                if (error) {
-                  toast.error("Erro: " + error.message);
-                } else {
-                  toast.success("Resultado: " + JSON.stringify(data));
-                }
-              }}
-            >
-              🧪 Testar Envio Direto
-            </Button>
-
-            <Button variant="outline" onClick={() => setImportModalOpen(true)}>
-              <Upload className="h-4 w-4 mr-2" />
-              Importar CSV
-            </Button>
-            <Dialog open={dialogOpen} onOpenChange={(open) => {
-              setDialogOpen(open);
-              if (!open) resetForm();
-            }}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Adicionar
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader>
-                  <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Título *</Label>
-                    <Input 
-                      value={form.titulo}
-                      onChange={(e) => setForm({...form, titulo: e.target.value})}
-                      placeholder="Nome do produto"
-                    />
-                  </div>
-                  <div>
-                    <Label>Link de Afiliado *</Label>
-                    <Input 
-                      value={form.link_afiliado}
-                      onChange={(e) => setForm({...form, link_afiliado: e.target.value})}
-                      placeholder="https://..."
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
+      {/* Conteúdo Principal */}
+      <main className="flex-1 p-4 md:p-8 overflow-auto">
+        <div className="max-w-6xl mx-auto">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/afiliado/dashboard')} className="md:hidden">
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">Produtos</h1>
+                <p className="text-muted-foreground">
+                  {categoriaFiltro === 'Todos' 
+                    ? `${produtos.length} produtos` 
+                    : `${produtosFiltrados.length} produtos em ${categoriaFiltro}`}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setImportModalOpen(true)}>
+                <Upload className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Importar CSV</span>
+              </Button>
+              <Dialog open={dialogOpen} onOpenChange={(open) => {
+                setDialogOpen(open);
+                if (!open) resetForm();
+              }}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    <span className="hidden sm:inline">Adicionar</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
                     <div>
-                      <Label>Marketplace</Label>
-                      <Select value={form.marketplace} onValueChange={(v) => setForm({...form, marketplace: v})}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {marketplaces.map(m => (
-                            <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>Preço (R$)</Label>
+                      <Label>Título *</Label>
                       <Input 
-                        type="number"
-                        value={form.preco}
-                        onChange={(e) => setForm({...form, preco: e.target.value})}
-                        placeholder="0.00"
+                        value={form.titulo}
+                        onChange={(e) => setForm({...form, titulo: e.target.value})}
+                        placeholder="Nome do produto"
                       />
                     </div>
-                  </div>
-                  <div>
-                    <Label>URL da Imagem</Label>
-                    <Input 
-                      value={form.imagem_url}
-                      onChange={(e) => setForm({...form, imagem_url: e.target.value})}
-                      placeholder="https://..."
-                    />
-                  </div>
-                  <div>
-                    <Label>Descrição</Label>
-                    <Textarea 
-                      value={form.descricao}
-                      onChange={(e) => setForm({...form, descricao: e.target.value})}
-                      placeholder="Descrição do produto..."
-                      rows={3}
-                    />
-                  </div>
-                  <Button onClick={handleSave} disabled={saving} className="w-full">
-                    {saving ? 'Salvando...' : (editingId ? 'Atualizar' : 'Cadastrar')}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-
-        {produtos.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Nenhum produto cadastrado</p>
-              <Button className="mt-4" onClick={() => setDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar Primeiro Produto
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {produtos.map((produto) => (
-              <Card key={produto.id} className="overflow-hidden">
-                <CardContent className="p-0">
-                  {/* Imagem */}
-                  <div className="relative aspect-square bg-muted">
-                    {(() => {
-                      const imageUrl = getProductImageUrl(produto);
-                      return imageUrl ? (
-                        <img 
-                          src={imageUrl} 
-                          alt={produto.titulo}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            const target = e.target as HTMLImageElement;
-                            target.style.display = 'none';
-                            const fallback = target.nextElementSibling;
-                            if (fallback) fallback.classList.remove('hidden');
-                          }}
-                        />
-                      ) : null;
-                    })()}
-                    <div className={`w-full h-full flex items-center justify-center ${getProductImageUrl(produto) ? 'hidden' : ''}`}>
-                      <Package className="h-16 w-16 text-muted-foreground" />
-                    </div>
-                    <Badge className="absolute top-2 right-2 bg-green-500">
-                      Ativo
-                    </Badge>
-                  </div>
-
-                  {/* Info */}
-                  <div className="p-4 space-y-3">
                     <div>
-                      <h3 className="font-semibold line-clamp-2">{produto.titulo}</h3>
-                      <p className="text-sm text-muted-foreground capitalize">{produto.marketplace}</p>
+                      <Label>Link de Afiliado *</Label>
+                      <Input 
+                        value={form.link_afiliado}
+                        onChange={(e) => setForm({...form, link_afiliado: e.target.value})}
+                        placeholder="https://..."
+                      />
                     </div>
-
-                    {produto.descricao && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">{produto.descricao}</p>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Preço:</span>
-                      <span className="text-lg font-bold text-green-600">
-                        {produto.preco ? `R$ ${produto.preco.toFixed(2)}` : '-'}
-                      </span>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Marketplace</Label>
+                        <Select value={form.marketplace} onValueChange={(v) => setForm({...form, marketplace: v})}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {marketplaces.map(m => (
+                              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Categoria</Label>
+                        <Select value={form.categoria} onValueChange={(v) => setForm({...form, categoria: v})}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CATEGORIAS.filter(c => c.value !== 'Todos').map(c => (
+                              <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-
-                    {/* Botão Criar Campanha */}
-                    <Button 
-                      className="w-full bg-primary"
-                      onClick={() => handleCriarCampanha(produto)}
-                    >
-                      <Megaphone className="h-4 w-4 mr-2" />
-                      Criar Campanha
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Preço (R$)</Label>
+                        <Input 
+                          type="number"
+                          value={form.preco}
+                          onChange={(e) => setForm({...form, preco: e.target.value})}
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <Label>URL da Imagem</Label>
+                        <Input 
+                          value={form.imagem_url}
+                          onChange={(e) => setForm({...form, imagem_url: e.target.value})}
+                          placeholder="https://..."
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Descrição</Label>
+                      <Textarea 
+                        value={form.descricao}
+                        onChange={(e) => setForm({...form, descricao: e.target.value})}
+                        placeholder="Descrição do produto..."
+                        rows={3}
+                      />
+                    </div>
+                    <Button onClick={handleSave} disabled={saving} className="w-full">
+                      {saving ? 'Salvando...' : (editingId ? 'Atualizar' : 'Cadastrar')}
                     </Button>
-
-                    {/* Botões Editar/Excluir */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleEdit(produto)}>
-                        <Edit className="h-4 w-4 mr-1" />
-                        Editar
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => handleDelete(produto.id)}>
-                        <Trash2 className="h-4 w-4 mr-1 text-red-500" />
-                        Excluir
-                      </Button>
-                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
-        )}
 
-        {/* Modal Importar CSV */}
-        <ImportCSVAfiliadoModal
-          isOpen={importModalOpen}
-          onClose={() => setImportModalOpen(false)}
-          onSuccess={loadProdutos}
-        />
+          {/* Mobile: Filtro horizontal */}
+          <div className="md:hidden mb-4 overflow-x-auto pb-2">
+            <div className="flex gap-2">
+              {contadorCategorias.slice(0, 8).map((cat) => {
+                const Icon = cat.icon;
+                const isActive = categoriaFiltro === cat.value;
+                return (
+                  <button
+                    key={cat.value}
+                    onClick={() => setCategoriaFiltro(cat.value)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-full whitespace-nowrap text-sm transition-colors ${
+                      isActive 
+                        ? 'bg-primary text-primary-foreground' 
+                        : 'bg-muted text-foreground'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {cat.label}
+                    <span className="text-xs opacity-70">({cat.count})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-        {/* Modal Criar Campanha */}
-        {produtoSelecionado && (
-          <CriarCampanhaAfiliadoModal
-            open={campanhaModalOpen}
-            onOpenChange={setCampanhaModalOpen}
-            produto={produtoSelecionado}
+          {produtosFiltrados.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <Package className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">
+                  {categoriaFiltro === 'Todos' 
+                    ? 'Nenhum produto cadastrado' 
+                    : `Nenhum produto em ${categoriaFiltro}`}
+                </p>
+                <Button className="mt-4" onClick={() => setDialogOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Adicionar Primeiro Produto
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {produtosFiltrados.map((produto) => {
+                const catInfo = CATEGORIAS.find(c => c.value === (produto.categoria || 'Outros')) || CATEGORIAS[CATEGORIAS.length - 1];
+                const CatIcon = catInfo.icon;
+                
+                return (
+                  <Card key={produto.id} className="overflow-hidden">
+                    <CardContent className="p-0">
+                      {/* Imagem */}
+                      <div className="relative aspect-square bg-muted">
+                        {(() => {
+                          const imageUrl = getProductImageUrl(produto);
+                          return imageUrl ? (
+                            <img 
+                              src={imageUrl} 
+                              alt={produto.titulo}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                const fallback = target.nextElementSibling;
+                                if (fallback) fallback.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null;
+                        })()}
+                        <div className={`w-full h-full flex items-center justify-center ${getProductImageUrl(produto) ? 'hidden' : ''}`}>
+                          <Package className="h-16 w-16 text-muted-foreground" />
+                        </div>
+                        
+                        {/* Badge da Categoria */}
+                        <div className={`absolute top-2 left-2 ${catInfo.color} text-white px-2 py-1 rounded-full text-xs flex items-center gap-1`}>
+                          <CatIcon className="h-3 w-3" />
+                          {catInfo.label}
+                        </div>
+                        
+                        <Badge className="absolute top-2 right-2 bg-green-500">
+                          Ativo
+                        </Badge>
+                      </div>
+
+                      {/* Info */}
+                      <div className="p-4 space-y-3">
+                        <div>
+                          <h3 className="font-semibold line-clamp-2">{produto.titulo}</h3>
+                          <p className="text-sm text-muted-foreground capitalize">{produto.marketplace}</p>
+                        </div>
+
+                        {produto.descricao && (
+                          <p className="text-sm text-muted-foreground line-clamp-2">{produto.descricao}</p>
+                        )}
+
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Preço:</span>
+                          <span className="text-lg font-bold text-green-600">
+                            {produto.preco ? `R$ ${produto.preco.toFixed(2)}` : '-'}
+                          </span>
+                        </div>
+
+                        <Button 
+                          className="w-full bg-primary"
+                          onClick={() => handleCriarCampanha(produto)}
+                        >
+                          <Megaphone className="h-4 w-4 mr-2" />
+                          Criar Campanha
+                        </Button>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <Button variant="outline" size="sm" onClick={() => handleEdit(produto)}>
+                            <Edit className="h-4 w-4 mr-1" />
+                            Editar
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => handleDelete(produto.id)}>
+                            <Trash2 className="h-4 w-4 mr-1 text-red-500" />
+                            Excluir
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Modal Importar CSV */}
+          <ImportCSVAfiliadoModal
+            isOpen={importModalOpen}
+            onClose={() => setImportModalOpen(false)}
             onSuccess={loadProdutos}
           />
-        )}
-      </div>
+
+          {/* Modal Criar Campanha */}
+          {produtoSelecionado && (
+            <CriarCampanhaAfiliadoModal
+              open={campanhaModalOpen}
+              onOpenChange={(open) => {
+                setCampanhaModalOpen(open);
+                if (!open) setProdutoSelecionado(null);
+              }}
+              produto={produtoSelecionado}
+            />
+          )}
+        </div>
+      </main>
     </div>
   );
 }

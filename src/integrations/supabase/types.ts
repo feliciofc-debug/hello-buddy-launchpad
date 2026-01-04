@@ -642,6 +642,7 @@ export type Database = {
       }
       afiliado_produtos: {
         Row: {
+          categoria: string | null
           created_at: string | null
           descricao: string | null
           id: string
@@ -655,6 +656,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          categoria?: string | null
           created_at?: string | null
           descricao?: string | null
           id?: string
@@ -668,6 +670,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          categoria?: string | null
           created_at?: string | null
           descricao?: string | null
           id?: string
