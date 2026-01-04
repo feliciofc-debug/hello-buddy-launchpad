@@ -9,6 +9,7 @@ import { CampaignScheduler } from "@/components/CampaignScheduler";
 import Dashboard from "./pages/Dashboard";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 import Cadastro from "./pages/Cadastro";
 import Planos from "./pages/Planos";
 import TestPayment from "./pages/TestPayment";
@@ -84,6 +85,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/cadastro" element={<Cadastro />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/test-payment" element={<TestPayment />} />
