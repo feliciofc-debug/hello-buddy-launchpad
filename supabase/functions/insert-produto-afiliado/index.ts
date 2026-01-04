@@ -17,9 +17,17 @@ Deno.serve(async (req) => {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { user_id, titulo, preco, imagem_url, link_afiliado, marketplace, descricao } = body;
+    const { user_id, titulo, preco, imagem_url, link_afiliado, marketplace, descricao, categoria } = body;
 
-    console.log('📦 Recebendo produto:', { user_id, titulo, marketplace });
+    console.log('📦 Recebendo produto:', { user_id, titulo, marketplace, categoria });
+
+    // 20 categorias Amazon válidas
+    const CATEGORIAS_VALIDAS = [
+      'Automotivo', 'Bebê', 'Beleza', 'Brinquedos', 'Casa', 'Cozinha',
+      'Cuidados Pessoais', 'Eletrodomésticos', 'Eletrônicos', 'Esporte',
+      'Ferramentas', 'Informática', 'Jardim', 'Livros', 'eBooks',
+      'Moda', 'Móveis', 'Escritório', 'Pet', 'Video Game'
+    ];
 
     // Validações básicas
     if (!user_id) {
@@ -55,17 +63,29 @@ Deno.serve(async (req) => {
 
     console.log('✅ Cliente afiliado validado:', cliente.nome);
 
+    // Determinar categoria: usar a enviada se válida, senão default "Casa"
+    let categoriaFinal = 'Casa'; // DEFAULT
+    if (categoria && CATEGORIAS_VALIDAS.includes(categoria)) {
+      categoriaFinal = categoria;
+      console.log('📂 Categoria recebida da extensão:', categoriaFinal);
+    } else if (categoria) {
+      console.log('⚠️ Categoria inválida recebida:', categoria, '- usando default Casa');
+    } else {
+      console.log('📂 Categoria não enviada - usando default Casa');
+    }
+
     // Inserir produto usando service role (bypassa RLS)
     const { data: produto, error: insertError } = await supabaseAdmin
       .from('afiliado_produtos')
       .insert({
         user_id,
-        titulo: titulo.substring(0, 500), // Limitar tamanho
+        titulo: titulo.substring(0, 500),
         preco: preco ? parseFloat(preco) : null,
         imagem_url: imagem_url || null,
         link_afiliado,
         marketplace: marketplace.substring(0, 50),
         descricao: descricao ? descricao.substring(0, 2000) : null,
+        categoria: categoriaFinal,
         status: 'ativo'
       })
       .select()
