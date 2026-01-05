@@ -1,5 +1,8 @@
 project_id = "jibpvpqgplmahjhswiza"
 
+[functions.ebook-airfryer]
+verify_jwt = false
+
 [functions.execute-campaign]
 verify_jwt = false
 
