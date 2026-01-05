@@ -1194,17 +1194,28 @@ async function sendWhatsAppMessage(to: string, message: string, _customToken?: s
     return
   }
 
+  // Normalizar baseUrl (evitar "/" duplicado)
+  const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL
+
+  // Formatar número (apenas dígitos) e garantir +55 quando necessário
+  let formattedPhone = to.replace(/\D/g, '')
+  if (!formattedPhone.startsWith('55') && formattedPhone.length === 11) {
+    formattedPhone = '55' + formattedPhone
+  }
+
   try {
-    const response = await fetch(`${WUZAPI_URL}/chat/send/text`, {
+    const response = await fetch(`${baseUrl}/chat/send/text`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'token': WUZAPI_TOKEN },
-      body: JSON.stringify({ phone: to.replace(/\D/g, ''), message })
+      headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+      body: JSON.stringify({ Phone: formattedPhone, Body: message })
     })
-    
+
+    const responseText = await response.text()
+
     if (!response.ok) {
-      console.error('❌ [AFILIADO-FUNIL] Erro ao enviar mensagem:', await response.text())
+      console.error('❌ [AFILIADO-FUNIL] Erro ao enviar mensagem:', responseText)
     } else {
-      console.log('✅ [AFILIADO-FUNIL] Mensagem enviada para:', to)
+      console.log('✅ [AFILIADO-FUNIL] Mensagem enviada para:', formattedPhone)
     }
   } catch (error) {
     console.error('❌ [AFILIADO-FUNIL] Erro:', error)
@@ -1221,24 +1232,32 @@ async function sendWhatsAppPDF(to: string, filename: string, caption: string, _c
 
   if (!WUZAPI_URL || !WUZAPI_TOKEN || !SUPABASE_URL) return
 
+  const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL
+
+  // Formatar número
+  let formattedPhone = to.replace(/\D/g, '')
+  if (!formattedPhone.startsWith('55') && formattedPhone.length === 11) {
+    formattedPhone = '55' + formattedPhone
+  }
+
   const pdfUrl = `${SUPABASE_URL}/storage/v1/object/public/ebooks/${filename}`
 
   try {
-    const response = await fetch(`${WUZAPI_URL}/chat/send/file`, {
+    const response = await fetch(`${baseUrl}/chat/send/file`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'token': WUZAPI_TOKEN },
-      body: JSON.stringify({ phone: to.replace(/\D/g, ''), url: pdfUrl, caption: `📚 ${caption}` })
+      headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+      body: JSON.stringify({ Phone: formattedPhone, Url: pdfUrl, Caption: `📚 ${caption}` })
     })
 
     if (!response.ok) {
       console.log('⚠️ [AFILIADO-FUNIL] Fallback para link:', filename)
-      await sendWhatsAppMessage(to, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
+      await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
     } else {
       console.log('✅ [AFILIADO-FUNIL] PDF enviado:', filename)
     }
   } catch (error) {
     console.error('❌ [AFILIADO-FUNIL] Erro ao enviar PDF:', error)
-    await sendWhatsAppMessage(to, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
+    await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
   }
 }
 
