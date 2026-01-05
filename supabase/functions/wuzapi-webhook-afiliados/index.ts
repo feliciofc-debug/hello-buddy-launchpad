@@ -523,13 +523,13 @@ async function handleNomeInput(
   let mensagem = `Prazer, *${nome}*! 😊\n\n`
   mensagem += `Agora escolha os *nichos* que você mais gosta:\n\n`
   
-  CATEGORIAS.forEach((cat, index) => {
-    mensagem += `*${index + 1}* - ${cat.icone} ${cat.nome}\n`
+  CATEGORIAS.forEach((cat) => {
+    mensagem += `${cat.icone} ${cat.nome}\n`
   })
 
   mensagem += `\n━━━━━━━━━━━━━━━━━━\n\n`
-  mensagem += `💡 *Digite os números separados por vírgula*\n`
-  mensagem += `Exemplo: *1, 3, 5* para Casa, Bebê e Gamer\n\n`
+  mensagem += `💡 *Digite os nomes separados por vírgula*\n`
+  mensagem += `Exemplo: *Casa, Cozinha, Pet*\n\n`
   mensagem += `Ou digite *TODOS* para receber de tudo!`
 
   await sendWhatsAppMessage(message.from, mensagem, wuzapiToken)
@@ -552,36 +552,44 @@ async function handleNichosInput(
   wuzapiToken: string | null,
   userId: string | null
 ) {
-  const text = message.text!.trim().toLowerCase()
+  const text = message.text!.trim()
+  const textLower = text.toLowerCase()
   let nichosEscolhidos: string[] = []
 
+  // Função para normalizar texto (remover acentos)
+  const normalizar = (str: string) => 
+    str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
   // Verificar se escolheu TODOS
-  if (text === 'todos' || text === 'tudo') {
+  if (textLower === 'todos' || textLower === 'tudo') {
     nichosEscolhidos = CATEGORIAS.map(c => c.nome)
   } else {
-    // Extrair números da mensagem
-    const numeros = text.match(/\d+/g)?.map(n => parseInt(n)) || []
+    // Separar por vírgula, ponto-e-vírgula ou espaço
+    const partes = text.split(/[,;]+/).map(p => p.trim()).filter(p => p.length > 0)
     
-    if (numeros.length === 0) {
+    if (partes.length === 0) {
       await sendWhatsAppMessage(
         message.from,
-        '❌ Não entendi sua escolha.\n\nDigite os *números* das categorias separados por vírgula.\n\nExemplo: *1, 3, 5*\n\nOu digite *TODOS* para receber de tudo!',
+        '❌ Não entendi sua escolha.\n\nDigite os *nomes* das categorias separados por vírgula.\n\nExemplo: *Casa, Cozinha, Pet*\n\nOu digite *TODOS* para receber de tudo!',
         wuzapiToken
       )
       return
     }
 
-    // Validar e mapear números para categorias
-    for (const num of numeros) {
-      if (num >= 1 && num <= CATEGORIAS.length) {
-        nichosEscolhidos.push(CATEGORIAS[num - 1].nome)
+    // Mapear nomes para categorias (ignorando acentos e maiúsculas)
+    for (const parte of partes) {
+      const parteNorm = normalizar(parte)
+      const catEncontrada = CATEGORIAS.find(c => normalizar(c.nome) === parteNorm)
+      if (catEncontrada && !nichosEscolhidos.includes(catEncontrada.nome)) {
+        nichosEscolhidos.push(catEncontrada.nome)
       }
     }
 
     if (nichosEscolhidos.length === 0) {
+      const nomesDisponiveis = CATEGORIAS.map(c => c.nome).join(', ')
       await sendWhatsAppMessage(
         message.from,
-        `❌ Números inválidos! Digite números de *1* a *${CATEGORIAS.length}*.\n\nExemplo: *1, 3, 5*`,
+        `❌ Não encontrei essas categorias!\n\nCategorias disponíveis: *${nomesDisponiveis}*\n\nExemplo: *Casa, Cozinha, Pet*`,
         wuzapiToken
       )
       return
