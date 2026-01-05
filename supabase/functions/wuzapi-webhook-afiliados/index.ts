@@ -256,7 +256,9 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
     const cleanJid = (jid: string) =>
       (jid || '').replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/:\d+@/, '@').replace(/\D/g, '')
 
-    const from = cleanJid(info.Sender || info.Chat || '')
+    // Contabo costuma mandar o número real em SenderAlt (ex: 5521...@s.whatsapp.net).
+    // Sender/Chat podem vir como LID (não roteável para envio), então priorizamos SenderAlt.
+    const from = cleanJid(info.SenderAlt || info.Sender || info.Chat || '')
     const to = String(payload.instanceName || '')
 
     const text =
