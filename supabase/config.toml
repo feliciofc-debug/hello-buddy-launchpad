@@ -245,3 +245,7 @@ verify_jwt = false
 
 [functions.verificar-contabo-wuzapi]
 verify_jwt = false
+
+[functions.corrigir-webhook-contabo]
+verify_jwt = false
+
