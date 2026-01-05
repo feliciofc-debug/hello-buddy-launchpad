@@ -191,12 +191,8 @@ serve(async (req) => {
     } else if (message.type === 'image' && message.imageUrl) {
       await handleImageMessage(supabase, message, wuzapiToken, userId)
     } else {
-      // Tipo não suportado
-      await sendWhatsAppMessage(
-        message.from,
-        '❌ Tipo de mensagem não suportado.\n\nEnvie uma mensagem de texto para continuar.',
-        wuzapiToken
-      )
+      // Tipo não suportado - APENAS IGNORAR, não responder para evitar spam
+      console.log(`⏭️ [AFILIADO-FUNIL] Tipo não suportado ignorado: ${message.type}`)
     }
 
     return new Response(
