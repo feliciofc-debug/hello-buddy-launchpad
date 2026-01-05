@@ -33,32 +33,55 @@ function Landing() {
   return (
     <div className="bg-slate-900 text-white">
       {/* HEADER */}
-      <header className="fixed w-full top-0 z-50 bg-slate-900/80 backdrop-blur-lg border-b border-purple-500/20">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-2 rounded-lg">
-              <svg className="w-8 h-8" fill="white" viewBox="0 0 24 24">
-                <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
-              </svg>
+      <header className="fixed w-full top-0 z-50 bg-slate-900/95 backdrop-blur-lg border-b border-purple-500/20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          {/* Desktop: tudo em linha */}
+          <div className="hidden md:flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-2 rounded-lg">
+                <svg className="w-8 h-8" fill="white" viewBox="0 0 24 24">
+                  <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold">AMZ Ofertas</h1>
+                <p className="text-xs text-orange-300">Marketing Digital com IA</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold">AMZ Ofertas</h1>
-              <p className="text-xs text-orange-300">Marketing Digital com IA</p>
+            <div className="flex items-center gap-3">
+              <button onClick={() => scrollToSection('planos')} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition">
+                Planos
+              </button>
+              <button onClick={() => navigate('/marketplace')} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition">
+                Marketplace
+              </button>
+              <button onClick={() => navigate('/vendedor-login')} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-semibold transition">
+                Portal Vendedor
+              </button>
+              <button onClick={() => navigate('/login')} className="bg-gradient-to-r from-purple-500 to-pink-500 px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition">
+                Entrar
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-2 md:gap-3">
-            <button onClick={() => scrollToSection('planos')} className="bg-gray-700 hover:bg-gray-600 text-white px-3 md:px-4 py-2 rounded-lg font-semibold transition text-sm md:text-base">
-              Planos
-            </button>
-            <button onClick={() => navigate('/marketplace')} className="bg-gray-700 hover:bg-gray-600 text-white px-3 md:px-4 py-2 rounded-lg font-semibold transition text-sm md:text-base">
-              Marketplace
-            </button>
-            <button onClick={() => navigate('/vendedor-login')} className="bg-orange-500 hover:bg-orange-600 text-white px-3 md:px-4 py-2 rounded-lg font-semibold transition text-sm md:text-base">
-              Portal Vendedor
-            </button>
-            <button onClick={() => navigate('/login')} className="bg-gradient-to-r from-purple-500 to-pink-500 px-4 md:px-6 py-2 rounded-lg font-semibold hover:shadow-lg transition text-sm md:text-base">
-              Entrar
-            </button>
+
+          {/* Mobile: logo + botão Entrar sempre visíveis */}
+          <div className="flex md:hidden items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-1.5 rounded-lg">
+                <svg className="w-6 h-6" fill="white" viewBox="0 0 24 24">
+                  <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
+                </svg>
+              </div>
+              <span className="text-lg font-bold">AMZ Ofertas</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => navigate('/vendedor-login')} className="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg font-semibold transition text-sm">
+                Vendedor
+              </button>
+              <button onClick={() => navigate('/login')} className="bg-gradient-to-r from-purple-500 to-pink-500 px-4 py-1.5 rounded-lg font-semibold hover:shadow-lg transition text-sm">
+                Entrar
+              </button>
+            </div>
           </div>
         </div>
       </header>
