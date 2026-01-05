@@ -113,14 +113,22 @@ serve(async (req) => {
             params.get('payload') ||
             params.get('data')
 
+          const allParams = Object.fromEntries(params.entries())
+
           if (embeddedJson) {
             try {
-              payload = JSON.parse(embeddedJson)
+              const parsed = JSON.parse(embeddedJson)
+              // mantém instanceName/userID e também expõe o JSON parseado
+              payload = {
+                ...allParams,
+                jsonData: parsed,
+                ...parsed,
+              }
             } catch {
-              payload = { raw: rawBody, note: 'embeddedJson_invalid' }
+              payload = { ...allParams, raw: rawBody, note: 'embeddedJson_invalid' }
             }
           } else {
-            payload = Object.fromEntries(params.entries())
+            payload = allParams
           }
         }
       }
@@ -234,6 +242,40 @@ async function findAffiliateByReceivingNumber(supabase: any, toNumber: string): 
 // HELPER: PARSE WUZAPI PAYLOAD
 // ============================================
 function parseWuzapiPayload(payload: any): WhatsAppMessage {
+  // ===== Formato Contabo (urlencoded + jsonData), ex: payload.type === "Message"
+  if (payload?.type === 'Message' && payload?.event?.Info) {
+    const info = payload.event.Info
+    const msg = payload.event.Message
+
+    // só processa mensagens recebidas do cliente (ignora IsFromMe)
+    if (info.IsFromMe === true) {
+      console.log('⏭️ [AFILIADO-FUNIL] Ignorando mensagem enviada por nós (IsFromMe=true)')
+      return { from: '', to: '', type: 'text', text: '', timestamp: Date.now() }
+    }
+
+    const cleanJid = (jid: string) =>
+      (jid || '').replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/:\d+@/, '@').replace(/\D/g, '')
+
+    const from = cleanJid(info.Sender || info.Chat || '')
+    const to = String(payload.instanceName || '')
+
+    const text =
+      msg?.conversation ||
+      msg?.extendedTextMessage?.text ||
+      ''
+
+    console.log(`📱 [AFILIADO-FUNIL] Contabo format - From: ${from}, To: ${to}, Text: ${text.slice(0,50)}`)
+
+    return {
+      from,
+      to,
+      type: 'text',
+      text,
+      timestamp: Date.parse(info.Timestamp || '') || Date.now(),
+    }
+  }
+
+  // ===== Formato antigo / outros formatos =====
   // Tentar extrair número do remetente
   let from = ''
   if (payload.data?.key?.remoteJid) {
