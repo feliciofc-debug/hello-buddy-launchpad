@@ -627,7 +627,7 @@ async function handleNichosInput(
 
   // ========== ENTREGAR EBOOK GRÁTIS ==========
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
-  const ebookHtmlUrl = `${SUPABASE_URL}/storage/v1/object/public/ebooks/ebook-airfryer-COMPLETO.html`
+  const ebookHtmlUrl = `${SUPABASE_URL}/functions/v1/ebook-airfryer`
   
   // Montar lista de nichos
   const nichosFormatados = nichosEscolhidos.map(n => {
