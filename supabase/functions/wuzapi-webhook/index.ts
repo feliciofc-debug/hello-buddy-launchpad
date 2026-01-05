@@ -201,7 +201,20 @@ serve(async (req) => {
     
     console.log('✅ Mensagem nova, processando...');
 
-    const isFromMe = webhookData.event?.Info?.IsFromMe || webhookData.event?.IsFromMe || webhookData.data?.fromMe || webhookData.fromMe;
+    // ═══════════════════════════════════════
+    // 🔄 DETECÇÃO MELHORADA DE IsFromMe
+    // ═══════════════════════════════════════
+    // Verificar se é deviceSentMessage (mensagem enviada pelo próprio dispositivo)
+    const hasDeviceSentMessage = webhookData.event?.RawMessage?.deviceSentMessage || 
+                                  webhookData.event?.Message?.deviceSentMessage;
+    
+    // IsFromMe real do payload
+    const isFromMeRaw = webhookData.event?.Info?.IsFromMe || webhookData.event?.IsFromMe || webhookData.data?.fromMe || webhookData.fromMe;
+    
+    // Se tem deviceSentMessage, é mensagem enviada pelo dispositivo (ignorar)
+    const isFromMe = isFromMeRaw === true || !!hasDeviceSentMessage;
+    
+    console.log('🔍 isFromMeRaw:', isFromMeRaw, '| hasDeviceSentMessage:', !!hasDeviceSentMessage, '| isFromMe final:', isFromMe);
 
     await supabaseClient.from('webhook_debug_logs').insert({
       payload: webhookData,
@@ -211,8 +224,67 @@ serve(async (req) => {
     });
 
     if (isFromMe === true) {
-      console.log('❌ Ignorando: própria');
-      return new Response(JSON.stringify({ status: 'ignored' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      console.log('❌ Ignorando: mensagem própria (enviada por este dispositivo)');
+      return new Response(JSON.stringify({ status: 'ignored', reason: 'from_me' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    
+    // ═══════════════════════════════════════
+    // 🚀 ROTEAR PARA FUNIL DE AFILIADOS
+    // ═══════════════════════════════════════
+    // Verificar se a instância é de afiliado (AMZ-Ofertas)
+    const instanceNameForAfiliado = webhookData.instanceName || webhookData.instance_name || '';
+    const isAfiliadoInstance = instanceNameForAfiliado.toLowerCase().includes('amz') || 
+                               instanceNameForAfiliado.toLowerCase().includes('afiliado') ||
+                               instanceNameForAfiliado.toLowerCase().includes('ofertas');
+    
+    // Detectar se é mensagem de captação de leads (padrões comuns)
+    const textLower = messageText.toLowerCase();
+    const isLeadCaptureMessage = textLower.includes('ebook') || 
+                                  textLower.includes('cadastrar') ||
+                                  textLower.includes('quero me cadastrar') ||
+                                  textLower.includes('grátis') ||
+                                  textLower.includes('ofertas');
+    
+    if (isAfiliadoInstance || isLeadCaptureMessage) {
+      console.log('🎯 Detectada mensagem para funil de afiliados!');
+      console.log('   - Instância:', instanceNameForAfiliado);
+      console.log('   - É captação de lead:', isLeadCaptureMessage);
+      
+      // Rotear para o webhook de afiliados
+      try {
+        const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
+        const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+        
+        const afiliadoResponse = await fetch(`${SUPABASE_URL}/functions/v1/wuzapi-webhook-afiliados`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            // Formato simplificado para o webhook de afiliados
+            from: phoneNumber,
+            to: instanceNameForAfiliado,
+            text: messageText,
+            type: 'text',
+            timestamp: Date.now(),
+            // Dados originais para referência
+            _originalPayload: webhookData
+          })
+        });
+        
+        const afiliadoResult = await afiliadoResponse.json();
+        console.log('✅ Roteado para afiliados:', afiliadoResult);
+        
+        return new Response(JSON.stringify({ 
+          status: 'routed_to_afiliados',
+          result: afiliadoResult 
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        
+      } catch (routeError) {
+        console.error('❌ Erro ao rotear para afiliados:', routeError);
+        // Continua processamento normal se falhar o roteamento
+      }
     }
 
     if (!phoneNumber || !messageText) {
