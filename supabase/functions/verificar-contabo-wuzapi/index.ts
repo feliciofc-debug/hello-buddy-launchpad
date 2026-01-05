@@ -17,38 +17,42 @@ serve(async (req) => {
   }
 
   try {
-    // ===== CONFIGURAÇÕES CONTABO =====
+    // ===== INFRAESTRUTURA SEPARADA =====
+    // CONTABO (Afiliados): api2.amzofertas.com.br - usa token individual por afiliado
+    // LOCAWEB (PJ): wuzapi_instances - usa WUZAPI_URL/TOKEN
+    
     const CONTABO_URL = Deno.env.get('CONTABO_WUZAPI_URL') || ''
-    const CONTABO_TOKEN = Deno.env.get('CONTABO_WUZAPI_ADMIN_TOKEN') || ''
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
     
-    log(`📡 CONTABO_URL: ${CONTABO_URL}`)
-    log(`🔑 Token existe: ${!!CONTABO_TOKEN}`)
-    log(`🔑 Token (primeiros 10 chars): ${CONTABO_TOKEN?.substring(0, 10)}...`)
+    // Token do afiliado conectado (21967520706)
+    // Este token vem da tabela clientes_afiliados.wuzapi_token
+    const AFILIADO_TOKEN = 'FDjUTGXYOt6Bp3TtYjSsjZlWOAPuxnPY'
     
-    if (!CONTABO_URL || !CONTABO_TOKEN) {
+    log(`📡 CONTABO_URL (Afiliados): ${CONTABO_URL}`)
+    log(`🔑 Token do Afiliado (primeiros 10): ${AFILIADO_TOKEN.substring(0, 10)}...`)
+    log(`📌 JID esperado: 5521967520706:77@s.whatsapp.net`)
+    
+    if (!CONTABO_URL) {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'CONTABO_WUZAPI_URL ou CONTABO_WUZAPI_ADMIN_TOKEN não configurados',
+          error: 'CONTABO_WUZAPI_URL não configurado',
           logs 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
     
-    // ===== 1. VERIFICAR STATUS DA SESSÃO =====
-    log('\n═══ 1. STATUS DA SESSÃO CONTABO ═══')
+    // ===== VERIFICAR STATUS COM TOKEN DO AFILIADO =====
+    log('\n═══ STATUS DA SESSÃO CONTABO (AFILIADO) ═══')
     
-    // Tentar diferentes formatos de URL
-    const baseUrl = CONTABO_URL.replace(/\/$/, '') // remover / final
+    const baseUrl = CONTABO_URL.replace(/\/$/, '')
     
-    // Formato 1: /session/status com header Token
     log(`Tentando: ${baseUrl}/session/status`)
     const statusResponse = await fetch(`${baseUrl}/session/status`, {
       method: 'GET',
       headers: {
-        'Token': CONTABO_TOKEN,
+        'Token': AFILIADO_TOKEN,
         'Content-Type': 'application/json'
       }
     })
@@ -63,50 +67,29 @@ serve(async (req) => {
       log('Resposta não é JSON válido')
     }
     
-    // Se falhou, tentar outros endpoints
-    if (!statusResponse.ok) {
-      log('\n═══ 2. TENTANDO /api/sessions ═══')
-      const sessionsResponse = await fetch(`${baseUrl}/api/sessions`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${CONTABO_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      const sessionsText = await sessionsResponse.text()
-      log(`Status ${sessionsResponse.status}: ${sessionsText}`)
-      
-      // Tentar /api/users
-      log('\n═══ 3. TENTANDO /api/users ═══')
-      const usersResponse = await fetch(`${baseUrl}/api/users`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${CONTABO_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      })
-      
-      const usersText = await usersResponse.text()
-      log(`Status ${usersResponse.status}: ${usersText}`)
-    }
-    
     // ===== VERIFICAR WEBHOOK =====
-    const webhookEsperado = `${SUPABASE_URL}/functions/v1/wuzapi-webhook`
+    // IMPORTANTE: Webhook de afiliados deve apontar para wuzapi-webhook-afiliados
+    const webhookEsperadoAfiliados = `${SUPABASE_URL}/functions/v1/wuzapi-webhook-afiliados`
     const webhookAtual = statusData.data?.webhook || statusData.webhook || 'NÃO IDENTIFICADO'
     
-    log('\n═══ WEBHOOK ═══')
-    log(`Esperado: ${webhookEsperado}`)
+    log('\n═══ WEBHOOK AFILIADOS ═══')
+    log(`Esperado: ${webhookEsperadoAfiliados}`)
     log(`Atual: ${webhookAtual}`)
     log(`JID: ${statusData.data?.jid || statusData.jid || 'NÃO IDENTIFICADO'}`)
     log(`Conectado: ${statusData.data?.connected || statusData.connected || 'NÃO IDENTIFICADO'}`)
     
+    const webhookCorreto = webhookAtual === webhookEsperadoAfiliados
+    
     return new Response(
       JSON.stringify({
-        success: true,
+        success: statusResponse.ok,
+        infraestrutura: 'CONTABO (Afiliados)',
         contaboUrl: CONTABO_URL,
-        webhookEsperado,
+        webhookEsperado: webhookEsperadoAfiliados,
         webhookAtual,
+        webhookCorreto,
+        jid: statusData.data?.jid || statusData.jid,
+        connected: statusData.data?.connected || statusData.connected,
         status: statusData,
         logs
       }, null, 2),
