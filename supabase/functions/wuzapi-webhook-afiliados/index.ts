@@ -89,8 +89,50 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Parse payload
-    const payload = await req.json()
+    // Parse payload (robusto - aceita JSON, text/plain, urlencoded)
+    let payload: any = null
+    let rawBody = ''
+    const contentType = req.headers.get('content-type') || ''
+
+    try {
+      if (contentType.includes('application/json')) {
+        payload = await req.json()
+      } else {
+        rawBody = await req.text()
+
+        // 1) tentar JSON direto
+        try {
+          payload = JSON.parse(rawBody)
+        } catch {
+          // 2) tentar urlencoded/querystring
+          const params = new URLSearchParams(rawBody)
+
+          // algumas Wuzapi mandam um campo com JSON dentro
+          const embeddedJson =
+            params.get('jsonData') ||
+            params.get('payload') ||
+            params.get('data')
+
+          if (embeddedJson) {
+            try {
+              payload = JSON.parse(embeddedJson)
+            } catch {
+              payload = { raw: rawBody, note: 'embeddedJson_invalid' }
+            }
+          } else {
+            payload = Object.fromEntries(params.entries())
+          }
+        }
+      }
+    } catch (err: any) {
+      try { rawBody = rawBody || await req.text() } catch {}
+      payload = { raw: rawBody, parse_error: String(err?.message || err) }
+    }
+
+    if (rawBody) {
+      console.log('📦 [AFILIADO-FUNIL] Raw body (non-json):', rawBody.slice(0, 2000))
+    }
+
     console.log('📨 [AFILIADO-FUNIL] Payload:', JSON.stringify(payload, null, 2))
 
     // Extrair mensagem do payload Wuzapi
