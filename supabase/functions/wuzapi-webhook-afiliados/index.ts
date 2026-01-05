@@ -284,9 +284,21 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
       return cleaned.replace(/\D/g, '') // Só dígitos
     }
 
-    // Contabo costuma mandar o número real em SenderAlt (ex: 5521...@s.whatsapp.net).
-    // Sender/Chat podem vir como LID (não roteável para envio), então priorizamos SenderAlt.
-    const from = cleanJid(info.SenderAlt || info.Sender || info.Chat || '')
+    // Contabo pode mandar o número real em Sender (ex: 5521...@s.whatsapp.net)
+    // e SenderAlt pode vir como LID (não roteável). Então só usamos SenderAlt se parecer telefone.
+    const senderAlt = String(info.SenderAlt || '')
+    const sender = String(info.Sender || '')
+    const chat = String(info.Chat || '')
+
+    const senderAltDigits = cleanJid(senderAlt)
+    const senderDigits = cleanJid(sender)
+
+    const looksLikePhone = (digits: string) => digits.length >= 10 && digits.startsWith('55')
+
+    const from = looksLikePhone(senderAltDigits)
+      ? senderAltDigits
+      : (looksLikePhone(senderDigits) ? senderDigits : cleanJid(chat))
+
     const to = String(payload.instanceName || '')
 
     const text =
