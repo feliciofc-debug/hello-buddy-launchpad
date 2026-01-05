@@ -96,45 +96,47 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-6">
-      <div className="max-w-md w-full">
+    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-start sm:items-center justify-center p-4 sm:p-6 overflow-auto">
+      <div className="max-w-md w-full py-4 sm:py-0">
         {/* Botão Voltar */}
         <button 
           onClick={() => navigate('/')} 
-          className="flex items-center gap-2 text-purple-300 hover:text-white mb-8 transition"
+          className="flex items-center gap-2 text-purple-300 hover:text-white mb-4 sm:mb-8 transition text-sm sm:text-base"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           Voltar para início
         </button>
 
         {/* Card Login */}
-        <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-8 shadow-2xl">
+        <div className="bg-slate-800/50 backdrop-blur-lg border border-purple-500/30 rounded-2xl p-5 sm:p-8 shadow-2xl">
           {/* Logo */}
-          <div className="text-center mb-8">
-            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-3 rounded-xl inline-block mb-4">
-              <svg className="w-10 h-10" fill="white" viewBox="0 0 24 24">
+          <div className="text-center mb-5 sm:mb-8">
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 p-2 sm:p-3 rounded-xl inline-block mb-3 sm:mb-4">
+              <svg className="w-8 h-8 sm:w-10 sm:h-10" fill="white" viewBox="0 0 24 24">
                 <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Bem-vindo de Volta!</h1>
-            <p className="text-purple-300">Entre para acessar sua conta</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">Bem-vindo de Volta!</h1>
+            <p className="text-purple-300 text-sm sm:text-base">Entre para acessar sua conta</p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
             {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-purple-300 mb-2">
+              <label className="block text-sm font-medium text-purple-300 mb-1.5 sm:mb-2">
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
+                <Mail className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
                 <input
                   type="email"
                   required
+                  autoComplete="email"
+                  inputMode="email"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full bg-slate-700/50 text-white pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
+                  className="w-full bg-slate-700/50 text-white text-base pl-10 sm:pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
                   placeholder="seu@email.com"
                 />
               </div>
@@ -142,23 +144,24 @@ export default function Login() {
 
             {/* Senha */}
             <div>
-              <label className="block text-sm font-medium text-purple-300 mb-2">
+              <label className="block text-sm font-medium text-purple-300 mb-1.5 sm:mb-2">
                 Senha
               </label>
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
+                <Lock className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
                 <input
                   type={showPassword ? "text" : "password"}
                   required
+                  autoComplete="current-password"
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  className="w-full bg-slate-700/50 text-white pl-12 pr-12 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
+                  className="w-full bg-slate-700/50 text-white text-base pl-10 sm:pl-12 pr-12 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-purple-400 hover:text-purple-300 transition"
+                  className="absolute right-3 sm:right-4 top-1/2 transform -translate-y-1/2 text-purple-400 hover:text-purple-300 transition"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -180,11 +183,11 @@ export default function Login() {
             </div>
 
             {/* Botão Login */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col sm:grid sm:grid-cols-2 gap-3 sm:gap-4">
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
+                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 text-base"
               >
                 {isLoading ? 'Entrando...' : 'Entrar'}
               </button>
@@ -192,7 +195,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => navigate('/cadastro')}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition"
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition text-base"
               >
                 Criar Conta
               </button>
@@ -200,7 +203,7 @@ export default function Login() {
           </form>
 
           {/* Divider */}
-          <div className="relative my-8">
+          <div className="relative my-5 sm:my-8">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-600"></div>
             </div>
@@ -211,10 +214,10 @@ export default function Login() {
 
           {/* Criar Conta */}
           <div className="text-center">
-            <p className="text-slate-400 mb-4">Ainda não tem conta?</p>
+            <p className="text-slate-400 mb-3 sm:mb-4 text-sm sm:text-base">Ainda não tem conta?</p>
             <button
               onClick={() => navigate('/cadastro')}
-              className="w-full border-2 border-purple-500/50 text-purple-300 py-3 rounded-lg font-semibold hover:bg-purple-500/10 transition"
+              className="w-full border-2 border-purple-500/50 text-purple-300 py-3 rounded-lg font-semibold hover:bg-purple-500/10 transition text-base"
             >
               Criar Conta Grátis
             </button>
