@@ -54,13 +54,13 @@ function Landing() {
               {/* Esses dois somem em telas menores (celular/tablet) */}
               <button
                 onClick={() => scrollToSection('planos')}
-                className="hidden md:inline-flex bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
+                className="hidden lg:inline-flex bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
               >
                 Planos
               </button>
               <button
                 onClick={() => navigate('/marketplace')}
-                className="hidden md:inline-flex bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
+                className="hidden lg:inline-flex bg-gray-700 hover:bg-gray-600 text-white px-3 sm:px-4 py-2 rounded-lg font-semibold transition text-sm sm:text-base"
               >
                 Marketplace
               </button>
