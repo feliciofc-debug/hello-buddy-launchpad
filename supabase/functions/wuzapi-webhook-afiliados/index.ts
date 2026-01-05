@@ -253,8 +253,16 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
       return { from: '', to: '', type: 'text', text: '', timestamp: Date.now() }
     }
 
-    const cleanJid = (jid: string) =>
-      (jid || '').replace('@s.whatsapp.net', '').replace('@c.us', '').replace(/:\d+@/, '@').replace(/\D/g, '')
+    const cleanJid = (jid: string) => {
+      // Remove sufixos WhatsApp e extrai apenas dígitos
+      // Ex: "5521995379550:11@s.whatsapp.net" -> "5521995379550"
+      const cleaned = (jid || '')
+        .replace('@s.whatsapp.net', '')
+        .replace('@c.us', '')
+        .replace('@lid', '')
+        .replace(/:\d+$/, '') // Remove :XX no final (device ID)
+      return cleaned.replace(/\D/g, '') // Só dígitos
+    }
 
     // Contabo costuma mandar o número real em SenderAlt (ex: 5521...@s.whatsapp.net).
     // Sender/Chat podem vir como LID (não roteável para envio), então priorizamos SenderAlt.
