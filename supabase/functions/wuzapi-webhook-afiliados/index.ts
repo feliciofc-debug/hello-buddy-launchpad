@@ -155,14 +155,20 @@ serve(async (req) => {
       )
     }
 
-    // Buscar afiliado pelo número que RECEBEU a mensagem (wuzapi_jid)
+    // Buscar afiliado pelo número que RECEBEU a mensagem (wuzapi_jid) OU pelo instanceName (wuzapi_instance_id)
     const affiliateInfo = await findAffiliateByReceivingNumber(supabase, message.to || '')
     const wuzapiToken = affiliateInfo?.wuzapi_token
     const userId = affiliateInfo?.user_id
 
+    // Sem token do afiliado: não responde (evita sair pelo PJ)
     if (!wuzapiToken) {
-      console.log('⚠️ [AFILIADO-FUNIL] Token do afiliado não encontrado, usando token admin')
+      console.log('🚫 [AFILIADO-FUNIL] Token do afiliado não encontrado. Abortando envio para evitar PJ.')
+      return new Response(
+        JSON.stringify({ success: true, message: 'Ignorado - token afiliado ausente' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
+
 
     // Verificar blacklist
     const isBlacklisted = await checkBlacklist(supabase, message.from)
@@ -220,23 +226,37 @@ serve(async (req) => {
 async function findAffiliateByReceivingNumber(supabase: any, toNumber: string): Promise<any> {
   if (!toNumber) return null
 
-  // Limpar número
-  const cleanNumber = toNumber.replace(/\D/g, '')
+  const raw = String(toNumber).trim()
+  const cleanNumber = raw.replace(/\D/g, '')
 
+  // 1) Quando vier número/JID, buscar por wuzapi_jid
+  if (cleanNumber.length >= 8) {
+    const { data, error } = await supabase
+      .from('clientes_afiliados')
+      .select('id, user_id, wuzapi_token, wuzapi_jid, wuzapi_instance_id')
+      .or(`wuzapi_jid.eq.${cleanNumber},wuzapi_jid.ilike.%${cleanNumber}%`)
+      .limit(1)
+      .single()
+
+    if (!error && data) return data
+  }
+
+  // 2) Quando vier instanceName (ex: "AMZ-Ofertas"), buscar por wuzapi_instance_id
   const { data, error } = await supabase
     .from('clientes_afiliados')
-    .select('id, user_id, wuzapi_token, wuzapi_jid')
-    .or(`wuzapi_jid.eq.${cleanNumber},wuzapi_jid.ilike.%${cleanNumber}%`)
+    .select('id, user_id, wuzapi_token, wuzapi_jid, wuzapi_instance_id')
+    .or(`wuzapi_instance_id.eq.${raw},wuzapi_instance_id.ilike.%${raw}%`)
     .limit(1)
     .single()
 
   if (error) {
-    console.log('ℹ️ [AFILIADO-FUNIL] Afiliado não encontrado para:', toNumber)
+    console.log('ℹ️ [AFILIADO-FUNIL] Afiliado não encontrado para:', raw)
     return null
   }
 
   return data
 }
+
 
 // ============================================
 // HELPER: PARSE WUZAPI PAYLOAD
@@ -1195,17 +1215,14 @@ async function logEbookDelivery(supabase: any, delivery: any) {
 // ============================================
 // WHATSAPP: SEND MESSAGE
 // ============================================
-async function sendWhatsAppMessage(to: string, message: string, _customToken?: string | null) {
-  const WUZAPI_URL = Deno.env.get('WUZAPI_URL')
-  const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN')
+async function sendWhatsAppMessage(to: string, message: string, customToken?: string | null) {
+  const CONTABO_WUZAPI_URL = "https://api2.amzofertas.com.br"
 
-  if (!WUZAPI_URL || !WUZAPI_TOKEN) {
-    console.error('❌ [AFILIADO-FUNIL] WUZAPI não configurado!')
+  // Token do afiliado é obrigatório para garantir que a resposta saia do número correto (Contabo)
+  if (!customToken) {
+    console.error('❌ [AFILIADO-FUNIL] Token do afiliado ausente (customToken).')
     return
   }
-
-  // Normalizar baseUrl (evitar "/" duplicado)
-  const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL
 
   // Formatar número (apenas dígitos) e garantir +55 quando necessário
   let formattedPhone = to.replace(/\D/g, '')
@@ -1214,9 +1231,9 @@ async function sendWhatsAppMessage(to: string, message: string, _customToken?: s
   }
 
   try {
-    const response = await fetch(`${baseUrl}/chat/send/text`, {
+    const response = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/text`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+      headers: { 'Content-Type': 'application/json', 'Token': customToken },
       body: JSON.stringify({ Phone: formattedPhone, Body: message })
     })
 
@@ -1235,14 +1252,11 @@ async function sendWhatsAppMessage(to: string, message: string, _customToken?: s
 // ============================================
 // WHATSAPP: SEND PDF
 // ============================================
-async function sendWhatsAppPDF(to: string, filename: string, caption: string, _customToken?: string | null) {
-  const WUZAPI_URL = Deno.env.get('WUZAPI_URL')
-  const WUZAPI_TOKEN = Deno.env.get('WUZAPI_TOKEN')
+async function sendWhatsAppPDF(to: string, filename: string, caption: string, customToken?: string | null) {
+  const CONTABO_WUZAPI_URL = "https://api2.amzofertas.com.br"
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 
-  if (!WUZAPI_URL || !WUZAPI_TOKEN || !SUPABASE_URL) return
-
-  const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL
+  if (!customToken || !SUPABASE_URL) return
 
   // Formatar número
   let formattedPhone = to.replace(/\D/g, '')
@@ -1253,23 +1267,24 @@ async function sendWhatsAppPDF(to: string, filename: string, caption: string, _c
   const pdfUrl = `${SUPABASE_URL}/storage/v1/object/public/ebooks/${filename}`
 
   try {
-    const response = await fetch(`${baseUrl}/chat/send/file`, {
+    const response = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/file`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Token': WUZAPI_TOKEN },
+      headers: { 'Content-Type': 'application/json', 'Token': customToken },
       body: JSON.stringify({ Phone: formattedPhone, Url: pdfUrl, Caption: `📚 ${caption}` })
     })
 
     if (!response.ok) {
       console.log('⚠️ [AFILIADO-FUNIL] Fallback para link:', filename)
-      await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
+      await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken)
     } else {
       console.log('✅ [AFILIADO-FUNIL] PDF enviado:', filename)
     }
   } catch (error) {
     console.error('❌ [AFILIADO-FUNIL] Erro ao enviar PDF:', error)
-    await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`)
+    await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken)
   }
 }
+
 
 // ============================================
 // MENSAGENS PADRÃO
