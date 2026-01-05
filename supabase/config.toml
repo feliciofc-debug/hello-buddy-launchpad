@@ -239,3 +239,6 @@ verify_jwt = false
 
 [functions.diagnostico-wuzapi]
 verify_jwt = false
+
+[functions.verificar-webhook-wuzapi]
+verify_jwt = false
