@@ -128,6 +128,24 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
           return;
         }
 
+        // ✅ PROTEÇÃO ANTI-DUPLICIDADE: pegar só a PRIMEIRA campanha pendente
+        // e executá-la UMA VEZ. Próximos horários serão tratados na próxima verificação
+        const campanhaParaExecutar = campanhas[0];
+        const campanhasAExecutar = [campanhaParaExecutar];
+        
+        console.log(`🎯 [AFILIADO] Executando apenas: ${campanhaParaExecutar.nome} (anti-duplicidade)`);
+        
+        // IMPORTANTE: Atualizar proxima_execucao ANTES de enviar para evitar re-execução
+        const proximaExecImediata = calcularProxima(campanhaParaExecutar);
+        await supabase
+          .from('afiliado_campanhas')
+          .update({ proxima_execucao: proximaExecImediata })
+          .eq('id', campanhaParaExecutar.id);
+        
+        console.log(`🔒 [AFILIADO] Próxima execução atualizada para: ${proximaExecImediata}`);
+        
+        // Usar campanhasAExecutar no loop abaixo (apenas 1 campanha por vez)
+
         // Buscar instância WhatsApp do afiliado
         const { data: afiliadoData } = await supabase
           .from('clientes_afiliados')
@@ -143,7 +161,7 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
         }
 
         // EXECUTAR CADA CAMPANHA
-        for (const campanha of campanhas) {
+        for (const campanha of campanhasAExecutar) {
           console.log(`🚀 [AFILIADO] Executando: ${campanha.nome}`);
           toast.info(`🚀 Executando campanha: ${campanha.nome}`);
 
@@ -357,21 +375,18 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
             console.log(`✅ [AFILIADO] Campanha ${campanha.nome}: ${enviados}/${contatos.length} enviados (${pulados} pulados)`);
             toast.success(`✅ Campanha: ${enviados} enviados, ${pulados} protegidos`);
 
-            // Calcular próxima execução
-            const proximaExec = calcularProxima(campanha);
-
-            // Atualizar campanha
+            // Já atualizamos proxima_execucao ANTES do envio (anti-duplicidade)
+            // Agora só atualizamos estatísticas
             await supabase
               .from('afiliado_campanhas')
               .update({
                 ultima_execucao: agora.toISOString(),
-                proxima_execucao: proximaExec,
                 total_enviados: (campanha.total_enviados || 0) + enviados,
-                ativa: proximaExec ? true : false
+                ativa: proximaExecImediata ? true : false
               })
               .eq('id', campanha.id);
 
-            console.log(`📅 [AFILIADO] Próxima execução: ${proximaExec ? new Date(proximaExec).toLocaleString('pt-BR') : 'Não repete'}`);
+            console.log(`📅 [AFILIADO] Campanha finalizada. Próxima: ${proximaExecImediata ? new Date(proximaExecImediata).toLocaleString('pt-BR') : 'Não repete'}`);
 
           } catch (err) {
             console.error(`❌ [AFILIADO] Erro na campanha ${campanha.nome}:`, err);
