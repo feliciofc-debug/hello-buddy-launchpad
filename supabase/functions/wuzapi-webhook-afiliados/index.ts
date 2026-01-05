@@ -449,8 +449,17 @@ async function handleTextMessage(
 
   // ========== FLUXO CONVERSACIONAL ==========
 
-  // ESTADO: Novo usuário ou idle → Iniciar fluxo
+  // Palavras-chave que ativam o funil (link de campanha)
+  const triggerKeywords = ['ebook', 'oferta', 'quero', 'receita', 'airfryer']
+  const isTriggerWord = triggerKeywords.some(kw => textLower.includes(kw))
+
+  // ESTADO: Novo usuário ou idle → Só inicia se tiver palavra-chave
   if (!userState || userState.status === 'idle') {
+    if (!isTriggerWord) {
+      console.log(`⏸️ [AFILIADO-FUNIL] Mensagem ignorada (sem palavra-chave): "${text}"`)
+      return // Não responde - não veio pelo link da campanha
+    }
+    
     await sendWhatsAppMessage(message.from, getMensagemBoasVindas(), wuzapiToken)
     await saveUserState(supabase, message.from, {
       status: 'aguardando_nome',
