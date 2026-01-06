@@ -1585,6 +1585,7 @@ export type Database = {
       clientes_afiliados: {
         Row: {
           afiliado_id: string | null
+          amazon_affiliate_tag: string | null
           created_at: string | null
           data_cadastro: string | null
           data_conexao_whatsapp: string | null
@@ -1602,6 +1603,7 @@ export type Database = {
         }
         Insert: {
           afiliado_id?: string | null
+          amazon_affiliate_tag?: string | null
           created_at?: string | null
           data_cadastro?: string | null
           data_conexao_whatsapp?: string | null
@@ -1619,6 +1621,7 @@ export type Database = {
         }
         Update: {
           afiliado_id?: string | null
+          amazon_affiliate_tag?: string | null
           created_at?: string | null
           data_cadastro?: string | null
           data_conexao_whatsapp?: string | null
