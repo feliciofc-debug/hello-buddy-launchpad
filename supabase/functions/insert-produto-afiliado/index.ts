@@ -5,6 +5,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Função para extrair ASIN de link Amazon
+function extractAsin(url: string): string | null {
+  const patterns = [
+    /\/dp\/([A-Z0-9]{10})/i,
+    /\/gp\/product\/([A-Z0-9]{10})/i,
+    /\/gp\/aw\/d\/([A-Z0-9]{10})/i,
+    /\/product\/([A-Z0-9]{10})/i,
+    /asin=([A-Z0-9]{10})/i,
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match) return match[1];
+  }
+  return null;
+}
+
+// Função para converter link Amazon para formato de afiliado
+function convertAmazonLink(originalLink: string, affiliateTag: string): string {
+  const asin = extractAsin(originalLink);
+  if (asin && affiliateTag) {
+    return `https://www.amazon.com.br/dp/${asin}?tag=${affiliateTag}`;
+  }
+  return originalLink;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -47,10 +73,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Validar se user_id existe em clientes_afiliados
+    // Validar se user_id existe em clientes_afiliados e buscar amazon_affiliate_tag
     const { data: cliente, error: clienteError } = await supabaseAdmin
       .from('clientes_afiliados')
-      .select('id, nome')
+      .select('id, nome, amazon_affiliate_tag')
       .eq('user_id', user_id)
       .single();
 
@@ -63,6 +89,18 @@ Deno.serve(async (req) => {
     }
 
     console.log('✅ Cliente afiliado validado:', cliente.nome);
+
+    // Processar link de afiliado
+    let linkFinal = link_afiliado;
+    
+    // Se for Amazon e o cliente tiver tag configurado, converter automaticamente
+    if (marketplace.toLowerCase().includes('amazon') && cliente.amazon_affiliate_tag) {
+      const linkConvertido = convertAmazonLink(link_afiliado, cliente.amazon_affiliate_tag);
+      if (linkConvertido !== link_afiliado) {
+        console.log('🔗 Link Amazon convertido:', linkConvertido);
+        linkFinal = linkConvertido;
+      }
+    }
 
     // Determinar categoria: usar a enviada se válida, senão default "Casa"
     let categoriaFinal = 'Casa'; // DEFAULT
@@ -83,7 +121,7 @@ Deno.serve(async (req) => {
         titulo: titulo.substring(0, 500),
         preco: preco ? parseFloat(preco) : null,
         imagem_url: imagem_url || null,
-        link_afiliado,
+        link_afiliado: linkFinal,
         marketplace: marketplace.substring(0, 50),
         descricao: descricao ? descricao.substring(0, 2000) : null,
         categoria: categoriaFinal,
@@ -109,7 +147,8 @@ Deno.serve(async (req) => {
         produto: {
           id: produto.id,
           titulo: produto.titulo,
-          marketplace: produto.marketplace
+          marketplace: produto.marketplace,
+          linkConvertido: linkFinal !== link_afiliado
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
