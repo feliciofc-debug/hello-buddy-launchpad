@@ -92,8 +92,6 @@ const Planos = () => {
           
           <PaymentFormDirect
             planName={planoAfiliado.nome}
-            amount={planoAfiliado.precoMensal}
-            planType="monthly"
             userId={user.id}
           />
         </div>

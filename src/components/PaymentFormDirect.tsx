@@ -8,18 +8,15 @@ import { toast } from 'sonner';
 
 interface PaymentFormDirectProps {
   planName: string;
-  amount: number;
-  planType: 'monthly' | 'yearly';
   userId: string;
 }
 
 export default function PaymentFormDirect({ 
   planName, 
-  amount, 
-  planType,
   userId 
 }: PaymentFormDirectProps) {
   const navigate = useNavigate();
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'boleto'>('pix');
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
@@ -41,9 +38,14 @@ export default function PaymentFormDirect({
     cvv: ''
   });
 
-  // Valores: 12x de 597 = 7164, com 10% desconto = 6447.60
-  const valorIntegral = amount * 12; // R$ 7.164,00
-  const valorComDesconto = valorIntegral * 0.9; // R$ 6.447,60
+  // Valores dos planos
+  const PLANO_MENSAL = 297;
+  const PLANO_ANUAL_PARCELA = 237;
+  const PLANO_ANUAL_TOTAL = 2844; // 12 x 237
+
+  // Calcula valores baseado no plano selecionado
+  const valorIntegral = selectedPlan === 'monthly' ? PLANO_MENSAL : PLANO_ANUAL_TOTAL;
+  const valorComDesconto = valorIntegral * 0.9; // 10% desconto PIX
 
   const getDisplayAmount = () => {
     if (paymentMethod === 'pix') {
@@ -135,7 +137,7 @@ export default function PaymentFormDirect({
         },
         metadata: {
           plan_name: planName,
-          plan_type: planType,
+          plan_type: selectedPlan,
           user_id: userId,
           document_type: documentType,
           company_name: documentType === 'cnpj' ? formData.companyName : null
@@ -246,8 +248,8 @@ export default function PaymentFormDirect({
           user_id: userId,
           payment_id: paymentId,
           plan_name: planName,
-          plan_type: planType,
-          amount: amount
+          plan_type: selectedPlan,
+          amount: valorIntegral
         }
       });
 
@@ -284,15 +286,48 @@ export default function PaymentFormDirect({
   return (
     <div className="max-w-3xl mx-auto p-6 bg-card rounded-xl shadow-xl">
       <div className="mb-6 text-center">
-        <h2 className="text-3xl font-bold mb-2">Finalizar Assinatura</h2>
-        <div className="inline-block bg-gradient-to-r from-primary to-primary/80 text-primary-foreground px-6 py-3 rounded-lg mb-3">
-          <p className="text-sm">Plano {planName}</p>
-          <p className="text-2xl font-bold">
-            até 12x de R$ {amount.toFixed(2)}
-          </p>
+        <h2 className="text-3xl font-bold mb-4">Finalizar Assinatura</h2>
+        
+        {/* Seleção de Plano */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          {/* Plano Mensal */}
+          <button
+            onClick={() => setSelectedPlan('monthly')}
+            className={`p-4 rounded-xl border-2 transition-all ${
+              selectedPlan === 'monthly'
+                ? 'border-primary bg-primary/10 shadow-lg'
+                : 'border-border hover:border-primary/50'
+            }`}
+          >
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground mb-1">Mensal</p>
+              <p className="text-3xl font-bold text-primary">R$ {PLANO_MENSAL}</p>
+              <p className="text-xs text-muted-foreground">/mês</p>
+            </div>
+          </button>
+
+          {/* Plano Anual */}
+          <button
+            onClick={() => setSelectedPlan('yearly')}
+            className={`p-4 rounded-xl border-2 transition-all relative ${
+              selectedPlan === 'yearly'
+                ? 'border-green-500 bg-green-500/10 shadow-lg'
+                : 'border-border hover:border-green-500/50'
+            }`}
+          >
+            <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">
+              ECONOMIA
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground mb-1">Anual</p>
+              <p className="text-3xl font-bold text-green-500">12x R$ {PLANO_ANUAL_PARCELA}</p>
+              <p className="text-xs text-muted-foreground">Total: R$ {PLANO_ANUAL_TOTAL.toLocaleString('pt-BR')}</p>
+            </div>
+          </button>
         </div>
-        <div className="text-sm text-muted-foreground">
-          <p>💳 Cartão: R$ {valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} em até 12x</p>
+
+        <div className="text-sm text-muted-foreground mb-2">
+          <p>💳 Cartão: R$ {valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} {selectedPlan === 'yearly' ? 'em até 12x' : ''}</p>
           <p className="text-green-500 font-semibold">📱 PIX: R$ {valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)</p>
         </div>
       </div>

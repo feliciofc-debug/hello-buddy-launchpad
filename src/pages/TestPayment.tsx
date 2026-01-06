@@ -18,8 +18,6 @@ export default function TestPayment() {
         
         <PaymentFormDirect 
           planName="Teste - AMZ Ofertas"
-          amount={12.00}
-          planType="monthly"
           userId="test-user-123"
         />
 
