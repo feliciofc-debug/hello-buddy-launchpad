@@ -96,11 +96,32 @@ export default function AfiliadoDashboard() {
       color: "bg-purple-500"
     },
     { 
-      title: "Produtos", 
+      title: "Produtos Amazon", 
       icon: Package, 
-      path: "/afiliado/produtos",
-      description: "Gerenciar produtos",
+      path: "/afiliado/produtos/amazon",
+      description: "Produtos Amazon",
       color: "bg-orange-500"
+    },
+    { 
+      title: "Produtos Magalu", 
+      icon: Package, 
+      path: "/afiliado/produtos/magalu",
+      description: "Magazine Luiza",
+      color: "bg-blue-500"
+    },
+    { 
+      title: "Produtos M. Livre", 
+      icon: Package, 
+      path: "/afiliado/produtos/mercado-livre",
+      description: "Mercado Livre",
+      color: "bg-yellow-500"
+    },
+    { 
+      title: "Produtos Boticário", 
+      icon: Package, 
+      path: "/afiliado/produtos/boticario",
+      description: "O Boticário",
+      color: "bg-pink-500"
     }
   ];
 
