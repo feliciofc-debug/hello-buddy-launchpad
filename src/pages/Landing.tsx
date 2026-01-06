@@ -285,11 +285,13 @@ function Landing() {
 
               <div className="grid md:grid-cols-2 gap-4 mb-8">
                 {[
-                  "Produtos ilimitados",
-                  "IA para gerar mensagens e posts",
-                  "Campanhas no WhatsApp",
-                  "Agendamento automático",
-                  "Listas de clientes",
+                  "Produtos baixados automaticamente",
+                  "Amazon, Magalu, Mercado Livre, Boticário",
+                  "Mensagens ilimitadas no WhatsApp",
+                  "IA gera textos e vídeos promocionais",
+                  "Campanhas agendadas automáticas",
+                  "Listas segmentadas de clientes",
+                  "Variação de mensagens anti-bloqueio",
                   "Suporte via WhatsApp",
                   "Atualizações gratuitas",
                   "Cancele quando quiser"

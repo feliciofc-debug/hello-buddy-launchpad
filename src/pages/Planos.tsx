@@ -41,11 +41,13 @@ const Planos = () => {
     precoAnualParcela: 237,
     precoAnualTotal: 2844, // 12 x 237
     features: [
-      'Cadastro de produtos ilimitados',
-      'IA para geração de posts automáticos',
-      'Envio direto pelo WhatsApp',
-      'Campanhas agendadas',
-      'Gestão de listas de clientes',
+      'Produtos baixados automaticamente',
+      'Amazon, Magalu, Mercado Livre, Boticário',
+      'Mensagens ilimitadas no WhatsApp',
+      'IA gera textos e vídeos promocionais',
+      'Campanhas agendadas automáticas',
+      'Listas segmentadas de clientes',
+      'Variação de mensagens anti-bloqueio',
       'Suporte via WhatsApp',
       'Atualizações gratuitas'
     ]
