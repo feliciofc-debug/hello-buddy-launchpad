@@ -253,49 +253,46 @@ function Landing() {
       <section id="planos" className="py-20 px-6 bg-slate-900">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">
-              Plano Ideal Para Sua Empresa
-            </h2>
-            <p className="text-xl text-purple-300">Tudo que você precisa para dominar as redes sociais</p>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">Plano Principal</h2>
+            <p className="text-xl text-purple-300">Mensalidade simples, sem pegadinhas</p>
           </div>
 
-          <div className="max-w-2xl mx-auto">
+          <div className="max-w-2xl mx-auto space-y-6">
+            {/* Plano principal */}
             <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-orange-500 rounded-3xl p-10 shadow-2xl relative">
               <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-500 px-6 py-2 rounded-full text-sm font-bold">
-                MAIS POPULAR
+                MAIS VENDIDO
               </div>
-              
+
               <div className="text-center mb-8">
-                <div className="text-6xl mb-4">🏢</div>
-                <h3 className="text-3xl font-bold mb-4">PLANO EMPRESAS</h3>
-                <div className="mb-2">
-                  <span className="bg-gradient-to-r from-red-500 to-orange-500 text-white px-4 py-1 rounded-full text-sm font-bold animate-pulse">
-                    🔥 PRIMEIROS 100 CLIENTES - DESCONTO DE R$ 1.000!
-                  </span>
-                </div>
-                <div className="mb-6">
-                  <div className="text-2xl text-gray-500 line-through mb-1">
-                    De R$ 1.597,00
+                <div className="text-6xl mb-4">🚀</div>
+                <h3 className="text-3xl font-bold mb-4">PLANO AFILIADO</h3>
+
+                <div className="grid sm:grid-cols-2 gap-4 mb-2">
+                  <div className="bg-slate-800/40 border border-slate-700 rounded-2xl p-4">
+                    <p className="text-slate-400 text-sm mb-1">Mensal</p>
+                    <div className="text-5xl font-bold text-green-400">
+                      R$ 297<span className="text-xl text-gray-400">/mês</span>
+                    </div>
                   </div>
-                  <div className="text-5xl font-bold text-green-400 mb-2">
-                    R$ 597<span className="text-xl text-gray-400">/mês</span>
+                  <div className="bg-orange-500/10 border border-orange-500/40 rounded-2xl p-4">
+                    <p className="text-orange-200 text-sm mb-1">Anual</p>
+                    <div className="text-3xl font-bold text-white">12x R$ 237</div>
+                    <p className="text-slate-400 text-xs mt-1">(total R$ 2.844)</p>
                   </div>
-                <p className="text-purple-300">até 12x de R$ 597,00 ou R$ 6.447,60 no PIX (10% off)</p>
                 </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4 mb-8">
                 {[
-                  "Postagens Ilimitadas",
-                  "IA Avançada (Gemini)",
-                  "Instagram + Facebook",
-                  "Agendamento Automático",
-                  "Biblioteca de Conteúdo",
-                  "Catálogo de Produtos",
-                  "Análise de Desempenho",
-                  "Suporte Prioritário",
-                  "Atualizações Gratuitas",
-                  "7 Dias Grátis (Sem Cartão)"
+                  "Produtos ilimitados",
+                  "IA para gerar mensagens e posts",
+                  "Campanhas no WhatsApp",
+                  "Agendamento automático",
+                  "Listas de clientes",
+                  "Suporte via WhatsApp",
+                  "Atualizações gratuitas",
+                  "Cancele quando quiser"
                 ].map((feature, index) => (
                   <div key={index} className="flex items-center gap-3">
                     <span className="text-green-400 text-xl">✅</span>
@@ -306,26 +303,39 @@ function Landing() {
 
               <button
                 onClick={() => navigate('/planos')}
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2 mb-4"
+                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
               >
-                🚀 CONTRATAR AGORA
+                🚀 Ver planos e contratar
               </button>
 
-              <Button 
-                size="lg" 
-                onClick={() => navigate('/cadastro')}
-                className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-xl py-8 h-auto font-bold"
-              >
-                COMEÇAR TESTE GRÁTIS
-              </Button>
-
               <p className="text-center mt-6 text-sm text-slate-400">
-                💳 Sem compromisso. Cancele quando quiser. Sem taxa de setup.
+                💳 Pagamento seguro. Acesso imediato após confirmação.
               </p>
             </div>
 
-            <p className="text-center mt-8 text-lg text-purple-300">
-              ✨ Mais de 500 empresas já confiam na AMZ Ofertas
+            {/* Card Plano Empresarial */}
+            <div className="bg-gradient-to-br from-purple-900/50 to-slate-800/50 border border-purple-500/40 rounded-2xl p-8">
+              <div className="flex flex-col md:flex-row items-center gap-6">
+                <div className="text-5xl">🏭</div>
+                <div className="flex-1 text-center md:text-left">
+                  <h3 className="text-2xl font-bold mb-2">Plano Empresarial (Distribuidoras e Fábricas)</h3>
+                  <p className="text-slate-300">
+                    Solução personalizada para operações maiores: automações avançadas, múltiplos usuários e integrações.
+                  </p>
+                </div>
+                <a
+                  href="https://wa.me/5521995379550?text=Olá! Tenho interesse no Plano Empresarial AMZ Ofertas para minha empresa (distribuidora/fábrica)."
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transition transform hover:scale-105"
+                >
+                  Falar no WhatsApp
+                </a>
+              </div>
+            </div>
+
+            <p className="text-center text-lg text-purple-300">
+              ✨ Quer o plano certo para o seu caso? A gente te orienta.
             </p>
           </div>
         </div>
