@@ -91,19 +91,17 @@ export default function AdminWuzapiInstancias() {
     ));
 
     try {
-      const CONTABO_URL = 'https://api2.amzofertas.com.br';
-      
-      const response = await fetch(`${CONTABO_URL}/session/status`, {
-        method: 'GET',
-        headers: { 'Token': token.token }
+      // Usar Edge Function como proxy para evitar CORS
+      const { data, error } = await supabase.functions.invoke('verificar-status-wuzapi-afiliado', {
+        body: { token: token.token }
       });
 
-      const result = await response.json();
-      console.log(`Token ${token.token.substring(0,8)}... status:`, result);
+      if (error) throw error;
 
-      const data = result.data || result;
-      const isConnected = data.loggedIn === true || data.LoggedIn === true || data.connected === true;
-      const jid = data.jid || data.Jid || null;
+      console.log(`Token ${token.token.substring(0,8)}... status:`, data);
+
+      const isConnected = data.connected === true;
+      const jid = data.jid || null;
 
       setTokens(prev => prev.map(t => 
         t.id === token.id ? { ...t, status: isConnected ? 'online' : 'offline', jid } : t
@@ -144,24 +142,20 @@ export default function AdminWuzapiInstancias() {
     ));
 
     try {
-      const CONTABO_URL = 'https://api2.amzofertas.com.br';
-      
-      const response = await fetch(`${CONTABO_URL}/chat/send/text`, {
-        method: 'POST',
-        headers: { 
-          'Token': token.token,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          Phone: '5521995379550', // Seu número de teste
-          Body: `🧪 Teste de instância - Token: ${token.token.substring(0,8)}... - ${new Date().toLocaleString('pt-BR')}`
-        })
+      // Usar Edge Function como proxy para evitar CORS
+      const { data, error } = await supabase.functions.invoke('send-wuzapi-message-afiliado', {
+        body: {
+          token: token.token,
+          phone: '5521995379550',
+          message: `🧪 Teste de instância - Token: ${token.token.substring(0,8)}... - ${new Date().toLocaleString('pt-BR')}`
+        }
       });
 
-      const result = await response.json();
-      console.log('Resultado envio:', result);
+      if (error) throw error;
 
-      const success = response.ok && (result.success !== false);
+      console.log('Resultado envio:', data);
+
+      const success = data.success === true;
       
       setTokens(prev => prev.map(t => 
         t.id === token.id ? { ...t, testeEnvio: success ? 'success' : 'error' } : t
@@ -170,7 +164,7 @@ export default function AdminWuzapiInstancias() {
       if (success) {
         toast.success(`Mensagem de teste enviada! Token: ${token.token.substring(0,8)}...`);
       } else {
-        toast.error(`Falha no envio: ${result.error || 'Erro desconhecido'}`);
+        toast.error(`Falha no envio: ${data.error || 'Erro desconhecido'}`);
       }
     } catch (error: any) {
       console.error('Erro ao enviar teste:', error);
