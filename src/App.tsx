@@ -11,6 +11,7 @@ import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import Cadastro from "./pages/Cadastro";
+import CadastroAfiliado from "./pages/CadastroAfiliado";
 import Planos from "./pages/Planos";
 import TestPayment from "./pages/TestPayment";
 import NotFound from "./pages/NotFound";
@@ -91,6 +92,7 @@ const App = () => (
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/cadastro" element={<Cadastro />} />
+            <Route path="/cadastro-afiliado" element={<CadastroAfiliado />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/test-payment" element={<TestPayment />} />
             <Route path="/dashboard" element={<DashboardMetricas />} />
