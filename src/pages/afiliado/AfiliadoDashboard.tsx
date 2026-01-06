@@ -21,11 +21,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-interface ClienteNovo {
+interface LeadCapturado {
   id: string;
   phone: string;
   nome: string | null;
-  categorias_preferidas: string[] | null;
   created_at: string;
 }
 
@@ -41,7 +40,7 @@ export default function AfiliadoDashboard() {
     conversasAtivas: 0,
     whatsappConectado: false
   });
-  const [clientesNovos, setClientesNovos] = useState<ClienteNovo[]>([]);
+  const [leadsCapturados, setLeadsCapturados] = useState<LeadCapturado[]>([]);
 
   useEffect(() => {
     loadStats();
@@ -62,9 +61,9 @@ export default function AfiliadoDashboard() {
         supabase.from('afiliado_disparos').select('id', { count: 'exact' }).eq('user_id', user.id).eq('status', 'agendado'),
         // Campanhas já executadas (total_enviados > 0)
         supabase.from('afiliado_campanhas').select('id, total_enviados').eq('user_id', user.id),
-        // Clientes novos (últimos 30 dias)
-        supabase.from('afiliado_clientes_ebooks')
-          .select('id, phone, nome, categorias_preferidas, created_at')
+        // Leads captados (últimos 30 dias) - usa leads_ebooks que é a tabela correta
+        supabase.from('leads_ebooks')
+          .select('id, phone, nome, created_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(10)
@@ -91,17 +90,14 @@ export default function AfiliadoDashboard() {
         whatsappConectado: !!cliente?.wuzapi_jid
       });
 
-      // Mapear clientes novos
-      const clientes: ClienteNovo[] = (clientesRes.data || []).map(c => ({
+      // Mapear leads capturados
+      const leads: LeadCapturado[] = (clientesRes.data || []).map(c => ({
         id: c.id,
         phone: c.phone,
         nome: c.nome,
-        categorias_preferidas: Array.isArray(c.categorias_preferidas) 
-          ? c.categorias_preferidas as string[]
-          : null,
         created_at: c.created_at
       }));
-      setClientesNovos(clientes);
+      setLeadsCapturados(leads);
 
     } catch (error) {
       console.error('Erro ao carregar stats:', error);
@@ -252,40 +248,31 @@ export default function AfiliadoDashboard() {
           </Card>
         </div>
 
-        {/* Clientes Novos */}
-        {clientesNovos.length > 0 && (
+        {/* Leads Capturados */}
+        {leadsCapturados.length > 0 && (
           <Card className="mb-8">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <UserPlus className="h-5 w-5 text-green-500" />
-                Clientes Recentes
+                Leads Capturados ({leadsCapturados.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
               <ScrollArea className="h-[200px]">
                 <div className="space-y-3">
-                  {clientesNovos.map((cliente) => (
-                    <div key={cliente.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  {leadsCapturados.map((lead) => (
+                    <div key={lead.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                       <div className="flex-1">
                         <p className="font-medium text-sm">
-                          {cliente.nome || 'Cliente'}
+                          {lead.nome || 'Lead'}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {cliente.phone}
+                          {lead.phone}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-1 max-w-[200px] justify-end">
-                        {cliente.categorias_preferidas?.slice(0, 3).map((cat, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {cat}
-                          </Badge>
-                        ))}
-                        {!cliente.categorias_preferidas?.length && (
-                          <Badge variant="outline" className="text-xs">
-                            Sem categoria
-                          </Badge>
-                        )}
-                      </div>
+                      <Badge variant="secondary" className="text-xs">
+                        {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                      </Badge>
                     </div>
                   ))}
                 </div>
