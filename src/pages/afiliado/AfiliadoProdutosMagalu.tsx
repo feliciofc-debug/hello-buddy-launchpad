@@ -140,17 +140,36 @@ export default function AfiliadoProdutosMagalu() {
                     {produto.categoria}
                   </Badge>
                 )}
+                <Badge 
+                  className={`absolute top-2 right-2 text-xs ${
+                    produto.status === 'ativo' 
+                      ? 'bg-green-500 hover:bg-green-600' 
+                      : 'bg-gray-500 hover:bg-gray-600'
+                  }`}
+                >
+                  {produto.status === 'ativo' ? 'Ativo' : 'Inativo'}
+                </Badge>
               </div>
               <CardContent className="p-3">
-                <h3 className="font-medium text-sm line-clamp-2 mb-2">
+                <h3 className="font-medium text-sm line-clamp-2 mb-1">
                   {produto.titulo}
                 </h3>
-                {produto.preco && (
-                  <p className="text-lg font-bold text-green-600">
-                    R$ {produto.preco.toFixed(2)}
-                  </p>
-                )}
-                <div className="flex items-center gap-1 mt-3">
+                <p className="text-xs text-muted-foreground mb-2">Magazine Luiza</p>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs text-muted-foreground">Preço:</span>
+                  <span className="text-lg font-bold text-green-600">
+                    R$ {produto.preco?.toFixed(2) || '0.00'}
+                  </span>
+                </div>
+                <Button
+                  className="w-full mb-2 bg-blue-500 hover:bg-blue-600"
+                  size="sm"
+                  onClick={() => toast.info("Criar campanha - Em desenvolvimento")}
+                >
+                  <ShoppingBag className="h-4 w-4 mr-1" />
+                  Criar Campanha
+                </Button>
+                <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -158,15 +177,16 @@ export default function AfiliadoProdutosMagalu() {
                     onClick={() => window.open(produto.link_afiliado, "_blank")}
                   >
                     <ExternalLink className="h-3 w-3 mr-1" />
-                    Ver
+                    Editar
                   </Button>
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive hover:text-destructive"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-destructive border-destructive hover:bg-destructive/10"
                     onClick={() => handleDelete(produto.id)}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Excluir
                   </Button>
                 </div>
               </CardContent>
