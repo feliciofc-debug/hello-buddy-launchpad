@@ -237,20 +237,38 @@ async function findAffiliateByReceivingNumber(supabase: any, toNumber: string): 
     if (!error && data) return data
   }
 
-  // 2) Quando vier instanceName (ex: "AMZ-Ofertas"), buscar por wuzapi_instance_id
-  const { data, error } = await supabase
+  // 2) Quando vier instanceName (ex: "AMZ-Ofertas 01", "Afiliado-01"), buscar por wuzapi_instance_id
+  // Busca flexível: exata OU contém parte do nome (normalizado sem espaços/hífens)
+  const normalizedRaw = raw.toLowerCase().replace(/[\s\-_]/g, '')
+  
+  const { data: allAffiliates } = await supabase
     .from('clientes_afiliados')
     .select('id, user_id, wuzapi_token, wuzapi_jid, wuzapi_instance_id')
-    .or(`wuzapi_instance_id.eq.${raw},wuzapi_instance_id.ilike.%${raw}%`)
-    .limit(1)
-    .single()
+    .not('wuzapi_token', 'is', null)
 
-  if (error) {
-    console.log('ℹ️ [AFILIADO-FUNIL] Afiliado não encontrado para:', raw)
-    return null
+  if (allAffiliates && allAffiliates.length > 0) {
+    // Busca exata primeiro
+    let found = allAffiliates.find((a: any) => a.wuzapi_instance_id === raw)
+    
+    // Se não encontrou, busca normalizada
+    if (!found) {
+      found = allAffiliates.find((a: any) => {
+        if (!a.wuzapi_instance_id) return false
+        const normalizedId = a.wuzapi_instance_id.toLowerCase().replace(/[\s\-_]/g, '')
+        return normalizedId === normalizedRaw || 
+               normalizedId.includes(normalizedRaw) || 
+               normalizedRaw.includes(normalizedId)
+      })
+    }
+    
+    if (found) {
+      console.log(`✅ [AFILIADO-FUNIL] Afiliado encontrado: ${found.wuzapi_instance_id} para input: ${raw}`)
+      return found
+    }
   }
 
-  return data
+  console.log('ℹ️ [AFILIADO-FUNIL] Afiliado não encontrado para:', raw)
+  return null
 }
 
 
@@ -659,11 +677,20 @@ async function handleNichosInput(
   // Tentar enviar PDF também
   await sendWhatsAppPDF(message.from, 'ebook-airfryer-COMPLETO.pdf', '50 Receitas na Airfryer', wuzapiToken)
 
+  // Registrar entrega do eBook de boas-vindas
+  await logEbookDelivery(supabase, {
+    phone: message.from,
+    ebook_titulo: '50 Receitas na Airfryer',
+    ebook_filename: 'ebook-airfryer-COMPLETO.pdf',
+    categoria: nichosEscolhidos[0] || 'Cozinha',
+    user_id: userId
+  })
+
   await logEvent(supabase, {
     evento: 'lead_captado',
     cliente_phone: message.from,
     user_id: userId,
-    metadata: { nome, nichos: nichosEscolhidos }
+    metadata: { nome, nichos: nichosEscolhidos, ebook_enviado: true }
   })
 }
 
