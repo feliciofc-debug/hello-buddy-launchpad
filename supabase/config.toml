@@ -252,3 +252,6 @@ verify_jwt = false
 [functions.corrigir-webhook-contabo]
 verify_jwt = false
 
+[functions.enviar-extensoes-afiliado]
+verify_jwt = false
+
