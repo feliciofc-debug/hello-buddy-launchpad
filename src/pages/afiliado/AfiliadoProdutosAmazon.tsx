@@ -20,6 +20,7 @@ import {
   AlertCircle,
   ShoppingCart
 } from "lucide-react";
+import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
 
 interface Produto {
   id: string;
@@ -29,6 +30,8 @@ interface Produto {
   link_afiliado: string;
   categoria: string | null;
   status: string | null;
+  descricao?: string | null;
+  marketplace?: string;
 }
 
 export default function AfiliadoProdutosAmazon() {
@@ -39,6 +42,13 @@ export default function AfiliadoProdutosAmazon() {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [tempTag, setTempTag] = useState("");
   const [saving, setSaving] = useState(false);
+  const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
+  const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
+
+  const handleCriarCampanha = (produto: Produto) => {
+    setProdutoSelecionado(produto);
+    setCampanhaModalOpen(true);
+  };
 
   useEffect(() => {
     checkAmazonConfig();
@@ -329,7 +339,7 @@ export default function AfiliadoProdutosAmazon() {
                 <Button
                   className="w-full mb-2 bg-orange-500 hover:bg-orange-600"
                   size="sm"
-                  onClick={() => toast.info("Criar campanha - Em desenvolvimento")}
+                  onClick={() => handleCriarCampanha({...produto, marketplace: 'amazon'})}
                 >
                   <ShoppingCart className="h-4 w-4 mr-1" />
                   Criar Campanha
@@ -416,6 +426,18 @@ export default function AfiliadoProdutosAmazon() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Criar Campanha */}
+      {produtoSelecionado && (
+        <CriarCampanhaAfiliadoModal
+          open={campanhaModalOpen}
+          onOpenChange={(open) => {
+            setCampanhaModalOpen(open);
+            if (!open) setProdutoSelecionado(null);
+          }}
+          produto={produtoSelecionado as any}
+        />
+      )}
     </div>
   );
 }
