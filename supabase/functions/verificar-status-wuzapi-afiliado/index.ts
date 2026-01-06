@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { token } = await req.json();
+    const { token, action, phone, message } = await req.json();
     
     if (!token) {
       return new Response(
@@ -22,6 +22,38 @@ serve(async (req) => {
 
     const CONTABO_URL = Deno.env.get('CONTABO_WUZAPI_URL') || 'https://api2.amzofertas.com.br';
     
+    // Ação: Enviar mensagem de teste
+    if (action === 'send_test' && phone && message) {
+      console.log(`[send_test] Enviando para ${phone} com token: ${token.substring(0, 8)}...`);
+      
+      const sendResponse = await fetch(`${CONTABO_URL}/chat/send/text`, {
+        method: 'POST',
+        headers: { 
+          'Token': token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          Phone: phone.replace(/\D/g, ''),
+          Body: message
+        })
+      });
+
+      const sendResult = await sendResponse.json();
+      console.log(`[send_test] Resposta:`, JSON.stringify(sendResult));
+
+      const sent = sendResponse.ok && sendResult.success !== false;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          sent,
+          raw: sendResult
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Ação padrão: Verificar status
     console.log(`[verificar-status] Verificando token: ${token.substring(0, 8)}...`);
     console.log(`[verificar-status] URL: ${CONTABO_URL}/session/status`);
 

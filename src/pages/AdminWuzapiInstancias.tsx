@@ -142,10 +142,11 @@ export default function AdminWuzapiInstancias() {
     ));
 
     try {
-      // Usar Edge Function como proxy para evitar CORS
-      const { data, error } = await supabase.functions.invoke('send-wuzapi-message-afiliado', {
+      // Usar Edge Function proxy para enviar teste direto
+      const { data, error } = await supabase.functions.invoke('verificar-status-wuzapi-afiliado', {
         body: {
           token: token.token,
+          action: 'send_test',
           phone: '5521995379550',
           message: `🧪 Teste de instância - Token: ${token.token.substring(0,8)}... - ${new Date().toLocaleString('pt-BR')}`
         }
@@ -155,7 +156,7 @@ export default function AdminWuzapiInstancias() {
 
       console.log('Resultado envio:', data);
 
-      const success = data.success === true;
+      const success = data.success === true && data.sent === true;
       
       setTokens(prev => prev.map(t => 
         t.id === token.id ? { ...t, testeEnvio: success ? 'success' : 'error' } : t
