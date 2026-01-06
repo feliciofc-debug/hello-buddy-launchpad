@@ -570,7 +570,11 @@ export default function PaymentFormDirect({
             className="w-full py-6 text-lg"
           >
             {loading ? 'Processando...' : 
-              paymentMethod === 'pix' ? `Gerar PIX - R$ ${valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)` :
+              paymentMethod === 'pix' ? (
+                temDescontoPix 
+                  ? `Gerar PIX - R$ ${valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)`
+                  : `Gerar PIX - R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+              ) :
               paymentMethod === 'card' ? 
                 `Pagar ${installments}x de R$ ${calculateInstallment(installments).toFixed(2)}` :
               `Pagar R$ ${valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
