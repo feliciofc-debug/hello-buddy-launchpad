@@ -304,7 +304,7 @@ function Landing() {
               </div>
 
               <button
-                onClick={() => navigate('/planos')}
+                onClick={() => navigate('/cadastro-afiliado')}
                 className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
               >
                 🚀 Ver planos e contratar
