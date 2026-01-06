@@ -12,11 +12,7 @@ const Planos = () => {
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [step, setStep] = useState<'plano' | 'cadastro' | 'pagamento'>('plano');
-  
-  // Dados do cadastro
-  const [nomeEmpresa, setNomeEmpresa] = useState('');
-  const [segmentoSelecionado, setSegmentoSelecionado] = useState('');
+  const [step, setStep] = useState<'plano' | 'pagamento'>('pagamento'); // Ir direto para pagamento
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -55,53 +51,11 @@ const Planos = () => {
 
   const handleEscolherPlano = () => {
     if (!user) {
-      navigate('/cadastro');
+      navigate('/cadastro-afiliado');
       return;
     }
-    setStep('cadastro');
+    setStep('pagamento');
   };
-
-  const handleContinuarPagamento = async () => {
-    if (!nomeEmpresa.trim()) {
-      toast.error('Por favor, informe o nome da sua empresa');
-      return;
-    }
-    if (!segmentoSelecionado) {
-      toast.error('Por favor, selecione o segmento da sua empresa');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Salvar configuração da empresa
-      const { error } = await supabase
-        .from('empresa_config')
-        .upsert({
-          user_id: user.id,
-          segmento: segmentoSelecionado,
-          nome_empresa: nomeEmpresa,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'user_id'
-        });
-
-      if (error) {
-        console.error('Erro ao salvar:', error);
-        toast.error('Erro ao salvar configuração');
-        return;
-      }
-
-      toast.success('✅ Dados salvos com sucesso!');
-      setStep('pagamento');
-    } catch (error) {
-      console.error('Erro:', error);
-      toast.error('Erro ao salvar');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const segmentoAtual = SEGMENTOS_EMPRESA.find(s => s.id === segmentoSelecionado);
 
   if (checkingAuth) {
     return (
@@ -111,32 +65,27 @@ const Planos = () => {
     );
   }
 
-  // STEP 3: Pagamento
+  // Página de Pagamento para Afiliados
   if (step === 'pagamento') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 py-12">
         <div className="max-w-4xl mx-auto px-6">
           <button
-            onClick={() => setStep('cadastro')}
+            onClick={() => navigate('/cadastro-afiliado')}
             className="text-orange-300 hover:text-white transition mb-6 flex items-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" /> Voltar
           </button>
           
-          {/* Progress indicator */}
+          {/* Progress indicator simplificado */}
           <div className="flex items-center justify-center gap-4 mb-8">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white">✓</div>
-              <span className="text-green-400 text-sm">Plano</span>
-            </div>
-            <div className="w-8 h-1 bg-green-500"></div>
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white">✓</div>
               <span className="text-green-400 text-sm">Cadastro</span>
             </div>
             <div className="w-8 h-1 bg-green-500"></div>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white">3</div>
+              <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white">2</div>
               <span className="text-orange-400 text-sm">Pagamento</span>
             </div>
           </div>
@@ -152,158 +101,7 @@ const Planos = () => {
     );
   }
 
-  // STEP 2: Cadastro da Empresa e Segmento
-  if (step === 'cadastro') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 py-12">
-        <div className="max-w-4xl mx-auto px-6">
-          <button
-            onClick={() => setStep('plano')}
-            className="text-orange-300 hover:text-white transition mb-6 flex items-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" /> Voltar
-          </button>
-
-          {/* Progress indicator */}
-          <div className="flex items-center justify-center gap-4 mb-8">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white">✓</div>
-              <span className="text-green-400 text-sm">Plano</span>
-            </div>
-            <div className="w-8 h-1 bg-green-500"></div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white">2</div>
-              <span className="text-orange-400 text-sm">Cadastro</span>
-            </div>
-            <div className="w-8 h-1 bg-slate-600"></div>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-white">3</div>
-              <span className="text-slate-400 text-sm">Pagamento</span>
-            </div>
-          </div>
-
-          <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-2xl p-8">
-            <div className="text-center mb-8">
-              <Building2 className="w-12 h-12 text-orange-400 mx-auto mb-4" />
-              <h1 className="text-3xl font-bold text-white mb-2">📝 Cadastro da Empresa</h1>
-              <p className="text-slate-300">Precisamos conhecer seu negócio para personalizar a IA</p>
-            </div>
-
-            {/* Nome da Empresa */}
-            <div className="mb-8">
-              <label className="block text-white font-medium mb-2">Nome da sua Empresa *</label>
-              <input
-                type="text"
-                value={nomeEmpresa}
-                onChange={(e) => setNomeEmpresa(e.target.value)}
-                placeholder="Ex: Mercado Central, Tech Solutions, Distribuidora XYZ"
-                className="w-full p-4 rounded-xl bg-slate-700/50 border border-slate-600 text-white placeholder-slate-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition"
-              />
-            </div>
-
-            {/* Segmento */}
-            <div className="mb-8">
-              <div className="flex items-center gap-2 mb-2">
-                <Target className="w-5 h-5 text-orange-400" />
-                <label className="text-white font-medium">Segmento de Atuação *</label>
-              </div>
-              <p className="text-slate-400 text-sm mb-4">
-                A IA vai adaptar automaticamente o tom e vocabulário baseado no seu segmento
-              </p>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2">
-                {SEGMENTOS_EMPRESA.map(seg => (
-                  <div
-                    key={seg.id}
-                    className={`p-4 rounded-xl cursor-pointer transition-all ${
-                      segmentoSelecionado === seg.id
-                        ? 'bg-orange-500/20 border-2 border-orange-500'
-                        : 'bg-slate-700/30 border-2 border-slate-600 hover:border-orange-500/50'
-                    }`}
-                    onClick={() => setSegmentoSelecionado(seg.id)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="radio"
-                        checked={segmentoSelecionado === seg.id}
-                        onChange={() => setSegmentoSelecionado(seg.id)}
-                        className="mt-1 accent-orange-500"
-                      />
-                      <div className="flex-1">
-                        <p className="font-medium text-white">{seg.nome}</p>
-                        <p className="text-sm text-slate-400">{seg.descricao}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Preview da IA */}
-            {segmentoAtual && (
-              <div className="mb-8 p-6 rounded-xl bg-gradient-to-br from-purple-900/30 to-slate-800/50 border border-purple-500/30">
-                <div className="flex items-center gap-2 mb-4">
-                  <Bot className="w-5 h-5 text-purple-400" />
-                  <h3 className="text-white font-medium">Como a IA vai atender seus clientes:</h3>
-                </div>
-                
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-purple-300 text-sm font-medium">📝 Estilo de Atendimento:</p>
-                    <p className="text-slate-300 text-sm">{segmentoAtual.estilo_venda}</p>
-                  </div>
-                  <div>
-                    <p className="text-purple-300 text-sm font-medium">💬 Tom de Conversa:</p>
-                    <p className="text-slate-300 text-sm capitalize">{segmentoAtual.tom.replace('-', ' ')}</p>
-                  </div>
-                  <div>
-                    <p className="text-purple-300 text-sm font-medium">🔤 Vocabulário Típico:</p>
-                    <div className="flex flex-wrap gap-2 mt-1">
-                      {segmentoAtual.vocabulario.map(palavra => (
-                        <span key={palavra} className="bg-purple-500/20 px-2 py-1 rounded text-xs text-purple-200 border border-purple-500/30">
-                          {palavra}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Botão Continuar */}
-            <button
-              onClick={handleContinuarPagamento}
-              disabled={loading || !nomeEmpresa || !segmentoSelecionado}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-xl hover:shadow-2xl transition transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                  Salvando...
-                </>
-              ) : (
-                <>
-                  Continuar para Pagamento
-                  <ArrowRight className="w-6 h-6" />
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Botão Voltar */}
-          <div className="text-center mt-8">
-            <button
-              onClick={() => navigate('/')}
-              className="text-orange-300 hover:text-white transition"
-            >
-              ← Voltar para a página inicial
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  // Afiliado vai direto para pagamento, sem etapa de segmento
   // STEP 1: Escolha do Plano
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 py-12">
