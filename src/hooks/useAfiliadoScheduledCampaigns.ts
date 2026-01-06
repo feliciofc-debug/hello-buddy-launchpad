@@ -81,9 +81,13 @@ async function registrarEnvio(
   }
 }
 
+// Singleton para evitar múltiplas instâncias executando ao mesmo tempo
+const globalExecutingLock = { current: false };
+const globalLastExecution = { current: 0 };
+const executedCampaignsToday = new Set<string>();
+
 export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
   const isExecuting = useRef(false);
-  const lastExecutionTime = useRef<number>(0);
 
   useEffect(() => {
     console.log('🔄 [HOOK] useAfiliadoScheduledCampaigns iniciado, userId:', userId);
@@ -92,21 +96,31 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
     console.log('🔄 [AFILIADO] Iniciando verificador de campanhas');
 
     const checkAndExecute = async () => {
-      if (isExecuting.current) {
+      // ✅ LOCK GLOBAL para evitar múltiplas instâncias (React Strict Mode)
+      if (globalExecutingLock.current || isExecuting.current) {
+        console.log('🔒 [AFILIADO] Já está executando, ignorando...');
         return;
       }
 
       const now = Date.now();
-      if (now - lastExecutionTime.current < 30000) {
+      if (now - globalLastExecution.current < 30000) {
         return;
       }
 
+      globalExecutingLock.current = true;
       isExecuting.current = true;
-      lastExecutionTime.current = now;
+      globalLastExecution.current = now;
 
       try {
         const agora = new Date();
         console.log('⏰ [AFILIADO] Verificando campanhas:', agora.toLocaleString('pt-BR'));
+
+        // Limpar campanhas executadas de dias anteriores
+        const hoje = agora.toDateString();
+        if (!executedCampaignsToday.has(`_date_${hoje}`)) {
+          executedCampaignsToday.clear();
+          executedCampaignsToday.add(`_date_${hoje}`);
+        }
 
         // Buscar campanhas de AFILIADO que devem executar
         const { data: campanhas, error } = await supabase
@@ -121,9 +135,20 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
 
         if (error) throw error;
 
-        console.log(`📋 [AFILIADO] Encontradas ${campanhas?.length || 0} campanhas para executar`);
+        // ✅ FILTRAR campanhas já executadas nesta sessão
+        const campanhasNaoExecutadas = (campanhas || []).filter(c => {
+          const key = `${c.id}_${c.proxima_execucao}`;
+          if (executedCampaignsToday.has(key)) {
+            console.log(`⏭️ [AFILIADO] Campanha ${c.nome} já executada nesta sessão, pulando...`);
+            return false;
+          }
+          return true;
+        });
 
-        if (!campanhas || campanhas.length === 0) {
+        console.log(`📋 [AFILIADO] Encontradas ${campanhasNaoExecutadas.length} campanhas para executar (${campanhas?.length || 0} total, ${(campanhas?.length || 0) - campanhasNaoExecutadas.length} já executadas)`);
+
+        if (campanhasNaoExecutadas.length === 0) {
+          globalExecutingLock.current = false;
           isExecuting.current = false;
           return;
         }
@@ -138,12 +163,17 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
         if (!afiliadoData?.wuzapi_jid) {
           console.log('❌ [AFILIADO] Sem WhatsApp conectado');
           toast.error('Conecte seu WhatsApp para enviar campanhas');
+          globalExecutingLock.current = false;
           isExecuting.current = false;
           return;
         }
 
-        // EXECUTAR CADA CAMPANHA
-        for (const campanha of campanhas) {
+        // EXECUTAR CADA CAMPANHA (usando lista filtrada!)
+        for (const campanha of campanhasNaoExecutadas) {
+          // ✅ Marcar como executada ANTES de processar (evita duplicação)
+          const campanhaKey = `${campanha.id}_${campanha.proxima_execucao}`;
+          executedCampaignsToday.add(campanhaKey);
+          
           console.log(`🚀 [AFILIADO] Executando: ${campanha.nome}`);
           toast.info(`🚀 Executando campanha: ${campanha.nome}`);
 
@@ -382,6 +412,8 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
       } catch (error) {
         console.error('❌ [AFILIADO] Erro ao verificar campanhas:', error);
       } finally {
+        // ✅ Liberar AMBOS os locks
+        globalExecutingLock.current = false;
         isExecuting.current = false;
       }
     };
