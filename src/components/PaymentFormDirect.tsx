@@ -45,10 +45,12 @@ export default function PaymentFormDirect({
 
   // Calcula valores baseado no plano selecionado
   const valorIntegral = selectedPlan === 'monthly' ? PLANO_MENSAL : PLANO_ANUAL_TOTAL;
-  const valorComDesconto = valorIntegral * 0.9; // 10% desconto PIX
+  // Desconto PIX só para plano anual
+  const temDescontoPix = selectedPlan === 'yearly';
+  const valorComDesconto = temDescontoPix ? valorIntegral * 0.9 : valorIntegral;
 
   const getDisplayAmount = () => {
-    if (paymentMethod === 'pix') {
+    if (paymentMethod === 'pix' && temDescontoPix) {
       return valorComDesconto;
     }
     return valorIntegral;
@@ -121,7 +123,7 @@ export default function PaymentFormDirect({
         ? formData.cpf.replace(/\D/g, '') 
         : formData.cnpj.replace(/\D/g, '');
 
-      const paymentAmount = paymentMethod === 'pix' ? valorComDesconto : valorIntegral;
+      const paymentAmount = (paymentMethod === 'pix' && temDescontoPix) ? valorComDesconto : valorIntegral;
 
       const basePayload = {
         transaction_amount: paymentAmount,
@@ -328,7 +330,11 @@ export default function PaymentFormDirect({
 
         <div className="text-sm text-muted-foreground mb-2">
           <p>💳 Cartão: R$ {valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} {selectedPlan === 'yearly' ? 'em até 12x' : ''}</p>
-          <p className="text-green-500 font-semibold">📱 PIX: R$ {valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)</p>
+          {temDescontoPix ? (
+            <p className="text-green-500 font-semibold">📱 PIX: R$ {valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)</p>
+          ) : (
+            <p className="text-muted-foreground">📱 PIX: R$ {valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+          )}
         </div>
       </div>
 
@@ -350,7 +356,7 @@ export default function PaymentFormDirect({
                 <div className="text-center">
                   <div className="text-3xl mb-2">📱</div>
                   <div className="font-bold">PIX</div>
-                  <div className="text-xs text-green-500 font-semibold mt-1">10% OFF</div>
+                  {temDescontoPix && <div className="text-xs text-green-500 font-semibold mt-1">10% OFF</div>}
                 </div>
               </button>
 
