@@ -7,17 +7,10 @@ import { toast } from 'sonner';
 
 export default function Cadastro() {
   const navigate = useNavigate();
-  const userType = 'empresa'; // Sempre empresa
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingCNPJ, setIsLoadingCNPJ] = useState(false);
-  const [suggestedPlan, setSuggestedPlan] = useState<{
-    plano: string;
-    valor: number;
-    mensagem: string;
-  } | null>(null);
 
   const [formData, setFormData] = useState({
-    // Dados da empresa
     nome: '',
     email: '',
     senha: '',
@@ -104,8 +97,7 @@ export default function Cadastro() {
         }
       }));
 
-      // Detectar plano baseado no CNAE
-      detectPlan(data.cnae_fiscal);
+      // Plano empresarial personalizado - sem pagamento online
       
       toast.success('Empresa encontrada!');
     } catch (error: any) {
@@ -116,40 +108,7 @@ export default function Cadastro() {
     }
   };
 
-  // Detectar plano baseado no CNAE
-  const detectPlan = (cnae: string | number) => {
-    if (!cnae) {
-      console.warn('⚠️ CNAE não fornecido');
-      return;
-    }
-
-    // Converter CNAE para string
-    const cnaeString = String(cnae);
-    console.log('🔍 Detectando plano para CNAE:', cnaeString);
-
-    const cnaesIndustria = ['10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33'];
-    const cnaesConcessionaria = ['4511-1/01', '4511-1/02'];
-    const cnaesDistribuidor = ['4681-8/01', '4681-8/02', '4681-8/99'];
-
-    const cnaeCode = cnaeString.substring(0, 2);
-    console.log('🔍 Código CNAE extraído:', cnaeCode);
-
-    if (cnaesIndustria.includes(cnaeCode) || cnaesConcessionaria.includes(cnaeString) || cnaesDistribuidor.includes(cnaeString)) {
-      console.log('✅ Plano detectado: INDÚSTRIA');
-      setSuggestedPlan({
-        plano: 'premium',
-        valor: 997.00,
-        mensagem: '🏭 Plano Indústria/Distribuidor'
-      });
-    } else {
-      console.log('✅ Plano detectado: EMPRESAS');
-      setSuggestedPlan({
-        plano: 'empresas',
-        valor: 447.00,
-        mensagem: '🏪 Plano Empresas'
-      });
-    }
-  };
+  // Plano empresarial é personalizado - sem detecção automática
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -184,12 +143,11 @@ export default function Cadastro() {
       if (authError) throw authError;
 
       if (authData.user) {
-        // Atualizar perfil com dados da empresa
+        // Atualizar perfil com dados da empresa - plano personalizado
         const profileUpdate: any = {
           tipo: 'empresa',
           cpf_cnpj: formData.cnpj,
-          plano: suggestedPlan?.plano || 'empresas',
-          valor_plano: suggestedPlan?.valor || 447.00,
+          plano: 'empresarial_personalizado',
           razao_social: formData.razaoSocial,
           nome_fantasia: formData.nomeFantasia,
           cnae: formData.cnae,
@@ -388,55 +346,40 @@ export default function Cadastro() {
                   </div>
                 )}
 
-                {/* Card do Plano Sugerido */}
-                {suggestedPlan && (
-                  <div className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-2 border-purple-500 rounded-xl p-6 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-purple-500/20 rounded-full blur-2xl"></div>
-                    
-                    <div className="relative">
-                      <div className="flex items-start justify-between mb-4">
-                        <div>
-                          <div className="inline-flex items-center gap-2 bg-purple-500 text-white px-3 py-1 rounded-full text-sm font-bold mb-2">
-                            <BadgeCheck className="w-4 h-4" />
-                            Plano Recomendado
-                          </div>
-                          <h3 className="text-2xl font-bold text-white">{suggestedPlan.mensagem}</h3>
+                {/* Card Plano Empresarial Personalizado */}
+                <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 border-2 border-blue-500 rounded-xl p-6 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-blue-500/20 rounded-full blur-2xl"></div>
+                  
+                  <div className="relative">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <div className="inline-flex items-center gap-2 bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-bold mb-2">
+                          <BadgeCheck className="w-4 h-4" />
+                          Plano Empresarial
                         </div>
-                        <div className="text-right">
-                          <div className="text-3xl font-bold text-white">R$ {suggestedPlan.valor.toFixed(2)}</div>
-                          <div className="text-sm text-purple-300">/mês</div>
-                        </div>
+                        <h3 className="text-2xl font-bold text-white">🏭 Distribuidoras e Fábricas</h3>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="flex items-center gap-2 text-green-400">
-                          <span>✅</span>
-                          <span>Postagens ilimitadas</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-green-400">
-                          <span>✅</span>
-                          <span>IA avançada</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-green-400">
-                          <span>✅</span>
-                          <span>Suporte prioritário</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-green-400">
-                          <span>✅</span>
-                          <span>Google Ads integrado</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-green-400">
-                          <span>✅</span>
-                          <span>Analytics completo</span>
-                        </div>
-                         <div className="flex items-center gap-2 text-green-400">
-                          <span>✅</span>
-                          <span>Agendamento automático</span>
-                        </div>
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-white">Personalizado</div>
+                        <div className="text-sm text-blue-300">sob consulta</div>
                       </div>
                     </div>
+
+                    <p className="text-slate-300 mb-4">
+                      Após o cadastro, nossa equipe entrará em contato para entender suas necessidades e criar um plano personalizado para seu negócio.
+                    </p>
+
+                    <a 
+                      href="https://wa.me/5521995379550?text=Olá! Acabei de fazer meu cadastro e quero saber mais sobre o plano empresarial."
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition"
+                    >
+                      <Phone className="w-4 h-4" />
+                      Falar com consultor
+                    </a>
                   </div>
-                )}
+                </div>
 
                 {/* Termos */}
                 <div className="flex items-start gap-3">
