@@ -15,7 +15,7 @@ import {
   ChefHat, Home, Smartphone, Gamepad2, Baby, Sparkles, Dumbbell, 
   Wrench, Cat, Shirt, Car, LayoutGrid, Sofa, BookOpen, BookMarked,
   Briefcase, Leaf, Tv, ShowerHead, Zap, UtensilsCrossed, HardHat,
-  Droplets, Pencil
+  Droplets, Pencil, ShoppingCart, ShoppingBag, Handshake, Store
 } from "lucide-react";
 import { toast } from "sonner";
 import ImportCSVAfiliadoModal from "@/components/ImportCSVAfiliadoModal";
@@ -378,8 +378,73 @@ export default function AfiliadoProdutos() {
                 </p>
               </div>
             </div>
-            
-            <div className="flex gap-2">
+          </div>
+
+          {/* Cards de Marketplaces */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <Card 
+              className="cursor-pointer hover:shadow-lg transition-all hover:scale-[1.02] border-orange-200 bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/20 dark:to-background"
+              onClick={() => navigate('/afiliado/produtos/amazon')}
+            >
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <div className="p-3 rounded-full bg-orange-500 text-white mb-3">
+                  <ShoppingCart className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold text-foreground">Amazon</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {produtos.filter(p => p.marketplace?.toLowerCase().includes('amazon')).length} produtos
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="cursor-pointer hover:shadow-lg transition-all hover:scale-[1.02] border-blue-200 bg-gradient-to-br from-blue-50 to-white dark:from-blue-950/20 dark:to-background"
+              onClick={() => navigate('/afiliado/produtos/magalu')}
+            >
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <div className="p-3 rounded-full bg-blue-500 text-white mb-3">
+                  <ShoppingBag className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold text-foreground">Magazine Luiza</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {produtos.filter(p => p.marketplace?.toLowerCase().includes('magalu') || p.marketplace?.toLowerCase().includes('magazine')).length} produtos
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="cursor-pointer hover:shadow-lg transition-all hover:scale-[1.02] border-yellow-200 bg-gradient-to-br from-yellow-50 to-white dark:from-yellow-950/20 dark:to-background"
+              onClick={() => navigate('/afiliado/produtos/mercado-livre')}
+            >
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <div className="p-3 rounded-full bg-yellow-500 text-white mb-3">
+                  <Handshake className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold text-foreground">Mercado Livre</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {produtos.filter(p => p.marketplace?.toLowerCase().includes('mercado') || p.marketplace?.toLowerCase().includes('meli')).length} produtos
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="cursor-pointer hover:shadow-lg transition-all hover:scale-[1.02] border-green-200 bg-gradient-to-br from-green-50 to-white dark:from-green-950/20 dark:to-background"
+              onClick={() => navigate('/afiliado/produtos/boticario')}
+            >
+              <CardContent className="p-4 flex flex-col items-center text-center">
+                <div className="p-3 rounded-full bg-green-600 text-white mb-3">
+                  <Sparkles className="h-6 w-6" />
+                </div>
+                <h3 className="font-semibold text-foreground">O Boticário</h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {produtos.filter(p => p.marketplace?.toLowerCase().includes('boticario')).length} produtos
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Ações */}
+          <div className="flex items-center justify-end gap-2 mb-6">
               <Button variant="outline" onClick={() => setImportModalOpen(true)}>
                 <Upload className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Importar CSV</span>
@@ -477,7 +542,6 @@ export default function AfiliadoProdutos() {
                   </div>
                 </DialogContent>
               </Dialog>
-            </div>
           </div>
 
           {/* Mobile: Filtro horizontal */}

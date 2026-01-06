@@ -65,6 +65,9 @@ import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
 import AfiliadoConectarCelular from "./pages/afiliado/AfiliadoConectarCelular";
 import AfiliadoProdutos from "./pages/afiliado/AfiliadoProdutos";
 import AfiliadoProdutosAmazon from "./pages/afiliado/AfiliadoProdutosAmazon";
+import AfiliadoProdutosMagalu from "./pages/afiliado/AfiliadoProdutosMagalu";
+import AfiliadoProdutosMercadoLivre from "./pages/afiliado/AfiliadoProdutosMercadoLivre";
+import AfiliadoProdutosBoticario from "./pages/afiliado/AfiliadoProdutosBoticario";
 import AfiliadoVendas from "./pages/afiliado/AfiliadoVendas";
 import AfiliadoDisparos from "./pages/afiliado/AfiliadoDisparos";
 import AfiliadoIAMarketing from "./pages/afiliado/AfiliadoIAMarketing";
@@ -143,6 +146,9 @@ const App = () => (
             <Route path="/afiliado/conectar-celular" element={<AfiliadoConectarCelular />} />
             <Route path="/afiliado/produtos" element={<AfiliadoProdutos />} />
             <Route path="/afiliado/produtos/amazon" element={<AfiliadoProdutosAmazon />} />
+            <Route path="/afiliado/produtos/magalu" element={<AfiliadoProdutosMagalu />} />
+            <Route path="/afiliado/produtos/mercado-livre" element={<AfiliadoProdutosMercadoLivre />} />
+            <Route path="/afiliado/produtos/boticario" element={<AfiliadoProdutosBoticario />} />
             <Route path="/afiliado/vendas" element={<AfiliadoVendas />} />
             <Route path="/afiliado/disparos" element={<AfiliadoDisparos />} />
             <Route path="/afiliado/ia-marketing" element={<AfiliadoIAMarketing />} />
