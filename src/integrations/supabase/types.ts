@@ -3077,6 +3077,7 @@ export type Database = {
       leads_ebooks: {
         Row: {
           cashback_ativo: boolean | null
+          categorias: string[] | null
           created_at: string | null
           ebook_recebido: string | null
           id: string
@@ -3092,6 +3093,7 @@ export type Database = {
         }
         Insert: {
           cashback_ativo?: boolean | null
+          categorias?: string[] | null
           created_at?: string | null
           ebook_recebido?: string | null
           id?: string
@@ -3107,6 +3109,7 @@ export type Database = {
         }
         Update: {
           cashback_ativo?: boolean | null
+          categorias?: string[] | null
           created_at?: string | null
           ebook_recebido?: string | null
           id?: string

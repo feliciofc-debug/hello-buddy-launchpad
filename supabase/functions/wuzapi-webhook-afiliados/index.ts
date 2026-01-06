@@ -715,6 +715,7 @@ async function saveLeadAndAddToLists(
         origem_detalhe: 'whatsapp',
         ebook_recebido: 'ebook-airfryer-COMPLETO.html',
         cashback_ativo: true,
+        categorias: nichos, // Salvar as categorias escolhidas
         user_id: userId
       }, { onConflict: 'phone' })
       .select()

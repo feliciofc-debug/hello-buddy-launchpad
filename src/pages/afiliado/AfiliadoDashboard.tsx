@@ -25,6 +25,7 @@ interface LeadCapturado {
   id: string;
   phone: string;
   nome: string | null;
+  categorias: string[] | null;
   created_at: string;
 }
 
@@ -63,7 +64,7 @@ export default function AfiliadoDashboard() {
         supabase.from('afiliado_campanhas').select('id, total_enviados').eq('user_id', user.id),
         // Leads captados (últimos 30 dias) - usa leads_ebooks que é a tabela correta
         supabase.from('leads_ebooks')
-          .select('id, phone, nome, created_at')
+          .select('id, phone, nome, categorias, created_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(10)
@@ -91,10 +92,11 @@ export default function AfiliadoDashboard() {
       });
 
       // Mapear leads capturados
-      const leads: LeadCapturado[] = (clientesRes.data || []).map(c => ({
+      const leads: LeadCapturado[] = (clientesRes.data || []).map((c: any) => ({
         id: c.id,
         phone: c.phone,
         nome: c.nome,
+        categorias: Array.isArray(c.categorias) ? c.categorias : null,
         created_at: c.created_at
       }));
       setLeadsCapturados(leads);
@@ -269,6 +271,15 @@ export default function AfiliadoDashboard() {
                         <p className="text-xs text-muted-foreground">
                           {lead.phone}
                         </p>
+                        {lead.categorias && lead.categorias.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {lead.categorias.map((cat, idx) => (
+                              <Badge key={idx} variant="outline" className="text-xs capitalize">
+                                {cat}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <Badge variant="secondary" className="text-xs">
                         {new Date(lead.created_at).toLocaleDateString('pt-BR')}
