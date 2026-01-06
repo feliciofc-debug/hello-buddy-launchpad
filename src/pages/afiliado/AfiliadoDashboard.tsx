@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   Package, 
   Send, 
@@ -13,9 +15,19 @@ import {
   BookOpen,
   TrendingUp,
   Users,
-  Calendar
+  Calendar,
+  Megaphone,
+  UserPlus
 } from "lucide-react";
 import { toast } from "sonner";
+
+interface ClienteNovo {
+  id: string;
+  phone: string;
+  nome: string | null;
+  categorias_preferidas: string[] | null;
+  created_at: string;
+}
 
 export default function AfiliadoDashboard() {
   const navigate = useNavigate();
@@ -25,9 +37,11 @@ export default function AfiliadoDashboard() {
     totalVendas: 0,
     valorVendas: 0,
     disparosAgendados: 0,
+    campanhasDisparadas: 0,
     conversasAtivas: 0,
     whatsappConectado: false
   });
+  const [clientesNovos, setClientesNovos] = useState<ClienteNovo[]>([]);
 
   useEffect(() => {
     loadStats();
@@ -42,14 +56,23 @@ export default function AfiliadoDashboard() {
       }
 
       // Carregar estatísticas
-      const [produtosRes, vendasRes, disparosRes] = await Promise.all([
+      const [produtosRes, vendasRes, disparosRes, campanhasRes, clientesRes] = await Promise.all([
         supabase.from('afiliado_produtos').select('id', { count: 'exact' }).eq('user_id', user.id),
         supabase.from('afiliado_vendas').select('valor').eq('user_id', user.id),
-        supabase.from('afiliado_disparos').select('id', { count: 'exact' }).eq('user_id', user.id).eq('status', 'agendado')
+        supabase.from('afiliado_disparos').select('id', { count: 'exact' }).eq('user_id', user.id).eq('status', 'agendado'),
+        // Campanhas já executadas (total_enviados > 0)
+        supabase.from('afiliado_campanhas').select('id, total_enviados').eq('user_id', user.id),
+        // Clientes novos (últimos 30 dias)
+        supabase.from('afiliado_clientes_ebooks')
+          .select('id, phone, nome, categorias_preferidas, created_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(10)
       ]);
 
       const totalVendas = vendasRes.data?.length || 0;
       const valorVendas = vendasRes.data?.reduce((acc, v) => acc + Number(v.valor || 0), 0) || 0;
+      const campanhasDisparadas = campanhasRes.data?.filter(c => (c.total_enviados || 0) > 0).length || 0;
 
       // Verificar conexão WhatsApp
       const { data: cliente } = await supabase
@@ -63,9 +86,23 @@ export default function AfiliadoDashboard() {
         totalVendas,
         valorVendas,
         disparosAgendados: disparosRes.count || 0,
+        campanhasDisparadas,
         conversasAtivas: 0,
         whatsappConectado: !!cliente?.wuzapi_jid
       });
+
+      // Mapear clientes novos
+      const clientes: ClienteNovo[] = (clientesRes.data || []).map(c => ({
+        id: c.id,
+        phone: c.phone,
+        nome: c.nome,
+        categorias_preferidas: Array.isArray(c.categorias_preferidas) 
+          ? c.categorias_preferidas as string[]
+          : null,
+        created_at: c.created_at
+      }));
+      setClientesNovos(clientes);
+
     } catch (error) {
       console.error('Erro ao carregar stats:', error);
     } finally {
@@ -143,7 +180,7 @@ export default function AfiliadoDashboard() {
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
@@ -199,7 +236,63 @@ export default function AfiliadoDashboard() {
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
+                  <Megaphone className="h-5 w-5 text-red-500" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.campanhasDisparadas}</p>
+                  <p className="text-xs text-muted-foreground">Campanhas</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
+
+        {/* Clientes Novos */}
+        {clientesNovos.length > 0 && (
+          <Card className="mb-8">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <UserPlus className="h-5 w-5 text-green-500" />
+                Clientes Recentes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ScrollArea className="h-[200px]">
+                <div className="space-y-3">
+                  {clientesNovos.map((cliente) => (
+                    <div key={cliente.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">
+                          {cliente.nome || 'Cliente'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {cliente.phone}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-1 max-w-[200px] justify-end">
+                        {cliente.categorias_preferidas?.slice(0, 3).map((cat, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-xs">
+                            {cat}
+                          </Badge>
+                        ))}
+                        {!cliente.categorias_preferidas?.length && (
+                          <Badge variant="outline" className="text-xs">
+                            Sem categoria
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Status WhatsApp */}
         <Card className={`mb-8 ${stats.whatsappConectado ? 'border-green-500' : 'border-yellow-500'}`}>
