@@ -10,9 +10,9 @@ import {
   Package, 
   ExternalLink, 
   Trash2,
-  Handshake,
-  Construction
+  Handshake
 } from "lucide-react";
+import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
 
 interface Produto {
   id: string;
@@ -22,12 +22,21 @@ interface Produto {
   link_afiliado: string;
   categoria: string | null;
   status: string | null;
+  descricao?: string | null;
+  marketplace?: string;
 }
 
 export default function AfiliadoProdutosMercadoLivre() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
+  const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
+
+  const handleCriarCampanha = (produto: Produto) => {
+    setProdutoSelecionado(produto);
+    setCampanhaModalOpen(true);
+  };
 
   useEffect(() => {
     loadProdutos();
@@ -96,10 +105,6 @@ export default function AfiliadoProdutosMercadoLivre() {
           </div>
         </div>
 
-        <Badge variant="outline" className="text-yellow-600 border-yellow-300 bg-yellow-50">
-          <Construction className="h-3 w-3 mr-1" />
-          Em desenvolvimento
-        </Badge>
       </div>
 
       {/* Conteúdo */}
@@ -164,7 +169,7 @@ export default function AfiliadoProdutosMercadoLivre() {
                 <Button
                   className="w-full mb-2 bg-yellow-500 hover:bg-yellow-600 text-black"
                   size="sm"
-                  onClick={() => toast.info("Criar campanha - Em desenvolvimento")}
+                  onClick={() => handleCriarCampanha({...produto, marketplace: 'mercadolivre'})}
                 >
                   <Handshake className="h-4 w-4 mr-1" />
                   Criar Campanha
@@ -193,6 +198,18 @@ export default function AfiliadoProdutosMercadoLivre() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Modal Criar Campanha */}
+      {produtoSelecionado && (
+        <CriarCampanhaAfiliadoModal
+          open={campanhaModalOpen}
+          onOpenChange={(open) => {
+            setCampanhaModalOpen(open);
+            if (!open) setProdutoSelecionado(null);
+          }}
+          produto={produtoSelecionado as any}
+        />
       )}
     </div>
   );
