@@ -516,6 +516,33 @@ async function handleTextMessage(
     return
   }
 
+  // Comando REINICIAR (zera estado e começa do zero)
+  if (textLower === 'reiniciar' || textLower === 'recomeçar' || textLower === 'novo' || textLower === 'começar') {
+    const cleanPhone = message.from.replace(/\D/g, '')
+    
+    // Deletar estado atual
+    await supabase.from('afiliado_user_states').delete().eq('phone', cleanPhone)
+    
+    // Deletar lead existente (para refazer cadastro)
+    await supabase.from('leads_ebooks').delete().eq('phone', cleanPhone)
+    
+    await sendWhatsAppMessage(
+      message.from,
+      'Pronto! Vamos começar do zero! 🚀\n\nOlá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\nPra eu te conhecer melhor, *qual é o seu nome?*',
+      wuzapiToken
+    )
+    
+    // Criar novo estado aguardando nome
+    await supabase.from('afiliado_user_states').insert({
+      phone: cleanPhone,
+      status: 'aguardando_nome',
+      state: { origem: 'reinicio', user_id: userId }
+    })
+    
+    await logEvent(supabase, { evento: 'conversa_reiniciada', cliente_phone: message.from, user_id: userId })
+    return
+  }
+
   // Comando EBOOK / PRESENTE (reenviar eBook grátis)
   if (textLower === 'ebook' || textLower === 'presente' || textLower === 'receitas') {
     const cleanPhone = message.from.replace(/\D/g, '')
