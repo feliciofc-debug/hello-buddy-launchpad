@@ -799,6 +799,23 @@ async function handleTextMessage(
         user_id: userId
       }, { onConflict: 'phone' })
       
+      // ======= SINCRONIZAR COM afiliado_clientes_ebooks =======
+      await supabase.from('afiliado_clientes_ebooks').upsert({
+        phone: cleanPhone,
+        nome: nomeCliente,
+        categorias_preferidas: categoriasDoState,
+        user_id: userId
+      }, { onConflict: 'phone' })
+      
+      // ======= SINCRONIZAR COM afiliado_cliente_preferencias =======
+      await supabase.from('afiliado_cliente_preferencias').upsert({
+        phone: cleanPhone,
+        categorias_ativas: categoriasDoState,
+        freq_ofertas: 'diaria'
+      }, { onConflict: 'phone' })
+      
+      console.log(`✅ [AMZ-OFERTAS] Cliente salvo: ${nomeCliente}, categorias: ${categoriasDoState.join(', ')}`)
+      
       // Atualizar estado
       await supabase.from('afiliado_user_states').update({
         status: 'aguardando_comprovante',
@@ -807,7 +824,7 @@ async function handleTextMessage(
       
       // Enviar eBook grátis
       await sendEbookBoasVindas(supabase, message.from, nomeCliente, categoriasDoState, wuzapiToken, userId)
-      await logEvent(supabase, { evento: 'nome_capturado', cliente_phone: message.from, user_id: userId, metadata: { nome: nomeCliente } })
+      await logEvent(supabase, { evento: 'nome_capturado', cliente_phone: message.from, user_id: userId, metadata: { nome: nomeCliente, categorias: categoriasDoState } })
       return
     }
     
@@ -1223,20 +1240,21 @@ async function handleImageMessage(
 }
 
 // ============================================
-// GARANTIR QUE LEAD EXISTE
+// GARANTIR QUE LEAD EXISTE E SINCRONIZAR TODAS AS TABELAS
 // ============================================
 async function ensureLeadExists(
   supabase: any,
   phone: string,
   userId: string | null,
-  nome?: string
+  nome?: string,
+  categorias?: string[]
 ): Promise<void> {
   const cleanPhone = phone.replace(/\D/g, '')
   
-  // Verificar se já existe
+  // Verificar se já existe em leads_ebooks
   const { data: existing } = await supabase
     .from('leads_ebooks')
-    .select('id, nome')
+    .select('id, nome, categorias')
     .eq('phone', cleanPhone)
     .single()
 
@@ -1247,21 +1265,47 @@ async function ensureLeadExists(
         .from('leads_ebooks')
         .update({ nome })
         .eq('id', existing.id)
+        
+      // Também sincronizar afiliado_clientes_ebooks
+      await supabase.from('afiliado_clientes_ebooks').upsert({
+        phone: cleanPhone,
+        nome: nome,
+        user_id: userId
+      }, { onConflict: 'phone' })
     }
     return
   }
 
-  // Criar lead
+  const nomeParaSalvar = nome || 'Cliente'
+  const categoriasParaSalvar = categorias || ['Casa']
+
+  // Criar lead em leads_ebooks
   await supabase
     .from('leads_ebooks')
     .insert({
       phone: cleanPhone,
-      nome: nome || 'Cliente',
+      nome: nomeParaSalvar,
+      categorias: categoriasParaSalvar,
       origem: 'ebook_gratuito',
       origem_detalhe: 'whatsapp',
       cashback_ativo: true,
       user_id: userId
     })
+
+  // ======= SINCRONIZAR COM afiliado_clientes_ebooks =======
+  await supabase.from('afiliado_clientes_ebooks').upsert({
+    phone: cleanPhone,
+    nome: nomeParaSalvar,
+    categorias_preferidas: categoriasParaSalvar,
+    user_id: userId
+  }, { onConflict: 'phone' })
+
+  // ======= SINCRONIZAR COM afiliado_cliente_preferencias =======
+  await supabase.from('afiliado_cliente_preferencias').upsert({
+    phone: cleanPhone,
+    categorias_ativas: categoriasParaSalvar,
+    freq_ofertas: 'diaria'
+  }, { onConflict: 'phone' })
 
   // Ativar cashback
   await supabase
@@ -1275,7 +1319,7 @@ async function ensureLeadExists(
       valor_compras_total: 0
     }, { onConflict: 'phone' })
 
-  console.log('✅ [AMZ-OFERTAS] Novo lead criado:', cleanPhone, nome)
+  console.log('✅ [AMZ-OFERTAS] Novo lead criado e sincronizado:', cleanPhone, nomeParaSalvar, categoriasParaSalvar)
 }
 
 // ============================================
