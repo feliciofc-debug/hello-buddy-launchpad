@@ -837,15 +837,14 @@ async function sendEbookBoasVindas(
   // Pequena pausa
   await new Promise(r => setTimeout(r, 2500))
 
-  // Mensagem informativa (SEM cobrar comprovante)
+  // Mensagem informativa sobre conversão de links e cashback
   await sendWhatsAppMessage(
     phone,
-    `💡 *Dica especial:*\n\n` +
-    `Quando você comprar pelos nossos links, você ganha:\n\n` +
-    `✅ *Mais eBooks* de presente (Beleza, Fitness, Bebê...)\n` +
-    `✅ *2% de cashback* que vira PIX depois de 35 dias\n\n` +
-    `É só me mandar o comprovante quando comprar! 😊\n\n` +
-    `Por enquanto, aproveita seu eBook de receitas! 🍟`,
+    `💡 *Dica pra ganhar cashback:*\n\n` +
+    `Me manda qualquer link de produto da:\n` +
+    `🛒 Amazon, Magalu, Mercado Livre, Shopee...\n\n` +
+    `Eu converto automaticamente e você ganha *2% de cashback* que vira PIX! 💰\n\n` +
+    `Aproveita seu eBook e me chama quando quiser ofertas! 🍟`,
     wuzapiToken
   )
 
