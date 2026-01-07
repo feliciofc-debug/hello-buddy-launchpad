@@ -293,7 +293,7 @@ async function findAffiliateByReceivingNumber(supabase: any, toNumber: string): 
   // 2) Quando vier instanceName (ex: "AMZ-Ofertas 01", "Afiliado-01"), buscar por wuzapi_instance_id
   // Busca flexível: exata OU contém parte do nome (normalizado sem espaços/hífens)
   const normalizedRaw = raw.toLowerCase().replace(/[\s\-_]/g, '')
-  
+
   const { data: allAffiliates } = await supabase
     .from('clientes_afiliados')
     .select('id, user_id, wuzapi_token, wuzapi_jid, wuzapi_instance_id')
@@ -302,18 +302,28 @@ async function findAffiliateByReceivingNumber(supabase: any, toNumber: string): 
   if (allAffiliates && allAffiliates.length > 0) {
     // Busca exata primeiro
     let found = allAffiliates.find((a: any) => a.wuzapi_instance_id === raw)
-    
+
     // Se não encontrou, busca normalizada
     if (!found) {
       found = allAffiliates.find((a: any) => {
         if (!a.wuzapi_instance_id) return false
         const normalizedId = a.wuzapi_instance_id.toLowerCase().replace(/[\s\-_]/g, '')
-        return normalizedId === normalizedRaw || 
-               normalizedId.includes(normalizedRaw) || 
-               normalizedRaw.includes(normalizedId)
+        return normalizedId === normalizedRaw || normalizedId.includes(normalizedRaw) || normalizedRaw.includes(normalizedId)
       })
     }
-    
+
+    // Se ainda não encontrou, tenta casar por sufixo numérico (ex: Afiliado-01 <-> AMZ-Ofertas 01)
+    if (!found) {
+      const rawSuffix = (raw.match(/(\d+)$/)?.[1] || '').replace(/^0+/, '')
+      if (rawSuffix) {
+        found = allAffiliates.find((a: any) => {
+          if (!a.wuzapi_instance_id) return false
+          const idSuffix = (String(a.wuzapi_instance_id).match(/(\d+)$/)?.[1] || '').replace(/^0+/, '')
+          return idSuffix && idSuffix === rawSuffix
+        })
+      }
+    }
+
     if (found) {
       console.log(`✅ [AMZ-OFERTAS] Afiliado encontrado: ${found.wuzapi_instance_id} para input: ${raw}`)
       return found
@@ -323,6 +333,7 @@ async function findAffiliateByReceivingNumber(supabase: any, toNumber: string): 
   console.log('ℹ️ [AMZ-OFERTAS] Afiliado não encontrado para:', raw)
   return null
 }
+
 
 
 // ============================================
