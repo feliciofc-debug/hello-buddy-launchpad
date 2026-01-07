@@ -66,67 +66,36 @@ Somos um canal que garimpamos as melhores ofertas da internet pra você. Trabalh
 
 BENEFÍCIOS EXCLUSIVOS:
 
-1. CASHBACK 2%
+1. EBOOK GRÁTIS DE BOAS-VINDAS
+- Todo mundo que entra no grupo ganha o eBook "50 Receitas Airfryer" de PRESENTE!
+- É só me dizer seu nome que eu mando na hora!
+
+2. CASHBACK 2%
 - A cada compra pelo nosso link, você acumula 2% de volta
 - Basta enviar o comprovante aqui que a gente credita
-- Quando juntar, você resgata via PIX
+- Quando juntar R$30, você resgata via PIX (disponível após 35 dias da compra)
 
-2. EBOOKS DE PRESENTE
-- A cada compra validada, você ganha um eBook exclusivo
-- Temos de receitas de Airfryer, organização, finanças...
+3. MAIS EBOOKS DE PRESENTE
+- A cada compra validada, você ganha outros eBooks exclusivos
+- Temos de beleza, fitness, bebê, casa, pet...
 - É só mandar o comprovante!
 
-3. OFERTAS PERSONALIZADAS
+4. OFERTAS PERSONALIZADAS
 - Me conta o que você gosta e eu aviso quando tiver promoção
 - Monitoro preços e te aviso quando baixar
 
 COMO FUNCIONA:
-1. Eu mando ofertas incríveis aqui no WhatsApp
-2. Você clica no link e compra normal no site
-3. Depois me manda o comprovante
-4. Você ganha cashback + eBook de presente!
-
-CATEGORIAS DISPONÍVEIS:
-- Eletrônicos e celulares
-- Casa e cozinha (Airfryer, panelas, etc)
-- Beleza e perfumaria
-- Moda e acessórios
-- Esportes e fitness
-- Bebês e crianças
-- Games e consoles
-- Livros
-- Pet shop
-- Ferramentas
-- Automotivo
-
-PERGUNTAS FREQUENTES:
-
-"Como ganho cashback?"
-→ Compra pelo meu link, manda o comprovante, e eu credito 2% na sua conta!
-
-"Demora pra cair o cashback?"
-→ Valido rapidinho! Geralmente no mesmo dia 😊
-
-"Posso resgatar quanto?"
-→ A partir de R$20 você já pode pedir o PIX!
-
-"As ofertas são confiáveis?"
-→ 100%! São dos sites oficiais, só garantimos o melhor preço 🔒
-
-"Vocês vendem alguma coisa?"
-→ Não vendemos nada! Só garimpamos ofertas e você compra direto no site oficial
-
-"Como recebo as ofertas?"
-→ Fica ligado aqui! Mando as melhores todo dia. Quer que eu priorize alguma categoria?
-
-"Posso devolver se não gostar?"
-→ Claro! A troca/devolução é direto com a loja, normal como qualquer compra
+1. Me diz seu nome e eu mando seu eBook grátis de boas-vindas!
+2. Eu mando ofertas incríveis aqui no WhatsApp
+3. Você clica no link e compra normal no site
+4. Depois me manda o comprovante
+5. Você ganha cashback + eBook de presente!
 
 REGRAS DE RESPOSTA:
-1. Sempre cumprimente se for primeira mensagem
-2. Responda APENAS o que foi perguntado
-3. Se não souber, diga "Deixa eu verificar e te retorno!"
-4. Sempre ofereça ajuda adicional no final
+1. Se for primeira mensagem ou não conhece, PERGUNTE O NOME
+2. Depois que souber o nome, avise sobre o eBook grátis
+3. Responda APENAS o que foi perguntado
+4. Se não souber, diga "Deixa eu verificar e te retorno!"
 5. Se pedirem oferta específica, diga que vai procurar
 6. NUNCA invente informações de produtos ou preços
 7. Se a pessoa quer ver o saldo de cashback, diga que vai verificar
@@ -134,7 +103,7 @@ REGRAS DE RESPOSTA:
 
 INFORMAÇÕES IMPORTANTES:
 - Somos do Rio de Janeiro, mas atendemos o Brasil todo
-- Valor mínimo para resgate de cashback: R$20
+- Valor mínimo para resgate de cashback: R$30 (disponível após 35 dias)
 - Lojas aceitas para comprovante: Amazon, Magalu, Mercado Livre, Shopee, Netshoes, Boticário, L'Occitane`
 
 // ============================================
@@ -536,7 +505,81 @@ async function handleTextMessage(
     return
   }
 
-  // ========== FLUXO COM IA ==========
+  // ========== FLUXO DE BOAS-VINDAS + EBOOK GRÁTIS ==========
+  const cleanPhone = message.from.replace(/\D/g, '')
+  
+  // Verificar se já recebeu o eBook de boas-vindas (grátis)
+  const { data: ebookRecebido } = await supabase
+    .from('afiliado_ebook_deliveries')
+    .select('id')
+    .eq('phone', cleanPhone)
+    .eq('ebook_titulo', '50 Receitas Airfryer')
+    .single()
+
+  // Verificar se temos o nome do cliente nos cadastros (CSV importado)
+  const { data: cadastro } = await supabase
+    .from('cadastros')
+    .select('id, nome, whatsapp')
+    .or(`whatsapp.eq.${cleanPhone},whatsapp.ilike.%${cleanPhone}%`)
+    .single()
+
+  // Se NÃO recebeu eBook grátis ainda
+  if (!ebookRecebido) {
+    // Verificar se a mensagem parece ser um nome (2+ palavras, só letras)
+    const pareceNome = /^[a-zA-ZÀ-ÿ\s]{3,50}$/.test(text) && text.includes(' ')
+    
+    // Ou se é um nome simples (1 palavra com 2+ letras)
+    const nomeSimples = /^[a-zA-ZÀ-ÿ]{2,30}$/.test(text)
+    
+    if (pareceNome || nomeSimples) {
+      // Cliente deu o nome! Atualizar cadastro e enviar eBook grátis
+      const nomeCliente = text.trim()
+      
+      // Atualizar ou criar cadastro com o nome
+      if (cadastro) {
+        await supabase
+          .from('cadastros')
+          .update({ nome: nomeCliente, updated_at: new Date().toISOString() })
+          .eq('id', cadastro.id)
+      } else {
+        await supabase
+          .from('cadastros')
+          .insert({
+            nome: nomeCliente,
+            whatsapp: cleanPhone,
+            origem: 'whatsapp_bot',
+            opt_in: true
+          })
+      }
+
+      // Criar/atualizar lead
+      await ensureLeadExists(supabase, message.from, userId, nomeCliente)
+
+      // Enviar eBook GRÁTIS de boas-vindas
+      await sendEbookBoasVindas(supabase, message.from, nomeCliente, wuzapiToken, userId)
+      return
+    }
+
+    // Se não deu nome ainda, pedir
+    const primeiroNome = cadastro?.nome?.split(' ')[0] || null
+    
+    if (primeiroNome && primeiroNome !== 'Cliente') {
+      // Já temos o nome do CSV, enviar eBook direto
+      await sendEbookBoasVindas(supabase, message.from, primeiroNome, wuzapiToken, userId)
+      return
+    }
+
+    // Pedir o nome
+    await sendWhatsAppMessage(
+      message.from,
+      `Oi! 👋 Bem-vinda à *AMZ Ofertas*!\n\nTenho um presente pra você: o eBook *"50 Receitas Airfryer"* 🍟\n\nPra eu enviar, me diz seu nome? 😊`,
+      wuzapiToken
+    )
+    await logEvent(supabase, { evento: 'solicitou_nome', cliente_phone: message.from, user_id: userId })
+    return
+  }
+
+  // ========== FLUXO COM IA (já recebeu eBook grátis) ==========
   
   // Buscar histórico de conversa
   const conversationHistory = await getConversationHistory(supabase, message.from)
@@ -552,6 +595,10 @@ async function handleTextMessage(
 - Total acumulado: R$ ${(cashbackInfo.total_acumulado || 0).toFixed(2)}
 - Total de compras: ${cashbackInfo.compras_total || 0}`
   }
+  
+  // Nome do cliente para contexto
+  const nomeCliente = cadastro?.nome?.split(' ')[0] || 'amiga'
+  additionalContext += `\n\nNOME DO CLIENTE: ${nomeCliente} (use para personalizar a conversa)`
 
   // Gerar resposta com IA
   const aiResponse = await generateAIResponse(
@@ -573,6 +620,75 @@ async function handleTextMessage(
     user_id: userId,
     metadata: { pergunta: text.slice(0, 100), resposta: aiResponse.slice(0, 100) }
   })
+}
+
+// ============================================
+// ENVIAR EBOOK GRÁTIS DE BOAS-VINDAS
+// ============================================
+async function sendEbookBoasVindas(
+  supabase: any,
+  phone: string,
+  nome: string,
+  wuzapiToken: string | null,
+  userId: string | null
+) {
+  const cleanPhone = phone.replace(/\D/g, '')
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
+  const ebookHtmlUrl = `${SUPABASE_URL}/functions/v1/ebook-airfryer`
+
+  console.log('🎁 [AMZ-OFERTAS] Enviando eBook GRÁTIS para:', nome, phone)
+
+  // Mensagem de confirmação
+  await sendWhatsAppMessage(
+    phone,
+    `Oi ${nome}! 🎉\n\nQue bom ter você aqui!\n\nTô enviando seu eBook *"50 Receitas Airfryer"* de PRESENTE! 🍟`,
+    wuzapiToken
+  )
+
+  // Pequena pausa
+  await new Promise(r => setTimeout(r, 1500))
+
+  // Enviar link HTML
+  await sendWhatsAppMessage(
+    phone,
+    `📚 *50 Receitas Airfryer*\n\n👉 Acesse aqui: ${ebookHtmlUrl}\n\nSalva esse link! 💙`,
+    wuzapiToken
+  )
+
+  // Tentar enviar PDF também
+  await sendWhatsAppPDF(phone, 'ebook-airfryer-COMPLETO.pdf', '50 Receitas Airfryer', wuzapiToken)
+
+  // Pequena pausa
+  await new Promise(r => setTimeout(r, 2000))
+
+  // Mensagem de explicação
+  await sendWhatsAppMessage(
+    phone,
+    `💡 *Dica:* Quando você comprar pelo nosso link, manda o comprovante aqui que você ganha mais eBooks + 2% de cashback! 🤑`,
+    wuzapiToken
+  )
+
+  // Registrar entrega
+  await logEbookDelivery(supabase, {
+    phone: cleanPhone,
+    ebook_titulo: '50 Receitas Airfryer',
+    ebook_filename: 'ebook-airfryer-COMPLETO.pdf',
+    loja: 'GRATUITO',
+    valor_compra: 0,
+    categoria: 'Cozinha',
+    comprovante_url: null,
+    user_id: userId
+  })
+
+  await logEvent(supabase, {
+    evento: 'ebook_gratuito_enviado',
+    cliente_phone: phone,
+    categoria: 'Cozinha',
+    user_id: userId,
+    metadata: { nome, ebook: '50 Receitas Airfryer' }
+  })
+
+  console.log('✅ [AMZ-OFERTAS] eBook grátis enviado para:', nome)
 }
 
 // ============================================
@@ -781,26 +897,36 @@ async function handleImageMessage(
 async function ensureLeadExists(
   supabase: any,
   phone: string,
-  userId: string | null
+  userId: string | null,
+  nome?: string
 ): Promise<void> {
   const cleanPhone = phone.replace(/\D/g, '')
   
   // Verificar se já existe
   const { data: existing } = await supabase
     .from('leads_ebooks')
-    .select('id')
+    .select('id, nome')
     .eq('phone', cleanPhone)
     .single()
 
-  if (existing) return
+  if (existing) {
+    // Atualizar nome se fornecido e diferente
+    if (nome && existing.nome !== nome && existing.nome === 'Cliente') {
+      await supabase
+        .from('leads_ebooks')
+        .update({ nome })
+        .eq('id', existing.id)
+    }
+    return
+  }
 
   // Criar lead
   await supabase
     .from('leads_ebooks')
     .insert({
       phone: cleanPhone,
-      nome: 'Cliente',
-      origem: 'comprovante',
+      nome: nome || 'Cliente',
+      origem: 'ebook_gratuito',
       origem_detalhe: 'whatsapp',
       cashback_ativo: true,
       user_id: userId
@@ -818,7 +944,7 @@ async function ensureLeadExists(
       valor_compras_total: 0
     }, { onConflict: 'phone' })
 
-  console.log('✅ [AMZ-OFERTAS] Novo lead criado:', cleanPhone)
+  console.log('✅ [AMZ-OFERTAS] Novo lead criado:', cleanPhone, nome)
 }
 
 // ============================================
