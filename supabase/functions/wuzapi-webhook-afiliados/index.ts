@@ -516,66 +516,118 @@ async function handleTextMessage(
     .eq('ebook_titulo', '50 Receitas Airfryer')
     .single()
 
-  // Verificar se temos o nome do cliente nos cadastros (CSV importado)
+  // Verificar se temos o nome e categorias do cliente
+  const { data: leadInfo } = await supabase
+    .from('leads_ebooks')
+    .select('id, nome, categorias')
+    .eq('phone', cleanPhone)
+    .single()
+
+  // Verificar cadastro (CSV importado)
   const { data: cadastro } = await supabase
     .from('cadastros')
     .select('id, nome, whatsapp')
     .or(`whatsapp.eq.${cleanPhone},whatsapp.ilike.%${cleanPhone}%`)
     .single()
 
-  // Se NÃO recebeu eBook grátis ainda
+  // Se NÃO recebeu eBook grátis ainda → Fluxo de captação
   if (!ebookRecebido) {
-    // Verificar se a mensagem parece ser um nome (2+ palavras, só letras)
-    const pareceNome = /^[a-zA-ZÀ-ÿ\s]{3,50}$/.test(text) && text.includes(' ')
     
-    // Ou se é um nome simples (1 palavra com 2+ letras)
-    const nomeSimples = /^[a-zA-ZÀ-ÿ]{2,30}$/.test(text)
+    // ETAPA 1: Verificar se já temos o nome
+    const temNome = leadInfo?.nome && leadInfo.nome !== 'Cliente'
+    const nomeDoCSV = cadastro?.nome && cadastro.nome !== 'Cliente' ? cadastro.nome : null
+    const nomeAtual = temNome ? leadInfo.nome : nomeDoCSV
     
-    if (pareceNome || nomeSimples) {
-      // Cliente deu o nome! Atualizar cadastro e enviar eBook grátis
-      const nomeCliente = text.trim()
+    // ETAPA 2: Verificar se já escolheu categorias
+    const temCategorias = leadInfo?.categorias && Array.isArray(leadInfo.categorias) && leadInfo.categorias.length > 0
+    
+    // Se NÃO tem nome ainda
+    if (!nomeAtual) {
+      // Verificar se a mensagem parece ser um nome
+      const pareceNome = /^[a-zA-ZÀ-ÿ\s]{3,50}$/.test(text) && text.includes(' ')
+      const nomeSimples = /^[a-zA-ZÀ-ÿ]{2,30}$/.test(text)
       
-      // Atualizar ou criar cadastro com o nome
-      if (cadastro) {
-        await supabase
-          .from('cadastros')
-          .update({ nome: nomeCliente, updated_at: new Date().toISOString() })
-          .eq('id', cadastro.id)
-      } else {
-        await supabase
-          .from('cadastros')
-          .insert({
-            nome: nomeCliente,
-            whatsapp: cleanPhone,
-            origem: 'whatsapp_bot',
-            opt_in: true
-          })
+      if (pareceNome || nomeSimples) {
+        // Cliente deu o nome! Salvar e pedir categorias
+        const nomeCliente = text.trim()
+        
+        await ensureLeadExists(supabase, message.from, userId, nomeCliente)
+        
+        // Atualizar cadastro
+        if (cadastro) {
+          await supabase.from('cadastros').update({ nome: nomeCliente }).eq('id', cadastro.id)
+        } else {
+          await supabase.from('cadastros').insert({ nome: nomeCliente, whatsapp: cleanPhone, origem: 'whatsapp_bot', opt_in: true })
+        }
+        
+        // Pedir categorias
+        await sendWhatsAppMessage(
+          message.from,
+          `Prazer, ${nomeCliente.split(' ')[0]}! 😊\n\n` +
+          `Pra eu te mandar seu eBook grátis + ofertas do seu interesse, me conta:\n\n` +
+          `*Quais categorias você mais curte?*\n\n` +
+          `🏠 Casa\n🍳 Cozinha\n👶 Bebê\n📱 Tech\n🎮 Gamer\n💄 Beleza\n💪 Fitness\n🔧 Ferramentas\n🐾 Pet\n👗 Moda\n\n` +
+          `_Pode mandar mais de uma! Ex: "Cozinha, Beleza, Pet"_`,
+          wuzapiToken
+        )
+        await logEvent(supabase, { evento: 'nome_capturado', cliente_phone: message.from, user_id: userId, metadata: { nome: nomeCliente } })
+        return
       }
-
-      // Criar/atualizar lead
-      await ensureLeadExists(supabase, message.from, userId, nomeCliente)
-
-      // Enviar eBook GRÁTIS de boas-vindas
-      await sendEbookBoasVindas(supabase, message.from, nomeCliente, wuzapiToken, userId)
+      
+      // Pedir nome
+      await sendWhatsAppMessage(
+        message.from,
+        `Oi! 👋 Bem-vinda à *AMZ Ofertas*!\n\n` +
+        `Tenho um eBook *"50 Receitas Airfryer"* de PRESENTE pra você! 🍟\n\n` +
+        `Pra eu enviar, me diz seu nome? 😊`,
+        wuzapiToken
+      )
+      await logEvent(supabase, { evento: 'solicitou_nome', cliente_phone: message.from, user_id: userId })
       return
     }
-
-    // Se não deu nome ainda, pedir
-    const primeiroNome = cadastro?.nome?.split(' ')[0] || null
     
-    if (primeiroNome && primeiroNome !== 'Cliente') {
-      // Já temos o nome do CSV, enviar eBook direto
-      await sendEbookBoasVindas(supabase, message.from, primeiroNome, wuzapiToken, userId)
+    // Tem nome mas NÃO tem categorias
+    if (!temCategorias) {
+      // Verificar se a mensagem contém categorias
+      const categoriasEncontradas = parseCategoriasFromText(text)
+      
+      if (categoriasEncontradas.length > 0) {
+        // Salvar categorias e enviar eBook
+        await supabase
+          .from('leads_ebooks')
+          .update({ categorias: categoriasEncontradas })
+          .eq('phone', cleanPhone)
+        
+        // Salvar preferências
+        await supabase
+          .from('afiliado_cliente_preferencias')
+          .upsert({
+            phone: cleanPhone,
+            categorias_ativas: categoriasEncontradas,
+            freq_ofertas: 'diaria'
+          }, { onConflict: 'phone' })
+        
+        // Enviar eBook grátis
+        await sendEbookBoasVindas(supabase, message.from, nomeAtual, categoriasEncontradas, wuzapiToken, userId)
+        return
+      }
+      
+      // Pedir categorias
+      await sendWhatsAppMessage(
+        message.from,
+        `Oi ${nomeAtual.split(' ')[0]}! 😊\n\n` +
+        `Pra eu te mandar seu eBook grátis + ofertas personalizadas, me conta:\n\n` +
+        `*Quais categorias você mais curte?*\n\n` +
+        `🏠 Casa\n🍳 Cozinha\n👶 Bebê\n📱 Tech\n🎮 Gamer\n💄 Beleza\n💪 Fitness\n🔧 Ferramentas\n🐾 Pet\n👗 Moda\n\n` +
+        `_Pode mandar mais de uma! Ex: "Cozinha, Beleza, Pet"_`,
+        wuzapiToken
+      )
+      await logEvent(supabase, { evento: 'solicitou_categorias', cliente_phone: message.from, user_id: userId })
       return
     }
-
-    // Pedir o nome
-    await sendWhatsAppMessage(
-      message.from,
-      `Oi! 👋 Bem-vinda à *AMZ Ofertas*!\n\nTenho um presente pra você: o eBook *"50 Receitas Airfryer"* 🍟\n\nPra eu enviar, me diz seu nome? 😊`,
-      wuzapiToken
-    )
-    await logEvent(supabase, { evento: 'solicitou_nome', cliente_phone: message.from, user_id: userId })
+    
+    // Tem nome E categorias → Enviar eBook (caso raro de reprocessamento)
+    await sendEbookBoasVindas(supabase, message.from, nomeAtual, leadInfo.categorias, wuzapiToken, userId)
     return
   }
 
@@ -597,7 +649,7 @@ async function handleTextMessage(
   }
   
   // Nome do cliente para contexto
-  const nomeCliente = cadastro?.nome?.split(' ')[0] || 'amiga'
+  const nomeCliente = leadInfo?.nome?.split(' ')[0] || cadastro?.nome?.split(' ')[0] || 'amiga'
   additionalContext += `\n\nNOME DO CLIENTE: ${nomeCliente} (use para personalizar a conversa)`
 
   // Gerar resposta com IA
@@ -623,30 +675,98 @@ async function handleTextMessage(
 }
 
 // ============================================
+// PARSER DE CATEGORIAS DO TEXTO
+// ============================================
+function parseCategoriasFromText(text: string): string[] {
+  const textLower = text.toLowerCase()
+  const categorias: string[] = []
+  
+  const mapeamento: Record<string, string> = {
+    'casa': 'casa',
+    'cozinha': 'cozinha',
+    'airfryer': 'cozinha',
+    'air fryer': 'cozinha',
+    'panela': 'cozinha',
+    'bebe': 'bebe',
+    'bebê': 'bebe',
+    'criança': 'bebe',
+    'tech': 'tech',
+    'tecnologia': 'tech',
+    'celular': 'tech',
+    'eletronico': 'tech',
+    'eletrônico': 'tech',
+    'gamer': 'gamer',
+    'game': 'gamer',
+    'jogo': 'gamer',
+    'beleza': 'beleza',
+    'maquiagem': 'beleza',
+    'skincare': 'beleza',
+    'perfume': 'beleza',
+    'fitness': 'fitness',
+    'academia': 'fitness',
+    'treino': 'fitness',
+    'esporte': 'fitness',
+    'ferramenta': 'ferramentas',
+    'ferramentas': 'ferramentas',
+    'pet': 'pet',
+    'cachorro': 'pet',
+    'gato': 'pet',
+    'animal': 'pet',
+    'moda': 'moda',
+    'roupa': 'moda',
+    'decoracao': 'decoracao',
+    'decoração': 'decoracao',
+    'automotivo': 'automotivo',
+    'carro': 'automotivo'
+  }
+  
+  for (const [palavra, categoria] of Object.entries(mapeamento)) {
+    if (textLower.includes(palavra) && !categorias.includes(categoria)) {
+      categorias.push(categoria)
+    }
+  }
+  
+  return categorias
+}
+
+// ============================================
 // ENVIAR EBOOK GRÁTIS DE BOAS-VINDAS
 // ============================================
 async function sendEbookBoasVindas(
   supabase: any,
   phone: string,
   nome: string,
+  categorias: string[],
   wuzapiToken: string | null,
   userId: string | null
 ) {
   const cleanPhone = phone.replace(/\D/g, '')
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
   const ebookHtmlUrl = `${SUPABASE_URL}/functions/v1/ebook-airfryer`
+  const primeiroNome = nome.split(' ')[0]
 
-  console.log('🎁 [AMZ-OFERTAS] Enviando eBook GRÁTIS para:', nome, phone)
+  console.log('🎁 [AMZ-OFERTAS] Enviando eBook GRÁTIS para:', nome, phone, categorias)
+
+  // Formatar categorias bonitas
+  const iconesCat: Record<string, string> = {
+    'casa': '🏠', 'cozinha': '🍳', 'bebe': '👶', 'tech': '📱', 'gamer': '🎮',
+    'beleza': '💄', 'fitness': '💪', 'ferramentas': '🔧', 'pet': '🐾', 'moda': '👗',
+    'decoracao': '🎨', 'automotivo': '🚗'
+  }
+  const categoriasFormatadas = categorias.map(c => `${iconesCat[c] || '•'} ${c.charAt(0).toUpperCase() + c.slice(1)}`).join('\n')
 
   // Mensagem de confirmação
   await sendWhatsAppMessage(
     phone,
-    `Oi ${nome}! 🎉\n\nQue bom ter você aqui!\n\nTô enviando seu eBook *"50 Receitas Airfryer"* de PRESENTE! 🍟`,
+    `Perfeito, ${primeiroNome}! 🎉\n\n` +
+    `Suas categorias favoritas:\n${categoriasFormatadas}\n\n` +
+    `Vou te enviar as melhores ofertas dessas categorias! 🔥\n\n` +
+    `Agora seu presente... 🎁`,
     wuzapiToken
   )
 
   // Pequena pausa
-  await new Promise(r => setTimeout(r, 1500))
+  await new Promise(r => setTimeout(r, 2000))
 
   // Enviar link HTML
   await sendWhatsAppMessage(
@@ -659,12 +779,17 @@ async function sendEbookBoasVindas(
   await sendWhatsAppPDF(phone, 'ebook-airfryer-COMPLETO.pdf', '50 Receitas Airfryer', wuzapiToken)
 
   // Pequena pausa
-  await new Promise(r => setTimeout(r, 2000))
+  await new Promise(r => setTimeout(r, 2500))
 
-  // Mensagem de explicação
+  // Mensagem informativa (SEM cobrar comprovante)
   await sendWhatsAppMessage(
     phone,
-    `💡 *Dica:* Quando você comprar pelo nosso link, manda o comprovante aqui que você ganha mais eBooks + 2% de cashback! 🤑`,
+    `💡 *Dica especial:*\n\n` +
+    `Quando você comprar pelos nossos links, você ganha:\n\n` +
+    `✅ *Mais eBooks* de presente (Beleza, Fitness, Bebê...)\n` +
+    `✅ *2% de cashback* que vira PIX depois de 35 dias\n\n` +
+    `É só me mandar o comprovante quando comprar! 😊\n\n` +
+    `Por enquanto, aproveita seu eBook de receitas! 🍟`,
     wuzapiToken
   )
 
@@ -685,10 +810,10 @@ async function sendEbookBoasVindas(
     cliente_phone: phone,
     categoria: 'Cozinha',
     user_id: userId,
-    metadata: { nome, ebook: '50 Receitas Airfryer' }
+    metadata: { nome, categorias, ebook: '50 Receitas Airfryer' }
   })
 
-  console.log('✅ [AMZ-OFERTAS] eBook grátis enviado para:', nome)
+  console.log('✅ [AMZ-OFERTAS] eBook grátis enviado para:', nome, categorias)
 }
 
 // ============================================
