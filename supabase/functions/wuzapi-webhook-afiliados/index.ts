@@ -741,7 +741,7 @@ function parseCategoriasFromText(text: string): string[] {
 }
 
 // ============================================
-// ENVIAR EBOOK GRÁTIS DE BOAS-VINDAS
+// ENVIAR EBOOK GRÁTIS DE BOAS-VINDAS (PDF ANEXADO)
 // ============================================
 async function sendEbookBoasVindas(
   supabase: any,
@@ -752,11 +752,9 @@ async function sendEbookBoasVindas(
   userId: string | null
 ) {
   const cleanPhone = phone.replace(/\D/g, '')
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
-  const ebookHtmlUrl = `${SUPABASE_URL}/functions/v1/ebook-airfryer`
   const primeiroNome = nome.split(' ')[0]
 
-  console.log('🎁 [AMZ-OFERTAS] Enviando eBook GRÁTIS para:', nome, phone, categorias)
+  console.log('🎁 [AMZ-OFERTAS] Enviando eBook GRÁTIS (PDF) para:', nome, phone, categorias)
 
   // Formatar categorias bonitas
   const iconesCat: Record<string, string> = {
@@ -772,17 +770,18 @@ async function sendEbookBoasVindas(
     `Perfeito, ${primeiroNome}! 🎉\n\n` +
     `Suas categorias favoritas:\n${categoriasFormatadas}\n\n` +
     `Vou te enviar as melhores ofertas dessas categorias! 🔥\n\n` +
-    `Agora seu presente... 🎁`,
+    `Aguarda que já te mando seu presente... 🎁`,
     wuzapiToken
   )
 
   // Pequena pausa
   await new Promise(r => setTimeout(r, 2000))
 
-  // Enviar link HTML do eBook (ebook-airfryer-3.html via Edge Function)
-  await sendWhatsAppMessage(
+  // Enviar PDF do eBook como anexo (aparece bonito no WhatsApp)
+  await sendWhatsAppPDF(
     phone,
-    `📚 *50 Receitas Airfryer*\n\n👉 Acesse aqui: ${ebookHtmlUrl}\n\nSalva esse link! 💙`,
+    '50-receitas-airfryer.pdf',
+    '50 Receitas Airfryer - Seu presente! 🍟',
     wuzapiToken
   )
 
