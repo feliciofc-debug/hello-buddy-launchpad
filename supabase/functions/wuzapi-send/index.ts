@@ -68,10 +68,62 @@ Deno.serve(async (req) => {
 
     let url = "";
     let payload: Record<string, unknown> = {};
+    let finalImageUrl = imageUrl;
 
-    if (imageUrl) {
+    // Se a imagem é base64, fazer upload para storage primeiro
+    if (imageUrl && imageUrl.startsWith("data:")) {
+      try {
+        console.log("[wuzapi-send] Detectado base64, fazendo upload...");
+        
+        // Extrair tipo e dados do base64
+        const matches = imageUrl.match(/^data:(.+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          const mimeType = matches[1];
+          const base64Data = matches[2];
+          const extension = mimeType.split("/")[1] || "png";
+          const fileName = `whatsapp-images/${user.id}/${Date.now()}.${extension}`;
+          
+          // Converter base64 para Uint8Array
+          const binaryString = atob(base64Data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          
+          // Usar service role para upload
+          const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+          const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+          
+          const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+            .from("produtos")
+            .upload(fileName, bytes, {
+              contentType: mimeType,
+              upsert: true,
+            });
+
+          if (uploadError) {
+            console.error("[wuzapi-send] Erro no upload:", uploadError);
+            // Se falhar o upload, tentar enviar só texto
+            finalImageUrl = null;
+          } else {
+            // Gerar URL pública
+            const { data: publicUrlData } = supabaseAdmin.storage
+              .from("produtos")
+              .getPublicUrl(fileName);
+            
+            finalImageUrl = publicUrlData?.publicUrl || null;
+            console.log("[wuzapi-send] Imagem uploaded:", finalImageUrl);
+          }
+        }
+      } catch (uploadErr) {
+        console.error("[wuzapi-send] Erro ao processar base64:", uploadErr);
+        finalImageUrl = null;
+      }
+    }
+
+    if (finalImageUrl) {
       url = `${baseUrl}/chat/send/image`;
-      payload = { Phone: cleanPhone, Caption: message, Image: imageUrl };
+      payload = { Phone: cleanPhone, Caption: message, Image: finalImageUrl };
     } else {
       url = `${baseUrl}/chat/send/text`;
       payload = { Phone: cleanPhone, Body: message };
