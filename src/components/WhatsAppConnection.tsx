@@ -110,16 +110,18 @@ export default function WhatsAppConnection() {
       const { data, error } = await supabase
         .from("wuzapi_instances")
         .select("id, instance_name, wuzapi_url, port, is_connected, phone_number")
-        .eq("port", 8081) // Apenas porta 8081 (amz-01)
-        .order("instance_name");
+        .gte("port", 8080) // Portas PJ: 8080-8089
+        .lte("port", 8089)
+        .order("port");
 
       if (error) throw error;
 
       setInstances(data || []);
       
-      // Selecionar primeira instância por padrão
+      // Selecionar primeira instância conectada ou primeira disponível
       if (data && data.length > 0 && !selectedInstanceId) {
-        setSelectedInstanceId(data[0].id);
+        const connected = data.find(i => i.is_connected);
+        setSelectedInstanceId(connected?.id || data[0].id);
       }
     } catch (error) {
       console.error("Erro ao carregar instâncias:", error);
@@ -363,7 +365,26 @@ export default function WhatsAppConnection() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {/* Instância selecionada automaticamente */}
+          {/* Seletor de instância */}
+          {instances.length > 1 && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Selecionar Instância:</label>
+              <Select value={selectedInstanceId || ""} onValueChange={setSelectedInstanceId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  {instances.map((inst) => (
+                    <SelectItem key={inst.id} value={inst.id}>
+                      {inst.instance_name} (porta {inst.port}) {inst.is_connected ? "✅" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Instância selecionada */}
           {selectedInstance && (
             <div className="p-3 rounded-lg bg-muted/50 border">
               <p className="text-sm font-medium">
