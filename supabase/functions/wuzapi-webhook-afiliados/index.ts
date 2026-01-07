@@ -1,6 +1,26 @@
 // supabase/functions/wuzapi-webhook-afiliados/index.ts
 // AMZ Ofertas - Assistente Virtual de Promoções e Ofertas
 // Fluxo conversacional com IA + Cashback 2% + eBooks
+//
+// ╔════════════════════════════════════════════════════════════════════════════╗
+// ║  🔴 GOVERNANÇA: ARQUIVO PROTEGIDO - ALERTA VERMELHO 🔴                    ║
+// ║                                                                            ║
+// ║  Este arquivo NÃO pode ser modificado sem aprovação explícita do usuário. ║
+// ║  Qualquer alteração deve ser:                                              ║
+// ║    1. Mostrada ao usuário ANTES de implementar                             ║
+// ║    2. Aprovada com "SIM" explícito                                         ║
+// ║                                                                            ║
+// ║  Funções críticas:                                                         ║
+// ║    - ensureLeadExists() - Sincronização das 3 tabelas                      ║
+// ║    - handleTextMessage() - Fluxo de captura nome/categorias                ║
+// ║    - handleImageMessage() - Validação de comprovantes                      ║
+// ║    - sendEbookBoasVindas() - Envio de eBook grátis                        ║
+// ║                                                                            ║
+// ║  Tabelas sincronizadas:                                                    ║
+// ║    - leads_ebooks                                                          ║
+// ║    - afiliado_clientes_ebooks                                              ║
+// ║    - afiliado_cliente_preferencias                                         ║
+// ╚════════════════════════════════════════════════════════════════════════════╝
 
 import { createClient } from "npm:@supabase/supabase-js@2.75.0"
 
@@ -1241,6 +1261,7 @@ async function handleImageMessage(
 
 // ============================================
 // GARANTIR QUE LEAD EXISTE E SINCRONIZAR TODAS AS TABELAS
+// ⚠️ GOVERNANÇA: ARQUIVO PROTEGIDO - NÃO MODIFICAR SEM APROVAÇÃO ⚠️
 // ============================================
 async function ensureLeadExists(
   supabase: any,
@@ -1251,6 +1272,28 @@ async function ensureLeadExists(
 ): Promise<void> {
   const cleanPhone = phone.replace(/\D/g, '')
   
+  // ======= BUSCAR DADOS DO STATE SE NÃO FORAM PASSADOS =======
+  let nomeReal = nome
+  let categoriasReais = categorias
+  
+  if (!nomeReal || !categoriasReais) {
+    const { data: userState } = await supabase
+      .from('afiliado_user_states')
+      .select('state')
+      .eq('phone', cleanPhone)
+      .single()
+    
+    if (userState?.state) {
+      const state = userState.state as any
+      if (!nomeReal && state.nome) {
+        nomeReal = state.nome
+      }
+      if (!categoriasReais && state.categorias && state.categorias.length > 0) {
+        categoriasReais = state.categorias
+      }
+    }
+  }
+  
   // Verificar se já existe em leads_ebooks
   const { data: existing } = await supabase
     .from('leads_ebooks')
@@ -1259,25 +1302,49 @@ async function ensureLeadExists(
     .single()
 
   if (existing) {
-    // Atualizar nome se fornecido e diferente
-    if (nome && existing.nome !== nome && existing.nome === 'Cliente') {
+    // Atualizar nome se fornecido e diferente do padrão
+    if (nomeReal && existing.nome !== nomeReal && (existing.nome === 'Cliente' || !existing.nome)) {
       await supabase
         .from('leads_ebooks')
-        .update({ nome })
+        .update({ nome: nomeReal })
         .eq('id', existing.id)
         
       // Também sincronizar afiliado_clientes_ebooks
       await supabase.from('afiliado_clientes_ebooks').upsert({
         phone: cleanPhone,
-        nome: nome,
+        nome: nomeReal,
         user_id: userId
       }, { onConflict: 'phone' })
+      
+      console.log('✅ [AMZ-OFERTAS] Lead atualizado com nome do state:', nomeReal)
+    }
+    
+    // Atualizar categorias se existem no state mas não no lead
+    if (categoriasReais && (!existing.categorias || existing.categorias.length === 0 || (existing.categorias.length === 1 && existing.categorias[0] === 'Casa'))) {
+      await supabase
+        .from('leads_ebooks')
+        .update({ categorias: categoriasReais })
+        .eq('id', existing.id)
+      
+      await supabase.from('afiliado_clientes_ebooks').upsert({
+        phone: cleanPhone,
+        categorias_preferidas: categoriasReais,
+        user_id: userId
+      }, { onConflict: 'phone' })
+      
+      await supabase.from('afiliado_cliente_preferencias').upsert({
+        phone: cleanPhone,
+        categorias_ativas: categoriasReais,
+        freq_ofertas: 'diaria'
+      }, { onConflict: 'phone' })
+      
+      console.log('✅ [AMZ-OFERTAS] Lead atualizado com categorias do state:', categoriasReais)
     }
     return
   }
 
-  const nomeParaSalvar = nome || 'Cliente'
-  const categoriasParaSalvar = categorias || ['Casa']
+  const nomeParaSalvar = nomeReal || 'Cliente'
+  const categoriasParaSalvar = categoriasReais || ['Casa']
 
   // Criar lead em leads_ebooks
   await supabase
