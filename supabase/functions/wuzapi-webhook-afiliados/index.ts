@@ -133,29 +133,43 @@ interface MarketplaceLinkResult {
 }
 
 function detectMarketplaceLink(text: string): MarketplaceLinkResult | null {
-  // Regex para encontrar URLs no texto
   const urlRegex = /(https?:\/\/[^\s]+)/gi
   const matches = text.match(urlRegex)
-  
-  if (!matches || matches.length === 0) return null
-  
+  if (!matches?.length) return null
+
   const url = matches[0]
-  
-  // Detectar marketplace
-  if (url.includes('amazon.com.br') || url.includes('amzn.to') || url.includes('a.co')) {
-    return { url, marketplace: 'amazon' }
+
+  try {
+    const { hostname } = new URL(url)
+    const host = hostname.toLowerCase().replace(/^www\./, '')
+
+    // Magalu / Magazine Você (DEVE vir ANTES de Amazon para evitar conflito com 'a.co' em 'luiza.co')
+    if (
+      host.endsWith('magazineluiza.com.br') ||
+      host.endsWith('magazinevoce.com.br') ||
+      host === 'magalu.com' ||
+      host.endsWith('magalu.com.br')
+    ) return { url, marketplace: 'magalu' }
+
+    // Amazon (domínio real ou encurtadores exatos)
+    if (
+      host === 'amzn.to' ||
+      host === 'a.co' ||
+      host.endsWith('amazon.com.br') ||
+      host.endsWith('amazon.com')
+    ) return { url, marketplace: 'amazon' }
+
+    // Mercado Livre
+    if (host.endsWith('mercadolivre.com.br') || host.endsWith('mercadolibre.com'))
+      return { url, marketplace: 'mercadolivre' }
+
+    // Shopee
+    if (host.endsWith('shopee.com.br')) return { url, marketplace: 'shopee' }
+
+    return null
+  } catch {
+    return null
   }
-  if (url.includes('magazineluiza.com.br') || url.includes('magalu.com') || url.includes('magazinevoce.com.br')) {
-    return { url, marketplace: 'magalu' }
-  }
-  if (url.includes('mercadolivre.com.br') || url.includes('mercadolibre.com')) {
-    return { url, marketplace: 'mercadolivre' }
-  }
-  if (url.includes('shopee.com.br')) {
-    return { url, marketplace: 'shopee' }
-  }
-  
-  return null
 }
 
 function extractAsinFromUrl(url: string): string | null {
