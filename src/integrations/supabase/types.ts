@@ -316,6 +316,30 @@ export type Database = {
         }
         Relationships: []
       }
+      afiliado_conversas: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          phone: string
+          role: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          phone: string
+          role: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          phone?: string
+          role?: string
+        }
+        Relationships: []
+      }
       afiliado_disparos: {
         Row: {
           created_at: string | null
