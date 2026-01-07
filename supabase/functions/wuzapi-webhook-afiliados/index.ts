@@ -2,8 +2,7 @@
 // AMZ Ofertas - Assistente Virtual de Promoções e Ofertas
 // Fluxo conversacional com IA + Cashback 2% + eBooks
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from "npm:@supabase/supabase-js@2.75.0"
 
 // ============================================
 // CORS HEADERS
@@ -206,17 +205,16 @@ function convertToAffiliateLink(url: string, marketplace: string, amazonTag: str
       return `${url}?tag=${amazonTag}`
       
     case 'magalu':
-      // Substituir domínio para Magazine Você (sem parâmetros extras)
+      // Magazine Você: troca domínio e MANTÉM query params (ex: seller_id)
       try {
-        const urlObj = new URL(url)
-        const path = urlObj.pathname // Pega só o path, sem query params
-        return `https://www.magazinevoce.com.br/magazineamzofertas${path}`
+        const u = new URL(url)
+        const pathAndQuery = `${u.pathname}${u.search}`
+        return `https://www.magazinevoce.com.br/magazineamzofertas${pathAndQuery}`
       } catch {
-        // Fallback se URL inválida
-        const cleanUrl = url.split('?')[0] // Remove query params
+        const base = url.split('#')[0]
+        return base
           .replace('www.magazineluiza.com.br', 'www.magazinevoce.com.br/magazineamzofertas')
           .replace('magazineluiza.com.br', 'magazinevoce.com.br/magazineamzofertas')
-        return cleanUrl
       }
       
     case 'mercadolivre':
@@ -232,7 +230,7 @@ function convertToAffiliateLink(url: string, marketplace: string, amazonTag: str
 // ============================================
 // MAIN HANDLER
 // ============================================
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
