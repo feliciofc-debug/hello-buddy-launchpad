@@ -326,6 +326,10 @@ export default function WhatsAppConnection() {
   };
 
   const selectedInstance = instances.find(i => i.id === selectedInstanceId);
+  // Em alguns cenários (ex: modal / cache), o status local pode demorar a sincronizar.
+  // Então consideramos conectado se o banco indica conexão.
+  const isConnected = Boolean(status.connected || selectedInstance?.is_connected);
+  const connectedPhone = status.phone_number ?? selectedInstance?.phone_number ?? null;
 
   if (checkingStatus && instances.length === 0) {
     return (
@@ -354,8 +358,8 @@ export default function WhatsAppConnection() {
                 </CardDescription>
               </div>
             </div>
-            <Badge variant={status.connected ? "default" : "secondary"} className={status.connected ? "bg-green-500" : ""}>
-              {status.connected ? (
+            <Badge variant={isConnected ? "default" : "secondary"} className={isConnected ? "bg-green-500" : ""}>
+              {isConnected ? (
                 <><Wifi className="h-3 w-3 mr-1" /> Conectado</>
               ) : (
                 <><WifiOff className="h-3 w-3 mr-1" /> Desconectado</>
@@ -397,13 +401,13 @@ export default function WhatsAppConnection() {
           )}
 
           {/* Status conectado */}
-          {status.connected && (
+          {isConnected && (
             <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-green-700 dark:text-green-400">WhatsApp Ativo</p>
                   <p className="text-sm text-muted-foreground">
-                    Número: {formatPhone(status.phone_number)}
+                    Número: {formatPhone(connectedPhone)}
                   </p>
                 </div>
                 <Button
@@ -421,7 +425,7 @@ export default function WhatsAppConnection() {
           )}
 
           {/* QR Code */}
-          {qrCode && !status.connected && (
+          {qrCode && !isConnected && (
             <div className="flex flex-col items-center p-6 rounded-lg bg-white border">
               <p className="text-sm text-muted-foreground mb-4">
                 Escaneie o QR Code com seu WhatsApp
@@ -450,7 +454,7 @@ export default function WhatsAppConnection() {
           )}
 
           {/* Botão conectar */}
-          {!status.connected && !qrCode && selectedInstanceId && (
+          {!isConnected && !qrCode && selectedInstanceId && (
             <div className="flex flex-col items-center py-8">
               <div className="p-4 rounded-full bg-muted mb-4">
                 <QrCode className="h-12 w-12 text-muted-foreground" />
