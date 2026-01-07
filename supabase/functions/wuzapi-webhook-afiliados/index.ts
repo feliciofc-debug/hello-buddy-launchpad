@@ -520,22 +520,26 @@ async function handleTextMessage(
   if (textLower === 'reiniciar' || textLower === 'recomeçar' || textLower === 'novo' || textLower === 'começar') {
     const cleanPhone = message.from.replace(/\D/g, '')
     
-    // Deletar estado atual
+    // Deletar TODOS os dados para reinício completo
     await supabase.from('afiliado_user_states').delete().eq('phone', cleanPhone)
-    
-    // Deletar lead existente (para refazer cadastro)
     await supabase.from('leads_ebooks').delete().eq('phone', cleanPhone)
+    await supabase.from('afiliado_ebook_deliveries').delete().eq('phone', cleanPhone)
+    await supabase.from('afiliado_conversas').delete().eq('phone', cleanPhone)
     
     await sendWhatsAppMessage(
       message.from,
-      'Pronto! Vamos começar do zero! 🚀\n\nOlá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\nPra eu te conhecer melhor, *qual é o seu nome?*',
+      'Pronto! Vamos começar do zero! 🚀\n\nOlá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\n' +
+      'Pra te mandar ofertas e eBooks do seu interesse, me conta:\n\n' +
+      '*Quais categorias você mais curte?*\n\n' +
+      '🏠 Casa\n🍳 Cozinha\n👶 Bebê\n📱 Tech\n🎮 Gamer\n💄 Beleza\n💪 Fitness\n🔧 Ferramentas\n🐾 Pet\n👗 Moda\n\n' +
+      '_Pode mandar mais de uma! Ex: "Cozinha, Beleza, Pet"_',
       wuzapiToken
     )
     
-    // Criar novo estado aguardando nome
+    // Criar estado aguardando categorias (nome vem depois)
     await supabase.from('afiliado_user_states').insert({
       phone: cleanPhone,
-      status: 'aguardando_nome',
+      status: 'aguardando_categorias',
       state: { origem: 'reinicio', user_id: userId }
     })
     
@@ -574,6 +578,13 @@ async function handleTextMessage(
   // ========== FLUXO DE BOAS-VINDAS + EBOOK GRÁTIS ==========
   const cleanPhone = message.from.replace(/\D/g, '')
   
+  // Verificar estado atual da conversa
+  const { data: userState } = await supabase
+    .from('afiliado_user_states')
+    .select('status, state')
+    .eq('phone', cleanPhone)
+    .single()
+  
   // Verificar se já recebeu o eBook de boas-vindas (grátis)
   const { data: ebookRecebido } = await supabase
     .from('afiliado_ebook_deliveries')
@@ -589,111 +600,94 @@ async function handleTextMessage(
     .eq('phone', cleanPhone)
     .single()
 
-  // Verificar cadastro (CSV importado)
-  const { data: cadastro } = await supabase
-    .from('cadastros')
-    .select('id, nome, whatsapp')
-    .or(`whatsapp.eq.${cleanPhone},whatsapp.ilike.%${cleanPhone}%`)
-    .single()
+  // Se estamos aguardando CATEGORIAS (novo fluxo: categorias primeiro)
+  if (userState?.status === 'aguardando_categorias') {
+    const categoriasEncontradas = parseCategoriasFromText(text)
+    
+    if (categoriasEncontradas.length > 0) {
+      // Salvar categorias e pedir nome
+      await supabase.from('afiliado_user_states').update({
+        status: 'aguardando_nome',
+        state: { ...userState.state, categorias: categoriasEncontradas }
+      }).eq('phone', cleanPhone)
+      
+      await sendWhatsAppMessage(
+        message.from,
+        `Ótimo! Anotei: *${categoriasEncontradas.join(', ')}* 📝\n\n` +
+        `Agora me diz: *qual é o seu nome?* 😊`,
+        wuzapiToken
+      )
+      await logEvent(supabase, { evento: 'categorias_capturadas', cliente_phone: message.from, user_id: userId, metadata: { categorias: categoriasEncontradas } })
+      return
+    }
+    
+    // Não reconheceu categorias, pedir de novo
+    await sendWhatsAppMessage(
+      message.from,
+      `Hmm, não consegui identificar as categorias. 🤔\n\n` +
+      `Escolha entre:\n🏠 Casa | 🍳 Cozinha | 👶 Bebê | 📱 Tech | 🎮 Gamer | 💄 Beleza | 💪 Fitness | 🔧 Ferramentas | 🐾 Pet | 👗 Moda\n\n` +
+      `_Ex: "Cozinha, Gamer, Tech"_`,
+      wuzapiToken
+    )
+    return
+  }
+  
+  // Se estamos aguardando NOME (após categorias)
+  if (userState?.status === 'aguardando_nome') {
+    const pareceNome = /^[a-zA-ZÀ-ÿ\s]{2,50}$/.test(text.trim())
+    
+    if (pareceNome) {
+      const nomeCliente = text.trim()
+      const categoriasDoState = (userState.state as any)?.categorias || ['Casa']
+      
+      // Criar lead com nome e categorias
+      await supabase.from('leads_ebooks').upsert({
+        phone: cleanPhone,
+        nome: nomeCliente,
+        categorias: categoriasDoState,
+        user_id: userId
+      }, { onConflict: 'phone' })
+      
+      // Atualizar estado
+      await supabase.from('afiliado_user_states').update({
+        status: 'aguardando_comprovante',
+        state: { ...userState.state, nome: nomeCliente }
+      }).eq('phone', cleanPhone)
+      
+      // Enviar eBook grátis
+      await sendEbookBoasVindas(supabase, message.from, nomeCliente, categoriasDoState, wuzapiToken, userId)
+      await logEvent(supabase, { evento: 'nome_capturado', cliente_phone: message.from, user_id: userId, metadata: { nome: nomeCliente } })
+      return
+    }
+    
+    // Não parece nome
+    await sendWhatsAppMessage(
+      message.from,
+      `Por favor, me diz seu nome! 😊\n\nPode ser só o primeiro nome mesmo.`,
+      wuzapiToken
+    )
+    return
+  }
 
-  // Se NÃO recebeu eBook grátis ainda → Fluxo de captação
-  if (!ebookRecebido) {
+  // Se NÃO recebeu eBook grátis ainda e NÃO está em fluxo → Iniciar fluxo
+  if (!ebookRecebido && !userState) {
+    // Primeiro contato - perguntar categorias primeiro
+    await supabase.from('afiliado_user_states').insert({
+      phone: cleanPhone,
+      status: 'aguardando_categorias',
+      state: { origem: 'whatsapp', user_id: userId }
+    })
     
-    // ETAPA 1: Verificar se já temos o nome
-    const temNome = leadInfo?.nome && leadInfo.nome !== 'Cliente'
-    const nomeDoCSV = cadastro?.nome && cadastro.nome !== 'Cliente' ? cadastro.nome : null
-    const nomeAtual = temNome ? leadInfo.nome : nomeDoCSV
-    
-    // ETAPA 2: Verificar se já escolheu categorias
-    const temCategorias = leadInfo?.categorias && Array.isArray(leadInfo.categorias) && leadInfo.categorias.length > 0
-    
-    // Se NÃO tem nome ainda
-    if (!nomeAtual) {
-      // Verificar se a mensagem parece ser um nome
-      const pareceNome = /^[a-zA-ZÀ-ÿ\s]{3,50}$/.test(text) && text.includes(' ')
-      const nomeSimples = /^[a-zA-ZÀ-ÿ]{2,30}$/.test(text)
-      
-      if (pareceNome || nomeSimples) {
-        // Cliente deu o nome! Salvar e pedir categorias
-        const nomeCliente = text.trim()
-        
-        await ensureLeadExists(supabase, message.from, userId, nomeCliente)
-        
-        // Atualizar cadastro
-        if (cadastro) {
-          await supabase.from('cadastros').update({ nome: nomeCliente }).eq('id', cadastro.id)
-        } else {
-          await supabase.from('cadastros').insert({ nome: nomeCliente, whatsapp: cleanPhone, origem: 'whatsapp_bot', opt_in: true })
-        }
-        
-        // Pedir categorias
-        await sendWhatsAppMessage(
-          message.from,
-          `Prazer, ${nomeCliente.split(' ')[0]}! 😊\n\n` +
-          `Pra eu te mandar seu eBook grátis + ofertas do seu interesse, me conta:\n\n` +
-          `*Quais categorias você mais curte?*\n\n` +
-          `🏠 Casa\n🍳 Cozinha\n👶 Bebê\n📱 Tech\n🎮 Gamer\n💄 Beleza\n💪 Fitness\n🔧 Ferramentas\n🐾 Pet\n👗 Moda\n\n` +
-          `_Pode mandar mais de uma! Ex: "Cozinha, Beleza, Pet"_`,
-          wuzapiToken
-        )
-        await logEvent(supabase, { evento: 'nome_capturado', cliente_phone: message.from, user_id: userId, metadata: { nome: nomeCliente } })
-        return
-      }
-      
-      // Pedir nome
-      await sendWhatsAppMessage(
-        message.from,
-        `Oi! 👋 Bem-vinda à *AMZ Ofertas*!\n\n` +
-        `Tenho um eBook *"50 Receitas Airfryer"* de PRESENTE pra você! 🍟\n\n` +
-        `Pra eu enviar, me diz seu nome? 😊`,
-        wuzapiToken
-      )
-      await logEvent(supabase, { evento: 'solicitou_nome', cliente_phone: message.from, user_id: userId })
-      return
-    }
-    
-    // Tem nome mas NÃO tem categorias
-    if (!temCategorias) {
-      // Verificar se a mensagem contém categorias
-      const categoriasEncontradas = parseCategoriasFromText(text)
-      
-      if (categoriasEncontradas.length > 0) {
-        // Salvar categorias e enviar eBook
-        await supabase
-          .from('leads_ebooks')
-          .update({ categorias: categoriasEncontradas })
-          .eq('phone', cleanPhone)
-        
-        // Salvar preferências
-        await supabase
-          .from('afiliado_cliente_preferencias')
-          .upsert({
-            phone: cleanPhone,
-            categorias_ativas: categoriasEncontradas,
-            freq_ofertas: 'diaria'
-          }, { onConflict: 'phone' })
-        
-        // Enviar eBook grátis
-        await sendEbookBoasVindas(supabase, message.from, nomeAtual, categoriasEncontradas, wuzapiToken, userId)
-        return
-      }
-      
-      // Pedir categorias
-      await sendWhatsAppMessage(
-        message.from,
-        `Oi ${nomeAtual.split(' ')[0]}! 😊\n\n` +
-        `Pra eu te mandar seu eBook grátis + ofertas personalizadas, me conta:\n\n` +
-        `*Quais categorias você mais curte?*\n\n` +
-        `🏠 Casa\n🍳 Cozinha\n👶 Bebê\n📱 Tech\n🎮 Gamer\n💄 Beleza\n💪 Fitness\n🔧 Ferramentas\n🐾 Pet\n👗 Moda\n\n` +
-        `_Pode mandar mais de uma! Ex: "Cozinha, Beleza, Pet"_`,
-        wuzapiToken
-      )
-      await logEvent(supabase, { evento: 'solicitou_categorias', cliente_phone: message.from, user_id: userId })
-      return
-    }
-    
-    // Tem nome E categorias → Enviar eBook (caso raro de reprocessamento)
-    await sendEbookBoasVindas(supabase, message.from, nomeAtual, leadInfo.categorias, wuzapiToken, userId)
+    await sendWhatsAppMessage(
+      message.from,
+      `Oi! 👋 Bem-vindo(a) à *AMZ Ofertas*!\n\n` +
+      `Tenho um eBook *"50 Receitas Airfryer"* de PRESENTE pra você! 🍟\n\n` +
+      `Pra te mandar, me conta:\n*Quais categorias você mais curte?*\n\n` +
+      `🏠 Casa | 🍳 Cozinha | 👶 Bebê | 📱 Tech | 🎮 Gamer | 💄 Beleza | 💪 Fitness | 🔧 Ferramentas | 🐾 Pet | 👗 Moda\n\n` +
+      `_Pode mandar mais de uma! Ex: "Cozinha, Gamer"_`,
+      wuzapiToken
+    )
+    await logEvent(supabase, { evento: 'primeiro_contato', cliente_phone: message.from, user_id: userId })
     return
   }
 
@@ -715,7 +709,7 @@ async function handleTextMessage(
   }
   
   // Nome do cliente para contexto
-  const nomeCliente = leadInfo?.nome?.split(' ')[0] || cadastro?.nome?.split(' ')[0] || 'amiga'
+  const nomeCliente = leadInfo?.nome?.split(' ')[0] || 'amiga'
   additionalContext += `\n\nNOME DO CLIENTE: ${nomeCliente} (use para personalizar a conversa)`
 
   // Gerar resposta com IA
