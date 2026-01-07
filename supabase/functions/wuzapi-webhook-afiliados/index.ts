@@ -1083,14 +1083,25 @@ async function sendEbookBoasVindas(
   // Pequena pausa
   await new Promise(r => setTimeout(r, 2500))
 
-  // Mensagem informativa sobre conversão de links e cashback
+  // Mensagem de boas-vindas à comunidade
   await sendWhatsAppMessage(
     phone,
-    `💡 *Dica pra ganhar cashback:*\n\n` +
-    `Me manda qualquer link de produto da:\n` +
-    `🛒 Amazon, Magalu, Mercado Livre, Shopee...\n\n` +
-    `Eu converto automaticamente e você ganha *2% de cashback* que vira PIX! 💰\n\n` +
-    `Aproveita seu eBook e me chama quando quiser ofertas! 🍟`,
+    `🎉 *Agora você está conectada com a AMZ Ofertas!*\n\n` +
+    `Aguarde que em breve você já vai começar a receber nossas promoções da *Magalu*, *Shopee*, *Amazon* e *Mercado Livre*! 🛒🔥\n\n` +
+    `Fique de olho aqui! 👀`,
+    wuzapiToken
+  )
+
+  // Pequena pausa
+  await new Promise(r => setTimeout(r, 3000))
+
+  // Dica sobre cashback com links próprios
+  await sendWhatsAppMessage(
+    phone,
+    `💡 *Dica pra você:*\n\n` +
+    `Você sabia que também pode escolher um produto nos marketplaces que ainda não ofertamos?\n\n` +
+    `É só colar o link aqui e você também ganha *2% de cashback* + mais um *eBook de presente*! 🎁💰\n\n` +
+    `Aproveita seu eBook de receitas! 🍟`,
     wuzapiToken
   )
 
