@@ -17,9 +17,12 @@ import {
   Users,
   Calendar,
   Megaphone,
-  UserPlus
+  UserPlus,
+  Upload,
+  Contact
 } from "lucide-react";
 import { toast } from "sonner";
+import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppCSVModal";
 
 interface LeadCapturado {
   id: string;
@@ -32,6 +35,8 @@ interface LeadCapturado {
 export default function AfiliadoDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [totalContatos, setTotalContatos] = useState(0);
   const [stats, setStats] = useState({
     totalProdutos: 0,
     totalVendas: 0,
@@ -56,7 +61,7 @@ export default function AfiliadoDashboard() {
       }
 
       // Carregar estatísticas
-      const [produtosRes, vendasRes, disparosRes, campanhasRes, clientesRes] = await Promise.all([
+      const [produtosRes, vendasRes, disparosRes, campanhasRes, clientesRes, contatosRes] = await Promise.all([
         supabase.from('afiliado_produtos').select('id', { count: 'exact' }).eq('user_id', user.id),
         supabase.from('afiliado_vendas').select('valor').eq('user_id', user.id),
         supabase.from('afiliado_disparos').select('id', { count: 'exact' }).eq('user_id', user.id).eq('status', 'agendado'),
@@ -67,12 +72,16 @@ export default function AfiliadoDashboard() {
           .select('id, phone, nome, categorias, created_at')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
-          .limit(10)
+          .limit(10),
+        // Total de contatos cadastrados
+        supabase.from('cadastros').select('id', { count: 'exact' }).eq('user_id', user.id)
       ]);
 
       const totalVendas = vendasRes.data?.length || 0;
       const valorVendas = vendasRes.data?.reduce((acc, v) => acc + Number(v.valor || 0), 0) || 0;
       const campanhasDisparadas = campanhasRes.data?.filter(c => (c.total_enviados || 0) > 0).length || 0;
+
+      setTotalContatos(contatosRes.count || 0);
 
       // Verificar conexão WhatsApp
       const { data: cliente } = await supabase
@@ -250,6 +259,30 @@ export default function AfiliadoDashboard() {
           </Card>
         </div>
 
+        {/* Card Seus Contatos */}
+        <Card className="mb-8 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/10 rounded-xl">
+                  <Contact className="h-8 w-8 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold">{totalContatos}</h3>
+                  <p className="text-muted-foreground">Seus Contatos</p>
+                </div>
+              </div>
+              <Button 
+                onClick={() => setShowImportModal(true)}
+                className="gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                Importar CSV
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Leads Capturados */}
         {leadsCapturados.length > 0 && (
           <Card className="mb-8">
@@ -348,6 +381,15 @@ export default function AfiliadoDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Modal de Importação */}
+      <ImportContactsWhatsAppCSVModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={() => {
+          loadStats();
+        }}
+      />
     </div>
   );
 }
