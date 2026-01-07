@@ -1,6 +1,6 @@
 // supabase/functions/wuzapi-webhook-afiliados/index.ts
-// FASE 4: Funil de Captação via eBook com Segmentação Automática
-// Fluxo: Nome → Nichos → eBook → Cashback 2% → Listas de Transmissão
+// AMZ Ofertas - Assistente Virtual de Promoções e Ofertas
+// Fluxo conversacional com IA + Cashback 2% + eBooks
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -26,20 +26,9 @@ interface WhatsAppMessage {
   timestamp: number
 }
 
-interface UserState {
-  phone: string
-  status: 'idle' | 'aguardando_nome' | 'aguardando_nichos' | 'aguardando_comprovante' | 'aguardando_escolha' | 'processando'
-  state: {
-    nome?: string
-    nichos_escolhidos?: string[]
-    comprovante_url?: string
-    ebooks_disponiveis?: any[]
-    ebook_escolhido?: number
-    compra_info?: any
-    user_id?: string | null
-    recebido_em?: string
-    origem?: string
-  }
+interface ConversationMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 interface ComprovanteAnalysis {
@@ -52,6 +41,101 @@ interface ComprovanteAnalysis {
   confianca: number
   motivo_invalido?: string
 }
+
+// ============================================
+// KNOWLEDGE BASE - AMZ OFERTAS
+// ============================================
+const SYSTEM_PROMPT = `Você é a assistente virtual da AMZ Ofertas, um canal de promoções e ofertas imperdíveis.
+
+PERSONALIDADE:
+- Simpática, animada mas não exagerada
+- Respostas CURTAS e diretas (máximo 3 linhas quando possível)
+- Use emojis com moderação (1-2 por mensagem)
+- Fale como uma amiga que manja de compras online
+- NUNCA pareça robô ou use linguagem corporativa
+
+SOBRE A AMZ OFERTAS:
+Somos um canal que garimpamos as melhores ofertas da internet pra você. Trabalhamos com os maiores marketplaces:
+- 🛒 Amazon
+- 🛒 Magazine Luiza (Magalu)
+- 🛒 Mercado Livre
+- 🛒 Shopee
+- 🛒 Netshoes
+- 💄 O Boticário
+- 💄 L'Occitane
+
+BENEFÍCIOS EXCLUSIVOS:
+
+1. CASHBACK 2%
+- A cada compra pelo nosso link, você acumula 2% de volta
+- Basta enviar o comprovante aqui que a gente credita
+- Quando juntar, você resgata via PIX
+
+2. EBOOKS DE PRESENTE
+- A cada compra validada, você ganha um eBook exclusivo
+- Temos de receitas de Airfryer, organização, finanças...
+- É só mandar o comprovante!
+
+3. OFERTAS PERSONALIZADAS
+- Me conta o que você gosta e eu aviso quando tiver promoção
+- Monitoro preços e te aviso quando baixar
+
+COMO FUNCIONA:
+1. Eu mando ofertas incríveis aqui no WhatsApp
+2. Você clica no link e compra normal no site
+3. Depois me manda o comprovante
+4. Você ganha cashback + eBook de presente!
+
+CATEGORIAS DISPONÍVEIS:
+- Eletrônicos e celulares
+- Casa e cozinha (Airfryer, panelas, etc)
+- Beleza e perfumaria
+- Moda e acessórios
+- Esportes e fitness
+- Bebês e crianças
+- Games e consoles
+- Livros
+- Pet shop
+- Ferramentas
+- Automotivo
+
+PERGUNTAS FREQUENTES:
+
+"Como ganho cashback?"
+→ Compra pelo meu link, manda o comprovante, e eu credito 2% na sua conta!
+
+"Demora pra cair o cashback?"
+→ Valido rapidinho! Geralmente no mesmo dia 😊
+
+"Posso resgatar quanto?"
+→ A partir de R$20 você já pode pedir o PIX!
+
+"As ofertas são confiáveis?"
+→ 100%! São dos sites oficiais, só garantimos o melhor preço 🔒
+
+"Vocês vendem alguma coisa?"
+→ Não vendemos nada! Só garimpamos ofertas e você compra direto no site oficial
+
+"Como recebo as ofertas?"
+→ Fica ligado aqui! Mando as melhores todo dia. Quer que eu priorize alguma categoria?
+
+"Posso devolver se não gostar?"
+→ Claro! A troca/devolução é direto com a loja, normal como qualquer compra
+
+REGRAS DE RESPOSTA:
+1. Sempre cumprimente se for primeira mensagem
+2. Responda APENAS o que foi perguntado
+3. Se não souber, diga "Deixa eu verificar e te retorno!"
+4. Sempre ofereça ajuda adicional no final
+5. Se pedirem oferta específica, diga que vai procurar
+6. NUNCA invente informações de produtos ou preços
+7. Se a pessoa quer ver o saldo de cashback, diga que vai verificar
+8. Se mandarem comprovante, informe que vai analisar e validar
+
+INFORMAÇÕES IMPORTANTES:
+- Somos do Rio de Janeiro, mas atendemos o Brasil todo
+- Valor mínimo para resgate de cashback: R$20
+- Lojas aceitas para comprovante: Amazon, Magalu, Mercado Livre, Shopee, Netshoes, Boticário, L'Occitane`
 
 // ============================================
 // CATEGORIAS DISPONÍVEIS
@@ -81,7 +165,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('🔔 [AFILIADO-FUNIL] Webhook recebido!')
+    console.log('🔔 [AMZ-OFERTAS] Webhook recebido!')
     
     // Inicializar Supabase
     const supabase = createClient(
@@ -138,17 +222,17 @@ serve(async (req) => {
     }
 
     if (rawBody) {
-      console.log('📦 [AFILIADO-FUNIL] Raw body (non-json):', rawBody.slice(0, 2000))
+      console.log('📦 [AMZ-OFERTAS] Raw body (non-json):', rawBody.slice(0, 2000))
     }
 
-    console.log('📨 [AFILIADO-FUNIL] Payload:', JSON.stringify(payload, null, 2))
+    console.log('📨 [AMZ-OFERTAS] Payload:', JSON.stringify(payload, null, 2))
 
     // Extrair mensagem do payload Wuzapi
     const message = parseWuzapiPayload(payload)
-    console.log('💬 [AFILIADO-FUNIL] Mensagem processada:', message)
+    console.log('💬 [AMZ-OFERTAS] Mensagem processada:', message)
 
     if (!message.from) {
-      console.log('⚠️ [AFILIADO-FUNIL] Mensagem sem remetente, ignorando')
+      console.log('⚠️ [AMZ-OFERTAS] Mensagem sem remetente, ignorando')
       return new Response(
         JSON.stringify({ success: true, message: 'Ignorado - sem remetente' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -162,7 +246,7 @@ serve(async (req) => {
 
     // Sem token do afiliado: não responde (evita sair pelo PJ)
     if (!wuzapiToken) {
-      console.log('🚫 [AFILIADO-FUNIL] Token do afiliado não encontrado. Abortando envio para evitar PJ.')
+      console.log('🚫 [AMZ-OFERTAS] Token do afiliado não encontrado. Abortando envio para evitar PJ.')
       return new Response(
         JSON.stringify({ success: true, message: 'Ignorado - token afiliado ausente' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -173,7 +257,7 @@ serve(async (req) => {
     // Verificar blacklist
     const isBlacklisted = await checkBlacklist(supabase, message.from)
     if (isBlacklisted) {
-      console.log('🚫 [AFILIADO-FUNIL] Número bloqueado:', message.from)
+      console.log('🚫 [AMZ-OFERTAS] Número bloqueado:', message.from)
       await logEvent(supabase, {
         evento: 'mensagem_bloqueada',
         cliente_phone: message.from,
@@ -192,7 +276,7 @@ serve(async (req) => {
       await handleImageMessage(supabase, message, wuzapiToken, userId)
     } else {
       // Tipo não suportado - APENAS IGNORAR, não responder para evitar spam
-      console.log(`⏭️ [AFILIADO-FUNIL] Tipo não suportado ignorado: ${message.type}`)
+      console.log(`⏭️ [AMZ-OFERTAS] Tipo não suportado ignorado: ${message.type}`)
     }
 
     return new Response(
@@ -202,7 +286,7 @@ serve(async (req) => {
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
-    console.error('❌ [AFILIADO-FUNIL] Erro no webhook:', error)
+    console.error('❌ [AMZ-OFERTAS] Erro no webhook:', error)
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -262,12 +346,12 @@ async function findAffiliateByReceivingNumber(supabase: any, toNumber: string): 
     }
     
     if (found) {
-      console.log(`✅ [AFILIADO-FUNIL] Afiliado encontrado: ${found.wuzapi_instance_id} para input: ${raw}`)
+      console.log(`✅ [AMZ-OFERTAS] Afiliado encontrado: ${found.wuzapi_instance_id} para input: ${raw}`)
       return found
     }
   }
 
-  console.log('ℹ️ [AFILIADO-FUNIL] Afiliado não encontrado para:', raw)
+  console.log('ℹ️ [AMZ-OFERTAS] Afiliado não encontrado para:', raw)
   return null
 }
 
@@ -283,7 +367,7 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
 
     // só processa mensagens recebidas do cliente (ignora IsFromMe)
     if (info.IsFromMe === true) {
-      console.log('⏭️ [AFILIADO-FUNIL] Ignorando mensagem enviada por nós (IsFromMe=true)')
+      console.log('⏭️ [AMZ-OFERTAS] Ignorando mensagem enviada por nós (IsFromMe=true)')
       return { from: '', to: '', type: 'text', text: '', timestamp: Date.now() }
     }
 
@@ -320,7 +404,7 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
       msg?.extendedTextMessage?.text ||
       ''
 
-    console.log(`📱 [AFILIADO-FUNIL] Contabo format - From: ${from}, To: ${to}, Text: ${text.slice(0,50)}`)
+    console.log(`📱 [AMZ-OFERTAS] Contabo format - From: ${from}, To: ${to}, Text: ${text.slice(0,50)}`)
 
     return {
       from,
@@ -414,7 +498,7 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
 }
 
 // ============================================
-// HANDLER: MENSAGEM DE TEXTO
+// HANDLER: MENSAGEM DE TEXTO (COM IA)
 // ============================================
 async function handleTextMessage(
   supabase: any, 
@@ -424,356 +508,133 @@ async function handleTextMessage(
 ) {
   const text = message.text!.trim()
   const textLower = text.toLowerCase()
-  console.log('💬 [AFILIADO-FUNIL] Processando texto:', text)
+  console.log('💬 [AMZ-OFERTAS] Processando texto:', text)
 
-  // Buscar estado atual do usuário
-  const userState = await getUserState(supabase, message.from)
-  console.log('📊 [AFILIADO-FUNIL] Estado atual:', userState?.status || 'novo')
+  // ========== COMANDOS ESPECIAIS (bypass IA) ==========
+  
+  // Comando SALDO / CASHBACK
+  if (textLower === 'saldo' || textLower === 'cashback' || textLower === 'meu saldo') {
+    await handleCashbackCommand(supabase, message.from, wuzapiToken, userId)
+    return
+  }
 
-  // Comandos especiais (funcionam em qualquer estado)
-  if (textLower === 'ajuda' || textLower === 'help') {
+  // Comando AJUDA / HELP
+  if (textLower === 'ajuda' || textLower === 'help' || textLower === 'menu') {
     await sendWhatsAppMessage(message.from, getMensagemAjuda(), wuzapiToken)
     await logEvent(supabase, { evento: 'comando_ajuda', cliente_phone: message.from, user_id: userId })
     return
   }
 
-  if (textLower === 'saldo' || textLower === 'cashback') {
-    await handleCashbackCommand(supabase, message.from, wuzapiToken, userId)
-    return
-  }
-
-  if (textLower === 'status') {
+  // Comando CANCELAR / SAIR
+  if (textLower === 'cancelar' || textLower === 'sair' || textLower === 'parar') {
     await sendWhatsAppMessage(
       message.from,
-      `📊 *Seu Status*\n\nEstado: ${userState?.status || 'Novo usuário'}\n\nDigite qualquer coisa para começar!`,
+      'Sem problemas! Se quiser voltar, é só me chamar. Obrigada por ter ficado com a gente! 💜',
       wuzapiToken
     )
+    await logEvent(supabase, { evento: 'cancelamento', cliente_phone: message.from, user_id: userId })
     return
   }
 
-  if (textLower === 'reiniciar' || textLower === 'recomecar') {
-    await clearUserState(supabase, message.from)
-    await sendWhatsAppMessage(message.from, getMensagemBoasVindas(), wuzapiToken)
-    await saveUserState(supabase, message.from, {
-      status: 'aguardando_nome',
-      state: { user_id: userId, origem: 'reinicio' }
-    })
-    return
-  }
-
-  // ========== FLUXO CONVERSACIONAL ==========
-
-  // Palavras-chave que ativam o funil (link de campanha)
-  const triggerKeywords = ['ebook', 'oferta', 'quero', 'receita', 'airfryer']
-  const isTriggerWord = triggerKeywords.some(kw => textLower.includes(kw))
-
-  // ESTADO: Novo usuário ou idle → Só inicia se tiver palavra-chave
-  if (!userState || userState.status === 'idle') {
-    if (!isTriggerWord) {
-      console.log(`⏸️ [AFILIADO-FUNIL] Mensagem ignorada (sem palavra-chave): "${text}"`)
-      return // Não responde - não veio pelo link da campanha
-    }
-    
-    await sendWhatsAppMessage(message.from, getMensagemBoasVindas(), wuzapiToken)
-    await saveUserState(supabase, message.from, {
-      status: 'aguardando_nome',
-      state: { user_id: userId, origem: 'whatsapp' }
-    })
-    await logEvent(supabase, { evento: 'novo_lead', cliente_phone: message.from, user_id: userId })
-    return
-  }
-
-  // ESTADO: Aguardando Nome
-  if (userState.status === 'aguardando_nome') {
-    await handleNomeInput(supabase, message, userState, wuzapiToken, userId)
-    return
-  }
-
-  // ESTADO: Aguardando Nichos
-  if (userState.status === 'aguardando_nichos') {
-    await handleNichosInput(supabase, message, userState, wuzapiToken, userId)
-    return
-  }
-
-  // ESTADO: Aguardando Comprovante
-  if (userState.status === 'aguardando_comprovante') {
-    await sendWhatsAppMessage(
-      message.from,
-      '📸 Estou aguardando seu *comprovante de compra*!\n\n' +
-      'Envie uma *foto* do comprovante para validar e receber seu cashback de 2%! 💰\n\n' +
-      '💡 Lojas aceitas: Amazon, Magazine Luiza, Mercado Livre',
-      wuzapiToken
-    )
-    return
-  }
-
-  // ESTADO: Aguardando Escolha de eBook
-  if (userState.status === 'aguardando_escolha') {
-    await handleEbookChoice(supabase, message, userState, wuzapiToken, userId)
-    return
-  }
-
-  // Fallback: reiniciar fluxo
-  await sendWhatsAppMessage(message.from, getMensagemBoasVindas(), wuzapiToken)
-  await saveUserState(supabase, message.from, {
-    status: 'aguardando_nome',
-    state: { user_id: userId }
-  })
-}
-
-// ============================================
-// HANDLER: INPUT DO NOME
-// ============================================
-async function handleNomeInput(
-  supabase: any, 
-  message: WhatsAppMessage, 
-  userState: UserState,
-  wuzapiToken: string | null,
-  userId: string | null
-) {
-  const nome = message.text!.trim()
+  // ========== FLUXO COM IA ==========
   
-  // Validar nome (pelo menos 2 caracteres, sem números)
-  if (nome.length < 2 || /\d/.test(nome)) {
-    await sendWhatsAppMessage(
-      message.from,
-      '❌ Por favor, digite um nome válido (sem números).\n\nQual é o seu nome?',
-      wuzapiToken
-    )
-    return
+  // Buscar histórico de conversa
+  const conversationHistory = await getConversationHistory(supabase, message.from)
+  
+  // Buscar info de cashback para contexto
+  const cashbackInfo = await getCashbackInfo(supabase, message.from)
+  
+  // Construir contexto adicional
+  let additionalContext = ''
+  if (cashbackInfo) {
+    additionalContext = `\n\nINFO DO CLIENTE (use se perguntarem sobre saldo):
+- Saldo atual: R$ ${(cashbackInfo.saldo_atual || 0).toFixed(2)}
+- Total acumulado: R$ ${(cashbackInfo.total_acumulado || 0).toFixed(2)}
+- Total de compras: ${cashbackInfo.compras_total || 0}`
   }
 
-  console.log('✅ [AFILIADO-FUNIL] Nome recebido:', nome)
+  // Gerar resposta com IA
+  const aiResponse = await generateAIResponse(
+    text, 
+    conversationHistory,
+    additionalContext
+  )
 
-  // Salvar nome e avançar para nichos
-  await saveUserState(supabase, message.from, {
-    status: 'aguardando_nichos',
-    state: {
-      ...userState.state,
-      nome: nome
-    }
-  })
+  // Salvar conversa
+  await saveConversation(supabase, message.from, text, aiResponse)
 
-  // Montar mensagem com categorias
-  let mensagem = `Prazer, *${nome}*! 😊\n\n`
-  mensagem += `Agora escolha os *nichos* que você mais gosta:\n\n`
-  
-  CATEGORIAS.forEach((cat) => {
-    mensagem += `${cat.icone} ${cat.nome}\n`
-  })
+  // Enviar resposta
+  await sendWhatsAppMessage(message.from, aiResponse, wuzapiToken)
 
-  mensagem += `\n━━━━━━━━━━━━━━━━━━\n\n`
-  mensagem += `💡 *Digite os nomes separados por vírgula*\n`
-  mensagem += `Exemplo: *Casa, Cozinha, Pet*\n\n`
-  mensagem += `Ou digite *TODOS* para receber de tudo!`
-
-  await sendWhatsAppMessage(message.from, mensagem, wuzapiToken)
-  
+  // Log evento
   await logEvent(supabase, {
-    evento: 'nome_informado',
+    evento: 'conversa_ia',
     cliente_phone: message.from,
     user_id: userId,
-    metadata: { nome }
+    metadata: { pergunta: text.slice(0, 100), resposta: aiResponse.slice(0, 100) }
   })
 }
 
 // ============================================
-// HANDLER: INPUT DOS NICHOS
+// GERAR RESPOSTA COM IA (LOVABLE AI)
 // ============================================
-async function handleNichosInput(
-  supabase: any, 
-  message: WhatsAppMessage, 
-  userState: UserState,
-  wuzapiToken: string | null,
-  userId: string | null
-) {
-  const text = message.text!.trim()
-  const textLower = text.toLowerCase()
-  let nichosEscolhidos: string[] = []
-
-  // Função para normalizar texto (remover acentos)
-  const normalizar = (str: string) => 
-    str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-
-  // Verificar se escolheu TODOS
-  if (textLower === 'todos' || textLower === 'tudo') {
-    nichosEscolhidos = CATEGORIAS.map(c => c.nome)
-  } else {
-    // Separar por vírgula, ponto-e-vírgula ou espaço
-    const partes = text.split(/[,;]+/).map(p => p.trim()).filter(p => p.length > 0)
-    
-    if (partes.length === 0) {
-      await sendWhatsAppMessage(
-        message.from,
-        '❌ Não entendi sua escolha.\n\nDigite os *nomes* das categorias separados por vírgula.\n\nExemplo: *Casa, Cozinha, Pet*\n\nOu digite *TODOS* para receber de tudo!',
-        wuzapiToken
-      )
-      return
-    }
-
-    // Mapear nomes para categorias (ignorando acentos e maiúsculas)
-    for (const parte of partes) {
-      const parteNorm = normalizar(parte)
-      const catEncontrada = CATEGORIAS.find(c => normalizar(c.nome) === parteNorm)
-      if (catEncontrada && !nichosEscolhidos.includes(catEncontrada.nome)) {
-        nichosEscolhidos.push(catEncontrada.nome)
-      }
-    }
-
-    if (nichosEscolhidos.length === 0) {
-      const nomesDisponiveis = CATEGORIAS.map(c => c.nome).join(', ')
-      await sendWhatsAppMessage(
-        message.from,
-        `❌ Não encontrei essas categorias!\n\nCategorias disponíveis: *${nomesDisponiveis}*\n\nExemplo: *Casa, Cozinha, Pet*`,
-        wuzapiToken
-      )
-      return
-    }
+async function generateAIResponse(
+  userMessage: string,
+  conversationHistory: ConversationMessage[],
+  additionalContext: string = ''
+): Promise<string> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
+  
+  if (!LOVABLE_API_KEY) {
+    console.error('❌ [AMZ-OFERTAS] LOVABLE_API_KEY não configurada!')
+    return 'Oi! 👋 Estou aqui pra te ajudar com as melhores ofertas. Como posso te ajudar?'
   }
 
-  console.log('✅ [AFILIADO-FUNIL] Nichos escolhidos:', nichosEscolhidos)
-
-  const nome = userState.state.nome || 'Amigo(a)'
-
-  // ========== SALVAR LEAD NO BANCO ==========
-  const lead = await saveLeadAndAddToLists(supabase, message.from, nome, nichosEscolhidos, userId)
-  console.log('✅ [AFILIADO-FUNIL] Lead salvo:', lead?.id)
-
-  // ========== ATUALIZAR ESTADO ==========
-  await saveUserState(supabase, message.from, {
-    status: 'aguardando_comprovante',
-    state: {
-      ...userState.state,
-      nichos_escolhidos: nichosEscolhidos
-    }
-  })
-
-  // ========== ENTREGAR EBOOK GRÁTIS ==========
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
-  const ebookHtmlUrl = `${SUPABASE_URL}/functions/v1/ebook-airfryer`
-  
-  // Montar lista de nichos
-  const nichosFormatados = nichosEscolhidos.map(n => {
-    const cat = CATEGORIAS.find(c => c.nome === n)
-    return cat ? `${cat.icone} ${cat.nome}` : n
-  }).join('\n')
-
-  let mensagem = `✅ *Perfeito, ${nome}!*\n\n`
-  mensagem += `Você foi adicionado(a) às listas:\n${nichosFormatados}\n\n`
-  mensagem += `━━━━━━━━━━━━━━━━━━\n\n`
-  mensagem += `🎁 *PRESENTE DE BOAS-VINDAS!*\n\n`
-  mensagem += `📚 Seu eBook *"50 Receitas na Airfryer"* está pronto!\n\n`
-  mensagem += `👉 Acesse aqui: ${ebookHtmlUrl}\n\n`
-  mensagem += `━━━━━━━━━━━━━━━━━━\n\n`
-  mensagem += `💰 *CASHBACK DE 2% ATIVADO!*\n\n`
-  mensagem += `A partir de agora, a cada compra que você fizer nos marketplaces, envie o comprovante aqui e ganhe:\n\n`
-  mensagem += `✅ 2% de cashback no seu saldo\n`
-  mensagem += `✅ eBooks exclusivos\n`
-  mensagem += `✅ Ofertas personalizadas\n\n`
-  mensagem += `📸 *Envie seu primeiro comprovante!*`
-
-  await sendWhatsAppMessage(message.from, mensagem, wuzapiToken)
-
-  // Tentar enviar PDF também
-  await sendWhatsAppPDF(message.from, 'ebook-airfryer-COMPLETO.pdf', '50 Receitas na Airfryer', wuzapiToken)
-
-  // Registrar entrega do eBook de boas-vindas
-  await logEbookDelivery(supabase, {
-    phone: message.from,
-    ebook_titulo: '50 Receitas na Airfryer',
-    ebook_filename: 'ebook-airfryer-COMPLETO.pdf',
-    categoria: nichosEscolhidos[0] || 'Cozinha',
-    user_id: userId
-  })
-
-  await logEvent(supabase, {
-    evento: 'lead_captado',
-    cliente_phone: message.from,
-    user_id: userId,
-    metadata: { nome, nichos: nichosEscolhidos, ebook_enviado: true }
-  })
-}
-
-// ============================================
-// SALVAR LEAD E ADICIONAR ÀS LISTAS
-// ============================================
-async function saveLeadAndAddToLists(
-  supabase: any,
-  phone: string,
-  nome: string,
-  nichos: string[],
-  userId: string | null
-): Promise<any> {
   try {
-    // 1. Upsert Lead
-    const { data: lead, error: leadError } = await supabase
-      .from('leads_ebooks')
-      .upsert({
-        phone: phone.replace(/\D/g, ''),
-        nome: nome,
-        origem: 'ebook',
-        origem_detalhe: 'whatsapp',
-        ebook_recebido: 'ebook-airfryer-COMPLETO.html',
-        cashback_ativo: true,
-        categorias: nichos, // Salvar as categorias escolhidas
-        user_id: userId
-      }, { onConflict: 'phone' })
-      .select()
-      .single()
+    const systemPrompt = SYSTEM_PROMPT + additionalContext
 
-    if (leadError) {
-      console.error('❌ [AFILIADO-FUNIL] Erro ao salvar lead:', leadError)
-      return null
+    // Montar mensagens para a IA
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory.slice(-6), // Últimas 6 mensagens para contexto
+      { role: 'user', content: userMessage }
+    ]
+
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages,
+        max_tokens: 300,
+        temperature: 0.7
+      })
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ [AMZ-OFERTAS] Erro na API:', response.status, errorText)
+      
+      if (response.status === 429) {
+        return 'Opa, estou com muitas mensagens agora! Me manda de novo em alguns segundos? 😅'
+      }
+      
+      throw new Error(`API error: ${response.status}`)
     }
 
-    console.log('✅ [AFILIADO-FUNIL] Lead salvo:', lead.id)
-
-    // 2. Buscar listas por nome
-    const { data: listas } = await supabase
-      .from('afiliado_listas_categoria')
-      .select('id, nome')
-      .in('nome', nichos)
-
-    if (!listas || listas.length === 0) {
-      console.log('⚠️ [AFILIADO-FUNIL] Nenhuma lista encontrada para:', nichos)
-      return lead
-    }
-
-    // 3. Adicionar lead às listas
-    const membros = listas.map((lista: any) => ({
-      lead_id: lead.id,
-      lista_id: lista.id
-    }))
-
-    const { error: membrosError } = await supabase
-      .from('afiliado_lista_membros')
-      .upsert(membros, { onConflict: 'lead_id,lista_id', ignoreDuplicates: true })
-
-    if (membrosError) {
-      console.error('❌ [AFILIADO-FUNIL] Erro ao adicionar às listas:', membrosError)
-    } else {
-      console.log('✅ [AFILIADO-FUNIL] Lead adicionado a', listas.length, 'listas')
-    }
-
-    // 4. Ativar cashback automaticamente
-    await supabase
-      .from('afiliado_cashback')
-      .upsert({
-        phone: phone.replace(/\D/g, ''),
-        saldo_atual: 0,
-        total_acumulado: 0,
-        total_resgatado: 0,
-        compras_total: 0,
-        valor_compras_total: 0
-      }, { onConflict: 'phone' })
-
-    console.log('✅ [AFILIADO-FUNIL] Cashback ativado para:', phone)
-
-    return lead
+    const data = await response.json()
+    const aiMessage = data.choices?.[0]?.message?.content || ''
+    
+    console.log('🤖 [AMZ-OFERTAS] Resposta IA:', aiMessage.slice(0, 100))
+    
+    return aiMessage.trim() || 'Oi! 👋 Como posso te ajudar hoje?'
 
   } catch (error) {
-    console.error('❌ [AFILIADO-FUNIL] Erro geral ao salvar lead:', error)
-    return null
+    console.error('❌ [AMZ-OFERTAS] Erro ao gerar resposta:', error)
+    return 'Oi! 👋 Bem-vinda à AMZ Ofertas! Posso te ajudar com alguma coisa?'
   }
 }
 
@@ -786,7 +647,7 @@ async function handleImageMessage(
   wuzapiToken: string | null,
   userId: string | null
 ) {
-  console.log('📸 [AFILIADO-FUNIL] Processando comprovante de:', message.from)
+  console.log('📸 [AMZ-OFERTAS] Processando comprovante de:', message.from)
 
   try {
     // Verificar rate limit
@@ -803,7 +664,7 @@ async function handleImageMessage(
     // Mensagem de aguardo
     await sendWhatsAppMessage(
       message.from,
-      '⏳ *Analisando seu comprovante...*\n\nAguarde alguns segundos enquanto nossa IA valida sua compra...',
+      '⏳ Deixa eu dar uma olhada no seu comprovante... 🔍',
       wuzapiToken
     )
 
@@ -817,7 +678,7 @@ async function handleImageMessage(
 
     // ANÁLISE COM GEMINI VISION
     const analysis = await analyzeComprovanteGemini(message.imageUrl!)
-    console.log('🧠 [AFILIADO-FUNIL] Análise completa:', analysis)
+    console.log('🧠 [AMZ-OFERTAS] Análise completa:', analysis)
 
     // VALIDAÇÃO ANTI-FRAUDE
     const validation = validateComprovante(analysis)
@@ -825,13 +686,9 @@ async function handleImageMessage(
     if (!validation.valid) {
       await sendWhatsAppMessage(
         message.from,
-        `❌ *Comprovante não validado*\n\n` +
+        `❌ Não consegui validar esse comprovante 😕\n\n` +
         `📋 Motivo: ${validation.reason}\n\n` +
-        `💡 *Dicas:*\n` +
-        `• Tire uma foto mais nítida\n` +
-        `• Valor mínimo: R$ 50\n` +
-        `• Lojas aceitas: Amazon, Magazine Luiza, Mercado Livre\n\n` +
-        `Tente novamente!`,
+        `💡 Dica: Tire uma foto mais nítida com valor e loja bem visíveis!`,
         wuzapiToken
       )
 
@@ -848,7 +705,7 @@ async function handleImageMessage(
     }
 
     // COMPROVANTE VÁLIDO!
-    console.log('✅ [AFILIADO-FUNIL] Comprovante validado:', analysis)
+    console.log('✅ [AMZ-OFERTAS] Comprovante validado:', analysis)
 
     // Calcular cashback (2%)
     const cashback = analysis.valor * 0.02
@@ -856,37 +713,48 @@ async function handleImageMessage(
     // Atualizar saldo de cashback
     await addCashback(supabase, message.from, cashback, analysis)
 
+    // Buscar ou criar lead
+    await ensureLeadExists(supabase, message.from, userId)
+
     // Buscar eBooks da categoria
     const ebooks = getEbooksByCategory(analysis.categoria)
+    const ebookEscolhido = ebooks[0] // Enviar o primeiro automaticamente
 
-    // Salvar estado (aguardando escolha)
-    await saveUserState(supabase, message.from, {
-      status: 'aguardando_escolha',
-      state: {
-        comprovante_url: message.imageUrl,
-        ebooks_disponiveis: ebooks,
-        compra_info: analysis,
-        user_id: userId
-      }
-    })
-
-    // Montar mensagem
+    // Enviar confirmação
     let mensagem = `✅ *Comprovante validado!*\n\n`
     mensagem += `🏪 Loja: ${analysis.loja}\n`
     mensagem += `💰 Valor: R$ ${analysis.valor.toFixed(2)}\n`
     mensagem += `📦 Produto: ${analysis.produto}\n\n`
-    mensagem += `💵 *CASHBACK: +R$ ${cashback.toFixed(2)}*\n\n`
-    mensagem += `━━━━━━━━━━━━━━━━━━\n\n`
-    mensagem += `🎁 *Escolha seu eBook GRÁTIS!*\n\n`
-    mensagem += `Categoria: *${analysis.categoria}*\n\n`
-
-    ebooks.forEach((ebook: any, index: number) => {
-      mensagem += `*${index + 1}* - ${ebook.titulo}\n`
-    })
-
-    mensagem += `\n💬 Digite o *número* do eBook!`
+    mensagem += `💵 *+R$ ${cashback.toFixed(2)} de cashback!* 🎉\n\n`
+    mensagem += `🎁 Estou enviando seu eBook de presente...`
 
     await sendWhatsAppMessage(message.from, mensagem, wuzapiToken)
+
+    // Enviar eBook
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
+    const ebookHtmlUrl = `${SUPABASE_URL}/functions/v1/ebook-airfryer`
+    
+    // Enviar link HTML
+    await sendWhatsAppMessage(
+      message.from,
+      `📚 *${ebookEscolhido.titulo}*\n\n👉 Acesse aqui: ${ebookHtmlUrl}\n\nAproveite! 💙`,
+      wuzapiToken
+    )
+
+    // Tentar enviar PDF também
+    await sendWhatsAppPDF(message.from, ebookEscolhido.arquivo, ebookEscolhido.titulo, wuzapiToken)
+
+    // Registrar entrega
+    await logEbookDelivery(supabase, {
+      phone: message.from,
+      ebook_titulo: ebookEscolhido.titulo,
+      ebook_filename: ebookEscolhido.arquivo,
+      loja: analysis.loja,
+      valor_compra: analysis.valor,
+      categoria: analysis.categoria,
+      comprovante_url: message.imageUrl,
+      user_id: userId
+    })
 
     await logEvent(supabase, {
       evento: 'comprovante_validado',
@@ -898,13 +766,59 @@ async function handleImageMessage(
     })
 
   } catch (error) {
-    console.error('❌ [AFILIADO-FUNIL] Erro ao processar comprovante:', error)
+    console.error('❌ [AMZ-OFERTAS] Erro ao processar comprovante:', error)
     await sendWhatsAppMessage(
       message.from,
-      '❌ *Erro ao processar comprovante*\n\nTente novamente em alguns instantes.',
+      '❌ Ops, deu um errinho aqui! Tenta mandar o comprovante de novo? 🙏',
       wuzapiToken
     )
   }
+}
+
+// ============================================
+// GARANTIR QUE LEAD EXISTE
+// ============================================
+async function ensureLeadExists(
+  supabase: any,
+  phone: string,
+  userId: string | null
+): Promise<void> {
+  const cleanPhone = phone.replace(/\D/g, '')
+  
+  // Verificar se já existe
+  const { data: existing } = await supabase
+    .from('leads_ebooks')
+    .select('id')
+    .eq('phone', cleanPhone)
+    .single()
+
+  if (existing) return
+
+  // Criar lead
+  await supabase
+    .from('leads_ebooks')
+    .insert({
+      phone: cleanPhone,
+      nome: 'Cliente',
+      origem: 'comprovante',
+      origem_detalhe: 'whatsapp',
+      cashback_ativo: true,
+      user_id: userId
+    })
+
+  // Ativar cashback
+  await supabase
+    .from('afiliado_cashback')
+    .upsert({
+      phone: cleanPhone,
+      saldo_atual: 0,
+      total_acumulado: 0,
+      total_resgatado: 0,
+      compras_total: 0,
+      valor_compras_total: 0
+    }, { onConflict: 'phone' })
+
+  console.log('✅ [AMZ-OFERTAS] Novo lead criado:', cleanPhone)
 }
 
 // ============================================
@@ -952,7 +866,7 @@ async function addCashback(
       metadata: { loja: compraInfo.loja, produto: compraInfo.produto }
     })
 
-  console.log('✅ [AFILIADO-FUNIL] Cashback adicionado:', valor, 'para', cleanPhone)
+  console.log('✅ [AMZ-OFERTAS] Cashback adicionado:', valor, 'para', cleanPhone)
 }
 
 // ============================================
@@ -964,25 +878,23 @@ async function handleCashbackCommand(
   wuzapiToken: string | null,
   userId: string | null
 ) {
-  const cleanPhone = phone.replace(/\D/g, '')
-
-  const { data: cashback } = await supabase
-    .from('afiliado_cashback')
-    .select('*')
-    .eq('phone', cleanPhone)
-    .single()
+  const cashback = await getCashbackInfo(supabase, phone)
 
   let mensagem = `💰 *Seu Cashback*\n\n`
   
   if (!cashback) {
-    mensagem += `Você ainda não tem saldo.\n\nEnvie um comprovante de compra para começar a acumular!`
+    mensagem += `Você ainda não tem saldo 😊\n\nEnvia um comprovante de compra que eu credito 2% pra você!`
   } else {
-    mensagem += `💵 Saldo atual: *R$ ${(cashback.saldo_atual || 0).toFixed(2)}*\n`
+    mensagem += `💵 Saldo: *R$ ${(cashback.saldo_atual || 0).toFixed(2)}*\n`
     mensagem += `📊 Total acumulado: R$ ${(cashback.total_acumulado || 0).toFixed(2)}\n`
-    mensagem += `🛒 Compras: ${cashback.compras_total || 0}\n`
-    mensagem += `💳 Valor total em compras: R$ ${(cashback.valor_compras_total || 0).toFixed(2)}\n\n`
-    mensagem += `━━━━━━━━━━━━━━━━━━\n\n`
-    mensagem += `📸 Envie mais comprovantes para acumular!`
+    mensagem += `🛒 Compras: ${cashback.compras_total || 0}\n\n`
+    
+    if ((cashback.saldo_atual || 0) >= 20) {
+      mensagem += `✅ Você já pode resgatar via PIX! Me chama pra solicitar 😊`
+    } else {
+      const falta = 20 - (cashback.saldo_atual || 0)
+      mensagem += `💡 Faltam R$ ${falta.toFixed(2)} pra resgatar (mínimo R$20)`
+    }
   }
 
   await sendWhatsAppMessage(phone, mensagem, wuzapiToken)
@@ -990,82 +902,58 @@ async function handleCashbackCommand(
 }
 
 // ============================================
-// HANDLER: ESCOLHA DE EBOOK
+// BUSCAR INFO DE CASHBACK
 // ============================================
-async function handleEbookChoice(
-  supabase: any, 
-  message: WhatsAppMessage, 
-  userState: UserState,
-  wuzapiToken: string | null,
-  userId: string | null
-) {
-  const escolha = parseInt(message.text!)
-  const ebooks = userState.state.ebooks_disponiveis || []
+async function getCashbackInfo(supabase: any, phone: string): Promise<any> {
+  const cleanPhone = phone.replace(/\D/g, '')
+  const { data } = await supabase
+    .from('afiliado_cashback')
+    .select('*')
+    .eq('phone', cleanPhone)
+    .single()
+  return data
+}
 
-  if (isNaN(escolha) || escolha < 1 || escolha > ebooks.length) {
-    await sendWhatsAppMessage(
-      message.from,
-      `❌ *Escolha inválida!*\n\nDigite um número de *1* a *${ebooks.length}*`,
-      wuzapiToken
-    )
-    return
-  }
+// ============================================
+// HISTÓRICO DE CONVERSA
+// ============================================
+async function getConversationHistory(supabase: any, phone: string): Promise<ConversationMessage[]> {
+  const cleanPhone = phone.replace(/\D/g, '')
+  
+  const { data } = await supabase
+    .from('afiliado_conversas')
+    .select('role, content')
+    .eq('phone', cleanPhone)
+    .order('created_at', { ascending: false })
+    .limit(10)
 
-  const ebook = ebooks[escolha - 1]
-  const compraInfo = userState.state.compra_info || {}
+  if (!data) return []
+  
+  // Reverter para ordem cronológica
+  return data.reverse()
+}
 
-  // Enviar PDF
-  await sendWhatsAppPDF(message.from, ebook.arquivo, ebook.titulo, wuzapiToken)
-
-  // Mensagem de sucesso
-  await sendWhatsAppMessage(
-    message.from,
-    `✅ *eBook enviado com sucesso!*\n\n` +
-    `📚 ${ebook.titulo}\n\n` +
-    `━━━━━━━━━━━━━━━━━━\n\n` +
-    `💡 Continue enviando comprovantes para:\n` +
-    `• Acumular mais cashback\n` +
-    `• Ganhar mais eBooks\n\n` +
-    `Obrigado! 💙`,
-    wuzapiToken
-  )
-
-  // Registrar entrega
-  await logEbookDelivery(supabase, {
-    phone: message.from,
-    ebook_titulo: ebook.titulo,
-    ebook_filename: ebook.arquivo,
-    loja: compraInfo.loja,
-    valor_compra: compraInfo.valor,
-    categoria: compraInfo.categoria,
-    comprovante_url: userState.state.comprovante_url,
-    user_id: userId
-  })
-
-  await logEvent(supabase, {
-    evento: 'ebook_entregue',
-    cliente_phone: message.from,
-    categoria: compraInfo.categoria,
-    user_id: userId,
-    metadata: { ebook: ebook.titulo }
-  })
-
-  // Voltar para aguardando comprovante
-  await saveUserState(supabase, message.from, {
-    status: 'aguardando_comprovante',
-    state: { user_id: userId }
-  })
+async function saveConversation(supabase: any, phone: string, userMessage: string, assistantMessage: string) {
+  const cleanPhone = phone.replace(/\D/g, '')
+  
+  // Salvar mensagem do usuário e resposta
+  await supabase
+    .from('afiliado_conversas')
+    .insert([
+      { phone: cleanPhone, role: 'user', content: userMessage },
+      { phone: cleanPhone, role: 'assistant', content: assistantMessage }
+    ])
 }
 
 // ============================================
 // GEMINI VISION: ANÁLISE DE COMPROVANTE
 // ============================================
 async function analyzeComprovanteGemini(imageUrl: string): Promise<ComprovanteAnalysis> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY')
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
   
-  if (!GEMINI_API_KEY) {
-    console.error('❌ [AFILIADO-FUNIL] GEMINI_API_KEY não configurada!')
-    throw new Error('GEMINI_API_KEY não configurada')
+  if (!LOVABLE_API_KEY) {
+    console.error('❌ [AMZ-OFERTAS] LOVABLE_API_KEY não configurada!')
+    throw new Error('LOVABLE_API_KEY não configurada')
   }
 
   try {
@@ -1086,7 +974,7 @@ async function analyzeComprovanteGemini(imageUrl: string): Promise<ComprovanteAn
 
 {
   "valido": true ou false,
-  "loja": "Amazon" ou "Magazine Luiza" ou "Mercado Livre" ou "Outra",
+  "loja": "Amazon" ou "Magazine Luiza" ou "Mercado Livre" ou "Shopee" ou "Netshoes" ou "O Boticário" ou "L'Occitane" ou "Outra",
   "valor": valor em número (ex: 150.50),
   "produto": "nome do produto principal",
   "data": "data da compra",
@@ -1098,27 +986,36 @@ async function analyzeComprovanteGemini(imageUrl: string): Promise<ComprovanteAn
 REGRAS: valido=true APENAS se for comprovante de e-commerce. Confiança deve ser honesta.
 Retorne APENAS o JSON.`
 
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: prompt },
-              { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
             ]
-          }],
-          generationConfig: { temperature: 0.2, maxOutputTokens: 1024 }
-        })
-      }
-    )
+          }
+        ],
+        max_tokens: 1024,
+        temperature: 0.2
+      })
+    })
 
-    const geminiData = await geminiResponse.json()
-    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`)
+    }
 
-    let jsonText = responseText?.trim() || '{}'
+    const data = await response.json()
+    const responseText = data.choices?.[0]?.message?.content || '{}'
+
+    let jsonText = responseText.trim()
     if (jsonText.startsWith('```')) {
       jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '')
     }
@@ -1126,7 +1023,7 @@ Retorne APENAS o JSON.`
     return JSON.parse(jsonText)
 
   } catch (error) {
-    console.error('❌ [AFILIADO-FUNIL] Erro Gemini:', error)
+    console.error('❌ [AMZ-OFERTAS] Erro Gemini:', error)
     return {
       valido: false,
       loja: 'Não identificado',
@@ -1150,12 +1047,12 @@ function validateComprovante(analysis: ComprovanteAnalysis): { valid: boolean; r
   if (analysis.confianca < 70) {
     return { valid: false, reason: 'Imagem não está clara. Tire outra foto mais nítida.' }
   }
-  const lojasValidas = ['Amazon', 'Magazine Luiza', 'Mercado Livre']
+  const lojasValidas = ['Amazon', 'Magazine Luiza', 'Mercado Livre', 'Shopee', 'Netshoes', 'O Boticário', "L'Occitane"]
   if (!lojasValidas.includes(analysis.loja)) {
-    return { valid: false, reason: 'Loja não suportada. Aceitamos: Amazon, Magazine Luiza e Mercado Livre.' }
+    return { valid: false, reason: `Loja "${analysis.loja}" não suportada ainda.` }
   }
-  if (analysis.valor < 50) {
-    return { valid: false, reason: 'Valor mínimo de compra: R$ 50,00' }
+  if (analysis.valor < 30) {
+    return { valid: false, reason: 'Valor mínimo de compra: R$ 30,00' }
   }
   return { valid: true }
 }
@@ -1198,36 +1095,12 @@ function getEbooksByCategory(categoria: string): any[] {
       { id: 72, titulo: 'Combinações Perfeitas', arquivo: 'moda-combinacoes.pdf' },
     ]
   }
-  return ebooks[categoria] || ebooks['Tech']
+  return ebooks[categoria] || ebooks['Cozinha']
 }
 
 // ============================================
 // DATABASE HELPERS
 // ============================================
-async function getUserState(supabase: any, phone: string): Promise<UserState | null> {
-  const { data } = await supabase
-    .from('afiliado_user_states')
-    .select('*')
-    .eq('phone', phone)
-    .single()
-  return data
-}
-
-async function saveUserState(supabase: any, phone: string, stateData: Partial<UserState>) {
-  await supabase
-    .from('afiliado_user_states')
-    .upsert({
-      phone: phone,
-      status: stateData.status || 'idle',
-      state: stateData.state || {},
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'phone' })
-}
-
-async function clearUserState(supabase: any, phone: string) {
-  await supabase.from('afiliado_user_states').delete().eq('phone', phone)
-}
-
 async function checkBlacklist(supabase: any, phone: string): Promise<boolean> {
   const { data } = await supabase.rpc('verificar_blacklist_afiliado', { p_phone: phone })
   return data === true
@@ -1273,7 +1146,7 @@ async function sendWhatsAppMessage(to: string, message: string, customToken?: st
 
   // Token do afiliado é obrigatório para garantir que a resposta saia do número correto (Contabo)
   if (!customToken) {
-    console.error('❌ [AFILIADO-FUNIL] Token do afiliado ausente (customToken).')
+    console.error('❌ [AMZ-OFERTAS] Token do afiliado ausente (customToken).')
     return
   }
 
@@ -1293,12 +1166,12 @@ async function sendWhatsAppMessage(to: string, message: string, customToken?: st
     const responseText = await response.text()
 
     if (!response.ok) {
-      console.error('❌ [AFILIADO-FUNIL] Erro ao enviar mensagem:', responseText)
+      console.error('❌ [AMZ-OFERTAS] Erro ao enviar mensagem:', responseText)
     } else {
-      console.log('✅ [AFILIADO-FUNIL] Mensagem enviada para:', formattedPhone)
+      console.log('✅ [AMZ-OFERTAS] Mensagem enviada para:', formattedPhone)
     }
   } catch (error) {
-    console.error('❌ [AFILIADO-FUNIL] Erro:', error)
+    console.error('❌ [AMZ-OFERTAS] Erro:', error)
   }
 }
 
@@ -1327,13 +1200,13 @@ async function sendWhatsAppPDF(to: string, filename: string, caption: string, cu
     })
 
     if (!response.ok) {
-      console.log('⚠️ [AFILIADO-FUNIL] Fallback para link:', filename)
+      console.log('⚠️ [AMZ-OFERTAS] Fallback para link:', filename)
       await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken)
     } else {
-      console.log('✅ [AFILIADO-FUNIL] PDF enviado:', filename)
+      console.log('✅ [AMZ-OFERTAS] PDF enviado:', filename)
     }
   } catch (error) {
-    console.error('❌ [AFILIADO-FUNIL] Erro ao enviar PDF:', error)
+    console.error('❌ [AMZ-OFERTAS] Erro ao enviar PDF:', error)
     await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken)
   }
 }
@@ -1342,33 +1215,23 @@ async function sendWhatsAppPDF(to: string, filename: string, caption: string, cu
 // ============================================
 // MENSAGENS PADRÃO
 // ============================================
-function getMensagemBoasVindas(): string {
-  return `🎉 *Bem-vindo(a) à AMZ Ofertas!*
-
-Aqui você recebe:
-✅ eBooks grátis
-✅ 2% de cashback em compras
-✅ Ofertas exclusivas
-
-📝 *Para começar, qual é o seu nome?*`
-}
-
 function getMensagemAjuda(): string {
   return `📚 *Central de Ajuda - AMZ Ofertas*
 
-*Comandos disponíveis:*
+*Comandos rápidos:*
 • *SALDO* - Ver seu cashback
 • *AJUDA* - Esta mensagem
-• *REINICIAR* - Recomeçar o cadastro
+• *CANCELAR* - Parar de receber mensagens
 
 *Como funciona:*
-1️⃣ Cadastre seu nome e nichos de interesse
-2️⃣ Receba eBook grátis de boas-vindas
-3️⃣ Envie comprovantes de compra
-4️⃣ Ganhe 2% de cashback + eBooks
+1️⃣ Eu mando ofertas incríveis aqui
+2️⃣ Você compra pelo link (site oficial)
+3️⃣ Me manda o comprovante
+4️⃣ Ganha 2% de cashback + eBook! 🎁
 
-*Lojas aceitas:* Amazon, Magalu, Mercado Livre
-*Valor mínimo:* R$ 50,00
+*Lojas aceitas:* Amazon, Magalu, Mercado Livre, Shopee, Netshoes, Boticário, L'Occitane
 
-Dúvidas? Fale conosco! 💙`
+*Resgate:* A partir de R$20 via PIX
+
+Dúvidas? É só perguntar! 💙`
 }
