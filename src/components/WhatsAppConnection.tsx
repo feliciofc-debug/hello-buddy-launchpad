@@ -110,7 +110,7 @@ export default function WhatsAppConnection() {
       const { data, error } = await supabase
         .from("wuzapi_instances")
         .select("id, instance_name, wuzapi_url, port, is_connected, phone_number")
-        .gte("port", 8080) // Portas PJ: 8080-8089
+        .gte("port", 8080) // Portas PJ: 8080-8089 (inclui 8080 que é a principal)
         .lte("port", 8089)
         .order("port");
 
