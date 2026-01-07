@@ -1467,8 +1467,8 @@ async function sendWhatsAppMessage(to: string, message: string, customToken?: st
 async function sendWhatsAppPDF(to: string, filename: string, caption: string, customToken?: string | null) {
   const CONTABO_WUZAPI_URL = "https://api2.amzofertas.com.br"
   
-  // URL pública do PDF hospedado no app
-  const APP_BASE_URL = "https://amzofertas.lovable.app"
+  // URL pública do PDF hospedado no domínio customizado
+  const APP_BASE_URL = "https://amzofertas.com.br"
 
   if (!customToken) return
 
