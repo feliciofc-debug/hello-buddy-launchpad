@@ -651,11 +651,21 @@ async function handleTextMessage(
     
     await sendWhatsAppMessage(
       message.from,
-      'Pronto! Vamos começar do zero! 🚀\n\nOlá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\n' +
-      'Pra te mandar ofertas e eBooks do seu interesse, me conta:\n\n' +
-      '*Quais categorias você mais curte?*\n\n' +
-      '🏠 Casa\n🍳 Cozinha\n👶 Bebê\n📱 Tech\n🎮 Gamer\n💄 Beleza\n💪 Fitness\n🔧 Ferramentas\n🐾 Pet\n👗 Moda\n\n' +
-      '_Pode mandar mais de uma! Ex: "Cozinha, Beleza, Pet"_',
+      `Pronto! Vamos começar do zero! 🎉\n\n` +
+      `Olá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\n` +
+      `Pra te mandar ofertas e eBooks do seu interesse, me conta:\n\n` +
+      `*Quais categorias você mais curte?*\n\n` +
+      `1️⃣ Casa\n` +
+      `2️⃣ Cozinha\n` +
+      `3️⃣ Bebê\n` +
+      `4️⃣ Tech\n` +
+      `5️⃣ Gamer\n` +
+      `6️⃣ Beleza\n` +
+      `7️⃣ Fitness\n` +
+      `8️⃣ Ferramentas\n` +
+      `9️⃣ Pet\n` +
+      `🔟 Moda\n\n` +
+      `_Pode mandar mais de uma! Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
       wuzapiToken
     )
     
@@ -795,9 +805,19 @@ async function handleTextMessage(
     // Não reconheceu categorias, pedir de novo
     await sendWhatsAppMessage(
       message.from,
-      `Hmm, não consegui identificar as categorias. 🤔\n\n` +
-      `Escolha entre:\n🏠 Casa | 🍳 Cozinha | 👶 Bebê | 📱 Tech | 🎮 Gamer | 💄 Beleza | 💪 Fitness | 🔧 Ferramentas | 🐾 Pet | 👗 Moda\n\n` +
-      `_Ex: "Cozinha, Gamer, Tech"_`,
+      `Hmm, não entendi. 🤔\n\n` +
+      `Escolhe pelo número ou nome:\n\n` +
+      `1️⃣ Casa\n` +
+      `2️⃣ Cozinha\n` +
+      `3️⃣ Bebê\n` +
+      `4️⃣ Tech\n` +
+      `5️⃣ Gamer\n` +
+      `6️⃣ Beleza\n` +
+      `7️⃣ Fitness\n` +
+      `8️⃣ Ferramentas\n` +
+      `9️⃣ Pet\n` +
+      `🔟 Moda\n\n` +
+      `_Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
       wuzapiToken
     )
     return
@@ -869,20 +889,20 @@ async function handleTextMessage(
     await sendWhatsAppMessage(
       message.from,
       `Pronto! Vamos começar do zero! 🎉\n\n` +
-      `Olá! Eu sou a assistente virtual da *AMZ Ofertas* 💙🛒\n\n` +
+      `Olá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\n` +
       `Pra te mandar ofertas e eBooks do seu interesse, me conta:\n\n` +
       `*Quais categorias você mais curte?*\n\n` +
-      `🏠 Casa\n` +
-      `🍳 Cozinha\n` +
-      `👶 Bebê\n` +
-      `📱 Tech\n` +
-      `🎮 Gamer\n` +
-      `💄 Beleza\n` +
-      `💪 Fitness\n` +
-      `🔧 Ferramentas\n` +
-      `🐾 Pet\n` +
-      `👗 Moda\n\n` +
-      `_Pode mandar mais de uma! Ex: "Cozinha, Beleza, Pet"_`,
+      `1️⃣ Casa\n` +
+      `2️⃣ Cozinha\n` +
+      `3️⃣ Bebê\n` +
+      `4️⃣ Tech\n` +
+      `5️⃣ Gamer\n` +
+      `6️⃣ Beleza\n` +
+      `7️⃣ Fitness\n` +
+      `8️⃣ Ferramentas\n` +
+      `9️⃣ Pet\n` +
+      `🔟 Moda\n\n` +
+      `_Pode mandar mais de uma! Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
       wuzapiToken
     )
     await logEvent(supabase, { evento: 'primeiro_contato', cliente_phone: message.from, user_id: userId })
@@ -936,8 +956,36 @@ async function handleTextMessage(
 // PARSER DE CATEGORIAS DO TEXTO
 // ============================================
 function parseCategoriasFromText(text: string): string[] {
-  const textLower = text.toLowerCase()
+  const textLower = text.toLowerCase().trim()
   const categorias: string[] = []
+  
+  // Mapeamento de números para categorias
+  const numerosParaCategorias: Record<string, string> = {
+    '1': 'casa',
+    '2': 'cozinha',
+    '3': 'bebe',
+    '4': 'tech',
+    '5': 'gamer',
+    '6': 'beleza',
+    '7': 'fitness',
+    '8': 'ferramentas',
+    '9': 'pet',
+    '10': 'moda'
+  }
+  
+  // Primeiro, tentar parsear números (1, 2, 6 ou 1 2 6 ou 1,2,6)
+  const numerosEncontrados = text.match(/\b(\d{1,2})\b/g)
+  if (numerosEncontrados && numerosEncontrados.length > 0) {
+    for (const num of numerosEncontrados) {
+      const categoria = numerosParaCategorias[num]
+      if (categoria && !categorias.includes(categoria)) {
+        categorias.push(categoria)
+      }
+    }
+    if (categorias.length > 0) {
+      return categorias
+    }
+  }
   
   const mapeamento: Record<string, string> = {
     'casa': 'casa',
