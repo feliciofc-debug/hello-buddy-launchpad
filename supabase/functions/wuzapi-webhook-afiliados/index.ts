@@ -868,11 +868,21 @@ async function handleTextMessage(
     
     await sendWhatsAppMessage(
       message.from,
-      `Oi! 👋 Bem-vindo(a) à *AMZ Ofertas*!\n\n` +
-      `Tenho um eBook *"50 Receitas Airfryer"* de PRESENTE pra você! 🍟\n\n` +
-      `Pra te mandar, me conta:\n*Quais categorias você mais curte?*\n\n` +
-      `🏠 Casa | 🍳 Cozinha | 👶 Bebê | 📱 Tech | 🎮 Gamer | 💄 Beleza | 💪 Fitness | 🔧 Ferramentas | 🐾 Pet | 👗 Moda\n\n` +
-      `_Pode mandar mais de uma! Ex: "Cozinha, Gamer"_`,
+      `Pronto! Vamos começar do zero! 🎉\n\n` +
+      `Olá! Eu sou a assistente virtual da *AMZ Ofertas* 💙🛒\n\n` +
+      `Pra te mandar ofertas e eBooks do seu interesse, me conta:\n\n` +
+      `*Quais categorias você mais curte?*\n\n` +
+      `🏠 Casa\n` +
+      `🍳 Cozinha\n` +
+      `👶 Bebê\n` +
+      `📱 Tech\n` +
+      `🎮 Gamer\n` +
+      `💄 Beleza\n` +
+      `💪 Fitness\n` +
+      `🔧 Ferramentas\n` +
+      `🐾 Pet\n` +
+      `👗 Moda\n\n` +
+      `_Pode mandar mais de uma! Ex: "Cozinha, Beleza, Pet"_`,
       wuzapiToken
     )
     await logEvent(supabase, { evento: 'primeiro_contato', cliente_phone: message.from, user_id: userId })
