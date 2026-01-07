@@ -125,6 +125,90 @@ const CATEGORIAS = [
 ]
 
 // ============================================
+// DETECÇÃO E CONVERSÃO DE LINKS DE MARKETPLACE
+// ============================================
+interface MarketplaceLinkResult {
+  url: string
+  marketplace: 'amazon' | 'magalu' | 'mercadolivre' | 'shopee' | 'outros'
+}
+
+function detectMarketplaceLink(text: string): MarketplaceLinkResult | null {
+  // Regex para encontrar URLs no texto
+  const urlRegex = /(https?:\/\/[^\s]+)/gi
+  const matches = text.match(urlRegex)
+  
+  if (!matches || matches.length === 0) return null
+  
+  const url = matches[0]
+  
+  // Detectar marketplace
+  if (url.includes('amazon.com.br') || url.includes('amzn.to') || url.includes('a.co')) {
+    return { url, marketplace: 'amazon' }
+  }
+  if (url.includes('magazineluiza.com.br') || url.includes('magalu.com') || url.includes('magazinevoce.com.br')) {
+    return { url, marketplace: 'magalu' }
+  }
+  if (url.includes('mercadolivre.com.br') || url.includes('mercadolibre.com')) {
+    return { url, marketplace: 'mercadolivre' }
+  }
+  if (url.includes('shopee.com.br')) {
+    return { url, marketplace: 'shopee' }
+  }
+  
+  return null
+}
+
+function extractAsinFromUrl(url: string): string | null {
+  // Padrões para extrair ASIN da Amazon
+  const patterns = [
+    /\/dp\/([A-Z0-9]{10})/i,
+    /\/gp\/product\/([A-Z0-9]{10})/i,
+    /\/product\/([A-Z0-9]{10})/i,
+    /\/d\/([A-Z0-9]{10})/i,
+    /asin=([A-Z0-9]{10})/i
+  ]
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern)
+    if (match && match[1]) {
+      return match[1].toUpperCase()
+    }
+  }
+  
+  return null
+}
+
+function convertToAffiliateLink(url: string, marketplace: string, amazonTag: string): string {
+  switch (marketplace) {
+    case 'amazon':
+      const asin = extractAsinFromUrl(url)
+      if (asin) {
+        return `https://www.amazon.com.br/dp/${asin}?tag=${amazonTag}`
+      }
+      // Se não conseguiu extrair ASIN, adiciona tag ao final
+      if (url.includes('?')) {
+        return `${url}&tag=${amazonTag}`
+      }
+      return `${url}?tag=${amazonTag}`
+      
+    case 'magalu':
+      // Substituir domínio para Magazine Você
+      const urlMagalu = url
+        .replace('www.magazineluiza.com.br', 'www.magazinevoce.com.br/magazineamzofertas')
+        .replace('magazineluiza.com.br', 'magazinevoce.com.br/magazineamzofertas')
+      return urlMagalu
+      
+    case 'mercadolivre':
+    case 'shopee':
+      // Para esses, retornar link original (já devem vir convertidos ou usam outro sistema)
+      return url
+      
+    default:
+      return url
+  }
+}
+
+// ============================================
 // MAIN HANDLER
 // ============================================
 serve(async (req) => {
@@ -572,6 +656,54 @@ async function handleTextMessage(
       wuzapiToken
     )
     await logEvent(supabase, { evento: 'ebook_reenviado', cliente_phone: message.from, user_id: userId })
+    return
+  }
+
+  // ========== DETECÇÃO E CONVERSÃO DE LINKS DE MARKETPLACE ==========
+  const linkResult = detectMarketplaceLink(text)
+  if (linkResult) {
+    console.log('🔗 [AMZ-OFERTAS] Link de marketplace detectado:', linkResult)
+    
+    // Buscar amazon_affiliate_tag do afiliado
+    const { data: afiliadoData } = await supabase
+      .from('clientes_afiliados')
+      .select('amazon_affiliate_tag')
+      .eq('user_id', userId)
+      .single()
+    
+    const amazonTag = afiliadoData?.amazon_affiliate_tag || 'amzofertas03-20'
+    const linkConvertido = convertToAffiliateLink(linkResult.url, linkResult.marketplace, amazonTag)
+    
+    // Buscar nome do cliente
+    const cleanPhoneLink = message.from.replace(/\D/g, '')
+    const { data: leadInfo } = await supabase
+      .from('leads_ebooks')
+      .select('nome')
+      .eq('phone', cleanPhoneLink)
+      .single()
+    
+    const nomeCliente = leadInfo?.nome?.split(' ')[0] || 'amigo(a)'
+    
+    // Enviar link convertido
+    await sendWhatsAppMessage(
+      message.from,
+      `Opa, ${nomeCliente}! Que achado! 🤩\n\n` +
+      `Aqui está seu link com *2% de cashback*:\n\n` +
+      `👉 ${linkConvertido}\n\n` +
+      `Depois que comprar, me manda o comprovante e eu credito seu cashback + te dou um eBook de presente! 🎁`,
+      wuzapiToken
+    )
+    
+    await logEvent(supabase, { 
+      evento: 'link_convertido', 
+      cliente_phone: message.from, 
+      user_id: userId,
+      metadata: { 
+        marketplace: linkResult.marketplace, 
+        link_original: linkResult.url,
+        link_convertido: linkConvertido 
+      }
+    })
     return
   }
 
