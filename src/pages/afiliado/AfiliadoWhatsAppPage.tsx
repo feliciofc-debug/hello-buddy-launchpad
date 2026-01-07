@@ -403,6 +403,59 @@ const AfiliadoWhatsAppPage = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
+      // 🔥 SE IMAGEM É BASE64, FAZER UPLOAD PARA STORAGE PRIMEIRO
+      let finalImageUrl: string | null = productImage;
+      
+      if (productImage && productImage.startsWith('data:')) {
+        console.log('📸 Detectado base64, fazendo upload para storage...');
+        toast.info('📤 Enviando imagem para o servidor...');
+        
+        try {
+          // Extrair tipo e dados do base64
+          const matches = productImage.match(/^data:(.+);base64,(.+)$/);
+          if (matches && matches.length === 3) {
+            const mimeType = matches[1];
+            const base64Data = matches[2];
+            const extension = mimeType.split('/')[1] || 'png';
+            const fileName = `whatsapp-images/${user.id}/${Date.now()}.${extension}`;
+            
+            // Converter base64 para Blob
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: mimeType });
+            
+            // Upload para storage público
+            const { data: uploadData, error: uploadError } = await supabase.storage
+              .from('produtos')
+              .upload(fileName, blob, {
+                contentType: mimeType,
+                upsert: true,
+              });
+
+            if (uploadError) {
+              console.error('❌ Erro no upload:', uploadError);
+              toast.error('Erro ao enviar imagem, enviando só texto');
+              finalImageUrl = null;
+            } else {
+              // Gerar URL pública
+              const { data: publicUrlData } = supabase.storage
+                .from('produtos')
+                .getPublicUrl(fileName);
+              
+              finalImageUrl = publicUrlData?.publicUrl || null;
+              console.log('✅ Imagem uploaded:', finalImageUrl);
+            }
+          }
+        } catch (uploadErr) {
+          console.error('❌ Erro ao processar base64:', uploadErr);
+          finalImageUrl = null;
+        }
+      }
+
       // VERIFICAR SE É AGENDAMENTO
       if (scheduledDate) {
         const { error: scheduleError } = await supabase
@@ -434,6 +487,7 @@ const AfiliadoWhatsAppPage = () => {
         setPreviewMessage('');
         clearAllSelections();
         setSelectedContactPhones([]);
+        setProductImage(null);
         
         await loadBulkSends();
         setLoading(false);
@@ -484,7 +538,7 @@ const AfiliadoWhatsAppPage = () => {
             body: {
               phone: phone,
               message: personalizedMessage,
-              ...(productImage && { imageUrl: productImage })
+              ...(finalImageUrl && { imageUrl: finalImageUrl })
             }
           });
 
