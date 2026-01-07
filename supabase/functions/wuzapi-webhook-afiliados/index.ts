@@ -768,15 +768,12 @@ async function sendEbookBoasVindas(
   // Pequena pausa
   await new Promise(r => setTimeout(r, 2000))
 
-  // Enviar link HTML
+  // Enviar link HTML do eBook (ebook-airfryer-3.html via Edge Function)
   await sendWhatsAppMessage(
     phone,
     `📚 *50 Receitas Airfryer*\n\n👉 Acesse aqui: ${ebookHtmlUrl}\n\nSalva esse link! 💙`,
     wuzapiToken
   )
-
-  // Tentar enviar PDF também
-  await sendWhatsAppPDF(phone, 'ebook-airfryer-COMPLETO.pdf', '50 Receitas Airfryer', wuzapiToken)
 
   // Pequena pausa
   await new Promise(r => setTimeout(r, 2500))
