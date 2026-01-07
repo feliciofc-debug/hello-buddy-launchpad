@@ -1466,9 +1466,11 @@ async function sendWhatsAppMessage(to: string, message: string, customToken?: st
 // ============================================
 async function sendWhatsAppPDF(to: string, filename: string, caption: string, customToken?: string | null) {
   const CONTABO_WUZAPI_URL = "https://api2.amzofertas.com.br"
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+  
+  // URL pública do PDF hospedado no app
+  const APP_BASE_URL = "https://amzofertas.lovable.app"
 
-  if (!customToken || !SUPABASE_URL) return
+  if (!customToken) return
 
   // Formatar número
   let formattedPhone = to.replace(/\D/g, '')
@@ -1476,16 +1478,25 @@ async function sendWhatsAppPDF(to: string, filename: string, caption: string, cu
     formattedPhone = '55' + formattedPhone
   }
 
-  const pdfUrl = `${SUPABASE_URL}/storage/v1/object/public/ebooks/${filename}`
+  // Usar URL pública do app (pasta public/ebooks/)
+  const pdfUrl = `${APP_BASE_URL}/ebooks/${filename}`
 
   try {
-    const response = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/file`, {
+    const response = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/document`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Token': customToken },
-      body: JSON.stringify({ Phone: formattedPhone, Url: pdfUrl, Caption: `📚 ${caption}` })
+      body: JSON.stringify({ 
+        Phone: formattedPhone, 
+        Document: pdfUrl, 
+        FileName: filename,
+        Caption: `📚 ${caption}` 
+      })
     })
 
-    if (!response.ok) {
+    const result = await response.json()
+    console.log('📄 [AMZ-OFERTAS] Resposta envio PDF:', JSON.stringify(result))
+
+    if (!response.ok || result?.success === false) {
       console.log('⚠️ [AMZ-OFERTAS] Fallback para link:', filename)
       await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken)
     } else {
