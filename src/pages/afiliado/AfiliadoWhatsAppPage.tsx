@@ -479,9 +479,10 @@ const AfiliadoWhatsAppPage = () => {
           personalizedMessage = personalizedMessage.replace(/{nome}/g, contactName);
           personalizedMessage = personalizedMessage.replace(/{telefone}/g, phone);
           
-          const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
+          // Usa wuzapi-send que busca token na tabela clientes_afiliados
+          const { data, error } = await supabase.functions.invoke('wuzapi-send', {
             body: {
-              phoneNumbers: [phone],
+              phone: phone,
               message: personalizedMessage,
               ...(productImage && { imageUrl: productImage })
             }
