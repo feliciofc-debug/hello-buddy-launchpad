@@ -192,11 +192,18 @@ function convertToAffiliateLink(url: string, marketplace: string, amazonTag: str
       return `${url}?tag=${amazonTag}`
       
     case 'magalu':
-      // Substituir domínio para Magazine Você
-      const urlMagalu = url
-        .replace('www.magazineluiza.com.br', 'www.magazinevoce.com.br/magazineamzofertas')
-        .replace('magazineluiza.com.br', 'magazinevoce.com.br/magazineamzofertas')
-      return urlMagalu
+      // Substituir domínio para Magazine Você (sem parâmetros extras)
+      try {
+        const urlObj = new URL(url)
+        const path = urlObj.pathname // Pega só o path, sem query params
+        return `https://www.magazinevoce.com.br/magazineamzofertas${path}`
+      } catch {
+        // Fallback se URL inválida
+        const cleanUrl = url.split('?')[0] // Remove query params
+          .replace('www.magazineluiza.com.br', 'www.magazinevoce.com.br/magazineamzofertas')
+          .replace('magazineluiza.com.br', 'magazinevoce.com.br/magazineamzofertas')
+        return cleanUrl
+      }
       
     case 'mercadolivre':
     case 'shopee':
