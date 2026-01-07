@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Smartphone, QrCode, Wifi, WifiOff, RefreshCw, LogOut, Loader2 } from "lucide-react";
+import { Smartphone, QrCode, Wifi, WifiOff, RefreshCw, LogOut, Loader2, CheckCircle } from "lucide-react";
 
 interface ConnectionStatus {
   connected: boolean;
@@ -402,22 +402,34 @@ export default function WhatsAppConnection() {
 
           {/* Status conectado */}
           {isConnected && (
-            <div className="p-4 rounded-lg bg-green-500/10 border border-green-500/20">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium text-green-700 dark:text-green-400">WhatsApp Ativo</p>
-                  <p className="text-sm text-muted-foreground">
-                    Número: {formatPhone(connectedPhone)}
-                  </p>
+            <div className="space-y-4">
+              <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="h-8 w-8 text-green-500" />
+                  <div>
+                    <p className="font-medium text-green-700 dark:text-green-400">WhatsApp Conectado</p>
+                    <p className="text-sm text-muted-foreground">
+                      {formatPhone(connectedPhone)}
+                    </p>
+                  </div>
                 </div>
+              </div>
+
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  size="sm"
+                  onClick={() => checkStatus()}
+                  disabled={loading}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
+                  Atualizar Status
+                </Button>
+                <Button
+                  variant="destructive"
                   onClick={handleDisconnect}
                   disabled={loading}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4 mr-1" />}
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogOut className="h-4 w-4 mr-2" />}
                   Desconectar
                 </Button>
               </div>
