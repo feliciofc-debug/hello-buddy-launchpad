@@ -516,6 +516,34 @@ async function handleTextMessage(
     return
   }
 
+  // Comando EBOOK / PRESENTE (reenviar eBook grátis)
+  if (textLower === 'ebook' || textLower === 'presente' || textLower === 'receitas') {
+    const cleanPhone = message.from.replace(/\D/g, '')
+    const { data: leadData } = await supabase
+      .from('leads_ebooks')
+      .select('nome, nichos')
+      .eq('phone', cleanPhone)
+      .single()
+    
+    const nome = leadData?.nome || 'Amigo(a)'
+    const nichos = (leadData?.nichos as string[]) || ['cozinha']
+    
+    await sendWhatsAppMessage(
+      message.from,
+      `📚 Reenviando seu eBook grátis, ${nome.split(' ')[0]}! Aguarda...`,
+      wuzapiToken
+    )
+    await new Promise(r => setTimeout(r, 1500))
+    await sendWhatsAppPDF(
+      message.from,
+      '50-receitas-airfryer.pdf',
+      '50 Receitas Airfryer - Seu presente! 🍟',
+      wuzapiToken
+    )
+    await logEvent(supabase, { evento: 'ebook_reenviado', cliente_phone: message.from, user_id: userId })
+    return
+  }
+
   // ========== FLUXO DE BOAS-VINDAS + EBOOK GRÁTIS ==========
   const cleanPhone = message.from.replace(/\D/g, '')
   
