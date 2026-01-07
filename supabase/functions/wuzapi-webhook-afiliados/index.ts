@@ -1105,6 +1105,19 @@ async function sendEbookBoasVindas(
     wuzapiToken
   )
 
+  // Pequena pausa
+  await new Promise(r => setTimeout(r, 2500))
+
+  // Redes sociais
+  await sendWhatsAppMessage(
+    phone,
+    `📱 *Segue a gente nas redes sociais!*\n\n` +
+    `📸 Instagram: @amzofertas\n` +
+    `👍 Facebook: AMZ Ofertas\n\n` +
+    `Lá tem dicas, promoções e novidades quentinhas! 🔥`,
+    wuzapiToken
+  )
+
   // Registrar entrega
   await logEbookDelivery(supabase, {
     phone: cleanPhone,
