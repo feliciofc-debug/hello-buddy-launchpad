@@ -910,12 +910,15 @@ async function handleTextMessage(
   }
 
   // ========== FLUXO COM IA (já recebeu eBook grátis) ==========
+  console.log('🤖 [AMZ-OFERTAS] Entrando no fluxo IA para:', message.from)
   
   // Buscar histórico de conversa
   const conversationHistory = await getConversationHistory(supabase, message.from)
+  console.log('📜 [AMZ-OFERTAS] Histórico carregado, qtd:', conversationHistory.length)
   
   // Buscar info de cashback para contexto
   const cashbackInfo = await getCashbackInfo(supabase, message.from)
+  console.log('💰 [AMZ-OFERTAS] Cashback info:', cashbackInfo ? 'encontrado' : 'não encontrado')
   
   // Construir contexto adicional
   let additionalContext = ''
@@ -929,19 +932,25 @@ async function handleTextMessage(
   // Nome do cliente para contexto
   const nomeCliente = leadInfo?.nome?.split(' ')[0] || 'amiga'
   additionalContext += `\n\nNOME DO CLIENTE: ${nomeCliente} (use para personalizar a conversa)`
+  console.log('👤 [AMZ-OFERTAS] Nome cliente:', nomeCliente)
 
   // Gerar resposta com IA
+  console.log('🧠 [AMZ-OFERTAS] Chamando generateAIResponse...')
   const aiResponse = await generateAIResponse(
     text, 
     conversationHistory,
     additionalContext
   )
+  console.log('✅ [AMZ-OFERTAS] Resposta IA recebida:', aiResponse?.slice(0, 50))
 
   // Salvar conversa
   await saveConversation(supabase, message.from, text, aiResponse)
+  console.log('💾 [AMZ-OFERTAS] Conversa salva')
 
   // Enviar resposta
+  console.log('📤 [AMZ-OFERTAS] Enviando resposta para:', message.from)
   await sendWhatsAppMessage(message.from, aiResponse, wuzapiToken)
+  console.log('✅ [AMZ-OFERTAS] Resposta enviada com sucesso!')
 
   // Log evento
   await logEvent(supabase, {
