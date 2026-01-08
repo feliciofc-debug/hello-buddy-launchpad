@@ -19,10 +19,22 @@ import {
   Megaphone,
   UserPlus,
   Upload,
-  Contact
+  Contact,
+  Trash2
 } from "lucide-react";
 import { toast } from "sonner";
 import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppCSVModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface LeadCapturado {
   id: string;
@@ -47,6 +59,7 @@ export default function AfiliadoDashboard() {
     whatsappConectado: false
   });
   const [leadsCapturados, setLeadsCapturados] = useState<LeadCapturado[]>([]);
+  const [deletingLead, setDeletingLead] = useState<string | null>(null);
 
   useEffect(() => {
     loadStats();
@@ -114,6 +127,30 @@ export default function AfiliadoDashboard() {
       console.error('Erro ao carregar stats:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteLead = async (leadId: string, phone: string) => {
+    setDeletingLead(leadId);
+    try {
+      // Deletar de todas as tabelas relacionadas
+      await Promise.all([
+        supabase.from('leads_ebooks').delete().eq('id', leadId),
+        supabase.from('afiliado_clientes_ebooks').delete().eq('phone', phone),
+        supabase.from('afiliado_user_states').delete().eq('phone', phone),
+        supabase.from('afiliado_conversas').delete().eq('phone', phone),
+        supabase.from('afiliado_cliente_preferencias').delete().eq('phone', phone),
+        supabase.from('afiliado_cashback').delete().eq('phone', phone),
+      ]);
+
+      // Atualizar lista local
+      setLeadsCapturados(prev => prev.filter(l => l.id !== leadId));
+      toast.success('Lead removido com sucesso');
+    } catch (error) {
+      console.error('Erro ao deletar lead:', error);
+      toast.error('Erro ao deletar lead');
+    } finally {
+      setDeletingLead(null);
     }
   };
 
@@ -314,9 +351,41 @@ export default function AfiliadoDashboard() {
                           </div>
                         )}
                       </div>
-                      <Badge variant="secondary" className="text-xs">
-                        {new Date(lead.created_at).toLocaleDateString('pt-BR')}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs">
+                          {new Date(lead.created_at).toLocaleDateString('pt-BR')}
+                        </Badge>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              disabled={deletingLead === lead.id}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Deletar Lead</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Tem certeza que deseja deletar o lead <strong>{lead.nome || lead.phone}</strong>? 
+                                Esta ação irá remover todas as conversas, estados e dados associados.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => handleDeleteLead(lead.id, lead.phone)}
+                                className="bg-destructive hover:bg-destructive/90"
+                              >
+                                Deletar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </div>
                   ))}
                 </div>
