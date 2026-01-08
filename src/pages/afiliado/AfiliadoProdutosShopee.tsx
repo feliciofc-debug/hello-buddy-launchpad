@@ -136,7 +136,9 @@ export default function AfiliadoProdutosShopee() {
               <CardContent className="p-3">
                 <h3 className="font-medium text-sm line-clamp-2 mb-2">{produto.titulo}</h3>
                 {produto.preco != null && (
-                  <p className="text-lg font-bold text-green-600">R$ {produto.preco.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-green-600">
+                    {produto.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </p>
                 )}
 
                 <Button
