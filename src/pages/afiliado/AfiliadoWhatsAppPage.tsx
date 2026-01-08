@@ -151,20 +151,73 @@ const AfiliadoWhatsAppPage = () => {
       return;
     }
 
-    const { data, error } = await supabase
+    // Buscar listas da tabela whatsapp_groups (listas manuais)
+    const { data: manualGroups, error: manualError } = await supabase
       .from('whatsapp_groups')
       .select('*')
       .eq('user_id', user.id)
       .order('member_count', { ascending: false });
 
-    if (error) {
-      console.error('Erro ao carregar grupos:', error);
-      toast.error('Erro ao carregar grupos');
-      setIsLoadingGroups(false);
-      return;
+    if (manualError) {
+      console.error('Erro ao carregar grupos manuais:', manualError);
     }
 
-    setGroups(data || []);
+    // Buscar listas automáticas por categoria
+    const { data: autoListas, error: autoError } = await supabase
+      .from('afiliado_listas_categoria')
+      .select('*')
+      .eq('ativa', true)
+      .order('total_membros', { ascending: false });
+
+    if (autoError) {
+      console.error('Erro ao carregar listas automáticas:', autoError);
+    }
+
+    // Para cada lista automática, buscar os telefones dos membros
+    const listasComTelefones = await Promise.all(
+      (autoListas || []).map(async (lista) => {
+        const { data: membros } = await supabase
+          .from('afiliado_lista_membros')
+          .select('lead_id')
+          .eq('lista_id', lista.id);
+        
+        // Buscar telefones dos leads
+        const leadIds = membros?.map(m => m.lead_id) || [];
+        let phoneNumbers: string[] = [];
+        
+        if (leadIds.length > 0) {
+          const { data: leads } = await supabase
+            .from('leads_ebooks')
+            .select('phone')
+            .in('id', leadIds);
+          
+          phoneNumbers = leads?.map(l => l.phone) || [];
+        }
+        
+        return {
+          id: lista.id,
+          group_id: lista.id,
+          group_name: `📂 ${lista.nome}`,
+          member_count: lista.total_membros || 0,
+          phone_numbers: phoneNumbers,
+          is_auto_list: true,
+          cor: lista.cor,
+          icone: lista.icone,
+          descricao: lista.descricao
+        };
+      })
+    );
+
+    // Combinar listas manuais + automáticas
+    const todasListas = [
+      ...listasComTelefones.filter(l => l.member_count > 0), // Só mostrar listas com membros
+      ...(manualGroups || []).map(g => ({
+        ...g,
+        is_auto_list: false
+      }))
+    ];
+
+    setGroups(todasListas);
     setIsLoadingGroups(false);
   };
 
