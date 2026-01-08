@@ -783,6 +783,27 @@ export type Database = {
           },
         ]
       }
+      afiliado_webhook_dedup: {
+        Row: {
+          created_at: string
+          id: string
+          instance_name: string
+          message_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          instance_name?: string
+          message_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          instance_name?: string
+          message_id?: string
+        }
+        Relationships: []
+      }
       afiliados: {
         Row: {
           codigo_referencia: string
@@ -5533,6 +5554,7 @@ export type Database = {
         Returns: undefined
       }
       limpar_estados_antigos_afiliado: { Args: never; Returns: number }
+      limpar_webhook_dedup_antigos: { Args: never; Returns: number }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
       verificar_blacklist_afiliado: {
