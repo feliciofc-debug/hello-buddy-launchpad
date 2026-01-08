@@ -83,7 +83,7 @@ export function CriarCampanhaAfiliadoModal({
         supabase
           .from('afiliado_listas_categoria')
           .select('id, nome, total_membros, ativa')
-          .eq('user_id', user.id)
+          .eq('ativa', true)
           .order('nome', { ascending: true })
       ]);
 
