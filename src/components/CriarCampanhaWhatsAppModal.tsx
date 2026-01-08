@@ -151,19 +151,73 @@ _Escolha quantidade e finalize!_ ✅`);
         return;
       }
 
-      const { data, error } = await supabase
+      // Buscar listas manuais
+      const { data: manualListas, error: manualError } = await supabase
         .from('whatsapp_groups')
         .select('*')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('❌ Erro ao buscar listas:', error);
-        throw error;
+      if (manualError) {
+        console.error('⚠️ Erro ao buscar listas manuais:', manualError);
       }
 
-      console.log(`✅ ${data?.length || 0} listas carregadas`);
-      setListas(data || []);
+      // Buscar listas automáticas por categoria
+      const { data: autoListas, error: autoError } = await supabase
+        .from('afiliado_listas_categoria')
+        .select('*')
+        .eq('ativa', true)
+        .order('total_membros', { ascending: false });
+
+      if (autoError) {
+        console.error('⚠️ Erro ao buscar listas automáticas:', autoError);
+      }
+
+      // Para cada lista automática, buscar os telefones dos membros
+      const listasAutoComTelefones = await Promise.all(
+        (autoListas || []).filter(l => (l.total_membros || 0) > 0).map(async (lista) => {
+          const { data: membros } = await supabase
+            .from('afiliado_lista_membros')
+            .select('lead_id')
+            .eq('lista_id', lista.id);
+          
+          // Buscar telefones dos leads
+          const leadIds = membros?.map(m => m.lead_id) || [];
+          let phoneNumbers: string[] = [];
+          
+          if (leadIds.length > 0) {
+            const { data: leads } = await supabase
+              .from('leads_ebooks')
+              .select('phone')
+              .in('id', leadIds);
+            
+            phoneNumbers = leads?.map(l => l.phone) || [];
+          }
+          
+          return {
+            id: lista.id,
+            group_id: lista.id,
+            group_name: `📂 ${lista.nome}`,
+            member_count: lista.total_membros || 0,
+            phone_numbers: phoneNumbers
+          } as WhatsAppGroup;
+        })
+      );
+
+      // Combinar listas
+      const todasListas: WhatsAppGroup[] = [
+        ...listasAutoComTelefones,
+        ...(manualListas || []).map(g => ({
+          id: g.id,
+          group_id: g.group_id,
+          group_name: g.group_name,
+          member_count: g.member_count || 0,
+          phone_numbers: g.phone_numbers || []
+        }))
+      ];
+
+      console.log(`✅ ${todasListas.length} listas carregadas (${listasAutoComTelefones.length} automáticas + ${manualListas?.length || 0} manuais)`);
+      setListas(todasListas);
     } catch (error) {
       console.error('❌ ERRO ao buscar listas:', error);
       toast.error('Erro ao carregar listas');
