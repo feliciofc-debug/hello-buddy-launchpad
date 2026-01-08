@@ -319,6 +319,36 @@ Deno.serve(async (req) => {
 
     console.log('📨 [AMZ-OFERTAS] Payload:', JSON.stringify(payload, null, 2))
 
+    // ========== DEDUPLICAÇÃO POR MESSAGE ID ==========
+    // Evita processar o mesmo webhook múltiplas vezes (loop de respostas)
+    const messageId = payload?.event?.Info?.ID || 
+                      payload?.jsonData?.event?.Info?.ID || 
+                      payload?._originalPayload?.event?.Info?.ID ||
+                      null
+    const instanceName = payload?.instanceName || 
+                         payload?.jsonData?.instanceName ||
+                         payload?._originalPayload?.instanceName || 
+                         'unknown'
+
+    if (messageId) {
+      const { error: dedupError } = await supabase
+        .from('afiliado_webhook_dedup')
+        .insert({ message_id: messageId, instance_name: instanceName })
+
+      // Se já existe (violação de unique), ignora - é duplicado
+      if (dedupError && (
+        String(dedupError.message || '').toLowerCase().includes('duplicate') ||
+        String(dedupError.code || '') === '23505'
+      )) {
+        console.log('⏭️ [AMZ-OFERTAS] Webhook duplicado, ignorando:', messageId)
+        return new Response(
+          JSON.stringify({ success: true, dedup: true, message_id: messageId }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      console.log('✅ [AMZ-OFERTAS] Novo message_id registrado:', messageId)
+    }
+
     // Extrair mensagem do payload Wuzapi
     const message = parseWuzapiPayload(payload)
     console.log('💬 [AMZ-OFERTAS] Mensagem processada:', message)
