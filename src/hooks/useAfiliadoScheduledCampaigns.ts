@@ -170,10 +170,27 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
 
         // EXECUTAR CADA CAMPANHA (usando lista filtrada!)
         for (const campanha of campanhasNaoExecutadas) {
-          // ✅ Marcar como executada ANTES de processar (evita duplicação)
+          // ✅ CLAIM NO BACKEND: evita triplicar quando houver 2-3 abas/janelas abertas
+          // Só 1 execução consegue marcar como "executando" para esse mesmo proxima_execucao.
+          const { data: claimed, error: claimErr } = await supabase
+            .from('afiliado_campanhas')
+            .update({ status: 'executando', updated_at: new Date().toISOString() })
+            .eq('id', campanha.id)
+            .eq('proxima_execucao', campanha.proxima_execucao)
+            .or('status.is.null,status.neq.executando')
+            .select('id')
+            .maybeSingle();
+
+          if (claimErr) throw claimErr;
+          if (!claimed?.id) {
+            console.log(`🔒 [AFILIADO] Campanha ${campanha.nome} já foi capturada por outra sessão, pulando...`);
+            continue;
+          }
+
+          // ✅ Marcar como executada ANTES de processar (evita duplicação na mesma aba)
           const campanhaKey = `${campanha.id}_${campanha.proxima_execucao}`;
           executedCampaignsToday.add(campanhaKey);
-          
+
           console.log(`🚀 [AFILIADO] Executando: ${campanha.nome}`);
           toast.info(`🚀 Executando campanha: ${campanha.nome}`);
 
@@ -402,7 +419,8 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                 ultima_execucao: agora.toISOString(),
                 proxima_execucao: proximaExec,
                 total_enviados: (campanha.total_enviados || 0) + enviados,
-                ativa: proximaExec ? true : false
+                ativa: proximaExec ? true : false,
+                status: proximaExec ? 'ativa' : 'concluida'
               })
               .eq('id', campanha.id);
 
@@ -410,6 +428,11 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
 
           } catch (err) {
             console.error(`❌ [AFILIADO] Erro na campanha ${campanha.nome}:`, err);
+            // Evita ficar preso em "executando" caso dê erro no meio
+            await supabase
+              .from('afiliado_campanhas')
+              .update({ status: 'erro_execucao' })
+              .eq('id', campanha.id);
             toast.error(`Erro na campanha ${campanha.nome}`);
           }
         }
