@@ -1670,28 +1670,59 @@ async function getCashbackInfo(supabase: any, phone: string): Promise<any> {
 }
 
 // ============================================
-// BUSCAR PRODUTOS DO AFILIADO
+// BUSCAR PRODUTOS DO AFILIADO (OU CATÁLOGO GLOBAL)
 // ============================================
 async function getProdutosAfiliado(supabase: any, userId: string | null): Promise<any[]> {
   if (!userId) return []
   
   try {
-    const { data, error } = await supabase
+    // 1) Primeiro, tentar buscar produtos do afiliado específico
+    const { data: produtosAfiliado, error: errAfiliado } = await supabase
       .from('afiliado_produtos')
       .select('id, titulo, descricao, preco, link_afiliado, categoria, imagem_url, marketplace')
       .eq('user_id', userId)
       .eq('status', 'ativo')
       .order('categoria', { ascending: true })
       .order('titulo', { ascending: true })
-      .limit(50) // Aumentado para ter mais produtos disponíveis para busca
+      .limit(100)
     
-    if (error) {
-      console.error('❌ [AMZ-OFERTAS] Erro ao buscar produtos:', error)
-      return []
+    if (!errAfiliado && produtosAfiliado && produtosAfiliado.length > 0) {
+      console.log(`📦 [AMZ-OFERTAS] Produtos do afiliado: ${produtosAfiliado.length}`)
+      return produtosAfiliado
     }
     
-    console.log(`📦 [AMZ-OFERTAS] Produtos carregados: ${data?.length || 0}`)
-    return data || []
+    // 2) Se afiliado não tem produtos, buscar do catálogo global (admin)
+    // Buscar todas as categorias distintas primeiro para garantir diversidade
+    const { data: categorias } = await supabase
+      .from('afiliado_produtos')
+      .select('categoria')
+      .eq('status', 'ativo')
+      .not('categoria', 'is', null)
+    
+    const categoriasUnicas = [...new Set((categorias || []).map((c: any) => c.categoria))]
+    console.log(`📦 [AMZ-OFERTAS] Categorias disponíveis no catálogo global: ${categoriasUnicas.length}`)
+    
+    // 3) Buscar até 10 produtos de cada categoria para ter diversidade
+    const produtosGlobais: any[] = []
+    const PRODUTOS_POR_CATEGORIA = 10
+    
+    for (const cat of categoriasUnicas) {
+      const { data: produtosCat } = await supabase
+        .from('afiliado_produtos')
+        .select('id, titulo, descricao, preco, link_afiliado, categoria, imagem_url, marketplace')
+        .eq('status', 'ativo')
+        .eq('categoria', cat)
+        .order('preco', { ascending: true }) // Menores preços primeiro (mais atrativos)
+        .limit(PRODUTOS_POR_CATEGORIA)
+      
+      if (produtosCat && produtosCat.length > 0) {
+        produtosGlobais.push(...produtosCat)
+      }
+    }
+    
+    console.log(`📦 [AMZ-OFERTAS] Produtos do catálogo global: ${produtosGlobais.length} (${categoriasUnicas.length} categorias)`)
+    return produtosGlobais
+    
   } catch (err) {
     console.error('❌ [AMZ-OFERTAS] Erro ao buscar produtos:', err)
     return []
