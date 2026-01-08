@@ -1010,23 +1010,32 @@ async function handleTextMessage(
       produtosPorCategoria[cat].push(p)
     })
     
-    additionalContext += `\n\n📦 CATÁLOGO DE PRODUTOS DISPONÍVEIS PARA VENDA:
-INSTRUÇÕES: Quando o cliente perguntar sobre qualquer produto, BUSQUE nesta lista e mostre TODAS as opções relevantes com seus links.
+    // Log das categorias para debug
+    const categoriasDebug = Object.entries(produtosPorCategoria).map(([cat, prods]) => `${cat}:${(prods as any[]).length}`).join(', ')
+    console.log(`📊 [AMZ-OFERTAS] Categorias no contexto: ${categoriasDebug}`)
+    
+    additionalContext += `\n\n📦 CATÁLOGO COMPLETO DE PRODUTOS DISPONÍVEIS:
+⚠️ IMPORTANTE: Você TEM produtos! Procure EXATAMENTE nesta lista abaixo.
+Quando cliente perguntar "ração", "pet", "cachorro", "gato" → busque na categoria PET SHOP.
+Quando cliente perguntar "airfryer", "panela" → busque na categoria COZINHA.
 
 `
-    // Listar por categoria
+    // Listar por categoria com destaque
     Object.entries(produtosPorCategoria).forEach(([categoria, produtos]) => {
-      additionalContext += `\n🏷️ ${categoria.toUpperCase()}:\n`
-      produtos.forEach((p: any, i: number) => {
+      additionalContext += `\n══════════════════════════════════════\n`
+      additionalContext += `🏷️ CATEGORIA: ${categoria.toUpperCase()} (${(produtos as any[]).length} produtos)\n`
+      additionalContext += `══════════════════════════════════════\n`
+      ;(produtos as any[]).forEach((p: any, i: number) => {
         const preco = p.preco ? `R$ ${p.preco.toFixed(2)}` : 'Preço no site'
-        additionalContext += `• ${p.titulo} - ${preco}\n  Link: ${p.link_afiliado}\n`
+        additionalContext += `${i+1}. ${p.titulo}\n   💰 ${preco}\n   👉 ${p.link_afiliado}\n\n`
       })
     })
     
-    additionalContext += `\n📌 LEMBRE-SE: 
-- SEMPRE liste TODOS os produtos que correspondem à busca do cliente
-- SEMPRE inclua o link de cada produto
-- Avise que comprando pelo link ganha 2% de cashback!`
+    additionalContext += `\n🚨 REGRA OBRIGATÓRIA:
+- Se cliente pedir "ração", "pet", "cachorro", "gato" → VOCÊ TEM na categoria PET SHOP acima!
+- NUNCA diga "não tenho" se o produto está listado acima
+- SEMPRE mostre 2 produtos por vez com link
+- Comprando pelo link ganha 2% de cashback!`
   } else {
     additionalContext += `\n\n⚠️ PRODUTOS: Ainda não há produtos cadastrados. Se o cliente perguntar sobre produto, diga que está procurando as melhores ofertas e em breve terá novidades!`
   }
