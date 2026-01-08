@@ -839,6 +839,8 @@ async function handleTextMessage(
 
   // Se estamos aguardando CATEGORIAS (novo fluxo: categorias primeiro)
   if (userState?.status === 'aguardando_categorias') {
+    console.log('📝 [AMZ-OFERTAS] Cliente em aguardando_categorias, texto:', text)
+    
     const categoriasEncontradas = parseCategoriasFromText(text)
     
     if (categoriasEncontradas.length > 0) {
@@ -858,11 +860,13 @@ async function handleTextMessage(
       return
     }
     
-    // Não reconheceu categorias, pedir de novo
+    // Não reconheceu categorias - REENVIAR a pergunta completa
+    console.log('🔄 [AMZ-OFERTAS] Reenviando pergunta de categorias para:', message.from)
     await sendWhatsAppMessage(
       message.from,
-      `Hmm, não entendi. 🤔\n\n` +
-      `Escolhe pelo número ou nome:\n\n` +
+      `Olá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\n` +
+      `Pra te mandar ofertas e eBooks do seu interesse, me conta:\n\n` +
+      `*Quais categorias você mais curte?*\n\n` +
       `1️⃣ Casa\n` +
       `2️⃣ Cozinha\n` +
       `3️⃣ Bebê\n` +
@@ -873,7 +877,7 @@ async function handleTextMessage(
       `8️⃣ Ferramentas\n` +
       `9️⃣ Pet\n` +
       `🔟 Moda\n\n` +
-      `_Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
+      `_Pode mandar mais de uma! Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
       wuzapiToken
     )
     return
