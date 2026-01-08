@@ -290,7 +290,9 @@ export function useScheduledCampaigns(userId: string | undefined) {
                   await registrarEnvio(phone, 'campanha', mensagem, false, 'Erro no envio');
                 }
 
-                await new Promise(r => setTimeout(r, 500));
+                // Delay aleatório 5-8 segundos (compliance Meta)
+                const delayMs = Math.floor(Math.random() * 3000) + 5000;
+                await new Promise(r => setTimeout(r, delayMs));
 
               } catch (err) {
                 console.error(`Erro ao enviar para ${phone}:`, err);
