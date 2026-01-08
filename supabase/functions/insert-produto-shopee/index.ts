@@ -129,13 +129,30 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Normalizar preço brasileiro (1.299,99 -> 1299.99)
+    let precoNormalizado: number | null = null;
+    if (preco) {
+      let precoStr = String(preco).trim();
+      // Se tem vírgula como decimal (formato BR: 1.299,99)
+      if (precoStr.includes(',')) {
+        precoStr = precoStr.replace(/\./g, '').replace(',', '.');
+      } else if (precoStr.match(/^\d{1,3}(\.\d{3})+$/)) {
+        // Formato 1.299 ou 2.399 (milhar com ponto, sem decimal) - é milhar, não decimal
+        precoStr = precoStr.replace(/\./g, '');
+      }
+      precoNormalizado = parseFloat(precoStr);
+      if (isNaN(precoNormalizado)) precoNormalizado = null;
+    }
+
+    console.log('💰 Preço recebido:', preco, '-> normalizado:', precoNormalizado);
+
     // Inserir produto usando service role (bypassa RLS)
     const { data: produto, error: insertError } = await supabaseAdmin
       .from('afiliado_produtos')
       .insert({
         user_id,
         titulo: titulo.substring(0, 500),
-        preco: preco ? parseFloat(preco) : null,
+        preco: precoNormalizado,
         imagem_url,
         link_afiliado,
         marketplace: marketplace?.substring(0, 50) || 'Shopee',
