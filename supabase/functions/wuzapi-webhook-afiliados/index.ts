@@ -117,50 +117,39 @@ COMO FUNCIONA:
 4. Depois me manda o comprovante
 5. Você ganha cashback + eBook de presente!
 
-🔥 REGRA CRÍTICA - BUSCA DE PRODUTOS (ENVIO GRADUAL):
-Quando o cliente perguntar sobre um produto específico (ex: "tem ração?", "quero uma airfryer", "preciso de shampoo"):
+🔥 REGRA CRÍTICA - BUSCA DE PRODUTOS:
+Quando o cliente perguntar sobre um produto (ex: "tem ração?", "quero airfryer"):
 
-1. PROCURE na lista de PRODUTOS DISPONÍVEIS fornecida no contexto
-2. MOSTRE NO MÁXIMO 2 PRODUTOS por mensagem
-3. Para CADA produto, mostre:
-   - Nome do produto
-   - Preço (se disponível)
-   - Link de compra: "👉 [LINK]"
-4. Se tiver MAIS produtos, diga: "🔍 Achei mais opções, deixa eu te mostrar..."
-5. Lembre do cashback 2% no final!
+1. OLHE NO FINAL DESTE PROMPT - lá tem uma lista de PRODUTOS ENCONTRADOS
+2. ESCOLHA os 2 melhores produtos da lista
+3. COPIE o nome e link EXATAMENTE como está na lista
+4. NUNCA diga "não tenho" se existem produtos listados no final deste prompt!
 
-FLUXO DE ENVIO GRADUAL:
-- Primeira mensagem: 2 produtos + "Deixa eu ver mais opções pra você..."
-- Se cliente responder "sim", "mais", "quero ver" ou similar: mostre mais 2
-- Continue até mostrar todos ou cliente escolher
+FORMATO DE RESPOSTA COM PRODUTOS:
+"Olha o que achei! 🛒
 
-Exemplo quando cliente pergunta "tem ração?":
-"Olha o que achei de ração! 🐶
+1. *[Nome do Produto]* - R$ XX,XX
+👉 [link completo]
 
-1. *Ração Pedigree Sachê 18un* - R$ 45,54
-👉 https://amazon.com.br/dp/xxx
+2. *[Nome do Produto]* - R$ XX,XX
+👉 [link completo]
 
-2. *Ração Whiskas Sachê 20un* - R$ 47,52
-👉 https://amazon.com.br/dp/yyy
+🔍 Achei mais opções! Quer ver? Comprando pelo link você ganha 2% de cashback! 💰"
 
-🔍 Achei mais opções! Quer ver mais? Comprando pelo link você ganha 2% de cashback! 💰"
+REGRAS DE OURO:
+1. Se há PRODUTOS ENCONTRADOS no final deste prompt → MOSTRE-OS!
+2. NUNCA invente produtos - use APENAS os da lista fornecida
+3. COPIE os links exatamente como estão
+4. Se cliente quer mais opções, mostre os próximos 2 da lista
+5. Sempre mencione o cashback de 2%
 
-REGRAS DE RESPOSTA:
-1. Se for primeira mensagem ou não conhece, PERGUNTE O NOME
-2. Depois que souber o nome, avise sobre o eBook grátis
-3. Responda APENAS o que foi perguntado
-4. Se o cliente perguntar sobre produto, BUSQUE na lista e mostre 2 por vez
-5. SEMPRE inclua o link de compra quando mostrar produtos
-6. Se não tiver o produto, diga "Não tenho esse no momento, mas vou procurar pra você!"
-7. NUNCA invente produtos ou preços - use APENAS os da lista fornecida
-8. Se a pessoa quer ver o saldo de cashback, use as informações do contexto
-9. Se mandarem comprovante, informe que vai analisar e validar
-10. Se cliente pedir "mais" ou "outras opções", mostre os próximos 2 produtos
-
-INFORMAÇÕES IMPORTANTES:
-- Somos do Rio de Janeiro, mas atendemos o Brasil todo
-- Valor mínimo para resgate de cashback: R$30 (disponível após 35 dias)
-- Lojas aceitas para comprovante: Amazon, Magalu, Mercado Livre, Shopee, Netshoes, Boticário, L'Occitane`
+OUTRAS REGRAS:
+- Se for primeira mensagem, pergunte o nome
+- Se pedir saldo de cashback, use as informações do contexto
+- Se mandar comprovante, diga que vai analisar
+- Somos do Rio de Janeiro mas atendemos Brasil todo
+- Mínimo para resgate cashback: R$30 (após 35 dias)
+- Lojas aceitas: Amazon, Magalu, Mercado Livre, Shopee, Netshoes, Boticário`
 
 // ============================================
 // CATEGORIAS DISPONÍVEIS
@@ -1006,41 +995,43 @@ async function handleTextMessage(
   
   // Adicionar produtos RELEVANTES ao contexto
   if (produtosRelevantes.length > 0) {
-    // Agrupar por categoria
-    const produtosPorCategoria: Record<string, any[]> = {}
-    produtosRelevantes.forEach((p: any) => {
-      const cat = p.categoria || 'Outros'
-      if (!produtosPorCategoria[cat]) produtosPorCategoria[cat] = []
-      produtosPorCategoria[cat].push(p)
+    // Listar produtos de forma CLARA e DIRETA
+    additionalContext += `\n\n════════════════════════════════════════════════════════
+🛒 ATENÇÃO: VOCÊ TEM ${produtosRelevantes.length} PRODUTOS PARA MOSTRAR AO CLIENTE!
+════════════════════════════════════════════════════════
+
+PRODUTOS ENCONTRADOS (leia cada um e escolha os melhores):
+`
+    produtosRelevantes.forEach((p: any, i: number) => {
+      const preco = p.preco ? `R$ ${p.preco.toFixed(2)}` : 'Ver preço no site'
+      additionalContext += `
+[PRODUTO ${i + 1}]
+Nome: ${p.titulo}
+Preço: ${preco}
+Link: ${p.link_afiliado}
+---`
     })
-    
-    const categoriasDebug = Object.entries(produtosPorCategoria).map(([cat, prods]) => `${cat}:${(prods as any[]).length}`).join(', ')
-    console.log(`📊 [AMZ-OFERTAS] Categorias filtradas: ${categoriasDebug}`)
-    
-    additionalContext += `\n\n🛒 PRODUTOS ENCONTRADOS PARA ESTA BUSCA (total: ${produtosRelevantes.length}):\n`
-    
-    Object.entries(produtosPorCategoria).forEach(([categoria, produtos]) => {
-      additionalContext += `\n📦 ${categoria.toUpperCase()}:\n`
-      ;(produtos as any[]).forEach((p: any, i: number) => {
-        const preco = p.preco ? `R$ ${p.preco.toFixed(2)}` : 'Ver preço'
-        additionalContext += `• ${p.titulo} - ${preco}\n  👉 ${p.link_afiliado}\n`
-      })
-    })
-    
-    additionalContext += `\n✅ VOCÊ TEM ${produtosRelevantes.length} PRODUTOS ACIMA!
-- Mostre 2 produtos por vez com link
-- Se cliente quiser mais, diga "🔍 Achei mais opções..." e mostre mais 2
-- SEMPRE inclua o link de compra
-- Lembre do cashback de 2%!`
+
+    additionalContext += `
+
+════════════════════════════════════════════════════════
+🚨 INSTRUÇÃO OBRIGATÓRIA:
+- Você TEM ${produtosRelevantes.length} produtos listados acima
+- ESCOLHA os 2 melhores para o cliente
+- COPIE o nome e link EXATAMENTE como está acima
+- NUNCA diga "não tenho" - você TEM os produtos acima!
+- Formato: Nome + Preço + Link (👉 [LINK])
+- Lembre do cashback 2%!
+════════════════════════════════════════════════════════`
+
+    // LOG do contexto para debug
+    console.log(`📝 [AMZ-OFERTAS] Contexto produtos (primeiros 500 chars): ${additionalContext.slice(0, 500)}...`)
   } else if (todosProdutos.length > 0) {
-    // Tem produtos mas nenhum corresponde à busca
-    additionalContext += `\n\n📋 Você tem ${todosProdutos.length} produtos no catálogo.
-A busca "${text}" não encontrou correspondência exata, mas você pode:
-- Perguntar ao cliente se quer ver outra categoria
-- Sugerir produtos similares
-- Listar categorias disponíveis`
+    additionalContext += `\n\n📋 Você tem ${todosProdutos.length} produtos no catálogo, mas nenhum corresponde exatamente à busca "${text}". Pergunte ao cliente se quer ver outra categoria.`
+    console.log(`📝 [AMZ-OFERTAS] Sem match para: "${text}" (${todosProdutos.length} produtos no catálogo)`)
   } else {
     additionalContext += `\n\n⚠️ Ainda não há produtos cadastrados. Diga que está procurando as melhores ofertas!`
+    console.log(`📝 [AMZ-OFERTAS] Sem produtos cadastrados`)
   }
   
   // Nome do cliente para contexto
