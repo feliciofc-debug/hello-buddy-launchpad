@@ -255,8 +255,8 @@ _Aproveite enquanto dura!_ ✅`;
     return proximaExec.toISOString();
   };
 
-  const enviarAgora = async (userId: string, listasIds: string[], mensagemFinal: string) => {
-    // Buscar contatos (manuais + auto)
+  const enviarAgora = async (userId: string, listasIds: string[], mensagemTemplate: string, produtoInfo: any) => {
+    // Buscar contatos (manuais + auto COM NOME)
     const [manualRes, autoRes] = await Promise.all([
       supabase
         .from('whatsapp_groups')
@@ -264,42 +264,73 @@ _Aproveite enquanto dura!_ ✅`;
         .in('id', listasIds),
       supabase
         .from('afiliado_lista_membros')
-        .select('leads_ebooks ( phone )')
+        .select('leads_ebooks ( phone, nome )')
         .in('lista_id', listasIds),
     ]);
 
     if (manualRes.error) throw manualRes.error;
     if (autoRes.error) throw autoRes.error;
 
-    const contatosManuais = manualRes.data?.flatMap((g: any) => g.phone_numbers || []) || [];
-    const contatosAuto =
-      autoRes.data
-        ?.map((m: any) => (m.leads_ebooks as any)?.phone)
-        .filter(Boolean) || [];
+    // Contatos manuais (sem nome, só telefone)
+    const contatosManuais = (manualRes.data?.flatMap((g: any) => g.phone_numbers || []) || [])
+      .map((phone: string) => ({ phone: String(phone).replace(/\D/g, ''), nome: 'Cliente' }));
 
-    const contatos = [...new Set([...contatosManuais, ...contatosAuto].map((p) => String(p).replace(/\D/g, '')))].filter(Boolean);
+    // Contatos automáticos (COM nome do leads_ebooks)
+    const contatosAuto = (autoRes.data || [])
+      .map((m: any) => {
+        const lead = m.leads_ebooks as any;
+        return lead?.phone ? { 
+          phone: String(lead.phone).replace(/\D/g, ''), 
+          nome: lead.nome || 'Cliente' 
+        } : null;
+      })
+      .filter(Boolean);
+
+    // Deduplicar por phone, mantendo o primeiro nome encontrado
+    const contatosMap = new Map<string, { phone: string; nome: string }>();
+    [...contatosManuais, ...contatosAuto].forEach((c: any) => {
+      if (c.phone && !contatosMap.has(c.phone)) {
+        contatosMap.set(c.phone, c);
+      }
+    });
+    const contatos = Array.from(contatosMap.values());
 
     if (contatos.length === 0) {
       toast.warning('A lista selecionada não tem contatos ainda.');
       return;
     }
 
-    const { data: sendData, error: sendError } = await supabase.functions.invoke(
-      'send-wuzapi-message-afiliado',
-      {
-        body: {
-          phoneNumbers: contatos,
-          message: mensagemFinal,
-          imageUrl: produto.imagem_url || null,
-          userId,
-        },
+    let enviados = 0;
+    let erros = 0;
+
+    // Enviar um por um com mensagem personalizada
+    for (const contato of contatos) {
+      const mensagemPersonalizada = mensagemTemplate
+        .replace(/\{\{nome\}\}/gi, contato.nome)
+        .replace(/\{\{produto\}\}/gi, produtoInfo?.titulo || 'Produto')
+        .replace(/\{\{preco\}\}/gi, produtoInfo?.preco?.toString() || '0');
+
+      const { data: sendData, error: sendError } = await supabase.functions.invoke(
+        'send-wuzapi-message-afiliado',
+        {
+          body: {
+            phoneNumbers: [contato.phone],
+            message: mensagemPersonalizada,
+            imageUrl: produtoInfo?.imagem_url || null,
+            userId,
+          },
+        }
+      );
+
+      if (sendError || !sendData?.success) {
+        erros++;
+      } else {
+        enviados += sendData?.enviados || 1;
       }
-    );
 
-    if (sendError) throw sendError;
-
-    const enviados = sendData?.enviados ?? 0;
-    const erros = sendData?.erros ?? 0;
+      // Delay entre envios
+      await new Promise((r) => setTimeout(r, 400));
+    }
 
     if (enviados > 0) toast.success(`✅ Enviado agora: ${enviados} contato(s)`);
     if (erros > 0) toast.warning(`⚠️ ${erros} falha(s) no envio`);
@@ -353,7 +384,7 @@ _Aproveite enquanto dura!_ ✅`;
 
       // ✅ Para "Enviar Agora", dispara imediatamente (sem esperar o agendador)
       if (frequencia === 'agora') {
-        await enviarAgora(user.id, listasSelecionadas, mensagem);
+        await enviarAgora(user.id, listasSelecionadas, mensagem, produto);
       }
 
       if (frequencia === 'agora') {
