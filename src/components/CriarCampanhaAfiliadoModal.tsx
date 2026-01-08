@@ -255,6 +255,56 @@ _Aproveite enquanto dura!_ ✅`;
     return proximaExec.toISOString();
   };
 
+  const enviarAgora = async (userId: string, listasIds: string[], mensagemFinal: string) => {
+    // Buscar contatos (manuais + auto)
+    const [manualRes, autoRes] = await Promise.all([
+      supabase
+        .from('whatsapp_groups')
+        .select('phone_numbers')
+        .in('id', listasIds),
+      supabase
+        .from('afiliado_lista_membros')
+        .select('leads_ebooks ( phone )')
+        .in('lista_id', listasIds),
+    ]);
+
+    if (manualRes.error) throw manualRes.error;
+    if (autoRes.error) throw autoRes.error;
+
+    const contatosManuais = manualRes.data?.flatMap((g: any) => g.phone_numbers || []) || [];
+    const contatosAuto =
+      autoRes.data
+        ?.map((m: any) => (m.leads_ebooks as any)?.phone)
+        .filter(Boolean) || [];
+
+    const contatos = [...new Set([...contatosManuais, ...contatosAuto].map((p) => String(p).replace(/\D/g, '')))].filter(Boolean);
+
+    if (contatos.length === 0) {
+      toast.warning('A lista selecionada não tem contatos ainda.');
+      return;
+    }
+
+    const { data: sendData, error: sendError } = await supabase.functions.invoke(
+      'send-wuzapi-message-afiliado',
+      {
+        body: {
+          phoneNumbers: contatos,
+          message: mensagemFinal,
+          imageUrl: produto.imagem_url || null,
+          userId,
+        },
+      }
+    );
+
+    if (sendError) throw sendError;
+
+    const enviados = sendData?.enviados ?? 0;
+    const erros = sendData?.erros ?? 0;
+
+    if (enviados > 0) toast.success(`✅ Enviado agora: ${enviados} contato(s)`);
+    if (erros > 0) toast.warning(`⚠️ ${erros} falha(s) no envio`);
+  };
+
   const handleCriarCampanha = async () => {
     try {
       setIsLoading(true);
@@ -296,13 +346,18 @@ _Aproveite enquanto dura!_ ✅`;
           listas_ids: listasSelecionadas, // ✅ INCLUIR LISTAS
           ativa: true,
           status: frequencia === 'agora' ? 'enviada' : 'ativa',
-          proxima_execucao: proximaExecucao
+          proxima_execucao: proximaExecucao,
         });
 
       if (error) throw error;
 
+      // ✅ Para "Enviar Agora", dispara imediatamente (sem esperar o agendador)
       if (frequencia === 'agora') {
-        toast.success('🚀 Campanha criada! (Envio via WhatsApp em breve)');
+        await enviarAgora(user.id, listasSelecionadas, mensagem);
+      }
+
+      if (frequencia === 'agora') {
+        toast.success('🚀 Campanha criada!');
       } else {
         toast.success(`✅ Campanha agendada! Próximo envio: ${new Date(proximaExecucao).toLocaleString('pt-BR')}`);
       }
