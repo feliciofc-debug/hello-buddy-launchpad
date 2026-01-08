@@ -2,11 +2,8 @@ import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-const COOLDOWN_MINUTOS = 60; // 1 hora entre mensagens para o mesmo número
+const COOLDOWN_MINUTOS = 0; // teste: desabilitado (volte para 5 depois)
 const CONTABO_WUZAPI_URL = 'https://api2.amzofertas.com.br';
-
-// ✅ DEDUPLICAÇÃO ABSOLUTA: evita envio duplicado na mesma execução
-const enviadosNestaExecucao = new Set<string>();
 
 /**
  * Tenta reconectar sessão Wuzapi 1 vez
@@ -250,25 +247,9 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
               }
             }
 
-            // ✅ LIMPAR DEDUPLICAÇÃO para nova campanha
-            enviadosNestaExecucao.clear();
-
             // ENVIAR PARA CADA CONTATO
             for (const phone of contatos) {
               try {
-                const cleanPhoneCheck = phone.replace(/\D/g, '');
-                
-                // ✅ VERIFICAÇÃO ABSOLUTA: já enviou nesta execução?
-                const dedupKey = `${campanha.id}_${cleanPhoneCheck}`;
-                if (enviadosNestaExecucao.has(dedupKey)) {
-                  console.log(`🔒 [AFILIADO] JÁ ENVIADO nesta execução - Pulando ${cleanPhoneCheck}`);
-                  pulados++;
-                  continue;
-                }
-                
-                // Marcar como enviado ANTES de enviar (previne race condition)
-                enviadosNestaExecucao.add(dedupKey);
-
                 // Verificar cooldown
                 const podEnviar = await verificarCooldown(phone);
                 
@@ -453,24 +434,40 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
   }, [userId]);
 }
 
-/**
- * Calcula a PRÓXIMA execução da campanha
- * IMPORTANTE: Após executar, vai SEMPRE para o PRÓXIMO DIA (primeiro horário)
- * Os múltiplos horários são IGNORADOS para evitar duplicações
- */
 function calcularProxima(campanha: any): string | null {
   const agora = new Date();
-  // ✅ Usar APENAS o PRIMEIRO horário (ignora os outros para evitar duplicação)
-  const primeiroHorario = (campanha.horarios || ['09:00'])[0];
-  const [hora, minuto] = primeiroHorario.split(':').map(Number);
+  const horarios = campanha.horarios || ['09:00'];
 
   if (campanha.frequencia === 'uma_vez') {
-    // Campanha única: não repete
+    const dataInicio = new Date(campanha.data_inicio);
+    
+    if (dataInicio.toDateString() === agora.toDateString()) {
+      for (const horario of horarios) {
+        const [hora, minuto] = horario.split(':').map(Number);
+        const proximaExec = new Date();
+        proximaExec.setHours(hora, minuto, 0, 0);
+        
+        if (proximaExec > agora) {
+          return proximaExec.toISOString();
+        }
+      }
+    }
+    
     return null;
   }
 
   if (campanha.frequencia === 'diario') {
-    // ✅ SEMPRE vai para o próximo dia (evita múltiplos envios no mesmo dia)
+    for (const horario of horarios) {
+      const [hora, minuto] = horario.split(':').map(Number);
+      const proximaExec = new Date();
+      proximaExec.setHours(hora, minuto, 0, 0);
+      
+      if (proximaExec > agora) {
+        return proximaExec.toISOString();
+      }
+    }
+    
+    const [hora, minuto] = horarios[0].split(':').map(Number);
     const amanha = new Date();
     amanha.setDate(amanha.getDate() + 1);
     amanha.setHours(hora, minuto, 0, 0);
@@ -480,12 +477,24 @@ function calcularProxima(campanha: any): string | null {
   if (campanha.frequencia === 'semanal') {
     const diasValidos = campanha.dias_semana || [];
     
-    // Encontrar próximo dia válido (pode ser amanhã ou depois)
+    if (diasValidos.includes(agora.getDay())) {
+      for (const horario of horarios) {
+        const [hora, minuto] = horario.split(':').map(Number);
+        const proximaExec = new Date();
+        proximaExec.setHours(hora, minuto, 0, 0);
+        
+        if (proximaExec > agora) {
+          return proximaExec.toISOString();
+        }
+      }
+    }
+    
     const proxima = new Date();
     do {
       proxima.setDate(proxima.getDate() + 1);
     } while (!diasValidos.includes(proxima.getDay()));
     
+    const [hora, minuto] = horarios[0].split(':').map(Number);
     proxima.setHours(hora, minuto, 0, 0);
     return proxima.toISOString();
   }
