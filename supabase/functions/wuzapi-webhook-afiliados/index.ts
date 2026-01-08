@@ -987,9 +987,13 @@ async function handleTextMessage(
   const cashbackInfo = await getCashbackInfo(supabase, message.from)
   console.log('💰 [AMZ-OFERTAS] Cashback info:', cashbackInfo ? 'encontrado' : 'não encontrado')
   
-  // Buscar produtos do afiliado para contexto
-  const produtosAfiliado = await getProdutosAfiliado(supabase, userId)
-  console.log('📦 [AMZ-OFERTAS] Produtos do afiliado:', produtosAfiliado.length)
+  // Buscar TODOS os produtos do afiliado
+  const todosProdutos = await getProdutosAfiliado(supabase, userId)
+  console.log('📦 [AMZ-OFERTAS] Total produtos disponíveis:', todosProdutos.length)
+  
+  // PRÉ-FILTRAR produtos baseado na mensagem do cliente (busca semântica)
+  const produtosRelevantes = filtrarProdutosRelevantes(todosProdutos, text)
+  console.log('🎯 [AMZ-OFERTAS] Produtos relevantes para a busca:', produtosRelevantes.length)
   
   // Construir contexto adicional
   let additionalContext = ''
@@ -1000,44 +1004,43 @@ async function handleTextMessage(
 - Total de compras: ${cashbackInfo.compras_total || 0}`
   }
   
-  // Adicionar produtos ao contexto (formatado por categoria para facilitar busca)
-  if (produtosAfiliado.length > 0) {
-    // Agrupar produtos por categoria
+  // Adicionar produtos RELEVANTES ao contexto
+  if (produtosRelevantes.length > 0) {
+    // Agrupar por categoria
     const produtosPorCategoria: Record<string, any[]> = {}
-    produtosAfiliado.forEach((p: any) => {
+    produtosRelevantes.forEach((p: any) => {
       const cat = p.categoria || 'Outros'
       if (!produtosPorCategoria[cat]) produtosPorCategoria[cat] = []
       produtosPorCategoria[cat].push(p)
     })
     
-    // Log das categorias para debug
     const categoriasDebug = Object.entries(produtosPorCategoria).map(([cat, prods]) => `${cat}:${(prods as any[]).length}`).join(', ')
-    console.log(`📊 [AMZ-OFERTAS] Categorias no contexto: ${categoriasDebug}`)
+    console.log(`📊 [AMZ-OFERTAS] Categorias filtradas: ${categoriasDebug}`)
     
-    additionalContext += `\n\n📦 CATÁLOGO COMPLETO DE PRODUTOS DISPONÍVEIS:
-⚠️ IMPORTANTE: Você TEM produtos! Procure EXATAMENTE nesta lista abaixo.
-Quando cliente perguntar "ração", "pet", "cachorro", "gato" → busque na categoria PET SHOP.
-Quando cliente perguntar "airfryer", "panela" → busque na categoria COZINHA.
-
-`
-    // Listar por categoria com destaque
+    additionalContext += `\n\n🛒 PRODUTOS ENCONTRADOS PARA ESTA BUSCA (total: ${produtosRelevantes.length}):\n`
+    
     Object.entries(produtosPorCategoria).forEach(([categoria, produtos]) => {
-      additionalContext += `\n══════════════════════════════════════\n`
-      additionalContext += `🏷️ CATEGORIA: ${categoria.toUpperCase()} (${(produtos as any[]).length} produtos)\n`
-      additionalContext += `══════════════════════════════════════\n`
+      additionalContext += `\n📦 ${categoria.toUpperCase()}:\n`
       ;(produtos as any[]).forEach((p: any, i: number) => {
-        const preco = p.preco ? `R$ ${p.preco.toFixed(2)}` : 'Preço no site'
-        additionalContext += `${i+1}. ${p.titulo}\n   💰 ${preco}\n   👉 ${p.link_afiliado}\n\n`
+        const preco = p.preco ? `R$ ${p.preco.toFixed(2)}` : 'Ver preço'
+        additionalContext += `• ${p.titulo} - ${preco}\n  👉 ${p.link_afiliado}\n`
       })
     })
     
-    additionalContext += `\n🚨 REGRA OBRIGATÓRIA:
-- Se cliente pedir "ração", "pet", "cachorro", "gato" → VOCÊ TEM na categoria PET SHOP acima!
-- NUNCA diga "não tenho" se o produto está listado acima
-- SEMPRE mostre 2 produtos por vez com link
-- Comprando pelo link ganha 2% de cashback!`
+    additionalContext += `\n✅ VOCÊ TEM ${produtosRelevantes.length} PRODUTOS ACIMA!
+- Mostre 2 produtos por vez com link
+- Se cliente quiser mais, diga "🔍 Achei mais opções..." e mostre mais 2
+- SEMPRE inclua o link de compra
+- Lembre do cashback de 2%!`
+  } else if (todosProdutos.length > 0) {
+    // Tem produtos mas nenhum corresponde à busca
+    additionalContext += `\n\n📋 Você tem ${todosProdutos.length} produtos no catálogo.
+A busca "${text}" não encontrou correspondência exata, mas você pode:
+- Perguntar ao cliente se quer ver outra categoria
+- Sugerir produtos similares
+- Listar categorias disponíveis`
   } else {
-    additionalContext += `\n\n⚠️ PRODUTOS: Ainda não há produtos cadastrados. Se o cliente perguntar sobre produto, diga que está procurando as melhores ofertas e em breve terá novidades!`
+    additionalContext += `\n\n⚠️ Ainda não há produtos cadastrados. Diga que está procurando as melhores ofertas!`
   }
   
   // Nome do cliente para contexto
@@ -1699,49 +1702,125 @@ async function getProdutosAfiliado(supabase: any, userId: string | null): Promis
       .eq('status', 'ativo')
       .order('categoria', { ascending: true })
       .order('titulo', { ascending: true })
-      .limit(100)
+      .limit(500)
     
     if (!errAfiliado && produtosAfiliado && produtosAfiliado.length > 0) {
       console.log(`📦 [AMZ-OFERTAS] Produtos do afiliado: ${produtosAfiliado.length}`)
       return produtosAfiliado
     }
     
-    // 2) Se afiliado não tem produtos, buscar do catálogo global (admin)
-    // Buscar todas as categorias distintas primeiro para garantir diversidade
-    const { data: categorias } = await supabase
+    // 2) Se afiliado não tem produtos, buscar do catálogo global
+    const { data: produtosGlobais, error: errGlobal } = await supabase
       .from('afiliado_produtos')
-      .select('categoria')
+      .select('id, titulo, descricao, preco, link_afiliado, categoria, imagem_url, marketplace')
       .eq('status', 'ativo')
-      .not('categoria', 'is', null)
+      .order('categoria', { ascending: true })
+      .order('preco', { ascending: true })
+      .limit(500)
     
-    const categoriasUnicas = [...new Set((categorias || []).map((c: any) => c.categoria))]
-    console.log(`📦 [AMZ-OFERTAS] Categorias disponíveis no catálogo global: ${categoriasUnicas.length}`)
-    
-    // 3) Buscar até 10 produtos de cada categoria para ter diversidade
-    const produtosGlobais: any[] = []
-    const PRODUTOS_POR_CATEGORIA = 10
-    
-    for (const cat of categoriasUnicas) {
-      const { data: produtosCat } = await supabase
-        .from('afiliado_produtos')
-        .select('id, titulo, descricao, preco, link_afiliado, categoria, imagem_url, marketplace')
-        .eq('status', 'ativo')
-        .eq('categoria', cat)
-        .order('preco', { ascending: true }) // Menores preços primeiro (mais atrativos)
-        .limit(PRODUTOS_POR_CATEGORIA)
-      
-      if (produtosCat && produtosCat.length > 0) {
-        produtosGlobais.push(...produtosCat)
-      }
-    }
-    
-    console.log(`📦 [AMZ-OFERTAS] Produtos do catálogo global: ${produtosGlobais.length} (${categoriasUnicas.length} categorias)`)
-    return produtosGlobais
+    console.log(`📦 [AMZ-OFERTAS] Produtos do catálogo global: ${produtosGlobais?.length || 0}`)
+    return produtosGlobais || []
     
   } catch (err) {
     console.error('❌ [AMZ-OFERTAS] Erro ao buscar produtos:', err)
     return []
   }
+}
+
+// ============================================
+// PRÉ-FILTRAR PRODUTOS BASEADO NA MENSAGEM (BUSCA SEMÂNTICA)
+// ============================================
+function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
+  const msgLower = mensagem.toLowerCase()
+  
+  // Mapeamento de termos de busca para categorias e palavras-chave
+  const termosCategoria: Record<string, string[]> = {
+    'Pet Shop': ['pet', 'cachorro', 'cão', 'cao', 'gato', 'ração', 'racao', 'animal', 'filhote', 'felino', 'canino'],
+    'Cozinha': ['cozinha', 'airfryer', 'air fryer', 'panela', 'frigideira', 'liquidificador', 'mixer', 'batedeira', 'forno'],
+    'Casa': ['casa', 'decoração', 'decoracao', 'móvel', 'movel', 'organização', 'limpeza', 'aspirador'],
+    'Eletrônicos': ['eletrônico', 'eletronico', 'celular', 'smartphone', 'fone', 'carregador', 'cabo', 'tablet'],
+    'Beleza': ['beleza', 'maquiagem', 'perfume', 'creme', 'shampoo', 'cabelo', 'pele', 'skincare'],
+    'Gamer': ['gamer', 'game', 'jogo', 'videogame', 'controle', 'headset', 'mouse', 'teclado'],
+    'Fitness': ['fitness', 'academia', 'exercício', 'treino', 'musculação', 'yoga', 'proteína'],
+    'Bebês': ['bebê', 'bebe', 'fralda', 'mamadeira', 'carrinho', 'berço', 'infantil'],
+    'Moda': ['moda', 'roupa', 'calça', 'camisa', 'vestido', 'tênis', 'sapato', 'bolsa'],
+    'Ferramentas': ['ferramenta', 'furadeira', 'parafuso', 'chave', 'martelo', 'serra'],
+  }
+  
+  // Detectar categorias relevantes baseado na mensagem
+  const categoriasRelevantes: Set<string> = new Set()
+  const palavrasChaveEncontradas: string[] = []
+  
+  for (const [categoria, termos] of Object.entries(termosCategoria)) {
+    for (const termo of termos) {
+      if (msgLower.includes(termo)) {
+        categoriasRelevantes.add(categoria)
+        palavrasChaveEncontradas.push(termo)
+      }
+    }
+  }
+  
+  // Se encontrou categorias específicas, filtrar por elas
+  if (categoriasRelevantes.size > 0) {
+    console.log(`🔍 [FILTRO] Categorias detectadas: ${[...categoriasRelevantes].join(', ')} (termos: ${palavrasChaveEncontradas.join(', ')})`)
+    
+    const produtosFiltrados = produtos.filter(p => {
+      // Verificar se está na categoria detectada
+      if (p.categoria && categoriasRelevantes.has(p.categoria)) return true
+      
+      // Verificar se título ou descrição contém algum termo
+      const tituloLower = (p.titulo || '').toLowerCase()
+      const descLower = (p.descricao || '').toLowerCase()
+      
+      for (const termo of palavrasChaveEncontradas) {
+        if (tituloLower.includes(termo) || descLower.includes(termo)) return true
+      }
+      
+      return false
+    })
+    
+    console.log(`🔍 [FILTRO] Produtos relevantes encontrados: ${produtosFiltrados.length}`)
+    return produtosFiltrados.slice(0, 30) // Máximo 30 produtos relevantes para não sobrecarregar
+  }
+  
+  // Se não detectou categoria específica, fazer busca por similaridade no título
+  const palavrasMensagem = msgLower.split(/\s+/).filter(p => p.length > 2)
+  
+  if (palavrasMensagem.length > 0) {
+    const produtosComScore = produtos.map(p => {
+      let score = 0
+      const tituloLower = (p.titulo || '').toLowerCase()
+      
+      for (const palavra of palavrasMensagem) {
+        if (tituloLower.includes(palavra)) score += 2
+        if ((p.descricao || '').toLowerCase().includes(palavra)) score += 1
+        if ((p.categoria || '').toLowerCase().includes(palavra)) score += 1
+      }
+      
+      return { ...p, score }
+    })
+    
+    const produtosRelevantes = produtosComScore
+      .filter(p => p.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 30)
+    
+    if (produtosRelevantes.length > 0) {
+      console.log(`🔍 [FILTRO] Busca por similaridade: ${produtosRelevantes.length} produtos`)
+      return produtosRelevantes
+    }
+  }
+  
+  // Fallback: retornar amostra diversificada (5 de cada categoria)
+  console.log(`🔍 [FILTRO] Sem match específico, retornando amostra diversificada`)
+  const porCategoria: Record<string, any[]> = {}
+  produtos.forEach(p => {
+    const cat = p.categoria || 'Outros'
+    if (!porCategoria[cat]) porCategoria[cat] = []
+    if (porCategoria[cat].length < 5) porCategoria[cat].push(p)
+  })
+  
+  return Object.values(porCategoria).flat()
 }
 
 // ============================================
