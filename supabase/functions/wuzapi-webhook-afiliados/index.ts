@@ -950,6 +950,10 @@ async function handleTextMessage(
   const cashbackInfo = await getCashbackInfo(supabase, message.from)
   console.log('💰 [AMZ-OFERTAS] Cashback info:', cashbackInfo ? 'encontrado' : 'não encontrado')
   
+  // Buscar produtos do afiliado para contexto
+  const produtosAfiliado = await getProdutosAfiliado(supabase, userId)
+  console.log('📦 [AMZ-OFERTAS] Produtos do afiliado:', produtosAfiliado.length)
+  
   // Construir contexto adicional
   let additionalContext = ''
   if (cashbackInfo) {
@@ -957,6 +961,19 @@ async function handleTextMessage(
 - Saldo atual: R$ ${(cashbackInfo.saldo_atual || 0).toFixed(2)}
 - Total acumulado: R$ ${(cashbackInfo.total_acumulado || 0).toFixed(2)}
 - Total de compras: ${cashbackInfo.compras_total || 0}`
+  }
+  
+  // Adicionar produtos ao contexto
+  if (produtosAfiliado.length > 0) {
+    additionalContext += `\n\n📦 PRODUTOS DISPONÍVEIS (se cliente perguntar sobre produto, envie o link):
+${produtosAfiliado.map((p: any, i: number) => 
+  `${i+1}. ${p.titulo}${p.preco ? ` - R$ ${p.preco.toFixed(2)}` : ''} (${p.categoria || 'Geral'})
+   👉 Link: ${p.link_afiliado}`
+).join('\n')}
+
+REGRA IMPORTANTE: Se o cliente perguntar sobre algum desses produtos ou quiser comprar, 
+SEMPRE envie o link de compra formatado assim: "👉 Compre aqui: [LINK]"
+Se não tiver o produto exato, sugira o mais parecido ou diga que vai procurar.`
   }
   
   // Nome do cliente para contexto
@@ -1601,6 +1618,33 @@ async function getCashbackInfo(supabase: any, phone: string): Promise<any> {
     .eq('phone', cleanPhone)
     .single()
   return data
+}
+
+// ============================================
+// BUSCAR PRODUTOS DO AFILIADO
+// ============================================
+async function getProdutosAfiliado(supabase: any, userId: string | null): Promise<any[]> {
+  if (!userId) return []
+  
+  try {
+    const { data, error } = await supabase
+      .from('afiliado_produtos')
+      .select('id, titulo, descricao, preco, link_afiliado, categoria, imagem_url, marketplace')
+      .eq('user_id', userId)
+      .eq('status', 'ativo')
+      .order('created_at', { ascending: false })
+      .limit(20) // Limitar para não sobrecarregar o contexto da IA
+    
+    if (error) {
+      console.error('❌ [AMZ-OFERTAS] Erro ao buscar produtos:', error)
+      return []
+    }
+    
+    return data || []
+  } catch (err) {
+    console.error('❌ [AMZ-OFERTAS] Erro ao buscar produtos:', err)
+    return []
+  }
 }
 
 // ============================================
