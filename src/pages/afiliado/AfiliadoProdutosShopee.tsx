@@ -27,6 +27,22 @@ export default function AfiliadoProdutosShopee() {
   const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
 
+  const normalizeShopeePrice = (preco: number | null): number | null => {
+    if (preco == null) return null;
+
+    // Heurística para preços vindos como "2.399" (milhar com ponto) que acabam salvos como 2.399
+    // Se for um número pequeno (< 20) com 3 casas decimais exatas, trata como milhar.
+    const eps = 1e-9;
+    const has3Decimals = Math.abs(preco * 1000 - Math.round(preco * 1000)) < eps;
+    const has2Decimals = Math.abs(preco * 100 - Math.round(preco * 100)) < eps;
+
+    if (preco > 0 && preco < 20 && has3Decimals && !has2Decimals) {
+      return Math.round(preco * 1000);
+    }
+
+    return preco;
+  };
+
   useEffect(() => {
     loadProdutos();
   }, []);
@@ -137,7 +153,10 @@ export default function AfiliadoProdutosShopee() {
                 <h3 className="font-medium text-sm line-clamp-2 mb-2">{produto.titulo}</h3>
                 {produto.preco != null && (
                   <p className="text-lg font-bold text-green-600">
-                    {produto.preco.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    {normalizeShopeePrice(produto.preco)?.toLocaleString('pt-BR', {
+                      style: 'currency',
+                      currency: 'BRL',
+                    })}
                   </p>
                 )}
 
