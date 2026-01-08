@@ -1719,99 +1719,66 @@ async function getProdutosAfiliado(supabase: any, userId: string | null): Promis
 }
 
 // ============================================
-// PRÉ-FILTRAR PRODUTOS BASEADO NA MENSAGEM (BUSCA SEMÂNTICA)
+// PRÉ-FILTRAR PRODUTOS BASEADO NA MENSAGEM (BUSCA POR NOME)
 // ============================================
 function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
   const msgLower = mensagem.toLowerCase()
   
-  // Mapeamento de termos de busca para categorias e palavras-chave
-  const termosCategoria: Record<string, string[]> = {
-    'Pet Shop': ['pet', 'cachorro', 'cão', 'cao', 'gato', 'ração', 'racao', 'animal', 'filhote', 'felino', 'canino'],
-    'Cozinha': ['cozinha', 'airfryer', 'air fryer', 'panela', 'frigideira', 'liquidificador', 'mixer', 'batedeira', 'forno'],
-    'Casa': ['casa', 'decoração', 'decoracao', 'móvel', 'movel', 'organização', 'limpeza', 'aspirador'],
-    'Eletrônicos': ['eletrônico', 'eletronico', 'celular', 'smartphone', 'fone', 'carregador', 'cabo', 'tablet'],
-    'Beleza': ['beleza', 'maquiagem', 'perfume', 'creme', 'shampoo', 'cabelo', 'pele', 'skincare'],
-    'Gamer': ['gamer', 'game', 'jogo', 'videogame', 'controle', 'headset', 'mouse', 'teclado'],
-    'Fitness': ['fitness', 'academia', 'exercício', 'treino', 'musculação', 'yoga', 'proteína'],
-    'Bebês': ['bebê', 'bebe', 'fralda', 'mamadeira', 'carrinho', 'berço', 'infantil'],
-    'Moda': ['moda', 'roupa', 'calça', 'camisa', 'vestido', 'tênis', 'sapato', 'bolsa'],
-    'Ferramentas': ['ferramenta', 'furadeira', 'parafuso', 'chave', 'martelo', 'serra'],
+  // Extrair palavras-chave da mensagem (ignorar palavras muito curtas)
+  const palavrasChave = msgLower
+    .split(/\s+/)
+    .filter(p => p.length >= 3)
+    .filter(p => !['para', 'com', 'que', 'tem', 'uma', 'quero', 'preciso', 'voce', 'você'].includes(p))
+  
+  console.log(`🔍 [FILTRO] Palavras-chave extraídas: ${palavrasChave.join(', ')}`)
+  
+  if (palavrasChave.length === 0) {
+    // Fallback: retornar amostra diversificada
+    console.log(`🔍 [FILTRO] Sem palavras-chave, retornando amostra`)
+    const porCategoria: Record<string, any[]> = {}
+    produtos.forEach(p => {
+      const cat = p.categoria || 'Outros'
+      if (!porCategoria[cat]) porCategoria[cat] = []
+      if (porCategoria[cat].length < 3) porCategoria[cat].push(p)
+    })
+    return Object.values(porCategoria).flat()
   }
   
-  // Detectar categorias relevantes baseado na mensagem
-  const categoriasRelevantes: Set<string> = new Set()
-  const palavrasChaveEncontradas: string[] = []
-  
-  for (const [categoria, termos] of Object.entries(termosCategoria)) {
-    for (const termo of termos) {
-      if (msgLower.includes(termo)) {
-        categoriasRelevantes.add(categoria)
-        palavrasChaveEncontradas.push(termo)
+  // BUSCA POR NOME DO PRODUTO (prioridade máxima)
+  const produtosComScore = produtos.map(p => {
+    let score = 0
+    const tituloLower = (p.titulo || '').toLowerCase()
+    const descLower = (p.descricao || '').toLowerCase()
+    
+    for (const palavra of palavrasChave) {
+      // Match no título = maior peso
+      if (tituloLower.includes(palavra)) {
+        score += 10 // Alta prioridade para match no título
+        console.log(`✅ [MATCH] "${palavra}" encontrado em: ${p.titulo.slice(0, 50)}`)
+      }
+      // Match na descrição = peso médio  
+      if (descLower.includes(palavra)) {
+        score += 3
       }
     }
-  }
-  
-  // Se encontrou categorias específicas, filtrar por elas
-  if (categoriasRelevantes.size > 0) {
-    console.log(`🔍 [FILTRO] Categorias detectadas: ${[...categoriasRelevantes].join(', ')} (termos: ${palavrasChaveEncontradas.join(', ')})`)
     
-    const produtosFiltrados = produtos.filter(p => {
-      // Verificar se está na categoria detectada
-      if (p.categoria && categoriasRelevantes.has(p.categoria)) return true
-      
-      // Verificar se título ou descrição contém algum termo
-      const tituloLower = (p.titulo || '').toLowerCase()
-      const descLower = (p.descricao || '').toLowerCase()
-      
-      for (const termo of palavrasChaveEncontradas) {
-        if (tituloLower.includes(termo) || descLower.includes(termo)) return true
-      }
-      
-      return false
-    })
-    
-    console.log(`🔍 [FILTRO] Produtos relevantes encontrados: ${produtosFiltrados.length}`)
-    return produtosFiltrados.slice(0, 30) // Máximo 30 produtos relevantes para não sobrecarregar
-  }
-  
-  // Se não detectou categoria específica, fazer busca por similaridade no título
-  const palavrasMensagem = msgLower.split(/\s+/).filter(p => p.length > 2)
-  
-  if (palavrasMensagem.length > 0) {
-    const produtosComScore = produtos.map(p => {
-      let score = 0
-      const tituloLower = (p.titulo || '').toLowerCase()
-      
-      for (const palavra of palavrasMensagem) {
-        if (tituloLower.includes(palavra)) score += 2
-        if ((p.descricao || '').toLowerCase().includes(palavra)) score += 1
-        if ((p.categoria || '').toLowerCase().includes(palavra)) score += 1
-      }
-      
-      return { ...p, score }
-    })
-    
-    const produtosRelevantes = produtosComScore
-      .filter(p => p.score > 0)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 30)
-    
-    if (produtosRelevantes.length > 0) {
-      console.log(`🔍 [FILTRO] Busca por similaridade: ${produtosRelevantes.length} produtos`)
-      return produtosRelevantes
-    }
-  }
-  
-  // Fallback: retornar amostra diversificada (5 de cada categoria)
-  console.log(`🔍 [FILTRO] Sem match específico, retornando amostra diversificada`)
-  const porCategoria: Record<string, any[]> = {}
-  produtos.forEach(p => {
-    const cat = p.categoria || 'Outros'
-    if (!porCategoria[cat]) porCategoria[cat] = []
-    if (porCategoria[cat].length < 5) porCategoria[cat].push(p)
+    return { ...p, score }
   })
   
-  return Object.values(porCategoria).flat()
+  // Filtrar apenas produtos com match e ordenar por score
+  const produtosRelevantes = produtosComScore
+    .filter(p => p.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20) // Top 20 mais relevantes
+  
+  if (produtosRelevantes.length > 0) {
+    console.log(`🎯 [FILTRO] Encontrados ${produtosRelevantes.length} produtos com match direto no nome`)
+    return produtosRelevantes
+  }
+  
+  // Se não encontrou match direto, NÃO retornar produtos aleatórios
+  console.log(`❌ [FILTRO] Nenhum produto encontrado com "${palavrasChave.join(', ')}" no nome`)
+  return []
 }
 
 // ============================================
