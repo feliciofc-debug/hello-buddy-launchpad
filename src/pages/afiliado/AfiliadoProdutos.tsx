@@ -428,16 +428,16 @@ export default function AfiliadoProdutos() {
             </Card>
 
             <Card 
-              className="cursor-pointer hover:shadow-lg transition-all hover:scale-[1.02] border-green-200 bg-gradient-to-br from-green-50 to-white dark:from-green-950/20 dark:to-background"
-              onClick={() => navigate('/afiliado/produtos/boticario')}
+              className="cursor-pointer hover:shadow-lg transition-all hover:scale-[1.02] border-orange-200 bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/20 dark:to-background"
+              onClick={() => navigate('/afiliado/produtos/shopee')}
             >
               <CardContent className="p-4 flex flex-col items-center text-center">
-                <div className="p-3 rounded-full bg-green-600 text-white mb-3">
-                  <Sparkles className="h-6 w-6" />
+                <div className="p-3 rounded-full bg-[#EE4D2D] text-white mb-3">
+                  <Store className="h-6 w-6" />
                 </div>
-                <h3 className="font-semibold text-foreground">O Boticário</h3>
+                <h3 className="font-semibold text-foreground">Shopee</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {produtos.filter(p => p.marketplace?.toLowerCase().includes('boticario')).length} produtos
+                  {produtos.filter(p => p.marketplace?.toLowerCase().includes('shopee')).length} produtos
                 </p>
               </CardContent>
             </Card>
