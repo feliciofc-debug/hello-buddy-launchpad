@@ -5,13 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Package, 
-  Send, 
-  DollarSign, 
-  MessageSquare, 
-  Smartphone, 
-  Sparkles, 
+import {
+  Package,
+  Send,
+  DollarSign,
+  MessageSquare,
+  Smartphone,
+  Sparkles,
   BookOpen,
   TrendingUp,
   Users,
@@ -20,7 +20,8 @@ import {
   UserPlus,
   Upload,
   Contact,
-  Trash2
+  Trash2,
+  Store,
 } from "lucide-react";
 import { toast } from "sonner";
 import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppCSVModal";
@@ -197,13 +198,13 @@ export default function AfiliadoDashboard() {
       description: "Mercado Livre",
       color: "bg-yellow-500"
     },
-    { 
-      title: "Produtos Boticário", 
-      icon: Package, 
-      path: "/afiliado/produtos/boticario",
-      description: "O Boticário",
-      color: "bg-pink-500"
-    }
+    {
+      title: "Produtos Shopee",
+      icon: Store,
+      path: "/afiliado/produtos/shopee",
+      description: "Shopee",
+      color: "bg-orange-600",
+    },
   ];
 
   if (loading) {
