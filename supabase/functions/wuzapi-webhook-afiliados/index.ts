@@ -170,6 +170,148 @@ const CATEGORIAS = [
 ]
 
 // ============================================
+// LIMITE DE MEMBROS POR LISTA DE TRANSMISSÃO
+// ============================================
+const LIMITE_MEMBROS_LISTA = 256
+
+// ============================================
+// FUNÇÃO: ADICIONAR LEAD ÀS LISTAS DE TRANSMISSÃO AUTOMATICAMENTE
+// ============================================
+async function adicionarLeadNasListasAutomaticamente(
+  supabase: any,
+  leadId: string,
+  phone: string,
+  categorias: string[],
+  userId: string | null
+) {
+  console.log(`📋 [AUTO-LISTA] Adicionando lead ${phone} às listas de categorias: ${categorias.join(', ')}`)
+
+  for (const categoriaStr of categorias) {
+    try {
+      // Normalizar nome da categoria (capitalizar primeira letra)
+      const categoriaNome = categoriaStr.charAt(0).toUpperCase() + categoriaStr.slice(1).toLowerCase()
+      
+      // Buscar todas as listas dessa categoria (incluindo overflow: "Casa", "Casa 2", "Casa 3"...)
+      const { data: listasDaCategoria } = await supabase
+        .from('afiliado_listas_categoria')
+        .select('id, nome, total_membros')
+        .or(`nome.eq.${categoriaNome},nome.ilike.${categoriaNome} %`)
+        .eq('ativa', true)
+        .order('nome', { ascending: true })
+      
+      let listaDestino: { id: string; nome: string; total_membros: number } | null = null
+      
+      if (!listasDaCategoria || listasDaCategoria.length === 0) {
+        // Não existe lista para essa categoria - criar a primeira
+        console.log(`📋 [AUTO-LISTA] Criando lista "${categoriaNome}" (não existia)`)
+        const cat = CATEGORIAS.find(c => c.nome.toLowerCase() === categoriaStr.toLowerCase())
+        
+        const { data: novaLista, error: erroNovaLista } = await supabase
+          .from('afiliado_listas_categoria')
+          .insert({
+            nome: categoriaNome,
+            descricao: `Lista de ${categoriaNome} - criada automaticamente`,
+            icone: cat?.icone || '📦',
+            cor: '#3B82F6',
+            ativa: true,
+            total_membros: 0,
+            user_id: userId
+          })
+          .select()
+          .single()
+        
+        if (erroNovaLista) {
+          console.error(`❌ [AUTO-LISTA] Erro ao criar lista ${categoriaNome}:`, erroNovaLista)
+          continue
+        }
+        
+        listaDestino = novaLista
+      } else {
+        // Procurar lista com espaço disponível (< 256 membros)
+        for (const lista of listasDaCategoria) {
+          if ((lista.total_membros || 0) < LIMITE_MEMBROS_LISTA) {
+            listaDestino = lista
+            break
+          }
+        }
+        
+        // Se todas estão cheias, criar nova lista overflow
+        if (!listaDestino) {
+          const proximoNumero = listasDaCategoria.length + 1
+          const novoNome = `${categoriaNome} ${proximoNumero}`
+          console.log(`📋 [AUTO-LISTA] Criando lista overflow: "${novoNome}"`)
+          
+          const cat = CATEGORIAS.find(c => c.nome.toLowerCase() === categoriaStr.toLowerCase())
+          
+          const { data: novaLista, error: erroNovaLista } = await supabase
+            .from('afiliado_listas_categoria')
+            .insert({
+              nome: novoNome,
+              descricao: `Lista de ${categoriaNome} ${proximoNumero} - criada automaticamente (overflow)`,
+              icone: cat?.icone || '📦',
+              cor: '#3B82F6',
+              ativa: true,
+              total_membros: 0,
+              user_id: userId
+            })
+            .select()
+            .single()
+          
+          if (erroNovaLista) {
+            console.error(`❌ [AUTO-LISTA] Erro ao criar lista overflow ${novoNome}:`, erroNovaLista)
+            continue
+          }
+          
+          listaDestino = novaLista
+        }
+      }
+      
+      if (!listaDestino) {
+        console.error(`❌ [AUTO-LISTA] Não foi possível determinar lista para ${categoriaNome}`)
+        continue
+      }
+      
+      // Verificar se lead já está na lista
+      const { data: membroExistente } = await supabase
+        .from('afiliado_lista_membros')
+        .select('id')
+        .eq('lista_id', listaDestino.id)
+        .eq('lead_id', leadId)
+        .single()
+      
+      if (membroExistente) {
+        console.log(`⏭️ [AUTO-LISTA] Lead ${phone} já está na lista ${listaDestino.nome}`)
+        continue
+      }
+      
+      // Adicionar lead à lista
+      const { error: erroInsert } = await supabase
+        .from('afiliado_lista_membros')
+        .insert({
+          lista_id: listaDestino.id,
+          lead_id: leadId
+        })
+      
+      if (erroInsert) {
+        console.error(`❌ [AUTO-LISTA] Erro ao adicionar lead à lista ${listaDestino.nome}:`, erroInsert)
+        continue
+      }
+      
+      // Atualizar contador da lista
+      await supabase
+        .from('afiliado_listas_categoria')
+        .update({ total_membros: (listaDestino.total_membros || 0) + 1 })
+        .eq('id', listaDestino.id)
+      
+      console.log(`✅ [AUTO-LISTA] Lead ${phone} adicionado à lista "${listaDestino.nome}" (${(listaDestino.total_membros || 0) + 1}/${LIMITE_MEMBROS_LISTA})`)
+      
+    } catch (err) {
+      console.error(`❌ [AUTO-LISTA] Erro ao processar categoria ${categoriaStr}:`, err)
+    }
+  }
+}
+
+// ============================================
 // DETECÇÃO E CONVERSÃO DE LINKS DE MARKETPLACE
 // ============================================
 interface MarketplaceLinkResult {
@@ -892,12 +1034,12 @@ async function handleTextMessage(
       const categoriasDoState = (userState.state as any)?.categorias || ['Casa']
       
       // Criar lead com nome e categorias
-      await supabase.from('leads_ebooks').upsert({
+      const { data: leadData } = await supabase.from('leads_ebooks').upsert({
         phone: cleanPhone,
         nome: nomeCliente,
         categorias: categoriasDoState,
         user_id: userId
-      }, { onConflict: 'phone' })
+      }, { onConflict: 'phone' }).select().single()
       
       // ======= SINCRONIZAR COM afiliado_clientes_ebooks =======
       await supabase.from('afiliado_clientes_ebooks').upsert({
@@ -915,6 +1057,11 @@ async function handleTextMessage(
       }, { onConflict: 'phone' })
       
       console.log(`✅ [AMZ-OFERTAS] Cliente salvo: ${nomeCliente}, categorias: ${categoriasDoState.join(', ')}`)
+      
+      // ======= ADICIONAR AUTOMATICAMENTE ÀS LISTAS DE TRANSMISSÃO =======
+      if (leadData?.id) {
+        await adicionarLeadNasListasAutomaticamente(supabase, leadData.id, cleanPhone, categoriasDoState, userId)
+      }
       
       // Atualizar estado
       await supabase.from('afiliado_user_states').update({
