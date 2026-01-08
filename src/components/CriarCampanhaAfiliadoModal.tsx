@@ -20,11 +20,12 @@ interface Produto {
   marketplace: string;
 }
 
-interface WhatsAppGroup {
+interface ListaTransmissao {
   id: string;
   group_name: string;
   member_count: number;
   phone_numbers: string[];
+  source: 'manual' | 'auto';
 }
 
 interface PostsGerados {
@@ -59,7 +60,7 @@ export function CriarCampanhaAfiliadoModal({
   const [isLoading, setIsLoading] = useState(false);
   
   // Estados para listas de transmissão
-  const [listas, setListas] = useState<WhatsAppGroup[]>([]);
+  const [listas, setListas] = useState<ListaTransmissao[]>([]);
   const [listasSelecionadas, setListasSelecionadas] = useState<string[]>([]);
   
   const [postsGerados, setPostsGerados] = useState<PostsGerados | null>(null);
@@ -67,20 +68,47 @@ export function CriarCampanhaAfiliadoModal({
   const [sugestaoIA, setSugestaoIA] = useState('');
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-  // Buscar listas de transmissão ao abrir modal
+  // Buscar listas de transmissão ao abrir modal (manuais + automáticas)
   const fetchListas = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from('whatsapp_groups')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const [manualRes, autoRes] = await Promise.all([
+        supabase
+          .from('whatsapp_groups')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('afiliado_listas_categoria')
+          .select('id, nome, total_membros, ativa')
+          .eq('user_id', user.id)
+          .order('nome', { ascending: true })
+      ]);
 
-      if (error) throw error;
-      setListas(data || []);
+      if (manualRes.error) throw manualRes.error;
+      if (autoRes.error) throw autoRes.error;
+
+      const listasAuto: ListaTransmissao[] = (autoRes.data || [])
+        .filter((l) => l.ativa !== false)
+        .map((l) => ({
+          id: l.id,
+          group_name: `📂 ${l.nome}`,
+          member_count: l.total_membros ?? 0,
+          phone_numbers: [],
+          source: 'auto' as const,
+        }));
+
+      const listasManuais: ListaTransmissao[] = (manualRes.data || []).map((g: any) => ({
+        id: g.id,
+        group_name: g.group_name,
+        member_count: g.member_count ?? (g.phone_numbers?.length || 0),
+        phone_numbers: g.phone_numbers || [],
+        source: 'manual' as const,
+      }));
+
+      setListas([...listasAuto, ...listasManuais]);
     } catch (error) {
       console.error('Erro ao buscar listas:', error);
       setListas([]);
