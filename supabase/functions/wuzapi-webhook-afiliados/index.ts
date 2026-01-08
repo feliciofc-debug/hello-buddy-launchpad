@@ -110,15 +110,38 @@ COMO FUNCIONA:
 4. Depois me manda o comprovante
 5. Você ganha cashback + eBook de presente!
 
+🔥 REGRA CRÍTICA - BUSCA DE PRODUTOS:
+Quando o cliente perguntar sobre um produto específico (ex: "tem ração?", "quero uma airfryer", "preciso de shampoo"):
+1. PROCURE na lista de PRODUTOS DISPONÍVEIS fornecida no contexto
+2. LISTE TODOS os produtos que correspondem à busca do cliente
+3. Para CADA produto encontrado, mostre:
+   - Nome do produto
+   - Preço (se disponível)
+   - Link de compra formatado: "👉 [LINK]"
+4. Se encontrar vários produtos, liste todos com numeração (1., 2., 3...)
+5. Lembre o cliente que comprando pelo link ganha 2% de cashback!
+
+Exemplo de resposta quando cliente pergunta "tem ração para cachorro?":
+"Olha só o que tenho de ração! 🐶
+
+1. *Ração Golden Cães Adultos 15kg* - R$ 149,90
+👉 https://link-afiliado.com/produto1
+
+2. *Ração Premier Cães Filhotes 10kg* - R$ 129,90
+👉 https://link-afiliado.com/produto2
+
+Lembrando que comprando pelo link você ganha 2% de cashback! 💰"
+
 REGRAS DE RESPOSTA:
 1. Se for primeira mensagem ou não conhece, PERGUNTE O NOME
 2. Depois que souber o nome, avise sobre o eBook grátis
 3. Responda APENAS o que foi perguntado
-4. Se não souber, diga "Deixa eu verificar e te retorno!"
-5. Se pedirem oferta específica, diga que vai procurar
-6. NUNCA invente informações de produtos ou preços
-7. Se a pessoa quer ver o saldo de cashback, diga que vai verificar
-8. Se mandarem comprovante, informe que vai analisar e validar
+4. Se o cliente perguntar sobre produto, BUSQUE na lista de produtos e mostre TODAS as opções
+5. SEMPRE inclua o link de compra quando mostrar produtos
+6. Se não tiver o produto, diga "Não tenho esse no momento, mas vou procurar pra você!"
+7. NUNCA invente produtos ou preços - use APENAS os da lista fornecida
+8. Se a pessoa quer ver o saldo de cashback, use as informações do contexto
+9. Se mandarem comprovante, informe que vai analisar e validar
 
 INFORMAÇÕES IMPORTANTES:
 - Somos do Rio de Janeiro, mas atendemos o Brasil todo
@@ -963,17 +986,35 @@ async function handleTextMessage(
 - Total de compras: ${cashbackInfo.compras_total || 0}`
   }
   
-  // Adicionar produtos ao contexto
+  // Adicionar produtos ao contexto (formatado por categoria para facilitar busca)
   if (produtosAfiliado.length > 0) {
-    additionalContext += `\n\n📦 PRODUTOS DISPONÍVEIS (se cliente perguntar sobre produto, envie o link):
-${produtosAfiliado.map((p: any, i: number) => 
-  `${i+1}. ${p.titulo}${p.preco ? ` - R$ ${p.preco.toFixed(2)}` : ''} (${p.categoria || 'Geral'})
-   👉 Link: ${p.link_afiliado}`
-).join('\n')}
+    // Agrupar produtos por categoria
+    const produtosPorCategoria: Record<string, any[]> = {}
+    produtosAfiliado.forEach((p: any) => {
+      const cat = p.categoria || 'Outros'
+      if (!produtosPorCategoria[cat]) produtosPorCategoria[cat] = []
+      produtosPorCategoria[cat].push(p)
+    })
+    
+    additionalContext += `\n\n📦 CATÁLOGO DE PRODUTOS DISPONÍVEIS PARA VENDA:
+INSTRUÇÕES: Quando o cliente perguntar sobre qualquer produto, BUSQUE nesta lista e mostre TODAS as opções relevantes com seus links.
 
-REGRA IMPORTANTE: Se o cliente perguntar sobre algum desses produtos ou quiser comprar, 
-SEMPRE envie o link de compra formatado assim: "👉 Compre aqui: [LINK]"
-Se não tiver o produto exato, sugira o mais parecido ou diga que vai procurar.`
+`
+    // Listar por categoria
+    Object.entries(produtosPorCategoria).forEach(([categoria, produtos]) => {
+      additionalContext += `\n🏷️ ${categoria.toUpperCase()}:\n`
+      produtos.forEach((p: any, i: number) => {
+        const preco = p.preco ? `R$ ${p.preco.toFixed(2)}` : 'Preço no site'
+        additionalContext += `• ${p.titulo} - ${preco}\n  Link: ${p.link_afiliado}\n`
+      })
+    })
+    
+    additionalContext += `\n📌 LEMBRE-SE: 
+- SEMPRE liste TODOS os produtos que correspondem à busca do cliente
+- SEMPRE inclua o link de cada produto
+- Avise que comprando pelo link ganha 2% de cashback!`
+  } else {
+    additionalContext += `\n\n⚠️ PRODUTOS: Ainda não há produtos cadastrados. Se o cliente perguntar sobre produto, diga que está procurando as melhores ofertas e em breve terá novidades!`
   }
   
   // Nome do cliente para contexto
@@ -1231,7 +1272,7 @@ async function generateAIResponse(
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages,
-        max_tokens: 300,
+        max_tokens: 800, // Aumentado para permitir listar múltiplos produtos
         temperature: 0.7
       })
     })
@@ -1632,14 +1673,16 @@ async function getProdutosAfiliado(supabase: any, userId: string | null): Promis
       .select('id, titulo, descricao, preco, link_afiliado, categoria, imagem_url, marketplace')
       .eq('user_id', userId)
       .eq('status', 'ativo')
-      .order('created_at', { ascending: false })
-      .limit(20) // Limitar para não sobrecarregar o contexto da IA
+      .order('categoria', { ascending: true })
+      .order('titulo', { ascending: true })
+      .limit(50) // Aumentado para ter mais produtos disponíveis para busca
     
     if (error) {
       console.error('❌ [AMZ-OFERTAS] Erro ao buscar produtos:', error)
       return []
     }
     
+    console.log(`📦 [AMZ-OFERTAS] Produtos carregados: ${data?.length || 0}`)
     return data || []
   } catch (err) {
     console.error('❌ [AMZ-OFERTAS] Erro ao buscar produtos:', err)
