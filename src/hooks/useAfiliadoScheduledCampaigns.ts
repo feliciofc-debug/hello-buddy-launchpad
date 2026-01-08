@@ -195,7 +195,7 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
           toast.info(`🚀 Executando campanha: ${campanha.nome}`);
 
           try {
-            // Buscar listas de transmissão
+            // Buscar listas de transmissão (manuais + automáticas por categoria)
             const listasIds = (campanha as any).listas_ids || [];
             
             if (listasIds.length === 0) {
@@ -204,13 +204,28 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
               continue;
             }
 
-            const { data: listas } = await supabase
+            // Buscar listas manuais (whatsapp_groups)
+            const { data: listasManuais } = await supabase
               .from('whatsapp_groups')
               .select('phone_numbers, group_name')
               .in('id', listasIds);
 
+            // Buscar listas automáticas por categoria (afiliado_listas_categoria -> afiliado_lista_membros -> leads_ebooks)
+            const { data: listasAuto } = await supabase
+              .from('afiliado_lista_membros')
+              .select('lead_id, lista_id, leads_ebooks(phone)')
+              .in('lista_id', listasIds);
+
+            // Coletar telefones das listas manuais
+            const contatosManuais = listasManuais?.flatMap(l => l.phone_numbers || []) || [];
+            
+            // Coletar telefones das listas automáticas (via leads_ebooks)
+            const contatosAuto = listasAuto?.map(m => (m.leads_ebooks as any)?.phone).filter(Boolean) || [];
+            
+            console.log(`📋 [AFILIADO] Listas manuais: ${contatosManuais.length} contatos | Auto: ${contatosAuto.length} contatos`);
+
             // ✅ DEDUPLICAR contatos usando Set para evitar mensagens duplicadas
-            const contatosBrutos = listas?.flatMap(l => l.phone_numbers || []) || [];
+            const contatosBrutos = [...contatosManuais, ...contatosAuto];
             const contatosUnicos = [...new Set(contatosBrutos.map(p => p.replace(/\D/g, '')))];
             console.log(`📱 [AFILIADO] Verificando ${contatosUnicos.length} contatos únicos (${contatosBrutos.length} brutos)`);
 
