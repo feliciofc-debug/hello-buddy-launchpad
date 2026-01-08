@@ -192,13 +192,17 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
               .select('phone_numbers, group_name')
               .in('id', listasIds);
 
-            const contatos = listas?.flatMap(l => l.phone_numbers || []) || [];
-            console.log(`📱 [AFILIADO] Verificando ${contatos.length} contatos`);
+            // ✅ DEDUPLICAR contatos usando Set para evitar mensagens duplicadas
+            const contatosBrutos = listas?.flatMap(l => l.phone_numbers || []) || [];
+            const contatosUnicos = [...new Set(contatosBrutos.map(p => p.replace(/\D/g, '')))];
+            console.log(`📱 [AFILIADO] Verificando ${contatosUnicos.length} contatos únicos (${contatosBrutos.length} brutos)`);
 
-            if (contatos.length === 0) {
+            if (contatosUnicos.length === 0) {
               console.log('⚠️ [AFILIADO] Nenhum contato nas listas');
               continue;
             }
+            
+            const contatos = contatosUnicos;
 
             let enviados = 0;
             let pulados = 0;
