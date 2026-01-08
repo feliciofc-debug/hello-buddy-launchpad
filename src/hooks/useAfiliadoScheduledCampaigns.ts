@@ -376,8 +376,9 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   console.error(`❌ [AFILIADO] Falha final para ${cleanPhone}:`, errFinal);
                 }
 
-                // Delay entre envios
-                await new Promise(r => setTimeout(r, 500));
+                // Delay aleatório 5-8 segundos (compliance Meta)
+                const delayMs = Math.floor(Math.random() * 3000) + 5000;
+                await new Promise(r => setTimeout(r, delayMs));
 
               } catch (err) {
                 console.error(`[AFILIADO] Erro ao enviar para ${phone}:`, err);
