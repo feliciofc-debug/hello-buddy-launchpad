@@ -116,6 +116,8 @@ async function registrarEnvio(
 const globalExecutingLock = { current: false };
 const globalLastExecution = { current: 0 };
 const executedCampaignsToday = new Set<string>();
+// ✅ Deduplicação de envios para grupos (evita duplicados em campanhas simultâneas)
+const recentGroupSends = new Map<string, number>(); // groupJid -> timestamp
 
 export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
   const isExecuting = useRef(false);
@@ -315,9 +317,20 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
             let enviadosGrupos = 0;
             let errosGrupos = 0;
 
-            // ✅ ENVIAR PARA GRUPOS (1x por grupo)
+            // ✅ ENVIAR PARA GRUPOS (1x por grupo com deduplicação)
             if ((gruposSelecionados || []).length > 0) {
               for (const g of (gruposSelecionados || [])) {
+                // ✅ DEDUPLICAÇÃO: verificar se já enviamos para este grupo recentemente (30s)
+                const now = Date.now();
+                const lastSend = recentGroupSends.get(g.group_jid) || 0;
+                if (now - lastSend < 30000) {
+                  console.log(`⏭️ [AFILIADO] Grupo ${g.group_name} já recebeu mensagem há ${Math.round((now - lastSend) / 1000)}s, pulando...`);
+                  continue;
+                }
+                
+                // Marcar como enviado ANTES de enviar (evita race condition)
+                recentGroupSends.set(g.group_jid, now);
+                
                 try {
                 // Formatar preço corretamente (Shopee usa ponto como separador de milhar)
                 const precoFormatado = produto?.preco 
@@ -346,6 +359,8 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   if (groupErr || !groupData?.success) {
                     errosGrupos++;
                     console.error('❌ [AFILIADO] Falha ao enviar para grupo:', groupErr || groupData);
+                    // Remover do cache se falhou (permite retry)
+                    recentGroupSends.delete(g.group_jid);
                   } else {
                     enviadosGrupos++;
                     console.log('✅ [AFILIADO] Grupo enviado:', g.group_name);
@@ -356,6 +371,7 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                 } catch (e) {
                   errosGrupos++;
                   console.error('❌ [AFILIADO] Erro ao enviar para grupo:', e);
+                  recentGroupSends.delete(g.group_jid);
                 }
               }
             }
