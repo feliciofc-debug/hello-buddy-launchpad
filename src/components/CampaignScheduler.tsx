@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useScheduledCampaigns } from '@/hooks/useScheduledCampaigns';
 import { useAfiliadoScheduledCampaigns } from '@/hooks/useAfiliadoScheduledCampaigns';
@@ -6,12 +6,14 @@ import { useAfiliadoScheduledCampaigns } from '@/hooks/useAfiliadoScheduledCampa
 /**
  * Componente global que executa campanhas agendadas
  * Suporta tanto campanhas PJ (campanhas_recorrentes) quanto Afiliado (afiliado_campanhas)
+ * Também dispara o envio programado de afiliados (programacao_envio_afiliado)
  * Deve ser incluído no App.tsx para funcionar em qualquer página
  */
 export function CampaignScheduler() {
   const [userId, setUserId] = useState<string>();
   const [isLeader, setIsLeader] = useState(false);
   const tabIdRef = useRef<string>('');
+  const lastEnvioProgramadoRef = useRef<number>(0);
 
   useEffect(() => {
     tabIdRef.current =
@@ -77,6 +79,51 @@ export function CampaignScheduler() {
 
   // Hook para campanhas AFILIADO (afiliado_campanhas)
   useAfiliadoScheduledCampaigns(effectiveUserId);
+
+  // ✅ Dispara executar-envio-programado a cada 60s (apenas aba líder)
+  const triggerEnvioProgramado = useCallback(async () => {
+    if (!isLeader || !userId) return;
+    
+    const now = Date.now();
+    // Evita chamadas mais frequentes que 55s
+    if (now - lastEnvioProgramadoRef.current < 55_000) return;
+    lastEnvioProgramadoRef.current = now;
+
+    try {
+      console.log('📤 [ENVIO PROGRAMADO] Disparando verificação...');
+      const response = await supabase.functions.invoke('executar-envio-programado', {
+        body: { userId }
+      });
+      
+      if (response.error) {
+        console.error('❌ [ENVIO PROGRAMADO] Erro:', response.error);
+      } else {
+        const data = response.data;
+        if (data?.enviados > 0) {
+          console.log(`✅ [ENVIO PROGRAMADO] ${data.enviados} mensagem(ns) enviada(s)`);
+        } else {
+          console.log('⏳ [ENVIO PROGRAMADO] Nenhum envio pendente');
+        }
+      }
+    } catch (err) {
+      console.error('❌ [ENVIO PROGRAMADO] Erro na chamada:', err);
+    }
+  }, [isLeader, userId]);
+
+  useEffect(() => {
+    if (!isLeader || !userId) return;
+
+    // Primeira execução após 5s
+    const initialTimeout = setTimeout(triggerEnvioProgramado, 5_000);
+    
+    // Depois a cada 60s
+    const interval = setInterval(triggerEnvioProgramado, 60_000);
+
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
+  }, [isLeader, userId, triggerEnvioProgramado]);
 
   // Componente invisível - apenas executa a lógica
   return null;
