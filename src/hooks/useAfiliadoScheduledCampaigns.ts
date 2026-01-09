@@ -317,16 +317,33 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
             let enviadosGrupos = 0;
             let errosGrupos = 0;
 
-            // ✅ ENVIAR PARA GRUPOS (1x por grupo com deduplicação)
+            // ✅ ENVIAR PARA GRUPOS (1x por grupo com deduplicação PERSISTENTE no banco)
             if ((gruposSelecionados || []).length > 0) {
               for (const g of (gruposSelecionados || [])) {
-                // ✅ DEDUPLICAÇÃO: verificar se já enviamos para este grupo recentemente (30s)
+                // ✅ DEDUPLICAÇÃO LOCAL: verificar cache em memória (30s)
                 const now = Date.now();
                 const lastSend = recentGroupSends.get(g.group_jid) || 0;
                 if (now - lastSend < 30000) {
                   console.log(`⏭️ [AFILIADO] Grupo ${g.group_name} já recebeu mensagem há ${Math.round((now - lastSend) / 1000)}s, pulando...`);
                   continue;
                 }
+                
+                // ✅ DEDUPLICAÇÃO PERSISTENTE: verificar no banco se já enviamos nos últimos 2 min
+                const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
+                const { data: recentEnvio } = await supabase
+                  .from('historico_envios')
+                  .select('timestamp')
+                  .eq('whatsapp', g.group_jid)
+                  .eq('tipo', 'grupo')
+                  .gte('timestamp', twoMinutesAgo)
+                  .limit(1);
+                
+                if (recentEnvio && recentEnvio.length > 0) {
+                  console.log(`⏭️ [AFILIADO] Grupo ${g.group_name} já recebeu mensagem nos últimos 2min (DB), pulando...`);
+                  continue;
+                }
+                
+                // Marcar cache local ANTES de enviar (evita race condition entre abas)
                 
                 // Marcar como enviado ANTES de enviar (evita race condition)
                 recentGroupSends.set(g.group_jid, now);
