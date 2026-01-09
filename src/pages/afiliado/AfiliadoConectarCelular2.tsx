@@ -67,8 +67,20 @@ export default function AfiliadoConectarCelular2() {
 
       if (error) throw error
 
-      if (data.qrcode) {
-        setQrCode(data.qrcode)
+      // A função pode retornar o QR em formatos diferentes:
+      // - data.qrcode (base64 puro)
+      // - data.raw.qr.data.QRCode (data URL: "data:image/png;base64,...")
+      let qr: string | null = data?.qrcode ?? null
+
+      const maybeDataUrl = data?.raw?.qr?.data?.QRCode
+      if (!qr && typeof maybeDataUrl === 'string') {
+        qr = maybeDataUrl.startsWith('data:image')
+          ? maybeDataUrl.split('base64,')[1] ?? null
+          : maybeDataUrl
+      }
+
+      if (qr) {
+        setQrCode(qr)
         toast.info('Escaneie o QR Code com seu WhatsApp')
       } else {
         toast.error('QR Code não disponível. Tente novamente.')
