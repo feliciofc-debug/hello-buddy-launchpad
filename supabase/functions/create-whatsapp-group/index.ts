@@ -77,8 +77,16 @@ serve(async (req) => {
       );
     }
 
-    // WuzAPI pode retornar GroupJid ou Jid dependendo da versão
-    const groupJid = createResult.GroupJid || createResult.Jid || createResult.gid;
+    // WuzAPI pode retornar diferentes formatos dependendo da versão
+    const groupJid =
+      createResult?.GroupJid ||
+      createResult?.Jid ||
+      createResult?.gid ||
+      createResult?.JID ||
+      createResult?.data?.GroupJid ||
+      createResult?.data?.Jid ||
+      createResult?.data?.gid ||
+      createResult?.data?.JID;
 
     if (!groupJid) {
       return new Response(
