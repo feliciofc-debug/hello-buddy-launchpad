@@ -195,13 +195,25 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
           toast.info(`🚀 Executando campanha: ${campanha.nome}`);
 
           try {
-            // Buscar listas de transmissão (manuais + automáticas por categoria)
+            // Buscar listas de transmissão (manuais + automáticas por categoria + grupos WhatsApp reais)
             const listasIds = (campanha as any).listas_ids || [];
-            
+
             if (listasIds.length === 0) {
               console.log('⚠️ [AFILIADO] Campanha sem listas selecionadas');
               toast.warning(`Campanha ${campanha.nome} não tem listas de transmissão`);
               continue;
+            }
+
+            // Grupos WhatsApp reais (envio 1x por grupo)
+            const { data: gruposSelecionados, error: gruposErr } = await supabase
+              .from('whatsapp_grupos_afiliado')
+              .select('id, group_jid, group_name')
+              .eq('user_id', userId)
+              .eq('ativo', true)
+              .in('id', listasIds);
+
+            if (gruposErr) {
+              console.error('❌ [AFILIADO] Erro ao buscar grupos WhatsApp:', gruposErr);
             }
 
             // Buscar listas manuais (whatsapp_groups)
@@ -218,22 +230,19 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
 
             // Coletar telefones das listas manuais
             const contatosManuais = listasManuais?.flatMap(l => l.phone_numbers || []) || [];
-            
+
             // Coletar telefones das listas automáticas (via leads_ebooks)
             const contatosAuto = listasAuto?.map(m => (m.leads_ebooks as any)?.phone).filter(Boolean) || [];
-            
-            console.log(`📋 [AFILIADO] Listas manuais: ${contatosManuais.length} contatos | Auto: ${contatosAuto.length} contatos`);
+
+            console.log(
+              `📋 [AFILIADO] Listas manuais: ${contatosManuais.length} | Auto: ${contatosAuto.length} | Grupos: ${gruposSelecionados?.length || 0}`
+            );
 
             // ✅ DEDUPLICAR contatos usando Set para evitar mensagens duplicadas
             const contatosBrutos = [...contatosManuais, ...contatosAuto];
             const contatosUnicos = [...new Set(contatosBrutos.map(p => p.replace(/\D/g, '')))];
             console.log(`📱 [AFILIADO] Verificando ${contatosUnicos.length} contatos únicos (${contatosBrutos.length} brutos)`);
 
-            if (contatosUnicos.length === 0) {
-              console.log('⚠️ [AFILIADO] Nenhum contato nas listas');
-              continue;
-            }
-            
             const contatos = contatosUnicos;
 
             let enviados = 0;
@@ -276,6 +285,49 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                 // URL não reconhecida, usa como está
                 imageUrl = rawImageUrl;
                 console.log('🖼️ [AFILIADO] Usando imagem como está:', imageUrl.substring(0, 60));
+              }
+            }
+
+            let enviadosGrupos = 0;
+            let errosGrupos = 0;
+
+            // ✅ ENVIAR PARA GRUPOS (1x por grupo)
+            if ((gruposSelecionados || []).length > 0) {
+              for (const g of (gruposSelecionados || [])) {
+                try {
+                  const mensagemGrupo = campanha.mensagem_template
+                    .replace(/\{\{nome\}\}/gi, 'pessoal')
+                    .replace(/\{\{produto\}\}/gi, produto?.titulo || 'Produto')
+                    .replace(/\{\{preco\}\}/gi, produto?.preco?.toString() || '0');
+
+                  console.log(`👥 [AFILIADO] Enviando para grupo ${g.group_name}...`);
+
+                  const { data: groupData, error: groupErr } = await supabase.functions.invoke(
+                    'send-wuzapi-group-message',
+                    {
+                      body: {
+                        groupJid: g.group_jid,
+                        message: mensagemGrupo,
+                        imageUrl,
+                        userId,
+                      },
+                    }
+                  );
+
+                  if (groupErr || !groupData?.success) {
+                    errosGrupos++;
+                    console.error('❌ [AFILIADO] Falha ao enviar para grupo:', groupErr || groupData);
+                  } else {
+                    enviadosGrupos++;
+                    console.log('✅ [AFILIADO] Grupo enviado:', g.group_name);
+                  }
+
+                  // Delay curto entre grupos
+                  await new Promise((r) => setTimeout(r, 500));
+                } catch (e) {
+                  errosGrupos++;
+                  console.error('❌ [AFILIADO] Erro ao enviar para grupo:', e);
+                }
               }
             }
 
@@ -412,9 +464,8 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                   console.error(`❌ [AFILIADO] Falha final para ${cleanPhone}:`, errFinal);
                 }
 
-                // Delay aleatório 5-8 segundos (compliance Meta)
-                const delayMs = Math.floor(Math.random() * 3000) + 5000;
-                await new Promise(r => setTimeout(r, delayMs));
+                // Delay FIXO (mais rápido) entre mensagens
+                await new Promise(r => setTimeout(r, 500));
 
               } catch (err) {
                 console.error(`[AFILIADO] Erro ao enviar para ${phone}:`, err);
