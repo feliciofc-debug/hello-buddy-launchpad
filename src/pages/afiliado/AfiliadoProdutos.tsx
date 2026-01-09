@@ -836,26 +836,30 @@ export default function AfiliadoProdutos() {
                 const CatIcon = catInfo.icon;
                 
                 return (
-                  <Card 
+                <Card 
                     key={produto.id} 
                     className={`overflow-hidden transition-all ${
                       modoSelecao && produtosSelecionados.has(produto.id) 
                         ? 'ring-2 ring-primary' 
                         : ''
                     }`}
-                    onClick={() => modoSelecao && toggleSelecaoProduto(produto.id)}
                   >
                     <CardContent className="p-0">
                       {/* Imagem */}
                       <div className="relative aspect-square bg-muted">
                         {/* Checkbox de seleção */}
                         {modoSelecao && (
-                          <div className="absolute top-2 left-2 z-10">
+                          <div 
+                            className="absolute top-2 left-2 z-10 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelecaoProduto(produto.id);
+                            }}
+                          >
                             <Checkbox
                               checked={produtosSelecionados.has(produto.id)}
                               onCheckedChange={() => toggleSelecaoProduto(produto.id)}
                               className="h-6 w-6 bg-white border-2"
-                              onClick={(e) => e.stopPropagation()}
                             />
                           </div>
                         )}
@@ -951,11 +955,25 @@ export default function AfiliadoProdutos() {
                         </Button>
 
                         <div className="grid grid-cols-2 gap-2">
-                          <Button variant="outline" size="sm" onClick={() => handleEdit(produto)}>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEdit(produto);
+                            }}
+                          >
                             <Edit className="h-4 w-4 mr-1" />
                             Editar
                           </Button>
-                          <Button variant="outline" size="sm" onClick={() => handleDelete(produto.id)}>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(produto.id);
+                            }}
+                          >
                             <Trash2 className="h-4 w-4 mr-1 text-red-500" />
                             Excluir
                           </Button>
