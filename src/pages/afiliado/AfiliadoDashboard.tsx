@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppCSVModal";
+import GerenciarCampanhasAtivas from "@/components/afiliado/GerenciarCampanhasAtivas";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -578,6 +579,11 @@ export default function AfiliadoDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Gerenciar Campanhas Ativas */}
+        <div className="mb-8">
+          <GerenciarCampanhasAtivas />
+        </div>
 
         {/* Grupos WhatsApp */}
         {grupos.length > 0 && (
