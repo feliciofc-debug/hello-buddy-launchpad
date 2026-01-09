@@ -27,7 +27,8 @@ import {
   CheckCircle,
   XCircle,
   Crown,
-  User
+  User,
+  Pencil
 } from "lucide-react";
 import {
   Dialog,
@@ -118,6 +119,46 @@ export default function AfiliadoGruposWhatsApp() {
   const [historicoEnvios, setHistoricoEnvios] = useState<HistoricoEnvio[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
+
+  // Modal editar nome do grupo
+  const [editarNomeModalOpen, setEditarNomeModalOpen] = useState(false);
+  const [grupoParaEditar, setGrupoParaEditar] = useState<Grupo | null>(null);
+  const [novoNomeGrupo, setNovoNomeGrupo] = useState("");
+  const [salvandoNome, setSalvandoNome] = useState(false);
+
+  const abrirEditarNomeModal = (grupo: Grupo) => {
+    setGrupoParaEditar(grupo);
+    setNovoNomeGrupo(grupo.group_name);
+    setEditarNomeModalOpen(true);
+  };
+
+  const salvarNovoNome = async () => {
+    if (!grupoParaEditar || !novoNomeGrupo.trim()) {
+      toast.error("Digite o novo nome do grupo");
+      return;
+    }
+
+    setSalvandoNome(true);
+    try {
+      const { error } = await supabase
+        .from("whatsapp_grupos_afiliado")
+        .update({ group_name: novoNomeGrupo.trim() })
+        .eq("id", grupoParaEditar.id);
+
+      if (error) throw error;
+
+      toast.success("Nome do grupo atualizado!");
+      setGrupos(prev => prev.map(g => 
+        g.id === grupoParaEditar.id ? { ...g, group_name: novoNomeGrupo.trim() } : g
+      ));
+      setEditarNomeModalOpen(false);
+    } catch (error: any) {
+      console.error("Erro ao salvar nome:", error);
+      toast.error("Erro ao atualizar nome");
+    } finally {
+      setSalvandoNome(false);
+    }
+  };
 
   const abrirLinkModal = (grupo: Grupo) => {
     setGrupoParaLink(grupo);
@@ -534,11 +575,22 @@ export default function AfiliadoGruposWhatsApp() {
               <Card key={grupo.id} className="hover:shadow-md transition-shadow">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg">{grupo.group_name}</CardTitle>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <CardTitle className="text-lg truncate">{grupo.group_name}</CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
+                        onClick={() => abrirEditarNomeModal(grupo)}
+                        title="Editar nome"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      className="h-8 w-8 text-destructive hover:text-destructive shrink-0"
                       onClick={() => excluirGrupo(grupo)}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -678,6 +730,40 @@ export default function AfiliadoGruposWhatsApp() {
                   <LinkIcon className="h-4 w-4 mr-2" />
                 )}
                 Salvar Link
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal Editar Nome do Grupo */}
+        <Dialog open={editarNomeModalOpen} onOpenChange={setEditarNomeModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Pencil className="h-5 w-5" />
+                Editar Nome do Grupo
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <div>
+                <Label>Nome do Grupo</Label>
+                <Input
+                  placeholder="Digite o novo nome..."
+                  value={novoNomeGrupo}
+                  onChange={(e) => setNovoNomeGrupo(e.target.value)}
+                />
+              </div>
+              <Button 
+                className="w-full" 
+                onClick={salvarNovoNome}
+                disabled={salvandoNome || !novoNomeGrupo.trim()}
+              >
+                {salvandoNome ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Pencil className="h-4 w-4 mr-2" />
+                )}
+                Salvar Nome
               </Button>
             </div>
           </DialogContent>
