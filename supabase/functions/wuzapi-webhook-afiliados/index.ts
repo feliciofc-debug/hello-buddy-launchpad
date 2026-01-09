@@ -819,38 +819,138 @@ async function findAffiliateByReceivingNumber(supabase: any, toNumber: string): 
 // HELPER: PARSE WUZAPI PAYLOAD
 // ============================================
 function parseWuzapiPayload(payload: any): WhatsAppMessage {
-  // ===== Formato Contabo (urlencoded + jsonData), ex: payload.type === "Message"
+  const cleanJid = (jid: string) => {
+    // Remove sufixos WhatsApp e extrai apenas dígitos
+    // Ex: "5521995379550:11@s.whatsapp.net" -> "5521995379550"
+    const cleaned = (jid || '')
+      .replace('@s.whatsapp.net', '')
+      .replace('@c.us', '')
+      .replace('@lid', '')
+      .replace(/:\d+$/, '') // Remove :XX no final (device ID)
+    return cleaned.replace(/\D/g, '') // Só dígitos
+  }
+
+  const looksLikePhone = (digits: string) => digits.length >= 10 && digits.startsWith('55')
+
+  // ===== FORMATO CONTABO REAL: { event: "Message", data: { from, body, ... } } =====
+  if (payload?.event === 'Message' && payload?.data) {
+    const data = payload.data
+    
+    console.log('📨 [AMZ-OFERTAS] Contabo payload.data:', JSON.stringify(data).slice(0, 500))
+    
+    // Verificar se é mensagem enviada por nós (IsFromMe)
+    if (data.Info?.IsFromMe === true || data.fromMe === true) {
+      console.log('⏭️ [AMZ-OFERTAS] Ignorando mensagem enviada por nós (IsFromMe=true)')
+      return { from: '', to: '', type: 'text', text: '', timestamp: Date.now() }
+    }
+
+    // Extrair remetente - tentar múltiplos caminhos
+    let from = ''
+    // Caminho 1: data.from direto (formato Contabo mais comum)
+    if (data.from) {
+      from = cleanJid(String(data.from))
+    }
+    // Caminho 2: data.Info.Sender (formato antigo)
+    else if (data.Info?.Sender) {
+      from = cleanJid(String(data.Info.Sender))
+    }
+    // Caminho 3: data.Info.SenderAlt
+    else if (data.Info?.SenderAlt && looksLikePhone(cleanJid(String(data.Info.SenderAlt)))) {
+      from = cleanJid(String(data.Info.SenderAlt))
+    }
+    // Caminho 4: data.Info.Chat
+    else if (data.Info?.Chat) {
+      from = cleanJid(String(data.Info.Chat))
+    }
+    // Caminho 5: data.key.remoteJid (formato Baileys)
+    else if (data.key?.remoteJid) {
+      from = cleanJid(String(data.key.remoteJid))
+    }
+
+    // Extrair texto - tentar múltiplos caminhos
+    let text = ''
+    // Caminho 1: data.body direto (formato Contabo)
+    if (data.body) {
+      text = String(data.body)
+    }
+    // Caminho 2: data.Message.conversation (formato antigo)
+    else if (data.Message?.conversation) {
+      text = String(data.Message.conversation)
+    }
+    // Caminho 3: data.Message.extendedTextMessage.text
+    else if (data.Message?.extendedTextMessage?.text) {
+      text = String(data.Message.extendedTextMessage.text)
+    }
+    // Caminho 4: data.message.conversation (Baileys)
+    else if (data.message?.conversation) {
+      text = String(data.message.conversation)
+    }
+    // Caminho 5: data.message.extendedTextMessage.text
+    else if (data.message?.extendedTextMessage?.text) {
+      text = String(data.message.extendedTextMessage.text)
+    }
+    // Caminho 6: data.text
+    else if (data.text) {
+      text = String(data.text)
+    }
+
+    // Extrair destinatário (nosso número)
+    const to = String(payload.instanceName || data.to || data.Info?.RemoteJid || '')
+
+    // Determinar tipo de mensagem
+    let type: 'text' | 'image' | 'document' | 'audio' | 'video' = 'text'
+    if (data.type === 'image' || data.Message?.imageMessage || data.message?.imageMessage) {
+      type = 'image'
+    } else if (data.type === 'document' || data.Message?.documentMessage || data.message?.documentMessage) {
+      type = 'document'
+    } else if (data.type === 'audio' || data.Message?.audioMessage || data.message?.audioMessage) {
+      type = 'audio'
+    } else if (data.type === 'video' || data.Message?.videoMessage || data.message?.videoMessage) {
+      type = 'video'
+    }
+
+    // Extrair URL da imagem
+    let imageUrl = ''
+    if (data.imageUrl) imageUrl = data.imageUrl
+    else if (data.Message?.imageMessage?.url) imageUrl = data.Message.imageMessage.url
+    else if (data.message?.imageMessage?.url) imageUrl = data.message.imageMessage.url
+    else if (data.media?.url) imageUrl = data.media.url
+
+    // Extrair caption
+    let caption = ''
+    if (data.caption) caption = data.caption
+    else if (data.Message?.imageMessage?.caption) caption = data.Message.imageMessage.caption
+    else if (data.message?.imageMessage?.caption) caption = data.message.imageMessage.caption
+
+    console.log(`📱 [AMZ-OFERTAS] Parsed - From: ${from}, To: ${to}, Type: ${type}, Text: ${text.slice(0,50)}`)
+
+    return {
+      from,
+      to,
+      type,
+      text,
+      imageUrl,
+      caption,
+      timestamp: data.messageTimestamp || data.Info?.Timestamp || Date.now(),
+    }
+  }
+
+  // ===== FORMATO ANTIGO: payload.type === 'Message' (legacy) =====
   if (payload?.type === 'Message' && payload?.event?.Info) {
     const info = payload.event.Info
     const msg = payload.event.Message
 
-    // só processa mensagens recebidas do cliente (ignora IsFromMe)
     if (info.IsFromMe === true) {
       console.log('⏭️ [AMZ-OFERTAS] Ignorando mensagem enviada por nós (IsFromMe=true)')
       return { from: '', to: '', type: 'text', text: '', timestamp: Date.now() }
     }
 
-    const cleanJid = (jid: string) => {
-      // Remove sufixos WhatsApp e extrai apenas dígitos
-      // Ex: "5521995379550:11@s.whatsapp.net" -> "5521995379550"
-      const cleaned = (jid || '')
-        .replace('@s.whatsapp.net', '')
-        .replace('@c.us', '')
-        .replace('@lid', '')
-        .replace(/:\d+$/, '') // Remove :XX no final (device ID)
-      return cleaned.replace(/\D/g, '') // Só dígitos
-    }
-
-    // Contabo pode mandar o número real em Sender (ex: 5521...@s.whatsapp.net)
-    // e SenderAlt pode vir como LID (não roteável). Então só usamos SenderAlt se parecer telefone.
     const senderAlt = String(info.SenderAlt || '')
     const sender = String(info.Sender || '')
     const chat = String(info.Chat || '')
 
     const senderAltDigits = cleanJid(senderAlt)
     const senderDigits = cleanJid(sender)
-
-    const looksLikePhone = (digits: string) => digits.length >= 10 && digits.startsWith('55')
 
     const from = looksLikePhone(senderAltDigits)
       ? senderAltDigits
@@ -863,7 +963,7 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
       msg?.extendedTextMessage?.text ||
       ''
 
-    console.log(`📱 [AMZ-OFERTAS] Contabo format - From: ${from}, To: ${to}, Text: ${text.slice(0,50)}`)
+    console.log(`📱 [AMZ-OFERTAS] Legacy format - From: ${from}, To: ${to}, Text: ${text.slice(0,50)}`)
 
     return {
       from,
@@ -874,23 +974,27 @@ function parseWuzapiPayload(payload: any): WhatsAppMessage {
     }
   }
 
-  // ===== Formato antigo / outros formatos =====
-  // Tentar extrair número do remetente
+  // ===== FALLBACK: outros formatos =====
+  console.log('⚠️ [AMZ-OFERTAS] Fallback parsing - payload:', JSON.stringify(payload).slice(0, 500))
+  
   let from = ''
   if (payload.data?.key?.remoteJid) {
-    from = payload.data.key.remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '')
+    from = cleanJid(payload.data.key.remoteJid)
+  } else if (payload.data?.from) {
+    from = cleanJid(payload.data.from)
   } else if (payload.from) {
-    from = payload.from
+    from = cleanJid(payload.from)
   } else if (payload.author) {
-    from = payload.author
+    from = cleanJid(payload.author)
   } else if (payload.sender) {
-    from = payload.sender
+    from = cleanJid(payload.sender)
   }
 
-  // Tentar extrair número do destinatário (nosso número)
   let to = ''
   if (payload.data?.key?.participant) {
-    to = payload.data.key.participant.replace('@s.whatsapp.net', '').replace('@c.us', '')
+    to = cleanJid(payload.data.key.participant)
+  } else if (payload.data?.to) {
+    to = payload.data.to
   } else if (payload.to) {
     to = payload.to
   } else if (payload.instance) {
