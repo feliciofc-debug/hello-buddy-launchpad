@@ -69,12 +69,12 @@ const SYSTEM_PROMPT = `Você é o PIETRO EUGENIO, assistente virtual inteligente
 IDENTIDADE:
 - Seu nome é PIETRO EUGENIO (sempre se apresente assim quando perguntarem)
 - Você é o assistente mais inteligente e prestativo do mercado
-- Conhece TUDO sobre os produtos que vende
+- Conhece TUDO sobre os produtos que vende e o sistema AMZ Ofertas
 - Analisa links, busca informações e ajuda o cliente a tomar a melhor decisão
 
 PERSONALIDADE:
 - Simpático, animado mas não exagerado
-- Respostas CURTAS e diretas (máximo 3 linhas quando possível)
+- Respostas CURTAS e diretas (máximo 3-4 linhas quando possível)
 - Use emojis com moderação (1-2 por mensagem)
 - Fale como um amigo que manja de compras online
 - NUNCA pareça robô ou use linguagem corporativa
@@ -90,7 +90,7 @@ Somos um canal que garimpamos as melhores ofertas da internet pra você. Trabalh
 - 💄 O Boticário
 - 💄 L'Occitane
 
-BENEFÍCIOS EXCLUSIVOS:
+BENEFÍCIOS EXCLUSIVOS DO GRUPO:
 
 1. EBOOK GRÁTIS DE BOAS-VINDAS
 - Todo mundo que entra no grupo ganha o eBook "50 Receitas Airfryer" de PRESENTE!
@@ -106,16 +106,12 @@ BENEFÍCIOS EXCLUSIVOS:
 - Temos de beleza, fitness, bebê, casa, pet...
 - É só mandar o comprovante!
 
-4. OFERTAS PERSONALIZADAS
-- Me conta o que você gosta e eu aviso quando tiver promoção
-- Monitoro preços e te aviso quando baixar
+4. OFERTAS DIÁRIAS NO GRUPO
+- Receba ofertas quentinhas todo dia direto no grupo
+- Tudo garimpado e com link oficial + cashback
 
-COMO FUNCIONA:
-1. Me diz seu nome e eu mando seu eBook grátis de boas-vindas!
-2. Eu mando ofertas incríveis aqui no WhatsApp
-3. Você clica no link e compra normal no site
-4. Depois me manda o comprovante
-5. Você ganha cashback + eBook de presente!
+CONVITE PARA O GRUPO:
+👉 https://chat.whatsapp.com/Cfops2yRnHGK1tM7A4W0PK
 
 🔥 REGRA CRÍTICA - BUSCA DE PRODUTOS:
 Quando o cliente perguntar sobre um produto (ex: "tem ração?", "quero airfryer"):
@@ -143,10 +139,21 @@ REGRAS DE OURO:
 4. Se cliente quer mais opções, mostre os próximos 2 da lista
 5. Sempre mencione o cashback de 2%
 
+🚫 REGRA IMPORTANTE - NÃO PERGUNTE CATEGORIAS:
+- NÃO pergunte "quais categorias você gosta"
+- NÃO peça para escolher números de 1 a 10
+- Foque em CONVIDAR PARA O GRUPO e explicar os benefícios
+- Se o cliente quiser algo específico, BUSQUE nos produtos
+
+FLUXO DE ATENDIMENTO:
+1. Quando cliente chegar: convide para o grupo + fale dos benefícios + ofereça eBook grátis
+2. Se perguntar sobre produto: BUSQUE e mostre
+3. Se mandar link: CONVERTA para link de afiliado
+4. Se mandar comprovante: agradeça e diga que vai analisar
+5. Se pedir saldo/cashback: use as informações do contexto
+6. Se tiver dúvida: responda sobre a AMZ, grupo, cashback, ebook
+
 OUTRAS REGRAS:
-- Se for primeira mensagem, pergunte o nome
-- Se pedir saldo de cashback, use as informações do contexto
-- Se mandar comprovante, diga que vai analisar
 - Somos do Rio de Janeiro mas atendemos Brasil todo
 - Mínimo para resgate cashback: R$30 (após 35 dias)
 - Lojas aceitas: Amazon, Magalu, Mercado Livre, Shopee, Netshoes, Boticário`
@@ -1130,140 +1137,78 @@ async function handleTextMessage(
     .eq('phone', cleanPhone)
     .single()
 
-  // Se estamos aguardando CATEGORIAS (novo fluxo: categorias primeiro)
-  if (userState?.status === 'aguardando_categorias') {
-    console.log('📝 [AMZ-OFERTAS] Cliente em aguardando_categorias, texto:', text)
-    
-    const categoriasEncontradas = parseCategoriasFromText(text)
-    
-    if (categoriasEncontradas.length > 0) {
-      // Salvar categorias e pedir nome
-      await supabase.from('afiliado_user_states').update({
-        status: 'aguardando_nome',
-        state: { ...userState.state, categorias: categoriasEncontradas }
-      }).eq('phone', cleanPhone)
-      
-      await sendWhatsAppMessage(
-        message.from,
-        `Ótimo! Anotei: *${categoriasEncontradas.join(', ')}* 📝\n\n` +
-        `Agora me diz: *qual é o seu nome?* 😊`,
-        wuzapiToken, supabase, userId
-      )
-      await logEvent(supabase, { evento: 'categorias_capturadas', cliente_phone: message.from, user_id: userId, metadata: { categorias: categoriasEncontradas } })
-      return
-    }
-    
-    // Não reconheceu categorias - REENVIAR a pergunta completa
-    console.log('🔄 [AMZ-OFERTAS] Reenviando pergunta de categorias para:', message.from)
-    await sendWhatsAppMessage(
-      message.from,
-      `Olá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\n` +
-      `Pra te mandar ofertas e eBooks do seu interesse, me conta:\n\n` +
-      `*Quais categorias você mais curte?*\n\n` +
-      `1️⃣ Casa\n` +
-      `2️⃣ Cozinha\n` +
-      `3️⃣ Bebê\n` +
-      `4️⃣ Tech\n` +
-      `5️⃣ Gamer\n` +
-      `6️⃣ Beleza\n` +
-      `7️⃣ Fitness\n` +
-      `8️⃣ Ferramentas\n` +
-      `9️⃣ Pet\n` +
-      `🔟 Moda\n\n` +
-      `_Pode mandar mais de uma! Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
-      wuzapiToken, supabase, userId
-    )
-    return
-  }
-  
-  // Se estamos aguardando NOME (após categorias)
+  // ========== NOVO FLUXO: SEM PERGUNTAS DE CATEGORIAS ==========
+  // Se estamos aguardando NOME (único estado de captura agora)
   if (userState?.status === 'aguardando_nome') {
     const pareceNome = /^[a-zA-ZÀ-ÿ\s]{2,50}$/.test(text.trim())
     
     if (pareceNome) {
       const nomeCliente = text.trim()
-      const categoriasDoState = (userState.state as any)?.categorias || ['Casa']
+      const categoriasDefault = ['Casa', 'Cozinha'] // Categorias padrão
       
-      // Criar lead com nome e categorias
+      // Criar lead com nome
       const { data: leadData } = await supabase.from('leads_ebooks').upsert({
         phone: cleanPhone,
         nome: nomeCliente,
-        categorias: categoriasDoState,
+        categorias: categoriasDefault,
         user_id: userId
       }, { onConflict: 'phone' }).select().single()
       
-      // ======= SINCRONIZAR COM afiliado_clientes_ebooks =======
+      // Sincronizar com outras tabelas
       await supabase.from('afiliado_clientes_ebooks').upsert({
         phone: cleanPhone,
         nome: nomeCliente,
-        categorias_preferidas: categoriasDoState,
+        categorias_preferidas: categoriasDefault,
         user_id: userId
       }, { onConflict: 'phone' })
       
-      // ======= SINCRONIZAR COM afiliado_cliente_preferencias =======
       await supabase.from('afiliado_cliente_preferencias').upsert({
         phone: cleanPhone,
-        categorias_ativas: categoriasDoState,
+        categorias_ativas: categoriasDefault,
         freq_ofertas: 'diaria'
       }, { onConflict: 'phone' })
       
-      console.log(`✅ [AMZ-OFERTAS] Cliente salvo: ${nomeCliente}, categorias: ${categoriasDoState.join(', ')}`)
+      console.log(`✅ [AMZ-OFERTAS] Cliente salvo: ${nomeCliente}`)
       
-      // ======= ADICIONAR AUTOMATICAMENTE ÀS LISTAS DE TRANSMISSÃO =======
-      if (leadData?.id) {
-        await adicionarLeadNasListasAutomaticamente(supabase, leadData.id, cleanPhone, categoriasDoState, userId)
-      }
-      
-      // Atualizar estado
+      // Atualizar estado para conversa livre
       await supabase.from('afiliado_user_states').update({
-        status: 'aguardando_comprovante',
-        state: { ...userState.state, nome: nomeCliente }
+        status: 'ativo',
+        state: { nome: nomeCliente, user_id: userId }
       }).eq('phone', cleanPhone)
       
-      // Enviar eBook grátis
-      await sendEbookBoasVindas(supabase, message.from, nomeCliente, categoriasDoState, wuzapiToken, userId)
-      await logEvent(supabase, { evento: 'nome_capturado', cliente_phone: message.from, user_id: userId, metadata: { nome: nomeCliente, categorias: categoriasDoState } })
+      // Enviar eBook grátis + convite para o grupo
+      await sendEbookBoasVindasComConvite(supabase, message.from, nomeCliente, wuzapiToken, userId)
+      await logEvent(supabase, { evento: 'nome_capturado_novo_fluxo', cliente_phone: message.from, user_id: userId, metadata: { nome: nomeCliente } })
       return
     }
     
-    // Não parece nome
+    // Não parece nome - repetir pedido
     await sendWhatsAppMessage(
       message.from,
-      `Por favor, me diz seu nome! 😊\n\nPode ser só o primeiro nome mesmo.`,
+      `Me diz seu nome pra eu te mandar seu eBook grátis! 😊`,
       wuzapiToken, supabase, userId
     )
     return
   }
 
-  // Se NÃO recebeu eBook grátis ainda e NÃO está em fluxo → Iniciar fluxo
+  // Se NÃO recebeu eBook grátis ainda e NÃO está em fluxo → Iniciar fluxo SIMPLIFICADO
   if (!ebookRecebido && !userState) {
-    // Primeiro contato - perguntar categorias primeiro
+    // Primeiro contato - APENAS pedir nome (sem categorias!)
     await supabase.from('afiliado_user_states').insert({
       phone: cleanPhone,
-      status: 'aguardando_categorias',
+      status: 'aguardando_nome',
       state: { origem: 'whatsapp', user_id: userId }
     })
     
     await sendWhatsAppMessage(
       message.from,
-      `Pronto! Vamos começar do zero! 🎉\n\n` +
-      `Olá! Eu sou a assistente virtual da *AMZ Ofertas* 🛒💜\n\n` +
-      `Pra te mandar ofertas e eBooks do seu interesse, me conta:\n\n` +
-      `*Quais categorias você mais curte?*\n\n` +
-      `1️⃣ Casa\n` +
-      `2️⃣ Cozinha\n` +
-      `3️⃣ Bebê\n` +
-      `4️⃣ Tech\n` +
-      `5️⃣ Gamer\n` +
-      `6️⃣ Beleza\n` +
-      `7️⃣ Fitness\n` +
-      `8️⃣ Ferramentas\n` +
-      `9️⃣ Pet\n` +
-      `🔟 Moda\n\n` +
-      `_Pode mandar mais de uma! Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
+      `Opa! 👋 Eu sou o *Pietro Eugenio* da AMZ Ofertas!\n\n` +
+      `Tô aqui pra te ajudar a economizar nas suas compras! 💰\n\n` +
+      `📚 Tenho um *eBook grátis* pra te dar de presente!\n\n` +
+      `Me diz: *qual é o seu nome?* 😊`,
       wuzapiToken, supabase, userId
     )
-    await logEvent(supabase, { evento: 'primeiro_contato', cliente_phone: message.from, user_id: userId })
+    await logEvent(supabase, { evento: 'primeiro_contato_novo_fluxo', cliente_phone: message.from, user_id: userId })
     return
   }
 
@@ -1560,6 +1505,91 @@ async function sendEbookBoasVindas(
   })
 
   console.log('✅ [AMZ-OFERTAS] eBook grátis enviado para:', nome, categorias)
+}
+
+// ============================================
+// NOVA FUNÇÃO: EBOOK + CONVITE PRO GRUPO (SEM PERGUNTAR CATEGORIAS)
+// ============================================
+async function sendEbookBoasVindasComConvite(
+  supabase: any,
+  phone: string,
+  nome: string,
+  wuzapiToken: string | null,
+  userId: string | null
+) {
+  const cleanPhone = phone.replace(/\D/g, '')
+  const primeiroNome = nome?.split(' ')[0] || 'Amigo(a)'
+
+  // Mensagem de confirmação
+  await sendWhatsAppMessage(
+    phone,
+    `Perfeito, ${primeiroNome}! 🎉\n\n` +
+    `Vou te enviar seu eBook grátis agora! 🎁\n\n` +
+    `Aguarda só um segundinho... 📚`,
+    wuzapiToken, supabase, userId, primeiroNome
+  )
+
+  // Pequena pausa
+  await new Promise(r => setTimeout(r, 2000))
+
+  // Enviar PDF do eBook
+  await sendWhatsAppPDF(
+    phone,
+    '50-receitas-airfryer.pdf',
+    '50 Receitas Airfryer - Seu presente! 🍟',
+    wuzapiToken, supabase, userId
+  )
+
+  // Pequena pausa
+  await new Promise(r => setTimeout(r, 2500))
+
+  // Convite para o grupo + explicação dos benefícios
+  await sendWhatsAppMessage(
+    phone,
+    `🎉 *Agora você faz parte da família AMZ Ofertas, ${primeiroNome}!* 🎉\n\n` +
+    `*O que você ganha no nosso grupo:*\n\n` +
+    `💸 Ofertas exclusivas todos os dias\n` +
+    `💰 *2% de cashback* em todas as compras!\n` +
+    `📚 eBooks grátis a cada compra validada\n` +
+    `💵 Resgate via PIX quando juntar R$30\n\n` +
+    `👉 *Entra no grupo:*\n` +
+    `https://chat.whatsapp.com/Cfops2yRnHGK1tM7A4W0PK\n\n` +
+    `Lá você recebe as ofertas quentinhas! 🔥`,
+    wuzapiToken, supabase, userId
+  )
+
+  // Pequena pausa
+  await new Promise(r => setTimeout(r, 3000))
+
+  // Dica sobre cashback com links próprios
+  await sendWhatsAppMessage(
+    phone,
+    `💡 *Dica especial:*\n\n` +
+    `Viu um produto em alguma loja (Amazon, Magalu, Shopee, Mercado Livre)?\n\n` +
+    `É só colar o link aqui que eu converto pra você ganhar *2% de cashback* + *eBook de presente*! 🎁💰`,
+    wuzapiToken, supabase, userId
+  )
+
+  // Registrar entrega
+  await logEbookDelivery(supabase, {
+    phone: cleanPhone,
+    ebook_titulo: '50 Receitas Airfryer',
+    ebook_filename: '50-receitas-airfryer.pdf',
+    loja: 'GRATUITO',
+    valor_compra: 0,
+    categoria: 'Cozinha',
+    comprovante_url: null,
+    user_id: userId
+  })
+
+  await logEvent(supabase, {
+    evento: 'ebook_gratuito_enviado_novo_fluxo',
+    cliente_phone: phone,
+    user_id: userId,
+    metadata: { nome, ebook: '50 Receitas Airfryer' }
+  })
+
+  console.log('✅ [AMZ-OFERTAS] eBook grátis + convite grupo enviado para:', nome)
 }
 
 // ============================================
