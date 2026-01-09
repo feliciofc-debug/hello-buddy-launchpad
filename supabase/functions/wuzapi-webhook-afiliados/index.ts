@@ -604,7 +604,7 @@ Me manda um *"oi"* aqui que eu te envio na hora!
 Qualquer dúvida, é só chamar! 😊`
 
             try {
-              await sendWhatsAppMessage(phone, welcomeMessage, wuzapiToken)
+              await sendWhatsAppMessage(phone, welcomeMessage, wuzapiToken, supabase, userId)
               console.log(`✅ [AMZ-OFERTAS] Boas-vindas enviada para ${phone}`)
 
               // Logar evento
@@ -941,7 +941,7 @@ async function handleTextMessage(
 
   // Comando AJUDA / HELP
   if (textLower === 'ajuda' || textLower === 'help' || textLower === 'menu') {
-    await sendWhatsAppMessage(message.from, getMensagemAjuda(), wuzapiToken)
+    await sendWhatsAppMessage(message.from, getMensagemAjuda(), wuzapiToken, supabase, userId)
     await logEvent(supabase, { evento: 'comando_ajuda', cliente_phone: message.from, user_id: userId })
     return
   }
@@ -951,7 +951,7 @@ async function handleTextMessage(
     await sendWhatsAppMessage(
       message.from,
       'Sem problemas! Se quiser voltar, é só me chamar. Obrigada por ter ficado com a gente! 💜',
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
     await logEvent(supabase, { evento: 'cancelamento', cliente_phone: message.from, user_id: userId })
     return
@@ -984,7 +984,7 @@ async function handleTextMessage(
       `9️⃣ Pet\n` +
       `🔟 Moda\n\n` +
       `_Pode mandar mais de uma! Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
     
     // Criar estado aguardando categorias (nome vem depois)
@@ -1013,14 +1013,14 @@ async function handleTextMessage(
     await sendWhatsAppMessage(
       message.from,
       `📚 Reenviando seu eBook grátis, ${nome.split(' ')[0]}! Aguarda...`,
-      wuzapiToken
+      wuzapiToken, supabase, userId, nome
     )
     await new Promise(r => setTimeout(r, 1500))
     await sendWhatsAppPDF(
       message.from,
       '50-receitas-airfryer.pdf',
       '50 Receitas Airfryer - Seu presente! 🍟',
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
     await logEvent(supabase, { evento: 'ebook_reenviado', cliente_phone: message.from, user_id: userId })
     return
@@ -1058,7 +1058,7 @@ async function handleTextMessage(
       `Aqui está seu link com *2% de cashback*:\n\n` +
       `👉 ${linkConvertido}\n\n` +
       `Depois que comprar, me manda o comprovante e eu credito seu cashback + te dou um eBook de presente! 🎁`,
-      wuzapiToken
+      wuzapiToken, supabase, userId, nomeCliente
     )
     
     await logEvent(supabase, { 
@@ -1116,7 +1116,7 @@ async function handleTextMessage(
         message.from,
         `Ótimo! Anotei: *${categoriasEncontradas.join(', ')}* 📝\n\n` +
         `Agora me diz: *qual é o seu nome?* 😊`,
-        wuzapiToken
+        wuzapiToken, supabase, userId
       )
       await logEvent(supabase, { evento: 'categorias_capturadas', cliente_phone: message.from, user_id: userId, metadata: { categorias: categoriasEncontradas } })
       return
@@ -1140,7 +1140,7 @@ async function handleTextMessage(
       `9️⃣ Pet\n` +
       `🔟 Moda\n\n` +
       `_Pode mandar mais de uma! Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
     return
   }
@@ -1199,7 +1199,7 @@ async function handleTextMessage(
     await sendWhatsAppMessage(
       message.from,
       `Por favor, me diz seu nome! 😊\n\nPode ser só o primeiro nome mesmo.`,
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
     return
   }
@@ -1230,7 +1230,7 @@ async function handleTextMessage(
       `9️⃣ Pet\n` +
       `🔟 Moda\n\n` +
       `_Pode mandar mais de uma! Ex: "1, 2, 6" ou "Cozinha, Beleza, Pet"_`,
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
     await logEvent(supabase, { evento: 'primeiro_contato', cliente_phone: message.from, user_id: userId })
     return
@@ -1323,10 +1323,10 @@ Link: ${p.link_afiliado}
   await saveConversation(supabase, message.from, text, aiResponse)
   console.log('💾 [AMZ-OFERTAS] Conversa salva')
 
-  // Enviar resposta
+  // Enviar resposta via fila anti-bloqueio
   console.log('📤 [AMZ-OFERTAS] Enviando resposta para:', message.from)
-  await sendWhatsAppMessage(message.from, aiResponse, wuzapiToken)
-  console.log('✅ [AMZ-OFERTAS] Resposta enviada com sucesso!')
+  await sendWhatsAppMessage(message.from, aiResponse, wuzapiToken, supabase, userId)
+  console.log('✅ [AMZ-OFERTAS] Resposta agendada na fila!')
 
   // Log evento
   await logEvent(supabase, {
@@ -1451,7 +1451,7 @@ async function sendEbookBoasVindas(
     `Suas categorias favoritas:\n${categoriasFormatadas}\n\n` +
     `Vou te enviar as melhores ofertas dessas categorias! 🔥\n\n` +
     `Aguarda que já te mando seu presente... 🎁`,
-    wuzapiToken
+    wuzapiToken, supabase, userId, primeiroNome
   )
 
   // Pequena pausa
@@ -1462,7 +1462,7 @@ async function sendEbookBoasVindas(
     phone,
     '50-receitas-airfryer.pdf',
     '50 Receitas Airfryer - Seu presente! 🍟',
-    wuzapiToken
+    wuzapiToken, supabase, userId
   )
 
   // Pequena pausa
@@ -1474,7 +1474,7 @@ async function sendEbookBoasVindas(
     `🎉 *Agora você está conectada com a AMZ Ofertas!*\n\n` +
     `Aguarde que em breve você já vai começar a receber nossas promoções da *Magalu*, *Shopee*, *Amazon* e *Mercado Livre*! 🛒🔥\n\n` +
     `Fique de olho aqui! 👀`,
-    wuzapiToken
+    wuzapiToken, supabase, userId
   )
 
   // Pequena pausa
@@ -1487,7 +1487,7 @@ async function sendEbookBoasVindas(
     `Você sabia que também pode escolher um produto nos marketplaces que ainda não ofertamos?\n\n` +
     `É só colar o link aqui e você também ganha *2% de cashback* + mais um *eBook de presente*! 🎁💰\n\n` +
     `Aproveita seu eBook de receitas! 🍟`,
-    wuzapiToken
+    wuzapiToken, supabase, userId
   )
 
   // Pequena pausa
@@ -1500,7 +1500,7 @@ async function sendEbookBoasVindas(
     `📸 Instagram: @amzofertas\n` +
     `👍 Facebook: AMZ Ofertas\n\n` +
     `Lá tem dicas, promoções e novidades quentinhas! 🔥`,
-    wuzapiToken
+    wuzapiToken, supabase, userId
   )
 
   // Registrar entrega
@@ -1607,7 +1607,7 @@ async function handleImageMessage(
       await sendWhatsAppMessage(
         message.from,
         '⚠️ *Limite diário atingido!*\n\nVocê já recebeu 5 eBooks hoje.\n\nTente novamente amanhã! 😊',
-        wuzapiToken
+        wuzapiToken, supabase, userId
       )
       return
     }
@@ -1616,7 +1616,7 @@ async function handleImageMessage(
     await sendWhatsAppMessage(
       message.from,
       '⏳ Deixa eu dar uma olhada no seu comprovante... 🔍',
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
 
     // Log: comprovante recebido
@@ -1640,7 +1640,7 @@ async function handleImageMessage(
         `❌ Não consegui validar esse comprovante 😕\n\n` +
         `📋 Motivo: ${validation.reason}\n\n` +
         `💡 Dica: Tire uma foto mais nítida com valor e loja bem visíveis!`,
-        wuzapiToken
+        wuzapiToken, supabase, userId
       )
 
       await logEvent(supabase, {
@@ -1679,7 +1679,7 @@ async function handleImageMessage(
     mensagem += `💵 *+R$ ${cashback.toFixed(2)} de cashback!* 🎉\n\n`
     mensagem += `🎁 Estou enviando seu eBook de presente...`
 
-    await sendWhatsAppMessage(message.from, mensagem, wuzapiToken)
+    await sendWhatsAppMessage(message.from, mensagem, wuzapiToken, supabase, userId)
 
     // Enviar eBook
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
@@ -1689,11 +1689,11 @@ async function handleImageMessage(
     await sendWhatsAppMessage(
       message.from,
       `📚 *${ebookEscolhido.titulo}*\n\n👉 Acesse aqui: ${ebookHtmlUrl}\n\nAproveite! 💙`,
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
 
     // Tentar enviar PDF também
-    await sendWhatsAppPDF(message.from, ebookEscolhido.arquivo, ebookEscolhido.titulo, wuzapiToken)
+    await sendWhatsAppPDF(message.from, ebookEscolhido.arquivo, ebookEscolhido.titulo, wuzapiToken, supabase, userId)
 
     // Registrar entrega
     await logEbookDelivery(supabase, {
@@ -1721,7 +1721,7 @@ async function handleImageMessage(
     await sendWhatsAppMessage(
       message.from,
       '❌ Ops, deu um errinho aqui! Tenta mandar o comprovante de novo? 🙏',
-      wuzapiToken
+      wuzapiToken, supabase, userId
     )
   }
 }
@@ -1932,7 +1932,7 @@ async function handleCashbackCommand(
     }
   }
 
-  await sendWhatsAppMessage(phone, mensagem, wuzapiToken)
+  await sendWhatsAppMessage(phone, mensagem, wuzapiToken, supabase, userId)
   await logEvent(supabase, { evento: 'comando_cashback', cliente_phone: phone, user_id: userId })
 }
 
@@ -2277,15 +2277,83 @@ async function logEbookDelivery(supabase: any, delivery: any) {
 }
 
 // ============================================
-// WHATSAPP: SEND MESSAGE
+// CONFIGURAÇÃO: MODO DE ENVIO ANTI-BLOQUEIO
 // ============================================
-async function sendWhatsAppMessage(to: string, message: string, customToken?: string | null) {
+const USAR_FILA_ANTI_BLOQUEIO = true // true = usa fila, false = envio direto
+
+// ============================================
+// FUNÇÃO: INSERIR NA FILA ANTI-BLOQUEIO
+// ============================================
+async function inserirNaFilaAntiBloqueio(
+  supabase: any,
+  to: string,
+  message: string,
+  customToken: string,
+  userId?: string | null,
+  imagemUrl?: string | null,
+  leadName?: string | null
+) {
+  const cleanPhone = to.replace(/\D/g, '')
+  const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : '55' + cleanPhone
+  
+  // Delay aleatório entre 3-8 segundos para humanizar
+  const delayMs = Math.floor(Math.random() * 5000) + 3000
+  const scheduledAt = new Date(Date.now() + delayMs)
+  
+  const { error } = await supabase
+    .from('fila_atendimento_afiliado')
+    .insert({
+      lead_phone: formattedPhone,
+      lead_name: leadName || null,
+      mensagem_recebida: 'auto-resposta-ia',
+      resposta_ia: message,
+      imagem_url: imagemUrl || null,
+      wuzapi_token: customToken,
+      user_id: userId || null,
+      status: 'pendente',
+      prioridade: 1,
+      scheduled_at: scheduledAt.toISOString(),
+      origem: 'webhook-afiliados',
+      tipo_mensagem: imagemUrl ? 'imagem' : 'texto'
+    })
+  
+  if (error) {
+    console.error('❌ [FILA] Erro ao inserir na fila:', error)
+    return false
+  }
+  
+  console.log(`✅ [FILA] Mensagem agendada para ${formattedPhone} em ${delayMs}ms`)
+  return true
+}
+
+// ============================================
+// WHATSAPP: SEND MESSAGE (com suporte a fila)
+// ============================================
+async function sendWhatsAppMessage(
+  to: string, 
+  message: string, 
+  customToken?: string | null,
+  supabase?: any,
+  userId?: string | null,
+  leadName?: string | null
+) {
   const CONTABO_WUZAPI_URL = "https://api2.amzofertas.com.br"
 
   // Token do afiliado é obrigatório para garantir que a resposta saia do número correto (Contabo)
   if (!customToken) {
     console.error('❌ [AMZ-OFERTAS] Token do afiliado ausente (customToken).')
     return
+  }
+
+  // Se modo fila está ativo e temos supabase, usar fila
+  if (USAR_FILA_ANTI_BLOQUEIO && supabase) {
+    const inserido = await inserirNaFilaAntiBloqueio(supabase, to, message, customToken, userId, null, leadName)
+    if (inserido) {
+      console.log('📬 [FILA] Mensagem inserida na fila anti-bloqueio')
+      return
+    }
+    // Se falhou, continua para envio direto como fallback
+    console.log('⚠️ [FILA] Fallback para envio direto')
   }
 
   // Formatar número (apenas dígitos) e garantir +55 quando necessário
@@ -2314,9 +2382,16 @@ async function sendWhatsAppMessage(to: string, message: string, customToken?: st
 }
 
 // ============================================
-// WHATSAPP: SEND PDF
+// WHATSAPP: SEND PDF (envio direto - não usa fila para PDFs)
 // ============================================
-async function sendWhatsAppPDF(to: string, filename: string, caption: string, customToken?: string | null) {
+async function sendWhatsAppPDF(
+  to: string, 
+  filename: string, 
+  caption: string, 
+  customToken?: string | null,
+  supabase?: any,
+  userId?: string | null
+) {
   const CONTABO_WUZAPI_URL = "https://api2.amzofertas.com.br"
   
   // URL pública do PDF hospedado no domínio customizado
@@ -2350,13 +2425,13 @@ async function sendWhatsAppPDF(to: string, filename: string, caption: string, cu
 
     if (!response.ok || result?.success === false) {
       console.log('⚠️ [AMZ-OFERTAS] Fallback para link:', filename)
-      await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken)
+      await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken, supabase, userId)
     } else {
       console.log('✅ [AMZ-OFERTAS] PDF enviado:', filename)
     }
   } catch (error) {
     console.error('❌ [AMZ-OFERTAS] Erro ao enviar PDF:', error)
-    await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken)
+    await sendWhatsAppMessage(formattedPhone, `📚 *${caption}*\n\n📥 Baixe aqui: ${pdfUrl}`, customToken, supabase, userId)
   }
 }
 
