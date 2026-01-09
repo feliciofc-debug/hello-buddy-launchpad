@@ -4372,6 +4372,50 @@ export type Database = {
         }
         Relationships: []
       }
+      prospecao_optin_log: {
+        Row: {
+          cadastro_id: string | null
+          created_at: string | null
+          enviado_em: string | null
+          id: string
+          mensagem_enviada: string | null
+          phone: string
+          status: string
+          user_id: string | null
+          wuzapi_response: Json | null
+        }
+        Insert: {
+          cadastro_id?: string | null
+          created_at?: string | null
+          enviado_em?: string | null
+          id?: string
+          mensagem_enviada?: string | null
+          phone: string
+          status?: string
+          user_id?: string | null
+          wuzapi_response?: Json | null
+        }
+        Update: {
+          cadastro_id?: string | null
+          created_at?: string | null
+          enviado_em?: string | null
+          id?: string
+          mensagem_enviada?: string | null
+          phone?: string
+          status?: string
+          user_id?: string | null
+          wuzapi_response?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prospecao_optin_log_cadastro_id_fkey"
+            columns: ["cadastro_id"]
+            isOneToOne: false
+            referencedRelation: "cadastros"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prospects_qualificados: {
         Row: {
           created_at: string | null
