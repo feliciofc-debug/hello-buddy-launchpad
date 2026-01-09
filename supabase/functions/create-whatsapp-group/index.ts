@@ -67,8 +67,19 @@ serve(async (req) => {
       }),
     });
 
-    const createResult = await createResponse.json();
-    console.log("Resultado criação grupo:", JSON.stringify(createResult));
+    const createText = await createResponse.text();
+    console.log("Resultado criação grupo (raw):", createText);
+    
+    let createResult;
+    try {
+      createResult = JSON.parse(createText);
+    } catch {
+      console.error("Resposta não é JSON válido:", createText);
+      return new Response(
+        JSON.stringify({ error: "Resposta inválida da API WuzAPI", details: createText }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (!createResponse.ok) {
       return new Response(
@@ -108,10 +119,17 @@ serve(async (req) => {
       body: JSON.stringify({ GroupJid: groupJid }),
     });
 
-    const linkResult = await linkResponse.json();
-    console.log("Resultado link convite:", JSON.stringify(linkResult));
-
-    const inviteLink = linkResult.InviteLink || linkResult.inviteLink || linkResult.link;
+    const linkText = await linkResponse.text();
+    console.log("Resultado link convite (raw):", linkText);
+    
+    let linkResult;
+    let inviteLink = null;
+    try {
+      linkResult = JSON.parse(linkText);
+      inviteLink = linkResult?.InviteLink || linkResult?.inviteLink || linkResult?.link || linkResult?.data?.InviteLink;
+    } catch {
+      console.warn("Link convite não retornou JSON válido:", linkText);
+    }
 
     // Salvar no banco
     const { data: grupo, error: insertError } = await supabase
