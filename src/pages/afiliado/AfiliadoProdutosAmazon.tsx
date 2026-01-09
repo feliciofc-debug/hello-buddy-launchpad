@@ -22,7 +22,6 @@ import {
   Shield
 } from "lucide-react";
 import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
-import { TestarFilaAntiBloqueioModal } from "@/components/TestarFilaAntiBloqueioModal";
 
 interface Produto {
   id: string;
@@ -46,7 +45,6 @@ export default function AfiliadoProdutosAmazon() {
   const [saving, setSaving] = useState(false);
   const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
-  const [testarFilaModalOpen, setTestarFilaModalOpen] = useState(false);
 
   const handleCriarCampanha = (produto: Produto) => {
     setProdutoSelecionado(produto);
@@ -244,15 +242,6 @@ export default function AfiliadoProdutosAmazon() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setTestarFilaModalOpen(true)}
-            className="border-purple-300 text-purple-600 hover:bg-purple-50"
-          >
-            <Shield className="h-4 w-4 mr-1" />
-            Testar Anti-Bloqueio
-          </Button>
           {amazonTag && (
             <Badge variant="outline" className="text-orange-600 border-orange-300 bg-orange-50">
               Tag: {amazonTag}
@@ -451,11 +440,6 @@ export default function AfiliadoProdutosAmazon() {
         />
       )}
 
-      {/* Modal Testar Fila Anti-Bloqueio */}
-      <TestarFilaAntiBloqueioModal
-        open={testarFilaModalOpen}
-        onOpenChange={setTestarFilaModalOpen}
-      />
     </div>
   );
 }
