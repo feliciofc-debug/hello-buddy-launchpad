@@ -1499,12 +1499,17 @@ async function sendEbookBoasVindas(
   // Pequena pausa
   await new Promise(r => setTimeout(r, 2500))
 
-  // Mensagem de boas-vindas à comunidade
+  // Mensagem de boas-vindas à comunidade + link do grupo
   await sendWhatsAppMessage(
     phone,
-    `🎉 *Agora você está conectada com a AMZ Ofertas!*\n\n` +
-    `Aguarde que em breve você já vai começar a receber nossas promoções da *Magalu*, *Shopee*, *Amazon* e *Mercado Livre*! 🛒🔥\n\n` +
-    `Fique de olho aqui! 👀`,
+    `🎉 *Ei! Que tal ganhar dinheiro de volta enquanto faz suas compras?* 🎉\n\n` +
+    `*No AMZ Ofertas você vai:*\n\n` +
+    `💸 Receber ofertas exclusivas todos os dias\n` +
+    `💰 Ganhar 2% de cashback nas suas compras\n` +
+    `📚 Receber eBooks grátis que vamos entregar pra você!\n\n` +
+    `Tudo simples, rápido e sem pegadinhas! 😎\n\n` +
+    `👉 *Vou deixar o link do grupo aqui para você entrar e começar a aproveitar:* 🔥\n\n` +
+    `https://chat.whatsapp.com/Cfops2yRnHGK1tM7A4W0PK`,
     wuzapiToken, supabase, userId
   )
 
