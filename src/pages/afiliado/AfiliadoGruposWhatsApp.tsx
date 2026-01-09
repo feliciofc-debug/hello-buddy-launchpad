@@ -74,7 +74,7 @@ export default function AfiliadoGruposWhatsApp() {
   const [mensagem, setMensagem] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [enviando, setEnviando] = useState(false);
-
+  const [gerandoLink, setGerandoLink] = useState<string | null>(null);
   useEffect(() => {
     checkUser();
   }, []);
@@ -229,6 +229,35 @@ export default function AfiliadoGruposWhatsApp() {
     }
   };
 
+  const gerarLinkConvite = async (grupo: Grupo) => {
+    if (!userId) return;
+    
+    setGerandoLink(grupo.id);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-group-invite-link", {
+        body: { groupId: grupo.id, userId }
+      });
+
+      if (error) throw error;
+
+      if (data.success && data.inviteLink) {
+        toast.success("Link gerado com sucesso!");
+        navigator.clipboard.writeText(data.inviteLink);
+        toast.info("Link copiado para área de transferência!");
+        // Atualizar lista local
+        setGrupos(prev => prev.map(g => 
+          g.id === grupo.id ? { ...g, invite_link: data.inviteLink } : g
+        ));
+      } else {
+        throw new Error(data.error || "Erro ao gerar link");
+      }
+    } catch (error: any) {
+      console.error("Erro ao gerar link:", error);
+      toast.error(error.message || "Erro ao gerar link de convite");
+    } finally {
+      setGerandoLink(null);
+    }
+  };
   const getCategoriaLabel = (cat: string | null) => {
     const found = CATEGORIAS.find(c => c.value === cat);
     return found?.label || "🎁 Geral";
@@ -402,16 +431,32 @@ export default function AfiliadoGruposWhatsApp() {
                   )}
 
                   <div className="flex gap-2 pt-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => copiarLink(grupo.invite_link || "")}
-                      disabled={!grupo.invite_link}
-                    >
-                      <LinkIcon className="h-4 w-4 mr-1" />
-                      Copiar Link
-                    </Button>
+                    {grupo.invite_link ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => copiarLink(grupo.invite_link!)}
+                      >
+                        <Copy className="h-4 w-4 mr-1" />
+                        Copiar Link
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => gerarLinkConvite(grupo)}
+                        disabled={gerandoLink === grupo.id}
+                      >
+                        {gerandoLink === grupo.id ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <LinkIcon className="h-4 w-4 mr-1" />
+                        )}
+                        Gerar Link
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       className="flex-1"

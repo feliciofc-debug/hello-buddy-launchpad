@@ -109,19 +109,37 @@ serve(async (req) => {
     // Aguardar um pouco antes de gerar o link
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Gerar link de convite
-    const linkResponse = await fetch(`${CONTABO_WUZAPI_URL}/group/invitelink`, {
-      method: "POST",
-      headers: { 
-        "Token": token, 
-        "Content-Type": "application/json" 
-      },
-      body: JSON.stringify({ GroupJid: groupJid }),
-    });
-
-    const linkText = await linkResponse.text();
-    console.log("Resultado link convite (raw):", linkText);
+    // Gerar link de convite - tentar múltiplos endpoints
+    const endpoints = [
+      "/chat/group/invitelink",
+      "/group/invitelink", 
+      "/group/invite"
+    ];
     
+    let linkText = "";
+    let linkResponse: Response | null = null;
+    
+    for (const endpoint of endpoints) {
+      console.log(`Tentando endpoint: ${CONTABO_WUZAPI_URL}${endpoint}`);
+      linkResponse = await fetch(`${CONTABO_WUZAPI_URL}${endpoint}`, {
+        method: "POST",
+        headers: { 
+          "Token": token, 
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({ GroupJid: groupJid }),
+      });
+      
+      linkText = await linkResponse.text();
+      console.log(`Resultado ${endpoint}:`, linkText);
+      
+      // Se não for 404, parar
+      if (!linkText.includes("404") && !linkText.includes("not found")) {
+        break;
+      }
+    }
+
+    console.log("Resultado link convite (raw):", linkText);
     let linkResult;
     let inviteLink = null;
     try {
