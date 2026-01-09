@@ -21,6 +21,93 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Verifica se a URL é uma imagem válida
+function isValidImageUrl(url: string): boolean {
+  if (!url) return false;
+  
+  // Deve conter extensão de imagem ou ser de CDN de imagens conhecida
+  const imagePatterns = [
+    /\.(jpg|jpeg|png|gif|webp)(\?|$)/i,
+    /images-na\.ssl-images-amazon\.com/i,
+    /m\.media-amazon\.com\/images/i,
+    /mlstatic\.com/i,
+    /cloudinary\.com/i,
+    /imgur\.com/i
+  ];
+  
+  return imagePatterns.some(pattern => pattern.test(url));
+}
+
+// Resolve imagem da Amazon a partir do link do produto
+async function resolverImagemAmazon(produtoUrl: string): Promise<string | null> {
+  try {
+    if (!produtoUrl.includes('amazon.com.br')) return null;
+    
+    console.log("🔍 Resolvendo imagem da Amazon...");
+    
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/resolve-amazon-image`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${serviceKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ url: produtoUrl })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.imageUrl && isValidImageUrl(data.imageUrl)) {
+        console.log(`✅ Imagem resolvida: ${data.imageUrl.substring(0, 50)}...`);
+        return data.imageUrl;
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("❌ Erro ao resolver imagem:", error);
+    return null;
+  }
+}
+
+// Obtém a melhor URL de imagem disponível
+async function obterImagemProduto(produto: any): Promise<string | null> {
+  const imagemUrl = produto.imagem_url;
+  
+  if (!imagemUrl) {
+    console.log("⚠️ Produto sem imagem cadastrada");
+    return null;
+  }
+  
+  // Se já é uma URL de imagem válida, usar diretamente
+  if (isValidImageUrl(imagemUrl)) {
+    console.log(`📷 Usando imagem direta: ${imagemUrl.substring(0, 60)}...`);
+    return imagemUrl;
+  }
+  
+  // Se é um link de produto Amazon, tentar extrair a imagem
+  if (imagemUrl.includes('amazon.com.br')) {
+    const imagemResolvida = await resolverImagemAmazon(imagemUrl);
+    if (imagemResolvida) {
+      return imagemResolvida;
+    }
+  }
+  
+  // Fallback: tentar usar o link_afiliado para resolver imagem
+  if (produto.link_afiliado && produto.link_afiliado.includes('amazon.com.br')) {
+    console.log("🔄 Tentando resolver imagem via link afiliado...");
+    const imagemDoLink = await resolverImagemAmazon(produto.link_afiliado);
+    if (imagemDoLink) {
+      return imagemDoLink;
+    }
+  }
+  
+  console.log("⚠️ Não foi possível obter imagem válida");
+  return null;
+}
+
 function formatarMensagemProduto(produto: any, config: any): string {
   let msg = "";
   
@@ -253,9 +340,15 @@ async function processarProgramacao(
 
     console.log(`📱 Grupos para enviar: ${grupos.length}`);
 
-    // 6. FORMATAR MENSAGEM
+    // 6. FORMATAR MENSAGEM E OBTER IMAGEM
     const mensagem = formatarMensagemProduto(produto, programacao);
-    const imagemUrl = programacao.incluir_imagem ? produto.imagem_url : null;
+    
+    // Obter imagem válida (resolve automaticamente links da Amazon)
+    let imagemUrl: string | undefined = undefined;
+    if (programacao.incluir_imagem) {
+      const img = await obterImagemProduto(produto);
+      if (img) imagemUrl = img;
+    }
 
     // 7. ENVIAR PARA CADA GRUPO
     let gruposEnviados = 0;
