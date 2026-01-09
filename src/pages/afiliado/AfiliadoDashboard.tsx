@@ -136,7 +136,9 @@ export default function AfiliadoDashboard() {
 
   const loadStats = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         navigate('/login');
         return;
@@ -144,31 +146,38 @@ export default function AfiliadoDashboard() {
       setUserId(user.id);
 
       // Carregar estatísticas
-      const [produtosRes, vendasRes, disparosRes, campanhasRes, clientesRes, contatosRes, gruposRes] = await Promise.all([
-        supabase.from('afiliado_produtos').select('id', { count: 'exact' }).eq('user_id', user.id),
-        supabase.from('afiliado_vendas').select('valor').eq('user_id', user.id),
-        supabase.from('afiliado_disparos').select('id', { count: 'exact' }).eq('user_id', user.id).eq('status', 'agendado'),
-        // Campanhas já executadas (total_enviados > 0)
-        supabase.from('afiliado_campanhas').select('id, total_enviados').eq('user_id', user.id),
-        // Leads captados (últimos 30 dias) - usa leads_ebooks que é a tabela correta
-        supabase.from('leads_ebooks')
-          .select('id, phone, nome, categorias, created_at')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(10),
-        // Total de contatos cadastrados
-        supabase.from('cadastros').select('id', { count: 'exact' }).eq('user_id', user.id),
-        // Grupos WhatsApp
-        supabase.from('whatsapp_grupos_afiliado')
-          .select('id, group_jid, group_name, member_count, categoria, is_announce')
-          .eq('user_id', user.id)
-          .eq('ativo', true)
-          .order('created_at', { ascending: false })
-      ]);
+      const [produtosRes, vendasRes, disparosRes, campanhasRes, clientesRes, contatosRes, gruposRes] =
+        await Promise.all([
+          supabase.from('afiliado_produtos').select('id', { count: 'exact' }).eq('user_id', user.id),
+          supabase.from('afiliado_vendas').select('valor').eq('user_id', user.id),
+          supabase
+            .from('afiliado_disparos')
+            .select('id', { count: 'exact' })
+            .eq('user_id', user.id)
+            .eq('status', 'agendado'),
+          // Campanhas já executadas (total_enviados > 0)
+          supabase.from('afiliado_campanhas').select('id, total_enviados').eq('user_id', user.id),
+          // Leads captados (últimos 30 dias) - usa leads_ebooks que é a tabela correta
+          supabase
+            .from('leads_ebooks')
+            .select('id, phone, nome, categorias, created_at')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(10),
+          // Total de contatos cadastrados
+          supabase.from('cadastros').select('id', { count: 'exact' }).eq('user_id', user.id),
+          // Grupos WhatsApp
+          supabase
+            .from('whatsapp_grupos_afiliado')
+            .select('id, group_jid, group_name, member_count, categoria, is_announce')
+            .eq('user_id', user.id)
+            .eq('ativo', true)
+            .order('created_at', { ascending: false }),
+        ]);
 
       const totalVendas = vendasRes.data?.length || 0;
       const valorVendas = vendasRes.data?.reduce((acc, v) => acc + Number(v.valor || 0), 0) || 0;
-      const campanhasDisparadas = campanhasRes.data?.filter(c => (c.total_enviados || 0) > 0).length || 0;
+      const campanhasDisparadas = campanhasRes.data?.filter((c) => (c.total_enviados || 0) > 0).length || 0;
 
       setTotalContatos(contatosRes.count || 0);
 
@@ -186,7 +195,7 @@ export default function AfiliadoDashboard() {
         disparosAgendados: disparosRes.count || 0,
         campanhasDisparadas,
         conversasAtivas: 0,
-        whatsappConectado: !!cliente?.wuzapi_jid
+        whatsappConectado: !!cliente?.wuzapi_jid,
       });
 
       // Mapear leads capturados
@@ -195,15 +204,16 @@ export default function AfiliadoDashboard() {
         phone: c.phone,
         nome: c.nome,
         categorias: Array.isArray(c.categorias) ? c.categorias : null,
-        created_at: c.created_at
+        created_at: c.created_at,
       }));
       setLeadsCapturados(leads);
 
       // Mapear grupos
       setGrupos((gruposRes.data || []) as GrupoWhatsApp[]);
-
     } catch (error) {
       console.error('Erro ao carregar stats:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
