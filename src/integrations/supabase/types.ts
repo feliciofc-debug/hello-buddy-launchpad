@@ -5341,6 +5341,7 @@ export type Database = {
           group_name: string
           id: string
           invite_link: string | null
+          is_announce: boolean | null
           member_count: number | null
           updated_at: string | null
           user_id: string
@@ -5353,6 +5354,7 @@ export type Database = {
           group_name: string
           id?: string
           invite_link?: string | null
+          is_announce?: boolean | null
           member_count?: number | null
           updated_at?: string | null
           user_id: string
@@ -5365,6 +5367,7 @@ export type Database = {
           group_name?: string
           id?: string
           invite_link?: string | null
+          is_announce?: boolean | null
           member_count?: number | null
           updated_at?: string | null
           user_id?: string
