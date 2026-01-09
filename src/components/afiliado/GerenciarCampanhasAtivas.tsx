@@ -71,7 +71,7 @@ export default function GerenciarCampanhasAtivas() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Buscar campanhas com dados do produto
+      // Buscar TODAS as campanhas (ativas e pausadas) para gerenciamento
       const { data, error } = await supabase
         .from("afiliado_campanhas")
         .select(`
@@ -79,7 +79,6 @@ export default function GerenciarCampanhasAtivas() {
           proxima_execucao, ultima_execucao, total_enviados, ativa, status
         `)
         .eq("user_id", user.id)
-        .or("ativa.eq.true,status.eq.ativa")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
