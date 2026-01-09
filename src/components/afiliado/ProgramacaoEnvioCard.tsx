@@ -369,35 +369,56 @@ export function ProgramacaoEnvioCard() {
           </div>
 
           {/* Grupos */}
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>Grupos Destino</Label>
+              <Label className="text-base font-medium">📱 Grupos Destino</Label>
               <div className="flex items-center gap-2">
                 <Switch
                   checked={form.enviar_para_todos_grupos}
-                  onCheckedChange={(v) => setForm({ ...form, enviar_para_todos_grupos: v })}
+                  onCheckedChange={(v) => setForm({ ...form, enviar_para_todos_grupos: v, grupos_ids: v ? [] : form.grupos_ids })}
                 />
-                <span className="text-sm text-muted-foreground">Todos os grupos</span>
+                <span className="text-sm text-muted-foreground">Todos os grupos ativos</span>
               </div>
             </div>
-            {!form.enviar_para_todos_grupos && (
-              <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-lg">
-                {grupos.map((grupo) => (
-                  <Button
-                    key={grupo.id}
-                    variant={form.grupos_ids?.includes(grupo.id) ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => {
-                      const atual = form.grupos_ids || [];
-                      const novos = atual.includes(grupo.id)
-                        ? atual.filter(g => g !== grupo.id)
-                        : [...atual, grupo.id];
-                      setForm({ ...form, grupos_ids: novos });
-                    }}
-                  >
-                    {grupo.group_name}
-                  </Button>
-                ))}
+            
+            {form.enviar_para_todos_grupos ? (
+              <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg border border-green-200 dark:border-green-800">
+                <p className="text-sm text-green-700 dark:text-green-300">
+                  ✅ Enviando para <strong>todos os {grupos.length} grupos ativos</strong>
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Selecione os grupos que receberão os envios ({form.grupos_ids?.length || 0} selecionados):
+                </p>
+                {grupos.length === 0 ? (
+                  <div className="p-3 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300">
+                      ⚠️ Nenhum grupo ativo. Vá em "Grupos WhatsApp" para criar ou ativar grupos.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-lg max-h-48 overflow-y-auto">
+                    {grupos.map((grupo) => (
+                      <Button
+                        key={grupo.id}
+                        variant={form.grupos_ids?.includes(grupo.id) ? "default" : "outline"}
+                        size="sm"
+                        className={form.grupos_ids?.includes(grupo.id) ? "bg-primary" : ""}
+                        onClick={() => {
+                          const atual = form.grupos_ids || [];
+                          const novos = atual.includes(grupo.id)
+                            ? atual.filter(g => g !== grupo.id)
+                            : [...atual, grupo.id];
+                          setForm({ ...form, grupos_ids: novos });
+                        }}
+                      >
+                        {form.grupos_ids?.includes(grupo.id) ? "✓ " : ""}{grupo.group_name}
+                      </Button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -536,14 +557,21 @@ export function ProgramacaoEnvioCard() {
             </div>
           </div>
 
-          {/* Próximo envio */}
-          {prog.proximo_envio && prog.ativo && (
-            <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-sm">
-              <span className="text-blue-600 dark:text-blue-400 font-medium">
-                📅 Próximo envio: {new Date(prog.proximo_envio).toLocaleString('pt-BR')}
+          {/* Próximo envio e grupos */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            {prog.proximo_envio && prog.ativo && (
+              <div className="p-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-sm flex-1">
+                <span className="text-blue-600 dark:text-blue-400 font-medium">
+                  📅 Próximo: {new Date(prog.proximo_envio).toLocaleString('pt-BR')}
+                </span>
+              </div>
+            )}
+            <div className="p-2 bg-purple-50 dark:bg-purple-950/30 rounded-lg text-sm">
+              <span className="text-purple-600 dark:text-purple-400 font-medium">
+                📱 {prog.enviar_para_todos_grupos ? `Todos os grupos` : `${prog.grupos_ids?.length || 0} grupos`}
               </span>
             </div>
-          )}
+          </div>
 
           {/* Expandido */}
           {isExpanded && (
@@ -574,7 +602,7 @@ export function ProgramacaoEnvioCard() {
               )}
 
               {/* Ações */}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant={prog.ativo ? "destructive" : "default"}
                   size="sm"
@@ -590,6 +618,39 @@ export function ProgramacaoEnvioCard() {
                       <Play className="h-4 w-4 mr-1" /> Ativar
                     </>
                   )}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/executar-envio-programado`, {
+                        method: 'POST',
+                        headers: { 
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`
+                        },
+                        body: JSON.stringify({ programacaoId: prog.id })
+                      });
+                      const data = await response.json();
+                      if (data.success && data.sent > 0) {
+                        toast.success(`✅ Enviado para ${data.sent} grupo(s)!`);
+                        carregarDados();
+                      } else if (data.success) {
+                        toast.info("Nenhum envio realizado (verifique horário/dia)");
+                      } else {
+                        toast.error(data.error || "Erro ao enviar");
+                      }
+                    } catch (error: any) {
+                      toast.error(error.message || "Erro ao executar");
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  <Send className="h-4 w-4 mr-1" /> Testar Agora
                 </Button>
                 <Button
                   variant="outline"
