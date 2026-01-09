@@ -562,74 +562,69 @@ Deno.serve(async (req) => {
         const wuzapiToken = affiliateInfo?.wuzapi_token
         const userId = affiliateInfo?.user_id
 
-        if (wuzapiToken && participants.length > 0) {
-          for (const participantJid of participants) {
-            // Extrair telefone do JID (remover @s.whatsapp.net / @lid / :XX)
-            const phone = String(participantJid)
-              .replace(/@s\.whatsapp\.net/g, '')
-              .replace(/@lid/g, '')
-              .replace(/@c\.us/g, '')
-              .replace(/:\d+$/, '')
-              .replace(/\D/g, '')
-
-            if (!phone || phone.length < 10) continue
-
-            // Evitar enviar boas-vindas para o próprio número do afiliado
-            const affiliatePhone = (affiliateInfo?.wuzapi_jid || '').replace(/\D/g, '')
-            if (affiliatePhone && phone.includes(affiliatePhone.slice(-8))) {
-              console.log(`⏭️ [AMZ-OFERTAS] Ignorando boas-vindas para o próprio afiliado: ${phone}`)
-              continue
-            }
-
-            // Enviar mensagem de boas-vindas no PRIVADO do novo membro
-            const welcomeMessage = `🎉 *Bem-vindo(a) ao grupo AMZ Ofertas Cashback!* 🎉
+        if (wuzapiToken && participants.length > 0 && groupJid) {
+          // Enviar UMA mensagem de boas-vindas NO GRUPO (não no privado)
+          // Mensagem genérica sem citar nome + link do eBook
+          const welcomeMessage = `🎉 *Bem-vindo(a) ao grupo AMZ Ofertas Cashback!* 🎉
 
 Que bom ter você aqui! 💜
 
 📲 *Como funciona:*
-1️⃣ Você recebe ofertas incríveis no grupo
+1️⃣ Você recebe ofertas incríveis aqui no grupo
 2️⃣ Compra pelo link (site oficial)
-3️⃣ Envia o comprovante aqui no privado
-4️⃣ Ganha *2% de cashback* + eBook grátis! 🎁
+3️⃣ Envia o comprovante no privado
+4️⃣ Ganha *2% de cashback* + eBooks grátis! 🎁
 
 💰 Quando juntar R$30, você resgata via PIX! (liberado após 35 dias)
 
-📚 *Já vou te enviar seu eBook grátis de presente!* 🎁
+📚 *Seu eBook grátis de presente:*
+👉 https://amzofertas.com.br/ebooks/50-receitas-airfryer.pdf
 
-Qualquer dúvida, é só chamar! 😊`
+Qualquer dúvida, é só chamar no privado! 😊`
 
-            try {
-              // 1) Enviar mensagem de boas-vindas
-              await sendWhatsAppMessage(phone, welcomeMessage, wuzapiToken, supabase, userId)
-              console.log(`✅ [AMZ-OFERTAS] Boas-vindas enviada para ${phone}`)
+          try {
+            // Enviar boas-vindas NO GRUPO
+            const wuzapiUrl = Deno.env.get('WUZAPI_BASE_URL') || 'https://wuzapi.amzofertas.com.br'
+            const groupResponse = await fetch(`${wuzapiUrl}/chat/send/text`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Token': wuzapiToken
+              },
+              body: JSON.stringify({
+                Phone: groupJid.replace('@g.us', ''),
+                Body: welcomeMessage
+              })
+            })
+            
+            const groupResult = await groupResponse.json()
+            console.log(`✅ [AMZ-OFERTAS] Boas-vindas enviada no grupo ${groupJid}:`, groupResult)
 
-              // 2) Aguardar um pouco antes de enviar o eBook
-              await new Promise((r) => setTimeout(r, 2000))
+            // Registrar cada participante como lead (em background)
+            for (const participantJid of participants) {
+              const phone = String(participantJid)
+                .replace(/@s\.whatsapp\.net/g, '')
+                .replace(/@lid/g, '')
+                .replace(/@c\.us/g, '')
+                .replace(/:\d+$/, '')
+                .replace(/\D/g, '')
 
-              // 3) Enviar o eBook de boas-vindas (PDF)
-              const ebookFilename = '50-receitas-airfryer.pdf'
-              const ebookTitulo = '50 Receitas Airfryer'
-              
-              await sendWhatsAppPDF(
-                phone,
-                ebookFilename,
-                `${ebookTitulo} - Seu presente de boas-vindas! 🎁`,
-                wuzapiToken,
-                supabase,
-                userId
-              )
-              console.log(`📚 [AMZ-OFERTAS] eBook enviado para ${phone}`)
+              if (!phone || phone.length < 10) continue
 
-              // 4) Registrar entrega do eBook
+              // Evitar registrar o próprio afiliado
+              const affiliatePhone = (affiliateInfo?.wuzapi_jid || '').replace(/\D/g, '')
+              if (affiliatePhone && phone.includes(affiliatePhone.slice(-8))) continue
+
+              // Registrar entrega do eBook
               await supabase.from('afiliado_ebook_deliveries').insert({
                 phone: phone,
-                ebook_titulo: ebookTitulo,
-                ebook_filename: ebookFilename,
+                ebook_titulo: '50 Receitas Airfryer',
+                ebook_filename: '50-receitas-airfryer.pdf',
                 categoria: 'Cozinha',
                 user_id: userId
               })
 
-              // 5) Criar lead nas tabelas de afiliado (se não existir)
+              // Criar lead (se não existir)
               const { data: existingLead } = await supabase
                 .from('leads_ebooks')
                 .select('id')
@@ -639,7 +634,7 @@ Qualquer dúvida, é só chamar! 😊`
               if (!existingLead) {
                 await supabase.from('leads_ebooks').insert({
                   phone: phone,
-                  nome: null, // Será capturado quando responder
+                  nome: null,
                   origem: 'grupo_whatsapp',
                   user_id: userId
                 })
@@ -648,17 +643,14 @@ Qualquer dúvida, é só chamar! 😊`
 
               // Logar evento
               await logEvent(supabase, {
-                evento: 'boas_vindas_grupo_com_ebook',
+                evento: 'boas_vindas_grupo_com_ebook_link',
                 cliente_phone: phone,
                 user_id: userId,
-                metadata: { groupJid, ebookEnviado: ebookTitulo }
+                metadata: { groupJid, ebookLink: 'https://amzofertas.com.br/ebooks/50-receitas-airfryer.pdf' }
               })
-
-              // Pequeno delay para evitar flood
-              await new Promise((r) => setTimeout(r, 1500))
-            } catch (err) {
-              console.error(`❌ [AMZ-OFERTAS] Erro ao enviar boas-vindas/eBook para ${phone}:`, err)
             }
+          } catch (err) {
+            console.error(`❌ [AMZ-OFERTAS] Erro ao enviar boas-vindas no grupo:`, err)
           }
         }
 
