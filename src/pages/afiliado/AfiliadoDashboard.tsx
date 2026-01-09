@@ -71,6 +71,23 @@ interface GrupoWhatsApp {
   is_announce: boolean;
 }
 
+interface Participant {
+  jid: string;
+  phone: string;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+}
+
+interface HistoricoEnvio {
+  id: string;
+  whatsapp: string;
+  tipo: string;
+  mensagem: string;
+  sucesso: boolean;
+  erro: string | null;
+  timestamp: string;
+}
+
 export default function AfiliadoDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -88,7 +105,15 @@ export default function AfiliadoDashboard() {
   const [leadsCapturados, setLeadsCapturados] = useState<LeadCapturado[]>([]);
   const [deletingLead, setDeletingLead] = useState<string | null>(null);
   const [grupos, setGrupos] = useState<GrupoWhatsApp[]>([]);
-  
+
+  // Detalhes do grupo (Dashboard)
+  const [grupoModalOpen, setGrupoModalOpen] = useState(false);
+  const [grupoSelecionado, setGrupoSelecionado] = useState<GrupoWhatsApp | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [historicoEnvios, setHistoricoEnvios] = useState<HistoricoEnvio[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [loadingHistorico, setLoadingHistorico] = useState(false);
+
   // Modal criar grupo
   const [showGrupoModal, setShowGrupoModal] = useState(false);
   const [novoGrupoNome, setNovoGrupoNome] = useState("");
@@ -179,8 +204,54 @@ export default function AfiliadoDashboard() {
 
     } catch (error) {
       console.error('Erro ao carregar stats:', error);
+    }
+  };
+
+  const abrirDetalhesGrupo = async (grupo: GrupoWhatsApp) => {
+    if (!userId) return;
+
+    setGrupoSelecionado(grupo);
+    setGrupoModalOpen(true);
+    setParticipants([]);
+    setHistoricoEnvios([]);
+
+    // Participantes
+    setLoadingParticipants(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("get-group-participants", {
+        body: { groupJid: grupo.group_jid, userId },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        setParticipants(data.participants || []);
+        // Atualizar contagem local também
+        setGrupos((prev) =>
+          prev.map((g) => (g.id === grupo.id ? { ...g, member_count: data.totalMembers } : g))
+        );
+      }
+    } catch (err) {
+      console.error("Erro ao carregar membros do grupo:", err);
+      toast.error("Erro ao carregar membros");
     } finally {
-      setLoading(false);
+      setLoadingParticipants(false);
+    }
+
+    // Histórico (mensagens enviadas / produtos)
+    setLoadingHistorico(true);
+    try {
+      const { data, error } = await supabase
+        .from("historico_envios")
+        .select("*")
+        .eq("whatsapp", grupo.group_jid)
+        .order("timestamp", { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      setHistoricoEnvios((data || []) as any);
+    } catch (err) {
+      console.error("Erro ao carregar histórico do grupo:", err);
+    } finally {
+      setLoadingHistorico(false);
     }
   };
 
@@ -522,7 +593,7 @@ export default function AfiliadoDashboard() {
                   <div 
                     key={grupo.id} 
                     className="flex items-center justify-between p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
-                    onClick={() => navigate('/afiliado/grupos')}
+                    onClick={() => abrirDetalhesGrupo(grupo)}
                   >
                     <div className="flex-1">
                       <p className="font-medium text-sm">{grupo.group_name}</p>
@@ -602,6 +673,85 @@ export default function AfiliadoDashboard() {
           </Button>
         </div>
       </div>
+
+      {/* Modal Detalhes do Grupo (membros + envios) */}
+      <Dialog open={grupoModalOpen} onOpenChange={setGrupoModalOpen}>
+        <DialogContent className="bg-background max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{grupoSelecionado?.group_name || "Grupo"}</span>
+              {grupoSelecionado?.is_announce && (
+                <Badge variant="outline" className="text-xs">
+                  Só Admins
+                </Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Membros ({grupoSelecionado?.member_count ?? 0})</p>
+              <ScrollArea className="h-[260px] rounded-md border">
+                <div className="p-3 space-y-2">
+                  {loadingParticipants ? (
+                    <p className="text-sm text-muted-foreground">Carregando membros...</p>
+                  ) : participants.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Sem membros para mostrar.</p>
+                  ) : (
+                    participants.map((p) => (
+                      <div key={p.jid} className="flex items-center justify-between text-sm">
+                        <span className="font-mono">{p.phone}</span>
+                        {(p.isSuperAdmin || p.isAdmin) && (
+                          <Badge variant="secondary" className="text-xs">
+                            {p.isSuperAdmin ? "Super Admin" : "Admin"}
+                          </Badge>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Últimos envios</p>
+              <ScrollArea className="h-[260px] rounded-md border">
+                <div className="p-3 space-y-3">
+                  {loadingHistorico ? (
+                    <p className="text-sm text-muted-foreground">Carregando envios...</p>
+                  ) : historicoEnvios.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Nenhum envio ainda.</p>
+                  ) : (
+                    historicoEnvios.map((h) => (
+                      <div key={h.id} className="text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <Badge variant={h.sucesso ? "secondary" : "outline"} className="text-xs">
+                            {h.sucesso ? "Enviado" : "Falhou"}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(h.timestamp).toLocaleString("pt-BR")}
+                          </span>
+                        </div>
+                        {h.mensagem && (
+                          <p className="mt-1 text-sm text-foreground line-clamp-3">{h.mensagem}</p>
+                        )}
+                        {h.erro && !h.sucesso && (
+                          <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{h.erro}</p>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => navigate('/afiliado/grupos')}>Ver tela completa</Button>
+            <Button onClick={() => setGrupoModalOpen(false)}>Fechar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Modal de Importação */}
       <ImportContactsWhatsAppCSVModal

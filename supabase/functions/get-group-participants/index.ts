@@ -42,29 +42,39 @@ serve(async (req) => {
       );
     }
 
-    // Buscar informações do grupo via WuzAPI - método GET com body
-    const response = await fetch(`${CONTABO_WUZAPI_URL}/group/info`, {
+    // Buscar participantes do grupo via WuzAPI.
+    // Em algumas versões o endpoint /group/info não existe (404). O /group/list existe e já traz Participants.
+    const response = await fetch(`${CONTABO_WUZAPI_URL}/group/list`, {
       method: "GET",
       headers: {
         "Token": cliente.wuzapi_token,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ GroupJID: groupJid })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error("Erro WuzAPI:", errorText);
       return new Response(
-        JSON.stringify({ error: "Erro ao buscar grupo", details: errorText }),
+        JSON.stringify({ error: "Erro ao buscar grupos", details: errorText }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const groupInfo = await response.json();
-    console.log("Group info:", JSON.stringify(groupInfo));
+    const payload = await response.json();
+    const groups = payload?.data?.Groups || payload?.Groups || payload?.data || payload || [];
 
-    // Extrair participantes - WuzAPI retorna em Participants
+    const groupsArray = Array.isArray(groups) ? groups : [];
+    const groupInfo = groupsArray.find((g: any) => (g.JID || g.Jid || g.jid) === groupJid);
+
+    if (!groupInfo) {
+      return new Response(
+        JSON.stringify({ error: "Grupo não encontrado na lista", groupJid }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Extrair participantes
     const participants = groupInfo.Participants || groupInfo.participants || [];
 
     // Formatar participantes
