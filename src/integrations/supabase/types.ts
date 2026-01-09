@@ -5332,6 +5332,45 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_grupos_afiliado: {
+        Row: {
+          ativo: boolean | null
+          categoria: string | null
+          created_at: string | null
+          group_jid: string
+          group_name: string
+          id: string
+          invite_link: string | null
+          member_count: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          categoria?: string | null
+          created_at?: string | null
+          group_jid: string
+          group_name: string
+          id?: string
+          invite_link?: string | null
+          member_count?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          categoria?: string | null
+          created_at?: string | null
+          group_jid?: string
+          group_name?: string
+          id?: string
+          invite_link?: string | null
+          member_count?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_messages: {
         Row: {
           direction: string
