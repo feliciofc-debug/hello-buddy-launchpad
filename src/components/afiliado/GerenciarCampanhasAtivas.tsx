@@ -373,6 +373,36 @@ export default function GerenciarCampanhasAtivas() {
             <Button
               variant="outline"
               size="sm"
+              onClick={async () => {
+                setActionLoading("bulk");
+                try {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) return;
+                  const { error } = await supabase
+                    .from("afiliado_campanhas")
+                    .update({ ativa: true, status: "ativa" })
+                    .eq("user_id", user.id)
+                    .eq("ativa", false);
+                  if (error) throw error;
+                  setCampanhas((prev) => prev.map((c) => ({ ...c, ativa: true, status: "ativa" })));
+                  toast.success("Todas as campanhas foram ativadas");
+                } catch (error) {
+                  console.error("Erro ao ativar todas:", error);
+                  toast.error("Erro ao ativar campanhas");
+                } finally {
+                  setActionLoading(null);
+                }
+              }}
+              disabled={actionLoading === "bulk" || campanhasPausadas.length === 0}
+              className="gap-1 text-green-600 border-green-200 hover:bg-green-50"
+            >
+              <Play className="h-4 w-4" />
+              Ativar Todas
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={pausarTodas}
               disabled={actionLoading === "bulk" || campanhasAtivas.length === 0}
               className="gap-1 text-orange-600 border-orange-200 hover:bg-orange-50"
