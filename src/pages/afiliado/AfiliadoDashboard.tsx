@@ -22,6 +22,7 @@ import {
   Contact,
   Trash2,
   Store,
+  UsersRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppCSVModal";
@@ -162,6 +163,13 @@ export default function AfiliadoDashboard() {
       path: "/afiliado/conectar-celular",
       description: "Conecte seu WhatsApp",
       color: "bg-green-500"
+    },
+    { 
+      title: "Grupos WhatsApp", 
+      icon: UsersRound, 
+      path: "/afiliado/grupos",
+      description: "Grupos para envios",
+      color: "bg-teal-500"
     },
     { 
       title: "WhatsApp", 
