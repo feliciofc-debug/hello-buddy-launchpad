@@ -11,26 +11,34 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
 /**
- * Formata preço corretamente tratando separador de milhar (Shopee usa ponto)
+ * Formata preço corretamente tratando separador de milhar (Shopee armazena como 2.399 = R$ 2.399,00)
  */
 function formatarPrecoAfiliado(preco: number | string | null): string {
   if (preco == null) return 'Consulte';
   
   let valor: number;
+  const precoStr = String(preco);
   
-  if (typeof preco === 'string') {
-    if (preco.includes(',')) {
-      valor = parseFloat(preco.replace('.', '').replace(',', '.'));
-    } else if (preco.includes('.') && preco.split('.')[1]?.length === 3) {
-      valor = parseFloat(preco.replace('.', ''));
+  if (precoStr.includes('.')) {
+    const partes = precoStr.split('.');
+    const decimais = partes[1] || '';
+    
+    if (decimais.length === 3) {
+      // 2.399 = 2399 (ponto é separador de milhar)
+      valor = parseFloat(precoStr.replace('.', ''));
+    } else if (decimais.length <= 2) {
+      // 42.99 = 42.99 (padrão normal)
+      valor = parseFloat(precoStr);
     } else {
-      valor = parseFloat(preco);
+      valor = parseFloat(precoStr);
     }
+  } else if (precoStr.includes(',')) {
+    valor = parseFloat(precoStr.replace('.', '').replace(',', '.'));
   } else {
-    valor = preco;
+    valor = parseFloat(precoStr);
   }
   
-  if (isNaN(valor)) return 'Consulte';
+  if (isNaN(valor) || valor <= 0) return 'Consulte';
   
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }

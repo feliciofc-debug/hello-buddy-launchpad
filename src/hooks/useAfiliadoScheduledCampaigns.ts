@@ -6,30 +6,40 @@ const COOLDOWN_MINUTOS = 0; // teste: desabilitado (volte para 5 depois)
 const CONTABO_WUZAPI_URL = 'https://api2.amzofertas.com.br';
 
 /**
- * Formata preço corretamente tratando separador de milhar (Shopee usa ponto)
- * Ex: 2.399 -> "R$ 2.399,00" | 2399 -> "R$ 2.399,00"
+ * Formata preço corretamente tratando separador de milhar (Shopee armazena como 2.399 = R$ 2.399,00)
+ * O banco armazena como número ex: 2.399 que deve ser interpretado como 2399 reais
  */
 function formatarPrecoAfiliado(preco: number | string | null): string {
   if (preco == null) return 'Consulte';
   
   let valor: number;
+  const precoStr = String(preco);
   
-  if (typeof preco === 'string') {
-    // Se string com ponto como separador de milhar (ex: "2.399")
-    // Verificar se tem vírgula (padrão BR) ou ponto (milhar)
-    if (preco.includes(',')) {
-      valor = parseFloat(preco.replace('.', '').replace(',', '.'));
-    } else if (preco.includes('.') && preco.split('.')[1]?.length === 3) {
-      // "2.399" = 2399 (ponto é separador de milhar)
-      valor = parseFloat(preco.replace('.', ''));
+  // Detectar padrão Shopee: número com 3 casas decimais (ex: 2.399 = 2399 reais)
+  // ou número grande sem decimais (ex: 2399 = 2399 reais)
+  if (precoStr.includes('.')) {
+    const partes = precoStr.split('.');
+    const decimais = partes[1] || '';
+    
+    if (decimais.length === 3) {
+      // 2.399 = 2399 (ponto é separador de milhar, não decimal)
+      valor = parseFloat(precoStr.replace('.', ''));
+    } else if (decimais.length <= 2) {
+      // 42.99 = 42.99 (padrão normal com centavos)
+      valor = parseFloat(precoStr);
     } else {
-      valor = parseFloat(preco);
+      // Fallback
+      valor = parseFloat(precoStr);
     }
+  } else if (precoStr.includes(',')) {
+    // Formato BR: 2.399,00 ou 42,99
+    valor = parseFloat(precoStr.replace('.', '').replace(',', '.'));
   } else {
-    valor = preco;
+    // Número inteiro: 399 = 399 reais
+    valor = parseFloat(precoStr);
   }
   
-  if (isNaN(valor)) return 'Consulte';
+  if (isNaN(valor) || valor <= 0) return 'Consulte';
   
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
