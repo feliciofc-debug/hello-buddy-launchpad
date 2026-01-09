@@ -199,22 +199,15 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
 
         // EXECUTAR CADA CAMPANHA (usando lista filtrada!)
         for (const campanha of campanhasNaoExecutadas) {
-          // ✅ CLAIM NO BACKEND: evita triplicar quando houver 2-3 abas/janelas abertas
-          // Só 1 execução consegue marcar como "executando" para esse mesmo proxima_execucao.
-          const { data: claimed, error: claimErr } = await supabase
+          // ✅ Execução protegida por leader-election (CampaignScheduler) + lock local
+          // Evitamos depender da coluna `status` aqui para não quebrar quando o cache do schema estiver desatualizado.
+          const { error: touchErr } = await supabase
             .from('afiliado_campanhas')
-            .update({ status: 'executando', updated_at: new Date().toISOString() })
+            .update({ updated_at: new Date().toISOString() })
             .eq('id', campanha.id)
-            .eq('proxima_execucao', campanha.proxima_execucao)
-            .or('status.is.null,status.neq.executando')
-            .select('id')
-            .maybeSingle();
+            .eq('proxima_execucao', campanha.proxima_execucao);
 
-          if (claimErr) throw claimErr;
-          if (!claimed?.id) {
-            console.log(`🔒 [AFILIADO] Campanha ${campanha.nome} já foi capturada por outra sessão, pulando...`);
-            continue;
-          }
+          if (touchErr) throw touchErr;
 
           // ✅ Marcar como executada ANTES de processar (evita duplicação na mesma aba)
           const campanhaKey = `${campanha.id}_${campanha.proxima_execucao}`;
@@ -443,7 +436,7 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
                       console.log('❌ [AFILIADO] Erro de sessão, pausando campanha...');
                       await supabase
                         .from('afiliado_campanhas')
-                        .update({ ativa: false, status: 'erro_sessao' })
+                        .update({ ativa: false })
                         .eq('id', campanha.id);
 
                       toast.error('⚠️ WhatsApp desconectado! Campanha pausada — reconecte em Conectar Celular.');
@@ -518,25 +511,24 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
             const proximaExec = calcularProxima(campanha);
 
             // Atualizar campanha
-            await supabase
-              .from('afiliado_campanhas')
-              .update({
-                ultima_execucao: agora.toISOString(),
-                proxima_execucao: proximaExec,
-                total_enviados: (campanha.total_enviados || 0) + enviados,
-                ativa: proximaExec ? true : false,
-                status: proximaExec ? 'ativa' : 'concluida'
-              })
-              .eq('id', campanha.id);
+              await supabase
+                .from('afiliado_campanhas')
+                .update({
+                  ultima_execucao: agora.toISOString(),
+                  proxima_execucao: proximaExec,
+                  total_enviados: (campanha.total_enviados || 0) + enviados,
+                  ativa: proximaExec ? true : false,
+                })
+                .eq('id', campanha.id);
 
             console.log(`📅 [AFILIADO] Próxima execução: ${proximaExec ? new Date(proximaExec).toLocaleString('pt-BR') : 'Não repete'}`);
 
           } catch (err) {
             console.error(`❌ [AFILIADO] Erro na campanha ${campanha.nome}:`, err);
-            // Evita ficar preso em "executando" caso dê erro no meio
+            // Evita ficar preso caso dê erro no meio
             await supabase
               .from('afiliado_campanhas')
-              .update({ status: 'erro_execucao' })
+              .update({ updated_at: new Date().toISOString() })
               .eq('id', campanha.id);
             toast.error(`Erro na campanha ${campanha.nome}`);
           }
