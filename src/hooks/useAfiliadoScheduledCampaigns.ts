@@ -6,6 +6,35 @@ const COOLDOWN_MINUTOS = 0; // teste: desabilitado (volte para 5 depois)
 const CONTABO_WUZAPI_URL = 'https://api2.amzofertas.com.br';
 
 /**
+ * Formata preço corretamente tratando separador de milhar (Shopee usa ponto)
+ * Ex: 2.399 -> "R$ 2.399,00" | 2399 -> "R$ 2.399,00"
+ */
+function formatarPrecoAfiliado(preco: number | string | null): string {
+  if (preco == null) return 'Consulte';
+  
+  let valor: number;
+  
+  if (typeof preco === 'string') {
+    // Se string com ponto como separador de milhar (ex: "2.399")
+    // Verificar se tem vírgula (padrão BR) ou ponto (milhar)
+    if (preco.includes(',')) {
+      valor = parseFloat(preco.replace('.', '').replace(',', '.'));
+    } else if (preco.includes('.') && preco.split('.')[1]?.length === 3) {
+      // "2.399" = 2399 (ponto é separador de milhar)
+      valor = parseFloat(preco.replace('.', ''));
+    } else {
+      valor = parseFloat(preco);
+    }
+  } else {
+    valor = preco;
+  }
+  
+  if (isNaN(valor)) return 'Consulte';
+  
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+/**
  * Tenta reconectar sessão Wuzapi 1 vez
  */
 async function tentarReconectar(token: string): Promise<boolean> {
@@ -295,10 +324,15 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
             if ((gruposSelecionados || []).length > 0) {
               for (const g of (gruposSelecionados || [])) {
                 try {
-                  const mensagemGrupo = campanha.mensagem_template
+                // Formatar preço corretamente (Shopee usa ponto como separador de milhar)
+                const precoFormatado = produto?.preco 
+                  ? formatarPrecoAfiliado(produto.preco)
+                  : 'Consulte';
+
+                const mensagemGrupo = campanha.mensagem_template
                     .replace(/\{\{nome\}\}/gi, 'pessoal')
                     .replace(/\{\{produto\}\}/gi, produto?.titulo || 'Produto')
-                    .replace(/\{\{preco\}\}/gi, produto?.preco?.toString() || '0');
+                    .replace(/\{\{preco\}\}/gi, precoFormatado);
 
                   console.log(`👥 [AFILIADO] Enviando para grupo ${g.group_name}...`);
 
@@ -352,11 +386,16 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
 
                 const nome = contact?.nome || 'Cliente';
 
+                // Formatar preço corretamente
+                const precoFormatadoContato = produto?.preco 
+                  ? formatarPrecoAfiliado(produto.preco)
+                  : 'Consulte';
+
                 // Personalizar mensagem
                 const mensagem = campanha.mensagem_template
                   .replace(/\{\{nome\}\}/gi, nome)
                   .replace(/\{\{produto\}\}/gi, produto?.titulo || 'Produto')
-                  .replace(/\{\{preco\}\}/gi, produto?.preco?.toString() || '0');
+                  .replace(/\{\{preco\}\}/gi, precoFormatadoContato);
 
                 // ✅ ENVIAR VIA EDGE FUNCTION (evita CORS)
                 const cleanPhone = phone.replace(/\D/g, '');
