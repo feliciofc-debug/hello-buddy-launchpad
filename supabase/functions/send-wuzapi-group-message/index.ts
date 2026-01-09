@@ -45,7 +45,11 @@ serve(async (req) => {
 
     const token = cliente.wuzapi_token;
 
-    console.log(`Enviando mensagem para grupo: ${groupJid}`);
+    // Para grupos, o WuzAPI precisa do JID completo com @g.us no campo Phone
+    // MAS alguns endpoints exigem apenas o número sem @g.us
+    const groupPhone = groupJid.includes('@g.us') ? groupJid : `${groupJid}@g.us`;
+    
+    console.log(`Enviando mensagem para grupo: ${groupPhone}`);
 
     let response;
     let endpoint;
@@ -60,7 +64,7 @@ serve(async (req) => {
           "Content-Type": "application/json" 
         },
         body: JSON.stringify({
-          Phone: groupJid,  // "120363xxxxx@g.us"
+          Phone: groupPhone,
           Caption: message,
           Image: imageUrl
         }),
@@ -75,7 +79,7 @@ serve(async (req) => {
           "Content-Type": "application/json" 
         },
         body: JSON.stringify({
-          Phone: groupJid,  // "120363xxxxx@g.us"
+          Phone: groupPhone,
           Body: message
         }),
       });
