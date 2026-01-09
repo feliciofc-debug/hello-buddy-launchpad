@@ -77,6 +77,7 @@ import AfiliadoIAMarketing from "./pages/afiliado/AfiliadoIAMarketing";
 import AfiliadoWhatsApp from "./pages/afiliado/AfiliadoWhatsAppPage";
 import AfiliadoEbooks from "./pages/afiliado/AfiliadoEbooks";
 import AfiliadoGruposWhatsApp from "./pages/afiliado/AfiliadoGruposWhatsApp";
+import AfiliadoConectarCelular2 from "./pages/afiliado/AfiliadoConectarCelular2";
 
 import CookieBanner from "./components/CookieBanner";
 
@@ -162,6 +163,7 @@ const App = () => (
             <Route path="/afiliado/whatsapp" element={<AfiliadoWhatsApp />} />
             <Route path="/afiliado/ebooks" element={<AfiliadoEbooks />} />
             <Route path="/afiliado/grupos" element={<AfiliadoGruposWhatsApp />} />
+            <Route path="/afiliado/conectar-celular-2" element={<AfiliadoConectarCelular2 />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
