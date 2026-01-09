@@ -266,12 +266,31 @@ serve(async (req) => {
 
     console.log(`✅ Execução concluída: ${executadas} campanhas executadas, ${erros} erros`);
 
+    // ✅ TAMBÉM DISPARA O ENVIO PROGRAMADO DE AFILIADOS (aproveita o mesmo cron)
+    let envioProgramadoResult = null;
+    try {
+      console.log('📤 [AFILIADO] Disparando executar-envio-programado...');
+      const { data, error } = await supabase.functions.invoke('executar-envio-programado', {
+        body: {}
+      });
+      
+      if (error) {
+        console.error('❌ [AFILIADO] Erro no envio programado:', error);
+      } else {
+        envioProgramadoResult = data;
+        console.log('✅ [AFILIADO] Envio programado executado:', data);
+      }
+    } catch (epError) {
+      console.error('❌ [AFILIADO] Erro ao chamar envio programado:', epError);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         executadas,
         erros,
-        total: campanhas?.length || 0
+        total: campanhas?.length || 0,
+        envioProgramado: envioProgramadoResult
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
