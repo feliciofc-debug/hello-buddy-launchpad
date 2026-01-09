@@ -10,6 +10,31 @@ import { Plus, X, Sparkles, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
+/**
+ * Formata preço corretamente tratando separador de milhar (Shopee usa ponto)
+ */
+function formatarPrecoAfiliado(preco: number | string | null): string {
+  if (preco == null) return 'Consulte';
+  
+  let valor: number;
+  
+  if (typeof preco === 'string') {
+    if (preco.includes(',')) {
+      valor = parseFloat(preco.replace('.', '').replace(',', '.'));
+    } else if (preco.includes('.') && preco.split('.')[1]?.length === 3) {
+      valor = parseFloat(preco.replace('.', ''));
+    } else {
+      valor = parseFloat(preco);
+    }
+  } else {
+    valor = preco;
+  }
+  
+  if (isNaN(valor)) return 'Consulte';
+  
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 interface Produto {
   id: string;
   titulo: string;
@@ -146,13 +171,14 @@ export function CriarCampanhaAfiliadoModal({
   useEffect(() => {
     if (open) {
       fetchListas();
-      // Template inicial COM LINK DE AFILIADO
+      // Template inicial COM LINK DE AFILIADO - usa formatação correta de preço
+      const precoFormatado = produto.preco ? formatarPrecoAfiliado(produto.preco) : '';
       setMensagem(`Olá! 👋
 
 Confira esta oferta incrível:
 
 📦 *${produto.titulo}*
-${produto.preco ? `💰 *R$ ${produto.preco.toFixed(2)}*` : ''}
+${precoFormatado ? `💰 *${precoFormatado}*` : ''}
 
 ${produto.descricao || ''}
 
@@ -290,7 +316,7 @@ _Aproveite enquanto dura!_ ✅`;
       const mensagemGrupo = mensagemTemplate
         .replace(/\{\{nome\}\}/gi, 'Pessoal')
         .replace(/\{\{produto\}\}/gi, produtoInfo?.titulo || 'Produto')
-        .replace(/\{\{preco\}\}/gi, produtoInfo?.preco?.toString() || '0');
+        .replace(/\{\{preco\}\}/gi, formatarPrecoAfiliado(produtoInfo?.preco));
 
       try {
         const { data: sendData, error: sendError } = await supabase.functions.invoke(
@@ -363,7 +389,7 @@ _Aproveite enquanto dura!_ ✅`;
         const mensagemPersonalizada = mensagemTemplate
           .replace(/\{\{nome\}\}/gi, contato.nome)
           .replace(/\{\{produto\}\}/gi, produtoInfo?.titulo || 'Produto')
-          .replace(/\{\{preco\}\}/gi, produtoInfo?.preco?.toString() || '0');
+          .replace(/\{\{preco\}\}/gi, formatarPrecoAfiliado(produtoInfo?.preco));
 
         const { data: sendData, error: sendError } = await supabase.functions.invoke(
           'send-wuzapi-message-afiliado',
