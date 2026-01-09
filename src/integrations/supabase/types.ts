@@ -1895,6 +1895,81 @@ export type Database = {
           },
         ]
       }
+      fila_atendimento_afiliado: {
+        Row: {
+          conversa_id: string | null
+          created_at: string | null
+          erro: string | null
+          id: string
+          imagem_url: string | null
+          instance_name: string | null
+          lead_name: string | null
+          lead_phone: string
+          max_tentativas: number | null
+          mensagem_recebida: string
+          metadata: Json | null
+          origem: string | null
+          prioridade: number | null
+          processing_started_at: string | null
+          resposta_ia: string | null
+          scheduled_at: string | null
+          sent_at: string | null
+          status: string | null
+          tentativas: number | null
+          tipo_mensagem: string | null
+          user_id: string | null
+          wuzapi_token: string | null
+        }
+        Insert: {
+          conversa_id?: string | null
+          created_at?: string | null
+          erro?: string | null
+          id?: string
+          imagem_url?: string | null
+          instance_name?: string | null
+          lead_name?: string | null
+          lead_phone: string
+          max_tentativas?: number | null
+          mensagem_recebida: string
+          metadata?: Json | null
+          origem?: string | null
+          prioridade?: number | null
+          processing_started_at?: string | null
+          resposta_ia?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string | null
+          tentativas?: number | null
+          tipo_mensagem?: string | null
+          user_id?: string | null
+          wuzapi_token?: string | null
+        }
+        Update: {
+          conversa_id?: string | null
+          created_at?: string | null
+          erro?: string | null
+          id?: string
+          imagem_url?: string | null
+          instance_name?: string | null
+          lead_name?: string | null
+          lead_phone?: string
+          max_tentativas?: number | null
+          mensagem_recebida?: string
+          metadata?: Json | null
+          origem?: string | null
+          prioridade?: number | null
+          processing_started_at?: string | null
+          resposta_ia?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
+          status?: string | null
+          tentativas?: number | null
+          tipo_mensagem?: string | null
+          user_id?: string | null
+          wuzapi_token?: string | null
+        }
+        Relationships: []
+      }
       fontes_dados: {
         Row: {
           ativo: boolean | null
@@ -4210,6 +4285,51 @@ export type Database = {
           },
         ]
       }
+      rate_limit_afiliado: {
+        Row: {
+          dia_atual: string | null
+          hora_atual: string
+          id: string
+          minuto_atual: string
+          motivo_pausa: string | null
+          msgs_na_hora: number | null
+          msgs_no_dia: number | null
+          msgs_no_minuto: number | null
+          pausado: boolean | null
+          pausado_ate: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          dia_atual?: string | null
+          hora_atual: string
+          id?: string
+          minuto_atual: string
+          motivo_pausa?: string | null
+          msgs_na_hora?: number | null
+          msgs_no_dia?: number | null
+          msgs_no_minuto?: number | null
+          pausado?: boolean | null
+          pausado_ate?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          dia_atual?: string | null
+          hora_atual?: string
+          id?: string
+          minuto_atual?: string
+          motivo_pausa?: string | null
+          msgs_na_hora?: number | null
+          msgs_no_dia?: number | null
+          msgs_no_minuto?: number | null
+          pausado?: boolean | null
+          pausado_ate?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       scheduled_posts: {
         Row: {
           created_at: string
@@ -5597,6 +5717,39 @@ export type Database = {
       }
       limpar_estados_antigos_afiliado: { Args: never; Returns: number }
       limpar_webhook_dedup_antigos: { Args: never; Returns: number }
+      pegar_proximo_fila_afiliado: {
+        Args: { p_limit?: number; p_user_id?: string }
+        Returns: {
+          conversa_id: string | null
+          created_at: string | null
+          erro: string | null
+          id: string
+          imagem_url: string | null
+          instance_name: string | null
+          lead_name: string | null
+          lead_phone: string
+          max_tentativas: number | null
+          mensagem_recebida: string
+          metadata: Json | null
+          origem: string | null
+          prioridade: number | null
+          processing_started_at: string | null
+          resposta_ia: string | null
+          scheduled_at: string | null
+          sent_at: string | null
+          status: string | null
+          tentativas: number | null
+          tipo_mensagem: string | null
+          user_id: string | null
+          wuzapi_token: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "fila_atendimento_afiliado"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
       verificar_blacklist_afiliado: {
