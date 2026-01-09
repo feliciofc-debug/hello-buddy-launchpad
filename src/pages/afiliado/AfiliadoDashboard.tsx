@@ -62,6 +62,15 @@ interface LeadCapturado {
   created_at: string;
 }
 
+interface GrupoWhatsApp {
+  id: string;
+  group_jid: string;
+  group_name: string;
+  member_count: number;
+  categoria: string | null;
+  is_announce: boolean;
+}
+
 export default function AfiliadoDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -78,6 +87,7 @@ export default function AfiliadoDashboard() {
   });
   const [leadsCapturados, setLeadsCapturados] = useState<LeadCapturado[]>([]);
   const [deletingLead, setDeletingLead] = useState<string | null>(null);
+  const [grupos, setGrupos] = useState<GrupoWhatsApp[]>([]);
   
   // Modal criar grupo
   const [showGrupoModal, setShowGrupoModal] = useState(false);
@@ -109,7 +119,7 @@ export default function AfiliadoDashboard() {
       setUserId(user.id);
 
       // Carregar estatísticas
-      const [produtosRes, vendasRes, disparosRes, campanhasRes, clientesRes, contatosRes] = await Promise.all([
+      const [produtosRes, vendasRes, disparosRes, campanhasRes, clientesRes, contatosRes, gruposRes] = await Promise.all([
         supabase.from('afiliado_produtos').select('id', { count: 'exact' }).eq('user_id', user.id),
         supabase.from('afiliado_vendas').select('valor').eq('user_id', user.id),
         supabase.from('afiliado_disparos').select('id', { count: 'exact' }).eq('user_id', user.id).eq('status', 'agendado'),
@@ -122,7 +132,13 @@ export default function AfiliadoDashboard() {
           .order('created_at', { ascending: false })
           .limit(10),
         // Total de contatos cadastrados
-        supabase.from('cadastros').select('id', { count: 'exact' }).eq('user_id', user.id)
+        supabase.from('cadastros').select('id', { count: 'exact' }).eq('user_id', user.id),
+        // Grupos WhatsApp
+        supabase.from('whatsapp_grupos_afiliado')
+          .select('id, group_jid, group_name, member_count, categoria, is_announce')
+          .eq('user_id', user.id)
+          .eq('ativo', true)
+          .order('created_at', { ascending: false })
       ]);
 
       const totalVendas = vendasRes.data?.length || 0;
@@ -157,6 +173,9 @@ export default function AfiliadoDashboard() {
         created_at: c.created_at
       }));
       setLeadsCapturados(leads);
+
+      // Mapear grupos
+      setGrupos((gruposRes.data || []) as GrupoWhatsApp[]);
 
     } catch (error) {
       console.error('Erro ao carregar stats:', error);
@@ -475,6 +494,54 @@ export default function AfiliadoDashboard() {
                   ))}
                 </div>
               </ScrollArea>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Grupos WhatsApp */}
+        {grupos.length > 0 && (
+          <Card className="mb-8 border-teal-500">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <UsersRound className="h-5 w-5 text-teal-500" />
+                  Grupos WhatsApp ({grupos.length})
+                </CardTitle>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => navigate('/afiliado/grupos')}
+                >
+                  Ver Todos
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-2">
+                {grupos.slice(0, 4).map((grupo) => (
+                  <div 
+                    key={grupo.id} 
+                    className="flex items-center justify-between p-3 bg-muted/50 rounded-lg cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => navigate('/afiliado/grupos')}
+                  >
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{grupo.group_name}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                        <Users className="h-3 w-3" />
+                        <span>{grupo.member_count} membros</span>
+                        {grupo.is_announce && (
+                          <Badge variant="outline" className="text-xs text-orange-600 border-orange-300">
+                            Só Admins
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <Badge variant="secondary" className="text-xs capitalize">
+                      {grupo.categoria || 'geral'}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}
