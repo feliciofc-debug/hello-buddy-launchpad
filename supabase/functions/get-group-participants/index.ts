@@ -42,14 +42,14 @@ serve(async (req) => {
       );
     }
 
-    // Buscar informações do grupo via WuzAPI
+    // Buscar informações do grupo via WuzAPI - método GET com body
     const response = await fetch(`${CONTABO_WUZAPI_URL}/group/info`, {
-      method: "POST",
+      method: "GET",
       headers: {
         "Token": cliente.wuzapi_token,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ groupjid: groupJid })
+      body: JSON.stringify({ GroupJID: groupJid })
     });
 
     if (!response.ok) {
