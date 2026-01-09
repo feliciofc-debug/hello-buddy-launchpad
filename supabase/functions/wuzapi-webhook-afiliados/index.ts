@@ -517,7 +517,127 @@ Deno.serve(async (req) => {
       console.log('✅ [AMZ-OFERTAS] Novo message_id registrado:', messageId)
     }
 
-    // Extrair mensagem do payload Wuzapi
+    // ========== DETECTAR EVENTO DE NOVO MEMBRO NO GRUPO ==========
+    // WuzAPI envia event type = "group" com action "add" quando alguém entra no grupo
+    const isGroupEvent =
+      payload?.type === 'group' ||
+      payload?.event === 'group-participants.update' ||
+      payload?.event?.Type === 'group' ||
+      payload?.jsonData?.type === 'group' ||
+      payload?.jsonData?.event === 'group-participants.update'
+
+    if (isGroupEvent) {
+      const action =
+        payload?.action ||
+        payload?.event?.Action ||
+        payload?.jsonData?.action ||
+        payload?.jsonData?.event?.Action ||
+        ''
+      const actionLower = String(action).toLowerCase()
+
+      if (actionLower === 'add' || actionLower === 'join') {
+        // Novo(s) membro(s) entraram no grupo
+        const groupJid =
+          payload?.jid ||
+          payload?.event?.JID ||
+          payload?.jsonData?.jid ||
+          payload?.jsonData?.event?.JID ||
+          payload?.chat ||
+          ''
+
+        // Participantes que entraram - WuzAPI pode enviar em participants / Participants / event.Participants
+        const participants: string[] =
+          payload?.participants ||
+          payload?.event?.Participants ||
+          payload?.jsonData?.participants ||
+          payload?.jsonData?.event?.Participants ||
+          []
+
+        console.log(`👋 [AMZ-OFERTAS] Novos membros no grupo ${groupJid}:`, participants)
+
+        // Buscar afiliado pelo instanceName (para pegar token)
+        const instanceName =
+          payload?.instanceName || payload?.jsonData?.instanceName || ''
+        const affiliateInfo = await findAffiliateByReceivingNumber(supabase, instanceName)
+        const wuzapiToken = affiliateInfo?.wuzapi_token
+        const userId = affiliateInfo?.user_id
+
+        if (wuzapiToken && participants.length > 0) {
+          for (const participantJid of participants) {
+            // Extrair telefone do JID (remover @s.whatsapp.net / @lid / :XX)
+            const phone = String(participantJid)
+              .replace(/@s\.whatsapp\.net/g, '')
+              .replace(/@lid/g, '')
+              .replace(/@c\.us/g, '')
+              .replace(/:\d+$/, '')
+              .replace(/\D/g, '')
+
+            if (!phone || phone.length < 10) continue
+
+            // Evitar enviar boas-vindas para o próprio número do afiliado
+            const affiliatePhone = (affiliateInfo?.wuzapi_jid || '').replace(/\D/g, '')
+            if (affiliatePhone && phone.includes(affiliatePhone.slice(-8))) {
+              console.log(`⏭️ [AMZ-OFERTAS] Ignorando boas-vindas para o próprio afiliado: ${phone}`)
+              continue
+            }
+
+            // Enviar mensagem de boas-vindas no PRIVADO do novo membro
+            const welcomeMessage = `🎉 *Bem-vindo(a) ao grupo AMZ Ofertas Cashback!* 🎉
+
+Que bom ter você aqui! 💜
+
+📲 *Como funciona:*
+1️⃣ Você recebe ofertas incríveis no grupo
+2️⃣ Compra pelo link (site oficial)
+3️⃣ Envia o comprovante aqui no privado
+4️⃣ Ganha *2% de cashback* + eBook grátis! 🎁
+
+📸 *Para registrar seu cashback:*
+Acesse 👉 *amzofertas.com.br/comprovante*
+Coloque seu telefone e envie a foto do comprovante.
+
+💰 Quando juntar R$30, você resgata via PIX! (liberado após 35 dias)
+
+📚 *Quer seu eBook grátis agora?*
+Me manda um *"oi"* aqui que eu te envio na hora!
+
+Qualquer dúvida, é só chamar! 😊`
+
+            try {
+              await sendWhatsAppMessage(phone, welcomeMessage, wuzapiToken)
+              console.log(`✅ [AMZ-OFERTAS] Boas-vindas enviada para ${phone}`)
+
+              // Logar evento
+              await logEvent(supabase, {
+                evento: 'boas_vindas_grupo',
+                cliente_phone: phone,
+                user_id: userId,
+                metadata: { groupJid }
+              })
+
+              // Pequeno delay para evitar flood
+              await new Promise((r) => setTimeout(r, 1500))
+            } catch (err) {
+              console.error(`❌ [AMZ-OFERTAS] Erro ao enviar boas-vindas para ${phone}:`, err)
+            }
+          }
+        }
+
+        return new Response(
+          JSON.stringify({ success: true, message: 'Boas-vindas enviadas', participants }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Outros eventos de grupo (remove, promote, demote) - ignorar
+      console.log(`⏭️ [AMZ-OFERTAS] Evento de grupo não tratado: ${action}`)
+      return new Response(
+        JSON.stringify({ success: true, message: 'Evento de grupo ignorado' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Extrair mensagem do payload Wuzapi (mensagens normais)
     const message = parseWuzapiPayload(payload)
     console.log('💬 [AMZ-OFERTAS] Mensagem processada:', message)
 
