@@ -557,15 +557,32 @@ export function ProgramacaoEnvioCard() {
             </div>
           </div>
 
-          {/* Próximo envio e grupos */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {prog.proximo_envio && prog.ativo && (
-              <div className="p-2 bg-blue-50 dark:bg-blue-950/30 rounded-lg text-sm flex-1">
-                <span className="text-blue-600 dark:text-blue-400 font-medium">
-                  📅 Próximo: {new Date(prog.proximo_envio).toLocaleString('pt-BR')}
+          {/* Próximo envio - SEMPRE VISÍVEL */}
+          <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  Próximo envio:
                 </span>
               </div>
-            )}
+              {prog.ativo && prog.proximo_envio ? (
+                <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                  {new Date(prog.proximo_envio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  <span className="text-sm font-normal ml-2 text-blue-500">
+                    ({new Date(prog.proximo_envio).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})
+                  </span>
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground italic">
+                  {prog.ativo ? 'Calculando...' : 'Pausado'}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Grupos */}
+          <div className="mt-2 flex flex-wrap gap-2">
             <div className="p-2 bg-purple-50 dark:bg-purple-950/30 rounded-lg text-sm">
               <span className="text-purple-600 dark:text-purple-400 font-medium">
                 📱 {prog.enviar_para_todos_grupos ? `Todos os grupos` : `${prog.grupos_ids?.length || 0} grupos`}
