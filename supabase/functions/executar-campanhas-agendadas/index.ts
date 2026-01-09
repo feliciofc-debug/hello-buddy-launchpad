@@ -284,13 +284,32 @@ serve(async (req) => {
       console.error('❌ [AFILIADO] Erro ao chamar envio programado:', epError);
     }
 
+    // ✅ PROCESSAR FILA DE ATENDIMENTO AFILIADO (respostas da IA humanizadas)
+    let filaAtendimentoResult = null;
+    try {
+      console.log('🤖 [FILA] Disparando processar-fila-afiliado...');
+      const { data, error } = await supabase.functions.invoke('processar-fila-afiliado', {
+        body: {}
+      });
+      
+      if (error) {
+        console.error('❌ [FILA] Erro ao processar fila:', error);
+      } else {
+        filaAtendimentoResult = data;
+        console.log('✅ [FILA] Fila processada:', data);
+      }
+    } catch (filaError) {
+      console.error('❌ [FILA] Erro ao chamar processar-fila:', filaError);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
         executadas,
         erros,
         total: campanhas?.length || 0,
-        envioProgramado: envioProgramadoResult
+        envioProgramado: envioProgramadoResult,
+        filaAtendimento: filaAtendimentoResult
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
