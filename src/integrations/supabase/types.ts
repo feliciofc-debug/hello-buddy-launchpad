@@ -2201,6 +2201,65 @@ export type Database = {
         }
         Relationships: []
       }
+      historico_envio_programado: {
+        Row: {
+          enviado_at: string | null
+          erro: string | null
+          grupos_enviados: number | null
+          grupos_ids: string[] | null
+          id: string
+          produto_categoria: string | null
+          produto_id: string | null
+          produto_imagem: string | null
+          produto_link: string | null
+          produto_preco: number | null
+          produto_titulo: string | null
+          programacao_id: string | null
+          sucesso: boolean | null
+          user_id: string | null
+        }
+        Insert: {
+          enviado_at?: string | null
+          erro?: string | null
+          grupos_enviados?: number | null
+          grupos_ids?: string[] | null
+          id?: string
+          produto_categoria?: string | null
+          produto_id?: string | null
+          produto_imagem?: string | null
+          produto_link?: string | null
+          produto_preco?: number | null
+          produto_titulo?: string | null
+          programacao_id?: string | null
+          sucesso?: boolean | null
+          user_id?: string | null
+        }
+        Update: {
+          enviado_at?: string | null
+          erro?: string | null
+          grupos_enviados?: number | null
+          grupos_ids?: string[] | null
+          id?: string
+          produto_categoria?: string | null
+          produto_id?: string | null
+          produto_imagem?: string | null
+          produto_link?: string | null
+          produto_preco?: number | null
+          produto_titulo?: string | null
+          programacao_id?: string | null
+          sucesso?: boolean | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "historico_envio_programado_programacao_id_fkey"
+            columns: ["programacao_id"]
+            isOneToOne: false
+            referencedRelation: "programacao_envio_afiliado"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       historico_envios: {
         Row: {
           erro: string | null
@@ -4062,6 +4121,35 @@ export type Database = {
           },
         ]
       }
+      produtos_enviados_programacao: {
+        Row: {
+          enviado_at: string | null
+          id: string
+          produto_id: string
+          programacao_id: string
+        }
+        Insert: {
+          enviado_at?: string | null
+          id?: string
+          produto_id: string
+          programacao_id: string
+        }
+        Update: {
+          enviado_at?: string | null
+          id?: string
+          produto_id?: string
+          programacao_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produtos_enviados_programacao_programacao_id_fkey"
+            columns: ["programacao_id"]
+            isOneToOne: false
+            referencedRelation: "programacao_envio_afiliado"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       produtos_marketplace: {
         Row: {
           ativo: boolean | null
@@ -4191,6 +4279,96 @@ export type Database = {
           updated_at?: string
           valor_plano?: number | null
           whatsapp?: string
+        }
+        Relationships: []
+      }
+      programacao_envio_afiliado: {
+        Row: {
+          ativo: boolean | null
+          categorias: string[]
+          created_at: string | null
+          descricao: string | null
+          dias_mes: number[] | null
+          dias_semana: number[] | null
+          enviar_para_todos_grupos: boolean | null
+          grupos_ids: string[] | null
+          horario_fim: string
+          horario_inicio: string
+          id: string
+          incluir_imagem: boolean | null
+          incluir_link: boolean | null
+          incluir_preco: boolean | null
+          intervalo_minutos: number
+          modo_selecao: string | null
+          nome: string
+          prefixo_mensagem: string | null
+          proximo_envio: string | null
+          sufixo_mensagem: string | null
+          total_enviados: number | null
+          total_enviados_hoje: number | null
+          ultimo_envio: string | null
+          ultimo_produto_id: string | null
+          ultimo_reset_diario: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          categorias?: string[]
+          created_at?: string | null
+          descricao?: string | null
+          dias_mes?: number[] | null
+          dias_semana?: number[] | null
+          enviar_para_todos_grupos?: boolean | null
+          grupos_ids?: string[] | null
+          horario_fim?: string
+          horario_inicio?: string
+          id?: string
+          incluir_imagem?: boolean | null
+          incluir_link?: boolean | null
+          incluir_preco?: boolean | null
+          intervalo_minutos?: number
+          modo_selecao?: string | null
+          nome?: string
+          prefixo_mensagem?: string | null
+          proximo_envio?: string | null
+          sufixo_mensagem?: string | null
+          total_enviados?: number | null
+          total_enviados_hoje?: number | null
+          ultimo_envio?: string | null
+          ultimo_produto_id?: string | null
+          ultimo_reset_diario?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          categorias?: string[]
+          created_at?: string | null
+          descricao?: string | null
+          dias_mes?: number[] | null
+          dias_semana?: number[] | null
+          enviar_para_todos_grupos?: boolean | null
+          grupos_ids?: string[] | null
+          horario_fim?: string
+          horario_inicio?: string
+          id?: string
+          incluir_imagem?: boolean | null
+          incluir_link?: boolean | null
+          incluir_preco?: boolean | null
+          intervalo_minutos?: number
+          modo_selecao?: string | null
+          nome?: string
+          prefixo_mensagem?: string | null
+          proximo_envio?: string | null
+          sufixo_mensagem?: string | null
+          total_enviados?: number | null
+          total_enviados_hoje?: number | null
+          ultimo_envio?: string | null
+          ultimo_produto_id?: string | null
+          ultimo_reset_diario?: string | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -5700,6 +5878,10 @@ export type Database = {
         Args: { p_categoria?: string; p_titulo: string }
         Returns: string
       }
+      calcular_proximo_envio: {
+        Args: { p_programacao_id: string }
+        Returns: string
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
@@ -5749,6 +5931,17 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      pegar_proximo_produto_programacao: {
+        Args: { p_programacao_id: string }
+        Returns: {
+          categoria: string
+          imagem_url: string
+          link_afiliado: string
+          preco: number
+          produto_id: string
+          titulo: string
+        }[]
       }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }

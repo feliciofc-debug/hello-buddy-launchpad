@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppCSVModal";
 import GerenciarCampanhasAtivas from "@/components/afiliado/GerenciarCampanhasAtivas";
+import ProgramacaoEnvioCard from "@/components/afiliado/ProgramacaoEnvioCard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -583,6 +584,11 @@ export default function AfiliadoDashboard() {
         {/* Gerenciar Campanhas Ativas */}
         <div className="mb-8">
           <GerenciarCampanhasAtivas />
+        </div>
+
+        {/* Envio Programado Automático */}
+        <div className="mb-8">
+          <ProgramacaoEnvioCard />
         </div>
 
         {/* Grupos WhatsApp */}
