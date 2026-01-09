@@ -25,7 +25,8 @@ interface ListaTransmissao {
   group_name: string;
   member_count: number;
   phone_numbers: string[];
-  source: 'manual' | 'auto';
+  source: 'manual' | 'auto' | 'grupo';
+  group_jid?: string; // Para grupos WhatsApp reais
 }
 
 interface PostsGerados {
@@ -68,13 +69,13 @@ export function CriarCampanhaAfiliadoModal({
   const [sugestaoIA, setSugestaoIA] = useState('');
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
-  // Buscar listas de transmissão ao abrir modal (manuais + automáticas)
+  // Buscar listas de transmissão ao abrir modal (manuais + automáticas + grupos WhatsApp)
   const fetchListas = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [manualRes, autoRes] = await Promise.all([
+      const [manualRes, autoRes, gruposRes] = await Promise.all([
         supabase
           .from('whatsapp_groups')
           .select('*')
@@ -84,11 +85,29 @@ export function CriarCampanhaAfiliadoModal({
           .from('afiliado_listas_categoria')
           .select('id, nome, total_membros, ativa')
           .eq('ativa', true)
-          .order('nome', { ascending: true })
+          .order('nome', { ascending: true }),
+        // Grupos WhatsApp reais
+        supabase
+          .from('whatsapp_grupos_afiliado')
+          .select('id, group_jid, group_name, member_count, categoria, is_announce')
+          .eq('user_id', user.id)
+          .eq('ativo', true)
+          .order('created_at', { ascending: false })
       ]);
 
       if (manualRes.error) throw manualRes.error;
       if (autoRes.error) throw autoRes.error;
+      if (gruposRes.error) throw gruposRes.error;
+
+      // Grupos WhatsApp reais (aparecem primeiro com ícone destacado)
+      const gruposWhatsApp: ListaTransmissao[] = (gruposRes.data || []).map((g: any) => ({
+        id: g.id,
+        group_name: `📱 ${g.group_name}`,
+        member_count: g.member_count ?? 0,
+        phone_numbers: [],
+        source: 'grupo' as const,
+        group_jid: g.group_jid,
+      }));
 
       const listasAuto: ListaTransmissao[] = (autoRes.data || [])
         .filter((l) => l.ativa !== false)
@@ -108,7 +127,8 @@ export function CriarCampanhaAfiliadoModal({
         source: 'manual' as const,
       }));
 
-      setListas([...listasAuto, ...listasManuais]);
+      // Ordem: Grupos WhatsApp → Listas automáticas → Listas manuais
+      setListas([...gruposWhatsApp, ...listasAuto, ...listasManuais]);
     } catch (error) {
       console.error('Erro ao buscar listas:', error);
       setListas([]);
@@ -256,83 +276,119 @@ _Aproveite enquanto dura!_ ✅`;
   };
 
   const enviarAgora = async (userId: string, listasIds: string[], mensagemTemplate: string, produtoInfo: any) => {
-    // Buscar contatos (manuais + auto COM NOME)
-    const [manualRes, autoRes] = await Promise.all([
-      supabase
-        .from('whatsapp_groups')
-        .select('phone_numbers')
-        .in('id', listasIds),
-      supabase
-        .from('afiliado_lista_membros')
-        .select('leads_ebooks ( phone, nome )')
-        .in('lista_id', listasIds),
-    ]);
-
-    if (manualRes.error) throw manualRes.error;
-    if (autoRes.error) throw autoRes.error;
-
-    // Contatos manuais (sem nome, só telefone)
-    const contatosManuais = (manualRes.data?.flatMap((g: any) => g.phone_numbers || []) || [])
-      .map((phone: string) => ({ phone: String(phone).replace(/\D/g, ''), nome: 'Cliente' }));
-
-    // Contatos automáticos (COM nome do leads_ebooks)
-    const contatosAuto = (autoRes.data || [])
-      .map((m: any) => {
-        const lead = m.leads_ebooks as any;
-        return lead?.phone ? { 
-          phone: String(lead.phone).replace(/\D/g, ''), 
-          nome: lead.nome || 'Cliente' 
-        } : null;
-      })
-      .filter(Boolean);
-
-    // Deduplicar por phone, mantendo o primeiro nome encontrado
-    const contatosMap = new Map<string, { phone: string; nome: string }>();
-    [...contatosManuais, ...contatosAuto].forEach((c: any) => {
-      if (c.phone && !contatosMap.has(c.phone)) {
-        contatosMap.set(c.phone, c);
-      }
-    });
-    const contatos = Array.from(contatosMap.values());
-
-    if (contatos.length === 0) {
-      toast.warning('A lista selecionada não tem contatos ainda.');
-      return;
-    }
+    // Separar grupos WhatsApp reais das outras listas
+    const gruposWhatsApp = listas.filter(l => l.source === 'grupo' && listasIds.includes(l.id));
+    const outrasListasIds = listasIds.filter(id => !gruposWhatsApp.some(g => g.id === id));
 
     let enviados = 0;
     let erros = 0;
 
-    // Enviar um por um com mensagem personalizada
-    for (const contato of contatos) {
-      const mensagemPersonalizada = mensagemTemplate
-        .replace(/\{\{nome\}\}/gi, contato.nome)
+    // 1. Enviar para Grupos WhatsApp reais (uma mensagem por grupo)
+    for (const grupo of gruposWhatsApp) {
+      if (!grupo.group_jid) continue;
+
+      const mensagemGrupo = mensagemTemplate
+        .replace(/\{\{nome\}\}/gi, 'Pessoal')
         .replace(/\{\{produto\}\}/gi, produtoInfo?.titulo || 'Produto')
         .replace(/\{\{preco\}\}/gi, produtoInfo?.preco?.toString() || '0');
 
-      const { data: sendData, error: sendError } = await supabase.functions.invoke(
-        'send-wuzapi-message-afiliado',
-        {
-          body: {
-            phoneNumbers: [contato.phone],
-            message: mensagemPersonalizada,
-            imageUrl: produtoInfo?.imagem_url || null,
-            userId,
-          },
+      try {
+        const { data: sendData, error: sendError } = await supabase.functions.invoke(
+          'send-wuzapi-group-message',
+          {
+            body: {
+              groupJid: grupo.group_jid,
+              message: mensagemGrupo,
+              imageUrl: produtoInfo?.imagem_url || null,
+              userId,
+            },
+          }
+        );
+
+        if (sendError || !sendData?.success) {
+          erros++;
+          console.error(`❌ Erro ao enviar para grupo ${grupo.group_name}:`, sendError || sendData);
+        } else {
+          enviados++;
+          console.log(`✅ Enviado para grupo ${grupo.group_name}`);
         }
-      );
-
-      if (sendError || !sendData?.success) {
+      } catch (err) {
         erros++;
-      } else {
-        enviados += sendData?.enviados || 1;
+        console.error(`❌ Exceção ao enviar para grupo:`, err);
       }
-
-      // Delay entre envios
-      await new Promise((r) => setTimeout(r, 400));
     }
 
-    if (enviados > 0) toast.success(`✅ Enviado agora: ${enviados} contato(s)`);
+    // 2. Enviar para contatos individuais (listas manuais + automáticas)
+    if (outrasListasIds.length > 0) {
+      const [manualRes, autoRes] = await Promise.all([
+        supabase
+          .from('whatsapp_groups')
+          .select('phone_numbers')
+          .in('id', outrasListasIds),
+        supabase
+          .from('afiliado_lista_membros')
+          .select('leads_ebooks ( phone, nome )')
+          .in('lista_id', outrasListasIds),
+      ]);
+
+      if (manualRes.error) throw manualRes.error;
+      if (autoRes.error) throw autoRes.error;
+
+      // Contatos manuais (sem nome, só telefone)
+      const contatosManuais = (manualRes.data?.flatMap((g: any) => g.phone_numbers || []) || [])
+        .map((phone: string) => ({ phone: String(phone).replace(/\D/g, ''), nome: 'Cliente' }));
+
+      // Contatos automáticos (COM nome do leads_ebooks)
+      const contatosAuto = (autoRes.data || [])
+        .map((m: any) => {
+          const lead = m.leads_ebooks as any;
+          return lead?.phone ? { 
+            phone: String(lead.phone).replace(/\D/g, ''), 
+            nome: lead.nome || 'Cliente' 
+          } : null;
+        })
+        .filter(Boolean);
+
+      // Deduplicar por phone, mantendo o primeiro nome encontrado
+      const contatosMap = new Map<string, { phone: string; nome: string }>();
+      [...contatosManuais, ...contatosAuto].forEach((c: any) => {
+        if (c.phone && !contatosMap.has(c.phone)) {
+          contatosMap.set(c.phone, c);
+        }
+      });
+      const contatos = Array.from(contatosMap.values());
+
+      // Enviar um por um com mensagem personalizada
+      for (const contato of contatos) {
+        const mensagemPersonalizada = mensagemTemplate
+          .replace(/\{\{nome\}\}/gi, contato.nome)
+          .replace(/\{\{produto\}\}/gi, produtoInfo?.titulo || 'Produto')
+          .replace(/\{\{preco\}\}/gi, produtoInfo?.preco?.toString() || '0');
+
+        const { data: sendData, error: sendError } = await supabase.functions.invoke(
+          'send-wuzapi-message-afiliado',
+          {
+            body: {
+              phoneNumbers: [contato.phone],
+              message: mensagemPersonalizada,
+              imageUrl: produtoInfo?.imagem_url || null,
+              userId,
+            },
+          }
+        );
+
+        if (sendError || !sendData?.success) {
+          erros++;
+        } else {
+          enviados += sendData?.enviados || 1;
+        }
+
+        // Delay entre envios
+        await new Promise((r) => setTimeout(r, 400));
+      }
+    }
+
+    if (enviados > 0) toast.success(`✅ Enviado: ${enviados} destino(s)`);
     if (erros > 0) toast.warning(`⚠️ ${erros} falha(s) no envio`);
   };
 
@@ -456,20 +512,20 @@ _Aproveite enquanto dura!_ ✅`;
             </RadioGroup>
           </div>
 
-          {/* 2. LISTAS DE TRANSMISSÃO */}
+          {/* 2. LISTAS DE TRANSMISSÃO E GRUPOS */}
           <div className="p-4 bg-muted/30 rounded-lg">
             <Label className="text-lg font-semibold flex items-center gap-2">
               <Users className="h-5 w-5" />
-              2. Selecione as Listas de Transmissão
+              2. Selecione Grupos ou Listas
             </Label>
             
             {listas.length === 0 ? (
               <div className="mt-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800">
-                  ⚠️ Nenhuma lista de transmissão encontrada.
+                  ⚠️ Nenhuma lista ou grupo encontrado.
                 </p>
                 <p className="text-xs text-yellow-600 mt-1">
-                  Vá em WhatsApp → Contatos para criar suas listas primeiro.
+                  Crie um grupo no Dashboard ou importe contatos.
                 </p>
               </div>
             ) : (
@@ -480,8 +536,12 @@ _Aproveite enquanto dura!_ ✅`;
                     onClick={() => toggleLista(lista.id)}
                     className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${
                       listasSelecionadas.includes(lista.id) 
-                        ? 'border-green-500 bg-green-50' 
-                        : 'border-gray-200 hover:border-gray-300'
+                        ? lista.source === 'grupo' 
+                          ? 'border-green-500 bg-green-100' 
+                          : 'border-green-500 bg-green-50' 
+                        : lista.source === 'grupo'
+                          ? 'border-teal-300 bg-teal-50/50 hover:border-teal-400'
+                          : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -490,9 +550,17 @@ _Aproveite enquanto dura!_ ✅`;
                         onChange={() => {}}
                       />
                       <div>
-                        <p className="font-medium">{lista.group_name}</p>
+                        <p className="font-medium flex items-center gap-2">
+                          {lista.group_name}
+                          {lista.source === 'grupo' && (
+                            <span className="text-xs bg-teal-500 text-white px-1.5 py-0.5 rounded">GRUPO</span>
+                          )}
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {lista.member_count || lista.phone_numbers?.length || 0} contatos
+                          {lista.source === 'grupo' 
+                            ? `${lista.member_count || 0} membros` 
+                            : `${lista.member_count || lista.phone_numbers?.length || 0} contatos`
+                          }
                         </p>
                       </div>
                     </div>
