@@ -592,33 +592,72 @@ Que bom ter você aqui! 💜
 3️⃣ Envia o comprovante aqui no privado
 4️⃣ Ganha *2% de cashback* + eBook grátis! 🎁
 
-📸 *Para registrar seu cashback:*
-Acesse 👉 *amzofertas.com.br/comprovante*
-Coloque seu telefone e envie a foto do comprovante.
-
 💰 Quando juntar R$30, você resgata via PIX! (liberado após 35 dias)
 
-📚 *Quer seu eBook grátis agora?*
-Me manda um *"oi"* aqui que eu te envio na hora!
+📚 *Já vou te enviar seu eBook grátis de presente!* 🎁
 
 Qualquer dúvida, é só chamar! 😊`
 
             try {
+              // 1) Enviar mensagem de boas-vindas
               await sendWhatsAppMessage(phone, welcomeMessage, wuzapiToken, supabase, userId)
               console.log(`✅ [AMZ-OFERTAS] Boas-vindas enviada para ${phone}`)
 
+              // 2) Aguardar um pouco antes de enviar o eBook
+              await new Promise((r) => setTimeout(r, 2000))
+
+              // 3) Enviar o eBook de boas-vindas (PDF)
+              const ebookFilename = '50-receitas-airfryer.pdf'
+              const ebookTitulo = '50 Receitas Airfryer'
+              
+              await sendWhatsAppPDF(
+                phone,
+                ebookFilename,
+                `${ebookTitulo} - Seu presente de boas-vindas! 🎁`,
+                wuzapiToken,
+                supabase,
+                userId
+              )
+              console.log(`📚 [AMZ-OFERTAS] eBook enviado para ${phone}`)
+
+              // 4) Registrar entrega do eBook
+              await supabase.from('afiliado_ebook_deliveries').insert({
+                phone: phone,
+                ebook_titulo: ebookTitulo,
+                ebook_filename: ebookFilename,
+                categoria: 'Cozinha',
+                user_id: userId
+              })
+
+              // 5) Criar lead nas tabelas de afiliado (se não existir)
+              const { data: existingLead } = await supabase
+                .from('leads_ebooks')
+                .select('id')
+                .eq('phone', phone)
+                .maybeSingle()
+
+              if (!existingLead) {
+                await supabase.from('leads_ebooks').insert({
+                  phone: phone,
+                  nome: null, // Será capturado quando responder
+                  origem: 'grupo_whatsapp',
+                  user_id: userId
+                })
+                console.log(`📋 [AMZ-OFERTAS] Lead criado para ${phone}`)
+              }
+
               // Logar evento
               await logEvent(supabase, {
-                evento: 'boas_vindas_grupo',
+                evento: 'boas_vindas_grupo_com_ebook',
                 cliente_phone: phone,
                 user_id: userId,
-                metadata: { groupJid }
+                metadata: { groupJid, ebookEnviado: ebookTitulo }
               })
 
               // Pequeno delay para evitar flood
               await new Promise((r) => setTimeout(r, 1500))
             } catch (err) {
-              console.error(`❌ [AMZ-OFERTAS] Erro ao enviar boas-vindas para ${phone}:`, err)
+              console.error(`❌ [AMZ-OFERTAS] Erro ao enviar boas-vindas/eBook para ${phone}:`, err)
             }
           }
         }
