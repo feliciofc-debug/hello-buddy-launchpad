@@ -6,40 +6,32 @@ const COOLDOWN_MINUTOS = 0; // teste: desabilitado (volte para 5 depois)
 const CONTABO_WUZAPI_URL = 'https://api2.amzofertas.com.br';
 
 /**
- * Formata preço corretamente tratando separador de milhar (Shopee armazena como 2.399 = R$ 2.399,00)
- * O banco armazena como número ex: 2.399 que deve ser interpretado como 2399 reais
+ * Formata preço corretamente para Shopee
+ * O banco armazena 2.399 (número) que deve ser R$ 2.399,00 (milhar)
+ * Regra: se número tem 3 casas "decimais" E parte inteira < 100, é milhar
  */
 function formatarPrecoAfiliado(preco: number | string | null): string {
   if (preco == null) return 'Consulte';
   
   let valor: number;
-  const precoStr = String(preco);
+  const precoNum = typeof preco === 'number' ? preco : parseFloat(String(preco).replace(',', '.'));
   
-  // Detectar padrão Shopee: número com 3 casas decimais (ex: 2.399 = 2399 reais)
-  // ou número grande sem decimais (ex: 2399 = 2399 reais)
+  if (isNaN(precoNum) || precoNum <= 0) return 'Consulte';
+  
+  // Detectar padrão Shopee: valores como 2.399 que deveriam ser 2399
+  // Se o valor é X.YYY onde X < 100 e YYY tem 3 dígitos, multiplica por 1000
+  const precoStr = precoNum.toString();
   if (precoStr.includes('.')) {
-    const partes = precoStr.split('.');
-    const decimais = partes[1] || '';
-    
-    if (decimais.length === 3) {
-      // 2.399 = 2399 (ponto é separador de milhar, não decimal)
-      valor = parseFloat(precoStr.replace('.', ''));
-    } else if (decimais.length <= 2) {
-      // 42.99 = 42.99 (padrão normal com centavos)
-      valor = parseFloat(precoStr);
+    const [inteiro, decimal] = precoStr.split('.');
+    // Se tem exatamente 3 decimais e parte inteira é pequena, é milhar
+    if (decimal && decimal.length === 3 && parseInt(inteiro) < 100) {
+      valor = precoNum * 1000; // 2.399 -> 2399
     } else {
-      // Fallback
-      valor = parseFloat(precoStr);
+      valor = precoNum;
     }
-  } else if (precoStr.includes(',')) {
-    // Formato BR: 2.399,00 ou 42,99
-    valor = parseFloat(precoStr.replace('.', '').replace(',', '.'));
   } else {
-    // Número inteiro: 399 = 399 reais
-    valor = parseFloat(precoStr);
+    valor = precoNum;
   }
-  
-  if (isNaN(valor) || valor <= 0) return 'Consulte';
   
   return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
