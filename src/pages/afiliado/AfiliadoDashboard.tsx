@@ -37,6 +37,22 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2 } from "lucide-react";
 
 interface LeadCapturado {
   id: string;
@@ -62,6 +78,22 @@ export default function AfiliadoDashboard() {
   });
   const [leadsCapturados, setLeadsCapturados] = useState<LeadCapturado[]>([]);
   const [deletingLead, setDeletingLead] = useState<string | null>(null);
+  
+  // Modal criar grupo
+  const [showGrupoModal, setShowGrupoModal] = useState(false);
+  const [novoGrupoNome, setNovoGrupoNome] = useState("");
+  const [novoGrupoCategoria, setNovoGrupoCategoria] = useState("geral");
+  const [criandoGrupo, setCriandoGrupo] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  const CATEGORIAS_GRUPO = [
+    { value: "casa", label: "🏠 Casa & Decoração" },
+    { value: "beleza", label: "💄 Beleza & Cuidados" },
+    { value: "eletronicos", label: "📱 Eletrônicos" },
+    { value: "moda", label: "👗 Moda & Acessórios" },
+    { value: "esportes", label: "⚽ Esportes & Lazer" },
+    { value: "geral", label: "🎁 Ofertas Gerais" },
+  ];
 
   useEffect(() => {
     loadStats();
@@ -74,6 +106,7 @@ export default function AfiliadoDashboard() {
         navigate('/login');
         return;
       }
+      setUserId(user.id);
 
       // Carregar estatísticas
       const [produtosRes, vendasRes, disparosRes, campanhasRes, clientesRes, contatosRes] = await Promise.all([
@@ -156,6 +189,43 @@ export default function AfiliadoDashboard() {
     }
   };
 
+  const criarGrupo = async () => {
+    if (!userId || !novoGrupoNome.trim()) {
+      toast.error("Digite o nome do grupo");
+      return;
+    }
+
+    setCriandoGrupo(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-whatsapp-group", {
+        body: {
+          groupName: novoGrupoNome.trim(),
+          categoria: novoGrupoCategoria,
+          userId
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success("Grupo criado com sucesso!");
+        if (data.inviteLink) {
+          navigator.clipboard.writeText(data.inviteLink);
+          toast.success("Link de convite copiado!");
+        }
+        setShowGrupoModal(false);
+        setNovoGrupoNome("");
+      } else {
+        throw new Error(data.error || "Erro ao criar grupo");
+      }
+    } catch (error: any) {
+      console.error("Erro ao criar grupo:", error);
+      toast.error(error.message || "Erro ao criar grupo");
+    } finally {
+      setCriandoGrupo(false);
+    }
+  };
+
   const menuItems = [
     { 
       title: "Conectar Celular", 
@@ -227,9 +297,15 @@ export default function AfiliadoDashboard() {
     <div className="min-h-screen bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">AMZ Ofertas Afiliados</h1>
-          <p className="text-muted-foreground mt-1">Painel de controle</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">AMZ Ofertas Afiliados</h1>
+            <p className="text-muted-foreground mt-1">Painel de controle</p>
+          </div>
+          <Button onClick={() => setShowGrupoModal(true)} className="gap-2">
+            <UsersRound className="h-4 w-4" />
+            Criar Grupo
+          </Button>
         </div>
 
         {/* Stats Cards */}
@@ -468,6 +544,58 @@ export default function AfiliadoDashboard() {
           loadStats();
         }}
       />
+
+      {/* Modal Criar Grupo WhatsApp */}
+      <Dialog open={showGrupoModal} onOpenChange={setShowGrupoModal}>
+        <DialogContent className="bg-background">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UsersRound className="h-5 w-5" />
+              Criar Grupo WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label>Nome do Grupo</Label>
+              <Input
+                placeholder="Ex: 🔥 Ofertas Casa & Decoração"
+                value={novoGrupoNome}
+                onChange={(e) => setNovoGrupoNome(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Categoria</Label>
+              <Select value={novoGrupoCategoria} onValueChange={setNovoGrupoCategoria}>
+                <SelectTrigger className="bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-background z-50">
+                  {CATEGORIAS_GRUPO.map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button 
+              className="w-full" 
+              onClick={criarGrupo}
+              disabled={criandoGrupo}
+            >
+              {criandoGrupo ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <UsersRound className="h-4 w-4 mr-2" />
+              )}
+              Criar Grupo
+            </Button>
+            <p className="text-xs text-muted-foreground text-center">
+              O link de convite será copiado automaticamente após a criação
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
