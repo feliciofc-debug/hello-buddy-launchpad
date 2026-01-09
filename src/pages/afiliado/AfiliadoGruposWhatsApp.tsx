@@ -18,7 +18,9 @@ import {
   RefreshCw,
   MessageSquare,
   Loader2,
-  Trash2
+  Trash2,
+  Lock,
+  Unlock
 } from "lucide-react";
 import {
   Dialog,
@@ -43,6 +45,7 @@ interface Grupo {
   invite_link: string | null;
   member_count: number;
   ativo: boolean;
+  is_announce: boolean;
   created_at: string;
 }
 
@@ -80,11 +83,46 @@ export default function AfiliadoGruposWhatsApp() {
   const [grupoParaLink, setGrupoParaLink] = useState<Grupo | null>(null);
   const [linkManual, setLinkManual] = useState("");
   const [salvandoLink, setSalvandoLink] = useState(false);
+  const [alterandoConfig, setAlterandoConfig] = useState<string | null>(null);
 
   const abrirLinkModal = (grupo: Grupo) => {
     setGrupoParaLink(grupo);
     setLinkManual(grupo.invite_link || "");
     setLinkModalOpen(true);
+  };
+
+  const toggleAnnounce = async (grupo: Grupo) => {
+    if (!userId) return;
+    
+    setAlterandoConfig(grupo.id);
+    try {
+      const action = grupo.is_announce ? "not_announce" : "announce";
+      const { data, error } = await supabase.functions.invoke("group-settings-afiliado", {
+        body: {
+          groupJid: grupo.group_jid,
+          action,
+          userId
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success(grupo.is_announce 
+          ? "Grupo desbloqueado! Todos podem enviar mensagens." 
+          : "Grupo bloqueado! Só admins podem enviar.");
+        setGrupos(prev => prev.map(g => 
+          g.id === grupo.id ? { ...g, is_announce: !grupo.is_announce } : g
+        ));
+      } else {
+        throw new Error(data.error || "Erro ao alterar configuração");
+      }
+    } catch (error: any) {
+      console.error("Erro ao alterar grupo:", error);
+      toast.error(error.message || "Erro ao alterar configuração");
+    } finally {
+      setAlterandoConfig(null);
+    }
   };
 
   const salvarLinkManual = async () => {
@@ -417,9 +455,17 @@ export default function AfiliadoGruposWhatsApp() {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                  <Badge variant="secondary" className="w-fit">
-                    {getCategoriaLabel(grupo.categoria)}
-                  </Badge>
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge variant="secondary">
+                      {getCategoriaLabel(grupo.categoria)}
+                    </Badge>
+                    {grupo.is_announce && (
+                      <Badge variant="outline" className="text-orange-600 border-orange-300">
+                        <Lock className="h-3 w-3 mr-1" />
+                        Só Admins
+                      </Badge>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -444,6 +490,24 @@ export default function AfiliadoGruposWhatsApp() {
                       </Button>
                     </div>
                   )}
+
+                  {/* Botão bloquear/desbloquear */}
+                  <Button
+                    variant={grupo.is_announce ? "default" : "outline"}
+                    size="sm"
+                    className="w-full"
+                    onClick={() => toggleAnnounce(grupo)}
+                    disabled={alterandoConfig === grupo.id}
+                  >
+                    {alterandoConfig === grupo.id ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : grupo.is_announce ? (
+                      <Unlock className="h-4 w-4 mr-2" />
+                    ) : (
+                      <Lock className="h-4 w-4 mr-2" />
+                    )}
+                    {grupo.is_announce ? "Desbloquear Grupo" : "Bloquear (Só Admins)"}
+                  </Button>
 
                   <div className="flex gap-2 pt-2">
                     {grupo.invite_link ? (
