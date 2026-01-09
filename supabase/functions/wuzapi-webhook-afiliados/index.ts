@@ -677,7 +677,14 @@ Qualquer dúvida, é só chamar no privado! 😊`
 
     // Extrair mensagem do payload Wuzapi (mensagens normais)
     const message = parseWuzapiPayload(payload)
-    console.log('💬 [AMZ-OFERTAS] Mensagem processada:', message)
+    
+    // IMPORTANTE: Se message.to veio vazio, usar o instanceName extraído do payload raiz
+    if (!message.to && instanceName && instanceName !== 'unknown') {
+      message.to = instanceName
+    }
+    
+    console.log('💬 [AMZ-OFERTAS] Mensagem processada:', JSON.stringify(message))
+    console.log('🔍 [AMZ-OFERTAS] instanceName do payload:', instanceName)
 
     if (!message.from) {
       console.log('⚠️ [AMZ-OFERTAS] Mensagem sem remetente, ignorando')
@@ -688,9 +695,15 @@ Qualquer dúvida, é só chamar no privado! 😊`
     }
 
     // Buscar afiliado pelo número que RECEBEU a mensagem (wuzapi_jid) OU pelo instanceName (wuzapi_instance_id)
-    const affiliateInfo = await findAffiliateByReceivingNumber(supabase, message.to || '')
+    // Prioridade: 1) message.to, 2) instanceName extraído do payload raiz
+    const lookupKey = message.to || instanceName || ''
+    console.log('🔍 [AMZ-OFERTAS] Buscando afiliado por:', lookupKey)
+    
+    const affiliateInfo = await findAffiliateByReceivingNumber(supabase, lookupKey)
     const wuzapiToken = affiliateInfo?.wuzapi_token
     const userId = affiliateInfo?.user_id
+    
+    console.log('👤 [AMZ-OFERTAS] Afiliado encontrado:', affiliateInfo ? `ID=${affiliateInfo.id}, Token=${wuzapiToken?.substring(0,6)}...` : 'NENHUM')
 
     // Sem token do afiliado: não responde (evita sair pelo PJ)
     if (!wuzapiToken) {
