@@ -74,7 +74,51 @@ export default function AfiliadoGruposWhatsApp() {
   const [mensagem, setMensagem] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const [gerandoLink, setGerandoLink] = useState<string | null>(null);
+  
+  // Modal inserir link manualmente
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [grupoParaLink, setGrupoParaLink] = useState<Grupo | null>(null);
+  const [linkManual, setLinkManual] = useState("");
+  const [salvandoLink, setSalvandoLink] = useState(false);
+
+  const abrirLinkModal = (grupo: Grupo) => {
+    setGrupoParaLink(grupo);
+    setLinkManual(grupo.invite_link || "");
+    setLinkModalOpen(true);
+  };
+
+  const salvarLinkManual = async () => {
+    if (!grupoParaLink || !linkManual.trim()) {
+      toast.error("Cole o link de convite");
+      return;
+    }
+
+    if (!linkManual.includes("chat.whatsapp.com")) {
+      toast.error("Link inválido. O link deve conter 'chat.whatsapp.com'");
+      return;
+    }
+
+    setSalvandoLink(true);
+    try {
+      const { error } = await supabase
+        .from("whatsapp_grupos_afiliado")
+        .update({ invite_link: linkManual.trim() })
+        .eq("id", grupoParaLink.id);
+
+      if (error) throw error;
+
+      toast.success("Link salvo com sucesso!");
+      setGrupos(prev => prev.map(g => 
+        g.id === grupoParaLink.id ? { ...g, invite_link: linkManual.trim() } : g
+      ));
+      setLinkModalOpen(false);
+    } catch (error: any) {
+      console.error("Erro ao salvar link:", error);
+      toast.error("Erro ao salvar link");
+    } finally {
+      setSalvandoLink(false);
+    }
+  };
   useEffect(() => {
     checkUser();
   }, []);
@@ -229,35 +273,6 @@ export default function AfiliadoGruposWhatsApp() {
     }
   };
 
-  const gerarLinkConvite = async (grupo: Grupo) => {
-    if (!userId) return;
-    
-    setGerandoLink(grupo.id);
-    try {
-      const { data, error } = await supabase.functions.invoke("generate-group-invite-link", {
-        body: { groupId: grupo.id, userId }
-      });
-
-      if (error) throw error;
-
-      if (data.success && data.inviteLink) {
-        toast.success("Link gerado com sucesso!");
-        navigator.clipboard.writeText(data.inviteLink);
-        toast.info("Link copiado para área de transferência!");
-        // Atualizar lista local
-        setGrupos(prev => prev.map(g => 
-          g.id === grupo.id ? { ...g, invite_link: data.inviteLink } : g
-        ));
-      } else {
-        throw new Error(data.error || "Erro ao gerar link");
-      }
-    } catch (error: any) {
-      console.error("Erro ao gerar link:", error);
-      toast.error(error.message || "Erro ao gerar link de convite");
-    } finally {
-      setGerandoLink(null);
-    }
-  };
   const getCategoriaLabel = (cat: string | null) => {
     const found = CATEGORIAS.find(c => c.value === cat);
     return found?.label || "🎁 Geral";
@@ -446,15 +461,10 @@ export default function AfiliadoGruposWhatsApp() {
                         variant="outline"
                         size="sm"
                         className="flex-1"
-                        onClick={() => gerarLinkConvite(grupo)}
-                        disabled={gerandoLink === grupo.id}
+                        onClick={() => abrirLinkModal(grupo)}
                       >
-                        {gerandoLink === grupo.id ? (
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        ) : (
-                          <LinkIcon className="h-4 w-4 mr-1" />
-                        )}
-                        Gerar Link
+                        <LinkIcon className="h-4 w-4 mr-1" />
+                        Inserir Link
                       </Button>
                     )}
                     <Button
@@ -471,6 +481,43 @@ export default function AfiliadoGruposWhatsApp() {
             ))}
           </div>
         )}
+
+        {/* Modal Inserir Link */}
+        <Dialog open={linkModalOpen} onOpenChange={setLinkModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <LinkIcon className="h-5 w-5" />
+                Inserir Link de Convite
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <p className="text-sm text-muted-foreground">
+                Copie o link de convite do grupo no seu celular (WhatsApp → Grupo → Dados do Grupo → Convidar via link) e cole abaixo:
+              </p>
+              <div>
+                <Label>Link de Convite</Label>
+                <Input
+                  placeholder="https://chat.whatsapp.com/..."
+                  value={linkManual}
+                  onChange={(e) => setLinkManual(e.target.value)}
+                />
+              </div>
+              <Button 
+                className="w-full" 
+                onClick={salvarLinkManual}
+                disabled={salvandoLink || !linkManual.trim()}
+              >
+                {salvandoLink ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <LinkIcon className="h-4 w-4 mr-2" />
+                )}
+                Salvar Link
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Modal Enviar Mensagem */}
         <Dialog open={enviarModalOpen} onOpenChange={setEnviarModalOpen}>
