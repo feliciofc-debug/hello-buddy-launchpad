@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import {
   ArrowLeft,
   Plus,
@@ -20,7 +22,12 @@ import {
   Loader2,
   Trash2,
   Lock,
-  Unlock
+  Unlock,
+  Eye,
+  CheckCircle,
+  XCircle,
+  Crown,
+  User
 } from "lucide-react";
 import {
   Dialog,
@@ -36,6 +43,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Grupo {
   id: string;
@@ -47,6 +56,23 @@ interface Grupo {
   ativo: boolean;
   is_announce: boolean;
   created_at: string;
+}
+
+interface Participant {
+  jid: string;
+  phone: string;
+  isAdmin: boolean;
+  isSuperAdmin: boolean;
+}
+
+interface HistoricoEnvio {
+  id: string;
+  whatsapp: string;
+  tipo: string;
+  mensagem: string;
+  sucesso: boolean;
+  erro: string | null;
+  timestamp: string;
 }
 
 const CATEGORIAS = [
@@ -85,10 +111,73 @@ export default function AfiliadoGruposWhatsApp() {
   const [salvandoLink, setSalvandoLink] = useState(false);
   const [alterandoConfig, setAlterandoConfig] = useState<string | null>(null);
 
+  // Modal detalhes do grupo
+  const [detalhesModalOpen, setDetalhesModalOpen] = useState(false);
+  const [grupoDetalhes, setGrupoDetalhes] = useState<Grupo | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [historicoEnvios, setHistoricoEnvios] = useState<HistoricoEnvio[]>([]);
+  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [loadingHistorico, setLoadingHistorico] = useState(false);
+
   const abrirLinkModal = (grupo: Grupo) => {
     setGrupoParaLink(grupo);
     setLinkManual(grupo.invite_link || "");
     setLinkModalOpen(true);
+  };
+
+  const abrirDetalhesModal = async (grupo: Grupo) => {
+    setGrupoDetalhes(grupo);
+    setDetalhesModalOpen(true);
+    setParticipants([]);
+    setHistoricoEnvios([]);
+    
+    // Carregar participantes e histórico em paralelo
+    carregarParticipantes(grupo);
+    carregarHistorico(grupo.group_jid);
+  };
+
+  const carregarParticipantes = async (grupo: Grupo) => {
+    if (!userId) return;
+    setLoadingParticipants(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("get-group-participants", {
+        body: { groupJid: grupo.group_jid, userId }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setParticipants(data.participants || []);
+        // Atualizar contagem local
+        setGrupos(prev => prev.map(g => 
+          g.id === grupo.id ? { ...g, member_count: data.totalMembers } : g
+        ));
+      }
+    } catch (error: any) {
+      console.error("Erro ao carregar participantes:", error);
+      toast.error("Erro ao carregar membros");
+    } finally {
+      setLoadingParticipants(false);
+    }
+  };
+
+  const carregarHistorico = async (groupJid: string) => {
+    setLoadingHistorico(true);
+    try {
+      const { data, error } = await supabase
+        .from("historico_envios")
+        .select("*")
+        .eq("whatsapp", groupJid)
+        .order("timestamp", { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      setHistoricoEnvios(data || []);
+    } catch (error: any) {
+      console.error("Erro ao carregar histórico:", error);
+    } finally {
+      setLoadingHistorico(false);
+    }
   };
 
   const toggleAnnounce = async (grupo: Grupo) => {
@@ -509,6 +598,17 @@ export default function AfiliadoGruposWhatsApp() {
                     {grupo.is_announce ? "Desbloquear Grupo" : "Bloquear (Só Admins)"}
                   </Button>
 
+                  {/* Botão ver detalhes */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => abrirDetalhesModal(grupo)}
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    Ver Membros & Envios
+                  </Button>
+
                   <div className="flex gap-2 pt-2">
                     {grupo.invite_link ? (
                       <Button
@@ -623,6 +723,123 @@ export default function AfiliadoGruposWhatsApp() {
                 Enviar Mensagem
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal Detalhes do Grupo */}
+        <Dialog open={detalhesModalOpen} onOpenChange={setDetalhesModalOpen}>
+          <DialogContent className="max-w-2xl max-h-[80vh]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                {grupoDetalhes?.group_name}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <Tabs defaultValue="membros" className="mt-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="membros" className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Membros ({participants.length})
+                </TabsTrigger>
+                <TabsTrigger value="historico" className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  Envios ({historicoEnvios.length})
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="membros" className="mt-4">
+                {loadingParticipants ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : participants.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Nenhum membro encontrado</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[400px]">
+                    <div className="space-y-2">
+                      {participants.map((p, index) => (
+                        <div 
+                          key={p.jid || index}
+                          className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                              {p.isSuperAdmin ? (
+                                <Crown className="h-5 w-5 text-yellow-500" />
+                              ) : p.isAdmin ? (
+                                <Crown className="h-5 w-5 text-blue-500" />
+                              ) : (
+                                <User className="h-5 w-5 text-muted-foreground" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-medium">+{p.phone}</p>
+                              {(p.isAdmin || p.isSuperAdmin) && (
+                                <Badge variant="outline" className="text-xs">
+                                  {p.isSuperAdmin ? "Super Admin" : "Admin"}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </TabsContent>
+
+              <TabsContent value="historico" className="mt-4">
+                {loadingHistorico ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : historicoEnvios.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>Nenhum envio registrado para este grupo</p>
+                  </div>
+                ) : (
+                  <ScrollArea className="h-[400px]">
+                    <div className="space-y-2">
+                      {historicoEnvios.map((envio) => (
+                        <div 
+                          key={envio.id}
+                          className="p-3 rounded-lg border bg-card space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              {envio.sucesso ? (
+                                <CheckCircle className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-500" />
+                              )}
+                              <span className="text-sm font-medium">
+                                {envio.sucesso ? "Enviado" : "Falhou"}
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(envio.timestamp), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                            </span>
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {envio.mensagem}
+                          </p>
+                          {envio.erro && (
+                            <p className="text-xs text-red-500">
+                              Erro: {envio.erro}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         </Dialog>
       </div>
