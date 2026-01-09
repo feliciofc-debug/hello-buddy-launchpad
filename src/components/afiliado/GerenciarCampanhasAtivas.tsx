@@ -345,9 +345,40 @@ export default function GerenciarCampanhasAtivas() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={async () => {
+                    setActionLoading("bulk");
+                    try {
+                      const { error } = await supabase
+                        .from("afiliado_campanhas")
+                        .update({ ativa: true, status: "ativa" })
+                        .in("id", selectedIds);
+                      if (error) throw error;
+                      setCampanhas((prev) =>
+                        prev.map((c) =>
+                          selectedIds.includes(c.id) ? { ...c, ativa: true, status: "ativa" } : c
+                        )
+                      );
+                      toast.success(`${selectedIds.length} campanha(s) ativada(s)`);
+                      setSelectedIds([]);
+                    } catch (error) {
+                      console.error("Erro ao ativar em massa:", error);
+                      toast.error("Erro ao ativar campanhas");
+                    } finally {
+                      setActionLoading(null);
+                    }
+                  }}
+                  disabled={actionLoading === "bulk"}
+                  className="gap-1 text-green-600 border-green-200 hover:bg-green-50"
+                >
+                  <Play className="h-4 w-4" />
+                  Ativar ({selectedIds.length})
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={pausarSelecionadas}
                   disabled={actionLoading === "bulk"}
-                  className="gap-1"
+                  className="gap-1 text-orange-600 border-orange-200 hover:bg-orange-50"
                 >
                   <Pause className="h-4 w-4" />
                   Pausar ({selectedIds.length})
