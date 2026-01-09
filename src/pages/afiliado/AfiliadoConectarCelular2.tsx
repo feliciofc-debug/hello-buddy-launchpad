@@ -18,6 +18,12 @@ export default function AfiliadoConectarCelular2() {
   const [connected, setConnected] = useState(false)
   const [phone, setPhone] = useState<string | null>(null)
   const [qrCode, setQrCode] = useState<string | null>(null)
+  const [debugStatus, setDebugStatus] = useState<{
+    loggedIn?: boolean
+    connected?: boolean
+    events?: string
+    jid?: string | null
+  } | null>(null)
 
   useEffect(() => {
     checkStatus()
@@ -40,11 +46,20 @@ export default function AfiliadoConectarCelular2() {
 
       if (error) throw error
 
-      const isConnected = data?.connected || data?.raw?.loggedIn
+      const rawData = data?.raw?.data ?? null
+      const loggedIn = rawData?.loggedIn === true || rawData?.LoggedIn === true
+      const isConnected = data?.connected === true || loggedIn === true
+
       setConnected(isConnected)
-      
+      setDebugStatus({
+        loggedIn: loggedIn || false,
+        connected: rawData?.connected ?? data?.connected ?? false,
+        events: typeof rawData?.events === 'string' ? rawData.events : undefined,
+        jid: (rawData?.jid ?? data?.jid ?? null) as string | null,
+      })
+
       if (isConnected) {
-        const jid = data?.raw?.jid || data?.jid
+        const jid = (rawData?.jid ?? data?.jid ?? null) as string | null
         if (jid) {
           const phoneNum = jid.split(':')[0].replace('55', '')
           setPhone(phoneNum)
@@ -169,6 +184,16 @@ export default function AfiliadoConectarCelular2() {
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {debugStatus ? (
+            <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <span><strong>Status real:</strong> loggedIn={String(debugStatus.loggedIn)} • connected={String(debugStatus.connected)}</span>
+                {debugStatus.events ? <span><strong>events:</strong> {debugStatus.events}</span> : <span><strong>events:</strong> (vazio)</span>}
+                {debugStatus.jid ? <span><strong>jid:</strong> {debugStatus.jid}</span> : null}
+              </div>
+            </div>
+          ) : null}
+
           {connected ? (
             <div className="space-y-4">
               <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
