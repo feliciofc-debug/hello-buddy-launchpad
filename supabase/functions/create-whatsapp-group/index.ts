@@ -28,10 +28,10 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Buscar token do afiliado
+    // Buscar token e telefone do afiliado
     const { data: cliente, error: clienteError } = await supabase
       .from("clientes_afiliados")
-      .select("wuzapi_token")
+      .select("wuzapi_token, wuzapi_jid, telefone")
       .eq("user_id", userId)
       .single();
 
@@ -44,10 +44,17 @@ serve(async (req) => {
     }
 
     const token = cliente.wuzapi_token;
+    
+    // Extrair telefone do JID ou usar telefone cadastrado
+    let telefoneAdmin = cliente.telefone?.replace(/\D/g, '') || '';
+    if (cliente.wuzapi_jid) {
+      const jidMatch = cliente.wuzapi_jid.match(/^(\d+)/);
+      if (jidMatch) telefoneAdmin = jidMatch[1];
+    }
 
-    console.log(`Criando grupo: ${groupName} para user: ${userId}`);
+    console.log(`Criando grupo: ${groupName} para user: ${userId}, admin: ${telefoneAdmin}`);
 
-    // Criar grupo via WuzAPI
+    // Criar grupo via WuzAPI - precisa de pelo menos 1 participante
     const createResponse = await fetch(`${CONTABO_WUZAPI_URL}/group/create`, {
       method: "POST",
       headers: { 
@@ -56,7 +63,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         Name: groupName,
-        Participants: []  // Começa vazio, leads entram via link
+        Participants: telefoneAdmin ? [telefoneAdmin] : ["5500000000000"]  // Participante dummy se não tiver telefone
       }),
     });
 
