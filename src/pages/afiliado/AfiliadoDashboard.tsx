@@ -330,11 +330,18 @@ export default function AfiliadoDashboard() {
 
   const menuItems = [
     { 
-      title: "Conectar Celular", 
+      title: "WhatsApp 21 96752-0706", 
       icon: Smartphone, 
       path: "/afiliado/conectar-celular",
-      description: "Conecte seu WhatsApp",
+      description: "Instância principal",
       color: "bg-green-500"
+    },
+    { 
+      title: "WhatsApp 21 99537-9550", 
+      icon: Smartphone, 
+      path: "/afiliado/conectar-celular-2",
+      description: "Afiliado-01 (Pietro)",
+      color: "bg-blue-500"
     },
     { 
       title: "Grupos WhatsApp", 
