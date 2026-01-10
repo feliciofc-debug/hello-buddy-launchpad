@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
   Clock, Calendar, Send, Pause, Play, Settings, 
-  Package, RefreshCw, Trash2, Plus, ChevronDown, ChevronUp, Loader2
+  Package, RefreshCw, Trash2, Plus, ChevronDown, ChevronUp, Loader2, Sparkles
 } from "lucide-react";
 
 interface Programacao {
@@ -38,6 +38,7 @@ interface Programacao {
   incluir_imagem: boolean;
   incluir_preco: boolean;
   incluir_link: boolean;
+  usar_ia_criativa?: boolean;
 }
 
 interface Grupo {
@@ -102,6 +103,7 @@ export function ProgramacaoEnvioCard() {
     incluir_imagem: true,
     incluir_preco: true,
     incluir_link: true,
+    usar_ia_criativa: true,
   });
 
   useEffect(() => {
@@ -196,6 +198,7 @@ export function ProgramacaoEnvioCard() {
       incluir_imagem: true,
       incluir_preco: true,
       incluir_link: true,
+      usar_ia_criativa: true,
     });
   }
 
@@ -425,9 +428,37 @@ export function ProgramacaoEnvioCard() {
 
           <Separator />
 
+          {/* IA Criativa */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-4 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-200 dark:border-purple-800">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-purple-500/20">
+                  <Sparkles className="h-5 w-5 text-purple-500" />
+                </div>
+                <div>
+                  <Label className="text-base font-medium">🤖 IA Criativa</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Gera posts únicos e criativos automaticamente para cada produto
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={form.usar_ia_criativa ?? true}
+                onCheckedChange={(v) => setForm({ ...form, usar_ia_criativa: v })}
+              />
+            </div>
+            {form.usar_ia_criativa && (
+              <p className="text-xs text-muted-foreground px-2">
+                ✨ Cada mensagem será única, evitando bloqueios do WhatsApp e aumentando engajamento.
+              </p>
+            )}
+          </div>
+
+          <Separator />
+
           {/* Opções de Mensagem */}
           <div className="space-y-4">
-            <Label>Opções da Mensagem</Label>
+            <Label>Opções da Mensagem {form.usar_ia_criativa && <span className="text-xs text-muted-foreground">(usado como fallback)</span>}</Label>
             <div className="grid grid-cols-3 gap-4">
               <div className="flex items-center gap-2">
                 <Checkbox
@@ -458,6 +489,8 @@ export function ProgramacaoEnvioCard() {
                 value={form.prefixo_mensagem || ''}
                 onChange={(e) => setForm({ ...form, prefixo_mensagem: e.target.value })}
                 placeholder="Ex: 🔥 OFERTA IMPERDÍVEL!"
+                disabled={form.usar_ia_criativa}
+                className={form.usar_ia_criativa ? "opacity-50" : ""}
               />
             </div>
             
@@ -467,6 +500,8 @@ export function ProgramacaoEnvioCard() {
                 value={form.sufixo_mensagem || ''}
                 onChange={(e) => setForm({ ...form, sufixo_mensagem: e.target.value })}
                 placeholder="Ex: Comprando pelo link você ganha cashback!"
+                disabled={form.usar_ia_criativa}
+                className={form.usar_ia_criativa ? "opacity-50" : ""}
               />
             </div>
           </div>
