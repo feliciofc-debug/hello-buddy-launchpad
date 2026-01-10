@@ -107,7 +107,11 @@ export default function ProspeccaoPietroCard() {
 
       if (error) throw error;
 
-      toast.success(`Lote ${data.lote}: ${data.enviados} enviados, ${data.erros} erros`);
+      if (data.pendentesRestantes > 0) {
+        toast.success(`Enviados ${data.enviados} de 20. Restam ${data.pendentesRestantes} pendentes. Clique novamente para continuar.`);
+      } else {
+        toast.success(`Lote ${data.lote} concluído! ${data.enviados} enviados, ${data.erros} erros`);
+      }
       await loadData();
     } catch (error: any) {
       console.error("Erro ao executar lote:", error);
@@ -215,8 +219,8 @@ export default function ProspeccaoPietroCard() {
         {/* Info */}
         <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
           <p className="text-sm text-blue-700 dark:text-blue-300">
-            💡 Carregue 200 contatos por vez. O Pietro envia convites para o grupo 
-            com delay humanizado. Quando terminar o lote, carregue o próximo!
+            💡 Carregue 200 contatos. O sistema envia **20 por vez** com delay de 5-10s. 
+            Clique "Executar Lote" várias vezes até zerar os pendentes!
           </p>
         </div>
 

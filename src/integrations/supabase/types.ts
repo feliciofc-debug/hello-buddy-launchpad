@@ -5974,6 +5974,29 @@ export type Database = {
         Args: { p_programacao_id: string }
         Returns: string
       }
+      claim_prospeccao_pietro_batch: {
+        Args: { p_limit?: number; p_lote: number; p_user_id: string }
+        Returns: {
+          created_at: string
+          enviado_em: string | null
+          erro: string | null
+          id: string
+          lead_id: string | null
+          lote: number
+          nome: string | null
+          phone: string
+          respondeu: boolean | null
+          status: string
+          updated_at: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "fila_prospeccao_pietro"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
