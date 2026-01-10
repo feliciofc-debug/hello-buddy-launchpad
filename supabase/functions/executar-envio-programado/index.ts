@@ -329,12 +329,22 @@ async function processarProgramacao(
   console.log(`📋 ════════════════════════════════════════`);
 
   try {
-    // 1. VERIFICAR HORÁRIO
+    // 1. VERIFICAR HORÁRIO (sempre em horário de Brasília)
     const agora = new Date();
-    const horaAtual = agora.toTimeString().slice(0, 5);
+    const horaBrasilia = agora.toLocaleTimeString("pt-BR", { 
+      timeZone: "America/Sao_Paulo", 
+      hour: "2-digit", 
+      minute: "2-digit",
+      hour12: false 
+    });
+    const horaAtual = horaBrasilia;
     
-    if (horaAtual < programacao.horario_inicio || horaAtual > programacao.horario_fim) {
-      console.log(`⏰ Fora do horário (${horaAtual}). Permitido: ${programacao.horario_inicio} - ${programacao.horario_fim}`);
+    // Comparar horário em formato HH:MM
+    const horarioInicio = programacao.horario_inicio.slice(0, 5);
+    const horarioFim = programacao.horario_fim.slice(0, 5);
+    
+    if (horaAtual < horarioInicio || horaAtual > horarioFim) {
+      console.log(`⏰ Fora do horário (${horaAtual} BRT). Permitido: ${horarioInicio} - ${horarioFim}`);
       
       const { data: proximoEnvio } = await supabase.rpc("calcular_proximo_envio", { 
         p_programacao_id: programacao.id 
@@ -348,9 +358,17 @@ async function processarProgramacao(
       return { success: true, enviados: 0 };
     }
 
-    // 2. VERIFICAR DIA
-    const diaSemana = agora.getDay();
-    const diaMes = agora.getDate();
+    // 2. VERIFICAR DIA (sempre em horário de Brasília)
+    const diaBrasiliaStr = agora.toLocaleDateString("pt-BR", { 
+      timeZone: "America/Sao_Paulo",
+      weekday: "short",
+      day: "numeric"
+    });
+    // Mapear dia da semana em português para número
+    const diasMap: Record<string, number> = { "dom": 0, "seg": 1, "ter": 2, "qua": 3, "qui": 4, "sex": 5, "sáb": 6 };
+    const diaAbrev = diaBrasiliaStr.slice(0, 3).toLowerCase();
+    const diaSemana = diasMap[diaAbrev] ?? agora.getDay();
+    const diaMes = parseInt(agora.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "numeric" }));
 
     if (programacao.dias_mes && programacao.dias_mes.length > 0) {
       if (!programacao.dias_mes.includes(diaMes)) {
