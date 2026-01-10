@@ -44,9 +44,9 @@ serve(async (req) => {
 
       const phonesNaFila = new Set((fila || []).map(f => f.phone));
 
-      // Buscar contatos de leads_ebooks que ainda não estão na fila
+      // Buscar contatos de whatsapp_contacts (onde estão os 1522 opt-ins validados)
       const { data: leads, error } = await supabase
-        .from("leads_ebooks")
+        .from("whatsapp_contacts")
         .select("id, phone, nome")
         .eq("user_id", userId)
         .order("created_at", { ascending: true });
@@ -233,9 +233,9 @@ Te espero lá! 🚀`;
         supabase.from("fila_prospeccao_pietro").select("lote").eq("user_id", userId).order("lote", { ascending: false }).limit(1)
       ]);
 
-      // Buscar total de leads disponíveis
+      // Buscar total de contatos disponíveis (whatsapp_contacts)
       const { count: totalLeads } = await supabase
-        .from("leads_ebooks")
+        .from("whatsapp_contacts")
         .select("*", { count: "exact", head: true })
         .eq("user_id", userId);
 
