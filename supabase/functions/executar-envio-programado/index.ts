@@ -108,7 +108,7 @@ async function obterImagemProduto(produto: any): Promise<string | null> {
   return null;
 }
 
-// Gera mensagem criativa via IA
+// Gera mensagem criativa via IA - VERSÃO VENDEDORA
 async function gerarMensagemIA(produto: any, config: any): Promise<string | null> {
   try {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -119,33 +119,53 @@ async function gerarMensagemIA(produto: any, config: any): Promise<string | null
 
     console.log(`🤖 Gerando post criativo com IA para: ${produto.titulo}`);
 
-    const prompt = `Crie uma mensagem de WhatsApp para este produto:
+    // Formatar preço corretamente
+    let precoFormatado = "Confira o preço";
+    if (produto.preco) {
+      const preco = parseFloat(produto.preco);
+      if (preco > 0 && preco < 100 && String(produto.preco).includes('.') && String(produto.preco).split('.')[1]?.length === 3) {
+        precoFormatado = `R$ ${(preco * 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      } else {
+        precoFormatado = `R$ ${preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+      }
+    }
+
+    const prompt = `Você é um copywriter especialista em vendas por WhatsApp. Crie uma mensagem VENDEDORA e IRRESISTÍVEL para este produto:
 
 PRODUTO:
 - Nome: ${produto.titulo}
-- Preço: R$ ${produto.preco?.toFixed(2) || 'Confira'}
+- Preço: ${precoFormatado}
 - Categoria: ${produto.categoria || 'Geral'}
-- Link: ${produto.link_afiliado || ''}
 
-FORMATO OBRIGATÓRIO (use quebras de linha):
-🔥 [Título atrativo curto]
+FORMATO DO POST (SIGA EXATAMENTE):
 
-[Descrição de 1 linha do benefício]
+[GANCHO EMOCIONAL - 1 linha impactante que desperta desejo]
 
-💰 R$ [preço]
+[BENEFÍCIO PRINCIPAL - o que resolve na vida da pessoa]
 
-[Link do produto]
+${precoFormatado}
 
-REGRAS:
-- Use QUEBRAS DE LINHA para separar cada bloco (texto arejado)
-- Apenas 2-3 emojis no MÁXIMO (moderado)
-- Texto LEVE e fácil de ler
-- Linguagem natural e direta
-- Sem aglomeração de texto
-- SEMPRE inclua o link no final
-- Varie o estilo a cada vez
+👇 Compre aqui:
+${produto.link_afiliado || ''}
 
-Retorne APENAS a mensagem pronta.`;
+REGRAS OBRIGATÓRIAS:
+1. Comece com gancho emocional (pergunta, curiosidade ou dor)
+2. Use NO MÁXIMO 2 emojis (moderação!)
+3. Texto LEVE com quebras de linha
+4. Linguagem NATURAL como se fosse um amigo indicando
+5. Destaque o BENEFÍCIO, não só características
+6. Crie URGÊNCIA ou ESCASSEZ quando fizer sentido
+7. SEMPRE inclua o preço e o link exatos fornecidos
+8. Varie o estilo: às vezes pergunta, às vezes afirmação, às vezes história
+
+EXEMPLOS DE BONS GANCHOS:
+- "Sabe aquele problema de [dor]? Achei a solução!"
+- "Você ainda está [problema]? Olha isso..."
+- "Quem aí também [desejo comum]?"
+- "Preço de [comparação barata] por esse [produto]!"
+- "Esse aqui sumiu do estoque 3x esse mês..."
+
+Retorne APENAS a mensagem pronta, sem explicações.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -158,15 +178,15 @@ Retorne APENAS a mensagem pronta.`;
         messages: [
           {
             role: "system",
-            content: "Você cria mensagens de WhatsApp leves e espaçadas. Use poucas palavras, muita quebra de linha, e no máximo 2-3 emojis. Texto arejado e fácil de ler."
+            content: "Você é um copywriter de alto nível especializado em vendas por WhatsApp. Cria mensagens que parecem recomendações de amigos, não propagandas. Usa poucos emojis (máx 2), linguagem leve e natural, e sempre destaca benefícios emocionais. Suas mensagens vendem muito porque parecem autênticas."
           },
           {
             role: "user",
             content: prompt
           }
         ],
-        temperature: 0.85,
-        max_tokens: 350
+        temperature: 0.9,
+        max_tokens: 400
       }),
     });
 
@@ -188,7 +208,7 @@ Retorne APENAS a mensagem pronta.`;
 
     // Garantir que o link está incluído
     if (produto.link_afiliado && !mensagem.includes(produto.link_afiliado)) {
-      mensagem += `\n\n🛒 ${produto.link_afiliado}`;
+      mensagem += `\n\n👇 Compre aqui:\n${produto.link_afiliado}`;
     }
 
     console.log(`✅ Mensagem IA gerada: ${mensagem.substring(0, 80)}...`);
