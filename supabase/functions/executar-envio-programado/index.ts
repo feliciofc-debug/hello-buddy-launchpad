@@ -427,16 +427,25 @@ async function processarProgramacao(
     // 6. GERAR MENSAGEM CRIATIVA COM IA (ou fallback para template)
     let mensagem: string;
     
-    // Tentar gerar via IA primeiro (posts únicos e criativos)
-    const mensagemIA = await gerarMensagemIA(produto, programacao);
+    // Verificar se IA criativa está ativada (default: true)
+    const usarIACriativa = programacao.usar_ia_criativa !== false;
     
-    if (mensagemIA) {
-      mensagem = mensagemIA;
-      console.log("🤖 Usando mensagem gerada pela IA");
+    if (usarIACriativa) {
+      // Tentar gerar via IA (posts únicos e criativos)
+      const mensagemIA = await gerarMensagemIA(produto, programacao);
+      
+      if (mensagemIA) {
+        mensagem = mensagemIA;
+        console.log("🤖 Usando mensagem gerada pela IA");
+      } else {
+        // Fallback se IA falhar
+        mensagem = formatarMensagemProduto(produto, programacao);
+        console.log("📝 IA indisponível, usando template padrão");
+      }
     } else {
-      // Fallback: usar template padrão
+      // IA desativada, usar template padrão
       mensagem = formatarMensagemProduto(produto, programacao);
-      console.log("📝 Usando mensagem template padrão");
+      console.log("📝 IA desativada, usando template padrão");
     }
     
     // Obter imagem válida (resolve automaticamente links da Amazon)

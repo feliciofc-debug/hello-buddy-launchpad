@@ -4310,6 +4310,7 @@ export type Database = {
           ultimo_produto_id: string | null
           ultimo_reset_diario: string | null
           updated_at: string | null
+          usar_ia_criativa: boolean | null
           user_id: string
         }
         Insert: {
@@ -4339,6 +4340,7 @@ export type Database = {
           ultimo_produto_id?: string | null
           ultimo_reset_diario?: string | null
           updated_at?: string | null
+          usar_ia_criativa?: boolean | null
           user_id: string
         }
         Update: {
@@ -4368,6 +4370,7 @@ export type Database = {
           ultimo_produto_id?: string | null
           ultimo_reset_diario?: string | null
           updated_at?: string | null
+          usar_ia_criativa?: boolean | null
           user_id?: string
         }
         Relationships: []
