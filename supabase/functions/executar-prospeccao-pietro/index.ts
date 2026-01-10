@@ -21,7 +21,10 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, action } = await req.json();
+    const body = await req.json();
+    const { userId, action } = body;
+
+    console.log("[PIETRO] request", { action, userId, bodyKeys: Object.keys(body || {}) });
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -230,26 +233,32 @@ Te espero lá! 🚀`;
         supabase.from("fila_prospeccao_pietro").select("*", { count: "exact", head: true }).eq("user_id", userId).eq("status", "pendente"),
         supabase.from("fila_prospeccao_pietro").select("*", { count: "exact", head: true }).eq("user_id", userId).eq("status", "enviado"),
         supabase.from("fila_prospeccao_pietro").select("*", { count: "exact", head: true }).eq("user_id", userId).eq("status", "erro"),
-        supabase.from("fila_prospeccao_pietro").select("lote").eq("user_id", userId).order("lote", { ascending: false }).limit(1)
+        supabase.from("fila_prospeccao_pietro").select("lote").eq("user_id", userId).order("lote", { ascending: false }).limit(1),
       ]);
 
-      // Buscar total de contatos disponíveis (whatsapp_contacts)
-      const { count: totalLeads } = await supabase
-        .from("whatsapp_contacts")
-        .select("*", { count: "exact", head: true })
-        .eq("user_id", userId);
+      // Contatos disponíveis (fonte real do "Modal WhatsApp")
+      const [wcCountRes, leadsCountRes] = await Promise.all([
+        supabase.from("whatsapp_contacts").select("*", { count: "exact", head: true }).eq("user_id", userId),
+        supabase.from("leads_ebooks").select("*", { count: "exact", head: true }).eq("user_id", userId),
+      ]);
 
-      return new Response(JSON.stringify({
-        success: true,
-        stats: {
-          totalNaFila: totalResult.count || 0,
-          pendentes: pendentesResult.count || 0,
-          enviados: enviadosResult.count || 0,
-          erros: errosResult.count || 0,
-          loteAtual: lotesResult.data?.[0]?.lote || 0,
-          totalLeadsDisponiveis: totalLeads || 0
-        }
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      const totalLeads = wcCountRes.count || 0;
+      console.log("[PIETRO] counts", { userId, whatsapp_contacts: wcCountRes.count, leads_ebooks: leadsCountRes.count });
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          stats: {
+            totalNaFila: totalResult.count || 0,
+            pendentes: pendentesResult.count || 0,
+            enviados: enviadosResult.count || 0,
+            erros: errosResult.count || 0,
+            loteAtual: lotesResult.data?.[0]?.lote || 0,
+            totalLeadsDisponiveis: totalLeads,
+          },
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // AÇÃO: Limpar fila (reset)
