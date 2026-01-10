@@ -108,6 +108,90 @@ async function obterImagemProduto(produto: any): Promise<string | null> {
   return null;
 }
 
+// Gera mensagem criativa via IA
+async function gerarMensagemIA(produto: any, config: any): Promise<string | null> {
+  try {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      console.log("⚠️ LOVABLE_API_KEY não configurada, usando mensagem padrão");
+      return null;
+    }
+
+    console.log(`🤖 Gerando post criativo com IA para: ${produto.titulo}`);
+
+    const prompt = `Crie UMA mensagem criativa de WhatsApp para vender este produto em grupo de ofertas:
+
+PRODUTO:
+- Nome: ${produto.titulo}
+- Preço: R$ ${produto.preco?.toFixed(2) || 'Confira'}
+- Categoria: ${produto.categoria || 'Geral'}
+- Link: ${produto.link_afiliado || ''}
+
+REGRAS:
+- Mensagem CURTA (máximo 5 linhas)
+- Linguagem informal brasileira ("vc", "pra", "só")
+- 2-4 emojis relevantes (🔥💰🛒✨ etc)
+- Destaque o preço de forma atrativa
+- Crie URGÊNCIA ou BENEFÍCIO único
+- Termine com call-to-action
+- SEMPRE inclua o link no final
+- Seja criativo, CADA mensagem deve ser DIFERENTE
+
+Retorne APENAS a mensagem pronta, sem explicações.`;
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-lite",
+        messages: [
+          {
+            role: "system",
+            content: "Você é um copywriter especialista em vendas por WhatsApp. Crie mensagens únicas, criativas e persuasivas. Retorne APENAS a mensagem, nada mais."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.95, // Alta criatividade para variar cada post
+        max_tokens: 300
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("❌ Erro na IA:", response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    let mensagem = data.choices?.[0]?.message?.content?.trim();
+
+    if (!mensagem) {
+      console.log("⚠️ IA retornou vazio");
+      return null;
+    }
+
+    // Limpar possíveis marcações
+    mensagem = mensagem.replace(/```[\s\S]*?```/g, "").trim();
+
+    // Garantir que o link está incluído
+    if (produto.link_afiliado && !mensagem.includes(produto.link_afiliado)) {
+      mensagem += `\n\n🛒 ${produto.link_afiliado}`;
+    }
+
+    console.log(`✅ Mensagem IA gerada: ${mensagem.substring(0, 80)}...`);
+    return mensagem;
+
+  } catch (error) {
+    console.error("❌ Erro ao gerar mensagem IA:", error);
+    return null;
+  }
+}
+
 function formatarMensagemProduto(produto: any, config: any): string {
   let msg = "";
   
@@ -340,8 +424,20 @@ async function processarProgramacao(
 
     console.log(`📱 Grupos para enviar: ${grupos.length}`);
 
-    // 6. FORMATAR MENSAGEM E OBTER IMAGEM
-    const mensagem = formatarMensagemProduto(produto, programacao);
+    // 6. GERAR MENSAGEM CRIATIVA COM IA (ou fallback para template)
+    let mensagem: string;
+    
+    // Tentar gerar via IA primeiro (posts únicos e criativos)
+    const mensagemIA = await gerarMensagemIA(produto, programacao);
+    
+    if (mensagemIA) {
+      mensagem = mensagemIA;
+      console.log("🤖 Usando mensagem gerada pela IA");
+    } else {
+      // Fallback: usar template padrão
+      mensagem = formatarMensagemProduto(produto, programacao);
+      console.log("📝 Usando mensagem template padrão");
+    }
     
     // Obter imagem válida (resolve automaticamente links da Amazon)
     let imagemUrl: string | undefined = undefined;
