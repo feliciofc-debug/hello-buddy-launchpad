@@ -119,7 +119,7 @@ async function gerarMensagemIA(produto: any, config: any): Promise<string | null
 
     console.log(`🤖 Gerando post criativo com IA para: ${produto.titulo}`);
 
-    const prompt = `Crie UMA mensagem criativa de WhatsApp para vender este produto em grupo de ofertas:
+    const prompt = `Crie uma mensagem de WhatsApp para este produto:
 
 PRODUTO:
 - Nome: ${produto.titulo}
@@ -127,17 +127,25 @@ PRODUTO:
 - Categoria: ${produto.categoria || 'Geral'}
 - Link: ${produto.link_afiliado || ''}
 
-REGRAS:
-- Mensagem CURTA (máximo 5 linhas)
-- Linguagem informal brasileira ("vc", "pra", "só")
-- 2-4 emojis relevantes (🔥💰🛒✨ etc)
-- Destaque o preço de forma atrativa
-- Crie URGÊNCIA ou BENEFÍCIO único
-- Termine com call-to-action
-- SEMPRE inclua o link no final
-- Seja criativo, CADA mensagem deve ser DIFERENTE
+FORMATO OBRIGATÓRIO (use quebras de linha):
+🔥 [Título atrativo curto]
 
-Retorne APENAS a mensagem pronta, sem explicações.`;
+[Descrição de 1 linha do benefício]
+
+💰 R$ [preço]
+
+[Link do produto]
+
+REGRAS:
+- Use QUEBRAS DE LINHA para separar cada bloco (texto arejado)
+- Apenas 2-3 emojis no MÁXIMO (moderado)
+- Texto LEVE e fácil de ler
+- Linguagem natural e direta
+- Sem aglomeração de texto
+- SEMPRE inclua o link no final
+- Varie o estilo a cada vez
+
+Retorne APENAS a mensagem pronta.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -150,15 +158,15 @@ Retorne APENAS a mensagem pronta, sem explicações.`;
         messages: [
           {
             role: "system",
-            content: "Você é um copywriter especialista em vendas por WhatsApp. Crie mensagens únicas, criativas e persuasivas. Retorne APENAS a mensagem, nada mais."
+            content: "Você cria mensagens de WhatsApp leves e espaçadas. Use poucas palavras, muita quebra de linha, e no máximo 2-3 emojis. Texto arejado e fácil de ler."
           },
           {
             role: "user",
             content: prompt
           }
         ],
-        temperature: 0.95, // Alta criatividade para variar cada post
-        max_tokens: 300
+        temperature: 0.85,
+        max_tokens: 350
       }),
     });
 
