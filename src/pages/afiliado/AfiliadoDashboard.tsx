@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppCSVModal";
 import GerenciarCampanhasAtivas from "@/components/afiliado/GerenciarCampanhasAtivas";
 import ProgramacaoEnvioCard from "@/components/afiliado/ProgramacaoEnvioCard";
+import ProspeccaoPietroCard from "@/components/afiliado/ProspeccaoPietroCard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -587,6 +588,11 @@ export default function AfiliadoDashboard() {
             </CardContent>
           </Card>
         )}
+
+        {/* Prospecção Pietro Eugenio */}
+        <div className="mb-8">
+          <ProspeccaoPietroCard />
+        </div>
 
         {/* Gerenciar Campanhas Ativas */}
         <div className="mb-8">

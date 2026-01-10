@@ -1970,6 +1970,51 @@ export type Database = {
         }
         Relationships: []
       }
+      fila_prospeccao_pietro: {
+        Row: {
+          created_at: string
+          enviado_em: string | null
+          erro: string | null
+          id: string
+          lead_id: string | null
+          lote: number
+          nome: string | null
+          phone: string
+          respondeu: boolean | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enviado_em?: string | null
+          erro?: string | null
+          id?: string
+          lead_id?: string | null
+          lote?: number
+          nome?: string | null
+          phone: string
+          respondeu?: boolean | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enviado_em?: string | null
+          erro?: string | null
+          id?: string
+          lead_id?: string | null
+          lote?: number
+          nome?: string | null
+          phone?: string
+          respondeu?: boolean | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       fontes_dados: {
         Row: {
           ativo: boolean | null
