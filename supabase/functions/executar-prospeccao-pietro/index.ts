@@ -105,7 +105,7 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    // AÇÃO: Executar envio do lote atual
+    // AÇÃO: Executar envio do lote atual (processa apenas 20 contatos por vez)
     if (action === "executar_lote") {
       // Buscar itens pendentes do lote mais antigo
       const { data: loteAtual } = await supabase
@@ -120,30 +120,51 @@ serve(async (req) => {
         return new Response(JSON.stringify({
           success: true,
           message: "Não há itens pendentes para enviar",
-          enviados: 0
+          enviados: 0,
+          pendentesRestantes: 0
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       const numeroLote = loteAtual[0].lote;
 
-      // Buscar todos os pendentes deste lote
-      const { data: pendentes, error } = await supabase
-        .from("fila_prospeccao_pietro")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("status", "pendente")
-        .eq("lote", numeroLote)
-        .order("created_at", { ascending: true });
+      // Usar a função SQL para fazer claim de apenas 20 contatos (evita envios paralelos)
+      const { data: pendentes, error } = await supabase.rpc("claim_prospeccao_pietro_batch", {
+        p_user_id: userId,
+        p_lote: numeroLote,
+        p_limit: 20
+      });
 
-      if (error) throw error;
+      if (error) {
+        console.error("[PIETRO] Erro ao fazer claim:", error);
+        throw error;
+      }
 
-      console.log(`[PIETRO] Executando lote ${numeroLote} com ${pendentes?.length || 0} contatos`);
+      if (!pendentes || pendentes.length === 0) {
+        // Verificar se há pendentes restantes (outro processo pode estar processando)
+        const { count } = await supabase
+          .from("fila_prospeccao_pietro")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("status", "pendente")
+          .eq("lote", numeroLote);
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: count && count > 0 
+            ? "Outro processo está enviando. Aguarde..." 
+            : "Não há itens pendentes para enviar",
+          enviados: 0,
+          pendentesRestantes: count || 0
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      console.log(`[PIETRO] Processando ${pendentes.length} contatos do lote ${numeroLote}`);
 
       let enviados = 0;
       let erros = 0;
       const resultados: any[] = [];
 
-      for (const item of (pendentes || [])) {
+      for (const item of pendentes) {
         try {
           // Formatar telefone
           let phone = item.phone.replace(/\D/g, "");
@@ -197,8 +218,8 @@ Te espero lá! 🚀`;
             resultados.push({ phone, success: false, error: result });
           }
 
-          // Delay humanizado entre mensagens (3-6 segundos)
-          await sleep(3000 + Math.random() * 3000);
+          // Delay humanizado entre mensagens (5-10 segundos para evitar bloqueio)
+          await sleep(5000 + Math.random() * 5000);
 
         } catch (err: any) {
           console.error(`[PIETRO] Erro ao enviar para ${item.phone}:`, err);
@@ -216,13 +237,22 @@ Te espero lá! 🚀`;
         }
       }
 
+      // Contar quantos pendentes ainda restam
+      const { count: pendentesRestantes } = await supabase
+        .from("fila_prospeccao_pietro")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("status", "pendente")
+        .eq("lote", numeroLote);
+
       return new Response(JSON.stringify({
         success: true,
         lote: numeroLote,
         enviados,
         erros,
-        total: pendentes?.length || 0,
-        resultados: resultados.slice(0, 10) // Retorna só primeiros 10 para debug
+        processados: pendentes.length,
+        pendentesRestantes: pendentesRestantes || 0,
+        resultados: resultados.slice(0, 5)
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
