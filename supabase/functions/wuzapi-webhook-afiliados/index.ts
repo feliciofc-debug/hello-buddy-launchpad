@@ -576,10 +576,12 @@ Deno.serve(async (req) => {
 
 Que bom ter você aqui! 💜
 
+🤖 *Pietro Eugenio* é nosso assistente virtual — ele valida comprovantes, converte links e tira suas dúvidas!
+
 📲 *Como funciona:*
 1️⃣ Você recebe ofertas incríveis aqui no grupo
 2️⃣ Compra pelo link (site oficial)
-3️⃣ Envia o comprovante no privado
+3️⃣ Envia o comprovante pro Pietro no privado
 4️⃣ Ganha *2% de cashback* + eBooks grátis! 🎁
 
 💰 Quando juntar R$30, você resgata via PIX! (liberado após 35 dias)
@@ -587,7 +589,8 @@ Que bom ter você aqui! 💜
 📚 *Seu eBook grátis de presente:*
 👉 https://amzofertas.com.br/ebooks/50-receitas-airfryer.pdf
 
-Qualquer dúvida, é só chamar no privado! 😊`
+Qualquer dúvida, é só chamar o Pietro! 😊
+👉 https://wa.me/5521995379550`
 
           try {
             // Enviar boas-vindas NO GRUPO
