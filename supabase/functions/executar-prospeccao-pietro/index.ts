@@ -6,9 +6,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Configuração Pietro Eugenio - Instância Afiliado-01 (porta 8081)
+// Configuração Pietro Eugenio - Instância Afiliado-01 (porta 8081, HTTP)
 const PIETRO_TOKEN = "WjRi4tis2XrGUmLImu3wjwHLN3dn4uE";
-const WUZAPI_BASE_URL = "https://api2.amzofertas.com.br:8081";
+const WUZAPI_BASE_URL = "http://api2.amzofertas.com.br:8081";
 
 // Link do grupo para convidar
 const GRUPO_CONVITE = "https://chat.whatsapp.com/IH8qQB9h9krIvNlA3l5i7L";
