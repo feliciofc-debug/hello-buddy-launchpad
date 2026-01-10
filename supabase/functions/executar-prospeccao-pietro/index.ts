@@ -147,9 +147,8 @@ serve(async (req) => {
           if (phone.length === 11) phone = `55${phone}`;
           else if (phone.length === 10) phone = `55${phone}`;
 
-          // Mensagem personalizada do Pietro
-          const nome = item.nome?.split(" ")[0] || "Amigo(a)";
-          const mensagem = `Olá ${nome}! 👋
+          // Mensagem genérica do Pietro (sem nome pois maioria está como "contato")
+          const mensagem = `Oi! Tudo bem? 👋
 
 Sou o *Pietro Eugenio*, assistente virtual da AMZ Ofertas! 🤖
 
