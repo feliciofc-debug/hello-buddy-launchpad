@@ -6050,13 +6050,25 @@ export type Database = {
       pegar_proximo_produto_programacao: {
         Args: { p_programacao_id: string }
         Returns: {
-          categoria: string
-          imagem_url: string
+          categoria: string | null
+          created_at: string | null
+          descricao: string | null
+          id: string
+          imagem_url: string | null
           link_afiliado: string
-          preco: number
-          produto_id: string
+          marketplace: string
+          preco: number | null
+          status: string | null
           titulo: string
+          updated_at: string | null
+          user_id: string
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "afiliado_produtos"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
