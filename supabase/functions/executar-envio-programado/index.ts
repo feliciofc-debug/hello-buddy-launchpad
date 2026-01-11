@@ -328,7 +328,7 @@ async function enviarParaGrupo(
 async function processarProgramacao(
   supabase: any,
   programacao: any
-): Promise<{ success: boolean; error?: string; enviados?: number }> {
+): Promise<{ success: boolean; error?: string; enviados?: number; tiktok?: boolean }> {
   console.log(`\n📋 ════════════════════════════════════════`);
   console.log(`📋 Processando: ${programacao.nome}`);
   console.log(`📋 Categorias: ${programacao.categorias?.join(", ") || "Todas"}`);
@@ -697,7 +697,54 @@ async function processarProgramacao(
         sucesso: gruposEnviados > 0
       });
 
-    // 10. ATUALIZAR PROGRAMAÇÃO
+    // 10. ENVIAR PARA TIKTOK (se configurado)
+    let tiktokEnviado = false;
+    if (programacao.enviar_tiktok) {
+      try {
+        console.log("📱 Enviando para TikTok...");
+        
+        // Verificar se o produto tem imagem
+        if (!imagemUrl) {
+          console.log("⚠️ TikTok requer imagem, produto sem imagem disponível");
+        } else {
+          const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+          const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+          
+          // Gerar título para TikTok (mais curto)
+          const tiktokTitle = produto.titulo.substring(0, 100) + 
+            (produto.preco ? ` - R$ ${produto.preco.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '') +
+            " 🔥 Link na bio!";
+          
+          const tiktokResponse = await fetch(`${supabaseUrl}/functions/v1/tiktok-post-content`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${serviceKey}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              user_id: programacao.user_id,
+              content_type: "image",
+              content_url: imagemUrl,
+              title: tiktokTitle,
+              post_mode: programacao.tiktok_post_mode || "draft"
+            })
+          });
+          
+          const tiktokResult = await tiktokResponse.json();
+          
+          if (tiktokResult.success) {
+            tiktokEnviado = true;
+            console.log(`✅ TikTok: ${tiktokResult.message}`);
+          } else {
+            console.log(`⚠️ TikTok erro: ${tiktokResult.error}`);
+          }
+        }
+      } catch (tiktokError: any) {
+        console.error("❌ Erro ao enviar para TikTok:", tiktokError);
+      }
+    }
+
+    // 11. ATUALIZAR PROGRAMAÇÃO
     const proximoEnvio = new Date(Date.now() + programacao.intervalo_minutos * 60000);
     const hoje = new Date().toISOString().slice(0, 10);
     const resetDiario = programacao.ultimo_reset_diario !== hoje;
@@ -715,8 +762,11 @@ async function processarProgramacao(
       .eq("id", programacao.id);
 
     console.log(`📅 Próximo envio: ${proximoEnvio.toLocaleString("pt-BR")}`);
+    if (tiktokEnviado) {
+      console.log(`📱 TikTok também foi atualizado!`);
+    }
 
-    return { success: true, enviados: gruposEnviados };
+    return { success: true, enviados: gruposEnviados, tiktok: tiktokEnviado };
 
   } catch (error: any) {
     console.error(`❌ Erro ao processar programação:`, error);

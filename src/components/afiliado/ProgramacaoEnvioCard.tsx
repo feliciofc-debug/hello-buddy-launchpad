@@ -12,8 +12,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
   Clock, Calendar, Send, Pause, Play, Settings, 
-  Package, RefreshCw, Trash2, Plus, ChevronDown, ChevronUp, Loader2, Sparkles
+  Package, RefreshCw, Trash2, Plus, ChevronDown, ChevronUp, Loader2, Sparkles, Video
 } from "lucide-react";
+import { SiTiktok } from "react-icons/si";
 
 interface Programacao {
   id: string;
@@ -39,6 +40,8 @@ interface Programacao {
   incluir_preco: boolean;
   incluir_link: boolean;
   usar_ia_criativa?: boolean;
+  enviar_tiktok?: boolean;
+  tiktok_post_mode?: string;
 }
 
 interface Grupo {
@@ -104,6 +107,8 @@ export function ProgramacaoEnvioCard() {
     incluir_preco: true,
     incluir_link: true,
     usar_ia_criativa: true,
+    enviar_tiktok: false,
+    tiktok_post_mode: 'draft',
   });
 
   useEffect(() => {
@@ -199,6 +204,8 @@ export function ProgramacaoEnvioCard() {
       incluir_preco: true,
       incluir_link: true,
       usar_ia_criativa: true,
+      enviar_tiktok: false,
+      tiktok_post_mode: 'draft',
     });
   }
 
@@ -454,6 +461,49 @@ export function ProgramacaoEnvioCard() {
             )}
           </div>
 
+          {/* TikTok Integration */}
+          <div className="space-y-3">
+            <div className={`flex items-center justify-between p-4 rounded-lg border ${form.enviar_tiktok ? 'bg-gradient-to-r from-pink-500/10 to-cyan-500/10 border-pink-200 dark:border-pink-800' : 'bg-muted/30 border-border'}`}>
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-full ${form.enviar_tiktok ? 'bg-gradient-to-r from-pink-500/20 to-cyan-500/20' : 'bg-muted'}`}>
+                  <SiTiktok className={`h-5 w-5 ${form.enviar_tiktok ? 'text-pink-500' : 'text-muted-foreground'}`} />
+                </div>
+                <div>
+                  <Label className="text-base font-medium">📱 Enviar para TikTok</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Posta automaticamente o produto no TikTok
+                  </p>
+                </div>
+              </div>
+              <Switch
+                checked={form.enviar_tiktok ?? false}
+                onCheckedChange={(v) => setForm({ ...form, enviar_tiktok: v })}
+              />
+            </div>
+            {form.enviar_tiktok && (
+              <div className="ml-4 space-y-2">
+                <Label>Modo de Postagem</Label>
+                <Select
+                  value={form.tiktok_post_mode || 'draft'}
+                  onValueChange={(v) => setForm({ ...form, tiktok_post_mode: v })}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="draft">📝 Rascunho (revisar antes de publicar)</SelectItem>
+                    <SelectItem value="direct">🚀 Publicar Direto (automático)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {form.tiktok_post_mode === 'direct' 
+                    ? '⚡ O vídeo será publicado automaticamente no seu TikTok' 
+                    : '📋 O vídeo será salvo como rascunho para você revisar'}
+                </p>
+              </div>
+            )}
+          </div>
+
           <Separator />
 
           {/* Opções de Mensagem */}
@@ -616,13 +666,21 @@ export function ProgramacaoEnvioCard() {
             </div>
           </div>
 
-          {/* Grupos */}
+          {/* Grupos e TikTok */}
           <div className="mt-2 flex flex-wrap gap-2">
             <div className="p-2 bg-purple-50 dark:bg-purple-950/30 rounded-lg text-sm">
               <span className="text-purple-600 dark:text-purple-400 font-medium">
                 📱 {prog.enviar_para_todos_grupos ? `Todos os grupos` : `${prog.grupos_ids?.length || 0} grupos`}
               </span>
             </div>
+            {prog.enviar_tiktok && (
+              <div className="p-2 bg-gradient-to-r from-pink-50 to-cyan-50 dark:from-pink-950/30 dark:to-cyan-950/30 rounded-lg text-sm flex items-center gap-1">
+                <SiTiktok className="h-3 w-3 text-pink-500" />
+                <span className="text-pink-600 dark:text-pink-400 font-medium">
+                  TikTok ({prog.tiktok_post_mode === 'direct' ? 'Direto' : 'Rascunho'})
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Expandido */}
