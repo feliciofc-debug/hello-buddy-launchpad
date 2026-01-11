@@ -405,11 +405,71 @@ async function processarProgramacao(
       }
     }
 
-    // 3. BUSCAR PRÓXIMO PRODUTO
-    const { data: produtoData, error: produtoError } = await supabase
-      .rpc("pegar_proximo_produto_programacao", { 
-        p_programacao_id: programacao.id 
-      });
+    // 3. BUSCAR PRÓXIMO PRODUTO (query direta sem RPC para evitar problemas de RLS)
+    const marketplaces = programacao.marketplaces_ativos || ['Amazon', 'Shopee', 'Magazine Luiza', 'Mercado Livre'];
+    let ultimoId = programacao.ultimo_produto_id || '00000000-0000-0000-0000-000000000000';
+    let ultimoMkt = programacao.ultimo_marketplace_enviado;
+    let contadorMkt = programacao.produtos_no_marketplace_atual || 0;
+    
+    // Decidir qual marketplace usar
+    let mkAtual = ultimoMkt;
+    if (!mkAtual || contadorMkt >= 3) {
+      // Trocar marketplace
+      if (!ultimoMkt) {
+        mkAtual = marketplaces[0];
+      } else {
+        const idx = marketplaces.indexOf(ultimoMkt);
+        mkAtual = marketplaces[(idx + 1) % marketplaces.length];
+      }
+      contadorMkt = 0;
+    }
+    
+    console.log(`🏪 Marketplace atual: ${mkAtual}, contador: ${contadorMkt}`);
+    
+    // Buscar produto do marketplace atual (ignorando categorias)
+    let { data: produtoData, error: produtoError } = await supabase
+      .from("afiliado_produtos")
+      .select("*")
+      .eq("user_id", programacao.user_id)
+      .ilike("marketplace", `%${mkAtual}%`)
+      .neq("id", ultimoId)
+      .limit(1);
+    
+    // Se não encontrou, tentar outros marketplaces
+    if (!produtoData || produtoData.length === 0) {
+      console.log(`⚠️ Sem produtos em ${mkAtual}, tentando outros...`);
+      for (const mkt of marketplaces) {
+        if (mkt !== mkAtual) {
+          const { data: altData } = await supabase
+            .from("afiliado_produtos")
+            .select("*")
+            .eq("user_id", programacao.user_id)
+            .ilike("marketplace", `%${mkt}%`)
+            .neq("id", ultimoId)
+            .limit(1);
+          
+          if (altData && altData.length > 0) {
+            produtoData = altData;
+            mkAtual = mkt;
+            contadorMkt = 0;
+            console.log(`✅ Encontrado em ${mkt}`);
+            break;
+          }
+        }
+      }
+    }
+    
+    // Último fallback: qualquer produto
+    if (!produtoData || produtoData.length === 0) {
+      console.log("⚠️ Tentando qualquer produto...");
+      const { data: anyData } = await supabase
+        .from("afiliado_produtos")
+        .select("*")
+        .eq("user_id", programacao.user_id)
+        .neq("id", ultimoId)
+        .limit(1);
+      produtoData = anyData;
+    }
 
     if (produtoError || !produtoData || produtoData.length === 0) {
       console.log("⚠️ Nenhum produto disponível para enviar");
@@ -422,6 +482,17 @@ async function processarProgramacao(
       
       return { success: true, enviados: 0 };
     }
+    
+    // Atualizar controle de rotação
+    await supabase
+      .from("programacao_envio_afiliado")
+      .update({
+        ultimo_produto_id: produtoData[0].id,
+        ultimo_marketplace_enviado: mkAtual,
+        produtos_no_marketplace_atual: contadorMkt + 1,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", programacao.id);
 
     const produto = produtoData[0];
     console.log(`📦 Produto: ${produto.titulo}`);
