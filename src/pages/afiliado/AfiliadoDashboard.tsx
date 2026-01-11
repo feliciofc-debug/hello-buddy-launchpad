@@ -29,6 +29,7 @@ import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppC
 import GerenciarCampanhasAtivas from "@/components/afiliado/GerenciarCampanhasAtivas";
 import ProgramacaoEnvioCard from "@/components/afiliado/ProgramacaoEnvioCard";
 import ProspeccaoPietroCard from "@/components/afiliado/ProspeccaoPietroCard";
+import TikTokIntegrationCard from "@/components/afiliado/TikTokIntegrationCard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -489,6 +490,11 @@ export default function AfiliadoDashboard() {
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* TikTok Integration Card */}
+        <div className="mb-8">
+          <TikTokIntegrationCard />
         </div>
 
         {/* Card Seus Contatos */}
