@@ -45,12 +45,15 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
         return;
       }
 
+      const nowIso = new Date().toISOString();
+
       const { data: integration } = await supabase
         .from("integrations")
-        .select("id, is_active, platform")
+        .select("id, is_active, platform, token_expires_at")
         .eq("user_id", user.id)
         .eq("platform", "tiktok")
         .eq("is_active", true)
+        .gt("token_expires_at", nowIso)
         .maybeSingle();
 
       setIsConnected(!!integration);
@@ -71,13 +74,13 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
     const clientKey = "aw2ouo90dyp4ju9w";
     const redirectUri = encodeURIComponent("https://amzofertas.com.br/tiktok/callback");
-    const scope = encodeURIComponent("user.info.basic,user.info.profile,video.upload,video.publish");
-    const state = user.id; // Usar user_id como state
-    
-    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&state=${state}`;
-    
-    window.open(authUrl, "_blank");
+    const scope = "user.info.basic,user.info.profile,video.upload,video.publish";
+    const state = user.id;
+
+    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${redirectUri}&state=${state}`;
+
     onOpenChange(false);
+    window.location.href = authUrl;
   };
 
   const handlePost = async () => {

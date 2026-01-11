@@ -51,9 +51,11 @@ const TikTokCallback = () => {
         console.log('📍 Code:', code?.substring(0, 20) + '...');
         console.log('📍 State:', state);
 
-        const { data, error: fnError } = await supabase.functions.invoke('tiktok-auth-callback', {
-          body: { code, state }
-        });
+         const { data, error: fnError } = await supabase.functions.invoke('tiktok-auth-callback', {
+           body: { code, state }
+         });
+
+         console.log('📦 Callback response:', { data, fnError });
 
         if (fnError) {
           throw fnError;
@@ -70,7 +72,7 @@ const TikTokCallback = () => {
             description: "Sua conta TikTok foi conectada com sucesso",
           });
 
-          setTimeout(() => navigate('/afiliado/produtos'), 2000);
+          setTimeout(() => navigate('/afiliado/produtos?tiktok=connected'), 2000);
         } else {
           throw new Error(data?.error || 'Erro ao obter token');
         }
