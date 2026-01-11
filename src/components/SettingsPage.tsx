@@ -67,14 +67,27 @@ const SettingsPage = () => {
                 Conecte sua conta empresarial do TikTok para automatizar suas postagens e gerenciar campanhas publicitárias.
               </p>
               <button
-                disabled
-                className="bg-gray-400 text-white font-bold py-2 px-4 rounded cursor-not-allowed"
+                onClick={async () => {
+                  const { data: { user } } = await supabase.auth.getUser();
+                  if (!user) {
+                    alert('Você precisa estar logado para conectar com o TikTok');
+                    return;
+                  }
+                  
+                  const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
+                  const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
+                  const SCOPE = encodeURIComponent('user.info.basic,video.list');
+                  const STATE = user.id;
+
+                  const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
+                  
+                  console.log("Redirecionando para a URL de login do TikTok:", authUrl);
+                  window.location.href = authUrl;
+                }}
+                className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
               >
-                Em Breve
+                Conectar com TikTok
               </button>
-              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                A integração com TikTok for Business estará disponível em breve.
-              </p>
             </div>
           </TabsContent>
         </Tabs>
