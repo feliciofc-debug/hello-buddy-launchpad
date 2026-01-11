@@ -160,6 +160,7 @@ REGRAS OBRIGATÓRIAS:
 6. Crie URGÊNCIA ou ESCASSEZ quando fizer sentido
 7. SEMPRE inclua o preço e o link exatos fornecidos
 8. Varie o estilo: às vezes pergunta, às vezes afirmação, às vezes história
+9. NUNCA use as palavras "cansado", "cansada" ou "cansou" - são repetitivas e feias!
 
 EXEMPLOS DE BONS GANCHOS:
 - "Sabe aquele problema de [dor]? Achei a solução!"
@@ -167,6 +168,8 @@ EXEMPLOS DE BONS GANCHOS:
 - "Quem aí também [desejo comum]?"
 - "Preço de [comparação barata] por esse [produto]!"
 - "Esse aqui sumiu do estoque 3x esse mês..."
+- "Quem mais quer [benefício]?"
+- "Achei esse [produto] e precisei compartilhar!"
 
 Retorne APENAS a mensagem pronta, sem explicações.`;
 
