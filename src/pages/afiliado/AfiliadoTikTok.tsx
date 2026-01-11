@@ -52,12 +52,12 @@ export default function AfiliadoTikTok() {
         .maybeSingle();
 
       if (integrationData) {
-        setIsConnected(integrationData.is_active === true);
+        const expiresAt = integrationData.token_expires_at ?? null;
+        const isExpired = expiresAt ? new Date(expiresAt) < new Date() : true;
+
+        setIsConnected(integrationData.is_active === true && !isExpired);
         setLastUpdated(integrationData.updated_at);
-        // Verificar expiração do token
-        if (integrationData.expires_at) {
-          setTokenExpired(new Date(integrationData.expires_at) < new Date());
-        }
+        setTokenExpired(isExpired);
       }
 
       // Carregar histórico de posts usando função RPC ou query direta com type assertion
@@ -91,22 +91,13 @@ export default function AfiliadoTikTok() {
 
     const clientKey = "aw2ouo90dyp4ju9w";
     const redirectUri = encodeURIComponent("https://amzofertas.com.br/tiktok/callback");
-    const scope = encodeURIComponent("user.info.basic,user.info.profile,video.upload,video.publish");
-    const state = user.id; // Usar user_id como state para recuperar depois
-    
-    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&state=${state}`;
-    
-    console.log("🔗 Abrindo TikTok OAuth:", authUrl);
-    
-    // Abrir em nova aba
-    const popup = window.open(authUrl, "_blank", "width=600,height=700,scrollbars=yes");
-    
-    if (!popup) {
-      // Se popup bloqueado, redirecionar
-      window.location.href = authUrl;
-    } else {
-      toast.success("Complete o login na aba que foi aberta");
-    }
+    const scope = "user.info.basic,user.info.profile,video.upload,video.publish";
+    const state = user.id;
+
+    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${redirectUri}&state=${state}`;
+
+    console.log("🔗 Redirecionando TikTok OAuth:", authUrl);
+    window.location.href = authUrl;
   };
 
   const handleDisconnect = async () => {
