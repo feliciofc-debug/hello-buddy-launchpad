@@ -405,11 +405,24 @@ async function processarProgramacao(
       }
     }
 
-    // 3. BUSCAR PRÓXIMO PRODUTO (query direta sem RPC para evitar problemas de RLS)
+    // 3. BUSCAR PRÓXIMO PRODUTO (com deduplicação robusta baseada em histórico)
     const marketplaces = programacao.marketplaces_ativos || ['Amazon', 'Shopee', 'Magazine Luiza', 'Mercado Livre'];
-    let ultimoId = programacao.ultimo_produto_id || '00000000-0000-0000-0000-000000000000';
     let ultimoMkt = programacao.ultimo_marketplace_enviado;
     let contadorMkt = programacao.produtos_no_marketplace_atual || 0;
+    
+    // 🆕 BUSCAR PRODUTOS JÁ ENVIADOS NAS ÚLTIMAS 24H (evita repetição)
+    const { data: historicoRecente } = await supabase
+      .from("historico_envio_programado")
+      .select("produto_titulo")
+      .eq("user_id", programacao.user_id)
+      .gte("enviado_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .order("enviado_at", { ascending: false })
+      .limit(100);
+    
+    const titulosEnviados = new Set<string>(
+      (historicoRecente || []).map((h: { produto_titulo?: string }) => h.produto_titulo?.toLowerCase().trim() || '').filter((t: string) => t.length > 0)
+    );
+    console.log(`🔍 Produtos enviados nas últimas 24h: ${titulosEnviados.size}`);
     
     // Decidir qual marketplace usar
     let mkAtual = ultimoMkt;
@@ -426,18 +439,34 @@ async function processarProgramacao(
     
     console.log(`🏪 Marketplace atual: ${mkAtual}, contador: ${contadorMkt}`);
     
-    // Buscar produto do marketplace atual (ignorando categorias)
-    let { data: produtoData, error: produtoError } = await supabase
+    // Buscar produtos do marketplace atual (múltiplos para filtrar)
+    let { data: produtosDisponiveis, error: produtoError } = await supabase
       .from("afiliado_produtos")
       .select("*")
       .eq("user_id", programacao.user_id)
       .ilike("marketplace", `%${mkAtual}%`)
-      .neq("id", ultimoId)
-      .limit(1);
+      .limit(50);
+    
+    // Filtrar produtos que NÃO foram enviados nas últimas 24h
+    let produtoData: any[] = [];
+    if (produtosDisponiveis && produtosDisponiveis.length > 0) {
+      const disponiveis = produtosDisponiveis.filter(
+        (p: { titulo?: string }) => !titulosEnviados.has(p.titulo?.toLowerCase().trim() || '')
+      );
+      
+      if (disponiveis.length > 0) {
+        // Escolher aleatoriamente entre os disponíveis
+        const randomIndex = Math.floor(Math.random() * disponiveis.length);
+        produtoData = [disponiveis[randomIndex]];
+        console.log(`✅ ${disponiveis.length} produtos disponíveis em ${mkAtual}, selecionando aleatório`);
+      } else {
+        console.log(`⚠️ Todos os ${produtosDisponiveis.length} produtos de ${mkAtual} já foram enviados nas últimas 24h`);
+      }
+    }
     
     // Se não encontrou, tentar outros marketplaces
-    if (!produtoData || produtoData.length === 0) {
-      console.log(`⚠️ Sem produtos em ${mkAtual}, tentando outros...`);
+    if (produtoData.length === 0) {
+      console.log(`⚠️ Sem produtos novos em ${mkAtual}, tentando outros...`);
       for (const mkt of marketplaces) {
         if (mkt !== mkAtual) {
           const { data: altData } = await supabase
@@ -445,30 +474,39 @@ async function processarProgramacao(
             .select("*")
             .eq("user_id", programacao.user_id)
             .ilike("marketplace", `%${mkt}%`)
-            .neq("id", ultimoId)
-            .limit(1);
+            .limit(50);
           
           if (altData && altData.length > 0) {
-            produtoData = altData;
-            mkAtual = mkt;
-            contadorMkt = 0;
-            console.log(`✅ Encontrado em ${mkt}`);
-            break;
+            const disponiveis = altData.filter(
+              (p: { titulo?: string }) => !titulosEnviados.has(p.titulo?.toLowerCase().trim() || '')
+            );
+            
+            if (disponiveis.length > 0) {
+              const randomIndex = Math.floor(Math.random() * disponiveis.length);
+              produtoData = [disponiveis[randomIndex]];
+              mkAtual = mkt;
+              contadorMkt = 0;
+              console.log(`✅ Encontrado ${disponiveis.length} produtos novos em ${mkt}`);
+              break;
+            }
           }
         }
       }
     }
     
-    // Último fallback: qualquer produto
-    if (!produtoData || produtoData.length === 0) {
-      console.log("⚠️ Tentando qualquer produto...");
+    // Último fallback: qualquer produto aleatório (resetar ciclo)
+    if (produtoData.length === 0) {
+      console.log("🔄 Ciclo completo! Reiniciando seleção aleatória...");
       const { data: anyData } = await supabase
         .from("afiliado_produtos")
         .select("*")
         .eq("user_id", programacao.user_id)
-        .neq("id", ultimoId)
-        .limit(1);
-      produtoData = anyData;
+        .limit(50);
+      
+      if (anyData && anyData.length > 0) {
+        const randomIndex = Math.floor(Math.random() * anyData.length);
+        produtoData = [anyData[randomIndex]];
+      }
     }
 
     if (produtoError || !produtoData || produtoData.length === 0) {
