@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { ArrowLeft, ExternalLink, Megaphone, Package, Store, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, Megaphone, Package, Rocket, Store, Trash2 } from "lucide-react";
 import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
 import { TikTokShareModal } from "@/components/TikTokShareModal";
 
@@ -29,6 +29,7 @@ export default function AfiliadoProdutosShopee() {
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
   const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
   const [tiktokContent, setTiktokContent] = useState<{ type: "image" | "video"; url: string; title?: string } | null>(null);
+  const [postingTikTok, setPostingTikTok] = useState<string | null>(null); // id do produto em postagem
 
   const normalizeShopeePrice = (preco: number | null): number | null => {
     if (preco == null) return null;
@@ -92,6 +93,65 @@ export default function AfiliadoProdutosShopee() {
       setTiktokModalOpen(true);
     } else {
       toast.error("Este produto não possui imagem para compartilhar");
+    }
+  };
+
+  // Postar direto no TikTok (sem modal)
+  const handlePostDirect = async (produto: Produto) => {
+    if (!produto.imagem_url) {
+      toast.error("Este produto não possui imagem para compartilhar");
+      return;
+    }
+
+    setPostingTikTok(produto.id);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Você precisa estar logado");
+        return;
+      }
+
+      // Verificar se TikTok está conectado
+      const { data: integration } = await supabase
+        .from("integrations")
+        .select("id, is_active")
+        .eq("user_id", user.id)
+        .eq("platform", "tiktok")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!integration) {
+        toast.error("Conecte sua conta TikTok primeiro nas configurações");
+        navigate("/afiliado/tiktok");
+        return;
+      }
+
+      // Criar legenda automática
+      const caption = `🔥 ${produto.titulo}\n\n💰 Oferta imperdível na Shopee!\n\n👆 Link na bio!\n\n#shopee #ofertas #promocao #fyp #viral #desconto`;
+
+      const { data, error } = await supabase.functions.invoke("tiktok-post-content", {
+        body: {
+          user_id: user.id,
+          content_type: "image",
+          content_url: produto.imagem_url,
+          title: caption,
+          post_mode: "direct"
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success("✅ Produto publicado no TikTok com sucesso!");
+      } else {
+        throw new Error(data.error || "Erro ao postar no TikTok");
+      }
+    } catch (error: any) {
+      console.error("Erro ao postar:", error);
+      toast.error(error.message || "Erro ao publicar no TikTok");
+    } finally {
+      setPostingTikTok(null);
     }
   };
 
@@ -185,6 +245,26 @@ export default function AfiliadoProdutosShopee() {
                   Criar Campanha
                 </Button>
 
+                {/* Botão Postar Direto no TikTok */}
+                <Button
+                  className="w-full mt-2 bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
+                  size="sm"
+                  onClick={() => handlePostDirect(produto)}
+                  disabled={postingTikTok === produto.id}
+                >
+                  {postingTikTok === produto.id ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      Postando...
+                    </>
+                  ) : (
+                    <>
+                      <Rocket className="h-4 w-4 mr-1" />
+                      Postar no TikTok
+                    </>
+                  )}
+                </Button>
+
                 <div className="flex items-center gap-1 mt-2">
                   <Button
                     variant="outline"
@@ -200,7 +280,7 @@ export default function AfiliadoProdutosShopee() {
                     size="icon"
                     className="h-8 w-8"
                     onClick={() => handleShareTikTok(produto)}
-                    title="Compartilhar no TikTok"
+                    title="Abrir modal TikTok"
                   >
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
                       <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
