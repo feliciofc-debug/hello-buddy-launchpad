@@ -69,6 +69,7 @@ export default function TikTokIntegrationCard() {
     }
 
     setConnecting(true);
+    setIsOpen(false); // Fechar modal antes de redirecionar
 
     try {
       // TikTok OAuth URL
@@ -80,7 +81,11 @@ export default function TikTokIntegrationCard() {
       const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
 
       console.log('🔗 Redirecionando para TikTok OAuth:', authUrl);
-      window.location.href = authUrl;
+      
+      // Pequeno delay para garantir que o modal feche
+      setTimeout(() => {
+        window.location.href = authUrl;
+      }, 100);
     } catch (error) {
       console.error('Erro ao iniciar conexão TikTok:', error);
       toast({
@@ -89,6 +94,7 @@ export default function TikTokIntegrationCard() {
         variant: 'destructive',
       });
       setConnecting(false);
+      setIsOpen(true);
     }
   };
 
