@@ -4339,6 +4339,7 @@ export type Database = {
           dias_mes: number[] | null
           dias_semana: number[] | null
           enviar_para_todos_grupos: boolean | null
+          enviar_tiktok: boolean | null
           grupos_ids: string[] | null
           horario_fim: string
           horario_inicio: string
@@ -4354,6 +4355,7 @@ export type Database = {
           produtos_no_marketplace_atual: number | null
           proximo_envio: string | null
           sufixo_mensagem: string | null
+          tiktok_post_mode: string | null
           total_enviados: number | null
           total_enviados_hoje: number | null
           ultimo_envio: string | null
@@ -4372,6 +4374,7 @@ export type Database = {
           dias_mes?: number[] | null
           dias_semana?: number[] | null
           enviar_para_todos_grupos?: boolean | null
+          enviar_tiktok?: boolean | null
           grupos_ids?: string[] | null
           horario_fim?: string
           horario_inicio?: string
@@ -4387,6 +4390,7 @@ export type Database = {
           produtos_no_marketplace_atual?: number | null
           proximo_envio?: string | null
           sufixo_mensagem?: string | null
+          tiktok_post_mode?: string | null
           total_enviados?: number | null
           total_enviados_hoje?: number | null
           ultimo_envio?: string | null
@@ -4405,6 +4409,7 @@ export type Database = {
           dias_mes?: number[] | null
           dias_semana?: number[] | null
           enviar_para_todos_grupos?: boolean | null
+          enviar_tiktok?: boolean | null
           grupos_ids?: string[] | null
           horario_fim?: string
           horario_inicio?: string
@@ -4420,6 +4425,7 @@ export type Database = {
           produtos_no_marketplace_atual?: number | null
           proximo_envio?: string | null
           sufixo_mensagem?: string | null
+          tiktok_post_mode?: string | null
           total_enviados?: number | null
           total_enviados_hoje?: number | null
           ultimo_envio?: string | null
