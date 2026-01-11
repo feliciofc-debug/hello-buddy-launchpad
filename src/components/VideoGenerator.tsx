@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TikTokShareModal } from "@/components/TikTokShareModal";
 
 interface VideoResult {
   videoUrl: string;
@@ -31,6 +32,7 @@ export const VideoGenerator = () => {
   const [style, setStyle] = useState("automatico");
   const [movement, setMovement] = useState("moderado");
   const [predictionId, setPredictionId] = useState<string | null>(null);
+  const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
   
   const [editableLegendas, setEditableLegendas] = useState({
     instagram: '',
@@ -420,6 +422,23 @@ export const VideoGenerator = () => {
                 <Download className="mr-2 h-5 w-5" />
                 💾 Salvar Vídeo no Computador
               </Button>
+              
+              <Button
+                onClick={() => setTiktokModalOpen(true)}
+                className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
+                size="lg"
+              >
+                <svg viewBox="0 0 24 24" className="mr-2 h-5 w-5" fill="currentColor">
+                  <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
+                </svg>
+                📤 Enviar para TikTok
+              </Button>
+              
+              <TikTokShareModal
+                open={tiktokModalOpen}
+                onOpenChange={setTiktokModalOpen}
+                content={{ type: "video", url: resultado.videoUrl, title: url }}
+              />
               
               {resultado.promptUsed && (
                 <details className="mt-4">

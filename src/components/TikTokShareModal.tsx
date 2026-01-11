@@ -47,10 +47,10 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
       const { data: integration } = await supabase
         .from("integrations")
-        .select("*")
+        .select("id, is_active, platform")
         .eq("user_id", user.id)
         .eq("platform", "tiktok")
-        .eq("active", true)
+        .eq("is_active", true)
         .maybeSingle();
 
       setIsConnected(!!integration);

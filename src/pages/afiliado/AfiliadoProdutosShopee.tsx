@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { ArrowLeft, ExternalLink, Megaphone, Package, Store, Trash2 } from "lucide-react";
 import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
+import { TikTokShareModal } from "@/components/TikTokShareModal";
 
 interface Produto {
   id: string;
@@ -26,6 +27,8 @@ export default function AfiliadoProdutosShopee() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
+  const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
+  const [tiktokContent, setTiktokContent] = useState<{ type: "image" | "video"; url: string; title?: string } | null>(null);
 
   const normalizeShopeePrice = (preco: number | null): number | null => {
     if (preco == null) return null;
@@ -77,6 +80,19 @@ export default function AfiliadoProdutosShopee() {
   const handleCriarCampanha = (produto: Produto) => {
     setProdutoSelecionado(produto);
     setCampanhaModalOpen(true);
+  };
+
+  const handleShareTikTok = (produto: Produto) => {
+    if (produto.imagem_url) {
+      setTiktokContent({
+        type: "image",
+        url: produto.imagem_url,
+        title: produto.titulo
+      });
+      setTiktokModalOpen(true);
+    } else {
+      toast.error("Este produto não possui imagem para compartilhar");
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -180,6 +196,17 @@ export default function AfiliadoProdutosShopee() {
                     Ver
                   </Button>
                   <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleShareTikTok(produto)}
+                    title="Compartilhar no TikTok"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                      <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
+                    </svg>
+                  </Button>
+                  <Button
                     variant="ghost"
                     size="icon"
                     className="text-destructive hover:text-destructive"
@@ -203,6 +230,15 @@ export default function AfiliadoProdutosShopee() {
             if (!open) setProdutoSelecionado(null);
           }}
           produto={produtoSelecionado as any}
+        />
+      )}
+
+      {/* Modal TikTok */}
+      {tiktokContent && (
+        <TikTokShareModal
+          open={tiktokModalOpen}
+          onOpenChange={setTiktokModalOpen}
+          content={tiktokContent}
         />
       )}
     </div>

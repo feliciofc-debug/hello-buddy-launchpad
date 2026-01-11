@@ -11,14 +11,6 @@ import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-interface TikTokIntegration {
-  id: string;
-  access_token: string;
-  expires_at: string | null;
-  updated_at: string;
-  active: boolean;
-}
-
 interface TikTokPost {
   id: string;
   title: string;
@@ -32,7 +24,9 @@ interface TikTokPost {
 export default function AfiliadoTikTok() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [integration, setIntegration] = useState<TikTokIntegration | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [tokenExpired, setTokenExpired] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [posts, setPosts] = useState<TikTokPost[]>([]);
   const [defaultPostMode, setDefaultPostMode] = useState<"direct" | "draft">("draft");
   const [savingSettings, setSavingSettings] = useState(false);
@@ -57,27 +51,25 @@ export default function AfiliadoTikTok() {
         .eq("platform", "tiktok")
         .maybeSingle();
 
-      setIntegration(integrationData);
+      if (integrationData) {
+        setIsConnected(integrationData.is_active === true);
+        setLastUpdated(integrationData.updated_at);
+        // Verificar expiração do token
+        if (integrationData.expires_at) {
+          setTokenExpired(new Date(integrationData.expires_at) < new Date());
+        }
+      }
 
-      // Carregar histórico de posts
-      const { data: postsData } = await supabase
-        .from("tiktok_posts")
+      // Carregar histórico de posts usando função RPC ou query direta com type assertion
+      const { data: postsData, error: postsError } = await supabase
+        .from("tiktok_posts" as any)
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(50);
 
-      setPosts(postsData || []);
-
-      // Carregar configurações do usuário
-      const { data: settingsData } = await supabase
-        .from("user_settings")
-        .select("tiktok_default_post_mode")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (settingsData?.tiktok_default_post_mode) {
-        setDefaultPostMode(settingsData.tiktok_default_post_mode);
+      if (!postsError && postsData) {
+        setPosts(postsData as unknown as TikTokPost[]);
       }
 
     } catch (error) {
@@ -110,11 +102,11 @@ export default function AfiliadoTikTok() {
 
       await supabase
         .from("integrations")
-        .update({ active: false })
+        .update({ is_active: false })
         .eq("user_id", user.id)
         .eq("platform", "tiktok");
 
-      setIntegration(null);
+      setIsConnected(false);
       toast.success("TikTok desconectado");
     } catch (error) {
       console.error("Erro ao desconectar:", error);
@@ -128,14 +120,8 @@ export default function AfiliadoTikTok() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      await supabase
-        .from("user_settings")
-        .upsert({
-          user_id: user.id,
-          tiktok_default_post_mode: defaultPostMode,
-          updated_at: new Date().toISOString()
-        }, { onConflict: "user_id" });
-
+      // Salvar nas configurações do usuário via edge function ou localStorage
+      localStorage.setItem("tiktok_default_post_mode", defaultPostMode);
       toast.success("Configurações salvas!");
     } catch (error) {
       console.error("Erro ao salvar:", error);
@@ -143,11 +129,6 @@ export default function AfiliadoTikTok() {
     } finally {
       setSavingSettings(false);
     }
-  };
-
-  const isTokenExpired = () => {
-    if (!integration?.expires_at) return false;
-    return new Date(integration.expires_at) < new Date();
   };
 
   const getStatusBadge = (status: string) => {
@@ -200,26 +181,26 @@ export default function AfiliadoTikTok() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {integration?.active ? (
+            {isConnected ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse" />
                     <span className="font-medium text-green-600">Conectado</span>
                   </div>
-                  {isTokenExpired() && (
+                  {tokenExpired && (
                     <Badge variant="destructive">Token Expirado</Badge>
                   )}
                 </div>
                 
-                {integration.updated_at && (
+                {lastUpdated && (
                   <p className="text-sm text-muted-foreground">
-                    Última atualização: {format(new Date(integration.updated_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                    Última atualização: {format(new Date(lastUpdated), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                   </p>
                 )}
 
                 <div className="flex gap-2">
-                  {isTokenExpired() ? (
+                  {tokenExpired ? (
                     <Button onClick={handleConnect}>
                       <RefreshCw className="mr-2 h-4 w-4" />
                       Reconectar
@@ -258,7 +239,7 @@ export default function AfiliadoTikTok() {
         </Card>
 
         {/* Configurações */}
-        {integration?.active && (
+        {isConnected && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -281,7 +262,7 @@ export default function AfiliadoTikTok() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="direct" id="default-direct" />
-                    <Label htmlFor="default-direct" className="cursor-pointer">
+                    <Label htmlFor="direct" className="cursor-pointer">
                       🚀 Publicar Diretamente
                     </Label>
                   </div>
