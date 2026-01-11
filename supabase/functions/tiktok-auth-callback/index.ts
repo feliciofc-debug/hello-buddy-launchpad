@@ -52,9 +52,10 @@ serve(async (req) => {
     console.log('📍 Code:', code.substring(0, 20) + '...')
     console.log('📍 State (user_id):', state)
 
-    // Get the redirect URI from the origin
-    const origin = req.headers.get('origin') || 'https://amzofertas.com.br'
-    const redirectUri = `${origin}/tiktok/callback`
+    // Usar sempre o redirect_uri fixo (mesmo usado na autorização)
+    const redirectUri = 'https://amzofertas.com.br/tiktok/callback'
+
+    console.log('🔄 Redirect URI:', redirectUri)
 
     // Exchange code for access token
     const tokenUrl = 'https://open.tiktokapis.com/v2/oauth/token/'
@@ -103,16 +104,18 @@ serve(async (req) => {
     const expiresAt = new Date()
     expiresAt.setSeconds(expiresAt.getSeconds() + expires_in)
 
-    // Upsert integration record
+    console.log('📅 Token expira em:', expiresAt.toISOString())
+
+    // Upsert integration record - usando user_id do state
     const { error: upsertError } = await supabase
       .from('integrations')
       .upsert({
-        user_id: state, // state contains the user_id
+        user_id: state, // state contém o user_id
         platform: 'tiktok',
         access_token: access_token,
         refresh_token: refresh_token,
         token_expires_at: expiresAt.toISOString(),
-        meta_user_id: open_id, // Store TikTok open_id in meta_user_id field
+        meta_user_id: open_id, // TikTok open_id
         is_active: true,
         updated_at: new Date().toISOString(),
       }, {

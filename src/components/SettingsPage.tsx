@@ -76,7 +76,7 @@ const SettingsPage = () => {
                   
                   const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
                   const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
-                  const SCOPE = encodeURIComponent('user.info.basic,video.list');
+                  const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
                   const STATE = user.id;
 
                   const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;

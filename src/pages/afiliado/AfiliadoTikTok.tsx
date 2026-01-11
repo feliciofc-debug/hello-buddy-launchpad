@@ -80,17 +80,33 @@ export default function AfiliadoTikTok() {
     }
   };
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
+    // Pegar user_id para usar como state
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Você precisa estar logado");
+      navigate("/login");
+      return;
+    }
+
     const clientKey = "aw2ouo90dyp4ju9w";
-    const redirectUri = encodeURIComponent(`${window.location.origin}/tiktok/callback`);
-    const scope = encodeURIComponent("user.info.basic,video.upload,video.publish");
-    const state = Math.random().toString(36).substring(7);
-    
-    localStorage.setItem("tiktok_oauth_state", state);
+    const redirectUri = encodeURIComponent("https://amzofertas.com.br/tiktok/callback");
+    const scope = encodeURIComponent("user.info.basic,user.info.profile,video.upload,video.publish");
+    const state = user.id; // Usar user_id como state para recuperar depois
     
     const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&state=${state}`;
     
-    window.open(authUrl, "_blank");
+    console.log("🔗 Abrindo TikTok OAuth:", authUrl);
+    
+    // Abrir em nova aba
+    const popup = window.open(authUrl, "_blank", "width=600,height=700,scrollbars=yes");
+    
+    if (!popup) {
+      // Se popup bloqueado, redirecionar
+      window.location.href = authUrl;
+    } else {
+      toast.success("Complete o login na aba que foi aberta");
+    }
   };
 
   const handleDisconnect = async () => {

@@ -72,15 +72,16 @@ export default function TikTokIntegrationCard() {
     setIsOpen(false); // Fechar modal antes de redirecionar
 
     try {
-      // TikTok OAuth URL
+      // TikTok OAuth URL - usando user_id como state
       const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
       const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
-      const SCOPE = encodeURIComponent('user.info.basic,video.list');
-      const STATE = userId;
+      const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
+      const STATE = userId; // Usar user_id para identificar o usuário no callback
 
       const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
 
-      console.log('🔗 Abrindo TikTok OAuth em nova aba:', authUrl);
+      console.log('🔗 Abrindo TikTok OAuth com user_id:', userId);
+      console.log('🔗 URL:', authUrl);
       
       // Abrir em nova aba para mostrar a página de login do TikTok
       const popup = window.open(authUrl, '_blank', 'width=600,height=700,scrollbars=yes');

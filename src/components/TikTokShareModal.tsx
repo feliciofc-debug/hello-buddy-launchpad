@@ -62,13 +62,17 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
     }
   };
 
-  const handleConnectTikTok = () => {
+  const handleConnectTikTok = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Você precisa estar logado");
+      return;
+    }
+
     const clientKey = "aw2ouo90dyp4ju9w";
-    const redirectUri = encodeURIComponent(`${window.location.origin}/tiktok/callback`);
-    const scope = encodeURIComponent("user.info.basic,video.upload,video.publish");
-    const state = Math.random().toString(36).substring(7);
-    
-    localStorage.setItem("tiktok_oauth_state", state);
+    const redirectUri = encodeURIComponent("https://amzofertas.com.br/tiktok/callback");
+    const scope = encodeURIComponent("user.info.basic,user.info.profile,video.upload,video.publish");
+    const state = user.id; // Usar user_id como state
     
     const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scope}&response_type=code&redirect_uri=${redirectUri}&state=${state}`;
     
