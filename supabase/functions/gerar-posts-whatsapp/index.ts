@@ -61,6 +61,7 @@ REGRAS IMPORTANTES:
 - Mencione o preço de forma atrativa
 - Termine com call-to-action
 - SE houver contexto adicional, USE-O para tornar a mensagem mais específica e personalizada
+- NUNCA use as palavras "cansado", "cansada" ou "cansou" - são repetitivas!
 
 Crie 3 variações diferentes:
 1. URGÊNCIA: Foco em escassez/oportunidade única
