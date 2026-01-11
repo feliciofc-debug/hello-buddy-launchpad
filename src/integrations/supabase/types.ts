@@ -4344,14 +4344,17 @@ export type Database = {
           incluir_link: boolean | null
           incluir_preco: boolean | null
           intervalo_minutos: number
+          marketplaces_ativos: string[] | null
           modo_selecao: string | null
           nome: string
           prefixo_mensagem: string | null
+          produtos_no_marketplace_atual: number | null
           proximo_envio: string | null
           sufixo_mensagem: string | null
           total_enviados: number | null
           total_enviados_hoje: number | null
           ultimo_envio: string | null
+          ultimo_marketplace_enviado: string | null
           ultimo_produto_id: string | null
           ultimo_reset_diario: string | null
           updated_at: string | null
@@ -4374,14 +4377,17 @@ export type Database = {
           incluir_link?: boolean | null
           incluir_preco?: boolean | null
           intervalo_minutos?: number
+          marketplaces_ativos?: string[] | null
           modo_selecao?: string | null
           nome?: string
           prefixo_mensagem?: string | null
+          produtos_no_marketplace_atual?: number | null
           proximo_envio?: string | null
           sufixo_mensagem?: string | null
           total_enviados?: number | null
           total_enviados_hoje?: number | null
           ultimo_envio?: string | null
+          ultimo_marketplace_enviado?: string | null
           ultimo_produto_id?: string | null
           ultimo_reset_diario?: string | null
           updated_at?: string | null
@@ -4404,14 +4410,17 @@ export type Database = {
           incluir_link?: boolean | null
           incluir_preco?: boolean | null
           intervalo_minutos?: number
+          marketplaces_ativos?: string[] | null
           modo_selecao?: string | null
           nome?: string
           prefixo_mensagem?: string | null
+          produtos_no_marketplace_atual?: number | null
           proximo_envio?: string | null
           sufixo_mensagem?: string | null
           total_enviados?: number | null
           total_enviados_hoje?: number | null
           ultimo_envio?: string | null
+          ultimo_marketplace_enviado?: string | null
           ultimo_produto_id?: string | null
           ultimo_reset_diario?: string | null
           updated_at?: string | null
