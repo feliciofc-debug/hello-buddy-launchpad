@@ -61,6 +61,9 @@ import LeadsImoveisEnriquecidos from "./pages/LeadsImoveisEnriquecidos";
 import SeguidoresConcorrentes from "./pages/SeguidoresConcorrentes";
 import PietroDashboard from "./pages/PietroDashboard";
 import PainelAfiliado from "./pages/PainelAfiliado";
+import TikTokCallback from "./pages/TikTokCallback";
+import Termos from "./pages/Termos";
+import Privacidade from "./pages/Privacidade";
 
 // Páginas Afiliados
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
@@ -147,6 +150,13 @@ const App = () => (
             <Route path="/imoveis/seguidores-concorrentes" element={<SeguidoresConcorrentes />} />
             <Route path="/pietro-dashboard" element={<PietroDashboard />} />
             <Route path="/cliente/painel-afiliado" element={<PainelAfiliado />} />
+            
+            {/* TikTok OAuth Callback */}
+            <Route path="/tiktok/callback" element={<TikTokCallback />} />
+            
+            {/* Páginas Legais */}
+            <Route path="/termos" element={<Termos />} />
+            <Route path="/privacidade" element={<Privacidade />} />
             
             {/* Rotas Afiliados */}
             <Route path="/afiliado/dashboard" element={<AfiliadoDashboard />} />
