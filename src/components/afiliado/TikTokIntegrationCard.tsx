@@ -80,12 +80,21 @@ export default function TikTokIntegrationCard() {
 
       const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
 
-      console.log('🔗 Redirecionando para TikTok OAuth:', authUrl);
+      console.log('🔗 Abrindo TikTok OAuth em nova aba:', authUrl);
       
-      // Pequeno delay para garantir que o modal feche
-      setTimeout(() => {
+      // Abrir em nova aba para mostrar a página de login do TikTok
+      const popup = window.open(authUrl, '_blank', 'width=600,height=700,scrollbars=yes');
+      
+      if (!popup) {
+        // Se popup bloqueado, redirecionar na mesma página
         window.location.href = authUrl;
-      }, 100);
+      } else {
+        setConnecting(false);
+        toast({
+          title: 'TikTok aberto',
+          description: 'Complete o login na nova aba que foi aberta',
+        });
+      }
     } catch (error) {
       console.error('Erro ao iniciar conexão TikTok:', error);
       toast({
