@@ -32,7 +32,10 @@ function isValidImageUrl(url: string): boolean {
     /m\.media-amazon\.com\/images/i,
     /mlstatic\.com/i,
     /cloudinary\.com/i,
-    /imgur\.com/i
+    /imgur\.com/i,
+    /susercontent\.com/i,  // CDN da Shopee
+    /down-br\.img\.susercontent\.com/i,  // CDN Shopee Brasil
+    /cf\.shopee/i  // CDN alternativa Shopee
   ];
   
   return imagePatterns.some(pattern => pattern.test(url));
