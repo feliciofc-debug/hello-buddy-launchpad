@@ -645,17 +645,21 @@ serve(async (req) => {
     let query = supabase
       .from("programacao_envio_afiliado")
       .select("*")
-      .eq("ativo", true)
-      .or("proximo_envio.is.null,proximo_envio.lte.now()")
-      .order("proximo_envio", { ascending: true, nullsFirst: true })
+      .eq("ativo", true);
+    
+    // Se programacaoId específico, ignorar verificação de tempo (permite forçar execução)
+    if (programacaoId) {
+      query = query.eq("id", programacaoId);
+    } else {
+      // Só verificar tempo se for execução normal
+      query = query.or("proximo_envio.is.null,proximo_envio.lte.now()");
+    }
+    
+    query = query.order("proximo_envio", { ascending: true, nullsFirst: true })
       .limit(CONFIG.MAX_PROGRAMACOES_POR_EXECUCAO);
 
     if (userId) {
       query = query.eq("user_id", userId);
-    }
-
-    if (programacaoId) {
-      query = query.eq("id", programacaoId);
     }
 
     const { data: programacoes, error: queryError } = await query;
