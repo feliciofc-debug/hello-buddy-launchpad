@@ -19,9 +19,12 @@ import {
   Check,
   AlertCircle,
   ShoppingCart,
-  Shield
+  Shield,
+  Rocket,
+  Loader2
 } from "lucide-react";
 import { CriarCampanhaAfiliadoModal } from "@/components/CriarCampanhaAfiliadoModal";
+import { TikTokShareModal } from "@/components/TikTokShareModal";
 
 interface Produto {
   id: string;
@@ -45,10 +48,82 @@ export default function AfiliadoProdutosAmazon() {
   const [saving, setSaving] = useState(false);
   const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
+  const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
+  const [tiktokContent, setTiktokContent] = useState<{ type: "image" | "video"; url: string; title?: string } | null>(null);
+  const [postingTikTok, setPostingTikTok] = useState<string | null>(null);
 
   const handleCriarCampanha = (produto: Produto) => {
     setProdutoSelecionado(produto);
     setCampanhaModalOpen(true);
+  };
+
+  const handleShareTikTok = (produto: Produto) => {
+    if (produto.imagem_url) {
+      setTiktokContent({
+        type: "image",
+        url: produto.imagem_url,
+        title: produto.titulo
+      });
+      setTiktokModalOpen(true);
+    } else {
+      toast.error("Este produto não possui imagem para compartilhar");
+    }
+  };
+
+  const handlePostTikTokDirect = async (produto: Produto) => {
+    if (!produto.imagem_url) {
+      toast.error("Este produto não possui imagem para compartilhar");
+      return;
+    }
+
+    setPostingTikTok(produto.id);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Você precisa estar logado");
+        return;
+      }
+
+      const { data: integration } = await supabase
+        .from("integrations")
+        .select("id, is_active")
+        .eq("user_id", user.id)
+        .eq("platform", "tiktok")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!integration) {
+        toast.error("Conecte sua conta TikTok primeiro nas configurações");
+        navigate("/afiliado/tiktok");
+        return;
+      }
+
+      const caption = `🔥 ${produto.titulo}\n\n💰 Oferta imperdível na Amazon!\n\n👆 Link na bio!\n\n#amazon #ofertas #promocao #fyp #viral #desconto`;
+
+      const { data, error } = await supabase.functions.invoke("tiktok-post-content", {
+        body: {
+          user_id: user.id,
+          content_type: "image",
+          content_url: produto.imagem_url,
+          title: caption,
+          post_mode: "direct"
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success("✅ Produto publicado no TikTok com sucesso!");
+      } else {
+        throw new Error(data.error || "Erro ao postar no TikTok");
+      }
+    } catch (error: any) {
+      console.error("Erro ao postar:", error);
+      toast.error(error.message || "Erro ao publicar no TikTok");
+    } finally {
+      setPostingTikTok(null);
+    }
   };
 
   useEffect(() => {
@@ -345,6 +420,24 @@ export default function AfiliadoProdutosAmazon() {
                   <ShoppingCart className="h-4 w-4 mr-1" />
                   Criar Campanha
                 </Button>
+                <Button
+                  className="w-full mb-2 bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
+                  size="sm"
+                  onClick={() => handlePostTikTokDirect(produto)}
+                  disabled={postingTikTok === produto.id}
+                >
+                  {postingTikTok === produto.id ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      Postando...
+                    </>
+                  ) : (
+                    <>
+                      <Rocket className="h-4 w-4 mr-1" />
+                      Postar no TikTok
+                    </>
+                  )}
+                </Button>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -353,7 +446,18 @@ export default function AfiliadoProdutosAmazon() {
                     onClick={() => window.open(produto.link_afiliado, "_blank")}
                   >
                     <Edit className="h-3 w-3 mr-1" />
-                    Editar
+                    Ver
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => handleShareTikTok(produto)}
+                    title="Abrir modal TikTok"
+                  >
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                      <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
+                    </svg>
                   </Button>
                   <Button
                     variant="outline"
@@ -437,6 +541,15 @@ export default function AfiliadoProdutosAmazon() {
             if (!open) setProdutoSelecionado(null);
           }}
           produto={produtoSelecionado as any}
+        />
+      )}
+
+      {/* Modal TikTok */}
+      {tiktokContent && (
+        <TikTokShareModal
+          open={tiktokModalOpen}
+          onOpenChange={setTiktokModalOpen}
+          content={tiktokContent}
         />
       )}
 
