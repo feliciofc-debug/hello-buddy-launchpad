@@ -2510,6 +2510,7 @@ export type Database = {
         Row: {
           access_token: string
           created_at: string | null
+          expires_at: string | null
           id: string
           is_active: boolean | null
           lomadee_affiliate_id: string | null
@@ -2528,6 +2529,7 @@ export type Database = {
         Insert: {
           access_token: string
           created_at?: string | null
+          expires_at?: string | null
           id?: string
           is_active?: boolean | null
           lomadee_affiliate_id?: string | null
@@ -2546,6 +2548,7 @@ export type Database = {
         Update: {
           access_token?: string
           created_at?: string | null
+          expires_at?: string | null
           id?: string
           is_active?: boolean | null
           lomadee_affiliate_id?: string | null
@@ -4961,6 +4964,48 @@ export type Database = {
         }
         Relationships: []
       }
+      tiktok_posts: {
+        Row: {
+          content_type: string
+          content_url: string
+          created_at: string
+          id: string
+          post_mode: string
+          publish_id: string | null
+          status: string
+          tiktok_response: Json | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content_type: string
+          content_url: string
+          created_at?: string
+          id?: string
+          post_mode?: string
+          publish_id?: string | null
+          status?: string
+          tiktok_response?: Json | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content_type?: string
+          content_url?: string
+          created_at?: string
+          id?: string
+          post_mode?: string
+          publish_id?: string | null
+          status?: string
+          tiktok_response?: Json | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_market_config: {
         Row: {
           base_prompt: string | null
@@ -5053,6 +5098,30 @@ export type Database = {
           created_at?: string | null
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_settings: {
+        Row: {
+          created_at: string
+          id: string
+          tiktok_default_post_mode: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          tiktok_default_post_mode?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          tiktok_default_post_mode?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
