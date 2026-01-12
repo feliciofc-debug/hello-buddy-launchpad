@@ -427,20 +427,23 @@ async function processarProgramacao(
     );
     console.log(`🔍 Produtos enviados nas últimas 24h: ${titulosEnviados.size}`);
     
-    // Decidir qual marketplace usar
-    let mkAtual = ultimoMkt;
-    if (!mkAtual || contadorMkt >= 3) {
-      // Trocar marketplace
-      if (!ultimoMkt) {
-        mkAtual = marketplaces[0];
-      } else {
-        const idx = marketplaces.indexOf(ultimoMkt);
-        mkAtual = marketplaces[(idx + 1) % marketplaces.length];
-      }
+    // 🆕 ROTAÇÃO EQUILIBRADA: 1 produto por marketplace antes de trocar
+    // Isso garante distribuição igual entre todos os marketplaces ativos
+    let mkAtual: string;
+    
+    if (!ultimoMkt) {
+      // Primeira execução: começar do primeiro marketplace
+      mkAtual = marketplaces[0];
+      contadorMkt = 0;
+    } else {
+      // Sempre trocar para o próximo marketplace (rotação 1:1:1:1)
+      const idxAtual = marketplaces.indexOf(ultimoMkt);
+      const proximoIdx = (idxAtual + 1) % marketplaces.length;
+      mkAtual = marketplaces[proximoIdx];
       contadorMkt = 0;
     }
     
-    console.log(`🏪 Marketplace atual: ${mkAtual}, contador: ${contadorMkt}`);
+    console.log(`🏪 Rotação equilibrada: ${ultimoMkt || 'início'} → ${mkAtual}`);
     
     // Buscar produtos do marketplace atual (múltiplos para filtrar)
     let { data: produtosDisponiveis, error: produtoError } = await supabase
