@@ -357,8 +357,12 @@ function detectMarketplaceLink(text: string): MarketplaceLinkResult | null {
     if (host.endsWith('mercadolivre.com.br') || host.endsWith('mercadolibre.com'))
       return { url, marketplace: 'mercadolivre' }
 
-    // Shopee
-    if (host.endsWith('shopee.com.br')) return { url, marketplace: 'shopee' }
+    // Shopee (incluindo encurtadores s.shopee.com.br e shope.ee)
+    if (
+      host.endsWith('shopee.com.br') || 
+      host === 's.shopee.com.br' ||
+      host === 'shope.ee'
+    ) return { url, marketplace: 'shopee' }
 
     return null
   } catch {
@@ -413,12 +417,74 @@ function convertToAffiliateLink(url: string, marketplace: string, amazonTag: str
       }
       
     case 'mercadolivre':
+      // Para ML, retornar link original por enquanto
+      return url
+      
     case 'shopee':
-      // Para esses, retornar link original (já devem vir convertidos ou usam outro sistema)
+      // Shopee será convertido via API (função assíncrona separada)
+      // Esta função síncrona só retorna o link original
+      // A conversão real acontece em convertShopeeToAffiliateLink()
       return url
       
     default:
       return url
+  }
+}
+
+// ============================================
+// CONVERSÃO ASSÍNCRONA DE LINKS SHOPEE
+// ============================================
+const SHOPEE_AFFILIATE_ID = '18113410011' // ID de afiliado AMZ Ofertas
+
+async function convertShopeeToAffiliateLink(url: string): Promise<string> {
+  try {
+    console.log('🛒 [SHOPEE] Iniciando conversão de link:', url)
+    
+    // Seguir redirect se for link encurtado (s.shopee.com.br ou shope.ee)
+    let finalUrl = url
+    try {
+      const { hostname } = new URL(url)
+      if (hostname === 's.shopee.com.br' || hostname === 'shope.ee') {
+        console.log('🔄 [SHOPEE] Seguindo redirect de link encurtado...')
+        const redirectResponse = await fetch(url, { 
+          method: 'HEAD',
+          redirect: 'follow' 
+        })
+        finalUrl = redirectResponse.url
+        console.log('🔄 [SHOPEE] URL final após redirect:', finalUrl)
+      }
+    } catch (e) {
+      console.warn('⚠️ [SHOPEE] Erro ao seguir redirect, usando URL original:', e)
+    }
+    
+    // Limpar URL (remover parâmetros de tracking existentes)
+    let cleanUrl = finalUrl
+    try {
+      const urlObj = new URL(finalUrl)
+      // Remover parâmetros de afiliado/tracking antigos
+      urlObj.searchParams.delete('share_channel_code')
+      urlObj.searchParams.delete('af_id')
+      urlObj.searchParams.delete('af_type')
+      urlObj.searchParams.delete('utm_source')
+      urlObj.searchParams.delete('utm_medium')
+      urlObj.searchParams.delete('utm_campaign')
+      cleanUrl = urlObj.toString()
+    } catch (e) {
+      console.warn('⚠️ [SHOPEE] Erro ao limpar URL:', e)
+    }
+    
+    // Gerar link de afiliado no formato correto
+    // Formato: https://s.shopee.com.br/an_redir?origin_link=URL_ENCODADA&affiliate_id=ID
+    const encodedUrl = encodeURIComponent(cleanUrl)
+    const affiliateLink = `https://s.shopee.com.br/an_redir?origin_link=${encodedUrl}&affiliate_id=${SHOPEE_AFFILIATE_ID}`
+    
+    console.log('✅ [SHOPEE] Link de afiliado gerado:', affiliateLink)
+    return affiliateLink
+    
+  } catch (error) {
+    console.error('❌ [SHOPEE] Erro ao converter link:', error)
+    // Em caso de erro, retorna o link original
+    return url
   }
 }
 
@@ -1197,7 +1263,17 @@ async function handleTextMessage(
       .single()
     
     const amazonTag = afiliadoData?.amazon_affiliate_tag || 'amzofertas03-20'
-    const linkConvertido = convertToAffiliateLink(linkResult.url, linkResult.marketplace, amazonTag)
+    
+    // Conversão diferenciada por marketplace
+    let linkConvertido: string
+    if (linkResult.marketplace === 'shopee') {
+      // Shopee: conversão assíncrona com redirect
+      console.log('🛒 [AMZ-OFERTAS] Convertendo link Shopee...')
+      linkConvertido = await convertShopeeToAffiliateLink(linkResult.url)
+    } else {
+      // Outros marketplaces: conversão síncrona
+      linkConvertido = convertToAffiliateLink(linkResult.url, linkResult.marketplace, amazonTag)
+    }
     
     // Buscar nome do cliente
     const cleanPhoneLink = message.from.replace(/\D/g, '')
@@ -1209,13 +1285,24 @@ async function handleTextMessage(
     
     const nomeCliente = leadInfo?.nome?.split(' ')[0] || 'amigo(a)'
     
+    // Mensagem personalizada por marketplace
+    let mensagem = ''
+    if (linkResult.marketplace === 'shopee') {
+      mensagem = `Opa, ${nomeCliente}! Adorei seu achado na Shopee! 🛒\n\n` +
+        `Aqui está seu link com *2% de cashback*:\n\n` +
+        `👉 ${linkConvertido}\n\n` +
+        `Compra por esse link e me manda o comprovante pra ganhar cashback + eBook grátis! 🎁`
+    } else {
+      mensagem = `Opa, ${nomeCliente}! Que achado! 🤩\n\n` +
+        `Aqui está seu link com *2% de cashback*:\n\n` +
+        `👉 ${linkConvertido}\n\n` +
+        `Depois que comprar, me manda o comprovante e eu credito seu cashback + te dou um eBook de presente! 🎁`
+    }
+    
     // Enviar link convertido
     await sendWhatsAppMessage(
       message.from,
-      `Opa, ${nomeCliente}! Que achado! 🤩\n\n` +
-      `Aqui está seu link com *2% de cashback*:\n\n` +
-      `👉 ${linkConvertido}\n\n` +
-      `Depois que comprar, me manda o comprovante e eu credito seu cashback + te dou um eBook de presente! 🎁`,
+      mensagem,
       wuzapiToken, supabase, userId, nomeCliente
     )
     
