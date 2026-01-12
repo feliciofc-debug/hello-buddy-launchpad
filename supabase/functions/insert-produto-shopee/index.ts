@@ -131,17 +131,42 @@ Deno.serve(async (req) => {
 
     // Normalizar preço brasileiro (1.299,99 -> 1299.99)
     let precoNormalizado: number | null = null;
-    if (preco) {
+    if (preco !== undefined && preco !== null && preco !== '') {
       let precoStr = String(preco).trim();
-      // Se tem vírgula como decimal (formato BR: 1.299,99)
+      
+      // Remover "R$" e espaços extras
+      precoStr = precoStr.replace(/R\$\s*/gi, '').trim();
+      
+      console.log('💰 Preço após limpeza inicial:', precoStr);
+      
+      // Se tem vírgula como decimal (formato BR: 1.299,99 ou 29,90)
       if (precoStr.includes(',')) {
+        // Remove pontos de milhar e troca vírgula por ponto
         precoStr = precoStr.replace(/\./g, '').replace(',', '.');
       } else if (precoStr.match(/^\d{1,3}(\.\d{3})+$/)) {
         // Formato 1.299 ou 2.399 (milhar com ponto, sem decimal) - é milhar, não decimal
         precoStr = precoStr.replace(/\./g, '');
+      } else if (precoStr.match(/^\d+\.\d{3}$/)) {
+        // Formato 2.399 (pode ser 2399 reais) - tratar como milhar
+        precoStr = precoStr.replace('.', '');
       }
+      
       precoNormalizado = parseFloat(precoStr);
-      if (isNaN(precoNormalizado)) precoNormalizado = null;
+      
+      // Correção Shopee: se o preço parece muito baixo (ex: 2.39 quando deveria ser 2390)
+      // e o valor original tinha 3 casas após o ponto, multiplicar por 1000
+      if (precoNormalizado && precoNormalizado < 100) {
+        const originalStr = String(preco).trim();
+        const decimalMatch = originalStr.match(/\.(\d+)$/);
+        if (decimalMatch && decimalMatch[1].length === 3) {
+          precoNormalizado = precoNormalizado * 1000;
+          console.log('💰 Correção Shopee aplicada (x1000):', precoNormalizado);
+        }
+      }
+      
+      if (isNaN(precoNormalizado) || precoNormalizado <= 0) {
+        precoNormalizado = null;
+      }
     }
 
     console.log('💰 Preço recebido:', preco, '-> normalizado:', precoNormalizado);
