@@ -513,20 +513,40 @@ async function processarProgramacao(
     
     console.log(`🏪 Rotação 2:1:1:1 (Shopee heavy + feminino): ${ultimoMkt || 'início'} → ${mkAtual}`);
     
+    // 🆕 FILTRAR POR CATEGORIAS DA PROGRAMAÇÃO
+    const categoriasPermitidas = programacao.categorias && programacao.categorias.length > 0 
+      ? programacao.categorias 
+      : null;
+    
+    if (categoriasPermitidas) {
+      console.log(`🏷️ Filtrando por categorias: ${categoriasPermitidas.join(', ')}`);
+    } else {
+      console.log(`🏷️ Sem filtro de categoria (enviando de todas)`);
+    }
+    
     // Buscar mais produtos para ter opções de priorização
     const queryLimit = mkAtual.toLowerCase().includes('shopee') ? 200 : 80;
     const randomOffset = mkAtual.toLowerCase().includes('shopee') ? Math.floor(Math.random() * 300) : 0;
     
-    let { data: produtosDisponiveis, error: produtoError } = await supabase
+    // Construir query base
+    let query = supabase
       .from("afiliado_produtos")
       .select("*")
       .eq("user_id", programacao.user_id)
-      .ilike("marketplace", `%${mkAtual}%`)
-      .range(randomOffset, randomOffset + queryLimit - 1);
+      .ilike("marketplace", `%${mkAtual}%`);
+    
+    // 🆕 Aplicar filtro de categorias SE definidas
+    if (categoriasPermitidas && categoriasPermitidas.length > 0) {
+      query = query.in("categoria", categoriasPermitidas);
+    }
+    
+    let { data: produtosDisponiveis, error: produtoError } = await query.range(randomOffset, randomOffset + queryLimit - 1);
     
     // Filtrar produtos que NÃO foram enviados nas últimas 24h
     let produtoData: any[] = [];
     if (produtosDisponiveis && produtosDisponiveis.length > 0) {
+      console.log(`📦 ${produtosDisponiveis.length} produtos encontrados em ${mkAtual} com categorias filtradas`);
+      
       // 🚫 Se for Shopee, filtrar bebidas e comidas
       const isShopee = mkAtual.toLowerCase().includes('shopee');
       let disponiveis = produtosDisponiveis.filter(
@@ -562,22 +582,35 @@ async function processarProgramacao(
       }
     }
     
-    // Se não encontrou, tentar outros marketplaces (com priorização)
+    // Se não encontrou, tentar outros marketplaces (com priorização E RESPEITANDO CATEGORIAS)
     if (produtoData.length === 0) {
-      console.log(`⚠️ Sem produtos novos em ${mkAtual}, tentando outros...`);
+      console.log(`⚠️ Sem produtos novos em ${mkAtual}, tentando outros marketplaces...`);
       for (const mkt of marketplaces) {
         if (mkt !== mkAtual) {
-          const { data: altData } = await supabase
+          // 🆕 Construir query respeitando categorias
+          let altQuery = supabase
             .from("afiliado_produtos")
             .select("*")
             .eq("user_id", programacao.user_id)
-            .ilike("marketplace", `%${mkt}%`)
-            .limit(100);
+            .ilike("marketplace", `%${mkt}%`);
+          
+          // Aplicar filtro de categorias SE definidas
+          if (categoriasPermitidas && categoriasPermitidas.length > 0) {
+            altQuery = altQuery.in("categoria", categoriasPermitidas);
+          }
+          
+          const { data: altData } = await altQuery.limit(100);
           
           if (altData && altData.length > 0) {
-            const disponiveis = altData.filter(
+            let disponiveis = altData.filter(
               (p: { titulo?: string }) => !titulosEnviados.has(p.titulo?.toLowerCase().trim() || '')
             );
+            
+            // Aplicar filtro de bloqueio para Shopee
+            const isShopeeAlt = mkt.toLowerCase().includes('shopee');
+            if (isShopeeAlt) {
+              disponiveis = disponiveis.filter((p: any) => !isProdutoBloqueadoShopee(p));
+            }
             
             if (disponiveis.length > 0) {
               // Priorizar também nos fallbacks
@@ -588,7 +621,7 @@ async function processarProgramacao(
               produtoData = [listaFinal[randomIndex]];
               mkAtual = mkt;
               contadorMkt = 0;
-              console.log(`✅ Encontrado ${disponiveis.length} produtos novos em ${mkt} (${prioritarios.length} prioritários)`);
+              console.log(`✅ Encontrado ${disponiveis.length} produtos novos em ${mkt} (categorias: ${categoriasPermitidas?.join(', ') || 'todas'})`);
               break;
             }
           }
@@ -596,22 +629,34 @@ async function processarProgramacao(
       }
     }
     
-    // Último fallback: qualquer produto aleatório (resetar ciclo)
+    // Último fallback: qualquer produto das categorias permitidas (resetar ciclo de 24h)
     if (produtoData.length === 0) {
-      console.log("🔄 Ciclo completo! Reiniciando seleção aleatória...");
-      const { data: anyData } = await supabase
+      console.log("🔄 Ciclo completo! Reiniciando seleção (ignorando histórico 24h)...");
+      
+      // 🆕 Construir query respeitando categorias mesmo no fallback
+      let fallbackQuery = supabase
         .from("afiliado_produtos")
         .select("*")
-        .eq("user_id", programacao.user_id)
-        .limit(100);
+        .eq("user_id", programacao.user_id);
+      
+      // Aplicar filtro de categorias SE definidas
+      if (categoriasPermitidas && categoriasPermitidas.length > 0) {
+        fallbackQuery = fallbackQuery.in("categoria", categoriasPermitidas);
+      }
+      
+      const { data: anyData } = await fallbackQuery.limit(100);
       
       if (anyData && anyData.length > 0) {
-        // Mesmo no fallback, priorizar categorias femininas
+        // Mesmo no fallback, priorizar categorias prioritárias
         const prioritarios = anyData.filter(isProdutoPrioritario);
         const usarPrioritario = prioritarios.length > 0 && Math.random() < 0.8;
         const listaFinal = usarPrioritario ? prioritarios : anyData;
         const randomIndex = Math.floor(Math.random() * listaFinal.length);
         produtoData = [listaFinal[randomIndex]];
+        console.log(`🔄 Fallback: ${anyData.length} produtos disponíveis nas categorias permitidas`);
+      } else if (categoriasPermitidas) {
+        // Se não encontrou nada nas categorias, avisar
+        console.log(`⚠️ Nenhum produto encontrado nas categorias: ${categoriasPermitidas.join(', ')}`);
       }
     }
 

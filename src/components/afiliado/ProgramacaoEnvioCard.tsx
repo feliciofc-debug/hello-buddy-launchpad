@@ -50,21 +50,30 @@ interface Grupo {
   group_jid: string;
 }
 
+// 22 Categorias Amazon completas
 const CATEGORIAS_DISPONIVEIS = [
-  { id: 'Casa', nome: 'Casa', icone: '🏠' },
-  { id: 'Cozinha', nome: 'Cozinha', icone: '🍳' },
+  { id: 'Alimentos e Bebidas', nome: 'Alimentos', icone: '🍴' },
+  { id: 'Automotivo', nome: 'Automotivo', icone: '🚗' },
   { id: 'Bebês', nome: 'Bebês', icone: '👶' },
-  { id: 'Eletrônicos e Celulares', nome: 'Tech', icone: '📱' },
-  { id: 'Video Games', nome: 'Gamer', icone: '🎮' },
   { id: 'Beleza', nome: 'Beleza', icone: '💄' },
+  { id: 'Brinquedos e Jogos', nome: 'Brinquedos', icone: '🎮' },
+  { id: 'Casa', nome: 'Casa', icone: '🏠' },
+  { id: 'Construção', nome: 'Construção', icone: '🔨' },
+  { id: 'Cozinha', nome: 'Cozinha', icone: '🍳' },
+  { id: 'Cuidados Pessoais e Limpeza', nome: 'Limpeza', icone: '🧼' },
+  { id: 'Eletrodomésticos', nome: 'Eletros', icone: '🔌' },
+  { id: 'Eletrônicos e Celulares', nome: 'Tech', icone: '📱' },
   { id: 'Esportes e Aventura', nome: 'Esportes', icone: '💪' },
   { id: 'Ferramentas e Construção', nome: 'Ferramentas', icone: '🔧' },
-  { id: 'Pet Shop', nome: 'Pet', icone: '🐾' },
+  { id: 'Informática', nome: 'Informática', icone: '💻' },
+  { id: 'Jardim e Piscina', nome: 'Jardim', icone: '🌿' },
+  { id: 'Livros', nome: 'Livros', icone: '📚' },
+  { id: 'eBooks', nome: 'eBooks', icone: '📖' },
   { id: 'Moda', nome: 'Moda', icone: '👗' },
   { id: 'Móveis', nome: 'Móveis', icone: '🛋️' },
-  { id: 'Automotivo', nome: 'Automotivo', icone: '🚗' },
-  { id: 'Eletrodomésticos', nome: 'Eletrodomésticos', icone: '🔌' },
-  { id: 'Informática', nome: 'Informática', icone: '💻' },
+  { id: 'Papelaria e Escritório', nome: 'Papelaria', icone: '📝' },
+  { id: 'Pet Shop', nome: 'Pet', icone: '🐾' },
+  { id: 'Video Games', nome: 'Games', icone: '🎮' },
 ];
 
 const DIAS_SEMANA = [
