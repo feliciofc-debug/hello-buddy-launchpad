@@ -638,25 +638,38 @@ Deno.serve(async (req) => {
         if (wuzapiToken && participants.length > 0 && groupJid) {
           // Enviar UMA mensagem de boas-vindas NO GRUPO (não no privado)
           // Mensagem genérica sem citar nome + link do eBook
-          const welcomeMessage = `🎉 *Bem-vindo(a) ao grupo AMZ Ofertas Cashback!* 🎉
+          const welcomeMessage = `🎉 BEM-VINDO(A) AO AMZ OFERTAS CASHBACK! 🎉
 
-Que bom ter você aqui! 💜
+Obrigado por fazer parte da nossa comunidade de ofertas! Aqui você encontra as melhores promoções dos principais marketplaces com 2% de CASHBACK!
 
-🤖 *Pietro Eugenio* é nosso assistente virtual — ele valida comprovantes, converte links e tira suas dúvidas!
+📚 PRESENTE DE BOAS-VINDAS
+Baixe grátis nosso eBook com 50 Receitas de Airfryer:
+👉 https://amzofertas.com.br/ebooks/50-receitas-airfryer.pdf
 
-📲 *Como funciona:*
+💰 REGRAS DO CASHBACK
+✅ Validade: 120 dias após a compra
+✅ Resgate mínimo: R$ 20,00
+✅ Marketplaces válidos: Amazon, Shopee, Mercado Livre
+⚠️ ATENÇÃO: Compras na Magalu NÃO participam do cashback
+
+🤖 Pietro Eugenio é nosso assistente virtual — ele valida comprovantes, converte links e tira suas dúvidas!
+
+📲 Como funciona:
 1️⃣ Você recebe ofertas incríveis aqui no grupo
 2️⃣ Compra pelo link (site oficial)
 3️⃣ Envia o comprovante pro Pietro no privado
-4️⃣ Ganha *2% de cashback* + eBooks grátis! 🎁
+4️⃣ Ganha 2% de cashback + eBooks grátis! 🎁
 
-💰 Quando juntar R$30, você resgata via PIX! (liberado após 35 dias)
+🎁 ACHOU UM PRODUTO QUE QUER COMPRAR?
+Encontrou um produto na Amazon, Shopee ou Mercado Livre que não foi ofertado no grupo?
+👉 Envie o link para o Pietro Eugenio e ele converte para você!
+✨ Bônus: Ganhe um novo eBook + seu cashback garantido!
 
-📚 *Seu eBook grátis de presente:*
-👉 https://amzofertas.com.br/ebooks/50-receitas-airfryer.pdf
+📱 SUPORTE E ENVIO DE COMPROVANTES
+WhatsApp Pietro Eugenio: (21) 99537-9550
+👉 https://wa.me/5521995379550
 
-Qualquer dúvida, é só chamar o Pietro! 😊
-👉 https://wa.me/5521995379550`
+Envie seus comprovantes e tire qualquer dúvida sobre a plataforma!`
 
           try {
             // Enviar boas-vindas NO GRUPO
