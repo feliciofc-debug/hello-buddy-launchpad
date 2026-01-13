@@ -53,8 +53,79 @@ serve(async (req) => {
           for (const group of (groups.Groups || groups || [])) {
             const groupJid = group.JID || group.Jid || group.jid;
             const groupName = group.Name || group.name || group.Subject || group.subject;
+            const currentMemberCount = group.Participants?.length || group.participants?.length || 0;
 
             if (groupJid && groupName) {
+              // Buscar contagem anterior
+              const { data: existingGroup } = await supabase
+                .from("whatsapp_grupos_afiliado")
+                .select("member_count, previous_member_count")
+                .eq("group_jid", groupJid)
+                .single();
+
+              const previousCount = existingGroup?.member_count || 0;
+              
+              // Se a contagem aumentou, novos membros entraram!
+              if (existingGroup && currentMemberCount > previousCount) {
+                const newMembersCount = currentMemberCount - previousCount;
+                console.log(`🎉 Detectados ${newMembersCount} novos membros no grupo ${groupName}!`);
+                
+                // Enviar mensagem de boas-vindas no grupo
+                try {
+                  const welcomeMessage = `🎉 BEM-VINDO(A) AO AMZ OFERTAS CASHBACK! 🎉
+
+Obrigado por fazer parte da nossa comunidade de ofertas! Aqui você encontra as melhores promoções dos principais marketplaces com 2% de CASHBACK!
+
+📚 PRESENTE DE BOAS-VINDAS
+Baixe grátis nosso eBook com 50 Receitas de Airfryer:
+👉 https://amzofertas.com.br/ebooks/50-receitas-airfryer.pdf
+
+💰 REGRAS DO CASHBACK
+✅ Validade: 120 dias após a compra
+✅ Resgate mínimo: R$ 20,00
+✅ Marketplaces válidos: Amazon, Shopee, Mercado Livre
+⚠️ ATENÇÃO: Compras na Magalu NÃO participam do cashback
+
+🤖 Pietro Eugenio é nosso assistente virtual — ele valida comprovantes, converte links e tira suas dúvidas!
+
+📲 Como funciona:
+1️⃣ Você recebe ofertas incríveis aqui no grupo
+2️⃣ Compra pelo link (site oficial)
+3️⃣ Envia o comprovante pro Pietro no privado
+4️⃣ Ganha 2% de cashback + eBooks grátis! 🎁
+
+🎁 ACHOU UM PRODUTO QUE QUER COMPRAR?
+Encontrou um produto na Amazon, Shopee ou Mercado Livre que não foi ofertado no grupo?
+👉 Envie o link para o Pietro Eugenio e ele converte para você!
+✨ Bônus: Ganhe um novo eBook + seu cashback garantido!
+
+📱 SUPORTE E ENVIO DE COMPROVANTES
+WhatsApp Pietro Eugenio: (21) 99537-9550
+👉 https://wa.me/5521995379550
+
+Envie seus comprovantes e tire qualquer dúvida sobre a plataforma!`;
+
+                  const groupPhone = groupJid.includes('@g.us') ? groupJid : `${groupJid}@g.us`;
+                  
+                  const sendResponse = await fetch(`${CONTABO_WUZAPI_URL}/chat/send/text`, {
+                    method: "POST",
+                    headers: { 
+                      "Token": cliente.wuzapi_token,
+                      "Content-Type": "application/json" 
+                    },
+                    body: JSON.stringify({
+                      Phone: groupPhone,
+                      Body: welcomeMessage
+                    }),
+                  });
+
+                  const sendResult = await sendResponse.json();
+                  console.log(`Resultado envio boas-vindas no grupo ${groupName}:`, JSON.stringify(sendResult));
+                } catch (welcomeError) {
+                  console.error("Erro ao enviar boas-vindas:", welcomeError);
+                }
+              }
+
               // Upsert - inserir se não existe, atualizar se existe
               await supabase
                 .from("whatsapp_grupos_afiliado")
@@ -62,7 +133,8 @@ serve(async (req) => {
                   user_id: userId,
                   group_jid: groupJid,
                   group_name: groupName,
-                  member_count: group.Participants?.length || group.participants?.length || 0,
+                  member_count: currentMemberCount,
+                  previous_member_count: previousCount, // Guardar contagem anterior
                   ativo: true,
                   updated_at: new Date().toISOString()
                 }, {
