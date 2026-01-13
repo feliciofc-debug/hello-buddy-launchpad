@@ -116,27 +116,67 @@ const getProductImageUrl = (produto: Produto): string | null => {
   return null;
 };
 
-// Regras de auto-categorização por palavras-chave
+// Regras COMPLETAS de auto-categorização - ordem de prioridade (mais específicas primeiro)
 const REGRAS_AUTO_CATEGORIA: { categoria: string; palavras: string[] }[] = [
-  { categoria: 'Papelaria e Escritório', palavras: ['caderno', 'lápis', 'caneta', 'borracha', 'cola', 'papel', 'guache', 'lousa', 'escolar', 'massinha', 'fita corretiva', 'canetinha', 'bloco adesivo', 'giz', 'marca texto', 'régua', 'tesoura', 'estojo', 'mochila escolar', 'fichário', 'post-it', 'grampeador', 'clips', 'agenda'] },
-  { categoria: 'Cozinha', palavras: ['panela', 'frigideira', 'airfryer', 'air fryer', 'liquidificador', 'batedeira', 'faca', 'talheres', 'prato', 'copo', 'xícara', 'jarra', 'forma', 'assadeira', 'espátula', 'concha', 'escorredor', 'garrafa térmica', 'cafeteira'] },
-  { categoria: 'Casa', palavras: ['almofada', 'cortina', 'tapete', 'toalha', 'lençol', 'edredom', 'travesseiro', 'colcha', 'fronha', 'cobertor', 'decoração', 'vaso', 'quadro', 'relógio parede', 'abajur', 'luminária'] },
-  { categoria: 'Eletrônicos e Celulares', palavras: ['celular', 'smartphone', 'tablet', 'fone', 'carregador', 'cabo usb', 'powerbank', 'caixa de som', 'smartwatch', 'relógio smart', 'película', 'capinha', 'case'] },
-  { categoria: 'Informática', palavras: ['notebook', 'computador', 'teclado', 'mouse', 'monitor', 'webcam', 'headset', 'pendrive', 'hd externo', 'ssd', 'roteador', 'hub usb', 'impressora'] },
-  { categoria: 'Beleza', palavras: ['maquiagem', 'batom', 'rímel', 'base', 'corretivo', 'blush', 'sombra', 'perfume', 'creme', 'hidratante', 'protetor solar', 'shampoo', 'condicionador', 'escova cabelo', 'secador', 'chapinha', 'babyliss'] },
-  { categoria: 'Moda', palavras: ['camiseta', 'calça', 'vestido', 'saia', 'blusa', 'jaqueta', 'casaco', 'tênis', 'sapato', 'sandália', 'chinelo', 'bolsa', 'carteira', 'cinto', 'relógio', 'óculos', 'brinco', 'colar', 'pulseira'] },
-  { categoria: 'Bebês', palavras: ['fralda', 'mamadeira', 'chupeta', 'carrinho bebê', 'berço', 'babá eletrônica', 'mordedor', 'body', 'macacão bebê', 'sapatinho bebê'] },
-  { categoria: 'Brinquedos e Jogos', palavras: ['boneca', 'carrinho', 'lego', 'quebra-cabeça', 'jogo de tabuleiro', 'bola', 'bicicleta infantil', 'patinete', 'pelúcia', 'nerf'] },
-  { categoria: 'Pet Shop', palavras: ['ração', 'coleira', 'guia', 'casinha', 'comedouro', 'bebedouro pet', 'arranhador', 'brinquedo pet', 'cama pet', 'tapete higiênico'] },
-  { categoria: 'Esportes e Aventura', palavras: ['academia', 'haltere', 'esteira', 'bicicleta', 'tênis corrida', 'corda pular', 'yoga', 'colchonete', 'luva boxe', 'raquete', 'bola futebol', 'bola basquete', 'mochila camping'] },
-  { categoria: 'Automotivo', palavras: ['carro', 'moto', 'pneu', 'óleo motor', 'limpador para-brisa', 'capa banco', 'tapete carro', 'carregador veicular', 'suporte celular carro', 'aspirador carro'] },
-  { categoria: 'Ferramentas e Construção', palavras: ['furadeira', 'parafusadeira', 'martelo', 'chave fenda', 'alicate', 'serra', 'trena', 'nível', 'caixa ferramentas', 'broca'] },
-  { categoria: 'Jardim e Piscina', palavras: ['mangueira', 'vaso planta', 'terra', 'adubo', 'semente', 'tesoura poda', 'regador', 'piscina', 'boia', 'cloro', 'filtro piscina'] },
-  { categoria: 'Alimentos e Bebidas', palavras: ['café', 'chá', 'chocolate', 'biscoito', 'cereal', 'suplemento', 'whey', 'vitamina', 'proteína', 'barra proteica'] },
-  { categoria: 'Cuidados Pessoais e Limpeza', palavras: ['sabonete', 'desodorante', 'papel higiênico', 'detergente', 'desinfetante', 'água sanitária', 'amaciante', 'sabão', 'esponja', 'vassoura', 'rodo', 'aspirador'] },
-  { categoria: 'Eletrodomésticos', palavras: ['geladeira', 'fogão', 'micro-ondas', 'máquina lavar', 'secadora', 'ferro passar', 'ventilador', 'ar condicionado', 'aquecedor', 'purificador'] },
-  { categoria: 'Móveis', palavras: ['sofá', 'cama', 'guarda-roupa', 'armário', 'estante', 'mesa', 'cadeira', 'escrivaninha', 'rack', 'painel tv', 'cômoda'] },
-  { categoria: 'Livros', palavras: ['livro', 'romance', 'biografia', 'autoajuda', 'didático', 'infantil livro', 'ficção', 'literatura'] },
+  // 1. ELETRODOMÉSTICOS (prioridade alta - produtos específicos)
+  { categoria: 'Eletrodomésticos', palavras: ['ar-condicionado', 'ar condicionado', 'split', 'btu', 'geladeira', 'refrigerador', 'freezer', 'fogão', 'cooktop', 'micro-ondas', 'microondas', 'máquina de lavar', 'máquina lavar', 'lavadora', 'secadora', 'lava e seca', 'ferro de passar', 'ferro passar', 'ventilador', 'circulador', 'aquecedor', 'climatizador', 'purificador', 'bebedouro', 'exaustor', 'depurador', 'coifa', 'forno elétrico'] },
+  
+  // 2. COZINHA (panelas, utensílios, eletros pequenos)
+  { categoria: 'Cozinha', palavras: ['panela', 'frigideira', 'caçarola', 'fervedor', 'caldeirão', 'airfryer', 'air fryer', 'fritadeira', 'liquidificador', 'batedeira', 'processador', 'mixer', 'cafeteira', 'espremedor', 'sanduicheira', 'grill', 'faca', 'talheres', 'faqueiro', 'garfo', 'colher', 'prato', 'tigela', 'bowl', 'saladeira', 'copo', 'taça', 'jarra', 'garrafa térmica', 'xícara', 'caneca', 'forma', 'assadeira', 'refratário', 'travessa', 'espátula', 'concha', 'pegador', 'escumadeira', 'escorredor', 'peneira', 'ralador', 'pote', 'potes', 'boleira', 'bandeja', 'petisqueira', 'aparelho de jantar', 'aparelho jantar', 'jogo de panelas', 'jogo panelas', 'jogo de copos', 'jogo copos', 'jogo de talheres', 'conjunto de'] },
+  
+  // 3. FERRAMENTAS E CONSTRUÇÃO
+  { categoria: 'Ferramentas e Construção', palavras: ['furadeira', 'parafusadeira', 'esmerilhadeira', 'serra', 'lixadeira', 'martelo', 'alicate', 'chave', 'soquete', 'catraca', 'trena', 'nível', 'prumo', 'broca', 'bits', 'disco', 'caixa de ferramentas', 'maleta ferramentas', 'kit ferramentas', 'jogo ferramentas', 'kit chaves', 'chave fenda', 'chave phillips', 'chave allen', 'fita isolante'] },
+  
+  // 4. MODA (roupas, calçados, acessórios)
+  { categoria: 'Moda', palavras: ['camiseta', 'camisa', 'calça', 'jeans', 'legging', 'vestido', 'saia', 'short', 'blusa', 'moletom', 'casaco', 'jaqueta', 'blazer', 'tênis', 'sapatênis', 'sapato', 'bota', 'sandália', 'rasteirinha', 'chinelo', 'havaianas', 'tamanco', 'bolsa', 'mochila', 'carteira', 'cinto', 'gravata', 'relógio', 'óculos', 'brinco', 'colar', 'pulseira', 'anel', 'lingerie', 'cueca', 'calcinha', 'meia', 'pijama', 'infantil menina', 'infantil menino', 'calçados'] },
+  
+  // 5. BELEZA
+  { categoria: 'Beleza', palavras: ['maquiagem', 'batom', 'rímel', 'mascara', 'delineador', 'base', 'corretivo', 'pó compacto', 'primer', 'blush', 'bronzer', 'iluminador', 'sombra', 'paleta', 'perfume', 'colônia', 'creme', 'hidratante', 'sérum', 'loção', 'protetor solar', 'shampoo', 'condicionador', 'máscara capilar', 'escova cabelo', 'pente', 'secador', 'chapinha', 'babyliss', 'depilador', 'barbeador', 'esmalte'] },
+  
+  // 6. PAPELARIA E ESCRITÓRIO
+  { categoria: 'Papelaria e Escritório', palavras: ['caderno', 'agenda', 'fichário', 'pasta', 'lápis', 'caneta', 'lapiseira', 'marca texto', 'marcador', 'borracha', 'apontador', 'cola', 'fita adesiva', 'fita corretiva', 'papel', 'sulfite', 'post-it', 'bloco adesivo', 'régua', 'esquadro', 'compasso', 'tesoura', 'estilete', 'grampeador', 'grampo', 'clips', 'clipes', 'estojo', 'mochila escolar', 'guache', 'tinta escolar', 'aquarela', 'lousa', 'quadro branco', 'massinha', 'giz de cera', 'canetinha', 'material escolar', 'volta às aulas'] },
+  
+  // 7. ELETRÔNICOS E CELULARES
+  { categoria: 'Eletrônicos e Celulares', palavras: ['celular', 'smartphone', 'iphone', 'samsung galaxy', 'xiaomi', 'motorola', 'tablet', 'ipad', 'fone', 'earbuds', 'airpods', 'headphone', 'headset', 'carregador', 'cabo usb', 'cabo tipo c', 'powerbank', 'power bank', 'caixa de som', 'bluetooth', 'speaker', 'soundbar', 'smartwatch', 'relógio smart', 'smartband', 'película', 'capinha', 'case celular', 'drone', 'gopro', 'kindle', 'tv', 'televisão', 'smart tv', 'home theater'] },
+  
+  // 8. INFORMÁTICA
+  { categoria: 'Informática', palavras: ['notebook', 'laptop', 'macbook', 'chromebook', 'computador', 'pc gamer', 'desktop', 'teclado', 'mouse', 'mousepad', 'monitor', 'tela', 'webcam', 'pendrive', 'cartão memória', 'sd card', 'hd externo', 'ssd', 'disco rígido', 'roteador', 'modem', 'repetidor wifi', 'hub usb', 'switch', 'impressora', 'multifuncional', 'scanner', 'cartucho', 'toner', 'suporte notebook', 'base notebook'] },
+  
+  // 9. BEBÊS
+  { categoria: 'Bebês', palavras: ['fralda', 'pomada assadura', 'mamadeira', 'bico', 'chupeta', 'carrinho bebê', 'carrinho de bebê', 'berço', 'moisés', 'bebê conforto', 'cadeirinha auto', 'babá eletrônica', 'baby monitor', 'mordedor', 'chocalho', 'body', 'macacão bebê', 'enxoval', 'sapatinho bebê', 'banheira bebê', 'trocador', 'andador', 'cercadinho'] },
+  
+  // 10. BRINQUEDOS E JOGOS
+  { categoria: 'Brinquedos e Jogos', palavras: ['boneca', 'barbie', 'lol', 'baby alive', 'carrinho', 'hot wheels', 'pista', 'lego', 'blocos montar', 'quebra-cabeça', 'puzzle', 'jogo de tabuleiro', 'monopoly', 'uno', 'dominó', 'bola', 'bicicleta infantil', 'triciclo', 'patinete', 'patins', 'skate', 'pelúcia', 'urso pelúcia', 'nerf', 'pistola água', 'massinha play-doh', 'slime', 'boneco', 'action figure'] },
+  
+  // 11. PET SHOP
+  { categoria: 'Pet Shop', palavras: ['ração', 'petisco', 'sachê', 'coleira', 'guia', 'peitoral', 'casinha pet', 'casinha cachorro', 'casinha gato', 'comedouro', 'bebedouro pet', 'arranhador', 'brinquedo pet', 'brinquedo cachorro', 'brinquedo gato', 'cama pet', 'cama cachorro', 'cama gato', 'caminha', 'tapete higiênico', 'tapete pet', 'shampoo pet', 'antipulgas', 'aquário', 'gaiola'] },
+  
+  // 12. ESPORTES E AVENTURA
+  { categoria: 'Esportes e Aventura', palavras: ['academia', 'musculação', 'haltere', 'peso', 'anilha', 'barra', 'esteira', 'elíptico', 'bicicleta ergométrica', 'corda pular', 'yoga', 'colchonete', 'tapete yoga', 'luva boxe', 'saco pancada', 'raquete', 'bola fitness', 'bosu', 'step', 'mochila camping', 'barraca', 'saco dormir', 'lanterna', 'bicicleta', 'capacete bike', 'chuteira', 'caneleira', 'óculos natação', 'maiô', 'sunga'] },
+  
+  // 13. AUTOMOTIVO
+  { categoria: 'Automotivo', palavras: ['carro', 'veículo', 'automotivo', 'moto', 'motocicleta', 'pneu', 'óleo motor', 'óleo lubrificante', 'limpador para-brisa', 'palheta', 'capa banco', 'capas banco', 'tapete carro', 'tapete automotivo', 'carregador veicular', 'inversor', 'suporte celular carro', 'suporte veicular', 'aspirador carro', 'aspirador veicular', 'cera', 'polimento', 'silicone', 'bateria carro'] },
+  
+  // 14. JARDIM E PISCINA
+  { categoria: 'Jardim e Piscina', palavras: ['mangueira', 'irrigação', 'aspersor', 'vaso planta', 'cachepô', 'jardineira', 'terra', 'substrato', 'adubo', 'fertilizante', 'semente', 'muda', 'tesoura poda', 'podador', 'regador', 'pulverizador', 'piscina', 'piscina inflável', 'piscina estrutural', 'boia', 'prancha', 'colchão inflável', 'cloro', 'algicida', 'filtro piscina', 'bomba piscina', 'churrasqueira', 'grelha', 'espeto', 'rede descanso', 'cadeira praia', 'guarda-sol', 'sombreiro'] },
+  
+  // 15. ALIMENTOS E BEBIDAS
+  { categoria: 'Alimentos e Bebidas', palavras: ['café', 'cápsula', 'nespresso', 'chá', 'infusão', 'chocolate', 'bombom', 'trufa', 'biscoito', 'bolacha', 'cookie', 'cereal', 'granola', 'aveia', 'suplemento', 'whey', 'proteína', 'creatina', 'bcaa', 'vitamina', 'polivitamínico', 'barra proteica', 'barra cereal', 'azeite', 'vinagre', 'mel', 'geleia', 'castanha', 'amêndoa', 'nozes'] },
+  
+  // 16. CUIDADOS PESSOAIS E LIMPEZA
+  { categoria: 'Cuidados Pessoais e Limpeza', palavras: ['sabonete', 'desodorante', 'antitranspirante', 'papel higiênico', 'papel toalha', 'lenço umedecido', 'detergente', 'lava louça', 'desinfetante', 'álcool', 'álcool gel', 'água sanitária', 'cloro limpeza', 'amaciante', 'sabão pó', 'sabão líquido', 'lava roupas', 'esponja', 'esponja aço', 'palha aço', 'vassoura', 'rodo', 'mop', 'esfregão', 'aspirador de pó', 'robô aspirador', 'balde', 'pano limpeza', 'luva limpeza', 'inseticida', 'repelente'] },
+  
+  // 17. MÓVEIS
+  { categoria: 'Móveis', palavras: ['sofá', 'poltrona', 'puff', 'divã', 'cama', 'box', 'beliche', 'guarda-roupa', 'roupeiro', 'armário', 'estante', 'nicho', 'prateleira', 'mesa', 'mesa jantar', 'mesa centro', 'cadeira', 'banqueta', 'escrivaninha', 'mesa escritório', 'rack', 'painel tv', 'home', 'cômoda', 'criado mudo', 'gaveteiro', 'sapateira', 'cabideiro', 'balcão', 'buffet', 'aparador'] },
+  
+  // 18. CASA (decoração, cama/mesa/banho) - FALLBACK mais restrito
+  { categoria: 'Casa', palavras: ['almofada', 'capa almofada', 'cortina', 'persiana', 'blackout', 'tapete', 'passadeira', 'capacho', 'toalha', 'toalha banho', 'toalha rosto', 'lençol', 'fronha', 'edredom', 'cobertor', 'manta', 'travesseiro', 'colcha', 'protetor colchão', 'decoração', 'enfeite', 'vaso decorativo', 'vaso flores', 'quadro', 'porta retrato', 'relógio parede', 'abajur', 'luminária', 'lustre', 'pendente', 'espelho', 'cabide', 'organizador', 'lixeira', 'cesto'] },
+  
+  // 19. LIVROS
+  { categoria: 'Livros', palavras: ['livro', 'romance', 'biografia', 'autobiografia', 'autoajuda', 'desenvolvimento pessoal', 'didático', 'apostila', 'infantil livro', 'livro infantil', 'ficção', 'literatura', 'clássico', 'hq', 'quadrinhos', 'mangá', 'enciclopédia', 'dicionário', 'box livros', 'coleção livros'] },
+  
+  // 20. VIDEO GAMES
+  { categoria: 'Video Games', palavras: ['playstation', 'ps5', 'ps4', 'xbox', 'series x', 'series s', 'nintendo', 'switch', 'wii', 'console', 'game', 'jogo playstation', 'jogo xbox', 'jogo nintendo', 'controle ps', 'controle xbox', 'joy-con', 'headset gamer', 'fone gamer', 'cadeira gamer', 'volante gamer', 'joystick'] },
 ];
 
 // Função para detectar categoria automaticamente
