@@ -212,6 +212,16 @@ Retorne APENAS a mensagem pronta, sem explicações.`;
     // Limpar possíveis marcações
     mensagem = mensagem.replace(/```[\s\S]*?```/g, "").trim();
 
+    // 🚫 FILTRO OBRIGATÓRIO: Remover palavras proibidas (cansado/cansada/cansou)
+    mensagem = mensagem
+      .replace(/\bcansad[oa]s?\b/gi, 'ocupada')
+      .replace(/\bcansou\b/gi, 'parou')
+      .replace(/\bcansando\b/gi, 'sobrecarregando')
+      .replace(/\bcansam\b/gi, 'ocupam')
+      .replace(/\bcansar\b/gi, 'sobrecarregar');
+    
+    console.log(`🚫 Filtro anti-cansado aplicado`);
+
     // Garantir que o link está incluído
     if (produto.link_afiliado && !mensagem.includes(produto.link_afiliado)) {
       mensagem += `\n\n👇 Compre aqui:\n${produto.link_afiliado}`;
