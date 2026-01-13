@@ -170,7 +170,7 @@ const Privacidade = () => {
               Para questões sobre privacidade e proteção de dados:
             </p>
             <ul className="list-none mt-2 space-y-1">
-              <li>📧 Email: privacidade@amzofertas.com.br</li>
+              <li>📧 Email: amzofertas@amzofertas.com.br</li>
               <li>📱 WhatsApp: (21) 99537-9550</li>
               <li>🌐 Site: www.amzofertas.com.br</li>
             </ul>

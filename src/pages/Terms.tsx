@@ -182,7 +182,7 @@ const Terms = () => {
               Para dúvidas, sugestões ou suporte relacionado a estes termos, entre em contato:
             </p>
             <ul className="list-none space-y-2 text-foreground/80 ml-4">
-              <li><strong>Email:</strong> suporte@amzofertas.com.br</li>
+              <li><strong>Email:</strong> amzofertas@amzofertas.com.br</li>
               <li><strong>WhatsApp:</strong> Disponível através da plataforma</li>
               <li><strong>Horário de atendimento:</strong> Segunda a Sexta, 9h às 18h</li>
             </ul>

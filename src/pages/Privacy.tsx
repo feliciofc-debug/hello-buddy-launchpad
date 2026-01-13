@@ -180,7 +180,7 @@ const Privacy = () => {
               <li><strong>Revisão:</strong> de decisões automatizadas baseadas em seus dados</li>
             </ul>
             <p className="text-foreground/80 leading-relaxed mt-4">
-              Para exercer seus direitos, entre em contato através do email: <strong>privacidade@amzofertas.com.br</strong>
+              Para exercer seus direitos, entre em contato através do email: <strong>amzofertas@amzofertas.com.br</strong>
             </p>
           </section>
 
@@ -230,8 +230,7 @@ const Privacy = () => {
               de dados pessoais e auxiliá-lo no exercício de seus direitos:
             </p>
             <ul className="list-none space-y-2 text-foreground/80 ml-4">
-              <li><strong>Email:</strong> dpo@amzofertas.com.br</li>
-              <li><strong>Email alternativo:</strong> privacidade@amzofertas.com.br</li>
+              <li><strong>Email:</strong> amzofertas@amzofertas.com.br</li>
             </ul>
           </section>
 
@@ -242,8 +241,7 @@ const Privacy = () => {
               Para dúvidas, solicitações ou reclamações relacionadas à privacidade e proteção de dados:
             </p>
             <ul className="list-none space-y-2 text-foreground/80 ml-4">
-              <li><strong>Email geral:</strong> suporte@amzofertas.com.br</li>
-              <li><strong>Email privacidade:</strong> privacidade@amzofertas.com.br</li>
+              <li><strong>Email:</strong> amzofertas@amzofertas.com.br</li>
               <li><strong>WhatsApp:</strong> Disponível através da plataforma</li>
               <li><strong>Horário de atendimento:</strong> Segunda a Sexta, 9h às 18h</li>
             </ul>
