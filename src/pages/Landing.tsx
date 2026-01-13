@@ -530,7 +530,7 @@ function Landing() {
                     🔒 Reportar Vulnerabilidade
                   </button>
                 </li>
-                <li><a href="mailto:contato@atombrasildigital.com" className="hover:text-white transition">contato@atombrasildigital.com</a></li>
+                <li><a href="mailto:amzofertas@amzofertas.com.br" className="hover:text-white transition">amzofertas@amzofertas.com.br</a></li>
               </ul>
             </div>
           </div>
@@ -539,7 +539,7 @@ function Landing() {
             <div>
               <h4 className="font-bold mb-4">Suporte</h4>
               <ul className="space-y-2 text-sm text-slate-400">
-                <li><a href="mailto:suporte@amzofertas.com" className="hover:text-white transition">suporte@amzofertas.com</a></li>
+                <li><a href="mailto:amzofertas@amzofertas.com.br" className="hover:text-white transition">amzofertas@amzofertas.com.br</a></li>
               </ul>
             </div>
           </div>
