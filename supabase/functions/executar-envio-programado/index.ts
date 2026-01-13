@@ -437,14 +437,31 @@ async function processarProgramacao(
     );
     console.log(`🔍 Produtos enviados nas últimas 24h: ${titulosEnviados.size}`);
     
-    // 🎯 PRIORIZAÇÃO: Maquiagem, Bolsas e Roupas Femininas
-    // Keywords para identificar produtos prioritários
+    // 🎯 PRIORIZAÇÃO SHOPEE: Maquiagem, Material Escolar, Praia/Piscina, Saúde e Beleza
+    // Keywords para identificar produtos prioritários (EXCLUI bebidas e comidas)
     const KEYWORDS_PRIORITARIAS = [
-      'maquiagem', 'make', 'batom', 'sombra', 'base', 'blush', 'rímel', 'delineador', 'corretivo', 'pó', 'gloss', 'paleta',
-      'bolsa', 'bolsinha', 'clutch', 'mochila feminina', 'necessaire', 'carteira feminina',
-      'roupa feminina', 'vestido', 'blusa', 'saia', 'calça feminina', 'short feminino', 'cropped', 'body', 'top', 'biquíni', 'maiô',
-      'sandália', 'salto', 'sapato feminino', 'scarpin', 'rasteirinha', 'tênis feminino'
+      // Maquiagem
+      'maquiagem', 'make', 'batom', 'sombra', 'base', 'blush', 'rímel', 'delineador', 'corretivo', 'pó', 'gloss', 'paleta', 'máscara cílios', 'primer', 'contorno',
+      // Material Escolar
+      'material escolar', 'caderno', 'caneta', 'lápis', 'borracha', 'mochila escolar', 'estojo', 'fichário', 'agenda', 'régua', 'apontador', 'cola', 'tesoura escolar', 'marca texto', 'lapiseira',
+      // Praia e Piscina
+      'praia', 'piscina', 'biquíni', 'maiô', 'sunga', 'saída de praia', 'bolsa praia', 'toalha praia', 'protetor solar', 'bronzeador', 'óculos sol', 'chinelo', 'boia', 'guarda-sol', 'canga',
+      // Saúde e Beleza
+      'saúde', 'beleza', 'skincare', 'hidratante', 'shampoo', 'condicionador', 'creme', 'sérum', 'máscara facial', 'esfoliante', 'perfume', 'desodorante', 'escova cabelo', 'secador', 'chapinha', 'unha', 'esmalte'
     ];
+    
+    // 🚫 CATEGORIAS BLOQUEADAS para Shopee (bebidas e comidas)
+    const CATEGORIAS_BLOQUEADAS_SHOPEE = [
+      'alimento', 'comida', 'bebida', 'cerveja', 'vinho', 'refrigerante', 'suco', 'água', 'café', 'chá', 
+      'biscoito', 'chocolate', 'doce', 'salgado', 'snack', 'lanche', 'refeição', 'comestível', 'alimentício',
+      'energético', 'leite', 'iogurte', 'queijo', 'carne', 'fruta', 'verdura', 'legume'
+    ];
+    
+    // Função para verificar se produto é bloqueado (bebidas/comidas)
+    const isProdutoBloqueadoShopee = (p: { titulo?: string; descricao?: string; categoria?: string }): boolean => {
+      const texto = `${p.titulo || ''} ${p.descricao || ''} ${p.categoria || ''}`.toLowerCase();
+      return CATEGORIAS_BLOQUEADAS_SHOPEE.some(kw => texto.includes(kw));
+    };
     
     // Função para verificar se produto é prioritário
     const isProdutoPrioritario = (p: { titulo?: string; descricao?: string; categoria?: string }): boolean => {
@@ -510,12 +527,21 @@ async function processarProgramacao(
     // Filtrar produtos que NÃO foram enviados nas últimas 24h
     let produtoData: any[] = [];
     if (produtosDisponiveis && produtosDisponiveis.length > 0) {
-      const disponiveis = produtosDisponiveis.filter(
+      // 🚫 Se for Shopee, filtrar bebidas e comidas
+      const isShopee = mkAtual.toLowerCase().includes('shopee');
+      let disponiveis = produtosDisponiveis.filter(
         (p: { titulo?: string }) => !titulosEnviados.has(p.titulo?.toLowerCase().trim() || '')
       );
       
+      // Aplicar filtro de bloqueio apenas para Shopee
+      if (isShopee) {
+        const antes = disponiveis.length;
+        disponiveis = disponiveis.filter((p: any) => !isProdutoBloqueadoShopee(p));
+        console.log(`🚫 Shopee: ${antes - disponiveis.length} produtos de bebidas/comidas bloqueados`);
+      }
+      
       if (disponiveis.length > 0) {
-        // 🎯 PRIORIZAR produtos de maquiagem, bolsas e roupas femininas
+        // 🎯 PRIORIZAR produtos das categorias permitidas
         const prioritarios = disponiveis.filter(isProdutoPrioritario);
         
         if (prioritarios.length > 0) {
@@ -524,7 +550,7 @@ async function processarProgramacao(
           const listaFinal = usarPrioritario ? prioritarios : disponiveis;
           const randomIndex = Math.floor(Math.random() * listaFinal.length);
           produtoData = [listaFinal[randomIndex]];
-          console.log(`🎯 ${prioritarios.length} produtos prioritários (maquiagem/bolsas/roupas), ${usarPrioritario ? 'SELECIONADO' : 'ignorado'}`);
+          console.log(`🎯 ${prioritarios.length} produtos prioritários (maquiagem/escolar/praia/beleza), ${usarPrioritario ? 'SELECIONADO' : 'ignorado'}`);
         } else {
           // Sem prioritários, escolher qualquer um
           const randomIndex = Math.floor(Math.random() * disponiveis.length);
@@ -532,7 +558,7 @@ async function processarProgramacao(
         }
         console.log(`✅ ${disponiveis.length} produtos disponíveis em ${mkAtual}`);
       } else {
-        console.log(`⚠️ Todos os ${produtosDisponiveis.length} produtos de ${mkAtual} já foram enviados nas últimas 24h`);
+        console.log(`⚠️ Todos os ${produtosDisponiveis.length} produtos de ${mkAtual} já foram enviados ou bloqueados`);
       }
     }
     
