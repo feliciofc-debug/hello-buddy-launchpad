@@ -93,6 +93,21 @@ serve(async (req) => {
           } else {
             console.log('✅ Assinatura ativada automaticamente via webhook para:', email);
           }
+
+          // 🔥 Atualizar status do cliente afiliado para ativo automaticamente
+          const { error: clienteError } = await supabase
+            .from('clientes_afiliados')
+            .update({ 
+              status: 'ativo',
+              updated_at: new Date().toISOString()
+            })
+            .eq('user_id', userId);
+
+          if (clienteError) {
+            console.log('Nota: Cliente afiliado não encontrado ou erro ao atualizar:', clienteError.message);
+          } else {
+            console.log('✅ Cliente afiliado ativado automaticamente');
+          }
         } else {
           console.warn('UserId não encontrado para o pagamento');
         }

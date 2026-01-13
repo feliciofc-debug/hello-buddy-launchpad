@@ -260,20 +260,39 @@ export default function PaymentFormDirect({
       } else {
         console.log('✅ Assinatura ativada com sucesso:', data);
       }
+
+      // Atualizar status do cliente afiliado para ativo
+      await supabase
+        .from('clientes_afiliados')
+        .update({ status: 'ativo' })
+        .eq('user_id', userId);
+
+      // Verificar perfil para redirecionar corretamente
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tipo')
+        .eq('id', userId)
+        .maybeSingle();
       
-      toast.success('🎉 Pagamento aprovado! Redirecionando para o dashboard...', {
+      const isAfiliado = profile?.tipo === 'afiliado' || profile?.tipo === 'afiliado_admin' || planName.toLowerCase().includes('afiliado');
+      const redirectPath = isAfiliado ? '/afiliado/dashboard' : '/dashboard';
+      
+      toast.success('🎉 Pagamento aprovado! Redirecionando...', {
         duration: 3000,
       });
       
       setTimeout(() => {
-        navigate('/dashboard?payment=success');
+        navigate(`${redirectPath}?payment=success`);
       }, 2000);
       
     } catch (error) {
       console.error('Erro ao processar sucesso do pagamento:', error);
       toast.success('Pagamento aprovado! Redirecionando...');
+      
+      // Fallback: verificar se é afiliado pelo planName
+      const isAfiliado = planName.toLowerCase().includes('afiliado');
       setTimeout(() => {
-        navigate('/dashboard?payment=success');
+        navigate(isAfiliado ? '/afiliado/dashboard?payment=success' : '/dashboard?payment=success');
       }, 2000);
     }
   };
