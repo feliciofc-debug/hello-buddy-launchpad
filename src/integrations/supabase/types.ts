@@ -5823,6 +5823,7 @@ export type Database = {
           invite_link: string | null
           is_announce: boolean | null
           member_count: number | null
+          previous_member_count: number | null
           updated_at: string | null
           user_id: string
         }
@@ -5836,6 +5837,7 @@ export type Database = {
           invite_link?: string | null
           is_announce?: boolean | null
           member_count?: number | null
+          previous_member_count?: number | null
           updated_at?: string | null
           user_id: string
         }
@@ -5849,6 +5851,7 @@ export type Database = {
           invite_link?: string | null
           is_announce?: boolean | null
           member_count?: number | null
+          previous_member_count?: number | null
           updated_at?: string | null
           user_id?: string
         }
