@@ -124,7 +124,7 @@ const Termos = () => {
               Para dúvidas sobre estes termos, entre em contato:
             </p>
             <ul className="list-none mt-2 space-y-1">
-              <li>📧 Email: contato@amzofertas.com.br</li>
+              <li>📧 Email: amzofertas@amzofertas.com.br</li>
               <li>📱 WhatsApp: (21) 99537-9550</li>
               <li>🌐 Site: www.amzofertas.com.br</li>
             </ul>
