@@ -30,6 +30,7 @@ import GerenciarCampanhasAtivas from "@/components/afiliado/GerenciarCampanhasAt
 import ProgramacaoEnvioCard from "@/components/afiliado/ProgramacaoEnvioCard";
 import ProspeccaoPietroCard from "@/components/afiliado/ProspeccaoPietroCard";
 import TikTokIntegrationCard from "@/components/afiliado/TikTokIntegrationCard";
+import ConfigurarAssistenteCard from "@/components/afiliado/ConfigurarAssistenteCard";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -492,9 +493,10 @@ export default function AfiliadoDashboard() {
           </Card>
         </div>
 
-        {/* TikTok Integration Card */}
-        <div className="mb-8">
+        {/* TikTok Integration Card + Configurar Assistente */}
+        <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
           <TikTokIntegrationCard />
+          <ConfigurarAssistenteCard />
         </div>
 
         {/* Card Seus Contatos */}

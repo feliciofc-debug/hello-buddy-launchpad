@@ -1631,12 +1631,14 @@ export type Database = {
         Row: {
           afiliado_id: string | null
           amazon_affiliate_tag: string | null
+          assistente_personalidade: string | null
           created_at: string | null
           data_cadastro: string | null
           data_conexao_whatsapp: string | null
           email: string
           id: string
           nome: string
+          nome_assistente: string | null
           plano: string | null
           status: string | null
           telefone: string
@@ -1649,12 +1651,14 @@ export type Database = {
         Insert: {
           afiliado_id?: string | null
           amazon_affiliate_tag?: string | null
+          assistente_personalidade?: string | null
           created_at?: string | null
           data_cadastro?: string | null
           data_conexao_whatsapp?: string | null
           email: string
           id?: string
           nome: string
+          nome_assistente?: string | null
           plano?: string | null
           status?: string | null
           telefone: string
@@ -1667,12 +1671,14 @@ export type Database = {
         Update: {
           afiliado_id?: string | null
           amazon_affiliate_tag?: string | null
+          assistente_personalidade?: string | null
           created_at?: string | null
           data_cadastro?: string | null
           data_conexao_whatsapp?: string | null
           email?: string
           id?: string
           nome?: string
+          nome_assistente?: string | null
           plano?: string | null
           status?: string | null
           telefone?: string
