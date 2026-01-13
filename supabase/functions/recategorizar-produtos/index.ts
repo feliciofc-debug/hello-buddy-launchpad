@@ -408,90 +408,101 @@ function detectarCategoriaAutomatica(titulo: string): string | null {
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    console.log('🔄 Iniciando recategorização de produtos...');
+    // Parâmetros opcionais para processamento em lotes
+    const { offset = 0, limit = 1000 } = await req.json().catch(() => ({}));
 
-    // Buscar TODOS os produtos
-    const { data: produtos, error: fetchError } = await supabaseClient
+    console.log(`🔄 Iniciando recategorização - offset: ${offset}, limit: ${limit}`);
+
+    // Buscar produtos com paginação
+    const { data: produtos, error: fetchError, count } = await supabase
       .from('afiliado_produtos')
-      .select('id, titulo, categoria')
-      .order('created_at', { ascending: false });
+      .select('id, titulo, categoria', { count: 'exact' })
+      .range(offset, offset + limit - 1);
 
     if (fetchError) {
-      throw new Error(`Erro ao buscar produtos: ${fetchError.message}`);
+      console.error('Erro ao buscar produtos:', fetchError);
+      throw fetchError;
     }
 
-    console.log(`📦 Total de produtos: ${produtos?.length || 0}`);
+    console.log(`📦 Processando ${produtos?.length || 0} produtos (total: ${count})`);
 
     let atualizados = 0;
     let mantidos = 0;
-    const categoriaStats: Record<string, number> = {};
+    const estatisticas: Record<string, number> = {};
+    const erros: string[] = [];
+    
+    // Processar em batch - preparar todos os updates
+    const updates: { id: string; categoria: string }[] = [];
 
     for (const produto of produtos || []) {
       const novaCategoria = detectarCategoriaAutomatica(produto.titulo);
       
-      if (novaCategoria) {
-        // Só atualiza se encontrou uma categoria e é diferente da atual
-        if (novaCategoria !== produto.categoria) {
-          const { error: updateError } = await supabaseClient
-            .from('afiliado_produtos')
-            .update({ categoria: novaCategoria })
-            .eq('id', produto.id);
-
-          if (updateError) {
-            console.error(`❌ Erro ao atualizar ${produto.id}: ${updateError.message}`);
-          } else {
-            atualizados++;
-            console.log(`✅ ${produto.titulo.substring(0, 50)}... → ${novaCategoria}`);
-          }
-        } else {
-          mantidos++;
-        }
-        
-        categoriaStats[novaCategoria] = (categoriaStats[novaCategoria] || 0) + 1;
+      if (novaCategoria && novaCategoria !== produto.categoria) {
+        updates.push({ id: produto.id, categoria: novaCategoria });
+        estatisticas[novaCategoria] = (estatisticas[novaCategoria] || 0) + 1;
+        atualizados++;
       } else {
-        // Se não encontrou categoria, mantém "Casa" como fallback (ou a categoria atual)
-        if (!produto.categoria) {
-          await supabaseClient
-            .from('afiliado_produtos')
-            .update({ categoria: 'Casa' })
-            .eq('id', produto.id);
+        mantidos++;
+        if (produto.categoria) {
+          estatisticas[produto.categoria] = (estatisticas[produto.categoria] || 0) + 1;
         }
-        categoriaStats[produto.categoria || 'Casa'] = (categoriaStats[produto.categoria || 'Casa'] || 0) + 1;
       }
     }
 
-    console.log(`\n📊 Resumo:`);
-    console.log(`   Atualizados: ${atualizados}`);
-    console.log(`   Mantidos: ${mantidos}`);
-    console.log(`   Por categoria:`, categoriaStats);
+    // Executar updates em batches de 50
+    const batchSize = 50;
+    for (let i = 0; i < updates.length; i += batchSize) {
+      const batch = updates.slice(i, i + batchSize);
+      
+      // Usar Promise.all para paralelizar os updates
+      await Promise.all(
+        batch.map(async (update) => {
+          const { error: updateError } = await supabase
+            .from('afiliado_produtos')
+            .update({ categoria: update.categoria })
+            .eq('id', update.id);
+          
+          if (updateError) {
+            erros.push(`${update.id}: ${updateError.message}`);
+          }
+        })
+      );
+    }
 
-    return new Response(JSON.stringify({
+    const resultado = {
       success: true,
-      total: produtos?.length || 0,
+      processados: produtos?.length || 0,
+      total_banco: count,
       atualizados,
       mantidos,
-      categoriaStats
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
+      erros: erros.length,
+      estatisticas,
+      proximo_offset: offset + limit < (count || 0) ? offset + limit : null,
+      mensagem: `Processados ${produtos?.length} produtos. ${atualizados} recategorizados, ${mantidos} mantidos.`
+    };
 
-  } catch (error: any) {
-    console.error('💥 Erro:', error);
-    return new Response(JSON.stringify({
-      success: false,
-      error: error.message
+    console.log('✅ Resultado:', resultado);
+
+    return new Response(JSON.stringify(resultado), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+    console.error('❌ Erro:', errorMessage);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: errorMessage 
     }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
