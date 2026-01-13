@@ -363,14 +363,33 @@ export default function AfiliadoProdutos() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from('afiliado_produtos')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      // Buscar TODOS os produtos com paginação (Supabase limita a 1000 por request)
+      let allProdutos: Produto[] = [];
+      let from = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-      if (error) throw error;
-      setProdutos(data || []);
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('afiliado_produtos')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .range(from, from + pageSize - 1);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allProdutos = [...allProdutos, ...data];
+          from += pageSize;
+          hasMore = data.length === pageSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setProdutos(allProdutos);
+      console.log(`✅ Carregados ${allProdutos.length} produtos`);
     } catch (error) {
       console.error('Erro ao carregar produtos:', error);
       toast.error('Erro ao carregar produtos');
