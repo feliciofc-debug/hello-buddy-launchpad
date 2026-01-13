@@ -427,31 +427,75 @@ async function processarProgramacao(
     );
     console.log(`🔍 Produtos enviados nas últimas 24h: ${titulosEnviados.size}`);
     
-    // 🆕 ROTAÇÃO EQUILIBRADA: 1 produto por marketplace antes de trocar
-    // Isso garante distribuição igual entre todos os marketplaces ativos
+    // 🎯 PRIORIZAÇÃO: Maquiagem, Bolsas e Roupas Femininas
+    // Keywords para identificar produtos prioritários
+    const KEYWORDS_PRIORITARIAS = [
+      'maquiagem', 'make', 'batom', 'sombra', 'base', 'blush', 'rímel', 'delineador', 'corretivo', 'pó', 'gloss', 'paleta',
+      'bolsa', 'bolsinha', 'clutch', 'mochila feminina', 'necessaire', 'carteira feminina',
+      'roupa feminina', 'vestido', 'blusa', 'saia', 'calça feminina', 'short feminino', 'cropped', 'body', 'top', 'biquíni', 'maiô',
+      'sandália', 'salto', 'sapato feminino', 'scarpin', 'rasteirinha', 'tênis feminino'
+    ];
+    
+    // Função para verificar se produto é prioritário
+    const isProdutoPrioritario = (p: { titulo?: string; descricao?: string; categoria?: string }): boolean => {
+      const texto = `${p.titulo || ''} ${p.descricao || ''} ${p.categoria || ''}`.toLowerCase();
+      return KEYWORDS_PRIORITARIAS.some(kw => texto.includes(kw));
+    };
+    
+    // 🆕 ROTAÇÃO COM PRIORIZAÇÃO 2:1:1:1 para Shopee + foco em categorias femininas
     let mkAtual: string;
     
+    // Verificar se Shopee está nos marketplaces ativos
+    const shopeeAtiva = marketplaces.some((m: string) => m.toLowerCase().includes('shopee'));
+    
     if (!ultimoMkt) {
-      // Primeira execução: começar do primeiro marketplace
-      mkAtual = marketplaces[0];
+      // Primeira execução: começar com Shopee se disponível
+      mkAtual = shopeeAtiva ? 'Shopee' : marketplaces[0];
       contadorMkt = 0;
+    } else if (shopeeAtiva) {
+      // Rotação 2:1:1:1 - Shopee aparece 2x antes de trocar
+      const ultimoEraShopee = ultimoMkt.toLowerCase().includes('shopee');
+      
+      if (!ultimoEraShopee) {
+        // Último não foi Shopee, então agora é Shopee
+        mkAtual = 'Shopee';
+        contadorMkt = 0;
+      } else if (contadorMkt < 1) {
+        // Shopee ainda tem mais 1 envio
+        mkAtual = 'Shopee';
+        contadorMkt = contadorMkt + 1;
+      } else {
+        // Shopee já enviou 2x, trocar para outro marketplace
+        const outrosMarketplaces = marketplaces.filter((m: string) => !m.toLowerCase().includes('shopee'));
+        if (outrosMarketplaces.length > 0) {
+          const idxAtual = outrosMarketplaces.indexOf(ultimoMkt);
+          const proximoIdx = idxAtual >= 0 ? (idxAtual + 1) % outrosMarketplaces.length : 0;
+          mkAtual = outrosMarketplaces[proximoIdx];
+        } else {
+          mkAtual = 'Shopee';
+        }
+        contadorMkt = 0;
+      }
     } else {
-      // Sempre trocar para o próximo marketplace (rotação 1:1:1:1)
+      // Sem Shopee, rotação normal 1:1:1
       const idxAtual = marketplaces.indexOf(ultimoMkt);
       const proximoIdx = (idxAtual + 1) % marketplaces.length;
       mkAtual = marketplaces[proximoIdx];
       contadorMkt = 0;
     }
     
-    console.log(`🏪 Rotação equilibrada: ${ultimoMkt || 'início'} → ${mkAtual}`);
+    console.log(`🏪 Rotação 2:1:1:1 (Shopee heavy + feminino): ${ultimoMkt || 'início'} → ${mkAtual}`);
     
-    // Buscar produtos do marketplace atual (múltiplos para filtrar)
+    // Buscar mais produtos para ter opções de priorização
+    const queryLimit = mkAtual.toLowerCase().includes('shopee') ? 200 : 80;
+    const randomOffset = mkAtual.toLowerCase().includes('shopee') ? Math.floor(Math.random() * 300) : 0;
+    
     let { data: produtosDisponiveis, error: produtoError } = await supabase
       .from("afiliado_produtos")
       .select("*")
       .eq("user_id", programacao.user_id)
       .ilike("marketplace", `%${mkAtual}%`)
-      .limit(50);
+      .range(randomOffset, randomOffset + queryLimit - 1);
     
     // Filtrar produtos que NÃO foram enviados nas últimas 24h
     let produtoData: any[] = [];
@@ -461,16 +505,28 @@ async function processarProgramacao(
       );
       
       if (disponiveis.length > 0) {
-        // Escolher aleatoriamente entre os disponíveis
-        const randomIndex = Math.floor(Math.random() * disponiveis.length);
-        produtoData = [disponiveis[randomIndex]];
-        console.log(`✅ ${disponiveis.length} produtos disponíveis em ${mkAtual}, selecionando aleatório`);
+        // 🎯 PRIORIZAR produtos de maquiagem, bolsas e roupas femininas
+        const prioritarios = disponiveis.filter(isProdutoPrioritario);
+        
+        if (prioritarios.length > 0) {
+          // 80% de chance de escolher um produto prioritário
+          const usarPrioritario = Math.random() < 0.8;
+          const listaFinal = usarPrioritario ? prioritarios : disponiveis;
+          const randomIndex = Math.floor(Math.random() * listaFinal.length);
+          produtoData = [listaFinal[randomIndex]];
+          console.log(`🎯 ${prioritarios.length} produtos prioritários (maquiagem/bolsas/roupas), ${usarPrioritario ? 'SELECIONADO' : 'ignorado'}`);
+        } else {
+          // Sem prioritários, escolher qualquer um
+          const randomIndex = Math.floor(Math.random() * disponiveis.length);
+          produtoData = [disponiveis[randomIndex]];
+        }
+        console.log(`✅ ${disponiveis.length} produtos disponíveis em ${mkAtual}`);
       } else {
         console.log(`⚠️ Todos os ${produtosDisponiveis.length} produtos de ${mkAtual} já foram enviados nas últimas 24h`);
       }
     }
     
-    // Se não encontrou, tentar outros marketplaces
+    // Se não encontrou, tentar outros marketplaces (com priorização)
     if (produtoData.length === 0) {
       console.log(`⚠️ Sem produtos novos em ${mkAtual}, tentando outros...`);
       for (const mkt of marketplaces) {
@@ -480,7 +536,7 @@ async function processarProgramacao(
             .select("*")
             .eq("user_id", programacao.user_id)
             .ilike("marketplace", `%${mkt}%`)
-            .limit(50);
+            .limit(100);
           
           if (altData && altData.length > 0) {
             const disponiveis = altData.filter(
@@ -488,11 +544,15 @@ async function processarProgramacao(
             );
             
             if (disponiveis.length > 0) {
-              const randomIndex = Math.floor(Math.random() * disponiveis.length);
-              produtoData = [disponiveis[randomIndex]];
+              // Priorizar também nos fallbacks
+              const prioritarios = disponiveis.filter(isProdutoPrioritario);
+              const usarPrioritario = prioritarios.length > 0 && Math.random() < 0.8;
+              const listaFinal = usarPrioritario ? prioritarios : disponiveis;
+              const randomIndex = Math.floor(Math.random() * listaFinal.length);
+              produtoData = [listaFinal[randomIndex]];
               mkAtual = mkt;
               contadorMkt = 0;
-              console.log(`✅ Encontrado ${disponiveis.length} produtos novos em ${mkt}`);
+              console.log(`✅ Encontrado ${disponiveis.length} produtos novos em ${mkt} (${prioritarios.length} prioritários)`);
               break;
             }
           }
@@ -507,11 +567,15 @@ async function processarProgramacao(
         .from("afiliado_produtos")
         .select("*")
         .eq("user_id", programacao.user_id)
-        .limit(50);
+        .limit(100);
       
       if (anyData && anyData.length > 0) {
-        const randomIndex = Math.floor(Math.random() * anyData.length);
-        produtoData = [anyData[randomIndex]];
+        // Mesmo no fallback, priorizar categorias femininas
+        const prioritarios = anyData.filter(isProdutoPrioritario);
+        const usarPrioritario = prioritarios.length > 0 && Math.random() < 0.8;
+        const listaFinal = usarPrioritario ? prioritarios : anyData;
+        const randomIndex = Math.floor(Math.random() * listaFinal.length);
+        produtoData = [listaFinal[randomIndex]];
       }
     }
 
