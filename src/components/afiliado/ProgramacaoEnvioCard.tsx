@@ -662,10 +662,19 @@ export function ProgramacaoEnvioCard() {
               </div>
               {prog.ativo && prog.proximo_envio ? (
                 <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                  {new Date(prog.proximo_envio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  {new Date(prog.proximo_envio).toLocaleTimeString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
                   <span className="text-sm font-normal ml-2 text-blue-500">
-                    ({new Date(prog.proximo_envio).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})
+                    ({new Date(prog.proximo_envio).toLocaleDateString('pt-BR', {
+                      timeZone: 'America/Sao_Paulo',
+                      day: '2-digit',
+                      month: '2-digit',
+                    })})
                   </span>
+                  <span className="text-xs font-normal ml-2 text-muted-foreground">BRT</span>
                 </span>
               ) : (
                 <span className="text-sm text-muted-foreground italic">
@@ -716,7 +725,7 @@ export function ProgramacaoEnvioCard() {
               {/* Último envio */}
               {prog.ultimo_envio && (
                 <div className="text-sm text-muted-foreground">
-                  Último envio: {new Date(prog.ultimo_envio).toLocaleString('pt-BR')}
+                  Último envio: {new Date(prog.ultimo_envio).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })} BRT
                 </div>
               )}
 
