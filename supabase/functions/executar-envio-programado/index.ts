@@ -303,6 +303,12 @@ async function enviarParaGrupo(
 
     // Tentar enviar a imagem separadamente (melhor que depender do Caption)
     // Limitar legenda para evitar rejeição por tamanho.
+    // ⚠️ Wuzapi/WhatsApp costuma falhar com .webp (muito comum na Shopee). Nesses casos, não tentamos imagem.
+    if (/\.webp(\?|$)/i.test(imageUrl)) {
+      console.log("⚠️ Imagem .webp detectada (Shopee). Pulando envio de imagem e mantendo apenas o texto.");
+      return { success: true };
+    }
+
     const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
 
     const imageResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
@@ -318,9 +324,24 @@ async function enviarParaGrupo(
       }),
     });
 
-    if (!imageResponse.ok) {
-      const err = await imageResponse.text().catch(() => "");
-      console.log(`⚠️ Falha ao enviar IMAGEM para grupo (texto já foi enviado).`, err);
+    // Alguns cenários retornam 200 mas com erro no payload.
+    let imageResult: any = null;
+    try {
+      imageResult = await imageResponse.json();
+    } catch {
+      imageResult = null;
+    }
+
+    const payloadHasError =
+      !!imageResult &&
+      (imageResult.error || imageResult.erro || imageResult.success === false || imageResult.status === "error");
+
+    if (!imageResponse.ok || payloadHasError) {
+      const errText = !imageResponse.ok ? await imageResponse.text().catch(() => "") : "";
+      console.log(
+        `⚠️ Falha ao enviar IMAGEM para grupo (texto já foi enviado).`,
+        payloadHasError ? JSON.stringify(imageResult) : errText
+      );
       return { success: true };
     }
 
@@ -732,14 +753,14 @@ async function processarProgramacao(
 
     // 6. GERAR MENSAGEM CRIATIVA COM IA (ou fallback para template)
     let mensagem: string;
-    
+
     // Verificar se IA criativa está ativada (default: true)
     const usarIACriativa = programacao.usar_ia_criativa !== false;
-    
+
     if (usarIACriativa) {
       // Tentar gerar via IA (posts únicos e criativos)
       const mensagemIA = await gerarMensagemIA(produto, programacao);
-      
+
       if (mensagemIA) {
         mensagem = mensagemIA;
         console.log("🤖 Usando mensagem gerada pela IA");
@@ -753,7 +774,12 @@ async function processarProgramacao(
       mensagem = formatarMensagemProduto(produto, programacao);
       console.log("📝 IA desativada, usando template padrão");
     }
-    
+
+    // ✅ Garantir que o link SEMPRE vai no texto enviado ao grupo (independente de config/IA)
+    if (produto.link_afiliado && !mensagem.includes(produto.link_afiliado)) {
+      mensagem = `${mensagem}\n\n🛒 ${produto.link_afiliado}`.trim();
+    }
+
     // Obter imagem válida (resolve automaticamente links da Amazon)
     let imagemUrl: string | undefined = undefined;
     if (programacao.incluir_imagem) {
