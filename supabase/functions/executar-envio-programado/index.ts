@@ -274,61 +274,58 @@ async function enviarParaGrupo(
 
     console.log(`📤 Enviando para grupo: ${jid}`);
 
-    if (imageUrl) {
-      const response = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
-        method: "POST",
-        headers: { 
-          "Token": token, 
-          "Content-Type": "application/json" 
-        },
-        body: JSON.stringify({
-          Phone: jid,
-          Image: imageUrl,
-          Caption: message
-        })
-      });
+    // ✅ Estratégia mais confiável para garantir LINK/TEXTO no grupo:
+    // 1) Sempre enviar o TEXTO (com link) via /chat/send/text
+    // 2) Se houver imagem, tentar enviar a imagem depois (se falhar, não bloqueia o envio)
 
-      if (!response.ok) {
-        console.log("⚠️ Falha imagem, enviando só texto...");
-        const textResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/text`, {
-          method: "POST",
-          headers: { 
-            "Token": token, 
-            "Content-Type": "application/json" 
-          },
-          body: JSON.stringify({
-            Phone: jid,
-            Body: message
-          })
-        });
+    const textResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/text`, {
+      method: "POST",
+      headers: {
+        "Token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        Phone: jid,
+        Body: message,
+      }),
+    });
 
-        if (!textResponse.ok) {
-          const err = await textResponse.text();
-          return { success: false, error: err };
-        }
-      }
-    } else {
-      const response = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/text`, {
-        method: "POST",
-        headers: { 
-          "Token": token, 
-          "Content-Type": "application/json" 
-        },
-        body: JSON.stringify({
-          Phone: jid,
-          Body: message
-        })
-      });
-
-      if (!response.ok) {
-        const err = await response.text();
-        return { success: false, error: err };
-      }
+    if (!textResponse.ok) {
+      const err = await textResponse.text();
+      return { success: false, error: err };
     }
 
-    console.log(`✅ Enviado para grupo: ${jid}`);
-    return { success: true };
+    // Se não tem imagem, acabou aqui.
+    if (!imageUrl) {
+      console.log(`✅ Enviado TEXTO para grupo: ${jid}`);
+      return { success: true };
+    }
 
+    // Tentar enviar a imagem separadamente (melhor que depender do Caption)
+    // Limitar legenda para evitar rejeição por tamanho.
+    const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
+
+    const imageResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
+      method: "POST",
+      headers: {
+        "Token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        Phone: jid,
+        Image: imageUrl,
+        Caption: caption,
+      }),
+    });
+
+    if (!imageResponse.ok) {
+      const err = await imageResponse.text().catch(() => "");
+      console.log(`⚠️ Falha ao enviar IMAGEM para grupo (texto já foi enviado).`, err);
+      return { success: true };
+    }
+
+    console.log(`✅ Enviado IMAGEM para grupo: ${jid}`);
+    return { success: true };
   } catch (error: any) {
     console.error(`❌ Erro ao enviar para grupo:`, error);
     return { success: false, error: error.message };
