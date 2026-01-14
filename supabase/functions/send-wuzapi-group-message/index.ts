@@ -51,39 +51,98 @@ serve(async (req) => {
     
     console.log(`Enviando mensagem para grupo: ${groupPhone}`);
 
-    let response;
-    let endpoint;
+    let response: Response;
+    let endpoint: string;
 
     if (imageUrl) {
-      // COM IMAGEM
+      // COM IMAGEM (com fallback robusto para texto)
       endpoint = `${CONTABO_WUZAPI_URL}/chat/send/image`;
       response = await fetch(endpoint, {
         method: "POST",
-        headers: { 
-          "Token": token, 
-          "Content-Type": "application/json" 
+        headers: {
+          "Token": token,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           Phone: groupPhone,
           Caption: message,
-          Image: imageUrl
+          Image: imageUrl,
         }),
       });
-    } else {
-      // SÓ TEXTO
-      endpoint = `${CONTABO_WUZAPI_URL}/chat/send/text`;
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: { 
-          "Token": token, 
-          "Content-Type": "application/json" 
-        },
-        body: JSON.stringify({
-          Phone: groupPhone,
-          Body: message
-        }),
+
+      let result: any = null;
+      try {
+        result = await response.json();
+      } catch {
+        result = null;
+      }
+
+      // Alguns cenários retornam 200 mas com erro no payload.
+      const payloadHasError =
+        !!result &&
+        (result.error || result.erro || result.success === false || result.status === "error");
+
+      if (!response.ok || payloadHasError) {
+        console.log("⚠️ Falha ao enviar imagem para grupo, tentando só texto...");
+        endpoint = `${CONTABO_WUZAPI_URL}/chat/send/text`;
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Token": token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            Phone: groupPhone,
+            Body: message,
+          }),
+        });
+
+        const fallbackResult = await response.json().catch(() => null);
+        console.log("Resultado envio (fallback texto):", JSON.stringify(fallbackResult));
+
+        // Reusar a variável result para log/erro abaixo
+        result = fallbackResult;
+      } else {
+        console.log("Resultado envio (imagem):", JSON.stringify(result));
+      }
+
+      // Log do envio
+      await supabase.from("historico_envios").insert({
+        whatsapp: groupJid,
+        tipo: "grupo",
+        mensagem: message.substring(0, 200),
+        sucesso: response.ok,
+        erro: response.ok ? null : JSON.stringify(result),
       });
+
+      // Atualizar contador de mensagens do grupo
+      if (response.ok) {
+        await supabase.rpc("increment_group_messages", { group_jid: groupJid });
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: response.ok,
+          result,
+          endpoint,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
+
+    // SÓ TEXTO
+    endpoint = `${CONTABO_WUZAPI_URL}/chat/send/text`;
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        Phone: groupPhone,
+        Body: message,
+      }),
+    });
 
     const result = await response.json();
     console.log("Resultado envio:", JSON.stringify(result));
