@@ -11,7 +11,7 @@ const PIETRO_TOKEN = "WjRi4tis2XrGUmLImu3wjwHLN3dn4uE";
 const WUZAPI_BASE_URL = "http://api2.amzofertas.com.br:8081";
 
 // Link do grupo para convidar
-const GRUPO_CONVITE = "https://chat.whatsapp.com/IH8qQB9h9krIvNlA3l5i7L";
+const GRUPO_CONVITE = "https://chat.whatsapp.com/Cfops2yRnHGK1tM7A4W0PK";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
