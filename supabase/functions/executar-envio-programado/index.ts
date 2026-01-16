@@ -298,12 +298,16 @@ async function enviarParaGrupo(
 
     console.log(`✅ Enviado TEXTO para grupo: ${jid}`);
 
-    // Follow-up opcional com imagem
+    // Follow-up com imagem (converte .webp para JPG via proxy)
     if (imageUrl) {
-      const lower = String(imageUrl).toLowerCase();
+      let finalImageUrl = String(imageUrl);
+      const lower = finalImageUrl.toLowerCase();
+      
+      // Se for .webp, converte para JPG usando proxy weserv.nl
       if (lower.includes(".webp")) {
-        console.log(`⚠️ Imagem .webp detectada — pulando envio de mídia (texto já enviado).`);
-        return { success: true };
+        const encodedUrl = encodeURIComponent(finalImageUrl);
+        finalImageUrl = `https://images.weserv.nl/?url=${encodedUrl}&output=jpg&q=85`;
+        console.log(`🔄 Convertendo .webp → JPG: ${finalImageUrl}`);
       }
 
       const imageResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
@@ -314,7 +318,7 @@ async function enviarParaGrupo(
         },
         body: JSON.stringify({
           Phone: jid,
-          Image: imageUrl,
+          Image: finalImageUrl,
           Caption: "", // evita duplicar o texto
         }),
       });
