@@ -223,24 +223,31 @@ export function ProgramacaoEnvioCard() {
     setLoading(true);
     try {
       const novoStatus = !prog.ativo;
-      let proximoEnvio = null;
+
+      // Ao ativar: calcular o próximo envio (respeitando Horário de Brasília + janela + dias)
+      // Ao pausar: limpar o próximo envio
+      let proximoEnvio: string | null = null;
+
       if (novoStatus) {
-        proximoEnvio = new Date().toISOString();
+        const { data, error: rpcError } = await supabase.rpc("calcular_proximo_envio", {
+          p_programacao_id: prog.id,
+        });
+        if (rpcError) throw rpcError;
+        proximoEnvio = data ? new Date(data).toISOString() : null;
       }
 
       const { error } = await supabase
-        .from('programacao_envio_afiliado')
-        .update({ 
+        .from("programacao_envio_afiliado")
+        .update({
           ativo: novoStatus,
-          proximo_envio: proximoEnvio
+          proximo_envio: proximoEnvio,
         })
-        .eq('id', prog.id);
+        .eq("id", prog.id);
 
       if (error) throw error;
 
       toast.success(novoStatus ? "Programação ativada!" : "Programação pausada");
       carregarDados();
-
     } catch (error: any) {
       toast.error(error.message || "Erro");
     } finally {
