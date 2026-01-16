@@ -50,8 +50,8 @@ serve(async (req) => {
 
     console.log(`Enviando mensagem para grupo: ${groupPhone}`);
 
-    // Estratégia "texto primeiro" para garantir que o link/oferta sempre chegue.
-    // Depois, se houver imagem (e não for .webp), tenta enviar como segunda mensagem.
+    // Estratégia: enviar com IMAGEM+LEGENDA (texto+link juntos).
+    // Se falhar, faz fallback para TEXTO.
     const sendText = async () => {
       const endpoint = `${CONTABO_WUZAPI_URL}/chat/send/text`;
       const response = await fetch(endpoint, {
@@ -70,7 +70,17 @@ serve(async (req) => {
       return { endpoint, response, result };
     };
 
-    const sendImage = async (url: string) => {
+    const normalizeImageUrl = (url: string) => {
+      const lower = url.toLowerCase();
+      if (lower.includes(".webp")) {
+        const converted = `https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=85`;
+        console.log("🔄 WEBP → JPG (proxy):", converted);
+        return converted;
+      }
+      return url;
+    };
+
+    const sendImageWithCaption = async (url: string, caption: string) => {
       const endpoint = `${CONTABO_WUZAPI_URL}/chat/send/image`;
       const response = await fetch(endpoint, {
         method: "POST",
@@ -80,8 +90,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           Phone: groupPhone,
-          // evitar duplicar a mensagem (já foi enviada no texto)
-          Caption: "",
+          Caption: caption,
           Image: url,
         }),
       });
@@ -90,59 +99,82 @@ serve(async (req) => {
       return { endpoint, response, result };
     };
 
-    // 1) Envia TEXTO sempre
-    const textSend = await sendText();
-    console.log("Resultado envio (texto):", JSON.stringify(textSend.result));
-
-    // 2) Tenta imagem como follow-up (best effort)
-    let imageAttempt:
-      | { attempted: false; skippedReason?: string }
-      | { attempted: true; endpoint: string; ok: boolean; result: any } = { attempted: false };
+    // 1) Se tem imagem: tenta IMAGEM+LEGENDA (junto). Se falhar, faz fallback para texto.
+    let textSend: Awaited<ReturnType<typeof sendText>> | null = null;
+    let imageSend:
+      | null
+      | { endpoint: string; response: Response; result: any; normalizedUrl: string } = null;
 
     if (imageUrl) {
-      const lower = String(imageUrl).toLowerCase();
-      // WebP costuma falhar em alguns clientes/fluxos — melhor não arriscar travar o envio
-      if (lower.includes(".webp")) {
-        imageAttempt = { attempted: false, skippedReason: "webp" };
-        console.log("⚠️ Imagem .webp detectada — pulando envio de mídia (texto já enviado).", imageUrl);
-      } else {
-        const imageSend = await sendImage(imageUrl);
-        imageAttempt = {
-          attempted: true,
-          endpoint: imageSend.endpoint,
-          ok: imageSend.response.ok,
-          result: imageSend.result,
-        };
+      const normalizedUrl = normalizeImageUrl(String(imageUrl));
+      const attempt = await sendImageWithCaption(normalizedUrl, message);
+      imageSend = {
+        endpoint: attempt.endpoint,
+        response: attempt.response,
+        result: attempt.result,
+        normalizedUrl,
+      };
 
-        if (imageSend.response.ok) {
-          console.log("Resultado envio (imagem):", JSON.stringify(imageSend.result));
-        } else {
-          console.log("⚠️ Falha ao enviar imagem (texto já foi enviado):", JSON.stringify(imageSend.result));
-        }
+      if (attempt.response.ok) {
+        console.log("✅ Envio (imagem+legenda) OK:", JSON.stringify(attempt.result));
+      } else {
+        console.log(
+          "⚠️ Falha no envio (imagem+legenda). Fazendo fallback para TEXTO...",
+          JSON.stringify(attempt.result),
+        );
+        textSend = await sendText();
+        console.log("Resultado envio (texto fallback):", JSON.stringify(textSend.result));
       }
+    } else {
+      textSend = await sendText();
+      console.log("Resultado envio (texto):", JSON.stringify(textSend.result));
     }
 
-    // Log do envio (considera sucesso = texto ok)
+    const success = imageSend ? imageSend.response.ok || Boolean(textSend?.response.ok) : Boolean(textSend?.response.ok);
+
+    // Log do envio
     await supabase.from("historico_envios").insert({
       whatsapp: groupJid,
       tipo: "grupo",
       mensagem: message.substring(0, 200),
-      sucesso: textSend.response.ok,
-      erro: textSend.response.ok
+      sucesso: success,
+      erro: success
         ? null
-        : JSON.stringify({ text: textSend.result, imageAttempt }),
+        : JSON.stringify({
+            image: imageSend
+              ? {
+                  endpoint: imageSend.endpoint,
+                  ok: imageSend.response.ok,
+                  result: imageSend.result,
+                  normalizedUrl: imageSend.normalizedUrl,
+                }
+              : null,
+            text: textSend ? { endpoint: textSend.endpoint, ok: textSend.response.ok, result: textSend.result } : null,
+          }),
     });
 
     // Atualizar contador de mensagens do grupo
-    if (textSend.response.ok) {
+    if (success) {
       await supabase.rpc("increment_group_messages", { group_jid: groupJid });
     }
 
     return new Response(
       JSON.stringify({
-        success: textSend.response.ok,
-        text: { endpoint: textSend.endpoint, result: textSend.result },
-        imageAttempt,
+        success,
+        image: imageSend
+          ? {
+              endpoint: imageSend.endpoint,
+              ok: imageSend.response.ok,
+              result: imageSend.result,
+            }
+          : null,
+        text: textSend
+          ? {
+              endpoint: textSend.endpoint,
+              ok: textSend.response.ok,
+              result: textSend.result,
+            }
+          : null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
