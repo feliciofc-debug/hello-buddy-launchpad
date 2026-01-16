@@ -46,126 +46,103 @@ serve(async (req) => {
     const token = cliente.wuzapi_token;
 
     // Para grupos, o WuzAPI precisa do JID completo com @g.us no campo Phone
-    // MAS alguns endpoints exigem apenas o número sem @g.us
-    const groupPhone = groupJid.includes('@g.us') ? groupJid : `${groupJid}@g.us`;
-    
+    const groupPhone = groupJid.includes("@g.us") ? groupJid : `${groupJid}@g.us`;
+
     console.log(`Enviando mensagem para grupo: ${groupPhone}`);
 
-    let response: Response;
-    let endpoint: string;
-
-    if (imageUrl) {
-      // COM IMAGEM (com fallback robusto para texto)
-      endpoint = `${CONTABO_WUZAPI_URL}/chat/send/image`;
-      response = await fetch(endpoint, {
+    // Estratégia "texto primeiro" para garantir que o link/oferta sempre chegue.
+    // Depois, se houver imagem (e não for .webp), tenta enviar como segunda mensagem.
+    const sendText = async () => {
+      const endpoint = `${CONTABO_WUZAPI_URL}/chat/send/text`;
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
-          "Token": token,
+          Token: token,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           Phone: groupPhone,
-          Caption: message,
-          Image: imageUrl,
+          Body: message,
         }),
       });
 
-      let result: any = null;
-      try {
-        result = await response.json();
-      } catch {
-        result = null;
-      }
+      const result = await response.json().catch(() => null);
+      return { endpoint, response, result };
+    };
 
-      // Alguns cenários retornam 200 mas com erro no payload.
-      const payloadHasError =
-        !!result &&
-        (result.error || result.erro || result.success === false || result.status === "error");
+    const sendImage = async (url: string) => {
+      const endpoint = `${CONTABO_WUZAPI_URL}/chat/send/image`;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Token: token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Phone: groupPhone,
+          // evitar duplicar a mensagem (já foi enviada no texto)
+          Caption: "",
+          Image: url,
+        }),
+      });
 
-      if (!response.ok || payloadHasError) {
-        console.log("⚠️ Falha ao enviar imagem para grupo, tentando só texto...");
-        endpoint = `${CONTABO_WUZAPI_URL}/chat/send/text`;
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Token": token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            Phone: groupPhone,
-            Body: message,
-          }),
-        });
+      const result = await response.json().catch(() => null);
+      return { endpoint, response, result };
+    };
 
-        const fallbackResult = await response.json().catch(() => null);
-        console.log("Resultado envio (fallback texto):", JSON.stringify(fallbackResult));
+    // 1) Envia TEXTO sempre
+    const textSend = await sendText();
+    console.log("Resultado envio (texto):", JSON.stringify(textSend.result));
 
-        // Reusar a variável result para log/erro abaixo
-        result = fallbackResult;
+    // 2) Tenta imagem como follow-up (best effort)
+    let imageAttempt:
+      | { attempted: false; skippedReason?: string }
+      | { attempted: true; endpoint: string; ok: boolean; result: any } = { attempted: false };
+
+    if (imageUrl) {
+      const lower = String(imageUrl).toLowerCase();
+      // WebP costuma falhar em alguns clientes/fluxos — melhor não arriscar travar o envio
+      if (lower.includes(".webp")) {
+        imageAttempt = { attempted: false, skippedReason: "webp" };
+        console.log("⚠️ Imagem .webp detectada — pulando envio de mídia (texto já enviado).", imageUrl);
       } else {
-        console.log("Resultado envio (imagem):", JSON.stringify(result));
+        const imageSend = await sendImage(imageUrl);
+        imageAttempt = {
+          attempted: true,
+          endpoint: imageSend.endpoint,
+          ok: imageSend.response.ok,
+          result: imageSend.result,
+        };
+
+        if (imageSend.response.ok) {
+          console.log("Resultado envio (imagem):", JSON.stringify(imageSend.result));
+        } else {
+          console.log("⚠️ Falha ao enviar imagem (texto já foi enviado):", JSON.stringify(imageSend.result));
+        }
       }
-
-      // Log do envio
-      await supabase.from("historico_envios").insert({
-        whatsapp: groupJid,
-        tipo: "grupo",
-        mensagem: message.substring(0, 200),
-        sucesso: response.ok,
-        erro: response.ok ? null : JSON.stringify(result),
-      });
-
-      // Atualizar contador de mensagens do grupo
-      if (response.ok) {
-        await supabase.rpc("increment_group_messages", { group_jid: groupJid });
-      }
-
-      return new Response(
-        JSON.stringify({
-          success: response.ok,
-          result,
-          endpoint,
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
     }
 
-    // SÓ TEXTO
-    endpoint = `${CONTABO_WUZAPI_URL}/chat/send/text`;
-    response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Token": token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        Phone: groupPhone,
-        Body: message,
-      }),
-    });
-
-    const result = await response.json();
-    console.log("Resultado envio:", JSON.stringify(result));
-
-    // Log do envio
+    // Log do envio (considera sucesso = texto ok)
     await supabase.from("historico_envios").insert({
       whatsapp: groupJid,
       tipo: "grupo",
       mensagem: message.substring(0, 200),
-      sucesso: response.ok,
-      erro: response.ok ? null : JSON.stringify(result)
+      sucesso: textSend.response.ok,
+      erro: textSend.response.ok
+        ? null
+        : JSON.stringify({ text: textSend.result, imageAttempt }),
     });
 
     // Atualizar contador de mensagens do grupo
-    if (response.ok) {
-      await supabase.rpc('increment_group_messages', { group_jid: groupJid });
+    if (textSend.response.ok) {
+      await supabase.rpc("increment_group_messages", { group_jid: groupJid });
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: response.ok, 
-        result,
-        endpoint 
+      JSON.stringify({
+        success: textSend.response.ok,
+        text: { endpoint: textSend.endpoint, result: textSend.result },
+        imageAttempt,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
