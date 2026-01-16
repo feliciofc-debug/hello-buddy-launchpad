@@ -51,29 +51,30 @@ interface Grupo {
 }
 
 // 22 Categorias Amazon completas
+// Categorias alinhadas com AfiliadoProdutos.tsx (mesmos labels)
 const CATEGORIAS_DISPONIVEIS = [
-  { id: 'Alimentos e Bebidas', nome: 'Alimentos', icone: '🍴' },
-  { id: 'Automotivo', nome: 'Automotivo', icone: '🚗' },
-  { id: 'Bebês', nome: 'Bebês', icone: '👶' },
+  { id: 'Alimentos e Bebidas', nome: 'Alimentos e Bebidas', icone: '🍴' },
+  { id: 'Automotivo', nome: 'Acessórios para Veículos', icone: '🚗' },
+  { id: 'Bebês', nome: 'Mãe e Bebê', icone: '👶' },
   { id: 'Beleza', nome: 'Beleza', icone: '💄' },
-  { id: 'Brinquedos e Jogos', nome: 'Brinquedos', icone: '🎮' },
-  { id: 'Casa', nome: 'Casa', icone: '🏠' },
-  { id: 'Construção', nome: 'Construção', icone: '🔨' },
+  { id: 'Brinquedos e Jogos', nome: 'Brinquedos e Hobbies', icone: '🎮' },
+  { id: 'Casa', nome: 'Casa e Decoração', icone: '🏠' },
+  { id: 'Construção', nome: 'Casa e Construção', icone: '🔨' },
   { id: 'Cozinha', nome: 'Cozinha', icone: '🍳' },
-  { id: 'Cuidados Pessoais e Limpeza', nome: 'Limpeza', icone: '🧼' },
-  { id: 'Eletrodomésticos', nome: 'Eletros', icone: '🔌' },
-  { id: 'Eletrônicos e Celulares', nome: 'Tech', icone: '📱' },
-  { id: 'Esportes e Aventura', nome: 'Esportes', icone: '💪' },
+  { id: 'Cuidados Pessoais e Limpeza', nome: 'Saúde', icone: '🧼' },
+  { id: 'Eletrodomésticos', nome: 'Eletrodomésticos', icone: '🔌' },
+  { id: 'Eletrônicos e Celulares', nome: 'Celulares e Dispositivos', icone: '📱' },
+  { id: 'Esportes e Aventura', nome: 'Esportes e Lazer', icone: '💪' },
   { id: 'Ferramentas e Construção', nome: 'Ferramentas', icone: '🔧' },
-  { id: 'Informática', nome: 'Informática', icone: '💻' },
-  { id: 'Jardim e Piscina', nome: 'Jardim', icone: '🌿' },
-  { id: 'Livros', nome: 'Livros', icone: '📚' },
+  { id: 'Informática', nome: 'Computadores e Acessórios', icone: '💻' },
+  { id: 'Jardim e Piscina', nome: 'Jardim e Piscina', icone: '🌿' },
+  { id: 'Livros', nome: 'Livros e Revistas', icone: '📚' },
   { id: 'eBooks', nome: 'eBooks', icone: '📖' },
   { id: 'Moda', nome: 'Moda', icone: '👗' },
   { id: 'Móveis', nome: 'Móveis', icone: '🛋️' },
   { id: 'Papelaria e Escritório', nome: 'Papelaria', icone: '📝' },
-  { id: 'Pet Shop', nome: 'Pet', icone: '🐾' },
-  { id: 'Video Games', nome: 'Games', icone: '🎮' },
+  { id: 'Pet Shop', nome: 'Animais Domésticos', icone: '🐾' },
+  { id: 'Video Games', nome: 'Jogos e Consoles', icone: '🎮' },
 ];
 
 const DIAS_SEMANA = [
