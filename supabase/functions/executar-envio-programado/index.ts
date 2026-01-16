@@ -281,9 +281,50 @@ async function enviarParaGrupo(
 
     console.log(`📤 Enviando para grupo: ${jid}`);
 
-    // Estratégia "texto primeiro": garante que o link/oferta chegue.
-    // Depois tenta imagem como follow-up (best effort). Para Shopee, .webp costuma falhar.
+    // Objetivo: IMAGEM + LEGENDA (texto+link juntos) na mesma mensagem.
+    // Se falhar, faz fallback para TEXTO.
 
+    const normalizeImageUrl = (url: string) => {
+      const lower = url.toLowerCase();
+      if (lower.includes(".webp")) {
+        const converted = `https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=85`;
+        console.log(`🔄 Convertendo .webp → JPG: ${converted}`);
+        return converted;
+      }
+      return url;
+    };
+
+    // 1) Se tem imagem, tenta enviar IMAGEM + CAPTION
+    if (imageUrl) {
+      const finalImageUrl = normalizeImageUrl(String(imageUrl));
+
+      const imageResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
+        method: "POST",
+        headers: {
+          "Token": token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Phone: jid,
+          Image: finalImageUrl,
+          Caption: message,
+        }),
+      });
+
+      const imageResult = await imageResponse.json().catch(() => null);
+
+      if (imageResponse.ok) {
+        console.log(`✅ Enviado IMAGEM+LEGENDA para grupo: ${jid}`);
+        return { success: true };
+      }
+
+      console.log(
+        "⚠️ Falha ao enviar imagem+legenda. Tentando fallback para TEXTO...",
+        JSON.stringify(imageResult),
+      );
+    }
+
+    // 2) Fallback (ou envio padrão) = TEXTO
     const textResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/text`, {
       method: "POST",
       headers: {
@@ -304,41 +345,6 @@ async function enviarParaGrupo(
     }
 
     console.log(`✅ Enviado TEXTO para grupo: ${jid}`);
-
-    // Follow-up com imagem (converte .webp para JPG via proxy)
-    if (imageUrl) {
-      let finalImageUrl = String(imageUrl);
-      const lower = finalImageUrl.toLowerCase();
-      
-      // Se for .webp, converte para JPG usando proxy weserv.nl
-      if (lower.includes(".webp")) {
-        const encodedUrl = encodeURIComponent(finalImageUrl);
-        finalImageUrl = `https://images.weserv.nl/?url=${encodedUrl}&output=jpg&q=85`;
-        console.log(`🔄 Convertendo .webp → JPG: ${finalImageUrl}`);
-      }
-
-      const imageResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
-        method: "POST",
-        headers: {
-          "Token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          Phone: jid,
-          Image: finalImageUrl,
-          Caption: "", // evita duplicar o texto
-        }),
-      });
-
-      const imageResult = await imageResponse.json().catch(() => null);
-
-      if (!imageResponse.ok) {
-        console.log("⚠️ Falha ao enviar imagem (texto já foi enviado):", JSON.stringify(imageResult));
-      } else {
-        console.log(`✅ Imagem enviada para grupo: ${jid}`);
-      }
-    }
-
     return { success: true };
   } catch (error: any) {
     console.error(`❌ Erro ao enviar para grupo:`, error);
