@@ -75,13 +75,20 @@ async function resolverImagemAmazon(produtoUrl: string): Promise<string | null> 
   }
 }
 
-// Obtém a melhor URL de imagem disponível
+// 🔥 Obtém a melhor URL de imagem disponível - CONVERTE WEBP → JPG
 async function obterImagemProduto(produto: any): Promise<string | null> {
-  const imagemUrl = produto.imagem_url;
+  let imagemUrl = produto.imagem_url;
   
   if (!imagemUrl) {
     console.log("⚠️ Produto sem imagem cadastrada");
     return null;
+  }
+  
+  // 🔥 FORÇA CONVERSÃO WEBP → JPG ANTES DE QUALQUER COISA
+  if (imagemUrl.includes(".webp")) {
+    const urlConvertida = `https://images.weserv.nl/?url=${encodeURIComponent(imagemUrl)}&output=jpg&q=85`;
+    console.log(`🔄 WEBP convertido → JPG: ${urlConvertida.substring(0, 80)}...`);
+    return urlConvertida;
   }
   
   // Se já é uma URL de imagem válida, usar diretamente
