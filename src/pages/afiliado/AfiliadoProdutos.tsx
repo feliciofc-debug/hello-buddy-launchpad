@@ -34,31 +34,43 @@ interface Produto {
   categoria?: string | null;
 }
 
-// 22 Categorias Amazon (nomes exatos) + Todos
+// 22 Categorias AMZ (sincronizadas com Shopee) + Todos
+// Mapeamento: Shopee → AMZ
+// Roupas/Sapatos/Bolsas/Acessórios/Relógios/Moda Infantil → Moda
+// Celulares e Dispositivos/Áudio/Câmeras e Drones → Eletrônicos e Celulares
+// Computadores e Acessórios → Informática
+// Jogos e Consoles → Video Games
+// Animais Domésticos → Pet Shop
+// Mãe e Bebê → Bebês
+// Casa e Construção → Casa/Construção
+// Esportes e Lazer → Esportes e Aventura
+// Brinquedos e Hobbies → Brinquedos e Jogos
+// Viagens e Bagagens → Moda
+// Livros e Revistas → Livros
 const CATEGORIAS = [
   { value: 'Todos', label: 'Todos', icon: LayoutGrid, color: 'bg-gray-500' },
   { value: 'Alimentos e Bebidas', label: 'Alimentos e Bebidas', icon: UtensilsCrossed, color: 'bg-amber-500' },
-  { value: 'Automotivo', label: 'Automotivo', icon: Car, color: 'bg-slate-600' },
-  { value: 'Bebês', label: 'Bebês', icon: Baby, color: 'bg-pink-400' },
+  { value: 'Automotivo', label: 'Acessórios para Veículos', icon: Car, color: 'bg-slate-600' },
+  { value: 'Bebês', label: 'Mãe e Bebê', icon: Baby, color: 'bg-pink-400' },
   { value: 'Beleza', label: 'Beleza', icon: Sparkles, color: 'bg-rose-500' },
-  { value: 'Brinquedos e Jogos', label: 'Brinquedos e Jogos', icon: Gamepad2, color: 'bg-purple-400' },
-  { value: 'Casa', label: 'Casa', icon: Home, color: 'bg-blue-500' },
-  { value: 'Construção', label: 'Construção', icon: HardHat, color: 'bg-orange-700' },
+  { value: 'Brinquedos e Jogos', label: 'Brinquedos e Hobbies', icon: Gamepad2, color: 'bg-purple-400' },
+  { value: 'Casa', label: 'Casa e Decoração', icon: Home, color: 'bg-blue-500' },
+  { value: 'Construção', label: 'Casa e Construção', icon: HardHat, color: 'bg-orange-700' },
   { value: 'Cozinha', label: 'Cozinha', icon: ChefHat, color: 'bg-orange-500' },
-  { value: 'Cuidados Pessoais e Limpeza', label: 'Cuidados Pessoais e Limpeza', icon: ShowerHead, color: 'bg-cyan-500' },
+  { value: 'Cuidados Pessoais e Limpeza', label: 'Saúde', icon: ShowerHead, color: 'bg-cyan-500' },
   { value: 'Eletrodomésticos', label: 'Eletrodomésticos', icon: Zap, color: 'bg-yellow-500' },
-  { value: 'Eletrônicos e Celulares', label: 'Eletrônicos e Celulares', icon: Smartphone, color: 'bg-indigo-500' },
-  { value: 'Esportes e Aventura', label: 'Esportes e Aventura', icon: Dumbbell, color: 'bg-red-500' },
-  { value: 'Ferramentas e Construção', label: 'Ferramentas e Construção', icon: Wrench, color: 'bg-amber-600' },
-  { value: 'Informática', label: 'Informática', icon: Tv, color: 'bg-violet-500' },
+  { value: 'Eletrônicos e Celulares', label: 'Celulares e Dispositivos', icon: Smartphone, color: 'bg-indigo-500' },
+  { value: 'Esportes e Aventura', label: 'Esportes e Lazer', icon: Dumbbell, color: 'bg-red-500' },
+  { value: 'Ferramentas e Construção', label: 'Ferramentas', icon: Wrench, color: 'bg-amber-600' },
+  { value: 'Informática', label: 'Computadores e Acessórios', icon: Tv, color: 'bg-violet-500' },
   { value: 'Jardim e Piscina', label: 'Jardim e Piscina', icon: Droplets, color: 'bg-green-500' },
-  { value: 'Livros', label: 'Livros', icon: BookOpen, color: 'bg-amber-700' },
+  { value: 'Livros', label: 'Livros e Revistas', icon: BookOpen, color: 'bg-amber-700' },
   { value: 'eBooks', label: 'eBooks', icon: BookMarked, color: 'bg-teal-500' },
   { value: 'Moda', label: 'Moda', icon: Shirt, color: 'bg-fuchsia-500' },
   { value: 'Móveis', label: 'Móveis', icon: Sofa, color: 'bg-stone-500' },
-  { value: 'Papelaria e Escritório', label: 'Papelaria e Escritório', icon: Pencil, color: 'bg-gray-600' },
-  { value: 'Pet Shop', label: 'Pet Shop', icon: Cat, color: 'bg-teal-600' },
-  { value: 'Video Games', label: 'Video Games', icon: Gamepad2, color: 'bg-emerald-500' },
+  { value: 'Papelaria e Escritório', label: 'Papelaria', icon: Pencil, color: 'bg-gray-600' },
+  { value: 'Pet Shop', label: 'Animais Domésticos', icon: Cat, color: 'bg-teal-600' },
+  { value: 'Video Games', label: 'Jogos e Consoles', icon: Gamepad2, color: 'bg-emerald-500' },
 ];
 
 // Extrai ASIN do link Amazon e retorna URL da imagem
