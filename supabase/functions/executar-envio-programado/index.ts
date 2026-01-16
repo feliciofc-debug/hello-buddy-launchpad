@@ -274,51 +274,9 @@ async function enviarParaGrupo(
 
     console.log(`📤 Enviando para grupo: ${jid}`);
 
-    // Se tem imagem, envia imagem COM caption (link + texto) - FORMATO ORIGINAL QUE FUNCIONAVA
-    if (imageUrl) {
-      const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
+    // Estratégia "texto primeiro": garante que o link/oferta chegue.
+    // Depois tenta imagem como follow-up (best effort). Para Shopee, .webp costuma falhar.
 
-      const imageResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
-        method: "POST",
-        headers: {
-          "Token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          Phone: jid,
-          Image: imageUrl,
-          Caption: caption,
-        }),
-      });
-
-      const result = await imageResponse.json().catch(() => null);
-
-      if (!imageResponse.ok) {
-        // Fallback: se imagem falhar, tenta só texto
-        console.log("⚠️ Falha ao enviar imagem, tentando só texto...");
-        const textResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/text`, {
-          method: "POST",
-          headers: {
-            "Token": token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            Phone: jid,
-            Body: message,
-          }),
-        });
-
-        if (!textResponse.ok) {
-          const err = await textResponse.text();
-          return { success: false, error: err };
-        }
-      }
-
-      console.log(`✅ Enviado para grupo: ${jid}`);
-      return { success: true };
-    }
-
-    // Sem imagem - só texto
     const textResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/text`, {
       method: "POST",
       headers: {
@@ -331,12 +289,45 @@ async function enviarParaGrupo(
       }),
     });
 
+    const textResult = await textResponse.json().catch(() => null);
+
     if (!textResponse.ok) {
-      const err = await textResponse.text();
+      const err = typeof textResult === "string" ? textResult : JSON.stringify(textResult);
       return { success: false, error: err };
     }
 
     console.log(`✅ Enviado TEXTO para grupo: ${jid}`);
+
+    // Follow-up opcional com imagem
+    if (imageUrl) {
+      const lower = String(imageUrl).toLowerCase();
+      if (lower.includes(".webp")) {
+        console.log(`⚠️ Imagem .webp detectada — pulando envio de mídia (texto já enviado).`);
+        return { success: true };
+      }
+
+      const imageResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
+        method: "POST",
+        headers: {
+          "Token": token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Phone: jid,
+          Image: imageUrl,
+          Caption: "", // evita duplicar o texto
+        }),
+      });
+
+      const imageResult = await imageResponse.json().catch(() => null);
+
+      if (!imageResponse.ok) {
+        console.log("⚠️ Falha ao enviar imagem (texto já foi enviado):", JSON.stringify(imageResult));
+      } else {
+        console.log(`✅ Imagem enviada para grupo: ${jid}`);
+      }
+    }
+
     return { success: true };
   } catch (error: any) {
     console.error(`❌ Erro ao enviar para grupo:`, error);
