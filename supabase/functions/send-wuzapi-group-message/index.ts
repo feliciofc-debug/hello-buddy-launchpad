@@ -137,7 +137,20 @@ serve(async (req) => {
 
     const success = imageSend ? imageSend.response.ok || Boolean(textSend?.response.ok) : Boolean(textSend?.response.ok);
 
-    // Log do envio
+    // ╔════════════════════════════════════════════════════════════════════════════╗
+    // ║ 🔒 LOGS DETALHADOS - 17/01/2026 - Debug de entrega real                    ║
+    // ╚════════════════════════════════════════════════════════════════════════════╝
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`📤 ENVIO PARA GRUPO: ${groupJid}`);
+    console.log(`🖼️ Imagem: ${imageUrl ? '✅ SIM' : '❌ NÃO'}`);
+    console.log(`📡 Status Imagem: ${imageSend?.response.status ?? 'N/A'} | OK: ${imageSend?.response.ok ?? 'N/A'}`);
+    console.log(`📡 Status Texto: ${textSend?.response.status ?? 'N/A'} | OK: ${textSend?.response.ok ?? 'N/A'}`);
+    console.log(`✅ Sucesso Final: ${success}`);
+    if (imageSend?.result) console.log(`📋 Response Imagem: ${JSON.stringify(imageSend.result)}`);
+    if (textSend?.result) console.log(`📋 Response Texto: ${JSON.stringify(textSend.result)}`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+    // Log do envio no banco
     await supabase.from("historico_envios").insert({
       whatsapp: groupJid,
       tipo: "grupo",
