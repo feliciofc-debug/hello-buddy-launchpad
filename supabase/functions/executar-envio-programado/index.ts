@@ -791,20 +791,14 @@ async function processarProgramacao(
     const gruposIdsEnviados: string[] = [];
 
     for (const grupo of grupos) {
-      // ✅ DEDUPLICAÇÃO: verificar se já enviamos para este grupo nos últimos 2 minutos
-      const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
-      const { data: recentEnvio } = await supabase
-        .from("historico_envios")
-        .select("timestamp")
-        .eq("whatsapp", grupo.group_jid)
-        .eq("tipo", "grupo")
-        .gte("timestamp", twoMinutesAgo)
-        .limit(1);
+      // ╔════════════════════════════════════════════════════════════════════════════╗
+      // ║ 🔒 DEDUPLICAÇÃO REMOVIDA - 17/01/2026                                      ║
+      // ║ MOTIVO: O controle de intervalo via proximo_envio JÁ é suficiente.         ║
+      // ║ A deduplicação de 2min estava BLOQUEANDO envios válidos.                   ║
+      // ║ Correção aprovada pelo usuário.                                            ║
+      // ╚════════════════════════════════════════════════════════════════════════════╝
       
-      if (recentEnvio && recentEnvio.length > 0) {
-        console.log(`⏭️ Grupo ${grupo.group_name} já recebeu mensagem nos últimos 2min, pulando...`);
-        continue;
-      }
+      console.log(`📱 Enviando para grupo: ${grupo.group_name}`);
       
       // ✅ REGISTRAR ANTES de enviar (evita race condition)
       await supabase.from("historico_envios").insert({
