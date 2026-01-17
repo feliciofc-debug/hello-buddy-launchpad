@@ -792,23 +792,17 @@ async function processarProgramacao(
 
     for (const grupo of grupos) {
       // ╔════════════════════════════════════════════════════════════════════════════╗
-      // ║ 🔒 DEDUPLICAÇÃO REMOVIDA - 17/01/2026                                      ║
-      // ║ MOTIVO: O controle de intervalo via proximo_envio JÁ é suficiente.         ║
-      // ║ A deduplicação de 2min estava BLOQUEANDO envios válidos.                   ║
-      // ║ Correção aprovada pelo usuário.                                            ║
+      // ║ 🔒 CORREÇÃO 17/01/2026 - Gravar sucesso APÓS confirmação WuzAPI           ║
+      // ║ ANTES: Gravava sucesso=true ANTES de enviar (ERRADO!)                      ║
+      // ║ AGORA: Envia primeiro, grava status REAL depois                            ║
       // ╚════════════════════════════════════════════════════════════════════════════╝
       
-      console.log(`📱 Enviando para grupo: ${grupo.group_name}`);
-      
-      // ✅ REGISTRAR ANTES de enviar (evita race condition)
-      await supabase.from("historico_envios").insert({
-        whatsapp: grupo.group_jid,
-        tipo: "grupo",
-        mensagem: mensagem.substring(0, 200),
-        sucesso: true,
-        timestamp: new Date().toISOString()
-      });
-      
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`📤 ENVIO PARA: ${grupo.group_name}`);
+      console.log(`📱 JID: ${grupo.group_jid}`);
+      console.log(`🖼️ Imagem: ${imagemUrl ? '✅ SIM' : '❌ NÃO'}`);
+
+      // ✅ PRIMEIRO ENVIA
       const resultado = await enviarParaGrupo(
         clienteData.wuzapi_token,
         grupo.group_jid,
@@ -816,18 +810,23 @@ async function processarProgramacao(
         imagemUrl
       );
 
+      console.log(`📡 Resultado: ${resultado.success ? '✅ SUCESSO' : '❌ FALHA'}`);
+      if (resultado.error) console.log(`❌ Erro: ${resultado.error}`);
+      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+      // ✅ SÓ GRAVA DEPOIS, COM STATUS REAL DA WUZAPI
+      await supabase.from("historico_envios").insert({
+        whatsapp: grupo.group_jid,
+        tipo: "grupo",
+        mensagem: mensagem.substring(0, 200),
+        sucesso: resultado.success,
+        erro: resultado.success ? null : resultado.error,
+        timestamp: new Date().toISOString()
+      });
+
       if (resultado.success) {
         gruposEnviados++;
         gruposIdsEnviados.push(grupo.id);
-      } else {
-        // Se falhou, atualizar registro para sucesso=false
-        await supabase
-          .from("historico_envios")
-          .update({ sucesso: false, erro: resultado.error })
-          .eq("whatsapp", grupo.group_jid)
-          .eq("tipo", "grupo")
-          .order("timestamp", { ascending: false })
-          .limit(1);
       }
 
       await sleep(CONFIG.DELAY_ENTRE_GRUPOS_MS);
