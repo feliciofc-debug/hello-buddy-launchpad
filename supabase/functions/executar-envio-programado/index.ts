@@ -75,7 +75,15 @@ async function resolverImagemAmazon(produtoUrl: string): Promise<string | null> 
   }
 }
 
-// 🔥 Obtém a melhor URL de imagem disponível - SEM PROXY (WuzAPI aceita .webp!)
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║ 🔒 CÓDIGO PROTEGIDO - NÃO ALTERAR SEM AUTORIZAÇÃO EXPLÍCITA DO USUÁRIO!     ║
+// ║                                                                              ║
+// ║ PROBLEMA RESOLVIDO: Proxy images.weserv.nl retornava 404 para URLs Shopee   ║
+// ║ SOLUÇÃO: WuzAPI aceita .webp diretamente - NÃO usar proxy de conversão!     ║
+// ║                                                                              ║
+// ║ Data da correção: 17/01/2026                                                 ║
+// ║ Testado e confirmado funcionando pelo usuário.                               ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
 async function obterImagemProduto(produto: any): Promise<string | null> {
   let imagemUrl = produto.imagem_url;
   
@@ -84,8 +92,7 @@ async function obterImagemProduto(produto: any): Promise<string | null> {
     return null;
   }
   
-  // ✅ WuzAPI aceita .webp diretamente da Shopee - NÃO usar proxy!
-  // Proxy images.weserv.nl retorna 404 para URLs da Shopee/susercontent.com
+  // ⚠️ NÃO ADICIONAR PROXY AQUI! WuzAPI aceita .webp direto da Shopee!
   if (isValidImageUrl(imagemUrl)) {
     console.log(`📷 Usando imagem direta (sem proxy): ${imagemUrl.substring(0, 60)}...`);
     return imagemUrl;
@@ -278,9 +285,12 @@ async function enviarParaGrupo(
     // Objetivo: IMAGEM + LEGENDA (texto+link juntos) na mesma mensagem.
     // Se falhar, faz fallback para TEXTO.
 
+    // ╔════════════════════════════════════════════════════════════════════════════╗
+    // ║ 🔒 CÓDIGO PROTEGIDO - NÃO USAR PROXY! WuzAPI aceita .webp direto!         ║
+    // ║ Data: 17/01/2026 - Testado e confirmado pelo usuário.                      ║
+    // ╚════════════════════════════════════════════════════════════════════════════╝
     const normalizeImageUrl = (url: string) => {
-      // ✅ WuzAPI aceita .webp diretamente da Shopee - NÃO usar proxy!
-      // Proxy images.weserv.nl retorna 404 para URLs da Shopee/susercontent.com
+      // ⚠️ NÃO ADICIONAR PROXY AQUI! WuzAPI aceita .webp direto da Shopee!
       return url;
     };
 

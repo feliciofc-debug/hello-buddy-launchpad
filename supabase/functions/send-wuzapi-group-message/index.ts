@@ -70,9 +70,17 @@ serve(async (req) => {
       return { endpoint, response, result };
     };
 
+    // ╔══════════════════════════════════════════════════════════════════════════════╗
+    // ║ 🔒 CÓDIGO PROTEGIDO - NÃO ALTERAR SEM AUTORIZAÇÃO EXPLÍCITA DO USUÁRIO!     ║
+    // ║                                                                              ║
+    // ║ PROBLEMA RESOLVIDO: Proxy images.weserv.nl retornava 404 para URLs Shopee   ║
+    // ║ SOLUÇÃO: WuzAPI aceita .webp diretamente - NÃO usar proxy de conversão!     ║
+    // ║                                                                              ║
+    // ║ Data da correção: 17/01/2026                                                 ║
+    // ║ Testado e confirmado funcionando pelo usuário.                               ║
+    // ╚══════════════════════════════════════════════════════════════════════════════╝
     const normalizeImageUrl = (url: string) => {
-      // WuzAPI aceita .webp diretamente da Shopee - NÃO usar proxy!
-      // Proxy images.weserv.nl retorna 404 para URLs da Shopee
+      // ⚠️ NÃO ADICIONAR PROXY AQUI! WuzAPI aceita .webp direto da Shopee!
       console.log("📸 Usando URL original (sem proxy):", url);
       return url;
     };
