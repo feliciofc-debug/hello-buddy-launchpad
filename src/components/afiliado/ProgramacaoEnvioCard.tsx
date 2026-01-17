@@ -247,7 +247,10 @@ export function ProgramacaoEnvioCard() {
       if (error) throw error;
 
       toast.success(novoStatus ? "Programação ativada!" : "Programação pausada");
-      carregarDados();
+      
+      // Aguardar 500ms para o banco calcular e recarregar
+      await new Promise(r => setTimeout(r, 500));
+      await carregarDados();
     } catch (error: any) {
       toast.error(error.message || "Erro");
     } finally {
