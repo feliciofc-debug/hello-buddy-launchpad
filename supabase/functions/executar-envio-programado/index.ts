@@ -279,12 +279,8 @@ async function enviarParaGrupo(
     // Se falhar, faz fallback para TEXTO.
 
     const normalizeImageUrl = (url: string) => {
-      const lower = url.toLowerCase();
-      if (lower.includes(".webp")) {
-        const converted = `https://images.weserv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=85`;
-        console.log(`🔄 Convertendo .webp → JPG: ${converted}`);
-        return converted;
-      }
+      // ✅ WuzAPI aceita .webp diretamente da Shopee - NÃO usar proxy!
+      // Proxy images.weserv.nl retorna 404 para URLs da Shopee/susercontent.com
       return url;
     };
 
