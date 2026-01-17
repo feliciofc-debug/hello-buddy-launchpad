@@ -75,26 +75,18 @@ async function resolverImagemAmazon(produtoUrl: string): Promise<string | null> 
   }
 }
 
-// ╔══════════════════════════════════════════════════════════════════════════════╗
-// ║ 🔒 CÓDIGO PROTEGIDO - NÃO ALTERAR SEM AUTORIZAÇÃO EXPLÍCITA DO USUÁRIO!     ║
-// ║                                                                              ║
-// ║ PROBLEMA RESOLVIDO: Proxy images.weserv.nl retornava 404 para URLs Shopee   ║
-// ║ SOLUÇÃO: WuzAPI aceita .webp diretamente - NÃO usar proxy de conversão!     ║
-// ║                                                                              ║
-// ║ Data da correção: 17/01/2026                                                 ║
-// ║ Testado e confirmado funcionando pelo usuário.                               ║
-// ╚══════════════════════════════════════════════════════════════════════════════╝
+// Obtém a melhor URL de imagem disponível
 async function obterImagemProduto(produto: any): Promise<string | null> {
-  let imagemUrl = produto.imagem_url;
+  const imagemUrl = produto.imagem_url;
   
   if (!imagemUrl) {
     console.log("⚠️ Produto sem imagem cadastrada");
     return null;
   }
   
-  // ⚠️ NÃO ADICIONAR PROXY AQUI! WuzAPI aceita .webp direto da Shopee!
+  // Se já é uma URL de imagem válida, usar diretamente
   if (isValidImageUrl(imagemUrl)) {
-    console.log(`📷 Usando imagem direta (sem proxy): ${imagemUrl.substring(0, 60)}...`);
+    console.log(`📷 Usando imagem direta: ${imagemUrl.substring(0, 60)}...`);
     return imagemUrl;
   }
   
@@ -282,21 +274,9 @@ async function enviarParaGrupo(
 
     console.log(`📤 Enviando para grupo: ${jid}`);
 
-    // Objetivo: IMAGEM + LEGENDA (texto+link juntos) na mesma mensagem.
-    // Se falhar, faz fallback para TEXTO.
-
-    // ╔════════════════════════════════════════════════════════════════════════════╗
-    // ║ 🔒 CÓDIGO PROTEGIDO - NÃO USAR PROXY! WuzAPI aceita .webp direto!         ║
-    // ║ Data: 17/01/2026 - Testado e confirmado pelo usuário.                      ║
-    // ╚════════════════════════════════════════════════════════════════════════════╝
-    const normalizeImageUrl = (url: string) => {
-      // ⚠️ NÃO ADICIONAR PROXY AQUI! WuzAPI aceita .webp direto da Shopee!
-      return url;
-    };
-
-    // 1) Se tem imagem, tenta enviar IMAGEM + CAPTION
+    // Se tem imagem, envia imagem COM caption (link + texto) - FORMATO ORIGINAL QUE FUNCIONAVA
     if (imageUrl) {
-      const finalImageUrl = normalizeImageUrl(String(imageUrl));
+      const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
 
       const imageResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/image`, {
         method: "POST",
@@ -306,25 +286,39 @@ async function enviarParaGrupo(
         },
         body: JSON.stringify({
           Phone: jid,
-          Image: finalImageUrl,
-          Caption: message,
+          Image: imageUrl,
+          Caption: caption,
         }),
       });
 
-      const imageResult = await imageResponse.json().catch(() => null);
+      const result = await imageResponse.json().catch(() => null);
 
-      if (imageResponse.ok) {
-        console.log(`✅ Enviado IMAGEM+LEGENDA para grupo: ${jid}`);
-        return { success: true };
+      if (!imageResponse.ok) {
+        // Fallback: se imagem falhar, tenta só texto
+        console.log("⚠️ Falha ao enviar imagem, tentando só texto...");
+        const textResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/text`, {
+          method: "POST",
+          headers: {
+            "Token": token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            Phone: jid,
+            Body: message,
+          }),
+        });
+
+        if (!textResponse.ok) {
+          const err = await textResponse.text();
+          return { success: false, error: err };
+        }
       }
 
-      console.log(
-        "⚠️ Falha ao enviar imagem+legenda. Tentando fallback para TEXTO...",
-        JSON.stringify(imageResult),
-      );
+      console.log(`✅ Enviado para grupo: ${jid}`);
+      return { success: true };
     }
 
-    // 2) Fallback (ou envio padrão) = TEXTO
+    // Sem imagem - só texto
     const textResponse = await fetch(`${CONFIG.WUZAPI_URL}/chat/send/text`, {
       method: "POST",
       headers: {
@@ -337,10 +331,8 @@ async function enviarParaGrupo(
       }),
     });
 
-    const textResult = await textResponse.json().catch(() => null);
-
     if (!textResponse.ok) {
-      const err = typeof textResult === "string" ? textResult : JSON.stringify(textResult);
+      const err = await textResponse.text();
       return { success: false, error: err };
     }
 
@@ -791,18 +783,30 @@ async function processarProgramacao(
     const gruposIdsEnviados: string[] = [];
 
     for (const grupo of grupos) {
-      // ╔════════════════════════════════════════════════════════════════════════════╗
-      // ║ 🔒 CORREÇÃO 17/01/2026 - Gravar sucesso APÓS confirmação WuzAPI           ║
-      // ║ ANTES: Gravava sucesso=true ANTES de enviar (ERRADO!)                      ║
-      // ║ AGORA: Envia primeiro, grava status REAL depois                            ║
-      // ╚════════════════════════════════════════════════════════════════════════════╝
+      // ✅ DEDUPLICAÇÃO: verificar se já enviamos para este grupo nos últimos 2 minutos
+      const twoMinutesAgo = new Date(Date.now() - 120000).toISOString();
+      const { data: recentEnvio } = await supabase
+        .from("historico_envios")
+        .select("timestamp")
+        .eq("whatsapp", grupo.group_jid)
+        .eq("tipo", "grupo")
+        .gte("timestamp", twoMinutesAgo)
+        .limit(1);
       
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-      console.log(`📤 ENVIO PARA: ${grupo.group_name}`);
-      console.log(`📱 JID: ${grupo.group_jid}`);
-      console.log(`🖼️ Imagem: ${imagemUrl ? '✅ SIM' : '❌ NÃO'}`);
-
-      // ✅ PRIMEIRO ENVIA
+      if (recentEnvio && recentEnvio.length > 0) {
+        console.log(`⏭️ Grupo ${grupo.group_name} já recebeu mensagem nos últimos 2min, pulando...`);
+        continue;
+      }
+      
+      // ✅ REGISTRAR ANTES de enviar (evita race condition)
+      await supabase.from("historico_envios").insert({
+        whatsapp: grupo.group_jid,
+        tipo: "grupo",
+        mensagem: mensagem.substring(0, 200),
+        sucesso: true,
+        timestamp: new Date().toISOString()
+      });
+      
       const resultado = await enviarParaGrupo(
         clienteData.wuzapi_token,
         grupo.group_jid,
@@ -810,23 +814,18 @@ async function processarProgramacao(
         imagemUrl
       );
 
-      console.log(`📡 Resultado: ${resultado.success ? '✅ SUCESSO' : '❌ FALHA'}`);
-      if (resultado.error) console.log(`❌ Erro: ${resultado.error}`);
-      console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-
-      // ✅ SÓ GRAVA DEPOIS, COM STATUS REAL DA WUZAPI
-      await supabase.from("historico_envios").insert({
-        whatsapp: grupo.group_jid,
-        tipo: "grupo",
-        mensagem: mensagem.substring(0, 200),
-        sucesso: resultado.success,
-        erro: resultado.success ? null : resultado.error,
-        timestamp: new Date().toISOString()
-      });
-
       if (resultado.success) {
         gruposEnviados++;
         gruposIdsEnviados.push(grupo.id);
+      } else {
+        // Se falhou, atualizar registro para sucesso=false
+        await supabase
+          .from("historico_envios")
+          .update({ sucesso: false, erro: resultado.error })
+          .eq("whatsapp", grupo.group_jid)
+          .eq("tipo", "grupo")
+          .order("timestamp", { ascending: false })
+          .limit(1);
       }
 
       await sleep(CONFIG.DELAY_ENTRE_GRUPOS_MS);

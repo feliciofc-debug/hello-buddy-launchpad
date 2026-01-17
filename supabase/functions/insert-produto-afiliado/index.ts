@@ -47,30 +47,13 @@ Deno.serve(async (req) => {
 
     console.log('📦 Recebendo produto:', { user_id, titulo, marketplace, categoria });
 
-    // 22 categorias válidas do sistema AMZ (nomes exatos - sincronizadas com Shopee)
+    // 22 categorias Amazon válidas (nomes exatos)
     const CATEGORIAS_VALIDAS = [
-      'Alimentos e Bebidas',      // Shopee: Alimentos e Bebidas
-      'Automotivo',               // Shopee: Acessórios para Veículos
-      'Bebês',                    // Shopee: Mãe e Bebê
-      'Beleza',                   // Shopee: Beleza, Saúde
-      'Brinquedos e Jogos',       // Shopee: Brinquedos e Hobbies
-      'Casa',                     // Shopee: Casa e Construção
-      'Construção',               // Shopee: Casa e Construção (parte)
-      'Cozinha',                  // (subcategoria Casa)
-      'Cuidados Pessoais e Limpeza', // Shopee: Saúde
-      'Eletrodomésticos',         // Shopee: Eletrodomésticos
-      'Eletrônicos e Celulares',  // Shopee: Celulares e Dispositivos, Áudio, Câmeras e Drones
-      'Esportes e Aventura',      // Shopee: Esportes e Lazer
-      'Ferramentas e Construção', // Shopee: Casa e Construção (ferramentas)
-      'Informática',              // Shopee: Computadores e Acessórios
-      'Jardim e Piscina',         // (subcategoria Casa)
-      'Livros',                   // Shopee: Livros e Revistas
-      'eBooks',                   // (digital)
-      'Moda',                     // Shopee: Roupas, Sapatos, Bolsas, Relógios, Moda Infantil, Acessórios de Moda
-      'Móveis',                   // (subcategoria Casa)
-      'Papelaria e Escritório',   // Shopee: Papelaria
-      'Pet Shop',                 // Shopee: Animais Domésticos
-      'Video Games'               // Shopee: Jogos e Consoles
+      'Alimentos e Bebidas', 'Automotivo', 'Bebês', 'Beleza', 'Brinquedos e Jogos',
+      'Casa', 'Construção', 'Cozinha', 'Cuidados Pessoais e Limpeza', 'Eletrodomésticos',
+      'Eletrônicos e Celulares', 'Esportes e Aventura', 'Ferramentas e Construção',
+      'Informática', 'Jardim e Piscina', 'Livros', 'eBooks', 'Moda', 'Móveis',
+      'Papelaria e Escritório', 'Pet Shop', 'Video Games'
     ];
 
     // Validações básicas

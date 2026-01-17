@@ -46,22 +46,11 @@ serve(async (req) => {
         });
 
         if (response.ok) {
-          const payload = await response.json();
-          console.log("Grupos da WuzAPI:", JSON.stringify(payload));
-
-          // Normalizar formatos possíveis de resposta
-          const groupsArray: any[] = Array.isArray(payload?.data?.Groups)
-            ? payload.data.Groups
-            : Array.isArray(payload?.Groups)
-              ? payload.Groups
-              : Array.isArray(payload?.data)
-                ? payload.data
-                : Array.isArray(payload)
-                  ? payload
-                  : [];
+          const groups = await response.json();
+          console.log("Grupos da WuzAPI:", JSON.stringify(groups));
 
           // Sincronizar com o banco
-          for (const group of groupsArray) {
+          for (const group of (groups.Groups || groups || [])) {
             const groupJid = group.JID || group.Jid || group.jid;
             const groupName = group.Name || group.name || group.Subject || group.subject;
             const currentMemberCount = group.Participants?.length || group.participants?.length || 0;

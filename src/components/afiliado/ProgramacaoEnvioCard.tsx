@@ -51,30 +51,29 @@ interface Grupo {
 }
 
 // 22 Categorias Amazon completas
-// Categorias alinhadas com AfiliadoProdutos.tsx (mesmos labels)
 const CATEGORIAS_DISPONIVEIS = [
-  { id: 'Alimentos e Bebidas', nome: 'Alimentos e Bebidas', icone: '🍴' },
-  { id: 'Automotivo', nome: 'Acessórios para Veículos', icone: '🚗' },
-  { id: 'Bebês', nome: 'Mãe e Bebê', icone: '👶' },
+  { id: 'Alimentos e Bebidas', nome: 'Alimentos', icone: '🍴' },
+  { id: 'Automotivo', nome: 'Automotivo', icone: '🚗' },
+  { id: 'Bebês', nome: 'Bebês', icone: '👶' },
   { id: 'Beleza', nome: 'Beleza', icone: '💄' },
-  { id: 'Brinquedos e Jogos', nome: 'Brinquedos e Hobbies', icone: '🎮' },
-  { id: 'Casa', nome: 'Casa e Decoração', icone: '🏠' },
-  { id: 'Construção', nome: 'Casa e Construção', icone: '🔨' },
+  { id: 'Brinquedos e Jogos', nome: 'Brinquedos', icone: '🎮' },
+  { id: 'Casa', nome: 'Casa', icone: '🏠' },
+  { id: 'Construção', nome: 'Construção', icone: '🔨' },
   { id: 'Cozinha', nome: 'Cozinha', icone: '🍳' },
-  { id: 'Cuidados Pessoais e Limpeza', nome: 'Saúde', icone: '🧼' },
-  { id: 'Eletrodomésticos', nome: 'Eletrodomésticos', icone: '🔌' },
-  { id: 'Eletrônicos e Celulares', nome: 'Celulares e Dispositivos', icone: '📱' },
-  { id: 'Esportes e Aventura', nome: 'Esportes e Lazer', icone: '💪' },
+  { id: 'Cuidados Pessoais e Limpeza', nome: 'Limpeza', icone: '🧼' },
+  { id: 'Eletrodomésticos', nome: 'Eletros', icone: '🔌' },
+  { id: 'Eletrônicos e Celulares', nome: 'Tech', icone: '📱' },
+  { id: 'Esportes e Aventura', nome: 'Esportes', icone: '💪' },
   { id: 'Ferramentas e Construção', nome: 'Ferramentas', icone: '🔧' },
-  { id: 'Informática', nome: 'Computadores e Acessórios', icone: '💻' },
-  { id: 'Jardim e Piscina', nome: 'Jardim e Piscina', icone: '🌿' },
-  { id: 'Livros', nome: 'Livros e Revistas', icone: '📚' },
+  { id: 'Informática', nome: 'Informática', icone: '💻' },
+  { id: 'Jardim e Piscina', nome: 'Jardim', icone: '🌿' },
+  { id: 'Livros', nome: 'Livros', icone: '📚' },
   { id: 'eBooks', nome: 'eBooks', icone: '📖' },
   { id: 'Moda', nome: 'Moda', icone: '👗' },
   { id: 'Móveis', nome: 'Móveis', icone: '🛋️' },
   { id: 'Papelaria e Escritório', nome: 'Papelaria', icone: '📝' },
-  { id: 'Pet Shop', nome: 'Animais Domésticos', icone: '🐾' },
-  { id: 'Video Games', nome: 'Jogos e Consoles', icone: '🎮' },
+  { id: 'Pet Shop', nome: 'Pet', icone: '🐾' },
+  { id: 'Video Games', nome: 'Games', icone: '🎮' },
 ];
 
 const DIAS_SEMANA = [
@@ -223,34 +222,24 @@ export function ProgramacaoEnvioCard() {
     setLoading(true);
     try {
       const novoStatus = !prog.ativo;
-
-      // Ao ativar: calcular o próximo envio (respeitando Horário de Brasília + janela + dias)
-      // Ao pausar: limpar o próximo envio
-      let proximoEnvio: string | null = null;
-
+      let proximoEnvio = null;
       if (novoStatus) {
-        const { data, error: rpcError } = await supabase.rpc("calcular_proximo_envio", {
-          p_programacao_id: prog.id,
-        });
-        if (rpcError) throw rpcError;
-        proximoEnvio = data ? new Date(data).toISOString() : null;
+        proximoEnvio = new Date().toISOString();
       }
 
       const { error } = await supabase
-        .from("programacao_envio_afiliado")
-        .update({
+        .from('programacao_envio_afiliado')
+        .update({ 
           ativo: novoStatus,
-          proximo_envio: proximoEnvio,
+          proximo_envio: proximoEnvio
         })
-        .eq("id", prog.id);
+        .eq('id', prog.id);
 
       if (error) throw error;
 
       toast.success(novoStatus ? "Programação ativada!" : "Programação pausada");
-      
-      // Aguardar 500ms para o banco calcular e recarregar
-      await new Promise(r => setTimeout(r, 500));
-      await carregarDados();
+      carregarDados();
+
     } catch (error: any) {
       toast.error(error.message || "Erro");
     } finally {
