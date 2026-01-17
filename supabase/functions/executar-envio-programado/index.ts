@@ -75,7 +75,7 @@ async function resolverImagemAmazon(produtoUrl: string): Promise<string | null> 
   }
 }
 
-// 🔥 Obtém a melhor URL de imagem disponível - CONVERTE WEBP → JPG
+// 🔥 Obtém a melhor URL de imagem disponível - SEM PROXY (WuzAPI aceita .webp!)
 async function obterImagemProduto(produto: any): Promise<string | null> {
   let imagemUrl = produto.imagem_url;
   
@@ -84,16 +84,10 @@ async function obterImagemProduto(produto: any): Promise<string | null> {
     return null;
   }
   
-  // 🔥 FORÇA CONVERSÃO WEBP → JPG ANTES DE QUALQUER COISA
-  if (imagemUrl.includes(".webp")) {
-    const urlConvertida = `https://images.weserv.nl/?url=${encodeURIComponent(imagemUrl)}&output=jpg&q=85`;
-    console.log(`🔄 WEBP convertido → JPG: ${urlConvertida.substring(0, 80)}...`);
-    return urlConvertida;
-  }
-  
-  // Se já é uma URL de imagem válida, usar diretamente
+  // ✅ WuzAPI aceita .webp diretamente da Shopee - NÃO usar proxy!
+  // Proxy images.weserv.nl retorna 404 para URLs da Shopee/susercontent.com
   if (isValidImageUrl(imagemUrl)) {
-    console.log(`📷 Usando imagem direta: ${imagemUrl.substring(0, 60)}...`);
+    console.log(`📷 Usando imagem direta (sem proxy): ${imagemUrl.substring(0, 60)}...`);
     return imagemUrl;
   }
   
