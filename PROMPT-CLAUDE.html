@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt para Claude - Problema URL Supabase</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+        
+        .controls {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #218838;
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .status {
+            margin-left: auto;
+            padding: 8px 16px;
+            background: #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+            color: #495057;
+        }
+        
+        .status.copied {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .content {
+            padding: 40px;
+            line-height: 1.8;
+            color: #333;
+        }
+        
+        .content h2 {
+            color: #667eea;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 24px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .content h3 {
+            color: #764ba2;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        
+        .content h4 {
+            color: #555;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .content ul, .content ol {
+            margin-left: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .content li {
+            margin-bottom: 10px;
+        }
+        
+        .content code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            color: #e83e8c;
+        }
+        
+        .content pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 20px 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .content pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+        
+        .content strong {
+            color: #667eea;
+        }
+        
+        .content hr {
+            border: none;
+            border-top: 2px solid #e9ecef;
+            margin: 30px 0;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+        
+        .badge-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .badge-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .badge-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .status {
+                margin-left: 0;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🆘 Prompt para Claude</h1>
+            <p>Problema Crítico de URL Persistente no Supabase</p>
+        </div>
+        
+        <div class="controls">
+            <button class="btn btn-primary" onclick="copyPrompt()">
+                📋 Copiar Prompt Completo
+            </button>
+            <button class="btn btn-success" onclick="copyText()">
+                📄 Copiar Texto Puro
+            </button>
+            <div class="status" id="status">Pronto para copiar</div>
+        </div>
+        
+        <div class="content" id="promptContent">
+            <h2>📋 CONTEXTO DO PROBLEMA</h2>
+            <p>Estou enfrentando um problema <strong>EXTREMAMENTE persistente</strong> onde o frontend React/Vite continua fazendo requisições para uma URL antiga do Supabase, apesar de:</p>
+            <ul>
+                <li><span class="badge badge-success">✅</span> Ter atualizado todas as variáveis de ambiente no Vercel</li>
+                <li><span class="badge badge-success">✅</span> Ter implementado múltiplos interceptores (fetch, XMLHttpRequest, wrapper functions.invoke)</li>
+                <li><span class="badge badge-success">✅</span> Ter forçado a URL correta no código</li>
+                <li><span class="badge badge-success">✅</span> Ter limpo cache do navegador várias vezes</li>
+                <li><span class="badge badge-success">✅</span> Ter feito rebuild completo e redeploy</li>
+            </ul>
+            
+            <hr>
+            
+            <h2>🔴 PROBLEMA ATUAL</h2>
+            <p><strong>URL CORRETA (nova):</strong></p>
+            <ul>
+                <li><code>https://zunuqaidxffuhwmvcwul.supabase.co</code></li>
+                <li>Projeto ID: <code>zunuqaidxffuhwmvcwul</code></li>
+            </ul>
+            
+            <p><strong>URL ANTIGA (ainda sendo usada):</strong></p>
+            <ul>
+                <li><code>https://qbtqjrcfseqcfmcqlngr.supabase.co</code> (ou <code>gbtqjrcfseqcfmcqlngr</code>)</li>
+                <li>Projeto ID: <code>qbtqjrcfseqcfmcqlngr</code> (ou <code>gbtqjrcfseqcfmcqlngr</code>)</li>
+            </ul>
+            
+            <p><strong>Erro no Console:</strong></p>
+            <pre><code>POST https://qbtqjrcfseqcfmcqlngr.supabase.co/functions/v1/criar-instancia-wuzapi-afiliado
+500 (Internal Server Error)</code></pre>
+            
+            <hr>
+            
+            <h2>✅ O QUE JÁ FOI FEITO</h2>
+            
+            <h3>1. Variáveis de Ambiente no Vercel</h3>
+            <ul>
+                <li><span class="badge badge-success">✅</span> <code>VITE_SUPABASE_URL</code> = <code>https://zunuqaidxffuhwmvcwul.supabase.co</code></li>
+                <li><span class="badge badge-success">✅</span> <code>VITE_SUPABASE_ANON_KEY</code> = <code>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1bnVxYWlkeGZmdWh3bXZjd3VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4MjQ2NjgsImV4cCI6MjA4NDQwMDY2OH0.PGDZSDZ1fc01cs8HHulK1HSSv2UHl2sHuanCwIow6L4</code></li>
+                <li><span class="badge badge-success">✅</span> Variáveis atualizadas e redeploy feito</li>
+            </ul>
+            
+            <h3>2. Interceptores Implementados</h3>
+            
+            <h4>A. <code>index.html</code> (executa ANTES de tudo)</h4>
+            <pre><code>// Intercepta fetch e XMLHttpRequest ANTES do React carregar
+const CORRECT_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+const OLD_URLS = ['qbtqjrcfseqcfmcqlngr', 'gbtqjrcfseqcfmcqlngr', 'jibpvpqgplmahjhswiza'];
+
+// Intercepta window.fetch
+// Intercepta XMLHttpRequest
+// Tenta corrigir window.supabase.supabaseUrl se existir</code></pre>
+            
+            <h4>B. <code>src/main.tsx</code> (executa no início do React)</h4>
+            <pre><code>// Mesmo interceptor de fetch e XHR, mas no contexto React</code></pre>
+            
+            <h4>C. <code>src/integrations/supabase/client.ts</code> (cliente Supabase)</h4>
+            <pre><code>// 1. Força URL correta na criação do cliente
+const FINAL_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+const FINAL_SUPABASE_KEY = 'sb_publishable_BT7lsfrAYrPII7bsH_I6WA_zmDkhorc';
+
+// 2. Intercepta fetch e XMLHttpRequest novamente
+// 3. Tenta sobrescrever supabase.supabaseUrl diretamente
+// 4. WRAPPER CRÍTICO: Sobrescreve supabase.functions.invoke
+const backupClient = createClient(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {...});
+supabase.functions.invoke = async function(functionName, options) {
+  // Força URL correta no cliente original
+  // Atualiza sessão no backupClient
+  // SEMPRE usa backupClient.functions.invoke
+  return backupClient.functions.invoke(functionName, options);
+};</code></pre>
+            
+            <h3>3. Arquivos de Configuração</h3>
+            
+            <h4><code>.env</code> local</h4>
+            <pre><code>VITE_SUPABASE_PROJECT_ID="zunuqaidxffuhwmvcwul"
+VITE_SUPABASE_PUBLISHABLE_KEY="sb_publishable_BT7lsfrAYrPII7bsH_I6WA_zmDkhorc"
+VITE_SUPABASE_URL="https://zunuqaidxffuhwmvcwul.supabase.co"</code></pre>
+            
+            <h4><code>supabase/config.toml</code></h4>
+            <pre><code>project_id = "zunuqaidxffuhwmvcwul"  # ✅ CORRIGIDO</code></pre>
+            
+            <h3>4. Edge Function <code>criar-instancia-wuzapi-afiliado</code></h3>
+            <pre><code>const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 
+                    Deno.env.get('PROJECT_URL') || 
+                    Deno.env.get('URL_DO_PROJETO') || 
+                    'https://zunuqaidxffuhwmvcwul.supabase.co'  // Fallback hardcoded</code></pre>
+            
+            <hr>
+            
+            <h2>🔍 ONDE A URL ANTIGA AINDA APARECE</h2>
+            <p>Busca no código encontrou referências antigas em:</p>
+            <ol>
+                <li><code>supabase/config.toml</code> - <code>project_id = "jibpvpqgplmahjhswiza"</code> (já corrigido)</li>
+                <li>Várias migrations SQL com URLs hardcoded</li>
+                <li>Algumas Edge Functions com URLs hardcoded</li>
+                <li>Arquivos de documentação (não afetam runtime)</li>
+            </ol>
+            
+            <hr>
+            
+            <h2>🤔 HIPÓTESES DO PROBLEMA</h2>
+            <ol>
+                <li><strong>Service Worker persistente</strong> - Mas já tentamos limpar</li>
+                <li><strong>Cache do Vercel</strong> - Mas já fizemos redeploy</li>
+                <li><strong>Biblioteca @supabase/supabase-js interna</strong> - Pode estar usando URL cached internamente</li>
+                <li><strong>Build do Vite</strong> - Pode estar injetando URL antiga no bundle</li>
+                <li><strong>CDN/Vercel Edge Cache</strong> - Pode estar servindo versão antiga</li>
+                <li><strong>LocalStorage/SessionStorage</strong> - Pode ter URL antiga salva</li>
+                <li><strong>Supabase client criado antes dos interceptores</strong> - Race condition</li>
+            </ol>
+            
+            <hr>
+            
+            <h2>🎯 PERGUNTAS PARA CLAUDE</h2>
+            <ol>
+                <li><strong>Por que os interceptores não estão funcionando?</strong>
+                    <ul>
+                        <li>Os interceptores estão em 3 camadas (HTML, main.tsx, client.ts)</li>
+                        <li>Mas a requisição ainda vai para URL antiga</li>
+                        <li>O wrapper <code>functions.invoke</code> deveria forçar o uso do <code>backupClient</code></li>
+                    </ul>
+                </li>
+                <li><strong>Onde mais a URL pode estar sendo definida?</strong>
+                    <ul>
+                        <li>Verificamos variáveis de ambiente</li>
+                        <li>Verificamos código fonte</li>
+                        <li>Onde mais pode estar?</li>
+                    </ul>
+                </li>
+                <li><strong>O <code>supabase/config.toml</code> pode estar causando isso?</strong>
+                    <ul>
+                        <li>O <code>project_id</code> antigo pode estar sendo usado em algum lugar?</li>
+                        <li>Isso afeta o frontend ou só o CLI?</li>
+                    </ul>
+                </li>
+                <li><strong>Como forçar o Supabase client a usar URL correta?</strong>
+                    <ul>
+                        <li>Já tentamos sobrescrever <code>supabaseUrl</code></li>
+                        <li>Já tentamos criar novo cliente</li>
+                        <li>O que mais podemos fazer?</li>
+                    </ul>
+                </li>
+                <li><strong>Pode ser problema de build/bundle?</strong>
+                    <ul>
+                        <li>O Vite pode estar compilando a URL antiga no bundle?</li>
+                        <li>Como verificar o bundle gerado?</li>
+                    </ul>
+                </li>
+                <li><strong>Solução definitiva?</strong>
+                    <ul>
+                        <li>Precisamos de uma solução que <strong>GARANTA</strong> que a URL correta seja usada</li>
+                        <li>Mesmo que haja cache, variáveis erradas, etc.</li>
+                    </ul>
+                </li>
+            </ol>
+            
+            <hr>
+            
+            <h2>📦 STACK TECNOLÓGICA</h2>
+            <ul>
+                <li><strong>Frontend:</strong> React 18 + Vite + TypeScript</li>
+                <li><strong>Backend:</strong> Supabase (PostgreSQL + Edge Functions)</li>
+                <li><strong>Deploy:</strong> Vercel</li>
+                <li><strong>Biblioteca Supabase:</strong> <code>@supabase/supabase-js</code> (versão mais recente)</li>
+                <li><strong>Navegador:</strong> Chrome (testado)</li>
+            </ul>
+            
+            <hr>
+            
+            <h2>🔧 CÓDIGO RELEVANTE</h2>
+            
+            <h3>Cliente Supabase (<code>src/integrations/supabase/client.ts</code>)</h3>
+            <pre><code>const FINAL_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+const FINAL_SUPABASE_KEY = 'sb_publishable_BT7lsfrAYrPII7bsH_I6WA_zmDkhorc';
+
+export const supabase = createClient&lt;Database&gt;(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {
+  auth: { storage: localStorage, persistSession: true, autoRefreshToken: true },
+  global: { headers: { 'x-client-info': 'amzofertas-web' } }
+});
+
+// Wrapper functions.invoke
+if (typeof window !== 'undefined' && supabase.functions) {
+  const backupClient = createClient&lt;Database&gt;(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {...});
+  
+  supabase.functions.invoke = async function(functionName: string, options?: any) {
+    console.log('📤 [FUNCTIONS.INVOKE] Chamando função:', functionName);
+    console.log('📤 [FUNCTIONS.INVOKE] URL base do cliente atual:', supabase.supabaseUrl);
+    
+    // Força URL correta
+    if (supabase.supabaseUrl !== FINAL_SUPABASE_URL) {
+      (supabase as any).supabaseUrl = FINAL_SUPABASE_URL;
+    }
+    
+    // Atualiza sessão no backupClient
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await backupClient.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      });
+    }
+    
+    // USA SEMPRE O BACKUP CLIENT
+    return backupClient.functions.invoke(functionName, options);
+  };
+}</code></pre>
+            
+            <h3>Como é chamado (<code>src/components/AfiliadoWhatsAppConnection.tsx</code>)</h3>
+            <pre><code>const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
+  body: { action: 'criar-instancia', nome, email, telefone }
+});</code></pre>
+            
+            <hr>
+            
+            <h2>🚨 URGÊNCIA</h2>
+            <p>Este é um problema <strong>BLOQUEADOR</strong> - o site não funciona porque está tentando acessar um projeto Supabase que não existe mais. Precisamos de uma solução <strong>DEFINITIVA</strong> e <strong>IMEDIATA</strong>.</p>
+            
+            <hr>
+            
+            <h2>💡 O QUE PRECISAMOS</h2>
+            <ol>
+                <li><strong>Diagnóstico preciso</strong> - Onde exatamente a URL antiga está sendo definida/usada?</li>
+                <li><strong>Solução garantida</strong> - Como garantir que SEMPRE use a URL correta?</li>
+                <li><strong>Passos claros</strong> - O que fazer agora para resolver?</li>
+            </ol>
+            
+            <hr>
+            
+            <p style="text-align: center; font-size: 18px; margin-top: 40px; padding: 20px; background: #fff3cd; border-radius: 8px;">
+                <strong>Por favor, Claude, analise este problema e forneça uma solução definitiva. Estamos em esgotamento mental tentando resolver isso há dias.</strong>
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        const promptText = `# 🆘 PROMPT PARA CLAUDE - PROBLEMA CRÍTICO DE URL PERSISTENTE
+
+## 📋 CONTEXTO DO PROBLEMA
+
+Estou enfrentando um problema **EXTREMAMENTE persistente** onde o frontend React/Vite continua fazendo requisições para uma URL antiga do Supabase, apesar de:
+- ✅ Ter atualizado todas as variáveis de ambiente no Vercel
+- ✅ Ter implementado múltiplos interceptores (fetch, XMLHttpRequest, wrapper functions.invoke)
+- ✅ Ter forçado a URL correta no código
+- ✅ Ter limpo cache do navegador várias vezes
+- ✅ Ter feito rebuild completo e redeploy
+
+---
+
+## 🔴 PROBLEMA ATUAL
+
+**URL CORRETA (nova):**
+- \`https://zunuqaidxffuhwmvcwul.supabase.co\`
+- Projeto ID: \`zunuqaidxffuhwmvcwul\`
+
+**URL ANTIGA (ainda sendo usada):**
+- \`https://qbtqjrcfseqcfmcqlngr.supabase.co\` (ou \`gbtqjrcfseqcfmcqlngr\`)
+- Projeto ID: \`qbtqjrcfseqcfmcqlngr\` (ou \`gbtqjrcfseqcfmcqlngr\`)
+
+**Erro no Console:**
+\`\`\`
+POST https://qbtqjrcfseqcfmcqlngr.supabase.co/functions/v1/criar-instancia-wuzapi-afiliado
+500 (Internal Server Error)
+\`\`\`
+
+---
+
+## ✅ O QUE JÁ FOI FEITO
+
+### 1. Variáveis de Ambiente no Vercel
+- ✅ \`VITE_SUPABASE_URL\` = \`https://zunuqaidxffuhwmvcwul.supabase.co\`
+- ✅ \`VITE_SUPABASE_ANON_KEY\` = \`eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1bnVxYWlkeGZmdWh3bXZjd3VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4MjQ2NjgsImV4cCI6MjA4NDQwMDY2OH0.PGDZSDZ1fc01cs8HHulK1HSSv2UHl2sHuanCwIow6L4\`
+- ✅ Variáveis atualizadas e redeploy feito
+
+### 2. Interceptores Implementados
+
+#### A. \`index.html\` (executa ANTES de tudo)
+\`\`\`javascript
+// Intercepta fetch e XMLHttpRequest ANTES do React carregar
+const CORRECT_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+const OLD_URLS = ['qbtqjrcfseqcfmcqlngr', 'gbtqjrcfseqcfmcqlngr', 'jibpvpqgplmahjhswiza'];
+
+// Intercepta window.fetch
+// Intercepta XMLHttpRequest
+// Tenta corrigir window.supabase.supabaseUrl se existir
+\`\`\`
+
+#### B. \`src/main.tsx\` (executa no início do React)
+\`\`\`typescript
+// Mesmo interceptor de fetch e XHR, mas no contexto React
+\`\`\`
+
+#### C. \`src/integrations/supabase/client.ts\` (cliente Supabase)
+\`\`\`typescript
+// 1. Força URL correta na criação do cliente
+const FINAL_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+const FINAL_SUPABASE_KEY = 'sb_publishable_BT7lsfrAYrPII7bsH_I6WA_zmDkhorc';
+
+// 2. Intercepta fetch e XMLHttpRequest novamente
+// 3. Tenta sobrescrever supabase.supabaseUrl diretamente
+// 4. WRAPPER CRÍTICO: Sobrescreve supabase.functions.invoke
+const backupClient = createClient(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {...});
+supabase.functions.invoke = async function(functionName, options) {
+  // Força URL correta no cliente original
+  // Atualiza sessão no backupClient
+  // SEMPRE usa backupClient.functions.invoke
+  return backupClient.functions.invoke(functionName, options);
+};
+\`\`\`
+
+### 3. Arquivos de Configuração
+
+#### \`.env\` local
+\`\`\`env
+VITE_SUPABASE_PROJECT_ID="zunuqaidxffuhwmvcwul"
+VITE_SUPABASE_PUBLISHABLE_KEY="sb_publishable_BT7lsfrAYrPII7bsH_I6WA_zmDkhorc"
+VITE_SUPABASE_URL="https://zunuqaidxffuhwmvcwul.supabase.co"
+\`\`\`
+
+#### \`supabase/config.toml\`
+\`\`\`toml
+project_id = "zunuqaidxffuhwmvcwul"  # ✅ CORRIGIDO
+\`\`\`
+
+### 4. Edge Function \`criar-instancia-wuzapi-afiliado\`
+\`\`\`typescript
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 
+                    Deno.env.get('PROJECT_URL') || 
+                    Deno.env.get('URL_DO_PROJETO') || 
+                    'https://zunuqaidxffuhwmvcwul.supabase.co'  // Fallback hardcoded
+\`\`\`
+
+---
+
+## 🔍 ONDE A URL ANTIGA AINDA APARECE
+
+Busca no código encontrou referências antigas em:
+1. \`supabase/config.toml\` - \`project_id = "jibpvpqgplmahjhswiza"\` (já corrigido)
+2. Várias migrations SQL com URLs hardcoded
+3. Algumas Edge Functions com URLs hardcoded
+4. Arquivos de documentação (não afetam runtime)
+
+---
+
+## 🤔 HIPÓTESES DO PROBLEMA
+
+1. **Service Worker persistente** - Mas já tentamos limpar
+2. **Cache do Vercel** - Mas já fizemos redeploy
+3. **Biblioteca @supabase/supabase-js interna** - Pode estar usando URL cached internamente
+4. **Build do Vite** - Pode estar injetando URL antiga no bundle
+5. **CDN/Vercel Edge Cache** - Pode estar servindo versão antiga
+6. **LocalStorage/SessionStorage** - Pode ter URL antiga salva
+7. **Supabase client criado antes dos interceptores** - Race condition
+
+---
+
+## 🎯 PERGUNTAS PARA CLAUDE
+
+1. **Por que os interceptores não estão funcionando?**
+   - Os interceptores estão em 3 camadas (HTML, main.tsx, client.ts)
+   - Mas a requisição ainda vai para URL antiga
+   - O wrapper \`functions.invoke\` deveria forçar o uso do \`backupClient\`
+
+2. **Onde mais a URL pode estar sendo definida?**
+   - Verificamos variáveis de ambiente
+   - Verificamos código fonte
+   - Onde mais pode estar?
+
+3. **O \`supabase/config.toml\` pode estar causando isso?**
+   - O \`project_id\` antigo pode estar sendo usado em algum lugar?
+   - Isso afeta o frontend ou só o CLI?
+
+4. **Como forçar o Supabase client a usar URL correta?**
+   - Já tentamos sobrescrever \`supabaseUrl\`
+   - Já tentamos criar novo cliente
+   - O que mais podemos fazer?
+
+5. **Pode ser problema de build/bundle?**
+   - O Vite pode estar compilando a URL antiga no bundle?
+   - Como verificar o bundle gerado?
+
+6. **Solução definitiva?**
+   - Precisamos de uma solução que **GARANTA** que a URL correta seja usada
+   - Mesmo que haja cache, variáveis erradas, etc.
+
+---
+
+## 📦 STACK TECNOLÓGICA
+
+- **Frontend:** React 18 + Vite + TypeScript
+- **Backend:** Supabase (PostgreSQL + Edge Functions)
+- **Deploy:** Vercel
+- **Biblioteca Supabase:** \`@supabase/supabase-js\` (versão mais recente)
+- **Navegador:** Chrome (testado)
+
+---
+
+## 🔧 CÓDIGO RELEVANTE
+
+### Cliente Supabase (\`src/integrations/supabase/client.ts\`)
+\`\`\`typescript
+const FINAL_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+const FINAL_SUPABASE_KEY = 'sb_publishable_BT7lsfrAYrPII7bsH_I6WA_zmDkhorc';
+
+export const supabase = createClient<Database>(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {
+  auth: { storage: localStorage, persistSession: true, autoRefreshToken: true },
+  global: { headers: { 'x-client-info': 'amzofertas-web' } }
+});
+
+// Wrapper functions.invoke
+if (typeof window !== 'undefined' && supabase.functions) {
+  const backupClient = createClient<Database>(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {...});
+  
+  supabase.functions.invoke = async function(functionName: string, options?: any) {
+    console.log('📤 [FUNCTIONS.INVOKE] Chamando função:', functionName);
+    console.log('📤 [FUNCTIONS.INVOKE] URL base do cliente atual:', supabase.supabaseUrl);
+    
+    // Força URL correta
+    if (supabase.supabaseUrl !== FINAL_SUPABASE_URL) {
+      (supabase as any).supabaseUrl = FINAL_SUPABASE_URL;
+    }
+    
+    // Atualiza sessão no backupClient
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await backupClient.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      });
+    }
+    
+    // USA SEMPRE O BACKUP CLIENT
+    return backupClient.functions.invoke(functionName, options);
+  };
+}
+\`\`\`
+
+### Como é chamado (\`src/components/AfiliadoWhatsAppConnection.tsx\`)
+\`\`\`typescript
+const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
+  body: { action: 'criar-instancia', nome, email, telefone }
+});
+\`\`\`
+
+---
+
+## 🚨 URGÊNCIA
+
+Este é um problema **BLOQUEADOR** - o site não funciona porque está tentando acessar um projeto Supabase que não existe mais. Precisamos de uma solução **DEFINITIVA** e **IMEDIATA**.
+
+---
+
+## 💡 O QUE PRECISAMOS
+
+1. **Diagnóstico preciso** - Onde exatamente a URL antiga está sendo definida/usada?
+2. **Solução garantida** - Como garantir que SEMPRE use a URL correta?
+3. **Passos claros** - O que fazer agora para resolver?
+
+---
+
+**Por favor, Claude, analise este problema e forneça uma solução definitiva. Estamos em esgotamento mental tentando resolver isso há dias.**`;
+
+        function copyPrompt() {
+            navigator.clipboard.writeText(promptText).then(() => {
+                showStatus('✅ Prompt copiado com sucesso!', true);
+            }).catch(err => {
+                showStatus('❌ Erro ao copiar', false);
+                console.error('Erro ao copiar:', err);
+            });
+        }
+        
+        function copyText() {
+            const textContent = document.getElementById('promptContent').innerText;
+            navigator.clipboard.writeText(textContent).then(() => {
+                showStatus('✅ Texto copiado com sucesso!', true);
+            }).catch(err => {
+                showStatus('❌ Erro ao copiar', false);
+                console.error('Erro ao copiar:', err);
+            });
+        }
+        
+        function showStatus(message, success) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = 'status' + (success ? ' copied' : '');
+            setTimeout(() => {
+                status.textContent = 'Pronto para copiar';
+                status.className = 'status';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

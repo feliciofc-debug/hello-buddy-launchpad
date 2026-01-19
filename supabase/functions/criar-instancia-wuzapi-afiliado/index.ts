@@ -12,16 +12,29 @@ serve(async (req) => {
   }
 
   try {
-    const CONTABO_WUZAPI_URL = 'https://api2.amzofertas.com.br'
-    const CONTABO_WUZAPI_ADMIN_TOKEN = Deno.env.get('CONTABO_WUZAPI_ADMIN_TOKEN') || ''
-    // Tentar vários nomes possíveis (inglês e português)
+    const CONTABO_WUZAPI_URL = Deno.env.get('CONTABO_WUZAPI_URL') || 'https://api2.amzofertas.com.br'
+    const CONTABO_WUZAPI_ADMIN_TOKEN = Deno.env.get('CONTABO_WUZAPI_ADMIN_TOKEN')
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 
                         Deno.env.get('PROJECT_URL') || 
                         Deno.env.get('URL_DO_PROJETO') || 
                         'https://zunuqaidxffuhwmvcwul.supabase.co'
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || 
                                      Deno.env.get('SERVICE_ROLE_KEY') || 
-                                     Deno.env.get('CHAVE_FUNÇÃO_DE_SERVIÇO')!
+                                     Deno.env.get('CHAVE_FUNÇÃO_DE_SERVIÇO') || ''
+
+    if (!CONTABO_WUZAPI_ADMIN_TOKEN) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Configuração Wuzapi Contabo não encontrada' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!SUPABASE_SERVICE_ROLE_KEY) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Chave de serviço Supabase não configurada' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
@@ -37,7 +50,6 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser(token)
 
     if (userError || !user) {
-      console.error('❌ Erro ao obter usuário:', userError)
       return new Response(
         JSON.stringify({ success: false, error: 'Usuário não encontrado' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -45,13 +57,12 @@ serve(async (req) => {
     }
 
     const body = await req.json()
-    const { action, nome, email, telefone } = body
+    const { action, nome, email, telefone, afiliado_codigo } = body
 
     console.log('📡 Ação:', action, 'User:', user.id)
 
     // CRIAR INSTÂNCIA
     if (action === 'criar-instancia') {
-      // 1. Verificar se cliente já existe
       const { data: existingCliente } = await supabase
         .from('clientes_afiliados')
         .select('*')
@@ -60,16 +71,11 @@ serve(async (req) => {
 
       if (existingCliente && existingCliente.wuzapi_token) {
         return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: 'Cliente já possui instância',
-            cliente: existingCliente 
-          }),
+          JSON.stringify({ success: true, message: 'Cliente já possui instância', cliente: existingCliente }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
 
-      // 2. Buscar token disponível
       const { data: tokenData, error: tokenError } = await supabase
         .from('wuzapi_tokens_afiliados')
         .select('*')
@@ -79,40 +85,49 @@ serve(async (req) => {
         .maybeSingle()
 
       if (tokenError || !tokenData) {
-        console.error('❌ Nenhum token disponível:', tokenError)
         return new Response(
-          JSON.stringify({ success: false, error: 'Nenhum slot disponível. Entre em contato com o suporte.' }),
+          JSON.stringify({ success: false, error: 'Nenhum slot disponível.' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
 
-      // 3. Criar usuário no Wuzapi Contabo (se tiver admin token)
-      if (CONTABO_WUZAPI_ADMIN_TOKEN) {
-        try {
-          await fetch(`${CONTABO_WUZAPI_URL}/admin/users`, {
-            method: 'POST',
-            headers: {
-              'Authorization': CONTABO_WUZAPI_ADMIN_TOKEN,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              name: nome || user.email,
-              token: tokenData.token
-            })
-          })
-        } catch (err) {
-          console.log('⚠️ Erro ao criar no Wuzapi (pode ser que já exista):', err)
-        }
+      let afiliadoId = null
+      if (afiliado_codigo) {
+        const { data: afiliado } = await supabase
+          .from('afiliados')
+          .select('id')
+          .eq('codigo_referencia', afiliado_codigo)
+          .maybeSingle()
+        if (afiliado) afiliadoId = afiliado.id
       }
 
-      // 4. Criar ou atualizar cliente_afiliado
+      const wuzapiResponse = await fetch(`${CONTABO_WUZAPI_URL}/admin/users`, {
+        method: 'POST',
+        headers: {
+          'Authorization': CONTABO_WUZAPI_ADMIN_TOKEN,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name: nome || user.email, token: tokenData.token })
+      })
+
+      const wuzapiResult = await wuzapiResponse.json()
+
+      if (!wuzapiResponse.ok && wuzapiResult.code !== 409) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Erro ao criar instância no servidor' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
       const clienteData = {
         user_id: user.id,
         nome: nome || user.email?.split('@')[0] || 'Cliente',
         email: email || user.email,
         telefone: telefone || '',
         wuzapi_token: tokenData.token,
-        status: 'ativo'
+        wuzapi_instance_id: wuzapiResult.id || null,
+        status: 'ativo',
+        afiliado_id: afiliadoId
       }
 
       let cliente
@@ -123,7 +138,6 @@ serve(async (req) => {
           .eq('id', existingCliente.id)
           .select()
           .single()
-        
         if (error) throw error
         cliente = data
       } else {
@@ -132,22 +146,93 @@ serve(async (req) => {
           .insert(clienteData)
           .select()
           .single()
-        
         if (error) throw error
         cliente = data
       }
 
-      // 5. Marcar token como em uso
       await supabase
         .from('wuzapi_tokens_afiliados')
         .update({ em_uso: true, cliente_afiliado_id: cliente.id })
         .eq('id', tokenData.id)
 
+      if (afiliadoId) {
+        await supabase.rpc('increment_afiliado_indicacoes', { afiliado_uuid: afiliadoId })
+        await supabase.from('comissoes').insert({
+          afiliado_id: afiliadoId,
+          cliente_id: cliente.id,
+          valor: 59.70,
+          mes_referencia: new Date().toISOString().substring(0, 7),
+          status: 'pendente'
+        })
+      }
+
       return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Instância criada com sucesso!',
-          cliente: cliente
+        JSON.stringify({ success: true, message: 'Instância criada!', cliente }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // CONECTAR (QR CODE)
+    if (action === 'conectar') {
+      const { data: cliente } = await supabase
+        .from('clientes_afiliados')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (!cliente || !cliente.wuzapi_token) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Cliente não tem instância configurada' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      try {
+        await fetch(`${CONTABO_WUZAPI_URL}/session/logout`, {
+          method: 'POST',
+          headers: { 'Token': cliente.wuzapi_token }
+        })
+      } catch (err) {}
+
+      await new Promise((r) => setTimeout(r, 2000))
+
+      await fetch(`${CONTABO_WUZAPI_URL}/session/connect`, {
+        method: 'POST',
+        headers: { 'Token': cliente.wuzapi_token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+
+      let qrCode: string | null = null
+      for (let i = 0; i < 5; i++) {
+        const qrResponse = await fetch(`${CONTABO_WUZAPI_URL}/session/qr`, {
+          method: 'GET',
+          headers: { 'Token': cliente.wuzapi_token }
+        })
+        const qrText = await qrResponse.text()
+
+        try {
+          const qrJson = JSON.parse(qrText)
+          const raw = qrJson?.data?.QRCode || qrJson?.data?.qrcode || qrJson?.QRCode || qrJson?.qrcode || null
+
+          if (typeof raw === 'string' && raw.startsWith('data:image')) {
+            const idx = raw.indexOf('base64,')
+            qrCode = idx >= 0 ? raw.slice(idx + 'base64,'.length) : raw
+          } else {
+            qrCode = raw
+          }
+        } catch {
+          qrCode = null
+        }
+
+        if (qrCode) break
+        await new Promise((r) => setTimeout(r, 1200))
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: !!qrCode,
+          qrCode,
+          message: qrCode ? 'Escaneie o QR Code' : 'QR Code não disponível. Tente novamente.'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
@@ -179,89 +264,15 @@ serve(async (req) => {
       const jid = data.jid || data.Jid || null
       const phone = jid ? jid.split(':')[0] : null
 
-      // Atualizar data de conexão se conectou
       if (isConnected && jid) {
         await supabase
           .from('clientes_afiliados')
-          .update({ 
-            data_conexao_whatsapp: new Date().toISOString(),
-            wuzapi_jid: jid
-          })
+          .update({ data_conexao_whatsapp: new Date().toISOString(), wuzapi_jid: jid })
           .eq('id', cliente.id)
       }
 
       return new Response(
         JSON.stringify({ success: true, connected: isConnected, jid, phone }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // CONECTAR (QR CODE)
-    if (action === 'conectar') {
-      const { data: cliente } = await supabase
-        .from('clientes_afiliados')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle()
-
-      if (!cliente || !cliente.wuzapi_token) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Cliente não tem instância configurada' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      // Tenta desconectar primeiro
-      try {
-        await fetch(`${CONTABO_WUZAPI_URL}/session/logout`, {
-          method: 'POST',
-          headers: { 'Token': cliente.wuzapi_token }
-        })
-      } catch (err) {}
-
-      await new Promise((r) => setTimeout(r, 2000))
-
-      // Conecta
-      await fetch(`${CONTABO_WUZAPI_URL}/session/connect`, {
-        method: 'POST',
-        headers: { 'Token': cliente.wuzapi_token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      })
-
-      // Busca QR Code (tenta até 5 vezes)
-      let qrCode: string | null = null
-      for (let i = 0; i < 5; i++) {
-        await new Promise((r) => setTimeout(r, 1500))
-        
-        const qrResponse = await fetch(`${CONTABO_WUZAPI_URL}/session/qr`, {
-          method: 'GET',
-          headers: { 'Token': cliente.wuzapi_token }
-        })
-        const qrText = await qrResponse.text()
-
-        try {
-          const qrJson = JSON.parse(qrText)
-          const raw = qrJson?.data?.QRCode || qrJson?.data?.qrcode || qrJson?.QRCode || qrJson?.qrcode || null
-
-          if (typeof raw === 'string' && raw.startsWith('data:image')) {
-            const idx = raw.indexOf('base64,')
-            qrCode = idx >= 0 ? raw.slice(idx + 'base64,'.length) : raw
-          } else if (raw) {
-            qrCode = raw
-          }
-        } catch {
-          qrCode = null
-        }
-
-        if (qrCode) break
-      }
-
-      return new Response(
-        JSON.stringify({
-          success: !!qrCode,
-          qrCode,
-          message: qrCode ? 'Escaneie o QR Code' : 'QR Code não disponível. Tente novamente.'
-        }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -288,10 +299,7 @@ serve(async (req) => {
 
       await supabase
         .from('clientes_afiliados')
-        .update({ 
-          data_conexao_whatsapp: null,
-          wuzapi_jid: null
-        })
+        .update({ data_conexao_whatsapp: null, wuzapi_jid: null })
         .eq('id', cliente.id)
 
       return new Response(
@@ -306,7 +314,6 @@ serve(async (req) => {
     )
 
   } catch (error: any) {
-    console.error('Erro:', error)
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
