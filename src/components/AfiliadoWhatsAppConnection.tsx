@@ -60,11 +60,35 @@ export default function AfiliadoWhatsAppConnection() {
 
   const checkStatus = async (silent: boolean = false) => {
     try {
+      // Verificar autenticação antes de chamar
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
+      if (authError || !session) {
+        console.error('❌ [Frontend] Usuário não autenticado:', authError)
+        if (!silent) {
+          toast.error('Você precisa estar logado. Faça login novamente.')
+        }
+        return
+      }
+
+      console.log('✅ [Frontend] Sessão válida, token:', session.access_token.substring(0, 20) + '...')
+      console.log('📤 [Frontend] Chamando criar-instancia-wuzapi-afiliado com action: status')
+
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
         body: { action: 'status' }
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Erro na função:', error)
+        // Se for erro 401, pode ser problema de autenticação
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+          if (!silent) {
+            toast.error('Erro de autenticação. Faça login novamente.')
+          }
+          // Tentar refresh do token
+          await supabase.auth.refreshSession()
+        }
+        throw error
+      }
 
       const isConnected = Boolean(data?.connected)
 
@@ -108,11 +132,30 @@ export default function AfiliadoWhatsAppConnection() {
   const createInstance = async () => {
     setConnecting(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        toast.error('Usuário não autenticado')
+      // Verificar autenticação
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        console.error('❌ [Frontend] Sem sessão:', sessionError)
+        toast.error('Você precisa estar logado. Faça login novamente.')
         return
       }
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        console.error('❌ [Frontend] Erro ao obter usuário:', userError)
+        toast.error('Erro ao obter dados do usuário. Faça login novamente.')
+        return
+      }
+
+      console.log('✅ [Frontend] Usuário autenticado:', user.email)
+      console.log('✅ [Frontend] Token disponível:', session.access_token ? 'SIM' : 'NÃO')
+      console.log('📤 [Frontend] Criando instância...')
+      console.log('📤 [Frontend] Enviando payload:', { 
+        action: 'criar-instancia',
+        nome: user.user_metadata?.nome || user.email?.split('@')[0],
+        email: user.email,
+        telefone: ''
+      })
 
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
         body: { 
@@ -123,7 +166,14 @@ export default function AfiliadoWhatsAppConnection() {
         }
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Erro na função:', error)
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+          toast.error('Erro de autenticação. Faça login novamente.')
+          await supabase.auth.refreshSession()
+        }
+        throw error
+      }
 
       if (data.success) {
         toast.success('Instância criada! Agora conecte seu WhatsApp.')
@@ -143,11 +193,25 @@ export default function AfiliadoWhatsAppConnection() {
   const handleConnect = async () => {
     setConnecting(true)
     try {
+      // Verificar autenticação
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        toast.error('Você precisa estar logado. Faça login novamente.')
+        return
+      }
+
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
         body: { action: 'conectar' }
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Erro na função:', error)
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+          toast.error('Erro de autenticação. Faça login novamente.')
+          await supabase.auth.refreshSession()
+        }
+        throw error
+      }
 
       if (data.qrCode) {
         setQrCode(data.qrCode)
@@ -167,11 +231,25 @@ export default function AfiliadoWhatsAppConnection() {
   const handleDisconnect = async () => {
     setConnecting(true)
     try {
+      // Verificar autenticação
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        toast.error('Você precisa estar logado. Faça login novamente.')
+        return
+      }
+
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-afiliado', {
         body: { action: 'desconectar' }
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Erro na função:', error)
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+          toast.error('Erro de autenticação. Faça login novamente.')
+          await supabase.auth.refreshSession()
+        }
+        throw error
+      }
 
       setStatus({ connected: false })
       setQrCode(null)

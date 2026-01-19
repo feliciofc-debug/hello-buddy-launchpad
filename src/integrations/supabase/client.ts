@@ -2,16 +2,91 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// URL CORRETA DO SUPABASE (forçar se necessário)
+const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
+const CORRECT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYnB2cHFncGxtYWhqaHN3aXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1ODA0ODcsImV4cCI6MjA3NjE1NjQ4N30.raNfZtKkNUZBHiAA6yobri0YoWZt_Ioq10qMC9hfNrc';
+
+// Usar variáveis de ambiente ou valores corretos como fallback
+let SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || CORRECT_SUPABASE_URL;
+let SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || CORRECT_SUPABASE_KEY;
+
+// FORÇAR URL CORRETA (corrige problema de cache/URL antiga do Bolt)
+if (SUPABASE_URL !== CORRECT_SUPABASE_URL) {
+  console.warn('⚠️ [SUPABASE] URL incorreta detectada, corrigindo...');
+  console.warn('   URL antiga:', SUPABASE_URL);
+  SUPABASE_URL = CORRECT_SUPABASE_URL;
+  console.log('✅ [SUPABASE] URL corrigida para:', SUPABASE_URL);
+}
+
+// Debug: Verificar configuração
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  console.error('❌ [SUPABASE] Variáveis de ambiente não configuradas!');
+  console.error('   VITE_SUPABASE_URL:', SUPABASE_URL);
+  console.error('   VITE_SUPABASE_PUBLISHABLE_KEY:', SUPABASE_PUBLISHABLE_KEY ? 'OK' : 'FALTANDO');
+} else {
+  console.log('✅ [SUPABASE] Configurado:', SUPABASE_URL);
+  console.log('✅ [SUPABASE] URL esperada: https://jibpvpqgplmahjhswiza.supabase.co');
+  
+  // Verificar se a URL está correta
+  if (SUPABASE_URL !== 'https://jibpvpqgplmahjhswiza.supabase.co') {
+    console.error('❌ [SUPABASE] URL INCORRETA!');
+    console.error('   URL atual:', SUPABASE_URL);
+    console.error('   URL esperada: https://jibpvpqgplmahjhswiza.supabase.co');
+    console.error('   ⚠️ Verifique o arquivo .env!');
+  }
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+// FORÇAR URL CORRETA SEMPRE (ignora qualquer cache/env)
+const FINAL_SUPABASE_URL = CORRECT_SUPABASE_URL;
+const FINAL_SUPABASE_KEY = CORRECT_SUPABASE_KEY;
+
+console.log('🔧 [SUPABASE] Inicializando com URL forçada:', FINAL_SUPABASE_URL);
+
+// INTERCEPTOR: Corrige URLs antigas em requisições
+if (typeof window !== 'undefined') {
+  const originalFetch = window.fetch;
+  window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    
+    // Se a URL contém a URL antiga do Bolt, substituir pela correta
+    if (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr')) {
+      const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/, FINAL_SUPABASE_URL);
+      console.warn('⚠️ [INTERCEPTOR] URL antiga detectada, corrigindo:');
+      console.warn('   Antiga:', url);
+      console.warn('   Nova:', correctedUrl);
+      url = correctedUrl;
+      
+      // Recriar o input com a URL corrigida
+      if (typeof input === 'string') {
+        input = url;
+      } else if (input instanceof URL) {
+        input = new URL(url);
+      } else {
+        input = new Request(url, input);
+      }
+    }
+    
+    return originalFetch.call(this, input, init);
+  };
+  
+  console.log('✅ [INTERCEPTOR] Interceptor de fetch instalado');
+}
+
+export const supabase = createClient<Database>(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+  },
+  global: {
+    headers: {
+      'x-client-info': 'amzofertas-web'
+    }
   }
 });
+
+// Verificar se o cliente está usando a URL correta
+console.log('✅ [SUPABASE] Cliente criado com URL:', supabase.supabaseUrl);

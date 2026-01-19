@@ -40,11 +40,29 @@ export default function AfiliadoConectarCelular2() {
 
   const checkStatus = async () => {
     try {
+      // Verificar autenticação antes de chamar
+      const { data: { session }, error: authError } = await supabase.auth.getSession()
+      if (authError || !session) {
+        console.error('❌ [Frontend] Usuário não autenticado:', authError)
+        toast.error('Você precisa estar logado. Faça login novamente.')
+        return
+      }
+
+      console.log('[Frontend] Verificando status...')
       const { data, error } = await supabase.functions.invoke('verificar-status-wuzapi-afiliado', {
         body: { token: FIXED_TOKEN }
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ [Frontend] Erro na função:', error)
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+          toast.error('Erro de autenticação. Faça login novamente.')
+          await supabase.auth.refreshSession()
+        }
+        throw error
+      }
+      
+      console.log('✔ [Frontend] Sessão existe:', data)
 
       const rawData = data?.raw?.data ?? null
       const loggedIn = rawData?.loggedIn === true || rawData?.LoggedIn === true
@@ -76,11 +94,26 @@ export default function AfiliadoConectarCelular2() {
   const handleConnect = async () => {
     setConnecting(true)
     try {
+      // Verificar autenticação
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        toast.error('Você precisa estar logado. Faça login novamente.')
+        return
+      }
+
+      console.log('[Frontend] Conectando...')
       const { data, error } = await supabase.functions.invoke('verificar-status-wuzapi-afiliado', {
         body: { token: FIXED_TOKEN, action: 'generate_qr' }
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ [Frontend] Erro:', error)
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+          toast.error('Erro de autenticação. Faça login novamente.')
+          await supabase.auth.refreshSession()
+        }
+        throw error
+      }
 
       // A função pode retornar o QR em formatos diferentes:
       // - data.qrcode (base64 puro)
@@ -111,11 +144,25 @@ export default function AfiliadoConectarCelular2() {
   const handleDisconnect = async () => {
     setConnecting(true)
     try {
+      // Verificar autenticação
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError || !session) {
+        toast.error('Você precisa estar logado. Faça login novamente.')
+        return
+      }
+
       const { data, error } = await supabase.functions.invoke('verificar-status-wuzapi-afiliado', {
         body: { token: FIXED_TOKEN, action: 'disconnect' }
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ [Frontend] Erro:', error)
+        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+          toast.error('Erro de autenticação. Faça login novamente.')
+          await supabase.auth.refreshSession()
+        }
+        throw error
+      }
 
       setConnected(false)
       setPhone(null)

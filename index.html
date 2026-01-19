@@ -24,6 +24,39 @@
 
   <body>
     <div id="root"></div>
+    <script>
+      // CORREÇÃO CRÍTICA: Interceptar URLs antigas do Bolt ANTES de qualquer coisa
+      (function() {
+        const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
+        const originalFetch = window.fetch;
+        
+        window.fetch = function(input, init) {
+          try {
+            let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input && input.url ? input.url : '');
+            
+            // CORRIGIR URL ANTIGA DO BOLT
+            if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
+              const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, CORRECT_SUPABASE_URL);
+              console.warn('🔧 [HTML] Interceptor corrigiu URL antiga:', url.substring(0, 80), '→', correctedUrl.substring(0, 80));
+              
+              if (typeof input === 'string') {
+                input = correctedUrl;
+              } else if (input instanceof URL) {
+                input = new URL(correctedUrl);
+              } else if (input && input.url) {
+                input = new Request(correctedUrl, input);
+              }
+            }
+          } catch (e) {
+            console.error('Erro no interceptor:', e);
+          }
+          
+          return originalFetch.call(this, input, init);
+        };
+        
+        console.log('✅ [HTML] Interceptor de fetch instalado no HTML (executado primeiro)');
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
