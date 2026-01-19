@@ -28,8 +28,9 @@
       // CORREÇÃO CRÍTICA: Interceptar URLs antigas do Bolt ANTES de qualquer coisa
       (function() {
         const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
-        const originalFetch = window.fetch;
         
+        // INTERCEPTAR FETCH
+        const originalFetch = window.fetch;
         window.fetch = function(input, init) {
           try {
             let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input && input.url ? input.url : '');
@@ -37,7 +38,7 @@
             // CORRIGIR URL ANTIGA DO BOLT
             if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
               const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, CORRECT_SUPABASE_URL);
-              console.warn('🔧 [HTML] Interceptor corrigiu URL antiga:', url.substring(0, 80), '→', correctedUrl.substring(0, 80));
+              console.warn('🔧 [HTML-FETCH] Interceptor corrigiu URL antiga:', url.substring(0, 80), '→', correctedUrl.substring(0, 80));
               
               if (typeof input === 'string') {
                 input = correctedUrl;
@@ -48,13 +49,31 @@
               }
             }
           } catch (e) {
-            console.error('Erro no interceptor:', e);
+            console.error('Erro no interceptor fetch:', e);
           }
           
           return originalFetch.call(this, input, init);
         };
         
-        console.log('✅ [HTML] Interceptor de fetch instalado no HTML (executado primeiro)');
+        // INTERCEPTAR XMLHttpRequest (Supabase pode usar isso também)
+        const OriginalXHR = window.XMLHttpRequest;
+        window.XMLHttpRequest = function() {
+          const xhr = new OriginalXHR();
+          const originalOpen = xhr.open;
+          
+          xhr.open = function(method, url, ...args) {
+            if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
+              const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, CORRECT_SUPABASE_URL);
+              console.warn('🔧 [HTML-XHR] Interceptor corrigiu URL antiga:', url.substring(0, 80), '→', correctedUrl.substring(0, 80));
+              url = correctedUrl;
+            }
+            return originalOpen.call(this, method, url, ...args);
+          };
+          
+          return xhr;
+        };
+        
+        console.log('✅ [HTML] Interceptores de fetch e XMLHttpRequest instalados no HTML (executado primeiro)');
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>

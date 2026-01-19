@@ -45,18 +45,19 @@ const FINAL_SUPABASE_KEY = CORRECT_SUPABASE_KEY;
 
 console.log('🔧 [SUPABASE] Inicializando com URL forçada:', FINAL_SUPABASE_URL);
 
-// INTERCEPTOR: Corrige URLs antigas em requisições
+// INTERCEPTOR: Corrige URLs antigas em requisições (FETCH + XMLHttpRequest)
 if (typeof window !== 'undefined') {
+  // INTERCEPTAR FETCH
   const originalFetch = window.fetch;
   window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input && 'url' in input ? input.url : '');
     
     // Se a URL contém a URL antiga do Bolt, substituir pela correta
-    if (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr')) {
-      const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/, FINAL_SUPABASE_URL);
-      console.warn('⚠️ [INTERCEPTOR] URL antiga detectada, corrigindo:');
-      console.warn('   Antiga:', url);
-      console.warn('   Nova:', correctedUrl);
+    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
+      const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, FINAL_SUPABASE_URL);
+      console.warn('⚠️ [CLIENT-FETCH] URL antiga detectada, corrigindo:');
+      console.warn('   Antiga:', url.substring(0, 100));
+      console.warn('   Nova:', correctedUrl.substring(0, 100));
       url = correctedUrl;
       
       // Recriar o input com a URL corrigida
@@ -64,7 +65,7 @@ if (typeof window !== 'undefined') {
         input = url;
       } else if (input instanceof URL) {
         input = new URL(url);
-      } else {
+      } else if (input && 'url' in input) {
         input = new Request(url, input);
       }
     }
@@ -72,7 +73,26 @@ if (typeof window !== 'undefined') {
     return originalFetch.call(this, input, init);
   };
   
-  console.log('✅ [INTERCEPTOR] Interceptor de fetch instalado');
+  // INTERCEPTAR XMLHttpRequest (Supabase pode usar isso também)
+  const OriginalXHR = window.XMLHttpRequest;
+  window.XMLHttpRequest = function() {
+    const xhr = new OriginalXHR();
+    const originalOpen = xhr.open;
+    
+    xhr.open = function(method: string, url: string | URL, ...args: any[]) {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      if (urlStr && (urlStr.includes('qbtqjrcfseqcfmcqlngr') || urlStr.includes('gbtqjrcfseqcfmcqlngr'))) {
+        const correctedUrl = urlStr.replace(/https?:\/\/[^/]+\.supabase\.co/g, FINAL_SUPABASE_URL);
+        console.warn('⚠️ [CLIENT-XHR] URL antiga detectada, corrigindo:', urlStr.substring(0, 100), '→', correctedUrl.substring(0, 100));
+        return originalOpen.call(this, method, correctedUrl, ...args);
+      }
+      return originalOpen.call(this, method, url, ...args);
+    };
+    
+    return xhr;
+  };
+  
+  console.log('✅ [CLIENT] Interceptores de fetch e XMLHttpRequest instalados');
 }
 
 export const supabase = createClient<Database>(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {
@@ -88,5 +108,56 @@ export const supabase = createClient<Database>(FINAL_SUPABASE_URL, FINAL_SUPABAS
   }
 });
 
+// FORÇAR URL CORRETA NO CLIENTE (override se necessário)
+if (supabase.supabaseUrl !== FINAL_SUPABASE_URL) {
+  console.warn('⚠️ [SUPABASE] Cliente criado com URL incorreta! Forçando correção...');
+  console.warn('   URL atual:', supabase.supabaseUrl);
+  // Tentar corrigir via propriedade (se possível)
+  try {
+    (supabase as any).supabaseUrl = FINAL_SUPABASE_URL;
+    console.log('✅ [SUPABASE] URL corrigida no cliente');
+  } catch (e) {
+    console.error('❌ [SUPABASE] Não foi possível corrigir URL diretamente:', e);
+  }
+}
+
 // Verificar se o cliente está usando a URL correta
 console.log('✅ [SUPABASE] Cliente criado com URL:', supabase.supabaseUrl);
+console.log('✅ [SUPABASE] URL esperada:', FINAL_SUPABASE_URL);
+console.log('✅ [SUPABASE] URLs coincidem?', supabase.supabaseUrl === FINAL_SUPABASE_URL ? 'SIM ✅' : 'NÃO ❌');
+
+// WRAPPER: Garantir que functions.invoke sempre use URL correta
+if (typeof window !== 'undefined' && supabase.functions) {
+  const originalInvoke = supabase.functions.invoke.bind(supabase.functions);
+  
+  // Criar cliente de backup com URL correta
+  const backupClient = createClient<Database>(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {
+    auth: {
+      storage: localStorage,
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+    global: {
+      headers: {
+        'x-client-info': 'amzofertas-web'
+      }
+    }
+  });
+  
+  supabase.functions.invoke = async function(functionName: string, options?: any) {
+    console.log('📤 [FUNCTIONS.INVOKE] Chamando função:', functionName);
+    console.log('📤 [FUNCTIONS.INVOKE] URL base do cliente atual:', supabase.supabaseUrl);
+    console.log('📤 [FUNCTIONS.INVOKE] URL correta esperada:', FINAL_SUPABASE_URL);
+    
+    // SEMPRE usar o cliente de backup (que tem URL correta garantida)
+    // Isso evita qualquer problema de cache ou URL incorreta
+    if (supabase.supabaseUrl !== FINAL_SUPABASE_URL) {
+      console.warn('⚠️ [FUNCTIONS.INVOKE] URL base incorreta detectada! Usando cliente de backup com URL correta...');
+    }
+    
+    // Usar sempre o cliente de backup para garantir URL correta
+    return backupClient.functions.invoke(functionName, options);
+  };
+  
+  console.log('✅ [FUNCTIONS.INVOKE] Wrapper instalado - sempre usa URL correta');
+}

@@ -2,14 +2,15 @@
 const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
 
 if (typeof window !== 'undefined') {
+  // INTERCEPTAR FETCH
   const originalFetch = window.fetch;
   window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     
     // CORRIGIR URL ANTIGA DO BOLT
-    if (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr')) {
+    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
       const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, CORRECT_SUPABASE_URL);
-      console.warn('🔧 [MAIN] Interceptor corrigiu URL antiga:', url, '→', correctedUrl);
+      console.warn('🔧 [MAIN-FETCH] Interceptor corrigiu URL antiga:', url.substring(0, 100), '→', correctedUrl.substring(0, 100));
       url = correctedUrl;
       
       if (typeof input === 'string') {
@@ -23,7 +24,27 @@ if (typeof window !== 'undefined') {
     
     return originalFetch.call(this, input, init);
   };
-  console.log('✅ [MAIN] Interceptor de fetch instalado no início da aplicação');
+  
+  // INTERCEPTAR XMLHttpRequest
+  const OriginalXHR = window.XMLHttpRequest;
+  window.XMLHttpRequest = function() {
+    const xhr = new OriginalXHR();
+    const originalOpen = xhr.open;
+    
+    xhr.open = function(method: string, url: string | URL, ...args: any[]) {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      if (urlStr && (urlStr.includes('qbtqjrcfseqcfmcqlngr') || urlStr.includes('gbtqjrcfseqcfmcqlngr'))) {
+        const correctedUrl = urlStr.replace(/https?:\/\/[^/]+\.supabase\.co/g, CORRECT_SUPABASE_URL);
+        console.warn('🔧 [MAIN-XHR] Interceptor corrigiu URL antiga:', urlStr.substring(0, 100), '→', correctedUrl.substring(0, 100));
+        return originalOpen.call(this, method, correctedUrl, ...args);
+      }
+      return originalOpen.call(this, method, url, ...args);
+    };
+    
+    return xhr;
+  };
+  
+  console.log('✅ [MAIN] Interceptores de fetch e XMLHttpRequest instalados no início da aplicação');
 }
 
 import { createRoot } from "react-dom/client";
