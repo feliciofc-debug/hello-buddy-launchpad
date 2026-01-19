@@ -197,6 +197,29 @@ Deno.serve(async (req) => {
 
     console.log('✅ Produto Shopee inserido com sucesso:', produto.id);
 
+    // 🔥 DISPARAR ENVIO AUTOMÁTICO PARA GRUPOS (se houver programação ativa)
+    // Nota: O envio automático também pode ser feito via cron job executando executar-envio-programado
+    try {
+      // Verificar se há programação ativa para este usuário
+      const { data: programacoes } = await supabaseAdmin
+        .from('programacao_envio_afiliado')
+        .select('id, ativo')
+        .eq('user_id', user_id)
+        .eq('ativo', true)
+        .limit(1);
+
+      if (programacoes && programacoes.length > 0) {
+        console.log('🚀 Produto inserido - programação ativa encontrada. Envio será processado pelo cron job.');
+        // O envio será feito automaticamente pelo cron job que executa executar-envio-programado
+        // Não precisamos disparar aqui para evitar sobrecarga
+      } else {
+        console.log('ℹ️ Nenhuma programação ativa para este usuário');
+      }
+    } catch (autoError) {
+      // Não falhar a inserção se a verificação der erro
+      console.error('⚠️ Erro ao verificar programação (não crítico):', autoError);
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 

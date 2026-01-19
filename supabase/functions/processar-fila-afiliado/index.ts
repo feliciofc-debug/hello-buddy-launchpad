@@ -34,8 +34,7 @@ const CONFIG = {
   BATCH_SIZE: 3,                // Processar 3 por vez
   MAX_TENTATIVAS: 3,            // Máximo 3 tentativas por msg
   
-  // WuzAPI
-  CONTABO_WUZAPI_URL: "https://api2.amzofertas.com.br",
+  // WuzAPI URL será buscada dinamicamente das instâncias
 };
 
 // ═══════════════════════════════════════
@@ -69,6 +68,7 @@ function calcularDelayAleatorio(): number {
 // 📤 ENVIAR STATUS "DIGITANDO"
 // ═══════════════════════════════════════
 async function enviarStatusDigitando(
+  wuzapiUrl: string,
   token: string, 
   phone: string
 ): Promise<boolean> {
@@ -79,8 +79,10 @@ async function enviarStatusDigitando(
       formattedPhone = "55" + formattedPhone;
     }
 
+    const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
+
     // Tentar endpoint de presence/composing
-    const response = await fetch(`${CONFIG.CONTABO_WUZAPI_URL}/chat/presence`, {
+    const response = await fetch(`${baseUrl}/chat/presence`, {
       method: "POST",
       headers: { 
         "Token": token, 
@@ -98,7 +100,7 @@ async function enviarStatusDigitando(
     }
     
     // Se endpoint principal falhar, tentar alternativo
-    const response2 = await fetch(`${CONFIG.CONTABO_WUZAPI_URL}/chat/markcomposing`, {
+    const response2 = await fetch(`${baseUrl}/chat/markcomposing`, {
       method: "POST",
       headers: { 
         "Token": token, 
@@ -122,6 +124,7 @@ async function enviarStatusDigitando(
 // 📤 ENVIAR MENSAGEM
 // ═══════════════════════════════════════
 async function enviarMensagem(
+  wuzapiUrl: string,
   token: string,
   phone: string,
   message: string,
@@ -134,9 +137,10 @@ async function enviarMensagem(
       formattedPhone = "55" + formattedPhone;
     }
 
+    const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
     const endpoint = imageUrl 
-      ? `${CONFIG.CONTABO_WUZAPI_URL}/chat/send/image`
-      : `${CONFIG.CONTABO_WUZAPI_URL}/chat/send/text`;
+      ? `${baseUrl}/chat/send/image`
+      : `${baseUrl}/chat/send/text`;
 
     const payload = imageUrl
       ? { Phone: formattedPhone, Image: imageUrl, Caption: message }
@@ -195,9 +199,29 @@ async function processarItem(
     console.log(`   👤 Nome: ${item.lead_name || "Desconhecido"}`);
     console.log(`   📝 Tipo: ${item.tipo_mensagem}`);
 
-    // Verificar se tem token
+    // Verificar se tem token e URL
     if (!item.wuzapi_token) {
       throw new Error("Token WuzAPI não encontrado");
+    }
+    
+    // Buscar URL da instância (pode estar no item ou buscar)
+    let wuzapiUrl = item.wuzapi_url;
+    if (!wuzapiUrl) {
+      // Tentar buscar da instância
+      const { data: instance } = await supabase
+        .from('wuzapi_instances')
+        .select('wuzapi_url')
+        .eq('wuzapi_token', item.wuzapi_token)
+        .eq('is_connected', true)
+        .limit(1)
+        .maybeSingle();
+      
+      if (instance?.wuzapi_url) {
+        wuzapiUrl = instance.wuzapi_url;
+      } else {
+        // Fallback para variável de ambiente
+        wuzapiUrl = Deno.env.get('WUZAPI_URL') || "https://api2.amzofertas.com.br";
+      }
     }
 
     // Verificar se tem resposta
@@ -213,7 +237,7 @@ async function processarItem(
       .update({ status: "digitando" })
       .eq("id", item.id);
 
-    await enviarStatusDigitando(item.wuzapi_token, item.lead_phone);
+    await enviarStatusDigitando(wuzapiUrl, item.wuzapi_token, item.lead_phone);
 
     // ═══════════════════════════════════════
     // 2️⃣ AGUARDAR TEMPO DE DIGITAÇÃO
@@ -226,6 +250,7 @@ async function processarItem(
     // 3️⃣ ENVIAR MENSAGEM
     // ═══════════════════════════════════════
     const resultado = await enviarMensagem(
+      wuzapiUrl,
       item.wuzapi_token,
       item.lead_phone,
       item.resposta_ia,
