@@ -184,7 +184,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.wuzapi-qrcode]
-verify_jwt = true
+verify_jwt = false
 
 [functions.sync-stock]
 verify_jwt = false

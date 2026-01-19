@@ -27,18 +27,29 @@
     <script>
       // CORREÇÃO CRÍTICA: Interceptar URLs antigas do Bolt ANTES de qualquer coisa
       (function() {
-        const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
+        const CORRECT_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+        const OLD_URLS = ['qbtqjrcfseqcfmcqlngr', 'gbtqjrcfseqcfmcqlngr', 'jibpvpqgplmahjhswiza'];
         
-        // INTERCEPTAR FETCH
+        function shouldCorrect(url) {
+          if (!url) return false;
+          const urlStr = typeof url === 'string' ? url : url.toString();
+          return OLD_URLS.some(old => urlStr.includes(old));
+        }
+        
+        function correctUrl(url) {
+          const urlStr = typeof url === 'string' ? url : url.toString();
+          return urlStr.replace(/https?:\/\/([^/]+)\.supabase\.co/g, CORRECT_SUPABASE_URL);
+        }
+        
+        // INTERCEPTAR FETCH - VERSÃO MAIS AGRESSIVA
         const originalFetch = window.fetch;
         window.fetch = function(input, init) {
           try {
             let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input && input.url ? input.url : '');
             
-            // CORRIGIR URL ANTIGA DO BOLT
-            if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
-              const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, CORRECT_SUPABASE_URL);
-              console.warn('🔧 [HTML-FETCH] Interceptor corrigiu URL antiga:', url.substring(0, 80), '→', correctedUrl.substring(0, 80));
+            if (shouldCorrect(url)) {
+              const correctedUrl = correctUrl(url);
+              console.warn('🔧 [HTML-FETCH] CORRIGINDO URL:', url.substring(0, 100), '→', correctedUrl.substring(0, 100));
               
               if (typeof input === 'string') {
                 input = correctedUrl;
@@ -46,26 +57,30 @@
                 input = new URL(correctedUrl);
               } else if (input && input.url) {
                 input = new Request(correctedUrl, input);
+              } else {
+                input = correctedUrl;
               }
             }
           } catch (e) {
-            console.error('Erro no interceptor fetch:', e);
+            console.error('❌ Erro no interceptor fetch:', e);
           }
           
           return originalFetch.call(this, input, init);
         };
         
-        // INTERCEPTAR XMLHttpRequest (Supabase pode usar isso também)
+        // INTERCEPTAR XMLHttpRequest - VERSÃO MAIS AGRESSIVA
         const OriginalXHR = window.XMLHttpRequest;
         window.XMLHttpRequest = function() {
           const xhr = new OriginalXHR();
           const originalOpen = xhr.open;
+          const originalSend = xhr.send;
           
           xhr.open = function(method, url, ...args) {
-            if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
-              const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, CORRECT_SUPABASE_URL);
-              console.warn('🔧 [HTML-XHR] Interceptor corrigiu URL antiga:', url.substring(0, 80), '→', correctedUrl.substring(0, 80));
-              url = correctedUrl;
+            const urlStr = typeof url === 'string' ? url : url.toString();
+            if (shouldCorrect(urlStr)) {
+              const correctedUrl = correctUrl(urlStr);
+              console.warn('🔧 [HTML-XHR] CORRIGINDO URL:', urlStr.substring(0, 100), '→', correctedUrl.substring(0, 100));
+              return originalOpen.call(this, method, correctedUrl, ...args);
             }
             return originalOpen.call(this, method, url, ...args);
           };
@@ -73,7 +88,20 @@
           return xhr;
         };
         
-        console.log('✅ [HTML] Interceptores de fetch e XMLHttpRequest instalados no HTML (executado primeiro)');
+        // INTERCEPTAR SUPABASE CLIENT DIRETAMENTE (se já existir)
+        if (window.supabase && window.supabase.supabaseUrl) {
+          const oldUrl = window.supabase.supabaseUrl;
+          if (shouldCorrect(oldUrl)) {
+            console.warn('🔧 [HTML] Corrigindo supabase.supabaseUrl:', oldUrl, '→', CORRECT_SUPABASE_URL);
+            try {
+              window.supabase.supabaseUrl = CORRECT_SUPABASE_URL;
+            } catch (e) {
+              console.error('❌ Não foi possível corrigir supabase.supabaseUrl:', e);
+            }
+          }
+        }
+        
+        console.log('✅ [HTML] Interceptores AGRESSIVOS instalados - URLs antigas serão corrigidas automaticamente');
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>

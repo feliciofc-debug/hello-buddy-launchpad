@@ -150,8 +150,8 @@ export default function AfiliadoWhatsAppConnection() {
       console.log('✅ [Frontend] Usuário autenticado:', user.email)
       console.log('✅ [Frontend] Token disponível:', session.access_token ? 'SIM' : 'NÃO')
       console.log('🔍 [Frontend] URL do cliente Supabase:', supabase.supabaseUrl)
-      console.log('🔍 [Frontend] URL esperada: https://jibpvpqgplmahjhswiza.supabase.co')
-      console.log('🔍 [Frontend] URLs coincidem?', supabase.supabaseUrl === 'https://jibpvpqgplmahjhswiza.supabase.co' ? 'SIM ✅' : 'NÃO ❌')
+      console.log('🔍 [Frontend] URL esperada: https://zunuqaidxffuhwmvcwul.supabase.co')
+      console.log('🔍 [Frontend] URLs coincidem?', supabase.supabaseUrl === 'https://zunuqaidxffuhwmvcwul.supabase.co' ? 'SIM ✅' : 'NÃO ❌')
       console.log('📤 [Frontend] Criando instância...')
       console.log('📤 [Frontend] Enviando payload:', { 
         action: 'criar-instancia',

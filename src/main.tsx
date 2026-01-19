@@ -1,5 +1,5 @@
 // CORREÇÃO CRÍTICA: Interceptar URLs antigas do Bolt ANTES de qualquer coisa
-const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
+const CORRECT_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
 
 if (typeof window !== 'undefined') {
   // INTERCEPTAR FETCH
@@ -7,8 +7,8 @@ if (typeof window !== 'undefined') {
   window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     
-    // CORRIGIR URL ANTIGA DO BOLT
-    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
+    // CORRIGIR URL ANTIGA DO BOLT OU PROJETO ANTIGO
+    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr') || url.includes('jibpvpqgplmahjhswiza'))) {
       const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, CORRECT_SUPABASE_URL);
       console.warn('🔧 [MAIN-FETCH] Interceptor corrigiu URL antiga:', url.substring(0, 100), '→', correctedUrl.substring(0, 100));
       url = correctedUrl;

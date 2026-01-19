@@ -14,8 +14,14 @@ serve(async (req) => {
   try {
     const CONTABO_WUZAPI_URL = 'https://api2.amzofertas.com.br'
     const CONTABO_WUZAPI_ADMIN_TOKEN = Deno.env.get('CONTABO_WUZAPI_ADMIN_TOKEN') || ''
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    // Tentar vários nomes possíveis (inglês e português)
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 
+                        Deno.env.get('PROJECT_URL') || 
+                        Deno.env.get('URL_DO_PROJETO') || 
+                        'https://zunuqaidxffuhwmvcwul.supabase.co'
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || 
+                                     Deno.env.get('SERVICE_ROLE_KEY') || 
+                                     Deno.env.get('CHAVE_FUNÇÃO_DE_SERVIÇO')!
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 

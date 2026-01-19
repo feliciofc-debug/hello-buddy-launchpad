@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 // URL CORRETA DO SUPABASE (forçar se necessário)
-const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
-const CORRECT_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYnB2cHFncGxtYWhqaHN3aXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1ODA0ODcsImV4cCI6MjA3NjE1NjQ4N30.raNfZtKkNUZBHiAA6yobri0YoWZt_Ioq10qMC9hfNrc';
+const CORRECT_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+const CORRECT_SUPABASE_KEY = 'sb_publishable_BT7lsfrAYrPII7bsH_I6WA_zmDkhorc';
 
 // Usar variáveis de ambiente ou valores corretos como fallback
 let SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || CORRECT_SUPABASE_URL;
@@ -25,14 +25,13 @@ if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
   console.error('   VITE_SUPABASE_PUBLISHABLE_KEY:', SUPABASE_PUBLISHABLE_KEY ? 'OK' : 'FALTANDO');
 } else {
   console.log('✅ [SUPABASE] Configurado:', SUPABASE_URL);
-  console.log('✅ [SUPABASE] URL esperada: https://jibpvpqgplmahjhswiza.supabase.co');
+  console.log('✅ [SUPABASE] URL esperada: https://zunuqaidxffuhwmvcwul.supabase.co');
   
   // Verificar se a URL está correta
-  if (SUPABASE_URL !== 'https://jibpvpqgplmahjhswiza.supabase.co') {
-    console.error('❌ [SUPABASE] URL INCORRETA!');
-    console.error('   URL atual:', SUPABASE_URL);
-    console.error('   URL esperada: https://jibpvpqgplmahjhswiza.supabase.co');
-    console.error('   ⚠️ Verifique o arquivo .env!');
+  if (SUPABASE_URL !== 'https://zunuqaidxffuhwmvcwul.supabase.co') {
+    console.warn('⚠️ [SUPABASE] URL diferente da esperada');
+    console.warn('   URL atual:', SUPABASE_URL);
+    console.warn('   URL esperada: https://zunuqaidxffuhwmvcwul.supabase.co');
   }
 }
 
@@ -52,8 +51,8 @@ if (typeof window !== 'undefined') {
   window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input && 'url' in input ? input.url : '');
     
-    // Se a URL contém a URL antiga do Bolt, substituir pela correta
-    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr'))) {
+    // Se a URL contém a URL antiga do Bolt ou projeto antigo, substituir pela correta
+    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr') || url.includes('jibpvpqgplmahjhswiza'))) {
       const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, FINAL_SUPABASE_URL);
       console.warn('⚠️ [CLIENT-FETCH] URL antiga detectada, corrigindo:');
       console.warn('   Antiga:', url.substring(0, 100));
@@ -81,7 +80,7 @@ if (typeof window !== 'undefined') {
     
     xhr.open = function(method: string, url: string | URL, ...args: any[]) {
       const urlStr = typeof url === 'string' ? url : url.toString();
-      if (urlStr && (urlStr.includes('qbtqjrcfseqcfmcqlngr') || urlStr.includes('gbtqjrcfseqcfmcqlngr'))) {
+      if (urlStr && (urlStr.includes('qbtqjrcfseqcfmcqlngr') || urlStr.includes('gbtqjrcfseqcfmcqlngr') || urlStr.includes('jibpvpqgplmahjhswiza'))) {
         const correctedUrl = urlStr.replace(/https?:\/\/[^/]+\.supabase\.co/g, FINAL_SUPABASE_URL);
         console.warn('⚠️ [CLIENT-XHR] URL antiga detectada, corrigindo:', urlStr.substring(0, 100), '→', correctedUrl.substring(0, 100));
         return originalOpen.call(this, method, correctedUrl, ...args);
@@ -126,10 +125,35 @@ console.log('✅ [SUPABASE] Cliente criado com URL:', supabase.supabaseUrl);
 console.log('✅ [SUPABASE] URL esperada:', FINAL_SUPABASE_URL);
 console.log('✅ [SUPABASE] URLs coincidem?', supabase.supabaseUrl === FINAL_SUPABASE_URL ? 'SIM ✅' : 'NÃO ❌');
 
+// FORÇAR URL CORRETA NO CLIENTE SUPABASE (SOBRESCREVER DIRETAMENTE)
+if (typeof window !== 'undefined') {
+  // Tentar sobrescrever a propriedade supabaseUrl diretamente
+  try {
+    Object.defineProperty(supabase, 'supabaseUrl', {
+      value: FINAL_SUPABASE_URL,
+      writable: true,
+      configurable: true
+    });
+    console.log('✅ [FORCE-URL] URL forçada diretamente no cliente:', FINAL_SUPABASE_URL);
+  } catch (e) {
+    console.warn('⚠️ [FORCE-URL] Não foi possível sobrescrever supabaseUrl diretamente, usando wrapper');
+  }
+  
+  // Verificar e corrigir novamente após um delay (caso seja sobrescrito)
+  setTimeout(() => {
+    if (supabase.supabaseUrl !== FINAL_SUPABASE_URL) {
+      console.warn('⚠️ [FORCE-URL] URL foi alterada novamente! Corrigindo...');
+      try {
+        (supabase as any).supabaseUrl = FINAL_SUPABASE_URL;
+      } catch (e) {
+        console.error('❌ [FORCE-URL] Erro ao corrigir URL:', e);
+      }
+    }
+  }, 100);
+}
+
 // WRAPPER: Garantir que functions.invoke sempre use URL correta
 if (typeof window !== 'undefined' && supabase.functions) {
-  const originalInvoke = supabase.functions.invoke.bind(supabase.functions);
-  
   // Criar cliente de backup com URL correta
   const backupClient = createClient<Database>(FINAL_SUPABASE_URL, FINAL_SUPABASE_KEY, {
     auth: {
@@ -144,18 +168,34 @@ if (typeof window !== 'undefined' && supabase.functions) {
     }
   });
   
+  // Copiar sessão do cliente original para o backup
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    if (session) {
+      backupClient.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      });
+    }
+  });
+  
+  const originalInvoke = supabase.functions.invoke.bind(supabase.functions);
+  
   supabase.functions.invoke = async function(functionName: string, options?: any) {
     console.log('📤 [FUNCTIONS.INVOKE] Chamando função:', functionName);
     console.log('📤 [FUNCTIONS.INVOKE] URL base do cliente atual:', supabase.supabaseUrl);
     console.log('📤 [FUNCTIONS.INVOKE] URL correta esperada:', FINAL_SUPABASE_URL);
     
-    // SEMPRE usar o cliente de backup (que tem URL correta garantida)
-    // Isso evita qualquer problema de cache ou URL incorreta
+    // FORÇAR URL CORRETA ANTES DE CHAMAR
     if (supabase.supabaseUrl !== FINAL_SUPABASE_URL) {
-      console.warn('⚠️ [FUNCTIONS.INVOKE] URL base incorreta detectada! Usando cliente de backup com URL correta...');
+      console.warn('⚠️ [FUNCTIONS.INVOKE] URL incorreta detectada! Forçando correção...');
+      try {
+        (supabase as any).supabaseUrl = FINAL_SUPABASE_URL;
+      } catch (e) {
+        console.error('❌ [FUNCTIONS.INVOKE] Erro ao forçar URL:', e);
+      }
     }
     
-    // Usar sempre o cliente de backup para garantir URL correta
+    // SEMPRE usar o cliente de backup (que tem URL correta garantida)
     return backupClient.functions.invoke(functionName, options);
   };
   
