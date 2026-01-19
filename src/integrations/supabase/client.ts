@@ -185,17 +185,28 @@ if (typeof window !== 'undefined' && supabase.functions) {
     console.log('📤 [FUNCTIONS.INVOKE] URL base do cliente atual:', supabase.supabaseUrl);
     console.log('📤 [FUNCTIONS.INVOKE] URL correta esperada:', FINAL_SUPABASE_URL);
     
-    // FORÇAR URL CORRETA ANTES DE CHAMAR
+    // FORÇAR URL CORRETA NO CLIENTE ORIGINAL
     if (supabase.supabaseUrl !== FINAL_SUPABASE_URL) {
       console.warn('⚠️ [FUNCTIONS.INVOKE] URL incorreta detectada! Forçando correção...');
       try {
         (supabase as any).supabaseUrl = FINAL_SUPABASE_URL;
+        console.log('✅ [FUNCTIONS.INVOKE] URL corrigida no cliente original');
       } catch (e) {
         console.error('❌ [FUNCTIONS.INVOKE] Erro ao forçar URL:', e);
       }
     }
     
+    // GARANTIR que o backupClient também tem a sessão atualizada
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await backupClient.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      });
+    }
+    
     // SEMPRE usar o cliente de backup (que tem URL correta garantida)
+    console.log('✅ [FUNCTIONS.INVOKE] Usando backupClient com URL correta:', FINAL_SUPABASE_URL);
     return backupClient.functions.invoke(functionName, options);
   };
   
