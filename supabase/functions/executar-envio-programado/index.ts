@@ -743,23 +743,23 @@ async function processarProgramacao(
         .single();
 
       if (clienteData?.wuzapi_token) {
-        // Usar URL de ambiente como fallback
-        const envUrl = Deno.env.get('WUZAPI_URL') || "https://api2.amzofertas.com.br";
+        // ✅ Afiliados usam a URL da Contabo (não a URL do PJ)
+        const envUrl = Deno.env.get('CONTABO_WUZAPI_URL') || "https://api2.amzofertas.com.br";
         instance = {
           wuzapi_url: envUrl,
           wuzapi_token: clienteData.wuzapi_token,
           instance_name: 'fallback-afiliado',
           is_connected: true
         };
-        console.log('📡 Usando token de clientes_afiliados como fallback');
+        console.log('📡 Usando token de clientes_afiliados como fallback:', envUrl);
       }
     }
-    
+
     // Se ainda não encontrou, tentar variáveis de ambiente como fallback
     if (!instance) {
-      const envUrl = Deno.env.get('WUZAPI_URL');
+      const envUrl = Deno.env.get('CONTABO_WUZAPI_URL');
       const envToken = Deno.env.get('WUZAPI_TOKEN');
-      
+
       if (envUrl && envToken) {
         instance = {
           wuzapi_url: envUrl,
@@ -767,7 +767,7 @@ async function processarProgramacao(
           instance_name: 'env-fallback',
           is_connected: true
         };
-        console.log('📡 Usando credenciais de ambiente como fallback');
+        console.log('📡 Usando credenciais de ambiente como fallback (Contabo)');
       }
     }
 
