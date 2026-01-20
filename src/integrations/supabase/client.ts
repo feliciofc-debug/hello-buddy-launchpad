@@ -3,8 +3,19 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 // ⚠️ PROJETO LOVABLE - JÁ TEM TUDO FUNCIONANDO
-const supabaseUrl = 'https://jibpvpqgplmahjhswiza.supabase.co';
+// 🚨 FORÇA URL CORRETA - NUNCA MUDAR PARA OUTRO PROJETO
+const CORRECT_PROJECT_ID = 'jibpvpqgplmahjhswiza';
+const supabaseUrl = `https://${CORRECT_PROJECT_ID}.supabase.co`;
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYnB2cHFncGxtYWhqaHN3aXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1ODA0ODcsImV4cCI6MjA3NjE1NjQ4N30.raNfZtKkNUZBHiAA6yobri0YoWZt_Ioq10qMC9hfNrcr';
+
+// VALIDAÇÃO CRÍTICA: Garantir que nunca use URL antiga
+if (typeof window !== 'undefined') {
+  const envUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (envUrl && !envUrl.includes(CORRECT_PROJECT_ID)) {
+    console.error('🚨 [CRITICAL] URL DO AMBIENTE ESTÁ ERRADA!', envUrl);
+    console.error('🚨 [CRITICAL] Forçando uso da URL correta:', supabaseUrl);
+  }
+}
 
 // LIMPAR DADOS ANTIGOS DO PROJETO DELETADO - VERSÃO AGRESSIVA
 if (typeof window !== 'undefined') {
