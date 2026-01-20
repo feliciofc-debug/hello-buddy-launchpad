@@ -284,36 +284,59 @@ async function enviarParaGrupo(
     if (imageUrl) {
       const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
       
-      // 🆕 ESTRATÉGIA 1: Baixar imagem e converter para base64
-      console.log(`⬇️ Baixando imagem: ${imageUrl.substring(0, 60)}...`);
+      // ============================================
+      // 🆕 SOLUÇÃO CLAUDE OPUS MELHORADA: 
+      // Download com timeout e headers completos
+      // ============================================
+      console.log(`⬇️ Baixando imagem: ${imageUrl.substring(0, 80)}...`);
       let base64Image: string | null = null;
       
       try {
+        // Timeout de 15 segundos com AbortController
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+        
         const imgResponse = await fetch(imageUrl, {
           headers: {
-            // Simular navegador para evitar bloqueio do CDN
+            // Headers completos para simular navegador real
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
             "Referer": "https://shopee.com.br/",
+            "Cache-Control": "no-cache",
           },
+          signal: controller.signal,
         });
+        
+        clearTimeout(timeout);
 
         if (imgResponse.ok) {
-          const contentType = imgResponse.headers.get("content-type") || "image/jpeg";
           const arrayBuffer = await imgResponse.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
+          const bytes = new Uint8Array(arrayBuffer);
           
-          // Converter para base64 (método compatível com Deno)
-          let binary = '';
-          for (let i = 0; i < uint8Array.length; i++) {
-            binary += String.fromCharCode(uint8Array[i]);
+          // Verificar tamanho (máx 5MB para segurança)
+          if (bytes.length > 5 * 1024 * 1024) {
+            console.warn(`⚠️ Imagem muito grande: ${Math.round(bytes.length / 1024 / 1024)}MB - pulando base64`);
+          } else {
+            // Converter para base64 (método compatível com Deno)
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            const base64 = btoa(binary);
+            
+            // Detectar tipo da imagem
+            let mimeType = imgResponse.headers.get("content-type") || "image/jpeg";
+            if (mimeType.includes("webp")) mimeType = "image/webp";
+            else if (mimeType.includes("png")) mimeType = "image/png";
+            else if (mimeType.includes("gif")) mimeType = "image/gif";
+            else mimeType = "image/jpeg";
+            
+            base64Image = `data:${mimeType};base64,${base64}`;
+            console.log(`✅ Imagem baixada: ${Math.round(bytes.length / 1024)}KB (${mimeType})`);
           }
-          const base64 = btoa(binary);
-          
-          base64Image = `data:${contentType};base64,${base64}`;
-          console.log(`✅ Imagem baixada: ${Math.round(arrayBuffer.byteLength / 1024)}KB`);
         } else {
-          console.warn(`⚠️ Falha ao baixar imagem: ${imgResponse.status}`);
+          console.warn(`⚠️ Falha ao baixar imagem: HTTP ${imgResponse.status}`);
         }
       } catch (dlError) {
         console.warn(`⚠️ Erro ao baixar imagem:`, dlError);
