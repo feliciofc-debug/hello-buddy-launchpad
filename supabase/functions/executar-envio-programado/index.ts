@@ -276,44 +276,52 @@ async function enviarParaGrupo(
     console.log(`📤 Enviando para grupo: ${jid}`);
     console.log(`📡 URL: ${baseUrl}`);
 
-    // 🚫 Bloquear imagens .webp (causa problemas no WhatsApp)
-    let imagemValida = imageUrl;
-    if (imagemValida && imagemValida.toLowerCase().includes('.webp')) {
-      console.log("🚫 Imagem .webp bloqueada - enviando somente texto");
-      imagemValida = undefined;
-    }
-
-    // ✅ FORMATO ORIGINAL QUE FUNCIONAVA: imagem com legenda (texto+link no caption)
-    if (imagemValida) {
-      console.log(`🖼️ Imagem: ✅ SIM`);
+    // ✅ FORMATO: imagem com legenda (texto+link no caption)
+    // SEMPRE tentar enviar imagem primeiro (inclusive .webp) - só fallback se falhar
+    if (imageUrl) {
+      console.log(`🖼️ Tentando enviar imagem: ${imageUrl.substring(0, 60)}...`);
       const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
 
-      const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
-        method: "POST",
-        headers: {
-          "Token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          Phone: jid,
-          Image: imagemValida,
-          Caption: caption,
-        }),
-      });
+      try {
+        const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
+          method: "POST",
+          headers: {
+            "Token": token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            Phone: jid,
+            Image: imageUrl,
+            Caption: caption,
+          }),
+        });
 
-      const resultText = await imageResponse.text();
-      console.log(`📡 Resultado: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
-      
-      if (imageResponse.ok) {
-        console.log(`✅ Enviado IMAGEM+LEGENDA para grupo: ${jid}`);
-        console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-        return { success: true };
+        const resultText = await imageResponse.text();
+        console.log(`📡 Resultado imagem: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
+        
+        if (imageResponse.ok) {
+          // Verificar se realmente foi enviado (pode ter status 200 mas falhar)
+          try {
+            const result = JSON.parse(resultText);
+            if (result.success !== false && !result.error) {
+              console.log(`✅ Enviado IMAGEM+LEGENDA para grupo: ${jid}`);
+              console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+              return { success: true };
+            }
+          } catch {
+            // Se não for JSON, assumir sucesso se status OK
+            console.log(`✅ Enviado IMAGEM+LEGENDA para grupo: ${jid}`);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            return { success: true };
+          }
+        }
+
+        console.warn("⚠️ Imagem falhou, tentando fallback texto...", resultText.substring(0, 100));
+      } catch (imgError) {
+        console.warn("⚠️ Erro ao enviar imagem, tentando fallback texto...", imgError);
       }
-
-      console.error("❌ Falha ao enviar imagem:", resultText);
-
+      
       // FALLBACK: se imagem falhar, tenta só texto
-      console.log("⚠️ Tentando enviar só texto como fallback...");
     }
 
     // Enviar só texto (sem imagem ou como fallback)
