@@ -274,19 +274,50 @@ async function enviarParaGrupo(
 
     const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
     console.log(`📤 Enviando para grupo: ${jid}`);
+    console.log(`📡 URL: ${baseUrl}`);
 
-    // 🚫 BLOQUEAR imagens .webp que causam "Aguardando mensagem"
+    // 🚫 Bloquear imagens .webp (causa problemas no WhatsApp)
     let imagemValida = imageUrl;
-    if (imageUrl && imageUrl.toLowerCase().includes('.webp')) {
-      console.log("🚫 Bloqueando imagem .webp (causa 'Aguardando mensagem')");
+    if (imagemValida && imagemValida.toLowerCase().includes('.webp')) {
+      console.log("🚫 Imagem .webp bloqueada - enviando somente texto");
       imagemValida = undefined;
     }
 
-    // ✅ ESTRATÉGIA: TEXTO PRIMEIRO, IMAGEM DEPOIS
-    // Isso garante que o link SEMPRE chegue, mesmo se a imagem falhar
+    // ✅ FORMATO ORIGINAL QUE FUNCIONAVA: imagem com legenda (texto+link no caption)
+    if (imagemValida) {
+      console.log(`🖼️ Imagem: ✅ SIM`);
+      const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
 
-    // 1. ENVIAR TEXTO COM LINK (OBRIGATÓRIO - sempre deve chegar)
-    console.log("📝 Enviando texto com link...");
+      const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
+        method: "POST",
+        headers: {
+          "Token": token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Phone: jid,
+          Image: imagemValida,
+          Caption: caption,
+        }),
+      });
+
+      const resultText = await imageResponse.text();
+      console.log(`📡 Resultado: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
+      
+      if (imageResponse.ok) {
+        console.log(`✅ Enviado IMAGEM+LEGENDA para grupo: ${jid}`);
+        console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        return { success: true };
+      }
+
+      console.error("❌ Falha ao enviar imagem:", resultText);
+
+      // FALLBACK: se imagem falhar, tenta só texto
+      console.log("⚠️ Tentando enviar só texto como fallback...");
+    }
+
+    // Enviar só texto (sem imagem ou como fallback)
+    console.log(`📝 Enviando texto...`);
     const textResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: "POST",
       headers: {
@@ -299,46 +330,16 @@ async function enviarParaGrupo(
       }),
     });
 
+    const textResult = await textResponse.text();
+    console.log(`📡 Resultado texto: ${textResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
+
     if (!textResponse.ok) {
-      const err = await textResponse.text();
-      console.error("❌ Falha ao enviar texto:", err);
-      return { success: false, error: err };
+      console.error("❌ Falha ao enviar texto:", textResult);
+      return { success: false, error: textResult };
     }
 
-    console.log("✅ Texto enviado com sucesso!");
-
-    // 2. ENVIAR IMAGEM COMO BÔNUS (se disponível e válida)
-    if (imagemValida) {
-      console.log("🖼️ Tentando enviar imagem como bônus...");
-      
-      // Pequena pausa para não sobrecarregar
-      await new Promise(r => setTimeout(r, 500));
-      
-      try {
-        const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
-          method: "POST",
-          headers: {
-            "Token": token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            Phone: jid,
-            Image: imagemValida,
-            Caption: "", // Sem caption, texto já foi enviado
-          }),
-        });
-
-        if (imageResponse.ok) {
-          console.log("✅ Imagem enviada com sucesso!");
-        } else {
-          console.log("⚠️ Imagem falhou, mas texto já foi enviado - OK");
-        }
-      } catch (imgErr) {
-        console.log("⚠️ Erro na imagem (ignorando):", imgErr);
-      }
-    }
-
-    console.log(`✅ Enviado para grupo: ${jid}`);
+    console.log(`✅ Enviado TEXTO para grupo: ${jid}`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     return { success: true };
   } catch (error: any) {
     console.error(`❌ Erro ao enviar para grupo:`, error);
@@ -698,92 +699,68 @@ async function processarProgramacao(
     console.log(`📦 Produto: ${produto.titulo}`);
     console.log(`💰 Preço: R$ ${produto.preco?.toFixed(2) || "N/A"}`);
 
-    // 4. BUSCAR INSTÂNCIA WUZAPI CONECTADA DO USUÁRIO
-    let instance: any = null;
+    // 4. BUSCAR CREDENCIAIS WUZAPI DO AFILIADO
+    // ✅ PRIORIDADE: clientes_afiliados (sistema de afiliados usa Contabo)
+    let clienteData: { wuzapi_token: string; wuzapi_url: string } | null = null;
     
-    // Prioridade: instância do usuário que está CONECTADA
-    const { data: userInstance, error: instanceError } = await supabase
-      .from('wuzapi_instances')
-      .select('*')
-      .eq('assigned_to_user', programacao.user_id)
-      .eq('is_connected', true)
-      .limit(1)
-      .maybeSingle();
-    
-    if (!instanceError && userInstance) {
-      instance = userInstance;
-      console.log('📡 Instância CONECTADA do usuário:', instance.instance_name, instance.wuzapi_url);
-    } else {
-      console.log('⚠️ Nenhuma instância conectada para o usuário:', programacao.user_id);
+    // PRIMEIRO: Buscar token do afiliado na tabela correta
+    const { data: afiliadoData } = await supabase
+      .from("clientes_afiliados")
+      .select("wuzapi_token, wuzapi_jid")
+      .eq("user_id", programacao.user_id)
+      .single();
+
+    if (afiliadoData?.wuzapi_token) {
+      // ✅ Afiliados SEMPRE usam a URL da Contabo
+      const contaboUrl = "https://api2.amzofertas.com.br";
+      clienteData = {
+        wuzapi_url: contaboUrl,
+        wuzapi_token: afiliadoData.wuzapi_token
+      };
+      console.log('📡 [AFILIADO] Token encontrado! URL:', contaboUrl);
+      console.log('📡 [AFILIADO] JID:', afiliadoData.wuzapi_jid || 'N/A');
     }
     
-    // Se não encontrou instância conectada do usuário, buscar qualquer uma conectada
-    if (!instance) {
-      const { data: anyInstance, error: anyError } = await supabase
+    // FALLBACK: Se não encontrou em clientes_afiliados, tentar wuzapi_instances (sistema PJ)
+    if (!clienteData) {
+      console.log('⚠️ Token não encontrado em clientes_afiliados, tentando wuzapi_instances...');
+      
+      const { data: userInstance } = await supabase
         .from('wuzapi_instances')
-        .select('*')
+        .select('wuzapi_url, wuzapi_token, instance_name, is_connected')
+        .eq('assigned_to_user', programacao.user_id)
         .eq('is_connected', true)
         .limit(1)
         .maybeSingle();
       
-      if (!anyError && anyInstance) {
-        instance = anyInstance;
-        console.log('📡 Usando instância conectada disponível:', instance.instance_name, instance.wuzapi_url);
-      } else {
-        console.log('⚠️ Nenhuma instância conectada no sistema');
-      }
-    }
-    
-    // Fallback: tentar buscar de clientes_afiliados (compatibilidade)
-    if (!instance) {
-      const { data: clienteData } = await supabase
-        .from("clientes_afiliados")
-        .select("wuzapi_token, wuzapi_instance_id")
-        .eq("user_id", programacao.user_id)
-        .single();
-
-      if (clienteData?.wuzapi_token) {
-        // ✅ Afiliados usam a URL da Contabo (não a URL do PJ)
-        const envUrl = Deno.env.get('CONTABO_WUZAPI_URL') || "https://api2.amzofertas.com.br";
-        instance = {
-          wuzapi_url: envUrl,
-          wuzapi_token: clienteData.wuzapi_token,
-          instance_name: 'fallback-afiliado',
-          is_connected: true
+      if (userInstance?.wuzapi_token) {
+        clienteData = {
+          wuzapi_url: userInstance.wuzapi_url,
+          wuzapi_token: userInstance.wuzapi_token
         };
-        console.log('📡 Usando token de clientes_afiliados como fallback:', envUrl);
+        console.log('📡 [PJ] Usando instância:', userInstance.instance_name, userInstance.wuzapi_url);
       }
     }
 
-    // Se ainda não encontrou, tentar variáveis de ambiente como fallback
-    if (!instance) {
-      const envUrl = Deno.env.get('CONTABO_WUZAPI_URL');
+    // ÚLTIMO FALLBACK: variáveis de ambiente
+    if (!clienteData) {
+      const envUrl = Deno.env.get('CONTABO_WUZAPI_URL') || "https://api2.amzofertas.com.br";
       const envToken = Deno.env.get('WUZAPI_TOKEN');
-
-      if (envUrl && envToken) {
-        instance = {
+      
+      if (envToken) {
+        clienteData = {
           wuzapi_url: envUrl,
-          wuzapi_token: envToken,
-          instance_name: 'env-fallback',
-          is_connected: true
+          wuzapi_token: envToken
         };
-        console.log('📡 Usando credenciais de ambiente como fallback (Contabo)');
+        console.log('📡 [ENV] Usando credenciais de ambiente:', envUrl);
       }
     }
 
-    if (!instance) {
+    if (!clienteData) {
       throw new Error("Nenhuma instância WuzAPI disponível. Conecte seu WhatsApp primeiro!");
     }
     
-    // ✅ VERIFICAR SE ESTÁ CONECTADA
-    if (!instance.is_connected) {
-      throw new Error(`Instância ${instance.instance_name} não está conectada!`);
-    }
-
-    const clienteData = {
-      wuzapi_token: instance.wuzapi_token,
-      wuzapi_url: instance.wuzapi_url
-    };
+    console.log('🔗 URL final para envio:', clienteData.wuzapi_url);
 
     // 5. BUSCAR GRUPOS
     let grupos: any[] = [];
