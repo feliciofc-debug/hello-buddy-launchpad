@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Login Supabase</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        .container {
+            background: #2a2a2a;
+            padding: 30px;
+            border-radius: 10px;
+        }
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: 1px solid #444;
+            background: #333;
+            color: white;
+        }
+        button {
+            background: #6366f1;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background: #4f46e5;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+        }
+        .success {
+            background: #10b981;
+        }
+        .error {
+            background: #ef4444;
+        }
+        .info {
+            background: #3b82f6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Teste Login Supabase</h1>
+        
+        <h2>1. Criar Usuário</h2>
+        <input type="email" id="email" placeholder="Email" value="teste@amzofertas.com.br">
+        <input type="password" id="password" placeholder="Senha" value="Teste123456">
+        <button onclick="criarUsuario()">Criar Usuário</button>
+        <div id="result1" class="result" style="display:none;"></div>
+
+        <h2>2. Fazer Login</h2>
+        <input type="email" id="loginEmail" placeholder="Email" value="teste@amzofertas.com.br">
+        <input type="password" id="loginPassword" placeholder="Senha" value="Teste123456">
+        <button onclick="fazerLogin()">Fazer Login</button>
+        <div id="result2" class="result" style="display:none;"></div>
+
+        <h2>3. Verificar Sessão</h2>
+        <button onclick="verificarSessao()">Verificar Sessão Atual</button>
+        <div id="result3" class="result" style="display:none;"></div>
+    </div>
+
+    <script>
+        // Configuração do Supabase
+        const SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1bnVxYWlkeGZmdWh3bXZjd3VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4MjQ2NjgsImV4cCI6MjA4NDQwMDY2OH0.PGDZSDZ1fc01cs8HHulK1HSSv2UHl2sHuanCwIow6L4';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        console.log('🔧 Supabase configurado:', SUPABASE_URL);
+
+        async function criarUsuario() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const resultDiv = document.getElementById('result1');
+            
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultDiv.textContent = 'Criando usuário...';
+
+            try {
+                const { data, error } = await supabase.auth.signUp({
+                    email: email,
+                    password: password
+                });
+
+                if (error) {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = '❌ ERRO:\n' + JSON.stringify(error, null, 2);
+                    console.error('Erro:', error);
+                } else {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = '✅ SUCESSO!\n' + JSON.stringify(data, null, 2);
+                    console.log('Sucesso:', data);
+                }
+            } catch (err) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '❌ EXCEÇÃO:\n' + err.toString();
+                console.error('Exceção:', err);
+            }
+        }
+
+        async function fazerLogin() {
+            const email = document.getElementById('loginEmail').value;
+            const password = document.getElementById('loginPassword').value;
+            const resultDiv = document.getElementById('result2');
+            
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultDiv.textContent = 'Fazendo login...';
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+
+                if (error) {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = '❌ ERRO:\n' + JSON.stringify(error, null, 2);
+                    console.error('Erro:', error);
+                } else {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = '✅ LOGIN OK!\n' + JSON.stringify({
+                        user: {
+                            id: data.user.id,
+                            email: data.user.email
+                        },
+                        session: !!data.session
+                    }, null, 2);
+                    console.log('Login OK:', data);
+                }
+            } catch (err) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '❌ EXCEÇÃO:\n' + err.toString();
+                console.error('Exceção:', err);
+            }
+        }
+
+        async function verificarSessao() {
+            const resultDiv = document.getElementById('result3');
+            
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultDiv.textContent = 'Verificando...';
+
+            try {
+                const { data: { session }, error } = await supabase.auth.getSession();
+
+                if (error) {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = '❌ ERRO:\n' + JSON.stringify(error, null, 2);
+                } else if (session) {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = '✅ SESSÃO ATIVA!\n' + JSON.stringify({
+                        user: {
+                            id: session.user.id,
+                            email: session.user.email
+                        }
+                    }, null, 2);
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = '❌ Nenhuma sessão ativa';
+                }
+            } catch (err) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = '❌ EXCEÇÃO:\n' + err.toString();
+            }
+        }
+
+        // Verificar sessão ao carregar
+        window.addEventListener('load', () => {
+            verificarSessao();
+        });
+    </script>
+</body>
+</html>

@@ -25,10 +25,10 @@
   <body>
     <div id="root"></div>
     <script>
-      // CORREÇÃO CRÍTICA: Interceptar URLs antigas do Bolt ANTES de qualquer coisa
+      // CORREÇÃO: Interceptar URLs de outros projetos ANTES de qualquer coisa
       (function() {
-        const CORRECT_SUPABASE_URL = 'https://zunuqaidxffuhwmvcwul.supabase.co';
-        const OLD_URLS = ['qbtqjrcfseqcfmcqlngr', 'gbtqjrcfseqcfmcqlngr', 'jibpvpqgplmahjhswiza'];
+        const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
+        const OLD_URLS = ['qbtqjrcfseqcfmcqlngr', 'gbtqjrcfseqcfmcqlngr', 'zunuqaidxffuhwmvcwul'];
         
         function shouldCorrect(url) {
           if (!url) return false;

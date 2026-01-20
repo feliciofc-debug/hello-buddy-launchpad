@@ -2,9 +2,9 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// ⚠️ HARDCODED - NÃO USAR import.meta.env (evita URL antiga no bundle)
-const supabaseUrl = 'https://zunuqaidxffuhwmvcwul.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1bnVxYWlkeGZmdWh3bXZjd3VsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4MjQ2NjgsImV4cCI6MjA4NDQwMDY2OH0.PGDZSDZ1fc01cs8HHulK1HSSv2UHl2sHuanCwIow6L4';
+// ⚠️ PROJETO LOVABLE - JÁ TEM TUDO FUNCIONANDO
+const supabaseUrl = 'https://jibpvpqgplmahjhswiza.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYnB2cHFncGxtYWhqaHN3aXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1ODA0ODcsImV4cCI6MjA3NjE1NjQ4N30.raNfZtKkNUZBHiAA6yobri0YoWZt_Ioq10qMC9hfNrcr';
 
 console.log('🔧 [SUPABASE CLIENT] Inicializando com URL:', supabaseUrl);
 
@@ -27,9 +27,9 @@ if (typeof window !== 'undefined') {
   console.log('✅ [SUPABASE CLIENT] Cliente criado');
   console.log('📍 [SUPABASE CLIENT] URL atual:', supabase.supabaseUrl);
   
-  // Se a URL estiver errada, ABORTAR
-  if (!supabase.supabaseUrl.includes('zunuqaidxffuhwmvcwul')) {
-    const erro = `🚨 URL INCORRETA: ${supabase.supabaseUrl}. Esperado: zunuqaidxffuhwmvcwul`;
+  // Verificar se está usando o projeto correto
+  if (!supabase.supabaseUrl.includes('jibpvpqgplmahjhswiza')) {
+    const erro = `🚨 URL INCORRETA: ${supabase.supabaseUrl}. Esperado: jibpvpqgplmahjhswiza`;
     console.error(erro);
     alert(erro);
     throw new Error(erro);
@@ -43,8 +43,8 @@ if (typeof window !== 'undefined') {
   window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input && 'url' in input ? input.url : '');
     
-    // Se a URL contém a URL antiga do Bolt ou projeto antigo, substituir pela correta
-    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr') || url.includes('jibpvpqgplmahjhswiza'))) {
+    // Se a URL contém URL de outro projeto, substituir pela correta
+    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr') || url.includes('zunuqaidxffuhwmvcwul'))) {
       const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, supabaseUrl);
       console.warn('⚠️ [CLIENT-FETCH] URL antiga detectada, corrigindo:');
       console.warn('   Antiga:', url.substring(0, 100));
@@ -72,7 +72,7 @@ if (typeof window !== 'undefined') {
     
     xhr.open = function(method: string, url: string | URL, ...args: any[]) {
       const urlStr = typeof url === 'string' ? url : url.toString();
-      if (urlStr && (urlStr.includes('qbtqjrcfseqcfmcqlngr') || urlStr.includes('gbtqjrcfseqcfmcqlngr') || urlStr.includes('jibpvpqgplmahjhswiza'))) {
+      if (urlStr && (urlStr.includes('qbtqjrcfseqcfmcqlngr') || urlStr.includes('gbtqjrcfseqcfmcqlngr') || urlStr.includes('zunuqaidxffuhwmvcwul'))) {
         const correctedUrl = urlStr.replace(/https?:\/\/[^/]+\.supabase\.co/g, supabaseUrl);
         console.warn('⚠️ [CLIENT-XHR] URL antiga detectada, corrigindo:', urlStr.substring(0, 100), '→', correctedUrl.substring(0, 100));
         return originalOpen.call(this, method, correctedUrl, ...args);
