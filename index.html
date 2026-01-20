@@ -26,6 +26,31 @@
     <div id="root"></div>
     <script>
       // CORREÇÃO: Interceptar URLs de outros projetos ANTES de qualquer coisa
+      // LIMPAR DADOS ANTIGOS DO PROJETO DELETADO
+      (function() {
+        try {
+          // Limpar localStorage de projetos antigos
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (
+              key.includes('zunuqaidxffuhwmvcwul') ||
+              key.includes('qbtqjrcfseqcfmcqlngr') ||
+              key.includes('gbtqjrcfseqcfmcqlngr') ||
+              (key.includes('supabase.auth.token') && !key.includes('jibpvpqgplmahjhswiza'))
+            )) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(key => {
+            console.log('🗑️ [HTML-CLEANUP] Removendo chave antiga:', key);
+            localStorage.removeItem(key);
+          });
+        } catch (e) {
+          console.warn('⚠️ [HTML-CLEANUP] Erro ao limpar storage:', e);
+        }
+      })();
+      
       (function() {
         const CORRECT_SUPABASE_URL = 'https://jibpvpqgplmahjhswiza.supabase.co';
         const OLD_URLS = ['qbtqjrcfseqcfmcqlngr', 'gbtqjrcfseqcfmcqlngr', 'zunuqaidxffuhwmvcwul'];

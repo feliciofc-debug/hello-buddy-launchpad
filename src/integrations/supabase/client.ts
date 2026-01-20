@@ -6,6 +6,48 @@ import type { Database } from './types';
 const supabaseUrl = 'https://jibpvpqgplmahjhswiza.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYnB2cHFncGxtYWhqaHN3aXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1ODA0ODcsImV4cCI6MjA3NjE1NjQ4N30.raNfZtKkNUZBHiAA6yobri0YoWZt_Ioq10qMC9hfNrcr';
 
+// LIMPAR DADOS ANTIGOS DO PROJETO DELETADO
+if (typeof window !== 'undefined') {
+  try {
+    // Limpar localStorage de projetos antigos
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (
+        key.includes('zunuqaidxffuhwmvcwul') ||
+        key.includes('qbtqjrcfseqcfmcqlngr') ||
+        key.includes('gbtqjrcfseqcfmcqlngr') ||
+        key.includes('supabase.auth.token') && !key.includes('jibpvpqgplmahjhswiza')
+      )) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach(key => {
+      console.log('🗑️ [CLEANUP] Removendo chave antiga:', key);
+      localStorage.removeItem(key);
+    });
+
+    // Limpar sessionStorage também
+    const sessionKeysToRemove: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && (
+        key.includes('zunuqaidxffuhwmvcwul') ||
+        key.includes('qbtqjrcfseqcfmcqlngr') ||
+        key.includes('gbtqjrcfseqcfmcqlngr')
+      )) {
+        sessionKeysToRemove.push(key);
+      }
+    }
+    sessionKeysToRemove.forEach(key => {
+      console.log('🗑️ [CLEANUP] Removendo chave de sessão antiga:', key);
+      sessionStorage.removeItem(key);
+    });
+  } catch (e) {
+    console.warn('⚠️ [CLEANUP] Erro ao limpar storage:', e);
+  }
+}
+
 console.log('🔧 [SUPABASE CLIENT] Inicializando com URL:', supabaseUrl);
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
