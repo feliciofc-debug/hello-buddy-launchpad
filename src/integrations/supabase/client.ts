@@ -6,45 +6,64 @@ import type { Database } from './types';
 const supabaseUrl = 'https://jibpvpqgplmahjhswiza.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImppYnB2cHFncGxtYWhqaHN3aXphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1ODA0ODcsImV4cCI6MjA3NjE1NjQ4N30.raNfZtKkNUZBHiAA6yobri0YoWZt_Ioq10qMC9hfNrcr';
 
-// LIMPAR DADOS ANTIGOS DO PROJETO DELETADO
+// LIMPAR DADOS ANTIGOS DO PROJETO DELETADO - VERSÃO AGRESSIVA
 if (typeof window !== 'undefined') {
   try {
-    // Limpar localStorage de projetos antigos
+    console.log('🧹 [CLEANUP] Iniciando limpeza agressiva de dados antigos...');
+    
+    // Limpar TODAS as chaves do localStorage que contenham qualquer referência a projetos antigos
     const keysToRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
-      if (key && (
-        key.includes('zunuqaidxffuhwmvcwul') ||
-        key.includes('qbtqjrcfseqcfmcqlngr') ||
-        key.includes('gbtqjrcfseqcfmcqlngr') ||
-        key.includes('supabase.auth.token') && !key.includes('jibpvpqgplmahjhswiza')
-      )) {
-        keysToRemove.push(key);
+      if (key) {
+        const keyLower = key.toLowerCase();
+        if (
+          keyLower.includes('zunuqaidxffuhwmvcwul') ||
+          keyLower.includes('qbtqjrcfseqcfmcqlngr') ||
+          keyLower.includes('gbtqjrcfseqcfmcqlngr') ||
+          (keyLower.includes('supabase') && !keyLower.includes('jibpvpqgplmahjhswiza'))
+        ) {
+          keysToRemove.push(key);
+        }
       }
     }
-    keysToRemove.forEach(key => {
-      console.log('🗑️ [CLEANUP] Removendo chave antiga:', key);
-      localStorage.removeItem(key);
-    });
+    
+    if (keysToRemove.length > 0) {
+      console.warn(`🗑️ [CLEANUP] Removendo ${keysToRemove.length} chave(s) antiga(s) do localStorage`);
+      keysToRemove.forEach(key => {
+        console.log('   - Removendo:', key);
+        localStorage.removeItem(key);
+      });
+    }
 
     // Limpar sessionStorage também
     const sessionKeysToRemove: string[] = [];
     for (let i = 0; i < sessionStorage.length; i++) {
       const key = sessionStorage.key(i);
-      if (key && (
-        key.includes('zunuqaidxffuhwmvcwul') ||
-        key.includes('qbtqjrcfseqcfmcqlngr') ||
-        key.includes('gbtqjrcfseqcfmcqlngr')
-      )) {
-        sessionKeysToRemove.push(key);
+      if (key) {
+        const keyLower = key.toLowerCase();
+        if (
+          keyLower.includes('zunuqaidxffuhwmvcwul') ||
+          keyLower.includes('qbtqjrcfseqcfmcqlngr') ||
+          keyLower.includes('gbtqjrcfseqcfmcqlngr') ||
+          (keyLower.includes('supabase') && !keyLower.includes('jibpvpqgplmahjhswiza'))
+        ) {
+          sessionKeysToRemove.push(key);
+        }
       }
     }
-    sessionKeysToRemove.forEach(key => {
-      console.log('🗑️ [CLEANUP] Removendo chave de sessão antiga:', key);
-      sessionStorage.removeItem(key);
-    });
+    
+    if (sessionKeysToRemove.length > 0) {
+      console.warn(`🗑️ [CLEANUP] Removendo ${sessionKeysToRemove.length} chave(s) antiga(s) do sessionStorage`);
+      sessionKeysToRemove.forEach(key => {
+        console.log('   - Removendo:', key);
+        sessionStorage.removeItem(key);
+      });
+    }
+    
+    console.log('✅ [CLEANUP] Limpeza concluída');
   } catch (e) {
-    console.warn('⚠️ [CLEANUP] Erro ao limpar storage:', e);
+    console.error('❌ [CLEANUP] Erro ao limpar storage:', e);
   }
 }
 
@@ -78,35 +97,57 @@ if (typeof window !== 'undefined') {
   }
 }
 
-// INTERCEPTOR: Corrige URLs antigas em requisições (FETCH + XMLHttpRequest)
+// INTERCEPTOR: Corrige URLs antigas em requisições (FETCH + XMLHttpRequest) - VERSÃO ULTRA AGRESSIVA
 if (typeof window !== 'undefined') {
-  // INTERCEPTAR FETCH
+  const OLD_PROJECT_IDS = ['qbtqjrcfseqcfmcqlngr', 'gbtqjrcfseqcfmcqlngr', 'zunuqaidxffuhwmvcwul'];
+  
+  function shouldCorrectUrl(url: string | null | undefined): boolean {
+    if (!url) return false;
+    const urlStr = url.toString().toLowerCase();
+    return OLD_PROJECT_IDS.some(oldId => urlStr.includes(oldId.toLowerCase()));
+  }
+  
+  function correctUrl(url: string): string {
+    return url.replace(/https?:\/\/([^/]+)\.supabase\.co/gi, supabaseUrl);
+  }
+  
+  // INTERCEPTAR FETCH - VERSÃO MELHORADA
   const originalFetch = window.fetch;
   window.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-    let url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input && 'url' in input ? input.url : '');
-    
-    // Se a URL contém URL de outro projeto, substituir pela correta
-    if (url && (url.includes('qbtqjrcfseqcfmcqlngr') || url.includes('gbtqjrcfseqcfmcqlngr') || url.includes('zunuqaidxffuhwmvcwul'))) {
-      const correctedUrl = url.replace(/https?:\/\/[^/]+\.supabase\.co/g, supabaseUrl);
-      console.warn('⚠️ [CLIENT-FETCH] URL antiga detectada, corrigindo:');
-      console.warn('   Antiga:', url.substring(0, 100));
-      console.warn('   Nova:', correctedUrl.substring(0, 100));
-      url = correctedUrl;
+    try {
+      let url: string | null = null;
       
-      // Recriar o input com a URL corrigida
       if (typeof input === 'string') {
-        input = url;
+        url = input;
       } else if (input instanceof URL) {
-        input = new URL(url);
+        url = input.toString();
       } else if (input && 'url' in input) {
-        input = new Request(url, input);
+        url = (input as Request).url;
       }
+      
+      if (shouldCorrectUrl(url)) {
+        const correctedUrl = correctUrl(url!);
+        console.error('🚨 [CLIENT-FETCH] URL ANTIGA DETECTADA! Corrigindo:');
+        console.error('   ❌ Antiga:', url!.substring(0, 150));
+        console.error('   ✅ Nova:', correctedUrl.substring(0, 150));
+        
+        // Recriar o input com a URL corrigida
+        if (typeof input === 'string') {
+          input = correctedUrl;
+        } else if (input instanceof URL) {
+          input = new URL(correctedUrl);
+        } else if (input && 'url' in input) {
+          input = new Request(correctedUrl, input);
+        }
+      }
+    } catch (e) {
+      console.error('❌ [CLIENT-FETCH] Erro no interceptor:', e);
     }
     
     return originalFetch.call(this, input, init);
   };
   
-  // INTERCEPTAR XMLHttpRequest (Supabase pode usar isso também)
+  // INTERCEPTAR XMLHttpRequest - VERSÃO MELHORADA
   const OriginalXHR = window.XMLHttpRequest;
   window.XMLHttpRequest = function() {
     const xhr = new OriginalXHR();
@@ -114,9 +155,11 @@ if (typeof window !== 'undefined') {
     
     xhr.open = function(method: string, url: string | URL, ...args: any[]) {
       const urlStr = typeof url === 'string' ? url : url.toString();
-      if (urlStr && (urlStr.includes('qbtqjrcfseqcfmcqlngr') || urlStr.includes('gbtqjrcfseqcfmcqlngr') || urlStr.includes('zunuqaidxffuhwmvcwul'))) {
-        const correctedUrl = urlStr.replace(/https?:\/\/[^/]+\.supabase\.co/g, supabaseUrl);
-        console.warn('⚠️ [CLIENT-XHR] URL antiga detectada, corrigindo:', urlStr.substring(0, 100), '→', correctedUrl.substring(0, 100));
+      if (shouldCorrectUrl(urlStr)) {
+        const correctedUrl = correctUrl(urlStr);
+        console.error('🚨 [CLIENT-XHR] URL ANTIGA DETECTADA! Corrigindo:');
+        console.error('   ❌ Antiga:', urlStr.substring(0, 150));
+        console.error('   ✅ Nova:', correctedUrl.substring(0, 150));
         return originalOpen.call(this, method, correctedUrl, ...args);
       }
       return originalOpen.call(this, method, url, ...args);
@@ -125,5 +168,5 @@ if (typeof window !== 'undefined') {
     return xhr;
   };
   
-  console.log('✅ [CLIENT] Interceptores de fetch e XMLHttpRequest instalados');
+  console.log('✅ [CLIENT] Interceptores ULTRA AGRESSIVOS instalados - URLs antigas serão bloqueadas e corrigidas');
 }
