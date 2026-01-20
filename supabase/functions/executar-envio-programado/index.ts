@@ -273,53 +273,20 @@ async function enviarParaGrupo(
     }
 
     const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
-    console.log(`📤 Enviando para grupo: ${jid} via ${baseUrl}`);
+    console.log(`📤 Enviando para grupo: ${jid}`);
 
-    // Se tem imagem, envia imagem COM caption (link + texto) - FORMATO ORIGINAL QUE FUNCIONAVA
-    if (imageUrl) {
-      const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
-
-      const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
-        method: "POST",
-        headers: {
-          "Token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          Phone: jid,
-          Image: imageUrl,
-          Caption: caption,
-        }),
-      });
-
-      const result = await imageResponse.json().catch(() => null);
-
-      if (!imageResponse.ok) {
-        // Fallback: se imagem falhar, tenta só texto
-        console.log("⚠️ Falha ao enviar imagem, tentando só texto...");
-        const textResponse = await fetch(`${baseUrl}/chat/send/text`, {
-          method: "POST",
-          headers: {
-            "Token": token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            Phone: jid,
-            Body: message,
-          }),
-        });
-
-        if (!textResponse.ok) {
-          const err = await textResponse.text();
-          return { success: false, error: err };
-        }
-      }
-
-      console.log(`✅ Enviado para grupo: ${jid}`);
-      return { success: true };
+    // 🚫 BLOQUEAR imagens .webp que causam "Aguardando mensagem"
+    let imagemValida = imageUrl;
+    if (imageUrl && imageUrl.toLowerCase().includes('.webp')) {
+      console.log("🚫 Bloqueando imagem .webp (causa 'Aguardando mensagem')");
+      imagemValida = undefined;
     }
 
-    // Sem imagem - só texto
+    // ✅ ESTRATÉGIA: TEXTO PRIMEIRO, IMAGEM DEPOIS
+    // Isso garante que o link SEMPRE chegue, mesmo se a imagem falhar
+
+    // 1. ENVIAR TEXTO COM LINK (OBRIGATÓRIO - sempre deve chegar)
+    console.log("📝 Enviando texto com link...");
     const textResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: "POST",
       headers: {
@@ -334,10 +301,44 @@ async function enviarParaGrupo(
 
     if (!textResponse.ok) {
       const err = await textResponse.text();
+      console.error("❌ Falha ao enviar texto:", err);
       return { success: false, error: err };
     }
 
-    console.log(`✅ Enviado TEXTO para grupo: ${jid}`);
+    console.log("✅ Texto enviado com sucesso!");
+
+    // 2. ENVIAR IMAGEM COMO BÔNUS (se disponível e válida)
+    if (imagemValida) {
+      console.log("🖼️ Tentando enviar imagem como bônus...");
+      
+      // Pequena pausa para não sobrecarregar
+      await new Promise(r => setTimeout(r, 500));
+      
+      try {
+        const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
+          method: "POST",
+          headers: {
+            "Token": token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            Phone: jid,
+            Image: imagemValida,
+            Caption: "", // Sem caption, texto já foi enviado
+          }),
+        });
+
+        if (imageResponse.ok) {
+          console.log("✅ Imagem enviada com sucesso!");
+        } else {
+          console.log("⚠️ Imagem falhou, mas texto já foi enviado - OK");
+        }
+      } catch (imgErr) {
+        console.log("⚠️ Erro na imagem (ignorando):", imgErr);
+      }
+    }
+
+    console.log(`✅ Enviado para grupo: ${jid}`);
     return { success: true };
   } catch (error: any) {
     console.error(`❌ Erro ao enviar para grupo:`, error);
