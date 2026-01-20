@@ -17,7 +17,7 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 
                         Deno.env.get('PROJECT_URL') || 
                         Deno.env.get('URL_DO_PROJETO') || 
-                        'https://zunuqaidxffuhwmvcwul.supabase.co'
+                        'https://jibpvpqgplmahjhswiza.supabase.co'
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || 
                                      Deno.env.get('SERVICE_ROLE_KEY') || 
                                      Deno.env.get('CHAVE_FUNÇÃO_DE_SERVIÇO') || ''
