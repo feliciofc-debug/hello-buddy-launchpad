@@ -276,12 +276,92 @@ async function enviarParaGrupo(
     console.log(`📤 Enviando para grupo: ${jid}`);
     console.log(`📡 URL: ${baseUrl}`);
 
-    // ✅ FORMATO: imagem com legenda (texto+link no caption)
-    // SEMPRE tentar enviar imagem primeiro (inclusive .webp) - só fallback se falhar
+    // ============================================
+    // 🆕 SOLUÇÃO CLAUDE OPUS: Baixar imagem e enviar como base64
+    // Isso contorna o bloqueio do CDN da Shopee a IPs de datacenter
+    // ============================================
+    
     if (imageUrl) {
-      console.log(`🖼️ Tentando enviar imagem: ${imageUrl.substring(0, 60)}...`);
       const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
+      
+      // 🆕 ESTRATÉGIA 1: Baixar imagem e converter para base64
+      console.log(`⬇️ Baixando imagem: ${imageUrl.substring(0, 60)}...`);
+      let base64Image: string | null = null;
+      
+      try {
+        const imgResponse = await fetch(imageUrl, {
+          headers: {
+            // Simular navegador para evitar bloqueio do CDN
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+            "Referer": "https://shopee.com.br/",
+          },
+        });
 
+        if (imgResponse.ok) {
+          const contentType = imgResponse.headers.get("content-type") || "image/jpeg";
+          const arrayBuffer = await imgResponse.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          
+          // Converter para base64 (método compatível com Deno)
+          let binary = '';
+          for (let i = 0; i < uint8Array.length; i++) {
+            binary += String.fromCharCode(uint8Array[i]);
+          }
+          const base64 = btoa(binary);
+          
+          base64Image = `data:${contentType};base64,${base64}`;
+          console.log(`✅ Imagem baixada: ${Math.round(arrayBuffer.byteLength / 1024)}KB`);
+        } else {
+          console.warn(`⚠️ Falha ao baixar imagem: ${imgResponse.status}`);
+        }
+      } catch (dlError) {
+        console.warn(`⚠️ Erro ao baixar imagem:`, dlError);
+      }
+
+      // 🆕 Se conseguiu baixar, envia como base64
+      if (base64Image) {
+        try {
+          console.log(`🖼️ Enviando imagem como BASE64...`);
+          
+          const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
+            method: "POST",
+            headers: {
+              "Token": token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              Phone: jid,
+              Image: base64Image,
+              Caption: caption,
+            }),
+          });
+
+          const resultText = await imageResponse.text();
+          console.log(`📡 Resultado base64: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
+          
+          if (imageResponse.ok) {
+            try {
+              const result = JSON.parse(resultText);
+              if (result.success !== false && !result.error) {
+                console.log(`✅ Enviado IMAGEM (base64) + LEGENDA para grupo: ${jid}`);
+                console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+                return { success: true };
+              }
+            } catch {
+              console.log(`✅ Enviado IMAGEM (base64) + LEGENDA para grupo: ${jid}`);
+              console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+              return { success: true };
+            }
+          }
+          console.warn("⚠️ Base64 falhou, tentando URL direta...", resultText.substring(0, 100));
+        } catch (b64Error) {
+          console.warn("⚠️ Erro no envio base64:", b64Error);
+        }
+      }
+
+      // 🆕 ESTRATÉGIA 2: Fallback para URL direta
+      console.log(`🔄 Tentando URL direta como fallback...`);
       try {
         const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
           method: "POST",
@@ -297,35 +377,30 @@ async function enviarParaGrupo(
         });
 
         const resultText = await imageResponse.text();
-        console.log(`📡 Resultado imagem: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
+        console.log(`📡 Resultado URL: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
         
         if (imageResponse.ok) {
-          // Verificar se realmente foi enviado (pode ter status 200 mas falhar)
           try {
             const result = JSON.parse(resultText);
             if (result.success !== false && !result.error) {
-              console.log(`✅ Enviado IMAGEM+LEGENDA para grupo: ${jid}`);
+              console.log(`✅ Enviado IMAGEM (URL) + LEGENDA para grupo: ${jid}`);
               console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
               return { success: true };
             }
           } catch {
-            // Se não for JSON, assumir sucesso se status OK
-            console.log(`✅ Enviado IMAGEM+LEGENDA para grupo: ${jid}`);
+            console.log(`✅ Enviado IMAGEM (URL) + LEGENDA para grupo: ${jid}`);
             console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
             return { success: true };
           }
         }
-
-        console.warn("⚠️ Imagem falhou, tentando fallback texto...", resultText.substring(0, 100));
-      } catch (imgError) {
-        console.warn("⚠️ Erro ao enviar imagem, tentando fallback texto...", imgError);
+        console.warn("⚠️ URL direta falhou, enviando só texto...", resultText.substring(0, 100));
+      } catch (urlError) {
+        console.warn("⚠️ Erro no envio URL:", urlError);
       }
-      
-      // FALLBACK: se imagem falhar, tenta só texto
     }
 
-    // Enviar só texto (sem imagem ou como fallback)
-    console.log(`📝 Enviando texto...`);
+    // FALLBACK FINAL: Enviar só texto
+    console.log(`📝 Enviando somente texto...`);
     const textResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: "POST",
       headers: {
