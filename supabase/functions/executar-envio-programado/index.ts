@@ -332,17 +332,28 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
     }
     const base64 = btoa(binary);
 
-    // Detectar tipo da imagem
+    // Detectar tipo da imagem - IMPORTANTE: WuzAPI só aceita PNG ou JPEG com prefixo!
     let mimeType = contentTypeHeader || "image/jpeg";
-    if (mimeType.includes("webp")) mimeType = "image/webp";
-    else if (mimeType.includes("png")) mimeType = "image/png";
-    else if (mimeType.includes("gif")) mimeType = "image/gif";
-    else mimeType = "image/jpeg";
+    if (mimeType.includes("webp")) {
+      // WebP NÃO é suportado pelo WuzAPI - força JPEG
+      mimeType = "image/jpeg";
+      console.log(`⚠️ WebP detectado - convertendo para image/jpeg no prefixo`);
+    } else if (mimeType.includes("png")) {
+      mimeType = "image/png";
+    } else if (mimeType.includes("gif")) {
+      mimeType = "image/gif";
+    } else {
+      mimeType = "image/jpeg";
+    }
 
-    console.log(`✅ Imagem baixada: ${Math.round(bytes.length / 1024)}KB (${mimeType})`);
+    console.log(`✅ Imagem baixada: ${Math.round(bytes.length / 1024)}KB (forçando ${mimeType})`);
+
+    // IMPORTANTE: WuzAPI EXIGE o prefixo data:image/xxx;base64,
+    const dataUri = `data:${mimeType};base64,${base64}`;
+    console.log(`🔍 Data URI criada com prefixo: data:${mimeType};base64,... (${dataUri.length} chars)`);
 
     return {
-      dataUri: `data:${mimeType};base64,${base64}`,
+      dataUri,
       bytes: bytes.length,
       contentType: mimeType,
       contentLengthHeader,
@@ -375,17 +386,13 @@ async function enviarParaGrupo(
 
       const { dataUri: base64Image } = await baixarImagemComoBase64(imageUrl);
 
-      // 🆕 Se conseguiu baixar, envia como base64 (testando base64 PURO sem prefixo)
+      // 🆕 Se conseguiu baixar, envia com prefixo COMPLETO (WuzAPI exige!)
       if (base64Image) {
         try {
-          console.log(`🖼️ Enviando imagem como BASE64...`);
-
-          let imagemFinal: string | null = base64Image;
-          if (imagemFinal && imagemFinal.includes(',')) {
-            imagemFinal = imagemFinal.split(',')[1];
-            console.log(`🔍 Enviando base64 PURO (sem prefixo data:)`);
-          }
+          console.log(`🖼️ Enviando imagem como BASE64 COM PREFIXO...`);
+          console.log(`🔍 Formato: ${base64Image.substring(0, 30)}...`);
           
+          // IMPORTANTE: NÃO remover o prefixo! WuzAPI EXIGE data:image/xxx;base64,
           const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
             method: "POST",
             headers: {
@@ -394,7 +401,7 @@ async function enviarParaGrupo(
             },
             body: JSON.stringify({
               Phone: jid,
-              Image: imagemFinal,
+              Image: base64Image, // Enviar COM prefixo data:image/xxx;base64,
               Caption: caption,
             }),
           });
