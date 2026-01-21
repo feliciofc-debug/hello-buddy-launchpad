@@ -259,6 +259,100 @@ function formatarMensagemProduto(produto: any, config: any): string {
   return msg.trim();
 }
 
+// ============================================
+// 🔍 Proxy de imagem: baixar e converter para base64
+// (para contornar bloqueio de CDN e diagnosticar diferenças)
+// ============================================
+async function baixarImagemComoBase64(imageUrl: string): Promise<{
+  dataUri: string | null;
+  bytes: number | null;
+  contentType: string | null;
+  contentLengthHeader: string | null;
+}> {
+  console.log(`🔍 === ANÁLISE DA IMAGEM ===`);
+  console.log(`🔍 URL completa: ${imageUrl}`);
+  try {
+    console.log(`🔍 Domínio: ${new URL(imageUrl).hostname}`);
+  } catch {
+    console.log(`🔍 Domínio: (URL inválida)`);
+  }
+  console.log(`🔍 Extensão aparente: ${imageUrl.split('.').pop()?.substring(0, 10)}`);
+
+  try {
+    console.log(`⬇️ Baixando imagem: ${imageUrl.substring(0, 80)}...`);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(imageUrl, {
+      headers: {
+        // Headers completos para simular navegador real
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "Referer": "https://shopee.com.br/",
+        "Cache-Control": "no-cache",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      console.warn(`⚠️ Falha ao baixar imagem: HTTP ${response.status}`);
+      return {
+        dataUri: null,
+        bytes: null,
+        contentType: response.headers.get("content-type"),
+        contentLengthHeader: response.headers.get("content-length"),
+      };
+    }
+
+    const contentTypeHeader = response.headers.get("content-type");
+    const contentLengthHeader = response.headers.get("content-length");
+
+    const arrayBuffer = await response.arrayBuffer();
+
+    console.log(`🔍 Content-Type recebido: ${contentTypeHeader}`);
+    console.log(`🔍 Content-Length: ${contentLengthHeader}`);
+    console.log(`🔍 Tamanho real: ${arrayBuffer.byteLength} bytes`);
+
+    const bytes = new Uint8Array(arrayBuffer);
+
+    // Verificar tamanho (máx 5MB para segurança)
+    if (bytes.length > 5 * 1024 * 1024) {
+      console.warn(`⚠️ Imagem muito grande: ${Math.round(bytes.length / 1024 / 1024)}MB`);
+      return { dataUri: null, bytes: bytes.length, contentType: contentTypeHeader, contentLengthHeader };
+    }
+
+    // Converter para base64 (compatível com Deno)
+    let binary = "";
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+
+    // Detectar tipo da imagem
+    let mimeType = contentTypeHeader || "image/jpeg";
+    if (mimeType.includes("webp")) mimeType = "image/webp";
+    else if (mimeType.includes("png")) mimeType = "image/png";
+    else if (mimeType.includes("gif")) mimeType = "image/gif";
+    else mimeType = "image/jpeg";
+
+    console.log(`✅ Imagem baixada: ${Math.round(bytes.length / 1024)}KB (${mimeType})`);
+
+    return {
+      dataUri: `data:${mimeType};base64,${base64}`,
+      bytes: bytes.length,
+      contentType: mimeType,
+      contentLengthHeader,
+    };
+  } catch (error) {
+    console.warn(`⚠️ Erro ao baixar imagem:`, error);
+    return { dataUri: null, bytes: null, contentType: null, contentLengthHeader: null };
+  }
+}
+
 async function enviarParaGrupo(
   wuzapiUrl: string,
   token: string,
@@ -276,76 +370,21 @@ async function enviarParaGrupo(
     console.log(`📤 Enviando para grupo: ${jid}`);
     console.log(`📡 URL: ${baseUrl}`);
 
-    // ============================================
-    // 🆕 SOLUÇÃO CLAUDE OPUS: Baixar imagem e enviar como base64
-    // Isso contorna o bloqueio do CDN da Shopee a IPs de datacenter
-    // ============================================
-    
     if (imageUrl) {
       const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
-      
-      // ============================================
-      // 🆕 SOLUÇÃO CLAUDE OPUS MELHORADA: 
-      // Download com timeout e headers completos
-      // ============================================
-      console.log(`⬇️ Baixando imagem: ${imageUrl.substring(0, 80)}...`);
-      let base64Image: string | null = null;
-      
-      try {
-        // Timeout de 15 segundos com AbortController
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
-        
-        const imgResponse = await fetch(imageUrl, {
-          headers: {
-            // Headers completos para simular navegador real
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-            "Referer": "https://shopee.com.br/",
-            "Cache-Control": "no-cache",
-          },
-          signal: controller.signal,
-        });
-        
-        clearTimeout(timeout);
 
-        if (imgResponse.ok) {
-          const arrayBuffer = await imgResponse.arrayBuffer();
-          const bytes = new Uint8Array(arrayBuffer);
-          
-          // Verificar tamanho (máx 5MB para segurança)
-          if (bytes.length > 5 * 1024 * 1024) {
-            console.warn(`⚠️ Imagem muito grande: ${Math.round(bytes.length / 1024 / 1024)}MB - pulando base64`);
-          } else {
-            // Converter para base64 (método compatível com Deno)
-            let binary = '';
-            for (let i = 0; i < bytes.length; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            const base64 = btoa(binary);
-            
-            // Detectar tipo da imagem
-            let mimeType = imgResponse.headers.get("content-type") || "image/jpeg";
-            if (mimeType.includes("webp")) mimeType = "image/webp";
-            else if (mimeType.includes("png")) mimeType = "image/png";
-            else if (mimeType.includes("gif")) mimeType = "image/gif";
-            else mimeType = "image/jpeg";
-            
-            base64Image = `data:${mimeType};base64,${base64}`;
-            console.log(`✅ Imagem baixada: ${Math.round(bytes.length / 1024)}KB (${mimeType})`);
-          }
-        } else {
-          console.warn(`⚠️ Falha ao baixar imagem: HTTP ${imgResponse.status}`);
-        }
-      } catch (dlError) {
-        console.warn(`⚠️ Erro ao baixar imagem:`, dlError);
-      }
+      const { dataUri: base64Image } = await baixarImagemComoBase64(imageUrl);
 
-      // 🆕 Se conseguiu baixar, envia como base64
+      // 🆕 Se conseguiu baixar, envia como base64 (testando base64 PURO sem prefixo)
       if (base64Image) {
         try {
           console.log(`🖼️ Enviando imagem como BASE64...`);
+
+          let imagemFinal: string | null = base64Image;
+          if (imagemFinal && imagemFinal.includes(',')) {
+            imagemFinal = imagemFinal.split(',')[1];
+            console.log(`🔍 Enviando base64 PURO (sem prefixo data:)`);
+          }
           
           const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
             method: "POST",
@@ -355,7 +394,7 @@ async function enviarParaGrupo(
             },
             body: JSON.stringify({
               Phone: jid,
-              Image: base64Image,
+              Image: imagemFinal,
               Caption: caption,
             }),
           });
@@ -369,11 +408,17 @@ async function enviarParaGrupo(
               if (result.success !== false && !result.error) {
                 console.log(`✅ Enviado IMAGEM (base64) + LEGENDA para grupo: ${jid}`);
                 console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+                 // Delay de 5 segundos entre envios para evitar rate limiting
+                 console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
+                 await sleep(5000);
                 return { success: true };
               }
             } catch {
               console.log(`✅ Enviado IMAGEM (base64) + LEGENDA para grupo: ${jid}`);
               console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+               // Delay de 5 segundos entre envios para evitar rate limiting
+               console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
+               await sleep(5000);
               return { success: true };
             }
           }
@@ -408,11 +453,17 @@ async function enviarParaGrupo(
             if (result.success !== false && !result.error) {
               console.log(`✅ Enviado IMAGEM (URL) + LEGENDA para grupo: ${jid}`);
               console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+               // Delay de 5 segundos entre envios para evitar rate limiting
+               console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
+               await sleep(5000);
               return { success: true };
             }
           } catch {
             console.log(`✅ Enviado IMAGEM (URL) + LEGENDA para grupo: ${jid}`);
             console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+             // Delay de 5 segundos entre envios para evitar rate limiting
+             console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
+             await sleep(5000);
             return { success: true };
           }
         }
@@ -446,6 +497,9 @@ async function enviarParaGrupo(
 
     console.log(`✅ Enviado TEXTO para grupo: ${jid}`);
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    // Delay de 5 segundos entre envios para evitar rate limiting
+    console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
+    await sleep(5000);
     return { success: true };
   } catch (error: any) {
     console.error(`❌ Erro ao enviar para grupo:`, error);
