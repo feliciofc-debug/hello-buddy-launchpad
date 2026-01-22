@@ -15,6 +15,8 @@ const corsHeaders = {
 const CONFIG = {
   DELAY_ENTRE_GRUPOS_MS: 2000,
   MAX_PROGRAMACOES_POR_EXECUCAO: 5,
+  // WuzAPI costuma rejeitar payloads grandes (413). Mantemos bem abaixo.
+  MAX_DATAURI_CHARS: 650_000,
 };
 
 function sleep(ms: number): Promise<void> {
@@ -364,7 +366,7 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
                 content: [
                   {
                     type: "text",
-                    text: "Convert this image to JPEG format. Keep exactly the same content, just change the format. Output the converted image."
+                    text: "Convert this image to JPEG format. Keep exactly the same content, just change the format. Compress it moderately (JPEG quality around 70-80). Output the converted image."
                   },
                   {
                     type: "image_url",
@@ -439,8 +441,66 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
     console.log(`✅ Imagem processada: ${Math.round(finalBytes.length / 1024)}KB como ${mimeType}`);
 
     // Criar Data URI com prefixo correto
-    const dataUri = `data:${mimeType};base64,${base64}`;
+    let dataUri = `data:${mimeType};base64,${base64}`;
     console.log(`🔍 Data URI criada: data:${mimeType};base64,... (${dataUri.length} chars)`);
+
+    // Evitar 413 no WuzAPI: se ficar grande, recomprimir/resize via IA
+    if (dataUri.length > CONFIG.MAX_DATAURI_CHARS) {
+      console.warn(`⚠️ Data URI muito grande (${dataUri.length} chars). Re-comprimindo via IA...`);
+
+      const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+      if (!lovableApiKey) {
+        console.warn("⚠️ LOVABLE_API_KEY ausente; não é possível recomprimir. Usando fallback sem imagem.");
+        return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+      }
+
+      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${lovableApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash-image-preview",
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Resize this image so the longest side is at most 1024px, then export as JPEG with strong compression (quality ~60-70). Keep content the same. Output the JPEG image.",
+                },
+                { type: "image_url", image_url: { url: dataUri } },
+              ],
+            },
+          ],
+          modalities: ["image", "text"],
+        }),
+      });
+
+      if (!aiResponse.ok) {
+        const t = await aiResponse.text();
+        console.warn(`⚠️ Recompressão IA falhou: ${aiResponse.status} - ${t.substring(0, 140)}`);
+        return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+      }
+
+      const aiData = await aiResponse.json();
+      const converted = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url as string | undefined;
+
+      if (!converted || !converted.includes("base64")) {
+        console.warn("⚠️ Recompressão IA retornou sem imagem. Usando fallback sem imagem.");
+        return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+      }
+
+      dataUri = converted;
+      console.log(`✅ Data URI recomprimida: ${dataUri.length} chars`);
+
+      if (dataUri.length > CONFIG.MAX_DATAURI_CHARS) {
+        console.warn(`⚠️ Ainda grande demais (${dataUri.length} chars). Para evitar 413, enviando sem imagem.`);
+        return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+      }
+    }
 
     return {
       dataUri,
