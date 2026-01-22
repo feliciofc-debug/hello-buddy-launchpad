@@ -345,10 +345,16 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
         
         console.log(`✅ Conversão WebP → JPEG concluída: ${Math.round(bytes.length / 1024)}KB → ${Math.round(finalBytes.length / 1024)}KB`);
       } catch (conversionError) {
-        console.warn(`⚠️ Erro ao converter WebP, tentando enviar como está:`, conversionError);
-        // Fallback: usa os bytes originais com mime type forçado
-        finalBytes = bytes;
-        mimeType = "image/jpeg"; // Tenta forçar mesmo assim
+        // ⚠️ IMPORTANTE:
+        // Não podemos "fingir" que WebP é JPEG apenas mudando o prefixo.
+        // Isso gera mídia inválida e pode causar "Aguardando mensagem" no WhatsApp.
+        console.warn(`❌ Falha ao converter WebP → JPEG. Caindo para fallback de TEXTO (sem imagem). Erro:`, conversionError);
+        return {
+          dataUri: null,
+          bytes: bytes.length,
+          contentType: contentTypeHeader,
+          contentLengthHeader,
+        };
       }
     } else if (contentTypeHeader?.includes("png")) {
       finalBytes = bytes;
