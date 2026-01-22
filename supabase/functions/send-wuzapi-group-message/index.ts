@@ -6,6 +6,105 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const IMG_CONFIG = {
+  // evita 413 na WuzAPI
+  MAX_DATAURI_CHARS: 650_000,
+};
+
+async function baixarImagemComoBase64(imageUrl: string): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(imageUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        "Referer": "https://shopee.com.br/",
+        "Cache-Control": "no-cache",
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      console.log(`⚠️ Download imagem falhou: HTTP ${response.status}`);
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+
+    if (bytes.length > 5 * 1024 * 1024) {
+      console.log(`⚠️ Imagem muito grande para proxy: ${Math.round(bytes.length / 1024 / 1024)}MB`);
+      return null;
+    }
+
+    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!lovableApiKey) {
+      console.log("⚠️ LOVABLE_API_KEY ausente - não dá para converter/comprimir");
+      return null;
+    }
+
+    // sempre padroniza para JPEG e já faz compressão/resize para caber no limite
+    const base64In = (() => {
+      let bin = "";
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin);
+    })();
+    const dataUriIn = `data:${contentType.includes("png") ? "image/png" : contentType.includes("webp") ? "image/webp" : "image/jpeg"};base64,${base64In}`;
+
+    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash-image-preview",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text:
+                  "Convert this image to JPEG. Resize so the longest side is at most 1024px and compress strongly (quality ~60-70). Keep content the same. Output the JPEG image.",
+              },
+              { type: "image_url", image_url: { url: dataUriIn } },
+            ],
+          },
+        ],
+        modalities: ["image", "text"],
+      }),
+    });
+
+    if (!aiResp.ok) {
+      const t = await aiResp.text();
+      console.log(`⚠️ IA conversão/compressão falhou: ${aiResp.status} - ${t.substring(0, 140)}`);
+      return null;
+    }
+
+    const aiData = await aiResp.json();
+    const out = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url as string | undefined;
+    if (!out || !out.includes("base64")) return null;
+
+    if (out.length > IMG_CONFIG.MAX_DATAURI_CHARS) {
+      console.log(`⚠️ DataURI ainda grande (${out.length} chars) - evitando 413`);
+      return null;
+    }
+
+    return out;
+  } catch (e) {
+    console.log("⚠️ Erro proxy imagem:", e);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -135,20 +234,40 @@ serve(async (req) => {
     let endpoint: string;
 
     if (imageUrl) {
-      // COM IMAGEM (com fallback robusto para texto)
-      endpoint = `${baseUrl}/chat/send/image`;
-      response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          Phone: groupPhone,
-          Caption: message,
-          Image: imageUrl,
-        }),
-      });
+      // COM IMAGEM (proxy + compressão para evitar CDN bloqueando e evitar 413)
+      const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
+      const base64Image = await baixarImagemComoBase64(imageUrl);
+
+      if (base64Image) {
+        endpoint = `${baseUrl}/chat/send/image`;
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Token": token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            Phone: groupPhone,
+            Caption: caption,
+            Image: base64Image,
+          }),
+        });
+      } else {
+        // fallback imediato para texto (garante post+link)
+        console.log("⚠️ Não foi possível preparar a imagem (proxy/compressão). Enviando só texto...");
+        endpoint = `${baseUrl}/chat/send/text`;
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Token": token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            Phone: groupPhone,
+            Body: message,
+          }),
+        });
+      }
 
       let result: any = null;
       try {
@@ -163,7 +282,7 @@ serve(async (req) => {
         (result.error || result.erro || result.success === false || result.status === "error");
 
       if (!response.ok || payloadHasError) {
-        console.log("⚠️ Falha ao enviar imagem para grupo, tentando só texto...");
+        console.log("⚠️ Falha ao enviar (imagem/texto) para grupo, tentando só texto...");
         endpoint = `${baseUrl}/chat/send/text`;
         response = await fetch(endpoint, {
           method: "POST",
