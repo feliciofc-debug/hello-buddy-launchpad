@@ -5,6 +5,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -260,8 +261,8 @@ function formatarMensagemProduto(produto: any, config: any): string {
 }
 
 // ============================================
-// 🔍 Proxy de imagem: baixar e converter para base64
-// (para contornar bloqueio de CDN e diagnosticar diferenças)
+// 🔍 Proxy de imagem: baixar, CONVERTER e retornar como base64
+// IMPORTANTE: Converte WebP → JPEG de verdade (não só muda prefixo)
 // ============================================
 async function baixarImagemComoBase64(imageUrl: string): Promise<{
   dataUri: string | null;
@@ -286,7 +287,6 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
 
     const response = await fetch(imageUrl, {
       headers: {
-        // Headers completos para simular navegador real
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
         "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
@@ -325,41 +325,63 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
       return { dataUri: null, bytes: bytes.length, contentType: contentTypeHeader, contentLengthHeader };
     }
 
-    // Converter para base64 (compatível com Deno)
+    // 🆕 DETECTAR SE É WEBP E CONVERTER DE VERDADE
+    const isWebP = contentTypeHeader?.includes("webp") || imageUrl.includes(".webp");
+    
+    let finalBytes: Uint8Array;
+    let mimeType: string;
+
+    if (isWebP) {
+      console.log(`🔄 WebP detectado - CONVERTENDO para JPEG de verdade usando imagescript...`);
+      
+      try {
+        // Decodificar a imagem WebP e converter para JPEG
+        const image = await Image.decode(bytes);
+        console.log(`📐 Imagem decodificada: ${image.width}x${image.height}`);
+        
+        // Codificar como JPEG (qualidade 90%)
+        finalBytes = await image.encodeJPEG(90);
+        mimeType = "image/jpeg";
+        
+        console.log(`✅ Conversão WebP → JPEG concluída: ${Math.round(bytes.length / 1024)}KB → ${Math.round(finalBytes.length / 1024)}KB`);
+      } catch (conversionError) {
+        console.warn(`⚠️ Erro ao converter WebP, tentando enviar como está:`, conversionError);
+        // Fallback: usa os bytes originais com mime type forçado
+        finalBytes = bytes;
+        mimeType = "image/jpeg"; // Tenta forçar mesmo assim
+      }
+    } else if (contentTypeHeader?.includes("png")) {
+      finalBytes = bytes;
+      mimeType = "image/png";
+      console.log(`📸 Imagem PNG detectada - usando diretamente`);
+    } else {
+      // Assume JPEG para outros formatos
+      finalBytes = bytes;
+      mimeType = "image/jpeg";
+      console.log(`📸 Imagem JPEG/outro formato - usando diretamente`);
+    }
+
+    // Converter bytes finais para base64
     let binary = "";
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    for (let i = 0; i < finalBytes.length; i++) {
+      binary += String.fromCharCode(finalBytes[i]);
     }
     const base64 = btoa(binary);
 
-    // Detectar tipo da imagem - IMPORTANTE: WuzAPI só aceita PNG ou JPEG com prefixo!
-    let mimeType = contentTypeHeader || "image/jpeg";
-    if (mimeType.includes("webp")) {
-      // WebP NÃO é suportado pelo WuzAPI - força JPEG
-      mimeType = "image/jpeg";
-      console.log(`⚠️ WebP detectado - convertendo para image/jpeg no prefixo`);
-    } else if (mimeType.includes("png")) {
-      mimeType = "image/png";
-    } else if (mimeType.includes("gif")) {
-      mimeType = "image/gif";
-    } else {
-      mimeType = "image/jpeg";
-    }
+    console.log(`✅ Imagem processada: ${Math.round(finalBytes.length / 1024)}KB como ${mimeType}`);
 
-    console.log(`✅ Imagem baixada: ${Math.round(bytes.length / 1024)}KB (forçando ${mimeType})`);
-
-    // IMPORTANTE: WuzAPI EXIGE o prefixo data:image/xxx;base64,
+    // Criar Data URI com prefixo correto
     const dataUri = `data:${mimeType};base64,${base64}`;
-    console.log(`🔍 Data URI criada com prefixo: data:${mimeType};base64,... (${dataUri.length} chars)`);
+    console.log(`🔍 Data URI criada: data:${mimeType};base64,... (${dataUri.length} chars)`);
 
     return {
       dataUri,
-      bytes: bytes.length,
+      bytes: finalBytes.length,
       contentType: mimeType,
       contentLengthHeader,
     };
   } catch (error) {
-    console.warn(`⚠️ Erro ao baixar imagem:`, error);
+    console.warn(`⚠️ Erro ao baixar/converter imagem:`, error);
     return { dataUri: null, bytes: null, contentType: null, contentLengthHeader: null };
   }
 }
