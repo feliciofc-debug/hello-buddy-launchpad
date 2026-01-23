@@ -6,116 +6,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const IMG_CONFIG = {
-  // evita 413 + “notificação vazia”
-  MAX_IMAGE_KB: 135,
-};
-
-function estimateDataUriBytes(dataUri: string): number {
-  const base64 = dataUri.includes(",") ? dataUri.split(",")[1] : dataUri;
-  const len = base64.length;
-  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
-  return Math.max(0, Math.floor((len * 3) / 4) - padding);
-}
-
-async function baixarImagemComoBase64(imageUrl: string): Promise<string | null> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
-    const response = await fetch(imageUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
-        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-        "Referer": "https://shopee.com.br/",
-        "Cache-Control": "no-cache",
-      },
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      console.log(`⚠️ Download imagem falhou: HTTP ${response.status}`);
-      return null;
-    }
-
-    const contentType = response.headers.get("content-type") || "";
-    const arrayBuffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-
-    if (bytes.length > 5 * 1024 * 1024) {
-      console.log(`⚠️ Imagem muito grande para proxy: ${Math.round(bytes.length / 1024 / 1024)}MB`);
-      return null;
-    }
-
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!lovableApiKey) {
-      console.log("⚠️ LOVABLE_API_KEY ausente - não dá para converter/comprimir");
-      return null;
-    }
-
-    // sempre padroniza para JPEG e já faz compressão/resize para caber no limite
-    const base64In = (() => {
-      let bin = "";
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      return btoa(bin);
-    })();
-    const dataUriIn = `data:${contentType.includes("png") ? "image/png" : contentType.includes("webp") ? "image/webp" : "image/jpeg"};base64,${base64In}`;
-
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash-image-preview",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text:
-                   "Convert this image to JPEG. Resize so the longest side is at most 1024px and compress strongly (quality ~60). Keep content the same. Output the JPEG image.",
-              },
-              { type: "image_url", image_url: { url: dataUriIn } },
-            ],
-          },
-        ],
-        modalities: ["image", "text"],
-      }),
-    });
-
-    if (!aiResp.ok) {
-      const t = await aiResp.text();
-      console.log(`⚠️ IA conversão/compressão falhou: ${aiResp.status} - ${t.substring(0, 140)}`);
-      return null;
-    }
-
-    const aiData = await aiResp.json();
-    const out = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url as string | undefined;
-    if (!out || !out.includes("base64")) return null;
-
-    const outBytes = estimateDataUriBytes(out);
-    console.log(`📦 Imagem comprimida (estimado): ${Math.round(outBytes / 1024)}KB`);
-    if (outBytes > IMG_CONFIG.MAX_IMAGE_KB * 1024) {
-      console.log(
-        `⚠️ Imagem > ${IMG_CONFIG.MAX_IMAGE_KB}KB após compressão (${Math.round(outBytes / 1024)}KB) - enviando só texto`
-      );
-      return null;
-    }
-
-    return out;
-  } catch (e) {
-    console.log("⚠️ Erro proxy imagem:", e);
-    return null;
-  }
-}
-
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -123,6 +13,8 @@ serve(async (req) => {
 
   try {
     const { groupJid, message, imageUrl, userId } = await req.json();
+
+    console.log("📤 [GROUP-MSG] Recebido:", { groupJid, hasImage: !!imageUrl, userId });
 
     if (!groupJid || !message || !userId) {
       return new Response(
@@ -136,11 +28,11 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // 🔥 BUSCAR INSTÂNCIA CONECTADA DO USUÁRIO (igual send-wuzapi-message)
+    // 🔥 BUSCAR INSTÂNCIA CONECTADA (igual ao PJ)
     let instance: any = null;
     
-    // Prioridade: instância do usuário que está CONECTADA
-    const { data: userInstance, error: instanceError } = await supabase
+    // 1. Instância do usuário conectada
+    const { data: userInstance } = await supabase
       .from('wuzapi_instances')
       .select('*')
       .eq('assigned_to_user', userId)
@@ -148,52 +40,46 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
     
-    if (!instanceError && userInstance) {
+    if (userInstance) {
       instance = userInstance;
-      console.log('📡 Instância CONECTADA do usuário:', instance.instance_name, instance.wuzapi_url);
-    } else {
-      console.log('⚠️ Nenhuma instância conectada para o usuário:', userId);
+      console.log('📡 Instância do usuário:', instance.instance_name);
     }
     
-    // Se não encontrou instância conectada do usuário, buscar qualquer uma conectada
+    // 2. Qualquer instância conectada
     if (!instance) {
-      const { data: anyInstance, error: anyError } = await supabase
+      const { data: anyInstance } = await supabase
         .from('wuzapi_instances')
         .select('*')
         .eq('is_connected', true)
         .limit(1)
         .maybeSingle();
       
-      if (!anyError && anyInstance) {
+      if (anyInstance) {
         instance = anyInstance;
-        console.log('📡 Usando instância conectada disponível:', instance.instance_name, instance.wuzapi_url);
-      } else {
-        console.log('⚠️ Nenhuma instância conectada no sistema');
+        console.log('📡 Instância disponível:', instance.instance_name);
       }
     }
     
-    // Fallback: tentar buscar de clientes_afiliados (compatibilidade)
+    // 3. Token do cliente afiliado (fallback)
     if (!instance) {
-      const { data: cliente, error: clienteError } = await supabase
+      const { data: cliente } = await supabase
         .from("clientes_afiliados")
-        .select("wuzapi_token, wuzapi_instance_id")
+        .select("wuzapi_token")
         .eq("user_id", userId)
         .single();
 
-      if (!clienteError && cliente?.wuzapi_token) {
-        // Usar URL de ambiente como fallback
-        const envUrl = Deno.env.get('WUZAPI_URL') || "https://api2.amzofertas.com.br";
+      if (cliente?.wuzapi_token) {
         instance = {
-          wuzapi_url: envUrl,
+          wuzapi_url: "https://api2.amzofertas.com.br",
           wuzapi_token: cliente.wuzapi_token,
-          instance_name: 'fallback-afiliado',
+          instance_name: 'afiliado-fallback',
           is_connected: true
         };
-        console.log('📡 Usando token de clientes_afiliados como fallback');
+        console.log('📡 Usando token afiliado');
       }
     }
     
-    // Se ainda não encontrou, tentar variáveis de ambiente como fallback
+    // 4. Variáveis de ambiente
     if (!instance) {
       const envUrl = Deno.env.get('WUZAPI_URL');
       const envToken = Deno.env.get('WUZAPI_TOKEN');
@@ -205,115 +91,81 @@ serve(async (req) => {
           instance_name: 'env-fallback',
           is_connected: true
         };
-        console.log('📡 Usando credenciais de ambiente como fallback');
+        console.log('📡 Usando env fallback');
       }
     }
 
     if (!instance) {
-      console.error('❌ Nenhuma instância Wuzapi disponível');
       return new Response(
-        JSON.stringify({ error: 'Nenhuma instância WhatsApp disponível. Conecte seu WhatsApp primeiro!' }),
+        JSON.stringify({ error: 'Nenhuma instância WhatsApp disponível' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
-    // ✅ VERIFICAR SE ESTÁ CONECTADA
-    if (!instance.is_connected) {
-      console.error('❌ Instância não conectada:', instance.instance_name);
-      return new Response(
-        JSON.stringify({ error: 'WhatsApp não conectado! Conecte em Configurações.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
-    const wuzapiUrl = instance.wuzapi_url;
+    const baseUrl = instance.wuzapi_url.endsWith('/') 
+      ? instance.wuzapi_url.slice(0, -1) 
+      : instance.wuzapi_url;
     const token = instance.wuzapi_token;
     
-    console.log('🌐 URL:', wuzapiUrl);
-    console.log('🔑 Token:', token.substring(0, 10) + '...');
-    console.log('📍 Instância:', instance.instance_name);
-    
-    const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
-
-    // Para grupos, o WuzAPI precisa do JID completo com @g.us no campo Phone
-    // MAS alguns endpoints exigem apenas o número sem @g.us
+    // Formatar JID do grupo
     const groupPhone = groupJid.includes('@g.us') ? groupJid : `${groupJid}@g.us`;
     
-    console.log(`Enviando mensagem para grupo: ${groupPhone}`);
+    console.log(`🚀 Enviando para grupo: ${groupPhone}`);
+    console.log(`🌐 URL: ${baseUrl}`);
+    console.log(`🔑 Token: ${token.substring(0, 10)}...`);
 
     let response: Response;
     let endpoint: string;
+    let payload: any;
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🎯 LÓGICA SIMPLES IGUAL AO PJ: PASSA URL DIRETO PRO WUZAPI
+    // ═══════════════════════════════════════════════════════════════
 
     if (imageUrl) {
-      // COM IMAGEM (proxy + compressão para evitar CDN bloqueando e evitar 413)
-      const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
-      const base64Image = await baixarImagemComoBase64(imageUrl);
+      // COM IMAGEM - passa URL direto (igual PJ faz)
+      endpoint = `${baseUrl}/chat/send/image`;
+      payload = {
+        Phone: groupPhone,
+        Caption: message,
+        Image: imageUrl,
+      };
+      
+      console.log(`🖼️ Enviando imagem+texto:`, { endpoint, imageUrl: imageUrl.substring(0, 60) + '...' });
+      
+      response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Token": token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
 
-      if (base64Image) {
-        endpoint = `${baseUrl}/chat/send/image`;
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Token": token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            Phone: groupPhone,
-            Caption: caption,
-            Image: base64Image,
-          }),
-        });
-      } else {
-        // fallback imediato para texto (garante post+link)
-         console.log("⚠️ Não foi possível preparar a imagem (proxy/compressão/tamanho). Enviando só texto...");
+      let result = await response.json().catch(() => null);
+      console.log(`📨 Resposta imagem:`, { ok: response.ok, result });
+
+      // Se falhou com imagem → tenta só texto (fallback garantido)
+      if (!response.ok || result?.success === false) {
+        console.log("⚠️ Imagem falhou, enviando só texto+link...");
+        
         endpoint = `${baseUrl}/chat/send/text`;
+        payload = {
+          Phone: groupPhone,
+          Body: message,
+        };
+        
         response = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Token": token,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            Phone: groupPhone,
-             Body: (message || "").trim() || "🛒 Confira a oferta",
-          }),
-        });
-      }
-
-      let result: any = null;
-      try {
-        result = await response.json();
-      } catch {
-        result = null;
-      }
-
-      // Alguns cenários retornam 200 mas com erro no payload.
-      const payloadHasError =
-        !!result &&
-        (result.error || result.erro || result.success === false || result.status === "error");
-
-      if (!response.ok || payloadHasError) {
-        console.log("⚠️ Falha ao enviar (imagem/texto) para grupo, tentando só texto...");
-         endpoint = `${baseUrl}/chat/send/text`;
-        response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Token": token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            Phone: groupPhone,
-             Body: (message || "").trim() || "🛒 Confira a oferta",
-          }),
+          body: JSON.stringify(payload),
         });
 
-        const fallbackResult = await response.json().catch(() => null);
-        console.log("Resultado envio (fallback texto):", JSON.stringify(fallbackResult));
-
-        // Reusar a variável result para log/erro abaixo
-        result = fallbackResult;
-      } else {
-        console.log("Resultado envio (imagem):", JSON.stringify(result));
+        result = await response.json().catch(() => null);
+        console.log(`📨 Resposta texto (fallback):`, { ok: response.ok, result });
       }
 
       // Log do envio
@@ -325,37 +177,38 @@ serve(async (req) => {
         erro: response.ok ? null : JSON.stringify(result),
       });
 
-      // Atualizar contador de mensagens do grupo
       if (response.ok) {
-        await supabase.rpc("increment_group_messages", { group_jid: groupJid });
+        try {
+          await supabase.rpc("increment_group_messages", { group_jid: groupJid });
+        } catch (e) { /* ignore */ }
       }
 
       return new Response(
-        JSON.stringify({
-          success: response.ok,
-          result,
-          endpoint,
-        }),
+        JSON.stringify({ success: response.ok, result, endpoint }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // SÓ TEXTO
     endpoint = `${baseUrl}/chat/send/text`;
+    payload = {
+      Phone: groupPhone,
+      Body: message,
+    };
+    
+    console.log(`💬 Enviando só texto`);
+    
     response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Token": token,
         "Content-Type": "application/json",
       },
-     body: JSON.stringify({
-        Phone: groupPhone,
-       Body: (message || "").trim() || "🛒 Confira a oferta",
-      }),
+      body: JSON.stringify(payload),
     });
 
-    const result = await response.json();
-    console.log("Resultado envio:", JSON.stringify(result));
+    const result = await response.json().catch(() => null);
+    console.log(`📨 Resposta:`, { ok: response.ok, result });
 
     // Log do envio
     await supabase.from("historico_envios").insert({
@@ -366,22 +219,19 @@ serve(async (req) => {
       erro: response.ok ? null : JSON.stringify(result)
     });
 
-    // Atualizar contador de mensagens do grupo
     if (response.ok) {
-      await supabase.rpc('increment_group_messages', { group_jid: groupJid });
+      try {
+        await supabase.rpc('increment_group_messages', { group_jid: groupJid });
+      } catch (e) { /* ignore */ }
     }
 
     return new Response(
-      JSON.stringify({ 
-        success: response.ok, 
-        result,
-        endpoint 
-      }),
+      JSON.stringify({ success: response.ok, result, endpoint }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error: unknown) {
-    console.error("Erro geral:", error);
+    console.error("❌ Erro geral:", error);
     const message = error instanceof Error ? error.message : "Erro desconhecido";
     return new Response(
       JSON.stringify({ error: message }),
