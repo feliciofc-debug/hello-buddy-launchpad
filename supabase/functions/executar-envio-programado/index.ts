@@ -15,9 +15,19 @@ const corsHeaders = {
 const CONFIG = {
   DELAY_ENTRE_GRUPOS_MS: 2000,
   MAX_PROGRAMACOES_POR_EXECUCAO: 5,
-  // WuzAPI costuma rejeitar payloads grandes (413). Mantemos bem abaixo.
-  MAX_DATAURI_CHARS: 650_000,
+  // Para evitar 413 + “notificação vazia”: limite agressivo de mídia.
+  // (Objetivo: manter imagem <= 135KB após compressão)
+  MAX_IMAGE_KB: 135,
 };
+
+function estimateDataUriBytes(dataUri: string): number {
+  // data:image/jpeg;base64,XXXX
+  const base64 = dataUri.includes(",") ? dataUri.split(",")[1] : dataUri;
+  // bytes ~= (len * 3/4) - padding
+  const len = base64.length;
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((len * 3) / 4) - padding);
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -266,7 +276,10 @@ function formatarMensagemProduto(produto: any, config: any): string {
 // 🔍 Proxy de imagem: baixar, CONVERTER e retornar como base64
 // IMPORTANTE: Converte WebP → JPEG de verdade (não só muda prefixo)
 // ============================================
-async function baixarImagemComoBase64(imageUrl: string): Promise<{
+async function baixarImagemComoBase64(
+  imageUrl: string,
+  maxKB: number = CONFIG.MAX_IMAGE_KB
+): Promise<{
   dataUri: string | null;
   bytes: number | null;
   contentType: string | null;
@@ -333,7 +346,7 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
     let finalBytes: Uint8Array;
     let mimeType: string;
 
-    if (isWebP) {
+     if (isWebP) {
       console.log(`🔄 WebP detectado - CONVERTENDO para JPEG usando Lovable AI API...`);
       
       try {
@@ -352,21 +365,21 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
         
         console.log(`🤖 Chamando Lovable AI para converter WebP → JPEG...`);
         
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+         const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${lovableApiKey}`,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            model: "google/gemini-2.5-flash-image-preview",
+             model: "google/gemini-2.5-flash-image-preview",
             messages: [
               {
                 role: "user",
                 content: [
                   {
                     type: "text",
-                    text: "Convert this image to JPEG format. Keep exactly the same content, just change the format. Compress it moderately (JPEG quality around 70-80). Output the converted image."
+                     text: "Convert this image to JPEG. Resize so the longest side is at most 1024px and compress strongly (quality ~60). Keep content the same. Output the JPEG image."
                   },
                   {
                     type: "image_url",
@@ -444,9 +457,15 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
     let dataUri = `data:${mimeType};base64,${base64}`;
     console.log(`🔍 Data URI criada: data:${mimeType};base64,... (${dataUri.length} chars)`);
 
-    // Evitar 413 no WuzAPI: se ficar grande, recomprimir/resize via IA
-    if (dataUri.length > CONFIG.MAX_DATAURI_CHARS) {
-      console.warn(`⚠️ Data URI muito grande (${dataUri.length} chars). Re-comprimindo via IA...`);
+     // Enforce tamanho em bytes (objetivo <= maxKB)
+     const beforeBytes = estimateDataUriBytes(dataUri);
+     console.log(`📦 Tamanho estimado (antes): ${Math.round(beforeBytes / 1024)}KB`);
+
+     // Se ainda está acima do alvo, tenta recompressão/resize via IA
+     if (beforeBytes > maxKB * 1024) {
+       console.warn(
+         `⚠️ Imagem > ${maxKB}KB após conversão (${Math.round(beforeBytes / 1024)}KB). Re-comprimindo via IA...`
+       );
 
       const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
       if (!lovableApiKey) {
@@ -469,7 +488,7 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
                 {
                   type: "text",
                   text:
-                    "Resize this image so the longest side is at most 1024px, then export as JPEG with strong compression (quality ~60-70). Keep content the same. Output the JPEG image.",
+                    `Resize this image so the longest side is at most 1024px, then export as JPEG with strong compression (quality ~60). Keep content the same. Output the JPEG image.`,
                 },
                 { type: "image_url", image_url: { url: dataUri } },
               ],
@@ -493,13 +512,18 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<{
         return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
       }
 
-      dataUri = converted;
-      console.log(`✅ Data URI recomprimida: ${dataUri.length} chars`);
+       dataUri = converted;
+       const afterBytes = estimateDataUriBytes(dataUri);
+       console.log(
+         `✅ Imagem comprimida: ${Math.round(beforeBytes / 1024)}KB → ${Math.round(afterBytes / 1024)}KB`
+       );
 
-      if (dataUri.length > CONFIG.MAX_DATAURI_CHARS) {
-        console.warn(`⚠️ Ainda grande demais (${dataUri.length} chars). Para evitar 413, enviando sem imagem.`);
-        return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
-      }
+       if (afterBytes > maxKB * 1024) {
+         console.warn(
+           `⚠️ Imagem > ${maxKB}KB após compressão (${Math.round(afterBytes / 1024)}KB) → enviando só texto + link`
+         );
+         return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+       }
     }
 
     return {
@@ -534,7 +558,7 @@ async function enviarParaGrupo(
     if (imageUrl) {
       const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
 
-      const { dataUri: base64Image } = await baixarImagemComoBase64(imageUrl);
+      const { dataUri: base64Image } = await baixarImagemComoBase64(imageUrl, CONFIG.MAX_IMAGE_KB);
 
       // 🆕 Se conseguiu baixar, envia com prefixo COMPLETO (WuzAPI exige!)
       if (base64Image) {
@@ -579,59 +603,16 @@ async function enviarParaGrupo(
               return { success: true };
             }
           }
-          console.warn("⚠️ Base64 falhou, tentando URL direta...", resultText.substring(0, 100));
+          console.warn("⚠️ Envio de imagem (base64) falhou. Caindo para TEXTO.", resultText.substring(0, 140));
         } catch (b64Error) {
           console.warn("⚠️ Erro no envio base64:", b64Error);
         }
-      }
-
-      // 🆕 ESTRATÉGIA 2: Fallback para URL direta
-      console.log(`🔄 Tentando URL direta como fallback...`);
-      try {
-        const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
-          method: "POST",
-          headers: {
-            "Token": token,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            Phone: jid,
-            Image: imageUrl,
-            Caption: caption,
-          }),
-        });
-
-        const resultText = await imageResponse.text();
-        console.log(`📡 Resultado URL: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
-        
-        if (imageResponse.ok) {
-          try {
-            const result = JSON.parse(resultText);
-            if (result.success !== false && !result.error) {
-              console.log(`✅ Enviado IMAGEM (URL) + LEGENDA para grupo: ${jid}`);
-              console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-               // Delay de 5 segundos entre envios para evitar rate limiting
-               console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
-               await sleep(5000);
-              return { success: true };
-            }
-          } catch {
-            console.log(`✅ Enviado IMAGEM (URL) + LEGENDA para grupo: ${jid}`);
-            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-             // Delay de 5 segundos entre envios para evitar rate limiting
-             console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
-             await sleep(5000);
-            return { success: true };
-          }
-        }
-        console.warn("⚠️ URL direta falhou, enviando só texto...", resultText.substring(0, 100));
-      } catch (urlError) {
-        console.warn("⚠️ Erro no envio URL:", urlError);
       }
     }
 
     // FALLBACK FINAL: Enviar só texto
     console.log(`📝 Enviando somente texto...`);
+    const safeBody = (message || "").trim() || "🛒 Confira a oferta";
     const textResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: "POST",
       headers: {
@@ -640,7 +621,7 @@ async function enviarParaGrupo(
       },
       body: JSON.stringify({
         Phone: jid,
-        Body: message,
+        Body: safeBody,
       }),
     });
 
