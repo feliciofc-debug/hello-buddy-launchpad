@@ -7,9 +7,16 @@ const corsHeaders = {
 };
 
 const IMG_CONFIG = {
-  // evita 413 na WuzAPI
-  MAX_DATAURI_CHARS: 650_000,
+  // evita 413 + “notificação vazia”
+  MAX_IMAGE_KB: 135,
 };
+
+function estimateDataUriBytes(dataUri: string): number {
+  const base64 = dataUri.includes(",") ? dataUri.split(",")[1] : dataUri;
+  const len = base64.length;
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((len * 3) / 4) - padding);
+}
 
 async function baixarImagemComoBase64(imageUrl: string): Promise<string | null> {
   try {
@@ -73,7 +80,7 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<string | null> 
               {
                 type: "text",
                 text:
-                  "Convert this image to JPEG. Resize so the longest side is at most 1024px and compress strongly (quality ~60-70). Keep content the same. Output the JPEG image.",
+                   "Convert this image to JPEG. Resize so the longest side is at most 1024px and compress strongly (quality ~60). Keep content the same. Output the JPEG image.",
               },
               { type: "image_url", image_url: { url: dataUriIn } },
             ],
@@ -93,8 +100,12 @@ async function baixarImagemComoBase64(imageUrl: string): Promise<string | null> 
     const out = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url as string | undefined;
     if (!out || !out.includes("base64")) return null;
 
-    if (out.length > IMG_CONFIG.MAX_DATAURI_CHARS) {
-      console.log(`⚠️ DataURI ainda grande (${out.length} chars) - evitando 413`);
+    const outBytes = estimateDataUriBytes(out);
+    console.log(`📦 Imagem comprimida (estimado): ${Math.round(outBytes / 1024)}KB`);
+    if (outBytes > IMG_CONFIG.MAX_IMAGE_KB * 1024) {
+      console.log(
+        `⚠️ Imagem > ${IMG_CONFIG.MAX_IMAGE_KB}KB após compressão (${Math.round(outBytes / 1024)}KB) - enviando só texto`
+      );
       return null;
     }
 
@@ -254,7 +265,7 @@ serve(async (req) => {
         });
       } else {
         // fallback imediato para texto (garante post+link)
-        console.log("⚠️ Não foi possível preparar a imagem (proxy/compressão). Enviando só texto...");
+         console.log("⚠️ Não foi possível preparar a imagem (proxy/compressão/tamanho). Enviando só texto...");
         endpoint = `${baseUrl}/chat/send/text`;
         response = await fetch(endpoint, {
           method: "POST",
@@ -264,7 +275,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             Phone: groupPhone,
-            Body: message,
+             Body: (message || "").trim() || "🛒 Confira a oferta",
           }),
         });
       }
@@ -283,7 +294,7 @@ serve(async (req) => {
 
       if (!response.ok || payloadHasError) {
         console.log("⚠️ Falha ao enviar (imagem/texto) para grupo, tentando só texto...");
-        endpoint = `${baseUrl}/chat/send/text`;
+         endpoint = `${baseUrl}/chat/send/text`;
         response = await fetch(endpoint, {
           method: "POST",
           headers: {
@@ -292,7 +303,7 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             Phone: groupPhone,
-            Body: message,
+             Body: (message || "").trim() || "🛒 Confira a oferta",
           }),
         });
 
@@ -337,9 +348,9 @@ serve(async (req) => {
         "Token": token,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
+     body: JSON.stringify({
         Phone: groupPhone,
-        Body: message,
+       Body: (message || "").trim() || "🛒 Confira a oferta",
       }),
     });
 
