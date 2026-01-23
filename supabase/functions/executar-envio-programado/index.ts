@@ -554,65 +554,50 @@ async function enviarParaGrupo(
     const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
     console.log(`📤 Enviando para grupo: ${jid}`);
     console.log(`📡 URL: ${baseUrl}`);
+    console.log(`🖼️ Imagem: ${imageUrl ? imageUrl.substring(0, 60) + '...' : 'SEM IMAGEM'}`);
+
+    // ═══════════════════════════════════════════════════════════════
+    // 🎯 LÓGICA SIMPLES IGUAL AO PJ: PASSA URL DIRETO PRO WUZAPI
+    // Se falhar, envia só texto como fallback
+    // ═══════════════════════════════════════════════════════════════
 
     if (imageUrl) {
       const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
+      
+      console.log(`🖼️ Tentando enviar IMAGEM + LEGENDA (URL direto)...`);
+      
+      const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
+        method: "POST",
+        headers: {
+          "Token": token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Phone: jid,
+          Image: imageUrl,  // URL direto, igual o PJ faz!
+          Caption: caption,
+        }),
+      });
 
-      const { dataUri: base64Image } = await baixarImagemComoBase64(imageUrl, CONFIG.MAX_IMAGE_KB);
+      let result = await imageResponse.json().catch(() => null);
+      console.log(`📡 Resultado imagem: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`, result);
 
-      // 🆕 Se conseguiu baixar, envia com prefixo COMPLETO (WuzAPI exige!)
-      if (base64Image) {
-        try {
-          console.log(`🖼️ Enviando imagem como BASE64 COM PREFIXO...`);
-          console.log(`🔍 Formato: ${base64Image.substring(0, 30)}...`);
-          
-          // IMPORTANTE: NÃO remover o prefixo! WuzAPI EXIGE data:image/xxx;base64,
-          const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
-            method: "POST",
-            headers: {
-              "Token": token,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              Phone: jid,
-              Image: base64Image, // Enviar COM prefixo data:image/xxx;base64,
-              Caption: caption,
-            }),
-          });
-
-          const resultText = await imageResponse.text();
-          console.log(`📡 Resultado base64: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`);
-          
-          if (imageResponse.ok) {
-            try {
-              const result = JSON.parse(resultText);
-              if (result.success !== false && !result.error) {
-                console.log(`✅ Enviado IMAGEM (base64) + LEGENDA para grupo: ${jid}`);
-                console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-                 // Delay de 5 segundos entre envios para evitar rate limiting
-                 console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
-                 await sleep(5000);
-                return { success: true };
-              }
-            } catch {
-              console.log(`✅ Enviado IMAGEM (base64) + LEGENDA para grupo: ${jid}`);
-              console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-               // Delay de 5 segundos entre envios para evitar rate limiting
-               console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
-               await sleep(5000);
-              return { success: true };
-            }
-          }
-          console.warn("⚠️ Envio de imagem (base64) falhou. Caindo para TEXTO.", resultText.substring(0, 140));
-        } catch (b64Error) {
-          console.warn("⚠️ Erro no envio base64:", b64Error);
-        }
+      // Se funcionou, retorna sucesso
+      if (imageResponse.ok && result?.success !== false) {
+        console.log(`✅ Enviado IMAGEM + LEGENDA para grupo: ${jid}`);
+        console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+        await sleep(CONFIG.DELAY_ENTRE_GRUPOS_MS);
+        return { success: true };
       }
+
+      // Falhou com imagem → fallback para texto
+      console.log(`⚠️ Imagem falhou, enviando só texto+link...`);
     }
 
-    // FALLBACK FINAL: Enviar só texto
+    // FALLBACK: Enviar só texto
     console.log(`📝 Enviando somente texto...`);
     const safeBody = (message || "").trim() || "🛒 Confira a oferta";
+    
     const textResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: "POST",
       headers: {
@@ -635,15 +620,15 @@ async function enviarParaGrupo(
 
     console.log(`✅ Enviado TEXTO para grupo: ${jid}`);
     console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    // Delay de 5 segundos entre envios para evitar rate limiting
-    console.log(`⏳ Aguardando 5 segundos antes do próximo envio...`);
-    await sleep(5000);
+    await sleep(CONFIG.DELAY_ENTRE_GRUPOS_MS);
     return { success: true };
   } catch (error: any) {
     console.error(`❌ Erro ao enviar para grupo:`, error);
     return { success: false, error: error.message };
   }
 }
+
+
 
 async function processarProgramacao(
   supabase: any,
