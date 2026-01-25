@@ -5,7 +5,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-// Removido imagescript - não suporta WebP
+// ImageScript não suporta WebP, mas é ótimo para recomprimir JPEG/PNG depois que a gente converte.
+import { Image } from "https://deno.land/x/imagescript@1.2.15/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,6 +20,77 @@ const CONFIG = {
   // OBS: se a imagem não couber, faremos upload no storage e enviaremos por URL pública.
   MAX_IMAGE_KB: 500,
 };
+
+async function recomprimirImagemParaLimite(
+  inputBytes: Uint8Array,
+  inputMime: string,
+  maxKB: number
+): Promise<{ bytes: Uint8Array; mime: string }> {
+  // Objetivo: produzir um arquivo pequeno e previsível (sem depender de IA),
+  // mantendo a imagem reconhecível.
+  const targetBytes = maxKB * 1024;
+
+  // Se já está dentro do limite, mantém.
+  if (inputBytes.byteLength <= targetBytes) {
+    return { bytes: inputBytes, mime: inputMime };
+  }
+
+  // Para reduzir tamanho com controle, vamos decodificar e re-encodar.
+  // Preferimos saída JPEG (mais compacto para WhatsApp/preview).
+  let img: Image;
+  try {
+    img = await Image.decode(inputBytes);
+  } catch (e) {
+    console.warn("⚠️ ImageScript não conseguiu decodificar imagem para recompressão:", e);
+    // Não conseguimos recomprimir determinísticamente
+    return { bytes: inputBytes, mime: inputMime };
+  }
+
+  const maxDims = [800, 640, 512, 400, 320, 256];
+  const qualities = [70, 60, 50, 40, 35, 30, 25, 20];
+
+  for (const maxDim of maxDims) {
+    // Resize mantendo aspect ratio
+    let working = img;
+    const largestSide = Math.max(working.width, working.height);
+    if (largestSide > maxDim) {
+      const ratio = maxDim / largestSide;
+      const w = Math.max(1, Math.round(working.width * ratio));
+      const h = Math.max(1, Math.round(working.height * ratio));
+      working = working.resize(w, h);
+    }
+
+    for (const q of qualities) {
+      try {
+        const out = await working.encodeJPEG(q);
+        if (out.byteLength <= targetBytes) {
+          console.log(
+            `✅ Recompressão determinística OK: ${Math.round(inputBytes.byteLength / 1024)}KB → ${Math.round(out.byteLength / 1024)}KB (maxDim=${maxDim}, q=${q})`
+          );
+          return { bytes: out, mime: "image/jpeg" };
+        }
+      } catch (e) {
+        console.warn("⚠️ Falha ao re-encodar JPEG:", e);
+      }
+    }
+  }
+
+  // Se não conseguiu bater o limite, retorna a melhor tentativa (mais agressiva)
+  try {
+    const largestSide = Math.max(img.width, img.height);
+    const ratio = 256 / largestSide;
+    const w = Math.max(1, Math.round(img.width * ratio));
+    const h = Math.max(1, Math.round(img.height * ratio));
+    const tiny = img.resize(w, h);
+    const out = await tiny.encodeJPEG(20);
+    console.log(
+      `⚠️ Não bateu limite ${maxKB}KB, mas gerou o menor possível: ${Math.round(out.byteLength / 1024)}KB (256px, q=20)`
+    );
+    return { bytes: out, mime: "image/jpeg" };
+  } catch {
+    return { bytes: inputBytes, mime: inputMime };
+  }
+}
 
 function estimateDataUriBytes(dataUri: string): number {
   // data:image/jpeg;base64,XXXX
@@ -447,92 +519,36 @@ async function baixarImagemComoBase64(
       console.log(`📸 Imagem JPEG/outro formato - usando diretamente`);
     }
 
+    // ✅ Recompressão determinística (sem IA) para garantir que cabe no limite
+    const recompressed = await recomprimirImagemParaLimite(finalBytes, mimeType, maxKB);
+
+    console.log(`✅ Imagem final: ${Math.round(recompressed.bytes.length / 1024)}KB como ${recompressed.mime}`);
+
     // Converter bytes finais para base64
     let binary = "";
-    for (let i = 0; i < finalBytes.length; i++) {
-      binary += String.fromCharCode(finalBytes[i]);
+    for (let i = 0; i < recompressed.bytes.length; i++) {
+      binary += String.fromCharCode(recompressed.bytes[i]);
     }
     const base64 = btoa(binary);
 
-    console.log(`✅ Imagem processada: ${Math.round(finalBytes.length / 1024)}KB como ${mimeType}`);
-
     // Criar Data URI com prefixo correto
-    let dataUri = `data:${mimeType};base64,${base64}`;
-    console.log(`🔍 Data URI criada: data:${mimeType};base64,... (${dataUri.length} chars)`);
+    const dataUri = `data:${recompressed.mime};base64,${base64}`;
+    const estimated = estimateDataUriBytes(dataUri);
+    console.log(`🔍 Data URI final: ~${Math.round(estimated / 1024)}KB (${dataUri.length} chars)`);
 
-     // Enforce tamanho em bytes (objetivo <= maxKB)
-     const beforeBytes = estimateDataUriBytes(dataUri);
-     console.log(`📦 Tamanho estimado (antes): ${Math.round(beforeBytes / 1024)}KB`);
-
-     // Se ainda está acima do alvo, tenta recompressão/resize via IA
-     if (beforeBytes > maxKB * 1024) {
-       console.warn(
-         `⚠️ Imagem > ${maxKB}KB após conversão (${Math.round(beforeBytes / 1024)}KB). Re-comprimindo via IA...`
-       );
-
-      const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-      if (!lovableApiKey) {
-        console.warn("⚠️ LOVABLE_API_KEY ausente; não é possível recomprimir. Usando fallback sem imagem.");
-        return { dataUri: null, fileBytes: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
-      }
-
-      const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${lovableApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash-image-preview",
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: `Resize this image to 400x400 pixels maximum, then export as highly compressed JPEG with quality 20. Keep content recognizable. Output only the tiny JPEG image.`,
-                },
-                { type: "image_url", image_url: { url: dataUri } },
-              ],
-            },
-          ],
-          modalities: ["image", "text"],
-        }),
-      });
-
-      if (!aiResponse.ok) {
-        const t = await aiResponse.text();
-        console.warn(`⚠️ Recompressão IA falhou: ${aiResponse.status} - ${t.substring(0, 140)}`);
-        return { dataUri: null, fileBytes: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
-      }
-
-      const aiData = await aiResponse.json();
-      const converted = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url as string | undefined;
-
-      if (!converted || !converted.includes("base64")) {
-        console.warn("⚠️ Recompressão IA retornou sem imagem. Usando fallback sem imagem.");
-        return { dataUri: null, fileBytes: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
-      }
-
-       dataUri = converted;
-       const afterBytes = estimateDataUriBytes(dataUri);
-       console.log(
-         `✅ Imagem comprimida: ${Math.round(beforeBytes / 1024)}KB → ${Math.round(afterBytes / 1024)}KB`
-       );
-
-       if (afterBytes > maxKB * 1024) {
-         console.warn(
-           `⚠️ Imagem > ${maxKB}KB após compressão (${Math.round(afterBytes / 1024)}KB) → enviando só texto + link`
-         );
-          return { dataUri: null, fileBytes: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
-       }
+    // Se mesmo assim extrapolar muito (caso extremo), devolve null e deixa cair para texto
+    if (estimated > maxKB * 1024) {
+      console.warn(
+        `⚠️ Mesmo após recompressão, imagem > ${maxKB}KB (${Math.round(estimated / 1024)}KB). Fallback sem imagem.`
+      );
+      return { dataUri: null, fileBytes: null, bytes: recompressed.bytes.length, contentType: recompressed.mime, contentLengthHeader };
     }
 
     return {
       dataUri,
-      fileBytes: finalBytes,
-      bytes: finalBytes.length,
-      contentType: mimeType,
+      fileBytes: recompressed.bytes,
+      bytes: recompressed.bytes.length,
+      contentType: recompressed.mime,
       contentLengthHeader,
     };
   } catch (error) {
