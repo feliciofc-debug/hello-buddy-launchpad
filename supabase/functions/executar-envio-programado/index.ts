@@ -15,8 +15,8 @@ const corsHeaders = {
 const CONFIG = {
   DELAY_ENTRE_GRUPOS_MS: 2000,
   MAX_PROGRAMACOES_POR_EXECUCAO: 5,
-  // Para evitar 413 + “notificação vazia”: limite agressivo de mídia.
-  // (Objetivo: manter imagem <= 135KB após compressão)
+  // Limite de mídia (em KB) para envio no WhatsApp via WuzAPI.
+  // OBS: se a imagem não couber, faremos upload no storage e enviaremos por URL pública.
   MAX_IMAGE_KB: 500,
 };
 
@@ -281,6 +281,7 @@ async function baixarImagemComoBase64(
   maxKB: number = CONFIG.MAX_IMAGE_KB
 ): Promise<{
   dataUri: string | null;
+  fileBytes: Uint8Array | null;
   bytes: number | null;
   contentType: string | null;
   contentLengthHeader: string | null;
@@ -317,6 +318,7 @@ async function baixarImagemComoBase64(
       console.warn(`⚠️ Falha ao baixar imagem: HTTP ${response.status}`);
       return {
         dataUri: null,
+        fileBytes: null,
         bytes: null,
         contentType: response.headers.get("content-type"),
         contentLengthHeader: response.headers.get("content-length"),
@@ -337,7 +339,7 @@ async function baixarImagemComoBase64(
     // Verificar tamanho (máx 5MB para segurança)
     if (bytes.length > 5 * 1024 * 1024) {
       console.warn(`⚠️ Imagem muito grande: ${Math.round(bytes.length / 1024 / 1024)}MB`);
-      return { dataUri: null, bytes: bytes.length, contentType: contentTypeHeader, contentLengthHeader };
+      return { dataUri: null, fileBytes: null, bytes: bytes.length, contentType: contentTypeHeader, contentLengthHeader };
     }
 
     // 🆕 DETECTAR SE É WEBP - Usar API Lovable AI para converter
@@ -428,6 +430,7 @@ async function baixarImagemComoBase64(
         // Fallback: tentar enviar a URL direta (alguns CDNs servem JPEG quando pedido)
         return {
           dataUri: null,
+          fileBytes: null,
           bytes: bytes.length,
           contentType: contentTypeHeader,
           contentLengthHeader,
@@ -470,7 +473,7 @@ async function baixarImagemComoBase64(
       const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
       if (!lovableApiKey) {
         console.warn("⚠️ LOVABLE_API_KEY ausente; não é possível recomprimir. Usando fallback sem imagem.");
-        return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+        return { dataUri: null, fileBytes: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
       }
 
       const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -500,7 +503,7 @@ async function baixarImagemComoBase64(
       if (!aiResponse.ok) {
         const t = await aiResponse.text();
         console.warn(`⚠️ Recompressão IA falhou: ${aiResponse.status} - ${t.substring(0, 140)}`);
-        return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+        return { dataUri: null, fileBytes: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
       }
 
       const aiData = await aiResponse.json();
@@ -508,7 +511,7 @@ async function baixarImagemComoBase64(
 
       if (!converted || !converted.includes("base64")) {
         console.warn("⚠️ Recompressão IA retornou sem imagem. Usando fallback sem imagem.");
-        return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+        return { dataUri: null, fileBytes: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
       }
 
        dataUri = converted;
@@ -521,19 +524,54 @@ async function baixarImagemComoBase64(
          console.warn(
            `⚠️ Imagem > ${maxKB}KB após compressão (${Math.round(afterBytes / 1024)}KB) → enviando só texto + link`
          );
-         return { dataUri: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
+          return { dataUri: null, fileBytes: null, bytes: finalBytes.length, contentType: mimeType, contentLengthHeader };
        }
     }
 
     return {
       dataUri,
+      fileBytes: finalBytes,
       bytes: finalBytes.length,
       contentType: mimeType,
       contentLengthHeader,
     };
   } catch (error) {
     console.warn(`⚠️ Erro ao baixar/converter imagem:`, error);
-    return { dataUri: null, bytes: null, contentType: null, contentLengthHeader: null };
+    return { dataUri: null, fileBytes: null, bytes: null, contentType: null, contentLengthHeader: null };
+  }
+}
+
+async function uploadImagemPublica(
+  fileBytes: Uint8Array,
+  contentType: string,
+): Promise<string | null> {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!supabaseUrl || !serviceRoleKey) return null;
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+
+    const ext = contentType.split("/")[1] || "jpg";
+    const fileName = `whatsapp-group-media/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from("produtos")
+      .upload(fileName, fileBytes, {
+        contentType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.warn("⚠️ Upload storage falhou:", uploadError);
+      return null;
+    }
+
+    const { data: publicUrlData } = supabaseAdmin.storage.from("produtos").getPublicUrl(fileName);
+    return publicUrlData?.publicUrl ?? null;
+  } catch (e) {
+    console.warn("⚠️ Erro no uploadImagemPublica:", e);
+    return null;
   }
 }
 
@@ -571,6 +609,40 @@ async function enviarParaGrupo(
       // 1) Tentar baixar/convert­er (inclui WebP→JPEG e compressão <= MAX_IMAGE_KB)
       const img = await baixarImagemComoBase64(imageUrl);
 
+      // Preferência 1: subir no storage e enviar por URL (tende a evitar “Aguardando mensagem” de CDNs bloqueadas)
+      if (img.fileBytes && img.contentType) {
+        const publicUrl = await uploadImagemPublica(img.fileBytes, img.contentType);
+        if (publicUrl) {
+          console.log(`🖼️ Enviando imagem por URL pública (storage): ${publicUrl.substring(0, 80)}...`);
+
+          const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
+            method: "POST",
+            headers: {
+              "Token": token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              Phone: jid,
+              Image: publicUrl,
+              Caption: caption,
+            }),
+          });
+
+          const result = await imageResponse.json().catch(() => null);
+          console.log(`📡 Resultado imagem (url-storage): ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`, result);
+
+          if (imageResponse.ok && result?.success !== false) {
+            console.log(`✅ Enviado IMAGEM + LEGENDA para grupo: ${jid}`);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            await sleep(CONFIG.DELAY_ENTRE_GRUPOS_MS);
+            return { success: true };
+          }
+
+          console.log(`⚠️ Falha enviando URL do storage, tentando base64 como fallback...`);
+        }
+      }
+
+      // Preferência 2 (fallback): Data URI base64 (upload direto via WuzAPI)
       if (img.dataUri) {
         console.log(
           `🖼️ Enviando imagem base64 (${Math.round((img.bytes ?? 0) / 1024)}KB, ${img.contentType ?? 'unknown'})...`
@@ -598,13 +670,11 @@ async function enviarParaGrupo(
           await sleep(CONFIG.DELAY_ENTRE_GRUPOS_MS);
           return { success: true };
         }
-
-        console.log(`⚠️ Falha enviando base64, fallback para texto...`);
-      } else {
-        console.log(
-          `⚠️ Não foi possível gerar base64 (talvez >${CONFIG.MAX_IMAGE_KB}KB ou bloqueio). Fallback para texto...`
-        );
       }
+
+      console.log(
+        `⚠️ Não foi possível enviar a imagem (storage/base64). Fallback para texto...`
+      );
     }
 
     // FALLBACK: Enviar só texto
