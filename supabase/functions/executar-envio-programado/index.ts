@@ -557,41 +557,55 @@ async function enviarParaGrupo(
     console.log(`🖼️ Imagem: ${imageUrl ? imageUrl.substring(0, 60) + '...' : 'SEM IMAGEM'}`);
 
     // ═══════════════════════════════════════════════════════════════
-    // 🎯 LÓGICA SIMPLES IGUAL AO PJ: PASSA URL DIRETO PRO WUZAPI
-    // Se falhar, envia só texto como fallback
+    // 🖼️ ENVIO ROBUSTO DE IMAGEM PARA GRUPO
+    // Em vez de passar URL (que frequentemente gera “Aguardando mensagem”
+    // no WhatsApp por bloqueio/WEBP/CDN), baixamos + convertemos e enviamos
+    // como Data URI base64 (upload direto via WuzAPI).
+    // Se falhar, faz fallback para texto.
     // ═══════════════════════════════════════════════════════════════
 
     if (imageUrl) {
       const caption = message.length > 900 ? message.slice(0, 900) + "…" : message;
-      
-      console.log(`🖼️ Tentando enviar IMAGEM + LEGENDA (URL direto)...`);
-      
-      const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
-        method: "POST",
-        headers: {
-          "Token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          Phone: jid,
-          Image: imageUrl,  // URL direto, igual o PJ faz!
-          Caption: caption,
-        }),
-      });
 
-      let result = await imageResponse.json().catch(() => null);
-      console.log(`📡 Resultado imagem: ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`, result);
+      console.log(`🖼️ Preparando IMAGEM + LEGENDA (download + base64)...`);
 
-      // Se funcionou, retorna sucesso
-      if (imageResponse.ok && result?.success !== false) {
-        console.log(`✅ Enviado IMAGEM + LEGENDA para grupo: ${jid}`);
-        console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-        await sleep(CONFIG.DELAY_ENTRE_GRUPOS_MS);
-        return { success: true };
+      // 1) Tentar baixar/convert­er (inclui WebP→JPEG e compressão <= MAX_IMAGE_KB)
+      const img = await baixarImagemComoBase64(imageUrl);
+
+      if (img.dataUri) {
+        console.log(
+          `🖼️ Enviando imagem base64 (${Math.round((img.bytes ?? 0) / 1024)}KB, ${img.contentType ?? 'unknown'})...`
+        );
+
+        const imageResponse = await fetch(`${baseUrl}/chat/send/image`, {
+          method: "POST",
+          headers: {
+            "Token": token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            Phone: jid,
+            Image: img.dataUri,
+            Caption: caption,
+          }),
+        });
+
+        const result = await imageResponse.json().catch(() => null);
+        console.log(`📡 Resultado imagem (base64): ${imageResponse.ok ? '✅ SUCESSO' : '❌ FALHA'}`, result);
+
+        if (imageResponse.ok && result?.success !== false) {
+          console.log(`✅ Enviado IMAGEM + LEGENDA para grupo: ${jid}`);
+          console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+          await sleep(CONFIG.DELAY_ENTRE_GRUPOS_MS);
+          return { success: true };
+        }
+
+        console.log(`⚠️ Falha enviando base64, fallback para texto...`);
+      } else {
+        console.log(
+          `⚠️ Não foi possível gerar base64 (talvez >${CONFIG.MAX_IMAGE_KB}KB ou bloqueio). Fallback para texto...`
+        );
       }
-
-      // Falhou com imagem → fallback para texto
-      console.log(`⚠️ Imagem falhou, enviando só texto+link...`);
     }
 
     // FALLBACK: Enviar só texto
