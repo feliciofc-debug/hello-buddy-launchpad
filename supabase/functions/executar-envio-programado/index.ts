@@ -640,6 +640,32 @@ async function processarProgramacao(
   console.log(`📋 ════════════════════════════════════════`);
 
   try {
+    // ═══════════════════════════════════════════════════════════════
+    // 🔒 TRAVA ATÔMICA: Evita execuções paralelas/duplicadas
+    // ═══════════════════════════════════════════════════════════════
+    const proximoEnvioAtual = new Date(programacao.proximo_envio);
+    const novoProximoEnvio = new Date(Date.now() + programacao.intervalo_minutos * 60000);
+    
+    // Tenta reservar a programação ATOMICAMENTE
+    // Só atualiza se proximo_envio ainda for <= NOW() (não foi pega por outra execução)
+    const { data: lockResult, error: lockError } = await supabase
+      .from("programacao_envio_afiliado")
+      .update({ 
+        proximo_envio: novoProximoEnvio.toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", programacao.id)
+      .lte("proximo_envio", new Date().toISOString())
+      .select("id")
+      .maybeSingle();
+
+    if (!lockResult) {
+      console.log(`⏭️ Programação já sendo processada por outra instância, pulando...`);
+      return { success: true, enviados: 0 };
+    }
+    
+    console.log(`🔒 Trava adquirida! Próximo envio reservado: ${novoProximoEnvio.toLocaleString("pt-BR")}`);
+
     // 1. VERIFICAR HORÁRIO (sempre em horário de Brasília)
     const agora = new Date();
     const horaBrasilia = agora.toLocaleTimeString("pt-BR", { 
@@ -656,16 +682,6 @@ async function processarProgramacao(
     
     if (horaAtual < horarioInicio || horaAtual > horarioFim) {
       console.log(`⏰ Fora do horário (${horaAtual} BRT). Permitido: ${horarioInicio} - ${horarioFim}`);
-      
-      const { data: proximoEnvio } = await supabase.rpc("calcular_proximo_envio", { 
-        p_programacao_id: programacao.id 
-      });
-      
-      await supabase
-        .from("programacao_envio_afiliado")
-        .update({ proximo_envio: proximoEnvio })
-        .eq("id", programacao.id);
-      
       return { success: true, enviados: 0 };
     }
 
@@ -681,34 +697,18 @@ async function processarProgramacao(
     const diaSemana = diasMap[diaAbrev] ?? agora.getDay();
     const diaMes = parseInt(agora.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "numeric" }));
 
+    // Verificar dia do mês (se configurado)
     if (programacao.dias_mes && programacao.dias_mes.length > 0) {
       if (!programacao.dias_mes.includes(diaMes)) {
         console.log(`📅 Dia ${diaMes} não está na lista: ${programacao.dias_mes.join(", ")}`);
-        
-        const { data: proximoEnvio } = await supabase.rpc("calcular_proximo_envio", { 
-          p_programacao_id: programacao.id 
-        });
-        
-        await supabase
-          .from("programacao_envio_afiliado")
-          .update({ proximo_envio: proximoEnvio })
-          .eq("id", programacao.id);
-        
+        // Trava atômica já definiu proximo_envio, apenas retorna
         return { success: true, enviados: 0 };
       }
     } else if (programacao.dias_semana && programacao.dias_semana.length > 0) {
+      // Verificar dia da semana (se configurado)
       if (!programacao.dias_semana.includes(diaSemana)) {
         console.log(`📅 ${['Dom','Seg','Ter','Qua','Qui','Sex','Sab'][diaSemana]} não está permitido`);
-        
-        const { data: proximoEnvio } = await supabase.rpc("calcular_proximo_envio", { 
-          p_programacao_id: programacao.id 
-        });
-        
-        await supabase
-          .from("programacao_envio_afiliado")
-          .update({ proximo_envio: proximoEnvio })
-          .eq("id", programacao.id);
-        
+        // Trava atômica já definiu proximo_envio, apenas retorna
         return { success: true, enviados: 0 };
       }
     }
@@ -1068,13 +1068,7 @@ async function processarProgramacao(
 
     if (grupos.length === 0) {
       console.log("⚠️ Nenhum grupo configurado");
-      
-      const proximoEnvio = new Date(Date.now() + programacao.intervalo_minutos * 60000);
-      await supabase
-        .from("programacao_envio_afiliado")
-        .update({ proximo_envio: proximoEnvio.toISOString() })
-        .eq("id", programacao.id);
-      
+      // proximo_envio já foi definido pela trava atômica
       return { success: true, enviados: 0 };
     }
 
@@ -1227,15 +1221,13 @@ async function processarProgramacao(
       }
     }
 
-    // 11. ATUALIZAR PROGRAMAÇÃO
-    const proximoEnvio = new Date(Date.now() + programacao.intervalo_minutos * 60000);
+    // 11. ATUALIZAR PROGRAMAÇÃO (proximo_envio já foi definido pela trava atômica)
     const hoje = new Date().toISOString().slice(0, 10);
     const resetDiario = programacao.ultimo_reset_diario !== hoje;
     
     await supabase
       .from("programacao_envio_afiliado")
       .update({
-        proximo_envio: proximoEnvio.toISOString(),
         ultimo_envio: new Date().toISOString(),
         ultimo_produto_id: produto.produto_id,
         total_enviados: (programacao.total_enviados || 0) + 1,
@@ -1244,7 +1236,7 @@ async function processarProgramacao(
       })
       .eq("id", programacao.id);
 
-    console.log(`📅 Próximo envio: ${proximoEnvio.toLocaleString("pt-BR")}`);
+    console.log(`✅ Envio concluído! Grupos: ${gruposEnviados}`);
     if (tiktokEnviado) {
       console.log(`📱 TikTok também foi atualizado!`);
     }
@@ -1253,13 +1245,7 @@ async function processarProgramacao(
 
   } catch (error: any) {
     console.error(`❌ Erro ao processar programação:`, error);
-    
-    const proximoEnvio = new Date(Date.now() + programacao.intervalo_minutos * 60000);
-    await supabase
-      .from("programacao_envio_afiliado")
-      .update({ proximo_envio: proximoEnvio.toISOString() })
-      .eq("id", programacao.id);
-    
+    // proximo_envio já foi definido pela trava atômica no início
     return { success: false, error: error.message };
   }
 }
