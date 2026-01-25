@@ -381,7 +381,7 @@ async function baixarImagemComoBase64(
                 content: [
                   {
                     type: "text",
-                    text: "Convert this image to JPEG format. Resize so the longest side is at most 800px and compress with quality 50. Keep content the same. Output only the JPEG image."
+                    text: "Resize this image to 400x400 pixels maximum, then export as highly compressed JPEG with quality 25. Keep content recognizable. Output only the tiny JPEG image."
                   },
                   {
                     type: "image_url",
@@ -490,7 +490,7 @@ async function baixarImagemComoBase64(
               content: [
                 {
                   type: "text",
-                  text: `Resize this image so the longest side is at most 600px, then export as JPEG with quality 40. Keep content the same. Output only the JPEG image.`,
+                  text: `Resize this image to 400x400 pixels maximum, then export as highly compressed JPEG with quality 20. Keep content recognizable. Output only the tiny JPEG image.`,
                 },
                 { type: "image_url", image_url: { url: dataUri } },
               ],
