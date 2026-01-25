@@ -17,7 +17,7 @@ const CONFIG = {
   MAX_PROGRAMACOES_POR_EXECUCAO: 5,
   // Para evitar 413 + “notificação vazia”: limite agressivo de mídia.
   // (Objetivo: manter imagem <= 135KB após compressão)
-  MAX_IMAGE_KB: 135,
+  MAX_IMAGE_KB: 500,
 };
 
 function estimateDataUriBytes(dataUri: string): number {
@@ -379,7 +379,7 @@ async function baixarImagemComoBase64(
                 content: [
                   {
                     type: "text",
-                     text: "Convert this image to JPEG. Resize so the longest side is at most 1024px and compress strongly (quality ~60). Keep content the same. Output the JPEG image."
+                    text: "Convert this image to JPEG format. Resize so the longest side is at most 800px and compress with quality 50. Keep content the same. Output only the JPEG image."
                   },
                   {
                     type: "image_url",
@@ -487,8 +487,7 @@ async function baixarImagemComoBase64(
               content: [
                 {
                   type: "text",
-                  text:
-                    `Resize this image so the longest side is at most 1024px, then export as JPEG with strong compression (quality ~60). Keep content the same. Output the JPEG image.`,
+                  text: `Resize this image so the longest side is at most 600px, then export as JPEG with quality 40. Keep content the same. Output only the JPEG image.`,
                 },
                 { type: "image_url", image_url: { url: dataUri } },
               ],
