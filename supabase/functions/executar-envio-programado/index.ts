@@ -414,98 +414,62 @@ async function baixarImagemComoBase64(
       return { dataUri: null, fileBytes: null, bytes: bytes.length, contentType: contentTypeHeader, contentLengthHeader };
     }
 
-    // 🆕 DETECTAR SE É WEBP - Usar API Lovable AI para converter
+    // 🆕 DETECTAR SE É WEBP - Converter usando método LOCAL (SEM IA - economia de créditos)
     const isWebP = contentTypeHeader?.includes("webp") || imageUrl.includes(".webp");
     
     let finalBytes: Uint8Array;
     let mimeType: string;
 
-     if (isWebP) {
-      console.log(`🔄 WebP detectado - CONVERTENDO para JPEG usando Lovable AI API...`);
+    if (isWebP) {
+      console.log(`🔄 WebP detectado - Tentando conversão LOCAL (sem IA para economia)...`);
       
       try {
-        // Converter bytes WebP para base64 para enviar à API
-        let webpBinary = "";
-        for (let i = 0; i < bytes.length; i++) {
-          webpBinary += String.fromCharCode(bytes[i]);
-        }
-        const webpBase64 = btoa(webpBinary);
-        const webpDataUri = `data:image/webp;base64,${webpBase64}`;
+        // Estratégia: Re-baixar pedindo JPEG/PNG ao CDN (muitos CDNs suportam content negotiation)
+        console.log(`🔄 Re-solicitando imagem ao CDN como JPEG/PNG...`);
         
-        const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-        if (!lovableApiKey) {
-          throw new Error("LOVABLE_API_KEY não configurada");
-        }
+        const jpegController = new AbortController();
+        const jpegTimeout = setTimeout(() => jpegController.abort(), 10000);
         
-        console.log(`🤖 Chamando Lovable AI para converter WebP → JPEG...`);
-        
-         const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
+        const jpegResponse = await fetch(imageUrl, {
           headers: {
-            "Authorization": `Bearer ${lovableApiKey}`,
-            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "image/jpeg, image/png, image/gif, */*;q=0.1", // Preferir formatos não-WebP
+            "Accept-Language": "pt-BR,pt;q=0.9",
           },
-          body: JSON.stringify({
-             model: "google/gemini-2.5-flash-image-preview",
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: "Resize this image to 400x400 pixels maximum, then export as highly compressed JPEG with quality 25. Keep content recognizable. Output only the tiny JPEG image."
-                  },
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: webpDataUri
-                    }
-                  }
-                ]
-              }
-            ],
-            modalities: ["image", "text"]
-          })
+          signal: jpegController.signal,
         });
         
-        if (!aiResponse.ok) {
-          const errorText = await aiResponse.text();
-          throw new Error(`API Lovable retornou erro: ${aiResponse.status} - ${errorText}`);
+        clearTimeout(jpegTimeout);
+        
+        const newContentType = jpegResponse.headers.get("content-type");
+        
+        if (jpegResponse.ok && newContentType && !newContentType.includes("webp")) {
+          console.log(`✅ CDN retornou formato alternativo: ${newContentType}`);
+          const newBytes = new Uint8Array(await jpegResponse.arrayBuffer());
+          finalBytes = newBytes;
+          mimeType = newContentType.includes("png") ? "image/png" : "image/jpeg";
+          console.log(`✅ Conversão local OK: ${Math.round(finalBytes.byteLength / 1024)}KB`);
+        } else {
+          // CDN ainda retornou WebP - usar fallback de texto (economia de créditos IA)
+          console.log(`⚠️ CDN manteve WebP. Usando fallback de texto (economia de ~$0.002/envio).`);
+          return {
+            dataUri: null,
+            fileBytes: null,
+            bytes: bytes.length,
+            contentType: contentTypeHeader,
+            contentLengthHeader
+          };
         }
         
-        const aiData = await aiResponse.json();
-        const convertedImageUrl = aiData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-        
-        if (!convertedImageUrl || !convertedImageUrl.includes("base64")) {
-          throw new Error("API não retornou imagem convertida");
-        }
-        
-        console.log(`✅ Imagem convertida pela IA! Extraindo base64...`);
-        
-        // Extrair o base64 puro da resposta (formato: data:image/xxx;base64,XXXXX)
-        const base64Part = convertedImageUrl.split(",")[1];
-        if (!base64Part) {
-          throw new Error("Base64 inválido na resposta da IA");
-        }
-        
-        // Decodificar base64 para bytes
-        const binaryString = atob(base64Part);
-        finalBytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          finalBytes[i] = binaryString.charCodeAt(i);
-        }
-        mimeType = "image/jpeg";
-        
-        console.log(`✅ Conversão WebP → JPEG via IA concluída: ${Math.round(bytes.length / 1024)}KB → ${Math.round(finalBytes.length / 1024)}KB`);
-      } catch (conversionError) {
-        console.warn(`❌ Falha ao converter WebP → JPEG via IA. Erro:`, conversionError);
-        // Fallback: tentar enviar a URL direta (alguns CDNs servem JPEG quando pedido)
+      } catch (convError) {
+        console.error("⚠️ Erro na conversão local:", convError);
+        // Fallback: retorna null para usar só texto
         return {
           dataUri: null,
           fileBytes: null,
           bytes: bytes.length,
           contentType: contentTypeHeader,
-          contentLengthHeader,
+          contentLengthHeader
         };
       }
     } else if (contentTypeHeader?.includes("png")) {
