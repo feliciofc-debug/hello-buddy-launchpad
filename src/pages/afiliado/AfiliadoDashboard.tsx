@@ -31,7 +31,7 @@ import ProgramacaoEnvioCard from "@/components/afiliado/ProgramacaoEnvioCard";
 import ProspeccaoPietroCard from "@/components/afiliado/ProspeccaoPietroCard";
 import TikTokIntegrationCard from "@/components/afiliado/TikTokIntegrationCard";
 import ConfigurarAssistenteCard from "@/components/afiliado/ConfigurarAssistenteCard";
-import { TesteEnvioImagemDebug } from "@/components/afiliado/TesteEnvioImagemDebug";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -500,10 +500,6 @@ export default function AfiliadoDashboard() {
           <ConfigurarAssistenteCard />
         </div>
 
-        {/* Debug: Teste Manual de Envio de Imagem */}
-        <div className="mb-8">
-          <TesteEnvioImagemDebug />
-        </div>
 
         {/* Card Seus Contatos */}
         <Card className="mb-8 border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
