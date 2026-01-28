@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import WhatsAppConnectionPJ from '@/components/pj/WhatsAppConnectionPJ';
 import EnviosProgramadosPJ from '@/components/pj/EnviosProgramadosPJ';
 import CriarGrupoWhatsAppPJ from '@/components/pj/CriarGrupoWhatsAppPJ';
+import ListarGruposPJ from '@/components/pj/ListarGruposPJ';
 import ConfigurarAssistentePJ from '@/components/pj/ConfigurarAssistentePJ';
 
 export default function WhatsAppAutomacaoPJ() {
@@ -29,9 +30,10 @@ export default function WhatsAppAutomacaoPJ() {
       </div>
 
       <Tabs defaultValue="conexao" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="conexao">Conexão</TabsTrigger>
           <TabsTrigger value="grupos">Criar Grupo</TabsTrigger>
+          <TabsTrigger value="meus-grupos">Meus Grupos</TabsTrigger>
           <TabsTrigger value="assistente">Assistente</TabsTrigger>
           <TabsTrigger value="programados">Envios</TabsTrigger>
         </TabsList>
@@ -74,6 +76,10 @@ export default function WhatsAppAutomacaoPJ() {
               </ul>
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="meus-grupos">
+          <ListarGruposPJ />
         </TabsContent>
 
         <TabsContent value="assistente">
