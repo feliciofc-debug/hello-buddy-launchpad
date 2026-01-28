@@ -143,7 +143,7 @@ _Escolha quantidade e finalize!_ ✅`);
   }, [open, produto, campanhaExistente]);
 
   const fetchListas = async () => {
-    console.log('📋 Buscando listas de transmissão...');
+    console.log('📋 Buscando listas de transmissão e grupos...');
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -171,6 +171,18 @@ _Escolha quantidade e finalize!_ ✅`);
 
       if (autoError) {
         console.error('⚠️ Erro ao buscar listas automáticas:', autoError);
+      }
+
+      // 🆕 Buscar grupos WhatsApp PJ
+      const { data: gruposPJ, error: gruposPJError } = await supabase
+        .from('pj_grupos_whatsapp')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('ativo', true)
+        .order('nome');
+
+      if (gruposPJError) {
+        console.error('⚠️ Erro ao buscar grupos PJ:', gruposPJError);
       }
 
       // Para cada lista automática, buscar os telefones dos membros
@@ -204,8 +216,18 @@ _Escolha quantidade e finalize!_ ✅`);
         })
       );
 
-      // Combinar listas
+      // Mapear grupos PJ para o formato esperado
+      const gruposPJMapped: WhatsAppGroup[] = (gruposPJ || []).map(g => ({
+        id: g.id,
+        group_id: g.grupo_jid,
+        group_name: `👥 ${g.nome}`,
+        member_count: g.participantes_count || 0,
+        phone_numbers: [] // Grupos são enviados pelo JID, não por telefones individuais
+      }));
+
+      // Combinar listas e grupos
       const todasListas: WhatsAppGroup[] = [
+        ...gruposPJMapped, // Grupos PJ primeiro
         ...listasAutoComTelefones,
         ...(manualListas || []).map(g => ({
           id: g.id,
@@ -216,7 +238,7 @@ _Escolha quantidade e finalize!_ ✅`);
         }))
       ];
 
-      console.log(`✅ ${todasListas.length} listas carregadas (${listasAutoComTelefones.length} automáticas + ${manualListas?.length || 0} manuais)`);
+      console.log(`✅ ${todasListas.length} itens carregados (${gruposPJMapped.length} grupos PJ + ${listasAutoComTelefones.length} listas automáticas + ${manualListas?.length || 0} manuais)`);
       setListas(todasListas);
     } catch (error) {
       console.error('❌ ERRO ao buscar listas:', error);
