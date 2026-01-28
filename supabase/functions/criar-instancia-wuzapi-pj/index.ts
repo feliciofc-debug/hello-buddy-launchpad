@@ -10,6 +10,15 @@ const corsHeaders = {
 const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
 const LOCAWEB_WUZAPI_TOKEN = Deno.env.get("WUZAPI_TOKEN") || "";
 
+async function safeReadJson(resp: Response) {
+  const text = await resp.text();
+  try {
+    return { ok: true as const, json: JSON.parse(text), text };
+  } catch (e: any) {
+    return { ok: false as const, error: e?.message || "JSON parse failed", text };
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -73,17 +82,43 @@ serve(async (req) => {
         body: JSON.stringify({}),
       });
 
-      const connectData = await connectResponse.json();
+      const connectParsed = await safeReadJson(connectResponse);
+      if (!connectParsed.ok) {
+        console.error("❌ Resposta /session/connect não é JSON:", connectParsed.text);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Resposta inválida do servidor WuzAPI (connect)",
+            raw: connectParsed.text?.slice(0, 500) || "",
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const connectData = connectParsed.json;
       console.log("📲 Resposta connect:", connectData);
 
-      if (connectData.success !== false) {
+      if (connectData?.success !== false) {
         // Buscar QR Code
         const qrResponse = await fetch(`${LOCAWEB_WUZAPI_URL}/session/qr`, {
           method: "GET",
           headers: { "Token": wuzapiToken },
         });
 
-        const qrData = await qrResponse.json();
+        const qrParsed = await safeReadJson(qrResponse);
+        if (!qrParsed.ok) {
+          console.error("❌ Resposta /session/qr não é JSON:", qrParsed.text);
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: "Resposta inválida do servidor WuzAPI (qr)",
+              raw: qrParsed.text?.slice(0, 500) || "",
+            }),
+            { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        const qrData = qrParsed.json;
         console.log("📲 QR Data:", qrData?.success);
 
         return new Response(
@@ -109,7 +144,20 @@ serve(async (req) => {
         headers: { "Token": wuzapiToken },
       });
 
-      const statusData = await statusResponse.json();
+      const statusParsed = await safeReadJson(statusResponse);
+      if (!statusParsed.ok) {
+        console.error("❌ Resposta /session/status não é JSON:", statusParsed.text);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Resposta inválida do servidor WuzAPI (status)",
+            raw: statusParsed.text?.slice(0, 500) || "",
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const statusData = statusParsed.json;
       console.log("📊 Status:", statusData);
 
       const isConnected = statusData?.Connected || statusData?.loggedIn || false;
@@ -147,7 +195,20 @@ serve(async (req) => {
         body: JSON.stringify({}),
       });
 
-      const disconnectData = await disconnectResponse.json();
+      const disconnectParsed = await safeReadJson(disconnectResponse);
+      if (!disconnectParsed.ok) {
+        console.error("❌ Resposta /session/disconnect não é JSON:", disconnectParsed.text);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "Resposta inválida do servidor WuzAPI (disconnect)",
+            raw: disconnectParsed.text?.slice(0, 500) || "",
+          }),
+          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const disconnectData = disconnectParsed.json;
       console.log("🔌 Disconnect:", disconnectData);
 
       // Atualizar status no banco
