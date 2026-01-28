@@ -155,71 +155,125 @@ serve(async (req) => {
 
         console.log(`✅ Executando campanha: ${campanha.nome} (horário slot: ${horarioEncontrado}, hora atual: ${currentTime})`);
 
-        // Buscar todos os contatos das listas
-        const { data: listas } = await supabase
-          .from("whatsapp_groups")
-          .select("phone_numbers")
-          .in("id", campanha.listas_ids);
-
-        const todosContatos = listas?.flatMap((l: any) => l.phone_numbers || []) || [];
-        console.log(`📞 Total de contatos: ${todosContatos.length}`);
-
         let enviados = 0;
         let errosEnvio = 0;
+        const imagemUrl = campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0];
 
-        // ✅ ENVIAR PARA CADA CONTATO VIA EDGE FUNCTION
-        for (const phone of todosContatos) {
-          try {
-            // Buscar nome do contato
-            const { data: contact } = await supabase
-              .from("whatsapp_contacts")
-              .select("nome")
-              .eq("phone", phone)
-              .eq("user_id", campanha.user_id)
-              .maybeSingle();
+        // ✅ VERIFICAR SE ALGUM ID É UM GRUPO PJ (enviado pelo JID, não por contatos)
+        const { data: gruposPJ } = await supabase
+          .from("pj_grupos_whatsapp")
+          .select("id, grupo_jid, nome")
+          .in("id", campanha.listas_ids || []);
 
-            const nome = contact?.nome || "Cliente";
+        if (gruposPJ && gruposPJ.length > 0) {
+          console.log(`👥 Detectados ${gruposPJ.length} grupos PJ na campanha`);
+          
+          // ✅ ENVIAR PARA GRUPOS PJ (direto pelo JID)
+          for (const grupo of gruposPJ) {
+            try {
+              console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
+              
+              // Para grupos, substituir {{nome}} por "pessoal"
+              const mensagemGrupo = campanha.mensagem_template
+                .replace(/\{\{nome\}\}/gi, 'pessoal')
+                .replace(/Olá\s+,/gi, 'Olá pessoal,')
+                .replace(/Oi\s+,/gi, 'Oi pessoal,')
+                .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || "")
+                .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || "");
+              
+              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
+                body: {
+                  userId: campanha.user_id,
+                  groupJid: grupo.grupo_jid,
+                  message: mensagemGrupo,
+                  imageUrl: imagemUrl
+                }
+              });
 
-            // Personalizar mensagem
-            const mensagemPersonalizada = campanha.mensagem_template
-              .replace(/\{\{nome\}\}/gi, nome)
-              .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || "")
-              .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || "");
-
-            const imagemUrl = campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0];
-
-            // ✅ ENVIAR VIA EDGE FUNCTION (não fetch direto!)
-            const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
-              body: {
-                phoneNumbers: [phone],
-                message: mensagemPersonalizada,
-                imageUrl: imagemUrl,
-                userId: campanha.user_id, // ✅ CRÍTICO para achar instância certa
-                skipProtection: true // ✅ Ignora cooldown entre campanhas
+              if (!sendError && sendResult?.success) {
+                enviados++;
+                console.log(`✅ Enviado para grupo PJ ${grupo.nome}`);
+              } else {
+                console.error(`❌ Erro ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
+                errosEnvio++;
               }
-            });
 
-            if (!sendError && sendResult?.success) {
-              enviados++;
-              console.log(`✅ Enviado para ${phone}`);
-            } else {
-              console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult);
+              // Delay entre envios
+              await new Promise(r => setTimeout(r, 500));
+
+            } catch (error) {
+              console.error(`❌ Erro ao processar grupo PJ ${grupo.nome}:`, error);
               errosEnvio++;
             }
+          }
+        }
 
-            // Delay entre mensagens
-            await new Promise(r => setTimeout(r, 500));
+        // ✅ PROCESSAR LISTAS NORMAIS (whatsapp_groups) - excluir IDs que já são grupos PJ
+        const gruposPJIds = (gruposPJ || []).map(g => g.id);
+        const listasNormaisIds = (campanha.listas_ids || []).filter((id: string) => !gruposPJIds.includes(id));
+        
+        if (listasNormaisIds.length > 0) {
+          const { data: listas } = await supabase
+            .from("whatsapp_groups")
+            .select("phone_numbers")
+            .in("id", listasNormaisIds);
 
-          } catch (error) {
-            console.error(`❌ Erro ao processar ${phone}:`, error);
-            errosEnvio++;
+          const todosContatos = listas?.flatMap((l: any) => l.phone_numbers || []) || [];
+          console.log(`📞 Total de contatos em listas normais: ${todosContatos.length}`);
+
+          // ✅ ENVIAR PARA CADA CONTATO VIA EDGE FUNCTION
+          for (const phone of todosContatos) {
+            try {
+              // Buscar nome do contato
+              const { data: contact } = await supabase
+                .from("whatsapp_contacts")
+                .select("nome")
+                .eq("phone", phone)
+                .eq("user_id", campanha.user_id)
+                .maybeSingle();
+
+              const nome = contact?.nome || "Cliente";
+
+              // Personalizar mensagem
+              const mensagemPersonalizada = campanha.mensagem_template
+                .replace(/\{\{nome\}\}/gi, nome)
+                .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || "")
+                .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || "");
+
+              // ✅ ENVIAR VIA EDGE FUNCTION
+              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+                body: {
+                  phoneNumbers: [phone],
+                  message: mensagemPersonalizada,
+                  imageUrl: imagemUrl,
+                  userId: campanha.user_id,
+                  skipProtection: true
+                }
+              });
+
+              if (!sendError && sendResult?.success) {
+                enviados++;
+                console.log(`✅ Enviado para ${phone}`);
+              } else {
+                console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult);
+                errosEnvio++;
+              }
+
+              // Delay entre mensagens
+              await new Promise(r => setTimeout(r, 500));
+
+            } catch (error) {
+              console.error(`❌ Erro ao processar ${phone}:`, error);
+              errosEnvio++;
+            }
           }
         }
 
         console.log(`📊 Campanha ${campanha.nome}: ${enviados} enviados, ${errosEnvio} erros`);
 
         // ✅ SÓ ATUALIZA SE ENVIOU PELO MENOS 1 MENSAGEM
-        if (enviados === 0 && todosContatos.length > 0) {
+        const totalAlvos = (gruposPJ?.length || 0) + (listasNormaisIds.length > 0 ? 1 : 0);
+        if (enviados === 0 && totalAlvos > 0) {
           console.log(`⚠️ Campanha ${campanha.nome} - Nenhuma mensagem enviada, NÃO atualizando ultima_execucao`);
           continue; // Não marca como executado se não enviou nada
         }
