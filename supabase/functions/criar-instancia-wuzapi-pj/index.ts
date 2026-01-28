@@ -232,8 +232,11 @@ serve(async (req) => {
       const statusData = statusParsed.json;
       console.log("📊 Status:", statusData);
 
-      const isConnected = statusData?.Connected || statusData?.loggedIn || false;
-      const jid = statusData?.JID || statusData?.jid || "";
+      // WuzAPI retorna: { code: 200, data: { connected: true, loggedIn: true, jid: "..." }, success: true }
+      // Precisamos extrair do objeto `data` interno
+      const innerData = statusData?.data || statusData;
+      const isConnected = innerData?.connected === true || innerData?.loggedIn === true || statusData?.Connected === true;
+      const jid = innerData?.jid || statusData?.JID || statusData?.jid || "";
 
       // Atualizar status no banco
       await supabase
