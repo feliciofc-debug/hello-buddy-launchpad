@@ -1,3 +1,9 @@
+// ============================================
+// PROCESSAR FILA DE ATENDIMENTO PJ - EDGE FUNCTION
+// AMZ Ofertas - Sistema Anti-Bloqueio WhatsApp PJ
+// Tecnologia avançada dos Afiliados, usando Locaweb
+// ============================================
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 
@@ -6,207 +12,423 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
+// ═══════════════════════════════════════
+// 🔧 CONFIGURAÇÕES ANTI-BLOQUEIO HUMANIZADO
+// ═══════════════════════════════════════
+const CONFIG = {
+  // Delays entre mensagens (mais humano)
+  DELAY_MIN_MS: 3000,           // 3 segundos mínimo entre msgs
+  DELAY_MAX_MS: 8000,           // 8 segundos máximo entre msgs
+  
+  // Tempo de "digitando" visível pro cliente
+  TEMPO_TYPING_MIN_MS: 1500,    // Mínimo 1.5s "digitando"
+  TEMPO_TYPING_MAX_MS: 4000,    // Máximo 4s "digitando"
+  TEMPO_TYPING_POR_CHAR_MS: 20, // +20ms por caractere
+  
+  // Processamento
+  BATCH_SIZE: 5,
+  MAX_TENTATIVAS: 3,
+  
+  // PJ usa Locaweb
+  WUZAPI_URL: Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br",
+};
+
 const LOCAWEB_WUZAPI_TOKEN = Deno.env.get("WUZAPI_TOKEN") || "";
 
-// Função para delay humanizado
-function getHumanDelay(): number {
-  // Entre 3 e 8 segundos (anti-bloqueio)
-  return Math.floor(Math.random() * 5000) + 3000;
+// ═══════════════════════════════════════
+// 🔧 FUNÇÕES AUXILIARES
+// ═══════════════════════════════════════
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// Função para simular digitação
-function getTypingDelay(): number {
-  // Entre 1.5 e 4 segundos
-  return Math.floor(Math.random() * 2500) + 1500;
+function calcularTempoDigitacao(mensagem: string): number {
+  const tamanho = mensagem?.length || 0;
+  const base = CONFIG.TEMPO_TYPING_MIN_MS + 
+    Math.random() * (CONFIG.TEMPO_TYPING_MAX_MS - CONFIG.TEMPO_TYPING_MIN_MS);
+  const porCaractere = Math.min(tamanho * CONFIG.TEMPO_TYPING_POR_CHAR_MS, 5000);
+  return Math.min(base + porCaractere, 8000);
 }
 
+function calcularDelayAleatorio(): number {
+  return CONFIG.DELAY_MIN_MS + 
+    Math.random() * (CONFIG.DELAY_MAX_MS - CONFIG.DELAY_MIN_MS);
+}
+
+// ═══════════════════════════════════════
+// 📤 ENVIAR STATUS "DIGITANDO"
+// ═══════════════════════════════════════
+async function enviarStatusDigitando(
+  wuzapiUrl: string,
+  token: string, 
+  phone: string
+): Promise<boolean> {
+  try {
+    let formattedPhone = phone.replace(/\D/g, "");
+    if (!formattedPhone.startsWith("55") && formattedPhone.length === 11) {
+      formattedPhone = "55" + formattedPhone;
+    }
+
+    const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
+
+    const response = await fetch(`${baseUrl}/chat/presence`, {
+      method: "POST",
+      headers: { 
+        "Token": token, 
+        "Content-Type": "application/json" 
+      },
+      body: JSON.stringify({ 
+        Phone: formattedPhone, 
+        State: "composing" 
+      })
+    });
+
+    if (response.ok) {
+      console.log(`⌨️ [PJ-FILA] Status "digitando" enviado para ${formattedPhone}`);
+      return true;
+    }
+    
+    // Tentar endpoint alternativo
+    const response2 = await fetch(`${baseUrl}/chat/markcomposing`, {
+      method: "POST",
+      headers: { 
+        "Token": token, 
+        "Content-Type": "application/json" 
+      },
+      body: JSON.stringify({ Phone: formattedPhone })
+    });
+
+    return response2.ok;
+  } catch (e: unknown) {
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    console.log("⚠️ [PJ-FILA] Não foi possível enviar status digitando:", errorMsg);
+    return false;
+  }
+}
+
+// ═══════════════════════════════════════
+// 📤 ENVIAR MENSAGEM COM FALLBACK
+// ═══════════════════════════════════════
+async function enviarMensagem(
+  wuzapiUrl: string,
+  token: string,
+  phone: string,
+  message: string,
+  imageUrl?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    let formattedPhone = phone.replace(/\D/g, "");
+    if (!formattedPhone.startsWith("55") && formattedPhone.length === 11) {
+      formattedPhone = "55" + formattedPhone;
+    }
+
+    const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
+    
+    console.log(`📤 [PJ-FILA] Enviando para ${formattedPhone}...`);
+
+    // Se tem imagem, tentar enviar com imagem primeiro
+    if (imageUrl) {
+      const response = await fetch(`${baseUrl}/chat/send/image`, {
+        method: "POST",
+        headers: { 
+          "Token": token, 
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          Phone: formattedPhone,
+          Image: imageUrl,
+          Caption: message
+        })
+      });
+
+      const responseText = await response.text();
+
+      if (response.ok) {
+        try {
+          const data = JSON.parse(responseText);
+          if (data.success !== false && !data.error) {
+            console.log(`✅ [PJ-FILA] Mensagem com imagem enviada para ${formattedPhone}`);
+            return { success: true };
+          }
+        } catch {
+          // HTTP OK = sucesso
+          console.log(`✅ [PJ-FILA] Mensagem com imagem enviada para ${formattedPhone}`);
+          return { success: true };
+        }
+      }
+
+      // Se imagem falhou, tentar só texto (fallback)
+      console.log("🧯 [PJ-FILA] Imagem falhou, tentando fallback para texto...");
+    }
+
+    // Enviar só texto
+    const textResponse = await fetch(`${baseUrl}/chat/send/text`, {
+      method: "POST",
+      headers: { 
+        "Token": token, 
+        "Content-Type": "application/json" 
+      },
+      body: JSON.stringify({
+        Phone: formattedPhone,
+        Body: message
+      })
+    });
+
+    const textResponseText = await textResponse.text();
+
+    if (!textResponse.ok) {
+      console.error(`❌ [PJ-FILA] Erro HTTP ${textResponse.status}:`, textResponseText);
+      return { success: false, error: `HTTP ${textResponse.status}: ${textResponseText}` };
+    }
+
+    try {
+      const data = JSON.parse(textResponseText);
+      if (data.success === false || data.error) {
+        return { success: false, error: data.error || "Erro desconhecido" };
+      }
+    } catch {
+      // Resposta não é JSON, mas HTTP OK = sucesso
+    }
+
+    console.log(`✅ [PJ-FILA] Mensagem enviada para ${formattedPhone}`);
+    return { success: true };
+
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("❌ [PJ-FILA] Erro ao enviar:", errorMsg);
+    return { success: false, error: errorMsg };
+  }
+}
+
+// ═══════════════════════════════════════
+// 🔄 PROCESSAR ITEM DA FILA
+// ═══════════════════════════════════════
+async function processarItem(
+  supabase: any,
+  item: any,
+  wuzapiUrl: string
+): Promise<{ success: boolean; error?: string; tempoTotal?: number }> {
+  const startTime = Date.now();
+
+  try {
+    console.log(`\n📋 [PJ-FILA] Processando item ${item.id.slice(0, 8)}...`);
+    console.log(`   📱 Lead: ${item.lead_phone || item.phone}`);
+    console.log(`   👤 Nome: ${item.lead_name || "Desconhecido"}`);
+
+    const phone = item.lead_phone || item.phone;
+    const mensagem = item.mensagem;
+
+    if (!mensagem) {
+      throw new Error("Mensagem não encontrada");
+    }
+
+    // Buscar token do usuário
+    let wuzapiToken = item.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
+    
+    if (!wuzapiToken && item.user_id) {
+      const { data: config } = await supabase
+        .from("pj_clientes_config")
+        .select("wuzapi_token")
+        .eq("user_id", item.user_id)
+        .maybeSingle();
+
+      if (config?.wuzapi_token) {
+        wuzapiToken = config.wuzapi_token;
+      }
+    }
+
+    if (!wuzapiToken) {
+      wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
+    }
+
+    // 1️⃣ MARCAR COMO PROCESSANDO
+    await supabase
+      .from("fila_atendimento_pj")
+      .update({ status: "processando" })
+      .eq("id", item.id);
+
+    // 2️⃣ ENVIAR STATUS "DIGITANDO" (humaniza)
+    await enviarStatusDigitando(wuzapiUrl, wuzapiToken, phone);
+
+    // 3️⃣ AGUARDAR TEMPO DE DIGITAÇÃO (humaniza)
+    const tempoDigitacao = calcularTempoDigitacao(mensagem);
+    console.log(`⏳ [PJ-FILA] Simulando digitação por ${tempoDigitacao}ms...`);
+    await sleep(tempoDigitacao);
+
+    // 4️⃣ ENVIAR MENSAGEM
+    const resultado = await enviarMensagem(
+      wuzapiUrl,
+      wuzapiToken,
+      phone,
+      mensagem,
+      item.imagem_url
+    );
+
+    const tempoTotal = Date.now() - startTime;
+
+    if (!resultado.success) {
+      throw new Error(resultado.error || "Erro ao enviar");
+    }
+
+    // 5️⃣ ATUALIZAR STATUS PARA ENVIADO
+    await supabase
+      .from("fila_atendimento_pj")
+      .update({ 
+        status: "enviado", 
+        sent_at: new Date().toISOString(),
+        erro: null
+      })
+      .eq("id", item.id);
+
+    console.log(`✅ [PJ-FILA] Item ${item.id.slice(0, 8)} enviado em ${tempoTotal}ms`);
+
+    return { success: true, tempoTotal };
+
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`❌ [PJ-FILA] Erro no item ${item.id.slice(0, 8)}:`, errorMsg);
+
+    const tentativas = (item.tentativas || 0) + 1;
+
+    if (tentativas >= CONFIG.MAX_TENTATIVAS) {
+      await supabase
+        .from("fila_atendimento_pj")
+        .update({ 
+          status: "erro", 
+          erro: errorMsg,
+          tentativas
+        })
+        .eq("id", item.id);
+    } else {
+      await supabase
+        .from("fila_atendimento_pj")
+        .update({ 
+          status: "pendente",
+          scheduled_at: new Date(Date.now() + 30000).toISOString(),
+          erro: errorMsg,
+          tentativas,
+          prioridade: Math.min((item.prioridade || 5) + 1, 10)
+        })
+        .eq("id", item.id);
+    }
+
+    return { success: false, error: errorMsg };
+  }
+}
+
+// ═══════════════════════════════════════
+// 🚀 HANDLER PRINCIPAL
+// ═══════════════════════════════════════
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+
   try {
-    console.log("🔄 [FILA-PJ] Iniciando processamento da fila...");
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const body = await req.json().catch(() => ({}));
+    const userId = body.userId || null;
+    const batchSize = body.batchSize || CONFIG.BATCH_SIZE;
 
-    // Buscar mensagens pendentes na fila (máximo 5 por execução)
-    const { data: mensagensPendentes, error: fetchError } = await supabase
+    console.log("🔄 ════════════════════════════════════════");
+    console.log("🔄 [PJ-FILA] PROCESSANDO FILA DE ATENDIMENTO");
+    console.log("🔄 ════════════════════════════════════════");
+
+    // Buscar itens pendentes (usando select simples já que RPC pode não existir ainda)
+    const { data: itens, error: filaError } = await supabase
       .from("fila_atendimento_pj")
       .select("*")
       .eq("status", "pendente")
+      .lte("scheduled_at", new Date().toISOString())
+      .lt("tentativas", CONFIG.MAX_TENTATIVAS)
       .order("prioridade", { ascending: true })
       .order("created_at", { ascending: true })
-      .limit(5);
+      .limit(batchSize);
 
-    if (fetchError) {
-      console.error("❌ [FILA-PJ] Erro ao buscar fila:", fetchError);
-      throw fetchError;
+    if (filaError) {
+      console.error("❌ [PJ-FILA] Erro ao buscar fila:", filaError);
+      throw filaError;
     }
 
-    if (!mensagensPendentes || mensagensPendentes.length === 0) {
-      console.log("✅ [FILA-PJ] Nenhuma mensagem pendente");
+    if (!itens || itens.length === 0) {
+      console.log("📭 [PJ-FILA] Fila vazia - nada para processar");
       return new Response(
-        JSON.stringify({ success: true, processadas: 0 }),
+        JSON.stringify({ 
+          success: true, 
+          processed: 0, 
+          message: "Fila vazia",
+          duration_ms: Date.now() - startTime
+        }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`📬 [FILA-PJ] ${mensagensPendentes.length} mensagens para processar`);
+    console.log(`📋 [PJ-FILA] ${itens.length} itens para processar`);
 
-    let processadas = 0;
+    let processados = 0;
     let erros = 0;
+    const resultados: any[] = [];
 
-    for (const mensagem of mensagensPendentes) {
-      try {
-        // Marcar como processando
-        await supabase
-          .from("fila_atendimento_pj")
-          .update({ status: "processando" })
-          .eq("id", mensagem.id);
+    for (const item of itens) {
+      const resultado = await processarItem(supabase, item, CONFIG.WUZAPI_URL);
+      
+      resultados.push({
+        id: item.id,
+        phone: item.lead_phone || item.phone,
+        ...resultado
+      });
 
-        // Buscar token do usuário
-        let wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
-        if (mensagem.user_id) {
-          const { data: config } = await supabase
-            .from("pj_clientes_config")
-            .select("wuzapi_token")
-            .eq("user_id", mensagem.user_id)
-            .maybeSingle();
-
-          if (config?.wuzapi_token) {
-            wuzapiToken = config.wuzapi_token;
-          }
-        }
-
-        // Simular status "digitando" (anti-bloqueio)
-        console.log(`⌨️ [FILA-PJ] Simulando digitação para ${mensagem.phone}...`);
-        
-        try {
-          await fetch(`${LOCAWEB_WUZAPI_URL}/chat/presence`, {
-            method: "POST",
-            headers: {
-              "Token": wuzapiToken,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              Phone: mensagem.phone.replace(/\D/g, ""),
-              State: "composing",
-            }),
-          });
-        } catch (e) {
-          console.log("⚠️ Presence não suportado, continuando...");
-        }
-
-        // Delay de digitação
-        await new Promise((r) => setTimeout(r, getTypingDelay()));
-
-        // Enviar mensagem
-        let response: Response;
-        let payload: any;
-
-        if (mensagem.tipo === "imagem" && mensagem.imagem_url) {
-          // Enviar com imagem
-          response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/image`, {
-            method: "POST",
-            headers: {
-              "Token": wuzapiToken,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              Phone: mensagem.phone.replace(/\D/g, ""),
-              Caption: mensagem.mensagem,
-              Image: mensagem.imagem_url,
-            }),
-          });
-        } else {
-          // Enviar texto
-          response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/text`, {
-            method: "POST",
-            headers: {
-              "Token": wuzapiToken,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              Phone: mensagem.phone.replace(/\D/g, ""),
-              Body: mensagem.mensagem,
-            }),
-          });
-        }
-
-        payload = await response.json();
-
-        if (response.ok && payload?.success !== false) {
-          // Sucesso
-          await supabase
-            .from("fila_atendimento_pj")
-            .update({
-              status: "enviado",
-              processado_em: new Date().toISOString(),
-            })
-            .eq("id", mensagem.id);
-
-          processadas++;
-          console.log(`✅ [FILA-PJ] Enviado para ${mensagem.phone}`);
-        } else {
-          throw new Error(payload?.error || "Erro ao enviar");
-        }
-
-        // Delay humanizado entre mensagens
-        await new Promise((r) => setTimeout(r, getHumanDelay()));
-
-      } catch (msgError: any) {
-        console.error(`❌ [FILA-PJ] Erro ao processar ${mensagem.phone}:`, msgError);
-
-        const tentativas = (mensagem.tentativas || 0) + 1;
-        const maxTentativas = mensagem.max_tentativas || 3;
-
-        if (tentativas >= maxTentativas) {
-          // Marcar como falha definitiva
-          await supabase
-            .from("fila_atendimento_pj")
-            .update({
-              status: "falha",
-              erro: msgError.message,
-              tentativas,
-              processado_em: new Date().toISOString(),
-            })
-            .eq("id", mensagem.id);
-        } else {
-          // Voltar para pendente para retry
-          await supabase
-            .from("fila_atendimento_pj")
-            .update({
-              status: "pendente",
-              tentativas,
-              erro: msgError.message,
-            })
-            .eq("id", mensagem.id);
-        }
-
+      if (resultado.success) {
+        processados++;
+      } else {
         erros++;
+      }
+
+      // Delay anti-bloqueio entre mensagens
+      if (itens.indexOf(item) < itens.length - 1) {
+        const delay = calcularDelayAleatorio();
+        console.log(`⏳ [PJ-FILA] Aguardando ${delay}ms antes do próximo...`);
+        await sleep(delay);
       }
     }
 
-    console.log(`📊 [FILA-PJ] Resultado: ${processadas} enviadas, ${erros} erros`);
+    const duracao = Date.now() - startTime;
+    
+    console.log("\n🔄 ════════════════════════════════════════");
+    console.log(`✅ [PJ-FILA] Processamento concluído!`);
+    console.log(`   📤 Enviados: ${processados}`);
+    console.log(`   ❌ Erros: ${erros}`);
+    console.log(`   ⏱️ Duração: ${duracao}ms`);
+    console.log("🔄 ════════════════════════════════════════\n");
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        processadas,
-        erros,
-        total: mensagensPendentes.length,
+      JSON.stringify({ 
+        success: true, 
+        processed: processados, 
+        errors: erros,
+        total: itens.length,
+        duration_ms: duracao,
+        resultados
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
-  } catch (err: any) {
-    console.error("❌ [FILA-PJ] Erro geral:", err);
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("💥 [PJ-FILA] Erro geral:", errorMsg);
     return new Response(
-      JSON.stringify({ success: false, error: err.message }),
+      JSON.stringify({ 
+        success: false, 
+        error: errorMsg,
+        duration_ms: Date.now() - startTime
+      }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
