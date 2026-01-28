@@ -14,6 +14,7 @@ export default function CriarGrupoWhatsAppPJ() {
   const [loading, setLoading] = useState(false);
   const [nomeGrupo, setNomeGrupo] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [telefoneAdmin, setTelefoneAdmin] = useState("");
   const [gruposCriados, setGruposCriados] = useState<Array<{
     nome: string;
     inviteLink: string | null;
@@ -23,6 +24,12 @@ export default function CriarGrupoWhatsAppPJ() {
   const criarGrupo = async () => {
     if (!nomeGrupo.trim()) {
       toast.error("Digite o nome do grupo");
+      return;
+    }
+
+    const telefoneDigits = telefoneAdmin.replace(/\D/g, "");
+    if (!telefoneDigits) {
+      toast.error("Digite o número do WhatsApp (com DDD) que será admin do grupo");
       return;
     }
 
@@ -38,7 +45,8 @@ export default function CriarGrupoWhatsAppPJ() {
         body: {
           groupName: nomeGrupo.trim(),
           descricao: descricao.trim() || null,
-          userId: user.id
+          userId: user.id,
+          telefoneAdmin: telefoneDigits
         }
       });
 
@@ -56,6 +64,7 @@ export default function CriarGrupoWhatsAppPJ() {
         // Limpar campos
         setNomeGrupo("");
         setDescricao("");
+        setTelefoneAdmin("");
       } else {
         throw new Error(data?.error || "Erro ao criar grupo");
       }
@@ -82,6 +91,23 @@ export default function CriarGrupoWhatsAppPJ() {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
+          <Label htmlFor="telefone-admin">Seu WhatsApp (admin do grupo)</Label>
+          <Input
+            id="telefone-admin"
+            value={telefoneAdmin}
+            onChange={(e) => setTelefoneAdmin(e.target.value)}
+            placeholder="Ex: 21 99537-9550"
+            className="bg-background/50"
+            disabled={loading}
+            inputMode="tel"
+            autoComplete="tel"
+          />
+          <p className="text-xs text-muted-foreground">
+            Dica: pode digitar com espaços/traços. A gente normaliza automaticamente.
+          </p>
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="nome-grupo">Nome do Grupo</Label>
           <Input
             id="nome-grupo"
@@ -107,7 +133,7 @@ export default function CriarGrupoWhatsAppPJ() {
 
         <Button 
           onClick={criarGrupo} 
-          disabled={loading || !nomeGrupo.trim()}
+          disabled={loading || !nomeGrupo.trim() || !telefoneAdmin.trim()}
           className="w-full"
         >
           {loading ? (

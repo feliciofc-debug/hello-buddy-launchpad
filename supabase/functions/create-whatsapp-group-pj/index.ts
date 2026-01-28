@@ -21,7 +21,7 @@ serve(async (req) => {
   }
 
   try {
-    const { groupName, descricao, userId } = await req.json();
+    const { groupName, descricao, userId, telefoneAdmin: telefoneAdminBody } = await req.json();
 
     if (!groupName || !userId) {
       return new Response(
@@ -68,10 +68,21 @@ serve(async (req) => {
       wuzapiToken = mappedInstance.wuzapi_token;
     }
 
-    // Telefone para ser o admin do grupo
-    let telefoneAdmin = config?.telefone?.replace(/\D/g, '') || '';
+    // Telefone para ser o admin do grupo (prioridade: body -> config)
+    let telefoneAdmin = (telefoneAdminBody || config?.telefone || "").toString().replace(/\D/g, "");
     if (telefoneAdmin && !telefoneAdmin.startsWith("55")) {
       telefoneAdmin = "55" + telefoneAdmin;
+    }
+
+    // WuzAPI exige Participants no payload para criar grupo
+    if (!telefoneAdmin) {
+      return new Response(
+        JSON.stringify({
+          error: "Informe um número de WhatsApp (com DDD) para ser admin do grupo.",
+          details: { missing: "telefoneAdmin" },
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Verificar se sessão está ativa antes de criar grupo
