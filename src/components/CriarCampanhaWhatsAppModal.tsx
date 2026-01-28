@@ -395,18 +395,74 @@ _Escolha quantidade e finalize!_ ✅`;
     
     console.log('📦 Produto:', produto.nome);
 
-    // Buscar contatos de todas as listas selecionadas
+    // 🆕 Separar grupos PJ de listas normais
+    const { data: gruposPJ } = await supabase
+      .from('pj_grupos_whatsapp')
+      .select('id, grupo_jid, nome')
+      .in('id', listasSelecionadas)
+      .eq('user_id', user.id);
+
+    const gruposPJIds = (gruposPJ || []).map(g => g.id);
+    const listasNormaisIds = listasSelecionadas.filter(id => !gruposPJIds.includes(id));
+
+    console.log('📊 Grupos PJ selecionados:', gruposPJ?.length || 0);
+    console.log('📊 Listas normais selecionadas:', listasNormaisIds.length);
+
+    // 🆕 Enviar para grupos PJ diretamente via JID
+    if (gruposPJ && gruposPJ.length > 0) {
+      for (const grupo of gruposPJ) {
+        console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
+        
+        try {
+          const { error } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
+            body: {
+              userId: user.id,
+              groupJid: grupo.grupo_jid,
+              message: mensagem,
+              imageUrl: produto.imagem_url
+            }
+          });
+
+          if (error) {
+            console.error(`❌ Erro ao enviar para grupo ${grupo.nome}:`, error);
+            toast.error(`Erro ao enviar para ${grupo.nome}`);
+          } else {
+            console.log(`✅ Enviado para grupo ${grupo.nome}`);
+            toast.success(`✅ Enviado para grupo ${grupo.nome}`);
+          }
+        } catch (err) {
+          console.error(`❌ Erro ao enviar para grupo ${grupo.nome}:`, err);
+        }
+      }
+    }
+
+    // Se não há listas normais, terminar aqui
+    if (listasNormaisIds.length === 0) {
+      if (gruposPJ && gruposPJ.length > 0) {
+        console.log('✅ Campanha enviada apenas para grupos PJ');
+        return;
+      }
+      toast.error('Nenhum grupo ou lista selecionada');
+      return;
+    }
+
+    // Buscar contatos das listas normais
     const { data: listasData } = await supabase
       .from('whatsapp_groups')
       .select('phone_numbers')
-      .in('id', listasSelecionadas);
+      .in('id', listasNormaisIds);
 
     const todosContatos = listasData?.flatMap(l => l.phone_numbers || []) || [];
-    console.log('📋 Total contatos:', todosContatos.length);
+    console.log('📋 Total contatos (listas normais):', todosContatos.length);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (todosContatos.length === 0) {
+    if (todosContatos.length === 0 && (!gruposPJ || gruposPJ.length === 0)) {
       toast.error('Nenhum contato encontrado nas listas selecionadas');
+      return;
+    }
+    
+    // Se só tinha grupos PJ e já enviou, terminar
+    if (todosContatos.length === 0) {
       return;
     }
 
