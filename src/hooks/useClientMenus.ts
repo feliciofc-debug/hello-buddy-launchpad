@@ -60,8 +60,8 @@ export function useClientMenus(userTipo: string | null | undefined) {
           setMenuConfig({
             tipo_cliente: userTipo,
             menus_permitidos: [
-              'dashboard', 'produtos', 'whatsapp', 'conectar-whatsapp', 'ia-conversas',
-              'ia-marketing', 'campanhas-prospeccao', 'buscar-cnpj', 'leads-funil',
+              'dashboard', 'produtos', 'whatsapp', 'conectar-whatsapp', 'automacao-grupos',
+              'ia-conversas', 'ia-marketing', 'campanhas-prospeccao', 'buscar-cnpj', 'leads-funil',
               'configurar-icp', 'vendedores', 'biblioteca', 'analytics',
               'google-ads', 'shopee', 'marketplace', 'lomadee', 'redes-sociais'
             ],
