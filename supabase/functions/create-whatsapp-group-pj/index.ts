@@ -37,16 +37,35 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Buscar token do usuário (ou usar default)
+    // Buscar configuração do usuário PJ
+    let baseUrl = LOCAWEB_WUZAPI_URL;
     let wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
+    
     const { data: config } = await supabase
       .from("pj_clientes_config")
-      .select("wuzapi_token, telefone")
+      .select("wuzapi_token, wuzapi_port, telefone")
       .eq("user_id", userId)
       .maybeSingle();
 
     if (config?.wuzapi_token) {
       wuzapiToken = config.wuzapi_token;
+    }
+    
+    // Buscar instância mapeada com IP:Porta real (não usar domínio)
+    const targetPort = Number(config?.wuzapi_port || 8080);
+    const { data: mappedInstance } = await supabase
+      .from("wuzapi_instances")
+      .select("wuzapi_url, wuzapi_token")
+      .eq("assigned_to_user", userId)
+      .eq("port", targetPort)
+      .maybeSingle();
+    
+    if (mappedInstance?.wuzapi_url) {
+      baseUrl = mappedInstance.wuzapi_url.replace(/\/+$/, "");
+      console.log("📡 [PJ-GROUP-CREATE] Usando instância:", baseUrl);
+    }
+    if (mappedInstance?.wuzapi_token) {
+      wuzapiToken = mappedInstance.wuzapi_token;
     }
 
     // Telefone para ser o admin do grupo
@@ -56,7 +75,7 @@ serve(async (req) => {
     }
 
     // Criar grupo via WuzAPI
-    const createResponse = await fetch(`${LOCAWEB_WUZAPI_URL}/group/create`, {
+    const createResponse = await fetch(`${baseUrl}/group/create`, {
       method: "POST",
       headers: { 
         "Token": wuzapiToken, 
@@ -123,7 +142,7 @@ serve(async (req) => {
     
     for (const endpoint of endpoints) {
       console.log(`🔗 [PJ-GROUP-CREATE] Tentando endpoint: ${endpoint}`);
-      const linkResponse = await fetch(`${LOCAWEB_WUZAPI_URL}${endpoint}`, {
+      const linkResponse = await fetch(`${baseUrl}${endpoint}`, {
         method: "POST",
         headers: { 
           "Token": wuzapiToken, 
