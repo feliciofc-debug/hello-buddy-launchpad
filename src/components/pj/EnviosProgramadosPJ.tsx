@@ -95,11 +95,12 @@ export default function EnviosProgramadosPJ() {
 
     setProgramacoes(progs || []);
 
-    // Carregar grupos
+    // Carregar grupos ativos
     const { data: grps } = await supabase
       .from('pj_grupos_whatsapp')
       .select('*')
       .eq('user_id', user.id)
+      .eq('ativo', true)
       .order('nome');
 
     setGrupos(grps || []);
@@ -109,7 +110,12 @@ export default function EnviosProgramadosPJ() {
   const syncGrupos = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('list-whatsapp-groups-pj');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Não autenticado');
+
+      const { data, error } = await supabase.functions.invoke('list-whatsapp-groups-pj', {
+        body: { userId: user.id, sync: true }
+      });
       
       if (error) throw error;
       
