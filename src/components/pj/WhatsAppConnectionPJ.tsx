@@ -100,13 +100,13 @@ export default function WhatsAppConnectionPJ() {
       }
 
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-        body: { userId: user.id, action: 'generate_qr', instance_name: instanceName || undefined }
+        body: { userId: user.id, action: 'qrcode', instance_name: instanceName || undefined }
       });
 
       if (error) throw error;
 
-      if (data.qrcode) {
-        setQrCode(data.qrcode);
+      if (data.qrCode || data.qrcode) {
+        setQrCode(data.qrCode || data.qrcode);
         toast.success('📲 QR Code gerado! Escaneie com seu WhatsApp');
         
         // Poll for connection
