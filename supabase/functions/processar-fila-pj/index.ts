@@ -377,7 +377,30 @@ serve(async (req) => {
     const resultados: any[] = [];
 
     for (const item of itens) {
-      const resultado = await processarItem(supabase, item, CONFIG.WUZAPI_URL);
+      // Buscar URL real da instância WuzAPI para este usuário (IP:Porta)
+      let wuzapiUrl = CONFIG.WUZAPI_URL;
+      if (item.user_id) {
+        const { data: config } = await supabase
+          .from("pj_clientes_config")
+          .select("wuzapi_port")
+          .eq("user_id", item.user_id)
+          .maybeSingle();
+        
+        const targetPort = Number(config?.wuzapi_port || 8080);
+        const { data: mappedInstance } = await supabase
+          .from("wuzapi_instances")
+          .select("wuzapi_url")
+          .eq("assigned_to_user", item.user_id)
+          .eq("port", targetPort)
+          .maybeSingle();
+        
+        if (mappedInstance?.wuzapi_url) {
+          wuzapiUrl = mappedInstance.wuzapi_url.replace(/\/+$/, "");
+          console.log(`📡 [PJ-FILA] Usando instância real: ${wuzapiUrl}`);
+        }
+      }
+      
+      const resultado = await processarItem(supabase, item, wuzapiUrl);
       
       resultados.push({
         id: item.id,
