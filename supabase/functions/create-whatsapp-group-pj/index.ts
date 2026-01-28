@@ -74,55 +74,114 @@ serve(async (req) => {
       telefoneAdmin = "55" + telefoneAdmin;
     }
 
-    // Criar grupo via WuzAPI
-    const createResponse = await fetch(`${baseUrl}/group/create`, {
-      method: "POST",
-      headers: { 
-        "Token": wuzapiToken, 
-        "Content-Type": "application/json" 
-      },
-      body: JSON.stringify({
-        Name: groupName,
-        Participants: telefoneAdmin ? [telefoneAdmin] : ["5500000000000"]
-      }),
+    // Verificar se sessão está ativa antes de criar grupo
+    console.log("📡 [PJ-GROUP-CREATE] Verificando sessão antes de criar grupo...");
+    const statusResp = await fetch(`${baseUrl}/session/status`, {
+      method: "GET",
+      headers: { "Token": wuzapiToken },
     });
-
-    const createText = await createResponse.text();
-    console.log("📋 [PJ-GROUP-CREATE] Resultado criação (raw):", createText);
+    const statusData = await statusResp.json().catch(() => ({}));
+    const innerStatus = statusData?.data || statusData;
+    const isConnected = innerStatus?.connected === true || innerStatus?.loggedIn === true;
     
-    let createResult;
-    try {
-      createResult = JSON.parse(createText);
-    } catch {
-      console.error("❌ [PJ-GROUP-CREATE] Resposta não é JSON válido:", createText);
+    if (!isConnected) {
+      console.error("❌ [PJ-GROUP-CREATE] Sessão não conectada:", statusData);
       return new Response(
-        JSON.stringify({ error: "Resposta inválida da API WuzAPI", details: createText }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          error: "WhatsApp não está conectado. Reconecte via QR Code.",
+          details: statusData 
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    console.log("✅ [PJ-GROUP-CREATE] Sessão ativa, criando grupo...");
 
-    if (!createResponse.ok) {
+    // Criar grupo via WuzAPI - tentar múltiplos endpoints
+    const createEndpoints = [
+      "/group/create",
+      "/chat/group/create",
+    ];
+    
+    let createResult: any = null;
+    let createSuccess = false;
+    
+    for (const endpoint of createEndpoints) {
+      console.log(`📱 [PJ-GROUP-CREATE] Tentando endpoint: ${endpoint}`);
+      
+      const createResponse = await fetch(`${baseUrl}${endpoint}`, {
+        method: "POST",
+        headers: { 
+          "Token": wuzapiToken, 
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          Name: groupName,
+          Participants: [] // Criar grupo vazio, admin já é o próprio número
+        }),
+      });
+
+      const createText = await createResponse.text();
+      console.log(`📋 [PJ-GROUP-CREATE] Resultado ${endpoint}:`, createText);
+      
+      try {
+        createResult = JSON.parse(createText);
+      } catch {
+        console.warn(`⚠️ [PJ-GROUP-CREATE] Resposta não é JSON em ${endpoint}:`, createText);
+        continue;
+      }
+
+      // Verificar se é erro real (code >= 400 ou mensagem de erro)
+      const code = createResult?.code || createResponse.status;
+      const errorMsg = createResult?.error || createResult?.message || "";
+      
+      if (code >= 400 || errorMsg.toLowerCase().includes("no session") || errorMsg.toLowerCase().includes("not connected")) {
+        console.warn(`⚠️ [PJ-GROUP-CREATE] Erro em ${endpoint}: code=${code}, error=${errorMsg}`);
+        continue;
+      }
+      
+      // Se chegou aqui, provavelmente funcionou
+      if (createResult?.data?.Jid || createResult?.Jid || createResult?.GroupJid || createResult?.gid) {
+        createSuccess = true;
+        break;
+      }
+      
+      // Se success=true mas sem JID, pode ser que o grupo foi criado mas resposta incompleta
+      if (createResult?.success === true && code < 400) {
+        createSuccess = true;
+        break;
+      }
+    }
+
+    if (!createSuccess || !createResult) {
       return new Response(
-        JSON.stringify({ error: "Erro ao criar grupo", details: createResult }),
+        JSON.stringify({ 
+          error: "Não foi possível criar o grupo. Verifique se o WhatsApp está conectado.",
+          details: createResult 
+        }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Extrair JID do grupo (diferentes formatos possíveis)
     const groupJid =
+      createResult?.data?.Jid ||
+      createResult?.data?.GroupJid ||
+      createResult?.data?.gid ||
+      createResult?.data?.JID ||
       createResult?.GroupJid ||
       createResult?.Jid ||
       createResult?.gid ||
-      createResult?.JID ||
-      createResult?.data?.GroupJid ||
-      createResult?.data?.Jid ||
-      createResult?.data?.gid ||
-      createResult?.data?.JID;
+      createResult?.JID;
 
     if (!groupJid) {
+      // Se não retornou JID mas criou, tentar buscar grupos para encontrar o novo
+      console.warn("⚠️ [PJ-GROUP-CREATE] Grupo pode ter sido criado mas JID não retornado");
       return new Response(
-        JSON.stringify({ error: "Grupo criado mas JID não retornado", details: createResult }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ 
+          warning: "Grupo possivelmente criado, mas JID não retornado. Sincronize os grupos.",
+          details: createResult 
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
