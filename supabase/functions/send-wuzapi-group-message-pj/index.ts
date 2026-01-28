@@ -35,17 +35,36 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Buscar token do usuário
+    // Buscar configuração do usuário PJ (usar IP:Porta real, não domínio)
+    let baseUrl = LOCAWEB_WUZAPI_URL;
     let wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
+    
     if (userId) {
       const { data: config } = await supabase
         .from("pj_clientes_config")
-        .select("wuzapi_token")
+        .select("wuzapi_token, wuzapi_port")
         .eq("user_id", userId)
         .maybeSingle();
 
       if (config?.wuzapi_token) {
         wuzapiToken = config.wuzapi_token;
+      }
+      
+      // Buscar instância mapeada com IP:Porta real
+      const targetPort = Number(config?.wuzapi_port || 8080);
+      const { data: mappedInstance } = await supabase
+        .from("wuzapi_instances")
+        .select("wuzapi_url, wuzapi_token")
+        .eq("assigned_to_user", userId)
+        .eq("port", targetPort)
+        .maybeSingle();
+      
+      if (mappedInstance?.wuzapi_url) {
+        baseUrl = mappedInstance.wuzapi_url.replace(/\/+$/, "");
+        console.log("📡 [PJ-GROUP] Usando instância:", baseUrl);
+      }
+      if (mappedInstance?.wuzapi_token) {
+        wuzapiToken = mappedInstance.wuzapi_token;
       }
     }
 
@@ -71,7 +90,7 @@ serve(async (req) => {
 
     if (imageUrl) {
       // Enviar com imagem
-      response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/image`, {
+      response = await fetch(`${baseUrl}/chat/send/image`, {
         method: "POST",
         headers: {
           "Token": wuzapiToken,
@@ -99,7 +118,7 @@ serve(async (req) => {
         if (isMediaError) {
           console.log("🧯 [PJ-GROUP] Fallback para texto...");
           
-          response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/text`, {
+          response = await fetch(`${baseUrl}/chat/send/text`, {
             method: "POST",
             headers: {
               "Token": wuzapiToken,
@@ -117,7 +136,7 @@ serve(async (req) => {
       }
     } else {
       // Enviar só texto
-      response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/text`, {
+      response = await fetch(`${baseUrl}/chat/send/text`, {
         method: "POST",
         headers: {
           "Token": wuzapiToken,

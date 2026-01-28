@@ -43,10 +43,14 @@ export default function WhatsAppConnectionPJ() {
       setHasConfig(true);
       setInstanceName(config.wuzapi_instance_name || '');
       if (config.whatsapp_conectado) {
+        // Remove o device ID (:XX) e @s.whatsapp.net do JID
+        const cleanPhone = config.wuzapi_jid
+          ?.replace('@s.whatsapp.net', '')
+          ?.replace(/:\d+$/, ''); // Remove :21, :42, etc
         setStatus({
           connected: true,
           jid: config.wuzapi_jid,
-          phone: config.wuzapi_jid?.replace('@s.whatsapp.net', ''),
+          phone: cleanPhone,
         });
       }
     }
