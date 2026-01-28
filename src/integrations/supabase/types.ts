@@ -4256,6 +4256,7 @@ export type Database = {
           descricao: string | null
           grupo_jid: string
           id: string
+          invite_link: string | null
           is_admin: boolean | null
           is_announce: boolean | null
           nome: string
@@ -4270,6 +4271,7 @@ export type Database = {
           descricao?: string | null
           grupo_jid: string
           id?: string
+          invite_link?: string | null
           is_admin?: boolean | null
           is_announce?: boolean | null
           nome: string
@@ -4284,6 +4286,7 @@ export type Database = {
           descricao?: string | null
           grupo_jid?: string
           id?: string
+          invite_link?: string | null
           is_admin?: boolean | null
           is_announce?: boolean | null
           nome?: string
