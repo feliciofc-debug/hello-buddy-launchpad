@@ -108,6 +108,16 @@ serve(async (req) => {
     for (const endpoint of createEndpoints) {
       console.log(`📱 [PJ-GROUP-CREATE] Tentando endpoint: ${endpoint}`);
       
+      // Preparar participantes - precisa ter pelo menos 1 número além do admin
+      // Se não tiver telefone do admin, passar array vazio (o próprio número conectado vira admin)
+      const participants: string[] = [];
+      if (telefoneAdmin) {
+        // Formato WuzAPI: número@s.whatsapp.net
+        participants.push(`${telefoneAdmin}@s.whatsapp.net`);
+      }
+      
+      console.log(`📱 [PJ-GROUP-CREATE] Participantes: ${JSON.stringify(participants)}`);
+      
       const createResponse = await fetch(`${baseUrl}${endpoint}`, {
         method: "POST",
         headers: { 
@@ -116,7 +126,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           Name: groupName,
-          Participants: [] // Criar grupo vazio, admin já é o próprio número
+          Participants: participants
         }),
       });
 
