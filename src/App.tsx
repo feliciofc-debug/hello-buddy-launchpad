@@ -64,6 +64,7 @@ import PainelAfiliado from "./pages/PainelAfiliado";
 import TikTokCallback from "./pages/TikTokCallback";
 import Termos from "./pages/Termos";
 import Privacidade from "./pages/Privacidade";
+import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
 
 // Páginas Afiliados
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
@@ -151,6 +152,9 @@ const App = () => (
             <Route path="/imoveis/seguidores-concorrentes" element={<SeguidoresConcorrentes />} />
             <Route path="/pietro-dashboard" element={<PietroDashboard />} />
             <Route path="/cliente/painel-afiliado" element={<PainelAfiliado />} />
+            
+            {/* Rotas PJ */}
+            <Route path="/pj/whatsapp-automacao" element={<WhatsAppAutomacaoPJ />} />
             
             {/* TikTok OAuth Callback */}
             <Route path="/tiktok/callback" element={<TikTokCallback />} />

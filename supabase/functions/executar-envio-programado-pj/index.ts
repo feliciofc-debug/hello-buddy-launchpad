@@ -203,6 +203,7 @@ serve(async (req) => {
             mensagem,
             imagem_url: produto.imagem_url || produto.imagem,
             status: "enviado",
+            enviado_em: new Date().toISOString(),
           });
 
           executadas++;
@@ -219,6 +220,7 @@ serve(async (req) => {
             produto_titulo: produto.titulo,
             status: "erro",
             erro: payload?.error || "Erro desconhecido",
+            enviado_em: new Date().toISOString(),
           });
 
           erros++;
