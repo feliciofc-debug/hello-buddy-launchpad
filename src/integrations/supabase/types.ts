@@ -1979,51 +1979,60 @@ export type Database = {
       fila_atendimento_pj: {
         Row: {
           created_at: string | null
-          delay_segundos: number | null
           erro: string | null
           id: string
           imagem_url: string | null
-          max_tentativas: number | null
+          lead_name: string | null
+          lead_phone: string
           mensagem: string
-          phone: string
+          metadata: Json | null
           prioridade: number | null
-          processado_em: string | null
+          scheduled_at: string | null
+          sent_at: string | null
           status: string | null
           tentativas: number | null
-          tipo: string | null
+          tipo_mensagem: string | null
           user_id: string | null
+          wuzapi_token: string | null
+          wuzapi_url: string | null
         }
         Insert: {
           created_at?: string | null
-          delay_segundos?: number | null
           erro?: string | null
           id?: string
           imagem_url?: string | null
-          max_tentativas?: number | null
+          lead_name?: string | null
+          lead_phone: string
           mensagem: string
-          phone: string
+          metadata?: Json | null
           prioridade?: number | null
-          processado_em?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
           status?: string | null
           tentativas?: number | null
-          tipo?: string | null
+          tipo_mensagem?: string | null
           user_id?: string | null
+          wuzapi_token?: string | null
+          wuzapi_url?: string | null
         }
         Update: {
           created_at?: string | null
-          delay_segundos?: number | null
           erro?: string | null
           id?: string
           imagem_url?: string | null
-          max_tentativas?: number | null
+          lead_name?: string | null
+          lead_phone?: string
           mensagem?: string
-          phone?: string
+          metadata?: Json | null
           prioridade?: number | null
-          processado_em?: string | null
+          scheduled_at?: string | null
+          sent_at?: string | null
           status?: string | null
           tentativas?: number | null
-          tipo?: string | null
+          tipo_mensagem?: string | null
           user_id?: string | null
+          wuzapi_token?: string | null
+          wuzapi_url?: string | null
         }
         Relationships: []
       }
@@ -6668,6 +6677,34 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "fila_atendimento_afiliado"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      pegar_proximo_fila_pj: {
+        Args: { p_limit?: number; p_user_id?: string }
+        Returns: {
+          created_at: string | null
+          erro: string | null
+          id: string
+          imagem_url: string | null
+          lead_name: string | null
+          lead_phone: string
+          mensagem: string
+          metadata: Json | null
+          prioridade: number | null
+          scheduled_at: string | null
+          sent_at: string | null
+          status: string | null
+          tentativas: number | null
+          tipo_mensagem: string | null
+          user_id: string | null
+          wuzapi_token: string | null
+          wuzapi_url: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "fila_atendimento_pj"
           isOneToOne: false
           isSetofReturn: true
         }
