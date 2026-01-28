@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Usa a mesma infraestrutura Locaweb do sistema PJ existente
+// Fallback (caso não exista instância mapeada no banco)
 const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
 const LOCAWEB_WUZAPI_TOKEN = Deno.env.get("WUZAPI_TOKEN") || "";
 
@@ -88,7 +88,18 @@ serve(async (req) => {
       clienteConfig = newConfig;
     }
 
-    const wuzapiToken = clienteConfig.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
+    // ✅ Igual ao PJ antigo: usar a instância real (http://191.252.193.73:808x) vinda de wuzapi_instances
+    // Isso evita o 404 do domínio wuzapi.amzofertas.com.br em /session/connect.
+    const targetPort = Number(clienteConfig.wuzapi_port || 8080);
+    const { data: mappedInstance } = await supabase
+      .from("wuzapi_instances")
+      .select("wuzapi_url, wuzapi_token, instance_name, port")
+      .eq("assigned_to_user", userId)
+      .eq("port", targetPort)
+      .maybeSingle();
+
+    const baseUrl = (mappedInstance?.wuzapi_url || LOCAWEB_WUZAPI_URL).replace(/\/+$/, "");
+    const wuzapiToken = mappedInstance?.wuzapi_token || clienteConfig.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
 
     if (action === "connect" || action === "qrcode") {
       // Gerar QR Code para conexão
@@ -96,7 +107,7 @@ serve(async (req) => {
 
       // 0) Tenta pegar QR direto (algumas builds geram QR sem /connect)
       try {
-        const preQrResp = await fetch(`${LOCAWEB_WUZAPI_URL}/session/qr`, {
+        const preQrResp = await fetch(`${baseUrl}/session/qr`, {
           method: "GET",
           headers: { "Token": wuzapiToken },
         });
@@ -117,9 +128,9 @@ serve(async (req) => {
 
       // 1) Tenta iniciar sessão com /session/connect e fallbacks
       const connectCandidates = [
-        `${LOCAWEB_WUZAPI_URL}/session/connect`,
-        `${LOCAWEB_WUZAPI_URL}/session/start`,
-        `${LOCAWEB_WUZAPI_URL}/session/login`,
+        `${baseUrl}/session/connect`,
+        `${baseUrl}/session/start`,
+        `${baseUrl}/session/login`,
       ];
 
       let connectOk = false;
@@ -157,7 +168,7 @@ serve(async (req) => {
 
       // 2) Buscar QR Code (retry, igual Afiliados)
       for (let i = 0; i < 5; i++) {
-        const qrResponse = await fetch(`${LOCAWEB_WUZAPI_URL}/session/qr`, {
+        const qrResponse = await fetch(`${baseUrl}/session/qr`, {
           method: "GET",
           headers: { "Token": wuzapiToken },
         });
@@ -200,7 +211,7 @@ serve(async (req) => {
 
     if (action === "status") {
       // Verificar status da conexão
-      const statusResponse = await fetch(`${LOCAWEB_WUZAPI_URL}/session/status`, {
+      const statusResponse = await fetch(`${baseUrl}/session/status`, {
         method: "GET",
         headers: { "Token": wuzapiToken },
       });
@@ -248,8 +259,8 @@ serve(async (req) => {
     if (action === "disconnect") {
       // Desconectar WhatsApp
       const disconnectCandidates = [
-        `${LOCAWEB_WUZAPI_URL}/session/disconnect`,
-        `${LOCAWEB_WUZAPI_URL}/session/logout`,
+        `${baseUrl}/session/disconnect`,
+        `${baseUrl}/session/logout`,
       ];
 
       let disconnectData: any = null;
