@@ -255,3 +255,31 @@ verify_jwt = false
 [functions.enviar-extensoes-afiliado]
 verify_jwt = false
 
+# =====================================================
+# SISTEMA WHATSAPP PJ - FUNÇÕES
+# =====================================================
+
+[functions.criar-instancia-wuzapi-pj]
+verify_jwt = false
+
+[functions.processar-fila-pj]
+verify_jwt = false
+
+[functions.send-wuzapi-message-pj]
+verify_jwt = false
+
+[functions.send-wuzapi-group-message-pj]
+verify_jwt = false
+
+[functions.list-whatsapp-groups-pj]
+verify_jwt = false
+
+[functions.executar-envio-programado-pj]
+verify_jwt = false
+
+[functions.group-settings-pj]
+verify_jwt = false
+
+[functions.wuzapi-webhook-pj]
+verify_jwt = false
+

@@ -1,0 +1,199 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
+const LOCAWEB_WUZAPI_TOKEN = Deno.env.get("WUZAPI_TOKEN") || "";
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { phoneNumbers, message, imageUrl, userId, useQueue = false } = await req.json();
+
+    console.log("📤 [PJ-SEND] Recebido:", {
+      phones: phoneNumbers?.length,
+      hasImage: !!imageUrl,
+      userId,
+      useQueue,
+    });
+
+    if (!phoneNumbers || phoneNumbers.length === 0) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Nenhum telefone informado" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Buscar token do usuário
+    let wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
+    if (userId) {
+      const { data: config } = await supabase
+        .from("pj_clientes_config")
+        .select("wuzapi_token")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (config?.wuzapi_token) {
+        wuzapiToken = config.wuzapi_token;
+      }
+    }
+
+    // Se deve usar fila anti-bloqueio
+    if (useQueue) {
+      const filaItems = phoneNumbers.map((phone: string) => ({
+        user_id: userId,
+        phone: phone.replace(/\D/g, ""),
+        mensagem: message,
+        tipo: imageUrl ? "imagem" : "texto",
+        imagem_url: imageUrl || null,
+        status: "pendente",
+        prioridade: 5,
+      }));
+
+      const { error: insertError } = await supabase
+        .from("fila_atendimento_pj")
+        .insert(filaItems);
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      console.log(`📬 [PJ-SEND] ${filaItems.length} mensagens adicionadas à fila`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          queued: true,
+          total: filaItems.length,
+          message: "Mensagens adicionadas à fila anti-bloqueio",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Envio direto (sem fila)
+    const results: any[] = [];
+
+    for (const phone of phoneNumbers) {
+      const cleanPhone = phone.replace(/\D/g, "");
+      console.log(`📞 [PJ-SEND] Enviando para ${cleanPhone}...`);
+
+      try {
+        let response: Response;
+        let payload: any;
+
+        if (imageUrl) {
+          response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/image`, {
+            method: "POST",
+            headers: {
+              "Token": wuzapiToken,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              Phone: cleanPhone,
+              Caption: message,
+              Image: imageUrl,
+            }),
+          });
+
+          payload = await response.json();
+
+          // Fallback se imagem falhar
+          if (!response.ok || payload?.success === false) {
+            const errMsg = payload?.error || "";
+            const isMediaError =
+              errMsg.toLowerCase().includes("upload") ||
+              errMsg.toLowerCase().includes("media") ||
+              errMsg.toLowerCase().includes("websocket");
+
+            if (isMediaError) {
+              console.log("🧯 [PJ-SEND] Fallback para texto...");
+              response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/text`, {
+                method: "POST",
+                headers: {
+                  "Token": wuzapiToken,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  Phone: cleanPhone,
+                  Body: message,
+                }),
+              });
+              payload = await response.json();
+            }
+          }
+        } else {
+          response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/text`, {
+            method: "POST",
+            headers: {
+              "Token": wuzapiToken,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              Phone: cleanPhone,
+              Body: message,
+            }),
+          });
+          payload = await response.json();
+        }
+
+        const success = response.ok && payload?.success !== false;
+
+        results.push({
+          phone: cleanPhone,
+          success,
+          response: payload,
+        });
+
+        if (success) {
+          console.log(`✅ [PJ-SEND] Enviado para ${cleanPhone}`);
+        } else {
+          console.error(`❌ [PJ-SEND] Falha para ${cleanPhone}:`, payload);
+        }
+
+      } catch (fetchErr: any) {
+        console.error(`❌ [PJ-SEND] Erro para ${cleanPhone}:`, fetchErr);
+        results.push({
+          phone: cleanPhone,
+          success: false,
+          error: fetchErr.message,
+        });
+      }
+
+      // Delay entre envios
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    const enviados = results.filter((r) => r.success).length;
+    const erros = results.filter((r) => !r.success).length;
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        enviados,
+        erros,
+        total: phoneNumbers.length,
+        results,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (err: any) {
+    console.error("❌ [PJ-SEND] Erro geral:", err);
+    return new Response(
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

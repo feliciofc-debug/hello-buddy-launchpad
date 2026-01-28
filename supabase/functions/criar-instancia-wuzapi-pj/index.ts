@@ -1,0 +1,180 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+// Usa a mesma infraestrutura Locaweb do sistema PJ existente
+const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
+const LOCAWEB_WUZAPI_TOKEN = Deno.env.get("WUZAPI_TOKEN") || "";
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const { userId, action } = await req.json();
+
+    console.log(`📱 [PJ-WUZAPI] Ação: ${action} para user: ${userId}`);
+
+    if (!userId) {
+      return new Response(
+        JSON.stringify({ success: false, error: "userId é obrigatório" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Buscar ou criar configuração do cliente PJ
+    let { data: clienteConfig, error: configError } = await supabase
+      .from("pj_clientes_config")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!clienteConfig) {
+      // Criar configuração inicial
+      const { data: newConfig, error: insertError } = await supabase
+        .from("pj_clientes_config")
+        .insert({
+          user_id: userId,
+          wuzapi_token: LOCAWEB_WUZAPI_TOKEN,
+          wuzapi_instance_name: "pj-default",
+          wuzapi_port: 8080,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("❌ Erro ao criar config:", insertError);
+        throw insertError;
+      }
+      clienteConfig = newConfig;
+    }
+
+    const wuzapiToken = clienteConfig.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
+
+    if (action === "connect" || action === "qrcode") {
+      // Gerar QR Code para conexão
+      console.log("📲 Gerando QR Code...");
+
+      const connectResponse = await fetch(`${LOCAWEB_WUZAPI_URL}/session/connect`, {
+        method: "POST",
+        headers: {
+          "Token": wuzapiToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+
+      const connectData = await connectResponse.json();
+      console.log("📲 Resposta connect:", connectData);
+
+      if (connectData.success !== false) {
+        // Buscar QR Code
+        const qrResponse = await fetch(`${LOCAWEB_WUZAPI_URL}/session/qr`, {
+          method: "GET",
+          headers: { "Token": wuzapiToken },
+        });
+
+        const qrData = await qrResponse.json();
+        console.log("📲 QR Data:", qrData?.success);
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            qrCode: qrData?.QRCode || qrData?.data?.QRCode || qrData?.qr?.QRCode,
+            status: "awaiting_scan",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({ success: false, error: connectData.error || "Erro ao conectar" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "status") {
+      // Verificar status da conexão
+      const statusResponse = await fetch(`${LOCAWEB_WUZAPI_URL}/session/status`, {
+        method: "GET",
+        headers: { "Token": wuzapiToken },
+      });
+
+      const statusData = await statusResponse.json();
+      console.log("📊 Status:", statusData);
+
+      const isConnected = statusData?.Connected || statusData?.loggedIn || false;
+      const jid = statusData?.JID || statusData?.jid || "";
+
+      // Atualizar status no banco
+      await supabase
+        .from("pj_clientes_config")
+        .update({
+          whatsapp_conectado: isConnected,
+          wuzapi_jid: jid,
+          ultimo_status_check: new Date().toISOString(),
+        })
+        .eq("user_id", userId);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          connected: isConnected,
+          jid,
+          raw: statusData,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "disconnect") {
+      // Desconectar WhatsApp
+      const disconnectResponse = await fetch(`${LOCAWEB_WUZAPI_URL}/session/disconnect`, {
+        method: "POST",
+        headers: {
+          "Token": wuzapiToken,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+
+      const disconnectData = await disconnectResponse.json();
+      console.log("🔌 Disconnect:", disconnectData);
+
+      // Atualizar status no banco
+      await supabase
+        .from("pj_clientes_config")
+        .update({
+          whatsapp_conectado: false,
+          wuzapi_jid: null,
+        })
+        .eq("user_id", userId);
+
+      return new Response(
+        JSON.stringify({ success: true, message: "Desconectado com sucesso" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ success: false, error: "Ação não reconhecida" }),
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (err: any) {
+    console.error("❌ [PJ-WUZAPI] Erro:", err);
+    return new Response(
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

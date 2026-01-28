@@ -1976,6 +1976,57 @@ export type Database = {
         }
         Relationships: []
       }
+      fila_atendimento_pj: {
+        Row: {
+          created_at: string | null
+          delay_segundos: number | null
+          erro: string | null
+          id: string
+          imagem_url: string | null
+          max_tentativas: number | null
+          mensagem: string
+          phone: string
+          prioridade: number | null
+          processado_em: string | null
+          status: string | null
+          tentativas: number | null
+          tipo: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          delay_segundos?: number | null
+          erro?: string | null
+          id?: string
+          imagem_url?: string | null
+          max_tentativas?: number | null
+          mensagem: string
+          phone: string
+          prioridade?: number | null
+          processado_em?: string | null
+          status?: string | null
+          tentativas?: number | null
+          tipo?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          delay_segundos?: number | null
+          erro?: string | null
+          id?: string
+          imagem_url?: string | null
+          max_tentativas?: number | null
+          mensagem?: string
+          phone?: string
+          prioridade?: number | null
+          processado_em?: string | null
+          status?: string | null
+          tentativas?: number | null
+          tipo?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       fila_prospeccao_pietro: {
         Row: {
           created_at: string
@@ -3938,6 +3989,487 @@ export type Database = {
           requer_enriquecimento?: boolean | null
           requer_score?: boolean | null
           score_minimo?: number | null
+        }
+        Relationships: []
+      }
+      pj_ai_config: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          id: string
+          mensagem_boas_vindas: string | null
+          nome_assistente: string | null
+          palavras_transferir: string[] | null
+          personalidade: string | null
+          regras_customizadas: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          id?: string
+          mensagem_boas_vindas?: string | null
+          nome_assistente?: string | null
+          palavras_transferir?: string[] | null
+          personalidade?: string | null
+          regras_customizadas?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          id?: string
+          mensagem_boas_vindas?: string | null
+          nome_assistente?: string | null
+          palavras_transferir?: string[] | null
+          personalidade?: string | null
+          regras_customizadas?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pj_campanhas: {
+        Row: {
+          ativa: boolean | null
+          created_at: string | null
+          data_inicio: string
+          dias_semana: number[] | null
+          frequencia: string | null
+          grupos_ids: string[] | null
+          horarios: string[] | null
+          id: string
+          listas_ids: string[] | null
+          mensagem_template: string
+          nome: string
+          produto_id: string | null
+          proxima_execucao: string | null
+          status: string | null
+          total_enviados: number | null
+          ultima_execucao: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativa?: boolean | null
+          created_at?: string | null
+          data_inicio: string
+          dias_semana?: number[] | null
+          frequencia?: string | null
+          grupos_ids?: string[] | null
+          horarios?: string[] | null
+          id?: string
+          listas_ids?: string[] | null
+          mensagem_template: string
+          nome: string
+          produto_id?: string | null
+          proxima_execucao?: string | null
+          status?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativa?: boolean | null
+          created_at?: string | null
+          data_inicio?: string
+          dias_semana?: number[] | null
+          frequencia?: string | null
+          grupos_ids?: string[] | null
+          horarios?: string[] | null
+          id?: string
+          listas_ids?: string[] | null
+          mensagem_template?: string
+          nome?: string
+          produto_id?: string | null
+          proxima_execucao?: string | null
+          status?: string | null
+          total_enviados?: number | null
+          ultima_execucao?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pj_clientes_config: {
+        Row: {
+          created_at: string | null
+          id: string
+          nome_assistente: string | null
+          personalidade_assistente: string | null
+          ultimo_status_check: string | null
+          updated_at: string | null
+          user_id: string
+          whatsapp_conectado: boolean | null
+          wuzapi_instance_name: string | null
+          wuzapi_jid: string | null
+          wuzapi_port: number | null
+          wuzapi_token: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          nome_assistente?: string | null
+          personalidade_assistente?: string | null
+          ultimo_status_check?: string | null
+          updated_at?: string | null
+          user_id: string
+          whatsapp_conectado?: boolean | null
+          wuzapi_instance_name?: string | null
+          wuzapi_jid?: string | null
+          wuzapi_port?: number | null
+          wuzapi_token?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          nome_assistente?: string | null
+          personalidade_assistente?: string | null
+          ultimo_status_check?: string | null
+          updated_at?: string | null
+          user_id?: string
+          whatsapp_conectado?: boolean | null
+          wuzapi_instance_name?: string | null
+          wuzapi_jid?: string | null
+          wuzapi_port?: number | null
+          wuzapi_token?: string | null
+        }
+        Relationships: []
+      }
+      pj_conversas: {
+        Row: {
+          content: string
+          created_at: string | null
+          id: string
+          phone: string
+          role: string
+          user_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          id?: string
+          phone: string
+          role: string
+          user_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          id?: string
+          phone?: string
+          role?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      pj_envios_programados: {
+        Row: {
+          ativo: boolean | null
+          categorias: string[] | null
+          created_at: string | null
+          dias_ativos: number[] | null
+          grupo_id: string | null
+          grupo_jid: string | null
+          grupo_nome: string | null
+          horario_fim: string | null
+          horario_inicio: string | null
+          id: string
+          intervalo_minutos: number | null
+          modo_selecao: string | null
+          pausado: boolean | null
+          proximo_envio: string | null
+          total_enviados: number | null
+          ultimo_envio: string | null
+          ultimo_produto_id: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          categorias?: string[] | null
+          created_at?: string | null
+          dias_ativos?: number[] | null
+          grupo_id?: string | null
+          grupo_jid?: string | null
+          grupo_nome?: string | null
+          horario_fim?: string | null
+          horario_inicio?: string | null
+          id?: string
+          intervalo_minutos?: number | null
+          modo_selecao?: string | null
+          pausado?: boolean | null
+          proximo_envio?: string | null
+          total_enviados?: number | null
+          ultimo_envio?: string | null
+          ultimo_produto_id?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          categorias?: string[] | null
+          created_at?: string | null
+          dias_ativos?: number[] | null
+          grupo_id?: string | null
+          grupo_jid?: string | null
+          grupo_nome?: string | null
+          horario_fim?: string | null
+          horario_inicio?: string | null
+          id?: string
+          intervalo_minutos?: number | null
+          modo_selecao?: string | null
+          pausado?: boolean | null
+          proximo_envio?: string | null
+          total_enviados?: number | null
+          ultimo_envio?: string | null
+          ultimo_produto_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pj_envios_programados_grupo_id_fkey"
+            columns: ["grupo_id"]
+            isOneToOne: false
+            referencedRelation: "pj_grupos_whatsapp"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pj_grupos_whatsapp: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          descricao: string | null
+          grupo_jid: string
+          id: string
+          is_admin: boolean | null
+          is_announce: boolean | null
+          nome: string
+          participantes_count: number | null
+          ultimo_sync: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          descricao?: string | null
+          grupo_jid: string
+          id?: string
+          is_admin?: boolean | null
+          is_announce?: boolean | null
+          nome: string
+          participantes_count?: number | null
+          ultimo_sync?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          descricao?: string | null
+          grupo_jid?: string
+          id?: string
+          is_admin?: boolean | null
+          is_announce?: boolean | null
+          nome?: string
+          participantes_count?: number | null
+          ultimo_sync?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      pj_historico_envios: {
+        Row: {
+          campanha_id: string | null
+          enviado_em: string | null
+          erro: string | null
+          grupo_jid: string | null
+          grupo_nome: string | null
+          id: string
+          imagem_url: string | null
+          mensagem: string | null
+          produto_id: string | null
+          produto_titulo: string | null
+          programacao_id: string | null
+          status: string | null
+          user_id: string | null
+        }
+        Insert: {
+          campanha_id?: string | null
+          enviado_em?: string | null
+          erro?: string | null
+          grupo_jid?: string | null
+          grupo_nome?: string | null
+          id?: string
+          imagem_url?: string | null
+          mensagem?: string | null
+          produto_id?: string | null
+          produto_titulo?: string | null
+          programacao_id?: string | null
+          status?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          campanha_id?: string | null
+          enviado_em?: string | null
+          erro?: string | null
+          grupo_jid?: string | null
+          grupo_nome?: string | null
+          id?: string
+          imagem_url?: string | null
+          mensagem?: string | null
+          produto_id?: string | null
+          produto_titulo?: string | null
+          programacao_id?: string | null
+          status?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pj_historico_envios_campanha_id_fkey"
+            columns: ["campanha_id"]
+            isOneToOne: false
+            referencedRelation: "pj_campanhas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pj_historico_envios_programacao_id_fkey"
+            columns: ["programacao_id"]
+            isOneToOne: false
+            referencedRelation: "pj_envios_programados"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pj_lista_membros: {
+        Row: {
+          adicionado_em: string | null
+          id: string
+          lead_id: string | null
+          lista_id: string | null
+          nome: string | null
+          telefone: string | null
+        }
+        Insert: {
+          adicionado_em?: string | null
+          id?: string
+          lead_id?: string | null
+          lista_id?: string | null
+          nome?: string | null
+          telefone?: string | null
+        }
+        Update: {
+          adicionado_em?: string | null
+          id?: string
+          lead_id?: string | null
+          lista_id?: string | null
+          nome?: string | null
+          telefone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pj_lista_membros_lista_id_fkey"
+            columns: ["lista_id"]
+            isOneToOne: false
+            referencedRelation: "pj_listas_categoria"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pj_listas_categoria: {
+        Row: {
+          ativa: boolean | null
+          cor: string | null
+          created_at: string | null
+          descricao: string | null
+          icone: string | null
+          id: string
+          nome: string
+          total_membros: number | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          ativa?: boolean | null
+          cor?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          icone?: string | null
+          id?: string
+          nome: string
+          total_membros?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          ativa?: boolean | null
+          cor?: string | null
+          created_at?: string | null
+          descricao?: string | null
+          icone?: string | null
+          id?: string
+          nome?: string
+          total_membros?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      pj_user_states: {
+        Row: {
+          created_at: string | null
+          id: string
+          phone: string
+          state: Json | null
+          status: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          phone: string
+          state?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          phone?: string
+          state?: Json | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      pj_webhook_dedup: {
+        Row: {
+          created_at: string | null
+          id: string
+          instance_name: string | null
+          message_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          instance_name?: string | null
+          message_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          instance_name?: string | null
+          message_id?: string
         }
         Relationships: []
       }
