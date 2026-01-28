@@ -55,8 +55,14 @@ export default function WhatsAppConnectionPJ() {
   const checkStatus = async () => {
     setCheckingStatus(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-        body: { action: 'status' }
+        body: { userId: user.id, action: 'status' }
       });
 
       if (error) throw error;
@@ -86,8 +92,15 @@ export default function WhatsAppConnectionPJ() {
     setQrCode(null);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-        body: { action: 'generate_qr', instance_name: instanceName || undefined }
+        body: { userId: user.id, action: 'generate_qr', instance_name: instanceName || undefined }
       });
 
       if (error) throw error;
@@ -108,7 +121,7 @@ export default function WhatsAppConnectionPJ() {
           }
 
           const { data: statusData } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-            body: { action: 'status' }
+            body: { userId: user.id, action: 'status' }
           });
 
           if (statusData?.connected) {
@@ -143,8 +156,15 @@ export default function WhatsAppConnectionPJ() {
 
     setLoading(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-        body: { action: 'disconnect' }
+        body: { userId: user.id, action: 'disconnect' }
       });
 
       if (error) throw error;
