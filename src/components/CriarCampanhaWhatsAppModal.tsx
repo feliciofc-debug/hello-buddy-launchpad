@@ -413,12 +413,18 @@ _Escolha quantidade e finalize!_ ✅`;
       for (const grupo of gruposPJ) {
         console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
         
+        // 🎯 Para grupos, substituir {{nome}} por "pessoal"
+        const mensagemGrupo = mensagem
+          .replace(/\{\{nome\}\}/gi, 'pessoal')
+          .replace(/Olá\s+,/gi, 'Olá pessoal,')
+          .replace(/Oi\s+,/gi, 'Oi pessoal,');
+        
         try {
           const { error } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
             body: {
               userId: user.id,
               groupJid: grupo.grupo_jid,
-              message: mensagem,
+              message: mensagemGrupo,
               imageUrl: produto.imagem_url
             }
           });
