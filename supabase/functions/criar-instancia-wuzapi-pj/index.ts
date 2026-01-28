@@ -253,7 +253,78 @@ serve(async (req) => {
           success: true,
           connected: isConnected,
           jid,
+          port: targetPort,
+          baseUrl,
           raw: statusData,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "find_connected_port") {
+      // Verifica todas as portas para encontrar qual está conectada
+      console.log("🔍 Procurando porta conectada...");
+      
+      const { data: allInstances } = await supabase
+        .from("wuzapi_instances")
+        .select("port, wuzapi_url, wuzapi_token, instance_name")
+        .like("wuzapi_url", "%191.252.193.73%")
+        .order("port");
+
+      const results: any[] = [];
+      let connectedPort: number | null = null;
+      let connectedJid: string | null = null;
+
+      for (const inst of allInstances || []) {
+        try {
+          const resp = await fetch(`${inst.wuzapi_url}/session/status`, {
+            method: "GET",
+            headers: { "Token": inst.wuzapi_token },
+          });
+          const parsed = await safeReadJson(resp);
+          
+          if (parsed.ok) {
+            const innerData = parsed.json?.data || parsed.json;
+            const isConn = innerData?.connected === true || innerData?.loggedIn === true;
+            const jid = innerData?.jid || "";
+            
+            results.push({
+              port: inst.port,
+              instance_name: inst.instance_name,
+              connected: isConn,
+              jid: jid,
+            });
+
+            if (isConn && !connectedPort) {
+              connectedPort = inst.port;
+              connectedJid = jid;
+            }
+          }
+        } catch (e) {
+          results.push({ port: inst.port, error: "timeout/unreachable" });
+        }
+      }
+
+      // Se encontrou uma porta conectada, atualiza a config do usuário
+      if (connectedPort) {
+        await supabase
+          .from("pj_clientes_config")
+          .update({
+            wuzapi_port: connectedPort,
+            whatsapp_conectado: true,
+            wuzapi_jid: connectedJid,
+          })
+          .eq("user_id", userId);
+        
+        console.log(`✅ Porta ${connectedPort} está conectada! Config atualizada.`);
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          connectedPort,
+          connectedJid,
+          allPorts: results,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
