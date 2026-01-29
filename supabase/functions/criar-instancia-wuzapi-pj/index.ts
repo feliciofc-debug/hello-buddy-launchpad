@@ -127,11 +127,18 @@ serve(async (req) => {
       }
 
       // 1) Tenta iniciar sessão com /session/connect e fallbacks
+      // IMPORTANTE: Incluir Subscribe para receber eventos de mensagem!
       const connectCandidates = [
         `${baseUrl}/session/connect`,
         `${baseUrl}/session/start`,
         `${baseUrl}/session/login`,
       ];
+
+      // Payload com eventos para receber mensagens
+      const connectPayload = {
+        Subscribe: ["Message", "ReadReceipt", "ChatPresence", "Presence"],
+        Immediate: true
+      };
 
       let connectOk = false;
       let lastConnectRaw: string | null = null;
@@ -139,7 +146,7 @@ serve(async (req) => {
 
       for (const url of connectCandidates) {
         try {
-          const { resp, parsed } = await tryPostJson(url, { Token: wuzapiToken }, {});
+          const { resp, parsed } = await tryPostJson(url, { Token: wuzapiToken }, connectPayload);
           lastConnectStatus = resp.status;
           lastConnectRaw = parsed.text;
 
@@ -368,34 +375,57 @@ serve(async (req) => {
     }
 
     if (action === "configure_webhook") {
-      // Configurar webhook para receber mensagens
-      console.log("🔧 Configurando webhook...");
+      // Configurar webhook para receber mensagens + eventos
+      console.log("🔧 Configurando webhook e eventos...");
       
       const supabaseUrlEnv = Deno.env.get("SUPABASE_URL")!;
       const webhookUrl = `${supabaseUrlEnv}/functions/v1/wuzapi-webhook-pj`;
       
-      // Tentar diferentes endpoints de configuração de webhook
-      const webhookCandidates = [
-        { url: `${baseUrl}/webhook`, body: { webhookURL: webhookUrl } },
-        { url: `${baseUrl}/session/webhook`, body: { url: webhookUrl } },
-        { url: `${baseUrl}/settings/webhook`, body: { webhook: webhookUrl } },
-      ];
-
+      // Configurar webhook URL + eventos importantes
+      // Eventos que precisamos: Message (para receber mensagens)
+      const webhookPayload = {
+        webhookURL: webhookUrl,
+        events: "Message,ReadReceipt,ChatPresence,Presence,HistorySync,Receipt"
+      };
+      
       let webhookConfigured = false;
+      let eventsConfigured = false;
       let lastResponse: any = null;
 
-      for (const candidate of webhookCandidates) {
-        try {
-          const { resp, parsed } = await tryPostJson(candidate.url, { Token: wuzapiToken }, candidate.body);
-          lastResponse = { url: candidate.url, status: resp.status, data: parsed.json || parsed.text };
-          
-          if (resp.ok && parsed.ok) {
-            console.log(`✅ Webhook configurado via ${candidate.url}:`, parsed.json);
-            webhookConfigured = true;
-            break;
+      // Primeiro, configurar o webhook
+      try {
+        const { resp, parsed } = await tryPostJson(`${baseUrl}/webhook`, { Token: wuzapiToken }, webhookPayload);
+        lastResponse = { url: `${baseUrl}/webhook`, status: resp.status, data: parsed.json || parsed.text };
+        
+        if (resp.ok && parsed.ok) {
+          console.log(`✅ Webhook + eventos configurados:`, parsed.json);
+          webhookConfigured = true;
+          eventsConfigured = true;
+        }
+      } catch (e) {
+        console.error(`❌ Erro ao configurar webhook:`, e);
+      }
+
+      // Se falhou, tentar endpoint alternativo
+      if (!webhookConfigured) {
+        const webhookCandidates = [
+          { url: `${baseUrl}/session/webhook`, body: { url: webhookUrl, events: "Message,ReadReceipt" } },
+          { url: `${baseUrl}/settings/webhook`, body: { webhook: webhookUrl, events: "Message,ReadReceipt" } },
+        ];
+
+        for (const candidate of webhookCandidates) {
+          try {
+            const { resp, parsed } = await tryPostJson(candidate.url, { Token: wuzapiToken }, candidate.body);
+            lastResponse = { url: candidate.url, status: resp.status, data: parsed.json || parsed.text };
+            
+            if (resp.ok && parsed.ok) {
+              console.log(`✅ Webhook configurado via ${candidate.url}:`, parsed.json);
+              webhookConfigured = true;
+              break;
+            }
+          } catch (e) {
+            console.error(`❌ Erro em ${candidate.url}:`, e);
           }
-        } catch (e) {
-          console.error(`❌ Erro em ${candidate.url}:`, e);
         }
       }
 
@@ -403,10 +433,84 @@ serve(async (req) => {
         JSON.stringify({
           success: webhookConfigured,
           webhookUrl,
+          eventsConfigured,
+          events: "Message,ReadReceipt,ChatPresence,Presence,HistorySync,Receipt",
           message: webhookConfigured 
-            ? "Webhook configurado com sucesso!" 
+            ? "Webhook e eventos configurados com sucesso!" 
             : "Não foi possível configurar o webhook automaticamente. Configure manualmente.",
           lastResponse,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (action === "reconnect_with_events") {
+      // Reconectar sessão COM os eventos de Subscribe ativados
+      console.log("🔄 Reconectando sessão com eventos ativados...");
+
+      // 1. Primeiro, desconectar a sessão atual (sem logout para manter o pareamento)
+      try {
+        await fetch(`${baseUrl}/session/disconnect`, {
+          method: "POST",
+          headers: { Token: wuzapiToken, "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        console.log("⏸️ Sessão desconectada");
+        
+        // Aguardar um pouco para a desconexão
+        await new Promise(r => setTimeout(r, 2000));
+      } catch (e) {
+        console.error("⚠️ Erro ao desconectar:", e);
+      }
+
+      // 2. Reconectar com os eventos
+      const connectPayload = {
+        Subscribe: ["Message", "ReadReceipt", "ChatPresence", "Presence"],
+        Immediate: true
+      };
+
+      let reconnectOk = false;
+      let lastResponse: any = null;
+
+      try {
+        const { resp, parsed } = await tryPostJson(
+          `${baseUrl}/session/connect`,
+          { Token: wuzapiToken },
+          connectPayload
+        );
+        
+        lastResponse = { status: resp.status, data: parsed.json || parsed.text };
+        
+        if (resp.ok && parsed.ok) {
+          console.log("✅ Reconectado com eventos:", parsed.json);
+          reconnectOk = true;
+        }
+      } catch (e) {
+        console.error("❌ Erro ao reconectar:", e);
+      }
+
+      // 3. Aguardar e verificar status
+      await new Promise(r => setTimeout(r, 3000));
+
+      let finalStatus: any = null;
+      try {
+        const statusResp = await fetch(`${baseUrl}/session/status`, {
+          method: "GET",
+          headers: { Token: wuzapiToken }
+        });
+        const statusParsed = await safeReadJson(statusResp);
+        finalStatus = statusParsed.json;
+      } catch (_) {}
+
+      return new Response(
+        JSON.stringify({
+          success: reconnectOk,
+          message: reconnectOk 
+            ? "Sessão reconectada com eventos Message habilitados!" 
+            : "Falha ao reconectar. A sessão pode precisar de novo QR code.",
+          subscribedEvents: ["Message", "ReadReceipt", "ChatPresence", "Presence"],
+          lastResponse,
+          currentStatus: finalStatus
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
