@@ -416,7 +416,25 @@ serve(async (req) => {
       );
     }
 
-    const cleanPhone = phone.replace(/\D/g, "").replace("@s.whatsapp.net", "");
+    // Normalizar telefone:
+    // Exemplos possíveis:
+    // - 5521967520706@s.whatsapp.net
+    // - 5521995379550:23@s.whatsapp.net  (sufixo de device)
+    // - 172395843346560@lid
+    // - 5521...@g.us (grupo)
+    const normalizePhone = (raw: string) => {
+      if (!raw) return "";
+      let s = String(raw);
+      // remover sufixos de jid
+      s = s.replace("@s.whatsapp.net", "").replace("@g.us", "").replace("@lid", "");
+      // se vier com ":<device>", manter só antes dos dois pontos
+      if (s.includes(":")) s = s.split(":")[0];
+      // manter apenas dígitos
+      s = s.replace(/\D/g, "");
+      return s;
+    };
+
+    const cleanPhone = normalizePhone(phone);
     console.log(`📱 [PJ-WEBHOOK] Mensagem de ${cleanPhone}: ${messageText.substring(0, 50)}...`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
