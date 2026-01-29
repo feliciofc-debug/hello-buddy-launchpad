@@ -367,6 +367,51 @@ serve(async (req) => {
       );
     }
 
+    if (action === "configure_webhook") {
+      // Configurar webhook para receber mensagens
+      console.log("🔧 Configurando webhook...");
+      
+      const supabaseUrlEnv = Deno.env.get("SUPABASE_URL")!;
+      const webhookUrl = `${supabaseUrlEnv}/functions/v1/wuzapi-webhook-pj`;
+      
+      // Tentar diferentes endpoints de configuração de webhook
+      const webhookCandidates = [
+        { url: `${baseUrl}/webhook`, body: { webhookURL: webhookUrl } },
+        { url: `${baseUrl}/session/webhook`, body: { url: webhookUrl } },
+        { url: `${baseUrl}/settings/webhook`, body: { webhook: webhookUrl } },
+      ];
+
+      let webhookConfigured = false;
+      let lastResponse: any = null;
+
+      for (const candidate of webhookCandidates) {
+        try {
+          const { resp, parsed } = await tryPostJson(candidate.url, { Token: wuzapiToken }, candidate.body);
+          lastResponse = { url: candidate.url, status: resp.status, data: parsed.json || parsed.text };
+          
+          if (resp.ok && parsed.ok) {
+            console.log(`✅ Webhook configurado via ${candidate.url}:`, parsed.json);
+            webhookConfigured = true;
+            break;
+          }
+        } catch (e) {
+          console.error(`❌ Erro em ${candidate.url}:`, e);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: webhookConfigured,
+          webhookUrl,
+          message: webhookConfigured 
+            ? "Webhook configurado com sucesso!" 
+            : "Não foi possível configurar o webhook automaticamente. Configure manualmente.",
+          lastResponse,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ success: false, error: "Ação não reconhecida" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
