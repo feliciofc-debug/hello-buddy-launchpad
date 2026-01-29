@@ -173,57 +173,141 @@ function formatarCatalogoMD(produtos: any[]): string {
 }
 
 // ============================================
-// PRÉ-FILTRAR PRODUTOS RELEVANTES (BUSCA SEMÂNTICA)
+// PRÉ-FILTRAR PRODUTOS RELEVANTES (BUSCA MULTI-PRODUTO)
 // ============================================
 function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
   const msgLower = mensagem.toLowerCase();
   
-  // Extrair palavras-chave (ignorar palavras muito curtas e comuns)
-  const stopWords = ['para', 'com', 'que', 'tem', 'uma', 'quero', 'preciso', 'voce', 'você', 'ola', 'olá', 'bom', 'boa', 'dia', 'tarde', 'noite'];
-  const palavrasChave = msgLower
-    .split(/\s+/)
-    .filter(p => p.length >= 3)
-    .filter(p => !stopWords.includes(p));
+  // Stop words expandida
+  const stopWords = [
+    'para', 'com', 'que', 'tem', 'uma', 'um', 'quero', 'preciso', 'voce', 'você', 
+    'ola', 'olá', 'bom', 'boa', 'dia', 'tarde', 'noite', 'por', 'favor', 'obrigado',
+    'obrigada', 'muito', 'bem', 'mal', 'sim', 'nao', 'não', 'esse', 'essa', 'este',
+    'esta', 'aqui', 'ali', 'onde', 'como', 'quando', 'porque', 'qual', 'quais',
+    'meu', 'minha', 'seu', 'sua', 'nos', 'vcs', 'vocês', 'tem', 'ter', 'temos',
+    'tenho', 'sobre', 'mais', 'menos', 'tambem', 'também', 'ainda', 'agora',
+    'depois', 'antes', 'hoje', 'amanha', 'ontem', 'sempre', 'nunca', 'talvez',
+    'ver', 'olhar', 'saber', 'posso', 'pode', 'podem', 'podemos', 'queria',
+    'gostaria', 'favor', 'certeza', 'certo', 'errado', 'bom', 'ruim'
+  ];
   
-  console.log(`🔍 [PJ-AI] Palavras-chave: ${palavrasChave.join(', ')}`);
+  // Detectar se é pedido de múltiplos produtos (usando "e", ",", "/", etc.)
+  // Exemplos: "feijão e farinha", "arroz, feijão e macarrão", "leite/queijo"
+  const separadores = /\s+e\s+|,\s*|\/|\s+ou\s+/g;
+  const partes = msgLower.split(separadores).map(p => p.trim()).filter(p => p.length > 0);
   
-  if (palavrasChave.length === 0) {
-    // Sem palavras-chave específicas, retornar amostra
+  console.log(`🔍 [PJ-AI] Partes detectadas: ${partes.join(' | ')}`);
+  
+  // Se detectou múltiplas partes, buscar cada uma separadamente
+  const termosParaBuscar: string[] = [];
+  
+  if (partes.length > 1) {
+    // Múltiplos produtos - extrair termo principal de cada parte
+    for (const parte of partes) {
+      const palavras = parte.split(/\s+/).filter(p => p.length >= 3 && !stopWords.includes(p));
+      if (palavras.length > 0) {
+        // Pegar a palavra mais relevante (geralmente a última substantivo)
+        termosParaBuscar.push(...palavras);
+      }
+    }
+  } else {
+    // Pedido único - extrair todas as palavras-chave
+    const palavras = msgLower.split(/\s+/).filter(p => p.length >= 3 && !stopWords.includes(p));
+    termosParaBuscar.push(...palavras);
+  }
+  
+  // Remover duplicatas
+  const termosUnicos = [...new Set(termosParaBuscar)];
+  console.log(`🔍 [PJ-AI] Termos para buscar: ${termosUnicos.join(', ')}`);
+  
+  if (termosUnicos.length === 0) {
     return produtos.slice(0, 10);
   }
   
-  // Buscar por nome do produto
+  // Buscar produtos que contenham QUALQUER um dos termos
+  // Cada produto recebe score baseado em quantos termos ele atende
   const produtosComScore = produtos.map(p => {
     let score = 0;
+    const termosEncontrados: string[] = [];
     const nomeLower = (p.nome || '').toLowerCase();
     const descLower = (p.descricao || '').toLowerCase();
     const catLower = (p.categoria || '').toLowerCase();
     
-    for (const palavra of palavrasChave) {
+    for (const termo of termosUnicos) {
+      let matchFound = false;
+      
       // Match no nome = maior peso
-      if (nomeLower.includes(palavra)) {
-        score += 10;
-        console.log(`✅ [MATCH] "${palavra}" em nome: ${p.nome?.slice(0, 50)}`);
+      if (nomeLower.includes(termo)) {
+        score += 15;
+        matchFound = true;
       }
       // Match na descrição
-      if (descLower.includes(palavra)) {
-        score += 3;
+      if (descLower.includes(termo)) {
+        score += 5;
+        matchFound = true;
       }
       // Match na categoria
-      if (catLower.includes(palavra)) {
-        score += 5;
+      if (catLower.includes(termo)) {
+        score += 8;
+        matchFound = true;
+      }
+      
+      if (matchFound) {
+        termosEncontrados.push(termo);
       }
     }
     
-    return { ...p, score };
+    if (score > 0) {
+      console.log(`✅ [MATCH] Produto "${p.nome?.slice(0, 40)}" - Termos: ${termosEncontrados.join(', ')} (score: ${score})`);
+    }
+    
+    return { ...p, score, termosEncontrados };
   });
   
-  // Filtrar e ordenar por score
-  const relevantes = produtosComScore
-    .filter(p => p.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 15);
+  // Filtrar produtos com match e ordenar por score
+  const comMatch = produtosComScore.filter(p => p.score > 0);
   
+  // Se temos múltiplos termos, garantir que temos ao menos um produto para cada termo
+  if (termosUnicos.length > 1) {
+    const resultadoFinal: any[] = [];
+    const termosAtendidos = new Set<string>();
+    
+    // Primeiro, pegar o melhor produto para cada termo
+    for (const termo of termosUnicos) {
+      const produtosComTermo = comMatch
+        .filter(p => p.termosEncontrados.includes(termo))
+        .sort((a, b) => b.score - a.score);
+      
+      if (produtosComTermo.length > 0) {
+        // Adicionar até 2 produtos por termo (para dar opções)
+        for (let i = 0; i < Math.min(2, produtosComTermo.length); i++) {
+          const prod = produtosComTermo[i];
+          if (!resultadoFinal.find(r => r.id === prod.id)) {
+            resultadoFinal.push(prod);
+          }
+        }
+        termosAtendidos.add(termo);
+      }
+    }
+    
+    console.log(`🎯 [PJ-AI] Termos atendidos: ${[...termosAtendidos].join(', ')}`);
+    console.log(`🎯 [PJ-AI] Termos NÃO encontrados: ${termosUnicos.filter(t => !termosAtendidos.has(t)).join(', ') || 'nenhum'}`);
+    console.log(`🎯 [PJ-AI] Produtos selecionados: ${resultadoFinal.length}`);
+    
+    // Se ainda tem espaço, adicionar mais produtos relevantes
+    if (resultadoFinal.length < 15) {
+      const restantes = comMatch
+        .filter(p => !resultadoFinal.find(r => r.id === p.id))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 15 - resultadoFinal.length);
+      resultadoFinal.push(...restantes);
+    }
+    
+    return resultadoFinal;
+  }
+  
+  // Busca simples - retornar os melhores por score
+  const relevantes = comMatch.sort((a, b) => b.score - a.score).slice(0, 15);
   console.log(`🎯 [PJ-AI] Produtos relevantes: ${relevantes.length}`);
   return relevantes;
 }
