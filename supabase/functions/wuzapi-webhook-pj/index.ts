@@ -366,17 +366,46 @@ serve(async (req) => {
     const body = await req.json();
     console.log("📨 [PJ-WEBHOOK] Recebido:", JSON.stringify(body).substring(0, 300));
 
-    // Extrair dados da mensagem
-    const messageData = body?.data || body;
-    const phone = messageData?.Info?.Sender || messageData?.from || messageData?.phone || "";
-    const messageText = messageData?.Message?.Conversation || 
-                       messageData?.Message?.ExtendedTextMessage?.Text ||
-                       messageData?.message?.conversation ||
-                       messageData?.body ||
-                       messageData?.text || "";
-    const messageId = messageData?.Info?.Id || messageData?.id || "";
-    const isFromMe = messageData?.Info?.IsFromMe || messageData?.fromMe || false;
-    const isGroup = phone?.includes("@g.us") || false;
+    // Extrair dados da mensagem (WuzAPI pode enviar em formatos diferentes)
+    // Formato novo observado:
+    // { type: "Message" | "ChatPresence" | ..., event: { Info: { Sender, ID, IsFromMe, IsGroup, ... }, Message: {...}, ... } }
+    const envelope = body?.data || body;
+    const eventType = envelope?.type || envelope?.event?.type || "";
+    const messageData = envelope?.event || envelope;
+
+    // Ignorar eventos que não são mensagem (Presence, receipts, etc.)
+    if (eventType && eventType !== "Message") {
+      console.log("⏭️ [PJ-WEBHOOK] Evento não-mensagem, ignorando:", eventType);
+      return new Response(
+        JSON.stringify({ success: true, ignored: true, reason: "non_message_event", eventType }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const info = messageData?.Info || {};
+
+    const phone =
+      info?.Sender ||
+      messageData?.Sender ||
+      info?.Chat ||
+      messageData?.Chat ||
+      messageData?.from ||
+      messageData?.phone ||
+      "";
+
+    const msg = messageData?.Message || messageData?.message || {};
+    const messageText =
+      msg?.Conversation ||
+      msg?.conversation ||
+      msg?.ExtendedTextMessage?.Text ||
+      msg?.extendedTextMessage?.text ||
+      messageData?.body ||
+      messageData?.text ||
+      "";
+
+    const messageId = info?.ID || info?.Id || messageData?.id || messageData?.Info?.id || "";
+    const isFromMe = info?.IsFromMe || messageData?.fromMe || false;
+    const isGroup = Boolean(info?.IsGroup) || phone?.includes("@g.us") || false;
 
     // Ignorar mensagens próprias e de grupos
     if (isFromMe || isGroup || !phone || !messageText) {
