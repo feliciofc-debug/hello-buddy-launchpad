@@ -121,34 +121,81 @@ serve(async (req) => {
     if (action === "connect" || action === "qrcode") {
       // Gerar QR Code para conexão
       console.log("📲 Gerando QR Code...");
+      console.log(`📡 Base URL: ${baseUrl}`);
 
-      // 0) Tenta pegar QR direto (algumas builds geram QR sem /connect)
+      // A WuzAPI da Locaweb usa endpoint diferente!
+      // Primeiro, verificar se já está conectado
+      let isAlreadyConnected = false;
       try {
-        const preQrResp = await fetch(`${baseUrl}/session/qr`, {
+        const statusResp = await fetch(`${baseUrl}/session/status`, {
           method: "GET",
           headers: { "Token": wuzapiToken },
         });
-
-        const preQrParsed = await safeReadJson(preQrResp);
-        if (preQrParsed.ok) {
-          const preQrCode = extractQrCodePayload(preQrParsed.json);
-          if (preQrCode) {
+        const statusParsed = await safeReadJson(statusResp);
+        if (statusParsed.ok) {
+          const innerData = statusParsed.json?.data || statusParsed.json;
+          isAlreadyConnected = innerData?.connected === true || innerData?.loggedIn === true;
+          console.log("📊 Status atual:", { connected: isAlreadyConnected, jid: innerData?.jid });
+          
+          if (isAlreadyConnected) {
             return new Response(
-              JSON.stringify({ success: true, qrCode: preQrCode, status: "awaiting_scan" }),
+              JSON.stringify({ 
+                success: true, 
+                status: "already_connected",
+                message: "WhatsApp já está conectado!",
+                jid: innerData?.jid 
+              }),
               { headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
         }
-      } catch (_) {
-        // ignore
+      } catch (e) {
+        console.log("⚠️ Não foi possível verificar status:", e);
       }
 
-      // 1) Tenta iniciar sessão com /session/connect e fallbacks
+      // 0) Tenta pegar QR direto primeiro (build Locaweb pode já ter QR disponível)
+      const qrEndpoints = [
+        `${baseUrl}/session/qr`,
+        `${baseUrl}/qr`,
+        `${baseUrl}/api/qr`,
+      ];
+
+      for (const qrUrl of qrEndpoints) {
+        try {
+          const preQrResp = await fetch(qrUrl, {
+            method: "GET",
+            headers: { "Token": wuzapiToken },
+          });
+
+          console.log(`📲 Tentando QR em ${qrUrl}: status ${preQrResp.status}`);
+          
+          if (preQrResp.status === 404) continue;
+
+          const preQrParsed = await safeReadJson(preQrResp);
+          if (preQrParsed.ok) {
+            const preQrCode = extractQrCodePayload(preQrParsed.json);
+            if (preQrCode) {
+              console.log("✅ QR Code encontrado!");
+              return new Response(
+                JSON.stringify({ success: true, qrCode: preQrCode, status: "awaiting_scan" }),
+                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+          }
+        } catch (_) {
+          // ignore
+        }
+      }
+
+      // 1) Tenta iniciar sessão com múltiplos endpoints (diferentes builds de WuzAPI)
       // IMPORTANTE: Incluir Subscribe para receber eventos de mensagem!
       const connectCandidates = [
-        `${baseUrl}/session/connect`,
-        `${baseUrl}/session/start`,
-        `${baseUrl}/session/login`,
+        { url: `${baseUrl}/user/qr`, method: "GET", noBody: true },
+        { url: `${baseUrl}/session/qr`, method: "POST", noBody: false },
+        { url: `${baseUrl}/session/connect`, method: "POST", noBody: false },
+        { url: `${baseUrl}/session/start`, method: "POST", noBody: false },
+        { url: `${baseUrl}/session/login`, method: "POST", noBody: false },
+        { url: `${baseUrl}/api/session/connect`, method: "POST", noBody: false },
       ];
 
       // Payload com eventos para receber mensagens
@@ -160,74 +207,105 @@ serve(async (req) => {
       let connectOk = false;
       let lastConnectRaw: string | null = null;
       let lastConnectStatus: number | null = null;
+      let qrCodeFound: string | null = null;
 
-      for (const url of connectCandidates) {
+      for (const candidate of connectCandidates) {
         try {
-          const { resp, parsed } = await tryPostJson(url, { Token: wuzapiToken }, connectPayload);
+          console.log(`📲 Tentando ${candidate.method} ${candidate.url}...`);
+          
+          let resp: Response;
+          if (candidate.method === "GET" || candidate.noBody) {
+            resp = await fetch(candidate.url, {
+              method: candidate.method,
+              headers: { "Token": wuzapiToken },
+            });
+          } else {
+            const result = await tryPostJson(candidate.url, { Token: wuzapiToken }, connectPayload);
+            resp = result.resp;
+          }
+          
           lastConnectStatus = resp.status;
+          const parsed = await safeReadJson(resp);
           lastConnectRaw = parsed.text;
 
-          // Se não é JSON, mas não foi 404, seguimos (algumas implementações retornam texto)
-          if (!parsed.ok) {
-            if (resp.status !== 404) {
-              connectOk = resp.ok;
-              if (connectOk) break;
-            }
-            continue;
-          }
+          console.log(`   Status: ${resp.status}, OK: ${resp.ok}`);
 
-          const connectData = parsed.json;
-          console.log("📲 Resposta connect:", connectData);
-          if (resp.ok && connectData?.success !== false) {
+          if (resp.status === 404) continue;
+          
+          if (parsed.ok) {
+            // Verificar se a resposta já contém QR code
+            const possibleQr = extractQrCodePayload(parsed.json);
+            if (possibleQr) {
+              qrCodeFound = possibleQr;
+              console.log("✅ QR Code encontrado na resposta!");
+              break;
+            }
+            
+            if (resp.ok && parsed.json?.success !== false) {
+              connectOk = true;
+              console.log("✅ Endpoint funcionou:", candidate.url);
+              break;
+            }
+          }
+          
+          if (resp.ok) {
             connectOk = true;
             break;
           }
-
-          // se for 404 tenta próximo
-          if (resp.status === 404) continue;
         } catch (e) {
-          console.error("❌ Erro tentando iniciar sessão:", e);
+          console.error(`❌ Erro em ${candidate.url}:`, e);
         }
+      }
+
+      // Se encontrou QR code diretamente, retornar
+      if (qrCodeFound) {
+        return new Response(
+          JSON.stringify({ success: true, qrCode: qrCodeFound, status: "awaiting_scan" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
       // 2) Buscar QR Code (retry, igual Afiliados)
       for (let i = 0; i < 5; i++) {
-        const qrResponse = await fetch(`${baseUrl}/session/qr`, {
-          method: "GET",
-          headers: { "Token": wuzapiToken },
-        });
+        for (const qrUrl of qrEndpoints) {
+          try {
+            const qrResponse = await fetch(qrUrl, {
+              method: "GET",
+              headers: { "Token": wuzapiToken },
+            });
 
-        const qrParsed = await safeReadJson(qrResponse);
-        if (qrParsed.ok) {
-          const qrCode = extractQrCodePayload(qrParsed.json);
-          if (qrCode) {
-            return new Response(
-              JSON.stringify({ success: true, qrCode, status: "awaiting_scan" }),
-              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
+            if (qrResponse.status === 404) continue;
+
+            const qrParsed = await safeReadJson(qrResponse);
+            if (qrParsed.ok) {
+              const qrCode = extractQrCodePayload(qrParsed.json);
+              if (qrCode) {
+                return new Response(
+                  JSON.stringify({ success: true, qrCode, status: "awaiting_scan" }),
+                  { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+                );
+              }
+            }
+          } catch (_) {
+            // ignore
           }
         }
-
         await new Promise((r) => setTimeout(r, 1200));
       }
 
       // Se chegou aqui, não conseguiu QR.
-      // Se o /connect foi 404 (como no seu caso), devolve diagnóstico claro.
-      if (!connectOk && lastConnectStatus === 404) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "Endpoint /session/connect não encontrado na WuzAPI desta instância",
-            raw: (lastConnectRaw || "").slice(0, 500),
-          }),
-          { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
+      // Retornar diagnóstico detalhado para ajudar a resolver
       return new Response(
         JSON.stringify({
           success: false,
-          error: "QR Code não disponível ainda. Tente novamente.",
+          error: "Não foi possível gerar QR Code. A sessão pode precisar ser reiniciada no servidor.",
+          details: {
+            baseUrl,
+            lastStatus: lastConnectStatus,
+            connectOk,
+            hint: "Tente desconectar e reconectar, ou verifique o painel WuzAPI diretamente.",
+          },
+          raw: (lastConnectRaw || "").slice(0, 300),
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
