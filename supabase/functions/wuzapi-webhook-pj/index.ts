@@ -468,12 +468,18 @@ serve(async (req) => {
     }
 
     const info = messageData?.Info || {};
+    
+    // DEBUG: verificar onde está o SenderAlt
+    console.log("🔍 [DEBUG] info.SenderAlt =", info?.SenderAlt);
+    console.log("🔍 [DEBUG] info.Sender =", info?.Sender);
+    console.log("🔍 [DEBUG] envelope.event?.Info?.SenderAlt =", (envelope as any)?.event?.Info?.SenderAlt);
 
     // Alguns builds (ex: Locaweb) enviam @lid no Sender e o telefone real em SenderAlt.
     // Coletamos candidatos e priorizamos @s.whatsapp.net.
     const candidateSenders: string[] = [
       // SenderAlt primeiro (build Locaweb manda telefone real aqui)
       info?.SenderAlt,
+      (envelope as any)?.event?.Info?.SenderAlt, // acesso direto ao envelope
       messageData?.SenderAlt,
       // Depois os clássicos
       info?.Sender,
