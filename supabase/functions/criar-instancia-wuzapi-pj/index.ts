@@ -46,7 +46,28 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, action } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    let userId: string | undefined = body?.userId;
+    const action: string | undefined = body?.action;
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // UX: permitir chamadas administrativas (ex: diagnóstico) sem userId,
+    // usando a primeira configuração PJ existente.
+    if (!userId) {
+      const { data: fallbackConfig } = await supabase
+        .from("pj_clientes_config")
+        .select("user_id")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (fallbackConfig?.user_id) {
+        userId = fallbackConfig.user_id;
+      }
+    }
 
     console.log(`📱 [PJ-WUZAPI] Ação: ${action} para user: ${userId}`);
 
@@ -56,10 +77,6 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Buscar ou criar configuração do cliente PJ
     let { data: clienteConfig, error: configError } = await supabase
@@ -254,6 +271,21 @@ serve(async (req) => {
           ultimo_status_check: new Date().toISOString(),
         })
         .eq("user_id", userId);
+
+      // Também sincronizar o status da instância (melhora confiabilidade dos envios e diagnósticos)
+      try {
+        await supabase
+          .from("wuzapi_instances")
+          .update({
+            is_connected: isConnected,
+            connected_at: isConnected ? new Date().toISOString() : null,
+            phone_number: jid ? String(jid).split("@")[0] : null,
+          })
+          .eq("assigned_to_user", userId)
+          .eq("port", targetPort);
+      } catch (e) {
+        console.log("⚠️ [PJ-WUZAPI] Falha ao sincronizar wuzapi_instances:", e);
+      }
 
       return new Response(
         JSON.stringify({
