@@ -469,9 +469,13 @@ serve(async (req) => {
 
     const info = messageData?.Info || {};
 
-    // Alguns builds enviam o remetente como @lid (não é telefone) ou IDs gigantes.
-    // Então coletamos candidatos e escolhemos o melhor.
+    // Alguns builds (ex: Locaweb) enviam @lid no Sender e o telefone real em SenderAlt.
+    // Coletamos candidatos e priorizamos @s.whatsapp.net.
     const candidateSenders: string[] = [
+      // SenderAlt primeiro (build Locaweb manda telefone real aqui)
+      info?.SenderAlt,
+      messageData?.SenderAlt,
+      // Depois os clássicos
       info?.Sender,
       info?.Chat,
       info?.RemoteJid,
