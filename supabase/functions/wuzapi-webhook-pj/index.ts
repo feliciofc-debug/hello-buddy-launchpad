@@ -448,7 +448,8 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    console.log("📨 [PJ-WEBHOOK] Recebido:", JSON.stringify(body).substring(0, 300));
+    // Log maior para facilitar debug sem lotar demais
+    console.log("📨 [PJ-WEBHOOK] Recebido:", JSON.stringify(body).substring(0, 2000));
 
     // Extrair dados da mensagem (WuzAPI pode enviar em formatos diferentes)
     // Formato novo observado:
@@ -468,14 +469,27 @@ serve(async (req) => {
 
     const info = messageData?.Info || {};
 
-    const phone =
-      info?.Sender ||
-      messageData?.Sender ||
-      info?.Chat ||
-      messageData?.Chat ||
-      messageData?.from ||
-      messageData?.phone ||
-      "";
+    // Alguns builds enviam o remetente como @lid (não é telefone) ou IDs gigantes.
+    // Então coletamos candidatos e escolhemos o melhor.
+    const candidateSenders: string[] = [
+      info?.Sender,
+      info?.Chat,
+      info?.RemoteJid,
+      info?.RemoteJID,
+      messageData?.Sender,
+      messageData?.Chat,
+      messageData?.from,
+      messageData?.phone,
+      // formatos comuns em key
+      (messageData as any)?.key?.remoteJid,
+      (messageData as any)?.key?.participant,
+      (messageData as any)?.Message?.key?.remoteJid,
+      (messageData as any)?.Message?.key?.participant,
+      (messageData as any)?.message?.key?.remoteJid,
+      (messageData as any)?.message?.key?.participant,
+      (envelope as any)?.event?.Message?.key?.remoteJid,
+      (envelope as any)?.event?.Message?.key?.participant,
+    ].filter(Boolean);
 
     const msg = messageData?.Message || messageData?.message || {};
     const messageText =
@@ -489,36 +503,49 @@ serve(async (req) => {
 
     const messageId = info?.ID || info?.Id || messageData?.id || messageData?.Info?.id || "";
     const isFromMe = info?.IsFromMe || messageData?.fromMe || false;
-    const isGroup = Boolean(info?.IsGroup) || phone?.includes("@g.us") || false;
 
-    // Ignorar mensagens próprias e de grupos
-    if (isFromMe || isGroup || !phone || !messageText) {
-      console.log("⏭️ [PJ-WEBHOOK] Ignorando:", { isFromMe, isGroup, hasPhone: !!phone, hasText: !!messageText });
-      return new Response(
-        JSON.stringify({ success: true, ignored: true }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Normalizar telefone:
-    // Exemplos possíveis:
-    // - 5521967520706@s.whatsapp.net
-    // - 5521995379550:23@s.whatsapp.net  (sufixo de device)
-    // - 172395843346560@lid
-    // - 5521...@g.us (grupo)
-    const normalizePhone = (raw: string) => {
+    const normalizeWaIdToDigits = (raw: string) => {
       if (!raw) return "";
       let s = String(raw);
-      // remover sufixos de jid
       s = s.replace("@s.whatsapp.net", "").replace("@g.us", "").replace("@lid", "");
-      // se vier com ":<device>", manter só antes dos dois pontos
       if (s.includes(":")) s = s.split(":")[0];
-      // manter apenas dígitos
       s = s.replace(/\D/g, "");
       return s;
     };
 
-    const cleanPhone = normalizePhone(phone);
+    const looksLikePhone = (digits: string) => {
+      // BR típico: 11 (sem 55) ou 13 (com 55). Aceitar faixa geral e rejeitar IDs enormes.
+      if (!digits) return false;
+      if (digits.length < 10) return false;
+      if (digits.length > 13) return false;
+      return true;
+    };
+
+    const bestCandidate =
+      candidateSenders.find((c) => String(c).includes("@s.whatsapp.net")) ||
+      candidateSenders.find((c) => looksLikePhone(normalizeWaIdToDigits(String(c)))) ||
+      "";
+
+    const cleanPhone = normalizeWaIdToDigits(bestCandidate);
+    const senderInvalid = !looksLikePhone(cleanPhone);
+    const isGroup = Boolean(info?.IsGroup) || String(bestCandidate).includes("@g.us") || false;
+
+    // Ignorar mensagens próprias, grupos e remetentes inválidos (ex: @lid)
+    if (isFromMe || isGroup || senderInvalid || !messageText) {
+      console.log("⏭️ [PJ-WEBHOOK] Ignorando:", {
+        isFromMe,
+        isGroup,
+        senderInvalid,
+        hasText: !!messageText,
+        bestCandidate,
+        candidatesPreview: candidateSenders.slice(0, 10),
+      });
+      return new Response(
+        JSON.stringify({ success: true, ignored: true, reason: senderInvalid ? "invalid_sender" : "filtered" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     console.log(`📱 [PJ-WEBHOOK] Mensagem de ${cleanPhone}: ${messageText.substring(0, 50)}...`);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
