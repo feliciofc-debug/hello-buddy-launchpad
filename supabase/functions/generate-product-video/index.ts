@@ -29,7 +29,7 @@ serve(async (req) => {
     console.log(`Editando imagem para: ${productName}`);
     console.log(`Prompt: ${editPrompt}`);
 
-    // Usar Gemini para editar a imagem
+    // Usar Gemini para editar a imagem - modelo correto
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -37,7 +37,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-image-preview',
+        model: 'google/gemini-2.5-flash-image',
         messages: [
           {
             role: 'user',
