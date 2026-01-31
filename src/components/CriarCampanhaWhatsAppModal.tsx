@@ -543,12 +543,13 @@ _Escolha quantidade e finalize!_ ✅`;
             .replace(/\{\{produto\}\}/gi, produto.nome)
             .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
 
-          // Enviar
-          const { error } = await supabase.functions.invoke('send-wuzapi-message', {
+          // Enviar via função PJ (Locaweb) com userId para resolver instância correta
+          const { error } = await supabase.functions.invoke('send-wuzapi-message-pj', {
             body: {
               phoneNumbers: [phone],
               message: mensagemPersonalizada,
-              imageUrl: produto.imagem_url
+              imageUrl: produto.imagem_url,
+              userId: user.id
             }
           });
 
