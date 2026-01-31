@@ -9,6 +9,35 @@ const corsHeaders = {
 const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
 const LOCAWEB_WUZAPI_TOKEN = Deno.env.get("WUZAPI_TOKEN") || "";
 
+// Função para normalizar número brasileiro com 9º dígito
+function normalizeBrazilianPhone(phone: string): string {
+  let clean = phone.replace(/\D/g, "");
+  
+  // Remover 55 do início se existir
+  if (clean.startsWith("55") && clean.length >= 12) {
+    clean = clean.substring(2);
+  }
+  
+  // Se tem 10 dígitos (DDD + 8 dígitos), adicionar o 9
+  // DDDs válidos: 11-99
+  if (clean.length === 10) {
+    const ddd = clean.substring(0, 2);
+    const numero = clean.substring(2);
+    // Celulares começam com 9, 8, 7 ou 6 após o DDD
+    if (['9', '8', '7', '6'].includes(numero[0])) {
+      clean = ddd + '9' + numero;
+      console.log(`📱 [NORMALIZE] Adicionado 9º dígito: ${phone} -> 55${clean}`);
+    }
+  }
+  
+  // Garantir prefixo 55
+  if (!clean.startsWith("55")) {
+    clean = "55" + clean;
+  }
+  
+  return clean;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -105,7 +134,8 @@ serve(async (req) => {
     const results: any[] = [];
 
     for (const phone of phoneNumbers) {
-      const cleanPhone = phone.replace(/\D/g, "");
+      // Normalizar número com 9º dígito brasileiro
+      const cleanPhone = normalizeBrazilianPhone(phone);
       console.log(`📞 [PJ-SEND] Enviando para ${cleanPhone}...`);
 
       try {
