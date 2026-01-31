@@ -213,12 +213,13 @@ export function useScheduledCampaigns(userId: string | undefined) {
                   .replace(/\{\{produto\}\}/gi, campanha.produtos.nome)
                   .replace(/\{\{preco\}\}/gi, campanha.produtos.preco?.toString() || '0');
 
-                // ENVIAR
-                const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+                // ENVIAR via função PJ (Locaweb)
+                const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
                   body: {
                     phoneNumbers: [phone],
                     message: mensagem,
-                    imageUrl: campanha.produtos.imagem_url
+                    imageUrl: campanha.produtos.imagem_url,
+                    userId: userId
                   }
                 });
 

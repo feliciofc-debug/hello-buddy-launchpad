@@ -496,12 +496,13 @@ const WhatsAppPage = () => {
           
           console.log(`📤 Enviando para ${contactName} (${phone})`);
           
-          // Usar função ORIGINAL que já funcionava
-          const { data, error } = await supabase.functions.invoke('send-wuzapi-message', {
+          // Usar função PJ (Locaweb) com userId
+          const { data, error } = await supabase.functions.invoke('send-wuzapi-message-pj', {
             body: {
               phoneNumbers: [phone],
               message: personalizedMessage,
-              ...(productImage && { imageUrl: productImage })
+              ...(productImage && { imageUrl: productImage }),
+              userId: user?.id
             }
           });
 
