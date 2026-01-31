@@ -64,11 +64,12 @@ export default function WhatsAppConversations() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // Enviar via edge function
-      const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+      // Enviar via edge function PJ (Locaweb)
+      const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
         body: {
           phoneNumbers: [conversaSelecionada.phone_number],
-          message: novaMensagem
+          message: novaMensagem,
+          userId: user.id
         }
       });
 
