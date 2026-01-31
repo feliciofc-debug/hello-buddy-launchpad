@@ -1,4 +1,4 @@
-# 🚀 BRIEFING COMPLETO - PROJETO ALLINKO / MENTORIA INTEGRAL
+# 🚀 BRIEFING COMPLETO - PROJETO ALLHINKO / MENTORIA INTEGRAL
 
 ## 📋 COPIE ESTE PROMPT E COLE NO NOVO PROJETO LOVABLE
 
@@ -8,7 +8,7 @@
 
 ## 🎯 VISÃO GERAL
 
-**Nome do Produto:** Allinko (SaaS de Mentoria Integral)
+**Nome do Produto:** Allhinko (SaaS de Mentoria Integral)
 **Empresa:** Allhimko Group
 **Fundador:** Almério Barros
 **Público-alvo:** Profissionais de alta performance, C-Levels, herdeiros/sucessores, estudantes
@@ -274,7 +274,7 @@ https://mentoria11-mgmffczz.manus.space/
 
 # ✅ PRIMEIROS PASSOS SUGERIDOS
 
-1. **Criar projeto Lovable** → lovable.dev → New Project → "Allinko"
+1. **Criar projeto Lovable** → lovable.dev → New Project → "Allhinko"
 2. **Colar este briefing** na primeira mensagem
 3. **Começar pela Landing Page** institucional
 4. **Depois:** Sistema SWOT 360° (o diferencial)
@@ -285,7 +285,7 @@ https://mentoria11-mgmffczz.manus.space/
 
 # 💡 OBSERVAÇÕES FINAIS
 
-- Este projeto é SEPARADO do AMZ Ofertas
+- Este projeto é SEPARADO do AMZ Ofertas (Allhinko é o novo SaaS)
 - Foco em design PREMIUM (público C-level)
 - Priorizar experiência mobile-friendly
 - Integração WhatsApp é importante (público brasileiro)
@@ -293,4 +293,4 @@ https://mentoria11-mgmffczz.manus.space/
 
 ---
 
-**Pronto para começar! Cole este briefing no novo projeto Lovable e vamos construir a Allinko juntos! 🚀💜**
+**Pronto para começar! Cole este briefing no novo projeto Lovable e vamos construir a Allhinko juntos! 🚀💜**
