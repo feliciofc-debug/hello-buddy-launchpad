@@ -9,6 +9,21 @@ const corsHeaders = {
 const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
 
 // ============================================
+// HELPERS: links/imagens/validações
+// ============================================
+function hasPurchaseLink(text: string): boolean {
+  return /https?:\/\//i.test(text || "");
+}
+
+function resolveProductLink(p: any): string | null {
+  return p?.checkout_url || p?.link_marketplace || p?.link || null;
+}
+
+function resolveProductImage(p: any): string | null {
+  return p?.imagem_url || p?.image_url || p?.foto || null;
+}
+
+// ============================================
 // TIPOS / INTERFACES
 // ============================================
 interface ConversationMessage {
@@ -125,7 +140,7 @@ function formatarCatalogoMD(produtos: any[]): string {
     // ═══════════════════════════════════════════
     // IMAGEM (CRÍTICO para envio automático!)
     // ═══════════════════════════════════════════
-    const imagem = p.imagem_url || p.image_url || p.foto;
+    const imagem = resolveProductImage(p);
     if (imagem) {
       md += `**📷 IMAGEM DISPONÍVEL:** SIM - ${imagem}\n`;
     } else {
@@ -149,7 +164,7 @@ function formatarCatalogoMD(produtos: any[]): string {
     // ═══════════════════════════════════════════
     // LINK DE COMPRA (OBRIGATÓRIO PARA VENDAS!)
     // ═══════════════════════════════════════════
-    const link = p.link_marketplace || p.link;
+    const link = resolveProductLink(p);
     if (link) {
       md += `**🔗 LINK DE COMPRA:** ${link}\n`;
     } else {
@@ -799,18 +814,38 @@ serve(async (req) => {
       .join("\n");
 
     // Buscar configuração do assistente PJ
-    const { data: pjConfig } = await supabase
-      .from("pj_clientes_config")
-      .select("*")
-      .limit(1)
-      .maybeSingle();
+    // CRÍTICO: escolher pelo instanceName do webhook (senão pode pegar user_id errado e ficar com 0 produtos)
+    const instanceName = envelope?.instanceName;
+    let pjConfig: any = null;
+
+    if (instanceName) {
+      const { data } = await supabase
+        .from("pj_clientes_config")
+        .select("*")
+        .eq("wuzapi_instance_name", instanceName)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      pjConfig = data;
+    }
+
+    // Fallback (legado)
+    if (!pjConfig) {
+      const { data } = await supabase
+        .from("pj_clientes_config")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      pjConfig = data;
+    }
 
     const nomeAssistente = pjConfig?.nome_assistente || "Assistente Virtual";
     const personalidade = pjConfig?.personalidade_assistente || "profissional e prestativo";
     const userId = pjConfig?.user_id;
     const wuzapiToken = pjConfig?.wuzapi_token;
     
-    console.log(`👤 [PJ-WEBHOOK] Config: ${nomeAssistente}, user: ${userId?.slice(0, 8)}...`);
+    console.log(`👤 [PJ-WEBHOOK] Config: ${nomeAssistente}, user: ${userId?.slice(0, 8)}..., instance: ${instanceName || 'n/a'}`);
 
     if (!wuzapiToken) {
       console.error("❌ [PJ-WEBHOOK] wuzapi_token não configurado!");
@@ -869,23 +904,51 @@ serve(async (req) => {
       systemPrompt
     );
 
-    console.log(`🤖 [PJ-WEBHOOK] Resposta: ${resposta.substring(0, 80)}...`);
+    // Garantia de venda: se achou produto relevante mas a IA não incluiu link,
+    // anexar bloco padrão com nome + preço + link.
+    let respostaFinal = resposta;
+    const produtoPrincipal = produtosRelevantes?.[0];
+    if (produtoPrincipal && !hasPurchaseLink(respostaFinal)) {
+      const link = resolveProductLink(produtoPrincipal);
+      const preco = produtoPrincipal?.preco ? `R$ ${Number(produtoPrincipal.preco).toFixed(2)}` : null;
+      const bloco = [
+        "\n\nTemos sim! 🎉",
+        `*${produtoPrincipal.nome}*${preco ? ` - ${preco}` : ""}`,
+        link ? `👉 ${link}` : "👉 (link de compra não cadastrado)",
+        resolveProductImage(produtoPrincipal) ? "Vou te mandar a foto!" : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      respostaFinal = `${respostaFinal.trim()}${bloco}`;
+    }
+
+    console.log(`🤖 [PJ-WEBHOOK] Resposta: ${respostaFinal.substring(0, 80)}...`);
 
     // Salvar resposta no histórico
     await supabase.from("pj_conversas").insert({
       phone: cleanPhone,
       role: "assistant",
-      content: resposta,
+      content: respostaFinal,
     });
 
     // Adicionar texto à fila anti-bloqueio
-    await inserirNaFilaPJ(supabase, cleanPhone, resposta, wuzapiToken, userId);
+    await inserirNaFilaPJ(supabase, cleanPhone, respostaFinal, wuzapiToken, userId);
 
     // Verificar se há produtos mencionados na resposta para enviar imagem
-    const produtosMencionados = extrairProdutosDaResposta(resposta, produtosRelevantes.length > 0 ? produtosRelevantes : todosProdutos.slice(0, 20));
+    const baseParaExtracao = produtosRelevantes.length > 0 ? produtosRelevantes : todosProdutos.slice(0, 20);
+    const produtosMencionados = extrairProdutosDaResposta(respostaFinal, baseParaExtracao);
+
+    // Se houve match de produto (principal), agendar imagem mesmo que não tenha sido "mencionado" literalmente.
+    if (produtoPrincipal) {
+      const img = resolveProductImage(produtoPrincipal);
+      if (img) {
+        console.log(`📷 [PJ-WEBHOOK] Enviando imagem (principal): ${produtoPrincipal.nome}`);
+        await inserirImagemNaFilaPJ(supabase, cleanPhone, img, produtoPrincipal.nome, wuzapiToken, userId);
+      }
+    }
     
     for (const prod of produtosMencionados) {
-      const imagemUrl = prod.imagem_url || prod.image_url || prod.foto;
+      const imagemUrl = resolveProductImage(prod);
       if (imagemUrl) {
         console.log(`📷 [PJ-WEBHOOK] Enviando imagem do produto: ${prod.nome}`);
         // Adicionar imagem à fila com pequeno delay adicional
