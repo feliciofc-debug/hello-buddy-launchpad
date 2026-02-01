@@ -64,8 +64,8 @@ export default function WhatsAppConversations() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
-      // Enviar via edge function PJ (Locaweb)
-      const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+      // Enviar via backend PJ (Locaweb)
+      const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
         body: {
           phoneNumbers: [conversaSelecionada.phone_number],
           message: novaMensagem,
@@ -73,7 +73,16 @@ export default function WhatsAppConversations() {
         }
       });
 
-      if (sendError) throw sendError;
+      const firstResult = Array.isArray((sendData as any)?.results) ? (sendData as any).results[0] : null;
+      const envioOk = !sendError && (firstResult ? firstResult.success === true : (sendData as any)?.success !== false);
+      const erroDetalhado =
+        sendError?.message ||
+        firstResult?.error ||
+        firstResult?.response?.error ||
+        firstResult?.response?.message ||
+        (!envioOk ? 'Falha no envio (retorno do backend)' : null);
+
+      if (!envioOk) throw new Error(typeof erroDetalhado === 'string' ? erroDetalhado : 'Falha no envio');
 
       // Salvar no histórico
       await supabase.from('whatsapp_messages').insert({
