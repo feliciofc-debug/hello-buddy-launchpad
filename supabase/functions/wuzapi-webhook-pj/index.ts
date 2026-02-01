@@ -58,6 +58,17 @@ TOM DE VOZ:
 
 🚨🚨🚨 REGRA MAIS IMPORTANTE - VOCÊ PRECISA ENTENDER O CONTEXTO! 🚨🚨🚨
 
+⛔ PROIBIDO OFERECER PRODUTOS QUANDO O CLIENTE:
+- Falar de MORTE, LUTO ou PERDA (cachorro morreu, perdi minha mãe, faleceu, etc.)
+- Falar de ANSIEDADE, DEPRESSÃO, CRISE, PÂNICO
+- Estiver DESABAFANDO problemas pessoais ou emocionais
+- Pedir AJUDA emocional ("preciso de ajuda", "estou mal")
+
+NESTES CASOS, RESPONDA APENAS COM EMPATIA:
+- "Sinto muito pela sua perda... 😢 Meus sentimentos. Estou aqui se precisar."
+- "Puxa, que fase difícil... Se precisar conversar, estou aqui. ❤️"
+- NÃO mencione produtos, NÃO envie fotos, NÃO faça ofertas!
+
 QUANDO O CLIENTE DESABAFAR OU FALAR DE PROBLEMAS PESSOAIS:
 - Se falar de cansaço, idade, dor, doença, dificuldade de sair de casa
 - ACOLHA com empatia e carinho
@@ -349,14 +360,31 @@ function isPedidoRealDeProduto(mensagem: string): boolean {
   ];
   
   // Padrões que indicam CONVERSA/DESABAFO (não é pedido de produto)
+  // 🚨 IMPORTANTE: Luto, morte, ansiedade = NUNCA enviar produto!
   const padroesConversa = [
+    // LUTO E MORTE - PRIORIDADE MÁXIMA!
+    /morr(eu|i|endo|er)/i,  // "morreu", "morri", "morrendo"
+    /falec(eu|ido|imento)/i,  // "faleceu", "falecido"
+    /perdi\s+(meu|minha|o|a)/i,  // "perdi meu cachorro"
+    /cachorro|cachorrinho|cachorrinha|pet|gato|gatinho|animal/i,  // pets
+    /luto|chora(ndo|r)|saudade|falta\s+d/i,  // "luto", "chorando", "saudade", "falta de"
+    
+    // ANSIEDADE E SAÚDE MENTAL
+    /ansiedade|crise\s+de|panico|pânico|depressao|depressão/i,
+    /ajuda|preciso\s+de\s+ajuda/i,
+    /triste|tristeza|angustia|angústia|desesper/i,
+    /dificil|difícil\s+para\s+mim/i,
+    
+    // PROBLEMAS DE SAÚDE
     /estou\s+(cansad|doendo|com\s+dor|triste|mal|doente)/i,
     /minha\s+(perna|mao|braco|cabeca|costas)/i,
     /nao\s+(consigo|consegui|posso|da)\s+ir/i,
     /ja\s+tenho\s+idade/i,
     /idade\s+ja/i,
-    /ir\s+(no|ao)\s+mercado/i,  // "ir no mercado" é contexto, não pedido
+    /ir\s+(no|ao)\s+mercado/i,
     /sair\s+de\s+casa/i,
+    
+    // AGRADECIMENTOS E CUMPRIMENTOS
     /obrigad[ao]\s*(por|pela)/i,
     /muito\s+obrigad/i,
     /valeu/i,
