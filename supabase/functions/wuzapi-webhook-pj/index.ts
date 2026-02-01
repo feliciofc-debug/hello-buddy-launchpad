@@ -477,9 +477,23 @@ serve(async (req) => {
     const eventType = envelope?.type || envelope?.event?.type || "";
     const messageData = envelope?.event || envelope;
 
-    // Ignorar eventos que não são mensagem (Presence, receipts, etc.)
+    // Eventos não-mensagem: registrar ReadReceipt para diagnosticar entrega
     if (eventType && eventType !== "Message") {
-      console.log("⏭️ [PJ-WEBHOOK] Evento não-mensagem, ignorando:", eventType);
+      if (eventType === "ReadReceipt" || eventType === "Receipt") {
+        const info = (messageData as any)?.Info || {};
+        const receiptId = info?.ID || info?.Id || (messageData as any)?.id || null;
+        const receiptChat = info?.Chat || info?.Sender || info?.RemoteJid || null;
+        const receiptFromMe = info?.IsFromMe ?? (messageData as any)?.fromMe ?? null;
+        console.log("📬 [PJ-WEBHOOK] ReadReceipt:", {
+          eventType,
+          receiptId,
+          receiptChat,
+          receiptFromMe,
+        });
+      } else {
+        console.log("⏭️ [PJ-WEBHOOK] Evento não-mensagem, ignorando:", eventType);
+      }
+
       return new Response(
         JSON.stringify({ success: true, ignored: true, reason: "non_message_event", eventType }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
