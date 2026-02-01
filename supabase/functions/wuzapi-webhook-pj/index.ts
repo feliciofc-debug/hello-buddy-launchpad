@@ -33,27 +33,29 @@ IDENTIDADE:
 - Assistente simpático, prestativo e ${personalidade}
 - Conhece todos os produtos/serviços cadastrados
 
-TOM DE VOZ (EQUILÍBRIO É A CHAVE!):
-- Amigável e acolhedor, mas sem exageros melosos
-- Uma pitada de bom humor e leveza quando apropriado
-- Profissional quando o cliente precisa de informações técnicas
-- Empático quando o cliente expressar frustração ou dúvida
-- Respostas de 2-5 linhas (nem muito curto, nem muito longo)
-- Use 1-2 emojis por mensagem, com moderação 😊
+TOM DE VOZ:
+- Amigável e acolhedor, sem exageros
+- Uma pitada de bom humor quando apropriado
+- Profissional nas informações técnicas
+- Respostas de 2-5 linhas
+- Use 1-2 emojis por mensagem 😊
 
-EQUILÍBRIO HUMANIZADO + TÉCNICO:
-- Cumprimente de forma natural e calorosa (não robótica)
-- Quando for sobre produto → seja objetivo com as informações
-- Quando for conversa casual → seja leve e simpático
-- Se perceber frustração → acolha brevemente antes de resolver
-- Mantenha o clima positivo sem forçar a barra
+🚨 REGRA CRÍTICA PARA PRODUTOS:
+1. ANTES de dizer que não tem um produto → PROCURE no catálogo abaixo!
+2. Se o cliente pedir "feijão preto" → procure por "feijão" no catálogo
+3. SEMPRE que encontrar o produto → responda com:
+   - Nome do produto
+   - Preço (R$ X,XX)
+   - 👉 Link de compra
+4. Se tiver imagem cadastrada, mencione que vai enviar a foto
+5. NUNCA diga "não tenho" se o produto estiver listado no catálogo!
+6. Se não encontrar EXATAMENTE, sugira produtos similares da mesma categoria
 
-REGRAS PARA PRODUTOS:
-1. Cliente mencionou interesse ("gostei", "quero", "me interessa") → busque no catálogo
-2. Quando encontrar → envie: Nome + Preço + 👉 [LINK]
-3. Se não encontrar exato, sugira similares da categoria
-4. Múltiplos produtos pedidos → liste todos com links
-5. Dúvidas técnicas → responda com base na ficha do produto
+FORMATO DE RESPOSTA QUANDO TIVER PRODUTO:
+"Temos sim! 🎉
+[Nome do Produto] - R$ X,XX
+👉 [LINK]
+Vou te mandar a foto!"
 
 PALAVRAS PROIBIDAS: "cansada", "cansado", "cansou" → use "ocupada", "parou"
 
@@ -61,12 +63,12 @@ HISTÓRICO:
 ${historicoFormatado || 'Início da conversa.'}
 
 ═══════════════════════════════════════════════════════
-📦 CATÁLOGO DE PRODUTOS
+📦 CATÁLOGO DE PRODUTOS (VERIFIQUE AQUI ANTES DE RESPONDER!)
 ═══════════════════════════════════════════════════════
 ${catalogoMD || 'Nenhum produto cadastrado.'}
 ═══════════════════════════════════════════════════════
 
-LEMBRE-SE: Seja você mesmo - simpático, útil e com aquele toque de alegria que faz a diferença! 😊`;
+LEMBRE-SE: Verifique o catálogo acima ANTES de dizer que não tem o produto!`;
 }
 
 // ============================================
@@ -115,9 +117,15 @@ function formatarCatalogoMD(produtos: any[]): string {
     md += `**Preço:** R$ ${Number(p.preco || 0).toFixed(2)}\n`;
     if (p.sku) md += `**SKU:** ${p.sku}\n`;
     
+    // IMAGEM (CRÍTICO para envio!)
+    const imagem = p.imagem_url || p.image_url || p.foto;
+    if (imagem) {
+      md += `**📷 IMAGEM:** ${imagem}\n`;
+    }
+    
     // Estoque
-    const estoque = p.estoque || 0;
-    if (estoque > 10) {
+    const estoque = p.estoque ?? 999; // Se não tiver estoque definido, assumir disponível
+    if (estoque > 10 || estoque === 999) {
       md += `**Estoque:** ✅ Disponível\n`;
     } else if (estoque > 0) {
       md += `**Estoque:** ⚠️ Últimas ${estoque} unidades!\n`;
@@ -129,34 +137,16 @@ function formatarCatalogoMD(produtos: any[]): string {
     const link = p.link_marketplace || p.link;
     if (link) {
       md += `**🔗 LINK DE COMPRA:** ${link}\n`;
-    } else {
-      md += `**🔗 LINK:** Não cadastrado\n`;
     }
     
     // Descrição
     if (p.descricao) {
-      md += `**Descrição:** ${p.descricao.substring(0, 300)}${p.descricao.length > 300 ? '...' : ''}\n`;
+      md += `**Descrição:** ${p.descricao.substring(0, 200)}${p.descricao.length > 200 ? '...' : ''}\n`;
     }
     
     // Detalhes técnicos
     if (p.ficha_tecnica) {
-      md += `**Ficha Técnica:** ${p.ficha_tecnica.substring(0, 300)}${p.ficha_tecnica.length > 300 ? '...' : ''}\n`;
-    }
-    
-    if (p.especificacoes) {
-      md += `**Especificações:** ${p.especificacoes.substring(0, 200)}${p.especificacoes.length > 200 ? '...' : ''}\n`;
-    }
-    
-    if (p.modo_uso) {
-      md += `**Modo de Uso:** ${p.modo_uso.substring(0, 200)}\n`;
-    }
-    
-    if (p.beneficios) {
-      md += `**Benefícios:** ${p.beneficios.substring(0, 200)}\n`;
-    }
-    
-    if (p.garantia) {
-      md += `**Garantia:** ${p.garantia}\n`;
+      md += `**Ficha Técnica:** ${p.ficha_tecnica.substring(0, 200)}${p.ficha_tecnica.length > 200 ? '...' : ''}\n`;
     }
     
     if (p.brand) {
@@ -167,6 +157,30 @@ function formatarCatalogoMD(produtos: any[]): string {
     
     return md;
   }).join('\n');
+}
+
+// ============================================
+// EXTRAIR PRODUTOS MENCIONADOS NA RESPOSTA DA IA
+// ============================================
+function extrairProdutosDaResposta(resposta: string, produtos: any[]): any[] {
+  const produtosEncontrados: any[] = [];
+  const respostaLower = resposta.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  
+  for (const p of produtos) {
+    const nomeProduto = (p.nome || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    // Verificar se o nome do produto (ou parte significativa) está na resposta
+    const palavrasProduto = nomeProduto.split(/\s+/).filter((w: string) => w.length >= 3);
+    
+    // Se pelo menos 2 palavras do produto estão na resposta, considerar mencionado
+    const matches = palavrasProduto.filter((palavra: string) => respostaLower.includes(palavra));
+    if (matches.length >= 2 || (palavrasProduto.length === 1 && matches.length === 1)) {
+      if (!produtosEncontrados.find(pf => pf.id === p.id)) {
+        produtosEncontrados.push(p);
+      }
+    }
+  }
+  
+  return produtosEncontrados;
 }
 
 // ============================================
@@ -483,6 +497,47 @@ async function inserirNaFilaPJ(
 }
 
 // ============================================
+// INSERIR IMAGEM NA FILA ANTI-BLOQUEIO PJ
+// ============================================
+async function inserirImagemNaFilaPJ(
+  supabase: any,
+  phone: string,
+  imagemUrl: string,
+  caption: string,
+  wuzapiToken: string,
+  userId: string | null
+) {
+  const cleanPhone = phone.replace(/\D/g, '');
+  const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : '55' + cleanPhone;
+  
+  // Delay maior para imagem (após o texto)
+  const delayMs = Math.floor(Math.random() * 3000) + 5000; // 5-8 segundos após o texto
+  const scheduledAt = new Date(Date.now() + delayMs);
+  
+  const { error } = await supabase
+    .from('fila_atendimento_pj')
+    .insert({
+      lead_phone: formattedPhone,
+      mensagem: caption || 'Confira este produto!',
+      imagem_url: imagemUrl,
+      tipo_mensagem: 'imagem',
+      prioridade: 2,
+      status: 'pendente',
+      wuzapi_token: wuzapiToken,
+      user_id: userId,
+      scheduled_at: scheduledAt.toISOString()
+    });
+  
+  if (error) {
+    console.error('❌ [PJ-FILA] Erro ao inserir imagem:', error);
+    return false;
+  }
+  
+  console.log(`✅ [PJ-FILA] Imagem agendada para ${formattedPhone}`);
+  return true;
+}
+
+// ============================================
 // MAIN HANDLER
 // ============================================
 serve(async (req) => {
@@ -733,8 +788,20 @@ serve(async (req) => {
       content: resposta,
     });
 
-    // Adicionar à fila anti-bloqueio
+    // Adicionar texto à fila anti-bloqueio
     await inserirNaFilaPJ(supabase, cleanPhone, resposta, wuzapiToken, userId);
+
+    // Verificar se há produtos mencionados na resposta para enviar imagem
+    const produtosMencionados = extrairProdutosDaResposta(resposta, produtosRelevantes.length > 0 ? produtosRelevantes : todosProdutos.slice(0, 20));
+    
+    for (const prod of produtosMencionados) {
+      const imagemUrl = prod.imagem_url || prod.image_url || prod.foto;
+      if (imagemUrl) {
+        console.log(`📷 [PJ-WEBHOOK] Enviando imagem do produto: ${prod.nome}`);
+        // Adicionar imagem à fila com pequeno delay adicional
+        await inserirImagemNaFilaPJ(supabase, cleanPhone, imagemUrl, prod.nome, wuzapiToken, userId);
+      }
+    }
 
     console.log(`📬 [PJ-WEBHOOK] Resposta agendada para ${cleanPhone}`);
 
