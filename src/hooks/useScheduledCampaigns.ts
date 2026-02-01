@@ -213,83 +213,97 @@ export function useScheduledCampaigns(userId: string | undefined) {
                   .replace(/\{\{produto\}\}/gi, campanha.produtos.nome)
                   .replace(/\{\{preco\}\}/gi, campanha.produtos.preco?.toString() || '0');
 
-                // ENVIAR via função PJ (Locaweb)
-                const { error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
-                  body: {
-                    phoneNumbers: [phone],
-                    message: mensagem,
-                    imageUrl: campanha.produtos.imagem_url,
-                    userId: userId
-                  }
-                });
+                 // ENVIAR via função PJ (Locaweb)
+                 const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+                   body: {
+                     phoneNumbers: [phone],
+                     message: mensagem,
+                     imageUrl: campanha.produtos.imagem_url,
+                     userId: userId,
+                   },
+                 });
 
-                if (!sendError) {
-                  enviados++;
+                 // IMPORTANT: supabase.functions.invoke só falha (sendError) se a função retornar HTTP não-2xx.
+                 // A função pode retornar 200 com results[0].success = false. Precisamos tratar isso.
+                 const firstResult = Array.isArray((sendData as any)?.results) ? (sendData as any).results[0] : null;
+                 const envioOk = !sendError && (firstResult ? firstResult.success === true : true);
+                 const erroDetalhado =
+                   sendError?.message ||
+                   firstResult?.error ||
+                   (firstResult?.response?.error ? String(firstResult.response.error) : null) ||
+                   (!envioOk ? 'Falha no envio (retorno da função)' : null);
 
-                  // ✅ REGISTRAR ENVIO NO HISTÓRICO (para cooldown)
-                  await registrarEnvio(phone, 'campanha', mensagem, true);
+                 if (!envioOk) {
+                   console.error('❌ Envio falhou para', phone, { sendError, firstResult, sendData });
+                   await registrarEnvio(phone, 'campanha', mensagem, false, erroDetalhado || 'Erro no envio');
+                   pulados++;
+                   continue;
+                 }
 
-                  // ✅ MARCAR CAMPANHA ATIVA PARA ESTE CLIENTE
-                  await supabase.from('campanhas_ativas').insert({
-                    cliente_id: null,
-                    whatsapp: phone,
-                    tipo: 'produto',
-                    mensagem: mensagem.substring(0, 500),
-                    aguardando_resposta: true,
-                    pausado: false
-                  });
+                 enviados++;
 
-                  // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
-                  await supabase.from('mensagens_enviadas').insert({
-                    phone: phone,
-                    message: mensagem,
-                    user_id: userId,
-                    lead_tipo: 'campanha'
-                  });
+                 // ✅ REGISTRAR ENVIO NO HISTÓRICO (para cooldown)
+                 await registrarEnvio(phone, 'campanha', mensagem, true);
 
-                  // Salvar contexto COMPLETO do produto para IA (TODOS OS CAMPOS)
-                  const { data: userData } = await supabase.auth.getUser();
-                  const vendedorNome = userData?.user?.user_metadata?.full_name || 'Vendedor';
+                 // ✅ MARCAR CAMPANHA ATIVA PARA ESTE CLIENTE
+                 await supabase.from('campanhas_ativas').insert({
+                   cliente_id: null,
+                   whatsapp: phone,
+                   tipo: 'produto',
+                   mensagem: mensagem.substring(0, 500),
+                   aguardando_resposta: true,
+                   pausado: false,
+                 });
 
-                  await supabase.from('whatsapp_conversations').upsert({
-                    user_id: userId,
-                    phone_number: phone,
-                    origem: 'campanha',
-                    vendedor_id: campanha.vendedor_id || null,
-                    contact_name: nome,
-                    metadata: {
-                      produto_id: campanha.produtos.id,
-                      produto_nome: campanha.produtos.nome,
-                      produto_descricao: campanha.produtos.descricao,
-                      produto_preco: campanha.produtos.preco,
-                      produto_estoque: campanha.produtos.estoque || 0,
-                      produto_especificacoes: campanha.produtos.especificacoes || '',
-                      produto_categoria: campanha.produtos.categoria,
-                      produto_sku: campanha.produtos.sku,
-                      produto_tags: campanha.produtos.tags,
-                      produto_imagens: campanha.produtos.imagens || [],
-                      produto_imagem_url: campanha.produtos.imagem_url,
-                      link_marketplace: campanha.produtos.link_marketplace || '',
-                      link_produto: campanha.produtos.link,
-                      vendedor_nome: vendedorNome,
-                      data_envio: new Date().toISOString()
-                    }
-                  }, {
-                    onConflict: 'user_id,phone_number'
-                  });
+                 // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
+                 await supabase.from('mensagens_enviadas').insert({
+                   phone: phone,
+                   message: mensagem,
+                   user_id: userId,
+                   lead_tipo: 'campanha',
+                   // Se existir coluna, fica registrado para auditoria (se não existir, o PostgREST ignora e vai dar erro).
+                   // Mantemos apenas em memória aqui via log; se você quiser persistir de forma garantida, criamos uma coluna dedicada.
+                 });
 
-                  // Salvar mensagem no histórico com origem
-                  await supabase.from('whatsapp_messages').insert({
-                    user_id: userId,
-                    phone: phone,
-                    direction: 'sent',
-                    message: mensagem,
-                    origem: 'campanha'
-                  });
-                } else {
-                  // Registrar erro
-                  await registrarEnvio(phone, 'campanha', mensagem, false, 'Erro no envio');
-                }
+                 // Salvar contexto COMPLETO do produto para IA (TODOS OS CAMPOS)
+                 const { data: userData } = await supabase.auth.getUser();
+                 const vendedorNome = userData?.user?.user_metadata?.full_name || 'Vendedor';
+
+                 await supabase.from('whatsapp_conversations').upsert({
+                   user_id: userId,
+                   phone_number: phone,
+                   origem: 'campanha',
+                   vendedor_id: campanha.vendedor_id || null,
+                   contact_name: nome,
+                   metadata: {
+                     produto_id: campanha.produtos.id,
+                     produto_nome: campanha.produtos.nome,
+                     produto_descricao: campanha.produtos.descricao,
+                     produto_preco: campanha.produtos.preco,
+                     produto_estoque: campanha.produtos.estoque || 0,
+                     produto_especificacoes: campanha.produtos.especificacoes || '',
+                     produto_categoria: campanha.produtos.categoria,
+                     produto_sku: campanha.produtos.sku,
+                     produto_tags: campanha.produtos.tags,
+                     produto_imagens: campanha.produtos.imagens || [],
+                     produto_imagem_url: campanha.produtos.imagem_url,
+                     link_marketplace: campanha.produtos.link_marketplace || '',
+                     link_produto: campanha.produtos.link,
+                     vendedor_nome: vendedorNome,
+                     data_envio: new Date().toISOString(),
+                   },
+                 }, {
+                   onConflict: 'user_id,phone_number',
+                 });
+
+                 // Salvar mensagem no histórico com origem
+                 await supabase.from('whatsapp_messages').insert({
+                   user_id: userId,
+                   phone: phone,
+                   direction: 'sent',
+                   message: mensagem,
+                   origem: 'campanha',
+                 });
 
                 // Delay aleatório 5-8 segundos (compliance Meta)
                 const delayMs = Math.floor(Math.random() * 3000) + 5000;
