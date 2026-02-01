@@ -19,29 +19,25 @@ serve(async (req) => {
 
     // Pegar user do header Authorization
     const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: "Não autorizado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    
+    if (userError || !user) {
+      console.error("❌ Erro ao obter usuário:", userError);
+      return new Response(JSON.stringify({ error: "Usuário não encontrado" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { action, instanceId, operation } = await req.json();
-
-    // Observação importante:
-    // Algumas telas chamam esta função mesmo sem sessão autenticada.
-    // Nesses casos o header Authorization vem com o token "anon" (sem claim "sub"),
-    // e supabase.auth.getUser() falha com "missing sub claim".
-    // Para não quebrar o fluxo, permitimos operação *apenas* quando vier um instanceId
-    // (modo explícito) e validamos que a instância é a porta 8080.
-    let userId: string | null = null;
-    if (authHeader?.startsWith("Bearer ")) {
-      const bearer = authHeader.replace("Bearer ", "");
-      try {
-        const { data, error } = await supabase.auth.getUser(bearer);
-        if (error) {
-          console.warn("⚠️ Authorization inválido (seguindo sem user):", error);
-        } else {
-          userId = data.user?.id ?? null;
-        }
-      } catch (e) {
-        console.warn("⚠️ Falha ao obter usuário (seguindo sem user):", e);
-      }
-    }
 
     // ========== CONTROLE DA PORTA 8080 (INSTÂNCIA ORIGINAL) ==========
     if (action === 'control-8080') {
@@ -92,17 +88,7 @@ serve(async (req) => {
       );
     }
 
-    // Se não temos userId e não veio instanceId, não dá pra resolver instância do usuário.
-    if (!userId && !instanceId) {
-      return new Response(JSON.stringify({
-        error: "Sessão expirada. Faça login novamente e tente de novo."
-      }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    console.log(`📱 [WUZAPI-QRCODE] Action: ${action}, User: ${userId ?? 'anonymous'}, InstanceId: ${instanceId || 'auto'}`);
+    console.log(`📱 [WUZAPI-QRCODE] Action: ${action}, User: ${user.id}, InstanceId: ${instanceId || 'auto'}`);
 
     let userInstance;
 
@@ -124,22 +110,12 @@ serve(async (req) => {
 
       userInstance = specificInstance;
       console.log(`📡 Usando instância específica: ${userInstance.instance_name}`);
-
-      // Modo "sem user": permitir operar somente a porta 8080.
-      if (!userId && userInstance.port !== 8080) {
-        return new Response(JSON.stringify({
-          error: "Não autorizado para esta instância."
-        }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
     } else {
       // Buscar instância do usuário (comportamento original)
       const { data: assignedInstance } = await supabase
         .from("wuzapi_instances")
         .select("*")
-        .eq("assigned_to_user", userId)
+        .eq("assigned_to_user", user.id)
         .maybeSingle();
 
       if (!assignedInstance) {
@@ -166,7 +142,7 @@ serve(async (req) => {
         const { data: newAssignedInstance, error: assignError } = await supabase
           .from("wuzapi_instances")
           .update({ 
-            assigned_to_user: userId,
+            assigned_to_user: user.id,
             updated_at: new Date().toISOString()
           })
           .eq("id", availableInstance.id)
