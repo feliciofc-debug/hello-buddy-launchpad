@@ -47,8 +47,8 @@ export default function Login() {
         return;
       }
 
-      // Acesso direto para: dono da plataforma OU clientes B2B
-      if (data.user.email === 'expo@atombrasildigital.com' || profile?.tipo === 'b2b') {
+      // Acesso direto para: dono da plataforma OU clientes B2B OU parceiros
+      if (data.user.email === 'expo@atombrasildigital.com' || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro') {
         navigate('/dashboard');
         return;
       }
