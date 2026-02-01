@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 export function TestarEnvioWuzapi() {
   const [telefone, setTelefone] = useState('');
@@ -24,74 +25,61 @@ export function TestarEnvioWuzapi() {
     setLogs([]);
 
     try {
-      const WUZAPI_URL = import.meta.env.VITE_WUZAPI_URL;
-      const WUZAPI_TOKEN = import.meta.env.VITE_WUZAPI_TOKEN;
-      const WUZAPI_INSTANCE_ID = import.meta.env.VITE_WUZAPI_INSTANCE_ID;
-
-      addLog('🧪 Iniciando teste de envio...');
-      addLog(`URL: ${WUZAPI_URL || 'NÃO CONFIGURADO'}`);
-      addLog(`Token: ${WUZAPI_TOKEN ? 'OK' : 'FALTANDO'}`);
-      addLog(`Instance: ${WUZAPI_INSTANCE_ID || 'NÃO CONFIGURADO'}`);
-      addLog(`Telefone: ${telefone}`);
-
-      if (!WUZAPI_URL || !WUZAPI_TOKEN) {
-        toast.error('Wuzapi não configurado - verifique as variáveis de ambiente');
-        addLog('❌ Variáveis de ambiente faltando');
+      addLog('🧪 Iniciando teste de envio via backend PJ...');
+      
+      // Obter usuário logado
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        addLog('❌ Usuário não autenticado');
         return;
       }
+      
+      addLog(`👤 Usuário: ${user.email}`);
+      addLog(`📱 Telefone destino: ${telefone}`);
 
-      const baseUrl = WUZAPI_URL.endsWith('/') ? WUZAPI_URL.slice(0, -1) : WUZAPI_URL;
       const mensagem = '🧪 Teste AMZ Ofertas - Se você recebeu essa mensagem, o sistema está funcionando! ✅';
 
-      // Tentar formato 1
-      addLog('📤 Tentando formato 1: /chat/send/text');
-      let res = await fetch(`${baseUrl}/chat/send/text`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Token': WUZAPI_TOKEN
-        },
-        body: JSON.stringify({
-          Phone: telefone,
-          Body: mensagem,
-          Id: WUZAPI_INSTANCE_ID
-        })
+      // Usar Edge Function PJ com userId para resolver instância correta
+      addLog('📤 Enviando via send-wuzapi-message-pj...');
+      
+      const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+        body: {
+          phoneNumbers: [telefone],
+          message: mensagem,
+          userId: user.id,
+          debugStatus: true // Incluir diagnóstico da instância
+        }
       });
 
-      let text = await res.text();
-      addLog(`Status: ${res.status}`);
-      addLog(`Response: ${text}`);
+      addLog(`📊 Resposta: ${JSON.stringify(sendData, null, 2)}`);
 
-      if (res.ok) {
-        toast.success('✅ Mensagem enviada! Verifique seu WhatsApp');
-        addLog('✅ SUCESSO no formato 1!');
+      // Validar resposta completa (não só HTTP status)
+      const firstResult = Array.isArray(sendData?.results) ? sendData.results[0] : null;
+      const envioOk = !sendError && (firstResult ? firstResult.success === true : sendData?.success !== false);
+      
+      if (sendError) {
+        addLog(`❌ Erro HTTP: ${sendError.message}`);
+        toast.error(`Erro: ${sendError.message}`);
         return;
       }
 
-      // Tentar formato 2
-      addLog('⚠️ Formato 1 falhou, tentando formato 2: /send/text');
-      res = await fetch(`${baseUrl}/send/text`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Token': WUZAPI_TOKEN
-        },
-        body: JSON.stringify({
-          phone: telefone,
-          message: mensagem
-        })
-      });
+      // Mostrar status da instância se disponível
+      if (sendData?.instanceStatus) {
+        const st = sendData.instanceStatus;
+        addLog(`📡 Instância: ${st.baseUrl}`);
+        addLog(`🔌 Conectado: ${st.connected ? 'SIM' : 'NÃO'}`);
+        addLog(`📲 Logado: ${st.loggedIn ? 'SIM' : 'NÃO'}`);
+        addLog(`📞 JID: ${st.jid || 'N/A'}`);
+      }
 
-      text = await res.text();
-      addLog(`Status: ${res.status}`);
-      addLog(`Response: ${text}`);
-
-      if (res.ok) {
+      if (envioOk) {
         toast.success('✅ Mensagem enviada! Verifique seu WhatsApp');
-        addLog('✅ SUCESSO no formato 2!');
+        addLog('✅ SUCESSO! Mensagem enviada.');
       } else {
-        toast.error(`❌ Erro: ${res.status}`);
-        addLog('❌ Todos os formatos falharam');
+        const erro = firstResult?.error || firstResult?.response?.error || 'Falha no envio';
+        addLog(`❌ Falha: ${erro}`);
+        toast.error(`Falha: ${erro}`);
       }
 
     } catch (error) {
@@ -111,7 +99,7 @@ export function TestarEnvioWuzapi() {
       <CardContent className="space-y-3">
         <div>
           <label className="text-sm font-medium mb-2 block">
-            Seu número de WhatsApp:
+            Número de WhatsApp destino:
           </label>
           <Input
             placeholder="5521967520706"
@@ -132,7 +120,7 @@ export function TestarEnvioWuzapi() {
         </Button>
 
         {logs.length > 0 && (
-          <div className="bg-muted/50 rounded p-2 text-xs font-mono max-h-40 overflow-auto">
+          <div className="bg-muted/50 rounded p-2 text-xs font-mono max-h-60 overflow-auto">
             {logs.map((log, i) => (
               <div key={i} className="whitespace-pre-wrap">{log}</div>
             ))}
@@ -141,7 +129,7 @@ export function TestarEnvioWuzapi() {
 
         <div className="text-xs text-muted-foreground space-y-1">
           <p>✓ Se receber a mensagem = Sistema OK</p>
-          <p>✗ Se não receber = Problema no Wuzapi</p>
+          <p>✗ Se não receber = Verifique conexão WhatsApp</p>
         </div>
       </CardContent>
     </Card>
