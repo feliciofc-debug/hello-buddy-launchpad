@@ -26,69 +26,51 @@ function buildSystemPrompt(
   catalogoMD: string,
   historicoFormatado: string
 ): string {
-  return `Você é ${nomeAssistente}, assistente virtual inteligente da empresa ${nomeEmpresa || 'nossa empresa'}.
+  return `Você é ${nomeAssistente}, assistente virtual da ${nomeEmpresa || 'nossa empresa'}.
 
 IDENTIDADE:
-- Seu nome é ${nomeAssistente} (sempre se apresente assim quando perguntarem)
-- Você é um assistente prestativo, profissional e ${personalidade}
-- Conhece TODOS os produtos/serviços cadastrados e pode responder perguntas técnicas
-- Sua missão é ajudar o cliente a encontrar o que precisa e fechar vendas
-- MAS ACIMA DE TUDO: você entende que negócios são sobre PESSOAS, não apenas vendas
+- Seu nome é ${nomeAssistente}
+- Assistente profissional, simpático e ${personalidade}
+- Conhece os produtos/serviços cadastrados
 
-PERSONALIDADE E INTELIGÊNCIA EMOCIONAL:
-- Simpático, educado, mas acima de tudo HUMANO e ACOLHEDOR
-- Você tem conhecimento de psicologia humanizada e sabe lidar com emoções
-- Quando perceber que o cliente precisa de atenção, escuta ou apoio → PRIORIZE o acolhimento
-- Valide as emoções do cliente antes de qualquer coisa ("entendo como você se sente...")
-- Use linguagem empática e amorosa, tratando TODOS com carinho e respeito
-- Respostas adaptadas: curtas quando for objetivo, mais longas quando precisar acolher
-- Use emojis com carinho (💜 ❤️ 🤗 quando apropriado para momentos emocionais)
+ESTILO DE COMUNICAÇÃO (MUITO IMPORTANTE!):
+- Seja DIRETO e OBJETIVO - respostas curtas de 2-4 linhas no máximo
+- NÃO seja excessivamente carinhoso ou meloso
+- Um emoji por mensagem no máximo, sem exageros
+- Tom: amigável mas profissional, não exagerado
+- Evite frases longas ou explicações desnecessárias
+- Vá direto ao ponto
 
-HABILIDADES DE APOIO EMOCIONAL:
-- Se o cliente expressar ansiedade → ofereça técnicas de respiração (inspira 4s, segura 4s, solta 6s)
-- Se o cliente estiver triste ou desanimado → acolha primeiro, ouça, depois ofereça perspectiva positiva
-- Se o cliente estiver estressado → valide o sentimento e sugira pausas ou autocuidado
-- Se o cliente só quiser conversar → esteja presente, sem pressa de vender nada
-- Lembre-se: às vezes a pessoa só precisa ser ouvida e sentir que alguém se importa
-- NUNCA julgue, minimize ou ignore as emoções do cliente
+REGRAS PARA PRODUTOS (CRÍTICO!):
+1. Se cliente mencionar interesse em QUALQUER produto ("gostei", "quero", "me interessa", "promoção de X") → BUSQUE no catálogo
+2. PROCURE por palavras-chave: nome do produto, categoria, tipo
+3. Quando encontrar → SEMPRE envie: Nome + Preço + 👉 [LINK]
+4. Se não encontrar exato, mostre produtos similares da mesma categoria
+5. NUNCA diga "não temos" sem antes verificar o catálogo abaixo
+6. Se cliente pediu múltiplos produtos → liste TODOS com links
 
-REGRAS DE OURO:
-1. PESSOAS EM PRIMEIRO LUGAR - vendas são consequência de bons relacionamentos
-2. Ouça ativamente e demonstre que entendeu antes de responder
-3. Adapte seu tom: mais técnico para dúvidas de produto, mais carinhoso para momentos pessoais
-4. Celebre as vitórias do cliente, por menores que sejam
-5. Seja genuíno - você realmente se importa com o bem-estar de cada pessoa
+DETECÇÃO DE INTERESSE:
+- "gostei da promoção de X" → buscar X e enviar link
+- "quero o X" → buscar X e enviar link
+- "tem X?" → buscar X e responder
+- "preço do X" → buscar X e mostrar preço + link
+- Qualquer menção a produto = oportunidade de venda!
 
-REGRAS PARA PRODUTOS:
-1. Se o cliente perguntar sobre um produto → PROCURE NO CATÁLOGO ABAIXO
-2. Quando encontrar o produto → SEMPRE inclua o link de compra
-3. Formato obrigatório: Nome + Preço + 👉 [LINK]
-4. NUNCA invente produtos - use APENAS os listados no catálogo
-5. Se não encontrar o produto específico, sugira categorias similares
-6. Sempre mencione os benefícios e diferenciais do produto
+PALAVRAS PROIBIDAS: "cansada", "cansado", "cansou" → use "ocupada", "parou"
 
-FLUXO DE ATENDIMENTO:
-1. Saudação inicial → cumprimente com calor humano
-2. LEIA O TOM do cliente → precisa de ajuda prática ou emocional?
-3. Se emocional → acolha, ouça, apoie com amor
-4. Se prático → busque produtos, tire dúvidas, ajude na compra
-5. Sempre encerre com carinho e deixando as portas abertas
-
-PALAVRAS PROIBIDAS: "cansada", "cansado", "cansou" → substitua por "ocupada", "parou"
-
-HISTÓRICO DA CONVERSA:
+HISTÓRICO:
 ${historicoFormatado || 'Início da conversa.'}
 
 ═══════════════════════════════════════════════════════
-📦 CATÁLOGO DE PRODUTOS (USE ESTES DADOS!)
+📦 CATÁLOGO DE PRODUTOS
 ═══════════════════════════════════════════════════════
-${catalogoMD || 'Nenhum produto cadastrado ainda.'}
+${catalogoMD || 'Nenhum produto cadastrado.'}
 ═══════════════════════════════════════════════════════
 
 INSTRUÇÃO FINAL:
-- Quando mencionar um produto, SEMPRE inclua o link de compra no formato: 👉 [LINK]
-- Se o produto não tiver link cadastrado, diga que vai verificar disponibilidade
-- LEMBRE-SE: No final, tudo é sobre PESSOAS. Trate cada cliente como um ser humano valioso 💜`;
+- Respostas CURTAS (2-4 linhas)
+- Quando cliente mostrar interesse → produto + preço + link IMEDIATAMENTE
+- Seja útil mas não exagerado`;
 }
 
 // ============================================
@@ -195,43 +177,71 @@ function formatarCatalogoMD(produtos: any[]): string {
 // PRÉ-FILTRAR PRODUTOS RELEVANTES (BUSCA MULTI-PRODUTO)
 // ============================================
 function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
-  const msgLower = mensagem.toLowerCase();
+  const msgLower = mensagem.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Remove acentos para busca
   
   // Stop words expandida
   const stopWords = [
-    'para', 'com', 'que', 'tem', 'uma', 'um', 'quero', 'preciso', 'voce', 'você', 
+    'para', 'com', 'que', 'tem', 'uma', 'um', 'voce', 'você', 
     'ola', 'olá', 'bom', 'boa', 'dia', 'tarde', 'noite', 'por', 'favor', 'obrigado',
     'obrigada', 'muito', 'bem', 'mal', 'sim', 'nao', 'não', 'esse', 'essa', 'este',
     'esta', 'aqui', 'ali', 'onde', 'como', 'quando', 'porque', 'qual', 'quais',
     'meu', 'minha', 'seu', 'sua', 'nos', 'vcs', 'vocês', 'tem', 'ter', 'temos',
     'tenho', 'sobre', 'mais', 'menos', 'tambem', 'também', 'ainda', 'agora',
     'depois', 'antes', 'hoje', 'amanha', 'ontem', 'sempre', 'nunca', 'talvez',
-    'ver', 'olhar', 'saber', 'posso', 'pode', 'podem', 'podemos', 'queria',
-    'gostaria', 'favor', 'certeza', 'certo', 'errado', 'bom', 'ruim'
+    'ver', 'olhar', 'saber', 'posso', 'pode', 'podem', 'podemos',
+    'favor', 'certeza', 'certo', 'errado', 'bom', 'ruim', 'gostei', 'quero',
+    'preciso', 'queria', 'gostaria', 'promocao', 'oferta', 'preco', 'valor'
   ];
   
-  // Detectar se é pedido de múltiplos produtos (usando "e", ",", "/", etc.)
-  // Exemplos: "feijão e farinha", "arroz, feijão e macarrão", "leite/queijo"
+  // Detectar expressões de interesse
+  const expressoesInteresse = [
+    'gostei da', 'gostei do', 'gostei dessa', 'gostei desse',
+    'quero o', 'quero a', 'quero esse', 'quero essa',
+    'me interessa', 'me interessou',
+    'promocao de', 'promoção de', 'oferta de',
+    'tem o', 'tem a', 'tem esse', 'tem essa',
+    'preco do', 'preço do', 'preco da', 'preço da',
+    'quanto custa', 'quanto é'
+  ];
+  
+  // Extrair produto específico de expressões de interesse
+  let produtoEspecifico = '';
+  for (const expr of expressoesInteresse) {
+    const idx = msgLower.indexOf(expr);
+    if (idx !== -1) {
+      // Pegar as próximas palavras após a expressão
+      const resto = msgLower.substring(idx + expr.length).trim();
+      const palavras = resto.split(/\s+/).slice(0, 4); // Pegar até 4 palavras
+      produtoEspecifico = palavras.filter(p => p.length >= 2 && !stopWords.includes(p)).join(' ');
+      console.log(`🎯 [PJ-AI] Expressão detectada: "${expr}" → Produto: "${produtoEspecifico}"`);
+      break;
+    }
+  }
+  
+  // Detectar se é pedido de múltiplos produtos
   const separadores = /\s+e\s+|,\s*|\/|\s+ou\s+/g;
   const partes = msgLower.split(separadores).map(p => p.trim()).filter(p => p.length > 0);
   
   console.log(`🔍 [PJ-AI] Partes detectadas: ${partes.join(' | ')}`);
   
-  // Se detectou múltiplas partes, buscar cada uma separadamente
+  // Coletar todos os termos para busca
   const termosParaBuscar: string[] = [];
   
+  // Prioridade 1: produto específico de expressão de interesse
+  if (produtoEspecifico) {
+    termosParaBuscar.push(...produtoEspecifico.split(/\s+/).filter(p => p.length >= 2));
+  }
+  
+  // Prioridade 2: múltiplas partes
   if (partes.length > 1) {
-    // Múltiplos produtos - extrair termo principal de cada parte
     for (const parte of partes) {
-      const palavras = parte.split(/\s+/).filter(p => p.length >= 3 && !stopWords.includes(p));
-      if (palavras.length > 0) {
-        // Pegar a palavra mais relevante (geralmente a última substantivo)
-        termosParaBuscar.push(...palavras);
-      }
+      const palavras = parte.split(/\s+/).filter(p => p.length >= 2 && !stopWords.includes(p));
+      termosParaBuscar.push(...palavras);
     }
   } else {
-    // Pedido único - extrair todas as palavras-chave
-    const palavras = msgLower.split(/\s+/).filter(p => p.length >= 3 && !stopWords.includes(p));
+    // Pedido único
+    const palavras = msgLower.split(/\s+/).filter(p => p.length >= 2 && !stopWords.includes(p));
     termosParaBuscar.push(...palavras);
   }
   
@@ -243,32 +253,51 @@ function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
     return produtos.slice(0, 10);
   }
   
+  // Normalizar texto para busca (remover acentos)
+  const normalizar = (texto: string) => {
+    return (texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  };
+  
   // Buscar produtos que contenham QUALQUER um dos termos
-  // Cada produto recebe score baseado em quantos termos ele atende
   const produtosComScore = produtos.map(p => {
     let score = 0;
     const termosEncontrados: string[] = [];
-    const nomeLower = (p.nome || '').toLowerCase();
-    const descLower = (p.descricao || '').toLowerCase();
-    const catLower = (p.categoria || '').toLowerCase();
+    const nomeLower = normalizar(p.nome);
+    const descLower = normalizar(p.descricao);
+    const catLower = normalizar(p.categoria);
+    const skuLower = normalizar(p.sku);
     
     for (const termo of termosUnicos) {
+      const termoNorm = normalizar(termo);
       let matchFound = false;
       
       // Match no nome = maior peso
-      if (nomeLower.includes(termo)) {
+      if (nomeLower.includes(termoNorm)) {
+        score += 20;
+        matchFound = true;
+      }
+      // Match no SKU
+      if (skuLower.includes(termoNorm)) {
         score += 15;
         matchFound = true;
       }
+      // Match na categoria
+      if (catLower.includes(termoNorm)) {
+        score += 10;
+        matchFound = true;
+      }
       // Match na descrição
-      if (descLower.includes(termo)) {
+      if (descLower.includes(termoNorm)) {
         score += 5;
         matchFound = true;
       }
-      // Match na categoria
-      if (catLower.includes(termo)) {
-        score += 8;
-        matchFound = true;
+      
+      // Busca parcial (ex: "grao" encontra "grão de bico")
+      if (!matchFound && termoNorm.length >= 3) {
+        if (nomeLower.split(/\s+/).some(word => word.startsWith(termoNorm) || word.includes(termoNorm))) {
+          score += 12;
+          matchFound = true;
+        }
       }
       
       if (matchFound) {
