@@ -102,7 +102,8 @@ async function getProdutosPJ(supabase: any, userId: string): Promise<any[]> {
 }
 
 // ============================================
-// FORMATAR CATÁLOGO PARA A IA (MARKDOWN)
+// FORMATAR CATÁLOGO COMPLETO PARA A IA (MARKDOWN)
+// Inclui TODOS os campos cadastrados do produto
 // ============================================
 function formatarCatalogoMD(produtos: any[]): string {
   if (!produtos || produtos.length === 0) {
@@ -110,53 +111,142 @@ function formatarCatalogoMD(produtos: any[]): string {
   }
   
   return produtos.map((p, i) => {
-    let md = `### [PRODUTO ${i + 1}] ${p.nome}\n`;
+    let md = `### 📦 [PRODUTO ${i + 1}] ${p.nome}\n\n`;
     
-    // Informações básicas
-    md += `**Categoria:** ${p.categoria || 'Não informada'}\n`;
+    // ═══════════════════════════════════════════
+    // INFORMAÇÕES BÁSICAS (Sempre mostrar)
+    // ═══════════════════════════════════════════
+    md += `**Categoria:** ${p.categoria || 'Geral'}\n`;
+    md += `**Tipo:** ${p.tipo === 'servico' ? 'Serviço' : 'Produto Físico'}\n`;
     md += `**Preço:** R$ ${Number(p.preco || 0).toFixed(2)}\n`;
-    if (p.sku) md += `**SKU:** ${p.sku}\n`;
+    if (p.sku) md += `**SKU/Código:** ${p.sku}\n`;
+    if (p.brand) md += `**Marca:** ${p.brand}\n`;
     
-    // IMAGEM (CRÍTICO para envio!)
+    // ═══════════════════════════════════════════
+    // IMAGEM (CRÍTICO para envio automático!)
+    // ═══════════════════════════════════════════
     const imagem = p.imagem_url || p.image_url || p.foto;
     if (imagem) {
-      md += `**📷 IMAGEM:** ${imagem}\n`;
-    }
-    
-    // Estoque
-    const estoque = p.estoque ?? 999; // Se não tiver estoque definido, assumir disponível
-    if (estoque > 10 || estoque === 999) {
-      md += `**Estoque:** ✅ Disponível\n`;
-    } else if (estoque > 0) {
-      md += `**Estoque:** ⚠️ Últimas ${estoque} unidades!\n`;
+      md += `**📷 IMAGEM DISPONÍVEL:** SIM - ${imagem}\n`;
     } else {
-      md += `**Estoque:** ❌ Esgotado\n`;
+      md += `**📷 IMAGEM:** Não cadastrada\n`;
     }
     
-    // LINK (CRÍTICO!)
+    // ═══════════════════════════════════════════
+    // ESTOQUE
+    // ═══════════════════════════════════════════
+    const estoque = p.estoque;
+    if (estoque === null || estoque === undefined) {
+      md += `**Estoque:** ✅ Disponível (sem limite)\n`;
+    } else if (estoque > 10) {
+      md += `**Estoque:** ✅ ${estoque} unidades disponíveis\n`;
+    } else if (estoque > 0) {
+      md += `**Estoque:** ⚠️ ÚLTIMAS ${estoque} UNIDADES!\n`;
+    } else {
+      md += `**Estoque:** ❌ ESGOTADO\n`;
+    }
+    
+    // ═══════════════════════════════════════════
+    // LINK DE COMPRA (OBRIGATÓRIO PARA VENDAS!)
+    // ═══════════════════════════════════════════
     const link = p.link_marketplace || p.link;
     if (link) {
       md += `**🔗 LINK DE COMPRA:** ${link}\n`;
+    } else {
+      md += `**🔗 LINK:** Não cadastrado (informe ao cliente como comprar)\n`;
     }
     
-    // Descrição
+    // ═══════════════════════════════════════════
+    // DESCRIÇÃO COMPLETA
+    // ═══════════════════════════════════════════
     if (p.descricao) {
-      md += `**Descrição:** ${p.descricao.substring(0, 200)}${p.descricao.length > 200 ? '...' : ''}\n`;
+      md += `\n**📝 Descrição:**\n${p.descricao}\n`;
     }
     
-    // Detalhes técnicos
+    // ═══════════════════════════════════════════
+    // FICHA TÉCNICA / ESPECIFICAÇÕES
+    // ═══════════════════════════════════════════
     if (p.ficha_tecnica) {
-      md += `**Ficha Técnica:** ${p.ficha_tecnica.substring(0, 200)}${p.ficha_tecnica.length > 200 ? '...' : ''}\n`;
+      md += `\n**📋 Ficha Técnica:**\n${p.ficha_tecnica}\n`;
     }
     
-    if (p.brand) {
-      md += `**Marca:** ${p.brand}\n`;
+    if (p.especificacoes) {
+      md += `\n**🔧 Especificações:**\n${p.especificacoes}\n`;
     }
     
-    md += `---\n`;
+    // ═══════════════════════════════════════════
+    // INFORMAÇÕES NUTRICIONAIS (para alimentos)
+    // ═══════════════════════════════════════════
+    if (p.informacao_nutricional) {
+      md += `\n**🥗 Informação Nutricional:**\n${p.informacao_nutricional}\n`;
+    }
+    
+    if (p.ingredientes) {
+      md += `\n**🧾 Ingredientes:**\n${p.ingredientes}\n`;
+    }
+    
+    // ═══════════════════════════════════════════
+    // MODO DE USO / PREPARO
+    // ═══════════════════════════════════════════
+    if (p.modo_uso) {
+      md += `\n**📖 Modo de Uso:**\n${p.modo_uso}\n`;
+    }
+    
+    if (p.preparation) {
+      md += `\n**🍳 Preparo:**\n${p.preparation}\n`;
+    }
+    
+    // ═══════════════════════════════════════════
+    // BENEFÍCIOS
+    // ═══════════════════════════════════════════
+    if (p.beneficios) {
+      md += `\n**✨ Benefícios:**\n${p.beneficios}\n`;
+    }
+    
+    // ═══════════════════════════════════════════
+    // CARACTERÍSTICAS FÍSICAS
+    // ═══════════════════════════════════════════
+    const temCaracteristicasFisicas = p.dimensoes || p.peso || p.cor || p.tamanhos;
+    if (temCaracteristicasFisicas) {
+      md += `\n**📐 Características Físicas:**\n`;
+      if (p.dimensoes) md += `- Dimensões: ${p.dimensoes}\n`;
+      if (p.peso) md += `- Peso: ${p.peso}\n`;
+      if (p.cor) md += `- Cores: ${p.cor}\n`;
+      if (p.tamanhos) md += `- Tamanhos: ${p.tamanhos}\n`;
+    }
+    
+    // ═══════════════════════════════════════════
+    // GARANTIA
+    // ═══════════════════════════════════════════
+    const garantia = p.garantia || p.warranty;
+    if (garantia) {
+      md += `\n**🛡️ Garantia:** ${garantia}\n`;
+    }
+    
+    // ═══════════════════════════════════════════
+    // ATRIBUTOS EXTRAS (JSON)
+    // ═══════════════════════════════════════════
+    if (p.attributes && typeof p.attributes === 'object') {
+      const attrs = Object.entries(p.attributes);
+      if (attrs.length > 0) {
+        md += `\n**📊 Atributos Extras:**\n`;
+        attrs.forEach(([key, value]) => {
+          md += `- ${key}: ${value}\n`;
+        });
+      }
+    }
+    
+    // ═══════════════════════════════════════════
+    // TAGS
+    // ═══════════════════════════════════════════
+    if (p.tags && Array.isArray(p.tags) && p.tags.length > 0) {
+      md += `\n**🏷️ Tags:** ${p.tags.join(', ')}\n`;
+    }
+    
+    md += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     
     return md;
-  }).join('\n');
+  }).join('');
 }
 
 // ============================================
