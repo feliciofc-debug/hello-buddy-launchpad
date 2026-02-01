@@ -39,51 +39,58 @@ function buildSystemPrompt(
   personalidade: string,
   nomeEmpresa: string,
   catalogoMD: string,
-  historicoFormatado: string
+  historicoFormatado: string,
+  totalProdutos: number
 ): string {
   return `Você é ${nomeAssistente}, assistente virtual da ${nomeEmpresa || 'nossa empresa'}.
+
+🚨 VOCÊ TEM ACESSO A ${totalProdutos} PRODUTOS NO CATÁLOGO ABAIXO! 🚨
 
 IDENTIDADE:
 - Seu nome é ${nomeAssistente}
 - Assistente simpático, prestativo e ${personalidade}
-- Conhece todos os produtos/serviços cadastrados
+- Conhece TODOS os produtos/serviços cadastrados
 
 TOM DE VOZ:
-- Amigável e acolhedor, sem exageros
+- Amigável e acolhedor, mas equilibrado (sem exageros)
 - Uma pitada de bom humor quando apropriado
 - Profissional nas informações técnicas
-- Respostas de 2-5 linhas
+- Respostas de 2-5 linhas NO MÁXIMO
 - Use 1-2 emojis por mensagem 😊
 
-🚨 REGRA CRÍTICA PARA PRODUTOS:
-1. ANTES de dizer que não tem um produto → PROCURE no catálogo abaixo!
+🚨 REGRA CRÍTICA - NUNCA DIGA "NÃO TENHO" SEM VERIFICAR O CATÁLOGO:
+1. SEMPRE verifique o catálogo abaixo ANTES de responder sobre produtos
 2. Se o cliente pedir "feijão preto" → procure por "feijão" no catálogo
-3. SEMPRE que encontrar o produto → responda com:
-   - Nome do produto
-   - Preço (R$ X,XX)
-   - 👉 Link de compra
-4. Se tiver imagem cadastrada, mencione que vai enviar a foto
-5. NUNCA diga "não tenho" se o produto estiver listado no catálogo!
-6. Se não encontrar EXATAMENTE, sugira produtos similares da mesma categoria
+3. Se o cliente pedir "farinha" → procure por "farinha" no catálogo
+4. Se o cliente pedir "manteiga" → procure por "manteiga" no catálogo
 
-FORMATO DE RESPOSTA QUANDO TIVER PRODUTO:
+QUANDO ENCONTRAR O PRODUTO, RESPONDA ASSIM:
 "Temos sim! 🎉
-[Nome do Produto] - R$ X,XX
-👉 [LINK]
+*[Nome do Produto]* - R$ X,XX
+👉 [LINK do produto]
 Vou te mandar a foto!"
+
+SE NÃO TIVER LINK CADASTRADO:
+"Temos sim! 🎉
+*[Nome do Produto]* - R$ X,XX
+Para comprar, é só me chamar que organizo pra você! 😊"
+
+QUANDO NÃO ENCONTRAR:
+- Sugira produtos SIMILARES da mesma categoria
+- Ex: "Não tenho feijão preto, mas tenho Grão de Bico Granfino por R$ 11,50!"
 
 PALAVRAS PROIBIDAS: "cansada", "cansado", "cansou" → use "ocupada", "parou"
 
-HISTÓRICO:
+HISTÓRICO DA CONVERSA:
 ${historicoFormatado || 'Início da conversa.'}
 
 ═══════════════════════════════════════════════════════
-📦 CATÁLOGO DE PRODUTOS (VERIFIQUE AQUI ANTES DE RESPONDER!)
+📦 CATÁLOGO COMPLETO DE PRODUTOS (${totalProdutos} itens)
 ═══════════════════════════════════════════════════════
 ${catalogoMD || 'Nenhum produto cadastrado.'}
 ═══════════════════════════════════════════════════════
 
-LEMBRE-SE: Verifique o catálogo acima ANTES de dizer que não tem o produto!`;
+⚠️ LEMBRE-SE: Se o produto está listado acima, VOCÊ TEM! Não diga que não tem!`;
 }
 
 // ============================================
@@ -823,15 +830,43 @@ serve(async (req) => {
       .map((h) => `${h.role === "user" ? "Cliente" : "Assistente"}: ${h.content}`)
       .join("\n");
 
-    // Buscar configuração do assistente PJ
-    // CRÍTICO: escolher pelo instanceName do webhook (senão pode pegar user_id errado e ficar com 0 produtos)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BUSCAR CONFIGURAÇÃO DO ASSISTENTE PJ - ORDEM DE PRIORIDADE
+    // ═══════════════════════════════════════════════════════════════════════════
     const instanceName = envelope?.instanceName || envelope?.instance || body?.instanceName || body?.instance;
     let pjConfig: any = null;
 
     console.log(`🔍 [PJ-WEBHOOK] Procurando config para instanceName: "${instanceName || 'NÃO RECEBIDO'}"`);
 
-    if (instanceName) {
-      // Busca exata pelo nome da instância
+    // PRIORIDADE 1: Buscar pela config conectada COM PRODUTOS
+    // (Resolve o problema de pegar user errado que não tem produtos)
+    if (!pjConfig) {
+      const { data: configsConectadas } = await supabase
+        .from("pj_clientes_config")
+        .select("*")
+        .eq("whatsapp_conectado", true)
+        .eq("wuzapi_port", 8080);
+
+      if (configsConectadas && configsConectadas.length > 0) {
+        // Verificar qual tem produtos cadastrados
+        for (const cfg of configsConectadas) {
+          const { count } = await supabase
+            .from("produtos")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", cfg.user_id)
+            .eq("ativo", true);
+          
+          if (count && count > 0) {
+            pjConfig = cfg;
+            console.log(`✅ [PJ-WEBHOOK] Config encontrada com ${count} produtos! user: ${cfg.user_id?.slice(0, 8)}, nome: ${cfg.nome_assistente}`);
+            break;
+          }
+        }
+      }
+    }
+
+    // PRIORIDADE 2: Buscar por instanceName específico
+    if (!pjConfig && instanceName) {
       const { data } = await supabase
         .from("pj_clientes_config")
         .select("*")
@@ -844,54 +879,67 @@ serve(async (req) => {
       }
     }
 
-    // Fallback: buscar pela instância mapeada na wuzapi_instances
+    // PRIORIDADE 3: Buscar pela wuzapi_instances conectada na porta 8080
     if (!pjConfig) {
-      // Tentar encontrar pelo mapeamento de instâncias (wuzapi_instances -> pj_clientes_config)
       const { data: instances } = await supabase
         .from("wuzapi_instances")
-        .select("assigned_to_user, port, name, wuzapi_token")
+        .select("assigned_to_user, port, instance_name, wuzapi_token")
         .eq("is_connected", true)
-        .order("updated_at", { ascending: false });
+        .eq("port", 8080)
+        .order("updated_at", { ascending: false })
+        .limit(1);
       
-      if (instances && instances.length > 0) {
-        // Pegar a primeira instância conectada (geralmente a principal na porta 8080)
-        const primaryInstance = instances.find((i: any) => i.port === 8080) || instances[0];
+      if (instances && instances.length > 0 && instances[0]?.assigned_to_user) {
+        const { data: configByUser } = await supabase
+          .from("pj_clientes_config")
+          .select("*")
+          .eq("user_id", instances[0].assigned_to_user)
+          .maybeSingle();
         
-        if (primaryInstance?.assigned_to_user) {
-          const { data: configByUser } = await supabase
-            .from("pj_clientes_config")
-            .select("*")
-            .eq("user_id", primaryInstance.assigned_to_user)
-            .maybeSingle();
-          
-          if (configByUser) {
-            pjConfig = configByUser;
-            console.log(`✅ [PJ-WEBHOOK] Config encontrada por wuzapi_instances (porta ${primaryInstance.port}): user ${configByUser.user_id?.slice(0, 8)}`);
-          }
+        if (configByUser) {
+          pjConfig = configByUser;
+          console.log(`✅ [PJ-WEBHOOK] Config encontrada por wuzapi_instances (porta 8080): user ${configByUser.user_id?.slice(0, 8)}`);
         }
       }
     }
 
-    // Fallback final: pegar a config com porta 8080 (usuário principal)
+    // PRIORIDADE 4: Pegar a config com porta 8080 que tenha produtos
     if (!pjConfig) {
-      const { data } = await supabase
+      const { data: configsPorPorta } = await supabase
         .from("pj_clientes_config")
         .select("*")
         .eq("wuzapi_port", 8080)
-        .maybeSingle();
+        .order("created_at", { ascending: true });
       
-      if (data) {
-        pjConfig = data;
-        console.log(`✅ [PJ-WEBHOOK] Config encontrada por porta 8080 (fallback): user ${data.user_id?.slice(0, 8)}`);
+      if (configsPorPorta) {
+        for (const cfg of configsPorPorta) {
+          const { count } = await supabase
+            .from("produtos")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", cfg.user_id)
+            .eq("ativo", true);
+          
+          if (count && count > 0) {
+            pjConfig = cfg;
+            console.log(`✅ [PJ-WEBHOOK] Config encontrada por porta 8080 com ${count} produtos: user ${cfg.user_id?.slice(0, 8)}`);
+            break;
+          }
+        }
+        
+        // Se nenhuma tem produtos, pegar a primeira
+        if (!pjConfig && configsPorPorta.length > 0) {
+          pjConfig = configsPorPorta[0];
+          console.log(`⚠️ [PJ-WEBHOOK] Usando config porta 8080 (sem produtos): user ${pjConfig.user_id?.slice(0, 8)}`);
+        }
       }
     }
 
-    // Último fallback: qualquer config
+    // ÚLTIMO FALLBACK: qualquer config
     if (!pjConfig) {
       const { data } = await supabase
         .from("pj_clientes_config")
         .select("*")
-        .order("created_at", { ascending: true }) // Mais antiga = geralmente o admin
+        .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
       pjConfig = data;
@@ -955,7 +1003,8 @@ serve(async (req) => {
       personalidade,
       nomeEmpresa,
       catalogoMD,
-      historicoFormatado
+      historicoFormatado,
+      todosProdutos.length
     );
 
     // Gerar resposta com IA
