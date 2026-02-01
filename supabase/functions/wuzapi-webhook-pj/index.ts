@@ -569,7 +569,8 @@ async function inserirNaFilaPJ(
   message: string,
   wuzapiToken: string,
   userId: string | null,
-  leadName?: string | null
+  leadName?: string | null,
+  wuzapiUrl?: string | null
 ) {
   const cleanPhone = phone.replace(/\D/g, '');
   const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : '55' + cleanPhone;
@@ -577,6 +578,9 @@ async function inserirNaFilaPJ(
   // Delay aleatório entre 3-8 segundos
   const delayMs = Math.floor(Math.random() * 5000) + 3000;
   const scheduledAt = new Date(Date.now() + delayMs);
+  
+  // URL padrão do WuzAPI PJ na Locaweb
+  const finalUrl = wuzapiUrl || 'http://191.252.193.73:8081';
   
   const { error } = await supabase
     .from('fila_atendimento_pj')
@@ -588,6 +592,7 @@ async function inserirNaFilaPJ(
       prioridade: 1,
       status: 'pendente',
       wuzapi_token: wuzapiToken,
+      wuzapi_url: finalUrl,
       user_id: userId,
       scheduled_at: scheduledAt.toISOString()
     });
@@ -597,7 +602,7 @@ async function inserirNaFilaPJ(
     return false;
   }
   
-  console.log(`✅ [PJ-FILA] Mensagem agendada para ${formattedPhone}`);
+  console.log(`✅ [PJ-FILA] Mensagem agendada para ${formattedPhone} (${finalUrl})`);
   return true;
 }
 
@@ -610,7 +615,8 @@ async function inserirImagemNaFilaPJ(
   imagemUrl: string,
   caption: string,
   wuzapiToken: string,
-  userId: string | null
+  userId: string | null,
+  wuzapiUrl?: string | null
 ) {
   const cleanPhone = phone.replace(/\D/g, '');
   const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : '55' + cleanPhone;
@@ -618,6 +624,9 @@ async function inserirImagemNaFilaPJ(
   // Delay maior para imagem (após o texto)
   const delayMs = Math.floor(Math.random() * 3000) + 5000; // 5-8 segundos após o texto
   const scheduledAt = new Date(Date.now() + delayMs);
+  
+  // URL padrão do WuzAPI PJ na Locaweb
+  const finalUrl = wuzapiUrl || 'http://191.252.193.73:8081';
   
   const { error } = await supabase
     .from('fila_atendimento_pj')
@@ -629,6 +638,7 @@ async function inserirImagemNaFilaPJ(
       prioridade: 2,
       status: 'pendente',
       wuzapi_token: wuzapiToken,
+      wuzapi_url: finalUrl,
       user_id: userId,
       scheduled_at: scheduledAt.toISOString()
     });
@@ -844,8 +854,12 @@ serve(async (req) => {
     const personalidade = pjConfig?.personalidade_assistente || "profissional e prestativo";
     const userId = pjConfig?.user_id;
     const wuzapiToken = pjConfig?.wuzapi_token;
+    const wuzapiPort = pjConfig?.wuzapi_port || 8081;
     
-    console.log(`👤 [PJ-WEBHOOK] Config: ${nomeAssistente}, user: ${userId?.slice(0, 8)}..., instance: ${instanceName || 'n/a'}`);
+    // Construir URL do WuzAPI baseado na porta
+    const wuzapiUrl = `http://191.252.193.73:${wuzapiPort}`;
+    
+    console.log(`👤 [PJ-WEBHOOK] Config: ${nomeAssistente}, user: ${userId?.slice(0, 8)}..., instance: ${instanceName || 'n/a'}, port: ${wuzapiPort}`);
 
     if (!wuzapiToken) {
       console.error("❌ [PJ-WEBHOOK] wuzapi_token não configurado!");
@@ -932,7 +946,7 @@ serve(async (req) => {
     });
 
     // Adicionar texto à fila anti-bloqueio
-    await inserirNaFilaPJ(supabase, cleanPhone, respostaFinal, wuzapiToken, userId);
+    await inserirNaFilaPJ(supabase, cleanPhone, respostaFinal, wuzapiToken, userId, null, wuzapiUrl);
 
     // Verificar se há produtos mencionados na resposta para enviar imagem
     const baseParaExtracao = produtosRelevantes.length > 0 ? produtosRelevantes : todosProdutos.slice(0, 20);
@@ -943,7 +957,7 @@ serve(async (req) => {
       const img = resolveProductImage(produtoPrincipal);
       if (img) {
         console.log(`📷 [PJ-WEBHOOK] Enviando imagem (principal): ${produtoPrincipal.nome}`);
-        await inserirImagemNaFilaPJ(supabase, cleanPhone, img, produtoPrincipal.nome, wuzapiToken, userId);
+        await inserirImagemNaFilaPJ(supabase, cleanPhone, img, produtoPrincipal.nome, wuzapiToken, userId, wuzapiUrl);
       }
     }
     
@@ -952,7 +966,7 @@ serve(async (req) => {
       if (imagemUrl) {
         console.log(`📷 [PJ-WEBHOOK] Enviando imagem do produto: ${prod.nome}`);
         // Adicionar imagem à fila com pequeno delay adicional
-        await inserirImagemNaFilaPJ(supabase, cleanPhone, imagemUrl, prod.nome, wuzapiToken, userId);
+        await inserirImagemNaFilaPJ(supabase, cleanPhone, imagemUrl, prod.nome, wuzapiToken, userId, wuzapiUrl);
       }
     }
 
