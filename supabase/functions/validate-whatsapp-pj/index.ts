@@ -56,13 +56,14 @@ function generatePhoneVariants(phone: string): string[] {
 }
 
 // Verifica se número existe no WhatsApp e retorna o JID REAL
+// IMPORTANTE: Phone deve ser enviado como ARRAY, não string!
 async function checkPhoneExists(
   baseUrl: string, 
   token: string, 
   phone: string
 ): Promise<{ exists: boolean; jid?: string; realNumber?: string; error?: string }> {
   try {
-    // Tentar endpoint /user/check (retorna o JID real do usuário)
+    // CRÍTICO: Enviar Phone como ARRAY - isso é o formato correto da WuzAPI!
     const checkResp = await fetch(`${baseUrl}/user/check`, {
       method: "POST",
       headers: {
@@ -70,7 +71,7 @@ async function checkPhoneExists(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        Phone: phone,
+        Phone: [phone], // ARRAY, não string!
       }),
     });
     
@@ -78,53 +79,38 @@ async function checkPhoneExists(
     
     console.log(`[CHECK] ${phone} -> ${checkResp.status}:`, JSON.stringify(json));
     
-    if (checkResp.ok && json) {
-      // Wuzapi pode retornar em diferentes formatos
-      const isRegistered = json.IsRegistered === true || json.isRegistered === true;
+    // Formato de resposta: { data: { Users: [{ IsInWhatsapp, JID, Query }] } }
+    if (checkResp.ok && json?.data?.Users && Array.isArray(json.data.Users)) {
+      const user = json.data.Users[0];
       
-      if (isRegistered) {
-        // CRÍTICO: Usar o JID/número REAL retornado pela API
-        // A API pode retornar: Jid, JID, jid, Number, number, Phone
-        const realJid = json.Jid || json.JID || json.jid || null;
-        const realNumber = json.Number || json.number || json.Phone || json.phone || null;
+      if (user && user.IsInWhatsapp === true) {
+        // CRÍTICO: Usar o JID REAL retornado pela API
+        const realJid = user.JID || user.jid || null;
         
-        // Extrair número limpo do JID se disponível (ex: "5562999887766@s.whatsapp.net" -> "5562999887766")
+        // Extrair número limpo do JID (ex: "556292879397@s.whatsapp.net" -> "556292879397")
         let extractedNumber = phone;
         if (realJid && realJid.includes("@")) {
           extractedNumber = realJid.split("@")[0];
-        } else if (realNumber) {
-          extractedNumber = realNumber.replace(/\D/g, "");
         }
         
-        console.log(`[CHECK] ✅ ${phone} registrado! JID real: ${realJid}, Número real: ${extractedNumber}`);
+        console.log(`[CHECK] ✅ ENCONTRADO! Query: ${user.Query}, JID REAL: ${realJid}, Número real: ${extractedNumber}`);
         
         return { 
           exists: true, 
-          jid: realJid || `${extractedNumber}@s.whatsapp.net`,
+          jid: realJid,
           realNumber: extractedNumber
         };
       }
     }
     
-    // Fallback: tentar /chat/presence (menos confiável)
-    const presenceResp = await fetch(`${baseUrl}/chat/presence`, {
-      method: "POST",
-      headers: {
-        "Token": token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        Phone: phone,
-        State: "available",
-      }),
-    });
-    
-    const { json: presenceJson } = await safeReadJson(presenceResp);
-    
-    // Presença sem erro geralmente indica que existe
-    if (presenceResp.ok && presenceJson && !presenceJson.error) {
-      console.log(`[CHECK] ✅ ${phone} existe via presence (fallback)`);
-      return { exists: true, jid: `${phone}@s.whatsapp.net`, realNumber: phone };
+    // Fallback para formato antigo (compatibilidade)
+    if (checkResp.ok && json && (json.IsRegistered === true || json.isRegistered === true)) {
+      const realJid = json.Jid || json.JID || json.jid || null;
+      let extractedNumber = phone;
+      if (realJid && realJid.includes("@")) {
+        extractedNumber = realJid.split("@")[0];
+      }
+      return { exists: true, jid: realJid, realNumber: extractedNumber };
     }
     
     console.log(`[CHECK] ❌ ${phone} não encontrado`);

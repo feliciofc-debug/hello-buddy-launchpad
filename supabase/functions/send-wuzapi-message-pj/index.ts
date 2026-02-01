@@ -54,42 +54,56 @@ function generatePhoneVariants(phone: string): string[] {
 }
 
 // Verifica se número existe no WhatsApp e retorna o JID/número REAL
+// IMPORTANTE: Phone deve ser enviado como ARRAY, não string!
 async function checkPhoneExists(
   baseUrl: string,
   token: string,
   phone: string
 ): Promise<{ exists: boolean; jid?: string; realNumber?: string }> {
   try {
+    // CRÍTICO: Enviar Phone como ARRAY - isso é o formato correto da WuzAPI!
     const checkResp = await fetch(`${baseUrl}/user/check`, {
       method: "POST",
       headers: { "Token": token, "Content-Type": "application/json" },
-      body: JSON.stringify({ Phone: phone }),
+      body: JSON.stringify({ Phone: [phone] }), // ARRAY, não string!
     });
     
     const json = await safeReadJson(checkResp);
     
     console.log(`[CHECK] ${phone} -> ${checkResp.status}:`, JSON.stringify(json));
     
-    if (checkResp.ok && json && (json.IsRegistered === true || json.isRegistered === true)) {
-      // CRÍTICO: Capturar o JID/número REAL retornado pela API
-      const realJid = json.Jid || json.JID || json.jid || null;
-      const realNumber = json.Number || json.number || json.Phone || json.phone || null;
+    // Formato de resposta: { data: { Users: [{ IsInWhatsapp, JID, Query }] } }
+    if (checkResp.ok && json?.data?.Users && Array.isArray(json.data.Users)) {
+      const user = json.data.Users[0];
       
-      // Extrair número limpo do JID se disponível
+      if (user && user.IsInWhatsapp === true) {
+        // CRÍTICO: Usar o JID REAL retornado pela API
+        const realJid = user.JID || user.jid || null;
+        
+        // Extrair número limpo do JID (ex: "556292879397@s.whatsapp.net" -> "556292879397")
+        let extractedNumber = phone;
+        if (realJid && realJid.includes("@")) {
+          extractedNumber = realJid.split("@")[0];
+        }
+        
+        console.log(`[CHECK] ✅ ENCONTRADO! Query: ${user.Query}, JID REAL: ${realJid}, Número real: ${extractedNumber}`);
+        
+        return { 
+          exists: true, 
+          jid: realJid,
+          realNumber: extractedNumber 
+        };
+      }
+    }
+    
+    // Fallback para formato antigo (compatibilidade)
+    if (checkResp.ok && json && (json.IsRegistered === true || json.isRegistered === true)) {
+      const realJid = json.Jid || json.JID || json.jid || null;
       let extractedNumber = phone;
       if (realJid && realJid.includes("@")) {
         extractedNumber = realJid.split("@")[0];
-      } else if (realNumber) {
-        extractedNumber = realNumber.replace(/\D/g, "");
       }
-      
-      console.log(`[CHECK] ✅ Encontrado! Testado: ${phone}, JID real: ${realJid}, Número real: ${extractedNumber}`);
-      
-      return { 
-        exists: true, 
-        jid: realJid || `${extractedNumber}@s.whatsapp.net`,
-        realNumber: extractedNumber 
-      };
+      return { exists: true, jid: realJid, realNumber: extractedNumber };
     }
     
     return { exists: false };
