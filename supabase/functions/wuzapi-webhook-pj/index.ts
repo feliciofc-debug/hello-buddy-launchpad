@@ -1022,21 +1022,29 @@ serve(async (req) => {
       systemPrompt
     );
 
-    // Garantia de venda: se achou produto relevante mas a IA não incluiu link,
-    // anexar bloco padrão com nome + preço + link.
+    // Verificar se é cumprimento simples (não deve oferecer produtos)
+    const isCumprimento = /^(oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|e a[ií]|fala|hey|hi|hello|salve|eai)[\s\?\!\.]*$/i.test(messageText.trim());
+    
+    // Garantia de venda: se cliente PEDIU produto, a IA achou mas não incluiu link, anexar bloco.
+    // MAS NÃO FAZER ISSO EM CUMPRIMENTOS!
     let respostaFinal = resposta;
     const produtoPrincipal = produtosRelevantes?.[0];
-    if (produtoPrincipal && !hasPurchaseLink(respostaFinal)) {
+    const clientePediuProduto = !isCumprimento && produtosRelevantes.length > 0;
+    
+    if (clientePediuProduto && produtoPrincipal && !hasPurchaseLink(respostaFinal)) {
       const link = resolveProductLink(produtoPrincipal);
       const preco = produtoPrincipal?.preco ? `R$ ${Number(produtoPrincipal.preco).toFixed(2)}` : null;
-      const bloco = [
-        "\n\nTemos sim! 🎉",
-        `*${produtoPrincipal.nome}*${preco ? ` - ${preco}` : ""}`,
-        link ? `👉 ${link}` : "👉 (link de compra não cadastrado)",
-        resolveProductImage(produtoPrincipal) ? "Vou te mandar a foto!" : "",
-      ]
-        .filter(Boolean)
-        .join("\n");
+      
+      // Formato estilo campanha
+      let bloco = "\n\n🔥 *OFERTA ESPECIAL* 🔥\n";
+      bloco += `📦 *${produtoPrincipal.nome}*\n`;
+      if (preco) bloco += `💰 *${preco}*\n`;
+      if (link) {
+        bloco += `\n🛒 *Compre agora:*\n${link}\n`;
+      } else {
+        bloco += `\n💬 Para comprar, é só responder aqui!\n`;
+      }
+      
       respostaFinal = `${respostaFinal.trim()}${bloco}`;
     }
 
@@ -1052,25 +1060,14 @@ serve(async (req) => {
     // Adicionar texto à fila anti-bloqueio
     await inserirNaFilaPJ(supabase, cleanPhone, respostaFinal, wuzapiToken, userId, null, wuzapiUrl);
 
-    // Verificar se há produtos mencionados na resposta para enviar imagem
-    const baseParaExtracao = produtosRelevantes.length > 0 ? produtosRelevantes : todosProdutos.slice(0, 20);
-    const produtosMencionados = extrairProdutosDaResposta(respostaFinal, baseParaExtracao);
-
-    // Se houve match de produto (principal), agendar imagem mesmo que não tenha sido "mencionado" literalmente.
-    if (produtoPrincipal) {
+    // Enviar imagem APENAS se o cliente pediu produto (não em cumprimentos)
+    if (clientePediuProduto && produtoPrincipal) {
       const img = resolveProductImage(produtoPrincipal);
       if (img) {
-        console.log(`📷 [PJ-WEBHOOK] Enviando imagem (principal): ${produtoPrincipal.nome}`);
-        await inserirImagemNaFilaPJ(supabase, cleanPhone, img, produtoPrincipal.nome, wuzapiToken, userId, wuzapiUrl);
-      }
-    }
-    
-    for (const prod of produtosMencionados) {
-      const imagemUrl = resolveProductImage(prod);
-      if (imagemUrl) {
-        console.log(`📷 [PJ-WEBHOOK] Enviando imagem do produto: ${prod.nome}`);
-        // Adicionar imagem à fila com pequeno delay adicional
-        await inserirImagemNaFilaPJ(supabase, cleanPhone, imagemUrl, prod.nome, wuzapiToken, userId, wuzapiUrl);
+        console.log(`📷 [PJ-WEBHOOK] Enviando imagem: ${produtoPrincipal.nome}`);
+        // Caption formatado estilo campanha
+        const caption = `📦 *${produtoPrincipal.nome}*\n💰 R$ ${Number(produtoPrincipal.preco || 0).toFixed(2)}`;
+        await inserirImagemNaFilaPJ(supabase, cleanPhone, img, caption, wuzapiToken, userId, wuzapiUrl);
       }
     }
 
