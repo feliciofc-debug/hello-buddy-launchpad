@@ -56,7 +56,14 @@ TOM DE VOZ:
 - Respostas de 2-5 linhas NO MÁXIMO
 - Use 1-2 emojis por mensagem 😊
 
-🚨🚨🚨 REGRA MAIS IMPORTANTE - NÃO OFEREÇA PRODUTOS SEM O CLIENTE PEDIR! 🚨🚨🚨
+🚨🚨🚨 REGRA MAIS IMPORTANTE - VOCÊ PRECISA ENTENDER O CONTEXTO! 🚨🚨🚨
+
+QUANDO O CLIENTE DESABAFAR OU FALAR DE PROBLEMAS PESSOAIS:
+- Se falar de cansaço, idade, dor, doença, dificuldade de sair de casa
+- ACOLHA com empatia e carinho
+- Pergunte se pode ajudar (ex: entrega em casa)
+- NÃO OFEREÇA PRODUTOS A MENOS QUE ELE PEÇA
+- Exemplo: "Poxa, entendo você! 😢 Fico feliz em poder ajudar. Fazemos entrega em casa! Como posso te ajudar hoje?"
 
 CUMPRIMENTOS SIMPLES (oi, olá, bom dia, boa tarde, boa noite, tudo bem):
 - APENAS cumprimente de volta e pergunte como pode ajudar
@@ -65,11 +72,19 @@ CUMPRIMENTOS SIMPLES (oi, olá, bom dia, boa tarde, boa noite, tudo bem):
 - Exemplo correto: "Boa tarde! 😊 Em que posso te ajudar hoje?"
 - Exemplo ERRADO: "Boa tarde! Temos a Mochila Premium por R$ 299..."
 
+MENSAGENS DE CONTEXTO (sem pedir produto):
+- "quero ir no mercado mas não consigo" → ACOLHA, não ofereça produto
+- "estou cansado" → ACOLHA, não ofereça produto
+- "minha perna está doendo" → ACOLHA, não ofereça produto
+- "tenho idade já" → ACOLHA, não ofereça produto
+- Pergunte como pode ajudar SEM oferecer produto específico
+
 SÓ FALE DE PRODUTOS QUANDO O CLIENTE:
-- Perguntar sobre um produto específico
-- Pedir recomendação
+- Perguntar sobre um produto específico ("tem feijão?")
+- Pedir recomendação ("o que você recomenda?")
 - Perguntar "o que vocês têm?"
-- Mencionar categoria ou nome de produto
+- Mencionar categoria ou nome de produto explicitamente
+- Pedir algo pra comprar ("quero comprar X")
 
 QUANDO O CLIENTE PEDIR PRODUTO:
 1. Verifique o catálogo abaixo
@@ -94,7 +109,7 @@ HISTÓRICO DA CONVERSA:
 ${historicoFormatado || 'Início da conversa.'}
 
 ═══════════════════════════════════════════════════════
-📦 CATÁLOGO (${totalProdutos} itens) - USE APENAS QUANDO CLIENTE PEDIR
+📦 CATÁLOGO (${totalProdutos} itens) - USE APENAS QUANDO CLIENTE PEDIR EXPLICITAMENTE
 ═══════════════════════════════════════════════════════
 ${catalogoMD || 'Nenhum produto cadastrado.'}
 ═══════════════════════════════════════════════════════`;
@@ -303,9 +318,95 @@ function extrairProdutosDaResposta(resposta: string, produtos: any[]): any[] {
 }
 
 // ============================================
+// DETECTAR SE É PEDIDO REAL DE PRODUTO
+// ============================================
+function isPedidoRealDeProduto(mensagem: string): boolean {
+  const msgLower = mensagem.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  
+  // Padrões que indicam PEDIDO DE PRODUTO
+  const padroesPedido = [
+    // Pedidos explícitos
+    /quero\s+(comprar|ver|saber|o|a|um|uma|esse|essa)/i,
+    /preciso\s+de\s+\w+/i,
+    /tem\s+(algum|alguma|o|a|esse|essa)\s+\w+/i,
+    /vende[mn]?\s+\w+/i,
+    /quanto\s+(custa|e|eh|é)\s+/i,
+    /preco\s+(do|da|de|dos|das)\s+/i,
+    /preço\s+(do|da|de|dos|das)\s+/i,
+    /promocao\s+(de|do|da)\s+/i,
+    /promoção\s+(de|do|da)\s+/i,
+    /oferta\s+(de|do|da)\s+/i,
+    /gostei\s+(do|da|dessa|desse)/i,
+    /me\s+interess[ao]/i,
+    /quero\s+(feijao|arroz|farinha|acucar|oleo|leite|cafe|manteiga|queijo|presunto)/i,
+    /tem\s+(feijao|arroz|farinha|acucar|oleo|leite|cafe|manteiga|queijo|presunto)/i,
+    // Lista de compras
+    /manda\s+(lista|produtos)/i,
+    /o\s+que\s+(voces|vcs|vocês)\s+tem/i,
+    /o\s+que\s+tem\s+(pra|para)\s+vender/i,
+    /catalogo/i,
+    /catálogo/i,
+  ];
+  
+  // Padrões que indicam CONVERSA/DESABAFO (não é pedido de produto)
+  const padroesConversa = [
+    /estou\s+(cansad|doendo|com\s+dor|triste|mal|doente)/i,
+    /minha\s+(perna|mao|braco|cabeca|costas)/i,
+    /nao\s+(consigo|consegui|posso|da)\s+ir/i,
+    /ja\s+tenho\s+idade/i,
+    /idade\s+ja/i,
+    /ir\s+(no|ao)\s+mercado/i,  // "ir no mercado" é contexto, não pedido
+    /sair\s+de\s+casa/i,
+    /obrigad[ao]\s*(por|pela)/i,
+    /muito\s+obrigad/i,
+    /valeu/i,
+    /bom\s+dia/i,
+    /boa\s+tarde/i,
+    /boa\s+noite/i,
+    /^oi\s*$/i,
+    /^ola\s*$/i,
+    /^olá\s*$/i,
+    /tudo\s+bem/i,
+    /como\s+(voce|você|vc)\s+esta/i,
+  ];
+  
+  // Se bater em padrão de conversa, NÃO é pedido
+  for (const padrao of padroesConversa) {
+    if (padrao.test(msgLower)) {
+      console.log(`💬 [PJ-AI] Mensagem é CONVERSA (match: ${padrao.source})`);
+      return false;
+    }
+  }
+  
+  // Se bater em padrão de pedido, É pedido
+  for (const padrao of padroesPedido) {
+    if (padrao.test(msgLower)) {
+      console.log(`🛒 [PJ-AI] Mensagem é PEDIDO (match: ${padrao.source})`);
+      return true;
+    }
+  }
+  
+  // Mensagens muito curtas (< 15 chars) sem termos de produto = conversa
+  if (msgLower.length < 15) {
+    console.log(`💬 [PJ-AI] Mensagem curta sem contexto = conversa`);
+    return false;
+  }
+  
+  // Default: se não bateu em nada, considerar CONVERSA (mais seguro)
+  console.log(`💬 [PJ-AI] Nenhum padrão detectado = assumindo conversa`);
+  return false;
+}
+
+// ============================================
 // PRÉ-FILTRAR PRODUTOS RELEVANTES (BUSCA MULTI-PRODUTO)
 // ============================================
 function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
+  // 🚨 PRIMEIRO: verificar se é PEDIDO REAL de produto
+  if (!isPedidoRealDeProduto(mensagem)) {
+    console.log(`🚫 [PJ-AI] NÃO é pedido de produto, retornando lista vazia`);
+    return []; // Retorna vazio = não vai oferecer produto
+  }
+  
   const msgLower = mensagem.toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Remove acentos para busca
   
@@ -320,7 +421,9 @@ function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
     'depois', 'antes', 'hoje', 'amanha', 'ontem', 'sempre', 'nunca', 'talvez',
     'ver', 'olhar', 'saber', 'posso', 'pode', 'podem', 'podemos',
     'favor', 'certeza', 'certo', 'errado', 'bom', 'ruim', 'gostei', 'quero',
-    'preciso', 'queria', 'gostaria', 'promocao', 'oferta', 'preco', 'valor'
+    'preciso', 'queria', 'gostaria', 'promocao', 'oferta', 'preco', 'valor',
+    'ir', 'mercado', 'compra', 'comprar', 'casa', 'idade', 'perna', 'doendo',
+    'cansado', 'cansada', 'estou', 'nao', 'consegui', 'tanto'
   ];
   
   // Detectar expressões de interesse
@@ -379,7 +482,7 @@ function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
   console.log(`🔍 [PJ-AI] Termos para buscar: ${termosUnicos.join(', ')}`);
   
   if (termosUnicos.length === 0) {
-    return produtos.slice(0, 10);
+    return []; // Sem termos válidos = não buscar produtos
   }
   
   // Normalizar texto para busca (remover acentos)
