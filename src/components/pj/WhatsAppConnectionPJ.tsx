@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Smartphone, RefreshCw, LogOut, QrCode, CheckCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 
 interface ConnectionStatus {
   connected: boolean;
@@ -18,12 +19,31 @@ interface ConnectionStatus {
 }
 
 export default function WhatsAppConnectionPJ() {
+  const navigate = useNavigate();
   const [status, setStatus] = useState<ConnectionStatus>({ connected: false });
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [instanceName, setInstanceName] = useState('');
   const [hasConfig, setHasConfig] = useState(false);
+
+  const requireSession = async () => {
+    // getUser() pode retornar null em algumas condições de cache/latência.
+    // Para ações críticas, preferimos a sessão (token) e extraímos o userId dela.
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error('Erro ao obter sessão:', error);
+    }
+
+    const userId = data.session?.user?.id;
+    if (!userId) {
+      toast.error('Sessão expirada. Faça login novamente.');
+      navigate('/login');
+      return null;
+    }
+
+    return { userId };
+  };
 
   useEffect(() => {
     loadConfig();
@@ -59,14 +79,11 @@ export default function WhatsAppConnectionPJ() {
   const checkStatus = async () => {
     setCheckingStatus(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Usuário não autenticado');
-        return;
-      }
+      const sessionInfo = await requireSession();
+      if (!sessionInfo) return;
 
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-        body: { userId: user.id, action: 'status' }
+        body: { userId: sessionInfo.userId, action: 'status' }
       });
 
       if (error) throw error;
@@ -96,15 +113,11 @@ export default function WhatsAppConnectionPJ() {
     setQrCode(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Usuário não autenticado');
-        setLoading(false);
-        return;
-      }
+      const sessionInfo = await requireSession();
+      if (!sessionInfo) return;
 
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-        body: { userId: user.id, action: 'qrcode', instance_name: instanceName || undefined }
+        body: { userId: sessionInfo.userId, action: 'qrcode', instance_name: instanceName || undefined }
       });
 
       if (error) throw error;
@@ -125,7 +138,7 @@ export default function WhatsAppConnectionPJ() {
           }
 
           const { data: statusData } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-            body: { userId: user.id, action: 'status' }
+            body: { userId: sessionInfo.userId, action: 'status' }
           });
 
           if (statusData?.connected) {
@@ -160,15 +173,11 @@ export default function WhatsAppConnectionPJ() {
 
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('Usuário não autenticado');
-        setLoading(false);
-        return;
-      }
+      const sessionInfo = await requireSession();
+      if (!sessionInfo) return;
 
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-        body: { userId: user.id, action: 'disconnect' }
+        body: { userId: sessionInfo.userId, action: 'disconnect' }
       });
 
       if (error) throw error;
