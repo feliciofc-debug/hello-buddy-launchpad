@@ -158,29 +158,28 @@ serve(async (req) => {
 
           payload = await response.json();
 
-          // Fallback se imagem falhar
+          // Fallback se imagem falhar (QUALQUER motivo)
+          // Motivo: algumas infraestruturas bloqueiam fetch de imagem (403), timeouts, etc.
+          // Não podemos deixar o cliente sem receber nada; texto deve sempre ir.
           if (!response.ok || payload?.success === false) {
             const errMsg = payload?.error || "";
-            const isMediaError =
-              errMsg.toLowerCase().includes("upload") ||
-              errMsg.toLowerCase().includes("media") ||
-              errMsg.toLowerCase().includes("websocket");
+            console.log("🧯 [PJ-SEND] Imagem falhou, fallback para texto...", {
+              status: response.status,
+              error: errMsg,
+            });
 
-            if (isMediaError) {
-              console.log("🧯 [PJ-SEND] Fallback para texto...");
-              response = await fetch(`${baseUrl}/chat/send/text`, {
-                method: "POST",
-                headers: {
-                  "Token": wuzapiToken,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  Phone: cleanPhone,
-                  Body: message,
-                }),
-              });
-              payload = await response.json();
-            }
+            response = await fetch(`${baseUrl}/chat/send/text`, {
+              method: "POST",
+              headers: {
+                "Token": wuzapiToken,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                Phone: cleanPhone,
+                Body: message,
+              }),
+            });
+            payload = await response.json();
           }
         } else {
           response = await fetch(`${baseUrl}/chat/send/text`, {
