@@ -579,8 +579,8 @@ async function inserirNaFilaPJ(
   const delayMs = Math.floor(Math.random() * 5000) + 3000;
   const scheduledAt = new Date(Date.now() + delayMs);
   
-  // URL padrão do WuzAPI PJ na Locaweb
-  const finalUrl = wuzapiUrl || 'http://191.252.193.73:8081';
+  // URL padrão do WuzAPI PJ na Locaweb (PORTA 8080 = principal)
+  const finalUrl = wuzapiUrl || 'http://191.252.193.73:8080';
   
   const { error } = await supabase
     .from('fila_atendimento_pj')
@@ -625,8 +625,8 @@ async function inserirImagemNaFilaPJ(
   const delayMs = Math.floor(Math.random() * 3000) + 5000; // 5-8 segundos após o texto
   const scheduledAt = new Date(Date.now() + delayMs);
   
-  // URL padrão do WuzAPI PJ na Locaweb
-  const finalUrl = wuzapiUrl || 'http://191.252.193.73:8081';
+  // URL padrão do WuzAPI PJ na Locaweb (PORTA 8080 = principal)
+  const finalUrl = wuzapiUrl || 'http://191.252.193.73:8080';
   
   const { error } = await supabase
     .from('fila_atendimento_pj')
@@ -825,41 +825,89 @@ serve(async (req) => {
 
     // Buscar configuração do assistente PJ
     // CRÍTICO: escolher pelo instanceName do webhook (senão pode pegar user_id errado e ficar com 0 produtos)
-    const instanceName = envelope?.instanceName;
+    const instanceName = envelope?.instanceName || envelope?.instance || body?.instanceName || body?.instance;
     let pjConfig: any = null;
 
+    console.log(`🔍 [PJ-WEBHOOK] Procurando config para instanceName: "${instanceName || 'NÃO RECEBIDO'}"`);
+
     if (instanceName) {
+      // Busca exata pelo nome da instância
       const { data } = await supabase
         .from("pj_clientes_config")
         .select("*")
         .eq("wuzapi_instance_name", instanceName)
-        .order("created_at", { ascending: false })
-        .limit(1)
         .maybeSingle();
-      pjConfig = data;
+      
+      if (data) {
+        pjConfig = data;
+        console.log(`✅ [PJ-WEBHOOK] Config encontrada por instanceName: ${instanceName}, user: ${data.user_id?.slice(0, 8)}`);
+      }
     }
 
-    // Fallback (legado)
+    // Fallback: buscar pela instância mapeada na wuzapi_instances
+    if (!pjConfig) {
+      // Tentar encontrar pelo mapeamento de instâncias (wuzapi_instances -> pj_clientes_config)
+      const { data: instances } = await supabase
+        .from("wuzapi_instances")
+        .select("assigned_to_user, port, name, wuzapi_token")
+        .eq("is_connected", true)
+        .order("updated_at", { ascending: false });
+      
+      if (instances && instances.length > 0) {
+        // Pegar a primeira instância conectada (geralmente a principal na porta 8080)
+        const primaryInstance = instances.find((i: any) => i.port === 8080) || instances[0];
+        
+        if (primaryInstance?.assigned_to_user) {
+          const { data: configByUser } = await supabase
+            .from("pj_clientes_config")
+            .select("*")
+            .eq("user_id", primaryInstance.assigned_to_user)
+            .maybeSingle();
+          
+          if (configByUser) {
+            pjConfig = configByUser;
+            console.log(`✅ [PJ-WEBHOOK] Config encontrada por wuzapi_instances (porta ${primaryInstance.port}): user ${configByUser.user_id?.slice(0, 8)}`);
+          }
+        }
+      }
+    }
+
+    // Fallback final: pegar a config com porta 8080 (usuário principal)
     if (!pjConfig) {
       const { data } = await supabase
         .from("pj_clientes_config")
         .select("*")
-        .order("created_at", { ascending: false })
+        .eq("wuzapi_port", 8080)
+        .maybeSingle();
+      
+      if (data) {
+        pjConfig = data;
+        console.log(`✅ [PJ-WEBHOOK] Config encontrada por porta 8080 (fallback): user ${data.user_id?.slice(0, 8)}`);
+      }
+    }
+
+    // Último fallback: qualquer config
+    if (!pjConfig) {
+      const { data } = await supabase
+        .from("pj_clientes_config")
+        .select("*")
+        .order("created_at", { ascending: true }) // Mais antiga = geralmente o admin
         .limit(1)
         .maybeSingle();
       pjConfig = data;
+      console.log(`⚠️ [PJ-WEBHOOK] Usando fallback genérico: user ${data?.user_id?.slice(0, 8) || 'N/A'}`);
     }
 
-    const nomeAssistente = pjConfig?.nome_assistente || "Assistente Virtual";
+    const nomeAssistente = pjConfig?.nome_assistente || "Pietro Eugênio";
     const personalidade = pjConfig?.personalidade_assistente || "profissional e prestativo";
     const userId = pjConfig?.user_id;
     const wuzapiToken = pjConfig?.wuzapi_token;
-    const wuzapiPort = pjConfig?.wuzapi_port || 8081;
+    const wuzapiPort = pjConfig?.wuzapi_port || 8080; // DEFAULT: 8080 (não 8081!)
     
     // Construir URL do WuzAPI baseado na porta
     const wuzapiUrl = `http://191.252.193.73:${wuzapiPort}`;
     
-    console.log(`👤 [PJ-WEBHOOK] Config: ${nomeAssistente}, user: ${userId?.slice(0, 8)}..., instance: ${instanceName || 'n/a'}, port: ${wuzapiPort}`);
+    console.log(`👤 [PJ-WEBHOOK] Config FINAL: ${nomeAssistente}, user: ${userId?.slice(0, 8) || 'N/A'}..., port: ${wuzapiPort}`);
 
     if (!wuzapiToken) {
       console.error("❌ [PJ-WEBHOOK] wuzapi_token não configurado!");
