@@ -207,7 +207,8 @@ async function enviarMensagem(
 async function processarItem(
   supabase: any,
   item: any,
-  wuzapiUrl: string
+  wuzapiUrl: string,
+  overrideWuzapiToken?: string | null
 ): Promise<{ success: boolean; error?: string; tempoTotal?: number }> {
   const startTime = Date.now();
 
@@ -223,8 +224,8 @@ async function processarItem(
       throw new Error("Mensagem não encontrada");
     }
 
-    // Buscar token do usuário
-    let wuzapiToken = item.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
+    // Buscar token do usuário (prioridade: token da instância mapeada > token do item > config do usuário > token padrão)
+    let wuzapiToken = overrideWuzapiToken || item.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
     
     if (!wuzapiToken && item.user_id) {
       const { data: config } = await supabase
@@ -240,6 +241,12 @@ async function processarItem(
 
     if (!wuzapiToken) {
       wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
+    }
+
+    if (overrideWuzapiToken && overrideWuzapiToken !== item.wuzapi_token) {
+      console.log(
+        `🔑 [PJ-FILA] Usando token da instância mapeada (override) para ${item.user_id?.slice?.(0, 8) ?? 'n/a'}...`
+      );
     }
 
     // 1️⃣ MARCAR COMO PROCESSANDO
@@ -379,6 +386,7 @@ serve(async (req) => {
     for (const item of itens) {
       // Buscar URL real da instância WuzAPI para este usuário (IP:Porta)
       let wuzapiUrl = CONFIG.WUZAPI_URL;
+      let mappedToken: string | null = null;
       if (item.user_id) {
         const { data: config } = await supabase
           .from("pj_clientes_config")
@@ -389,7 +397,7 @@ serve(async (req) => {
         const targetPort = Number(config?.wuzapi_port || 8080);
         const { data: mappedInstance } = await supabase
           .from("wuzapi_instances")
-          .select("wuzapi_url")
+          .select("wuzapi_url, wuzapi_token")
           .eq("assigned_to_user", item.user_id)
           .eq("port", targetPort)
           .maybeSingle();
@@ -398,9 +406,13 @@ serve(async (req) => {
           wuzapiUrl = mappedInstance.wuzapi_url.replace(/\/+$/, "");
           console.log(`📡 [PJ-FILA] Usando instância real: ${wuzapiUrl}`);
         }
+
+        if (mappedInstance?.wuzapi_token) {
+          mappedToken = mappedInstance.wuzapi_token;
+        }
       }
       
-      const resultado = await processarItem(supabase, item, wuzapiUrl);
+      const resultado = await processarItem(supabase, item, wuzapiUrl, mappedToken);
       
       resultados.push({
         id: item.id,
