@@ -544,7 +544,7 @@ _Escolha quantidade e finalize!_ ✅`;
             .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
 
           // Enviar via função PJ (Locaweb) com userId para resolver instância correta
-          const { error } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+          const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
             body: {
               phoneNumbers: [phone],
               message: mensagemPersonalizada,
@@ -553,7 +553,22 @@ _Escolha quantidade e finalize!_ ✅`;
             }
           });
 
-          if (error) throw error;
+          // IMPORTANT: invoke só retorna error quando HTTP não é 2xx.
+          // A função pode retornar 200 com success:false, então precisamos validar o corpo.
+          const firstResult = Array.isArray((sendData as any)?.results) ? (sendData as any).results[0] : null;
+          const envioOk = !sendError && (firstResult ? firstResult.success === true : (sendData as any)?.success !== false);
+          const erroDetalhado =
+            sendError?.message ||
+            firstResult?.error ||
+            firstResult?.response?.error ||
+            firstResult?.response?.message ||
+            (!envioOk ? 'Falha no envio (retorno do backend)' : null);
+
+          if (!envioOk) {
+            console.error('❌ Envio falhou (PJ):', { phone, sendError, firstResult, sendData });
+            throw new Error(typeof erroDetalhado === 'string' ? erroDetalhado : 'Falha no envio');
+          }
+
           enviados++;
 
           // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
