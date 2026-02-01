@@ -9,7 +9,6 @@ const corsHeaders = {
 const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
 const LOCAWEB_WUZAPI_TOKEN = Deno.env.get("WUZAPI_TOKEN") || "";
 
-// Ler resposta com tolerância a servidores que retornam HTML/texto (não-JSON)
 async function safeReadJson(response: Response): Promise<any> {
   const text = await response.text().catch(() => "");
   if (!text) return null;
@@ -20,33 +19,86 @@ async function safeReadJson(response: Response): Promise<any> {
   }
 }
 
-// Função para normalizar número brasileiro com 9º dígito
-function normalizeBrazilianPhone(phone: string): string {
+// Gera variantes do número para testar (com e sem 9º dígito)
+function generatePhoneVariants(phone: string): string[] {
   let clean = phone.replace(/\D/g, "");
   
-  // Remover 55 do início se existir
   if (clean.startsWith("55") && clean.length >= 12) {
     clean = clean.substring(2);
   }
   
-  // Se tem 10 dígitos (DDD + 8 dígitos), adicionar o 9
-  // DDDs válidos: 11-99
-  if (clean.length === 10) {
+  const variants: string[] = [];
+  
+  // Número com 11 dígitos (DDD + 9 + 8 dígitos) - testar também SEM o 9
+  if (clean.length === 11 && clean[2] === "9") {
+    const comNove = "55" + clean;
+    const semNove = "55" + clean.substring(0, 2) + clean.substring(3);
+    variants.push(comNove);
+    variants.push(semNove);
+  }
+  // Número com 10 dígitos (DDD + 8 dígitos) - testar também COM o 9
+  else if (clean.length === 10) {
     const ddd = clean.substring(0, 2);
     const numero = clean.substring(2);
-    // Celulares começam com 9, 8, 7 ou 6 após o DDD
-    if (['9', '8', '7', '6'].includes(numero[0])) {
-      clean = ddd + '9' + numero;
-      console.log(`📱 [NORMALIZE] Adicionado 9º dígito: ${phone} -> 55${clean}`);
+    const comNove = "55" + ddd + "9" + numero;
+    const semNove = "55" + clean;
+    variants.push(comNove);
+    variants.push(semNove);
+  }
+  else {
+    if (!clean.startsWith("55")) clean = "55" + clean;
+    variants.push(clean);
+  }
+  
+  return [...new Set(variants)];
+}
+
+// Verifica se número existe no WhatsApp
+async function checkPhoneExists(
+  baseUrl: string,
+  token: string,
+  phone: string
+): Promise<{ exists: boolean; jid?: string }> {
+  try {
+    const checkResp = await fetch(`${baseUrl}/user/check`, {
+      method: "POST",
+      headers: { "Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify({ Phone: phone }),
+    });
+    
+    const json = await safeReadJson(checkResp);
+    
+    if (checkResp.ok && json && (json.IsRegistered === true || json.isRegistered === true)) {
+      return { exists: true, jid: `${phone}@s.whatsapp.net` };
+    }
+    
+    return { exists: false };
+  } catch {
+    return { exists: false };
+  }
+}
+
+// Encontra o número correto testando variantes
+async function findValidPhone(
+  baseUrl: string,
+  token: string,
+  phone: string
+): Promise<{ valid: boolean; phone: string; tested: string[] }> {
+  const variants = generatePhoneVariants(phone);
+  const tested: string[] = [];
+  
+  for (const variant of variants) {
+    tested.push(variant);
+    const result = await checkPhoneExists(baseUrl, token, variant);
+    if (result.exists) {
+      console.log(`✅ [VALIDATE] Número válido encontrado: ${variant}`);
+      return { valid: true, phone: variant, tested };
     }
   }
   
-  // Garantir prefixo 55
-  if (!clean.startsWith("55")) {
-    clean = "55" + clean;
-  }
-  
-  return clean;
+  // Se nenhum validou, usa a primeira variante (comportamento anterior)
+  console.log(`⚠️ [VALIDATE] Nenhuma variante confirmada, usando: ${variants[0]}`);
+  return { valid: false, phone: variants[0], tested };
 }
 
 serve(async (req) => {
@@ -55,13 +107,22 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumbers, message, imageUrl, userId, useQueue = false, debugStatus = false } = await req.json();
+    const { 
+      phoneNumbers, 
+      message, 
+      imageUrl, 
+      userId, 
+      useQueue = false, 
+      debugStatus = false,
+      validateBeforeSend = true // Nova opção: validar antes de enviar
+    } = await req.json();
 
     console.log("📤 [PJ-SEND] Recebido:", {
       phones: phoneNumbers?.length,
       hasImage: !!imageUrl,
       userId,
       useQueue,
+      validateBeforeSend,
     });
 
     if (!phoneNumbers || phoneNumbers.length === 0) {
@@ -75,10 +136,10 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Buscar configuração do usuário PJ (igual ao sistema antigo - usar IP:Porta real)
+    // Buscar configuração do usuário PJ
     let baseUrl = LOCAWEB_WUZAPI_URL;
     let wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
-    
+
     if (userId) {
       const { data: config } = await supabase
         .from("pj_clientes_config")
@@ -89,8 +150,7 @@ serve(async (req) => {
       if (config?.wuzapi_token) {
         wuzapiToken = config.wuzapi_token;
       }
-      
-      // Buscar instância mapeada com IP:Porta real (não usar domínio)
+
       const targetPort = Number(config?.wuzapi_port || 8080);
       const { data: mappedInstance } = await supabase
         .from("wuzapi_instances")
@@ -98,7 +158,7 @@ serve(async (req) => {
         .eq("assigned_to_user", userId)
         .eq("port", targetPort)
         .maybeSingle();
-      
+
       if (mappedInstance?.wuzapi_url) {
         baseUrl = mappedInstance.wuzapi_url.replace(/\/+$/, "");
         console.log("📡 [PJ-SEND] Usando instância:", baseUrl);
@@ -108,20 +168,16 @@ serve(async (req) => {
       }
     }
 
-    // Diagnóstico opcional: status da sessão (não expõe token)
+    // Diagnóstico opcional
     let instanceStatus: any = null;
     if (debugStatus) {
       try {
         const statusResp = await fetch(`${baseUrl}/session/status`, {
           method: "GET",
-          headers: {
-            "Token": wuzapiToken,
-          },
+          headers: { "Token": wuzapiToken },
         });
         const rawStatus = await safeReadJson(statusResp);
-        const d = rawStatus?.data ?? rawStatus; // alguns builds usam {data:{...}}
-
-        // Nunca retornar token/segredos do provedor
+        const d = rawStatus?.data ?? rawStatus;
         instanceStatus = {
           ok: statusResp.ok,
           status: statusResp.status,
@@ -153,9 +209,7 @@ serve(async (req) => {
         .from("fila_atendimento_pj")
         .insert(filaItems);
 
-      if (insertError) {
-        throw insertError;
-      }
+      if (insertError) throw insertError;
 
       console.log(`📬 [PJ-SEND] ${filaItems.length} mensagens adicionadas à fila`);
 
@@ -170,13 +224,42 @@ serve(async (req) => {
       );
     }
 
-    // Envio direto (sem fila)
+    // Envio direto
     const results: any[] = [];
 
     for (const phone of phoneNumbers) {
-      // Normalizar número com 9º dígito brasileiro
-      const cleanPhone = normalizeBrazilianPhone(phone);
-      console.log(`📞 [PJ-SEND] Enviando para ${cleanPhone}...`);
+      let targetPhone: string;
+      let validationInfo: any = null;
+      
+      // Validar número antes de enviar (teste de variantes com/sem 9)
+      if (validateBeforeSend) {
+        const validation = await findValidPhone(baseUrl, wuzapiToken, phone);
+        targetPhone = validation.phone;
+        validationInfo = {
+          original: phone,
+          validated: targetPhone,
+          wasValidated: validation.valid,
+          variantsTested: validation.tested,
+        };
+        console.log(`📱 [VALIDATE] ${phone} -> ${targetPhone} (válido: ${validation.valid})`);
+      } else {
+        // Normalização simples (comportamento antigo)
+        let clean = phone.replace(/\D/g, "");
+        if (clean.startsWith("55") && clean.length >= 12) {
+          clean = clean.substring(2);
+        }
+        if (clean.length === 10) {
+          const ddd = clean.substring(0, 2);
+          const numero = clean.substring(2);
+          if (["9", "8", "7", "6"].includes(numero[0])) {
+            clean = ddd + "9" + numero;
+          }
+        }
+        if (!clean.startsWith("55")) clean = "55" + clean;
+        targetPhone = clean;
+      }
+
+      console.log(`📞 [PJ-SEND] Enviando para ${targetPhone}...`);
 
       try {
         let response: Response;
@@ -185,12 +268,9 @@ serve(async (req) => {
         if (imageUrl) {
           response = await fetch(`${baseUrl}/chat/send/image`, {
             method: "POST",
-            headers: {
-              "Token": wuzapiToken,
-              "Content-Type": "application/json",
-            },
+            headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
             body: JSON.stringify({
-              Phone: cleanPhone,
+              Phone: targetPhone,
               Caption: message,
               Image: imageUrl,
             }),
@@ -198,65 +278,76 @@ serve(async (req) => {
 
           payload = await safeReadJson(response);
 
-          // Fallback se imagem falhar (QUALQUER motivo)
-          // Motivo: algumas infraestruturas bloqueiam fetch de imagem (403), timeouts, etc.
-          // Não podemos deixar o cliente sem receber nada; texto deve sempre ir.
+          // Fallback para texto se imagem falhar
           if (!response.ok || payload?.success === false) {
-            const errMsg = payload?.error || "";
-            console.log("🧯 [PJ-SEND] Imagem falhou, fallback para texto...", {
-              status: response.status,
-              error: errMsg,
-            });
-
+            console.log("🧯 [PJ-SEND] Imagem falhou, fallback para texto...");
             response = await fetch(`${baseUrl}/chat/send/text`, {
               method: "POST",
-              headers: {
-                "Token": wuzapiToken,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                Phone: cleanPhone,
-                Body: message,
-              }),
+              headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
+              body: JSON.stringify({ Phone: targetPhone, Body: message }),
             });
             payload = await safeReadJson(response);
           }
         } else {
           response = await fetch(`${baseUrl}/chat/send/text`, {
             method: "POST",
-            headers: {
-              "Token": wuzapiToken,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              Phone: cleanPhone,
-              Body: message,
-            }),
+            headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
+            body: JSON.stringify({ Phone: targetPhone, Body: message }),
           });
           payload = await safeReadJson(response);
         }
 
         const success = response.ok && payload?.success !== false;
+        
+        // Extrair messageId para rastreio
+        const messageId = payload?.data?.Id || payload?.Id || payload?.MessageID || payload?.messageId || null;
 
-        results.push({
-          phone: cleanPhone,
+        const resultItem: any = {
+          phone: targetPhone,
+          phone_original: phone,
           success,
           status: response.status,
+          messageId,
           response: payload,
-        });
+        };
+        
+        if (validationInfo) {
+          resultItem.validation = validationInfo;
+        }
+        
+        results.push(resultItem);
 
         if (success) {
-          console.log(`✅ [PJ-SEND] Enviado para ${cleanPhone}`);
+          console.log(`✅ [PJ-SEND] Enviado para ${targetPhone} | msgId: ${messageId}`);
+          
+          // Registrar envio para rastreio de entrega
+          if (messageId) {
+            try {
+              await supabase.from("pj_mensagens_rastreio").insert({
+                user_id: userId,
+                phone: targetPhone,
+                message_id: messageId,
+                tipo: imageUrl ? "imagem" : "texto",
+                status: "enviado",
+                enviado_at: new Date().toISOString(),
+              });
+            } catch (e) {
+              // Ignorar erro se tabela não existir ainda
+              console.log("⚠️ Tabela pj_mensagens_rastreio não existe ou erro:", e);
+            }
+          }
         } else {
-          console.error(`❌ [PJ-SEND] Falha para ${cleanPhone}:`, payload);
+          console.error(`❌ [PJ-SEND] Falha para ${targetPhone}:`, payload);
         }
 
       } catch (fetchErr: any) {
-        console.error(`❌ [PJ-SEND] Erro para ${cleanPhone}:`, fetchErr);
+        console.error(`❌ [PJ-SEND] Erro para ${targetPhone}:`, fetchErr);
         results.push({
-          phone: cleanPhone,
+          phone: targetPhone,
+          phone_original: phone,
           success: false,
           error: fetchErr.message,
+          validation: validationInfo,
         });
       }
 
