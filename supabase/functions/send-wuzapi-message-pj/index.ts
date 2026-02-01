@@ -9,6 +9,17 @@ const corsHeaders = {
 const LOCAWEB_WUZAPI_URL = Deno.env.get("WUZAPI_URL") || "https://wuzapi.amzofertas.com.br";
 const LOCAWEB_WUZAPI_TOKEN = Deno.env.get("WUZAPI_TOKEN") || "";
 
+// Ler resposta com tolerância a servidores que retornam HTML/texto (não-JSON)
+async function safeReadJson(response: Response): Promise<any> {
+  const text = await response.text().catch(() => "");
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text.slice(0, 1000) };
+  }
+}
+
 // Função para normalizar número brasileiro com 9º dígito
 function normalizeBrazilianPhone(phone: string): string {
   let clean = phone.replace(/\D/g, "");
@@ -44,7 +55,7 @@ serve(async (req) => {
   }
 
   try {
-    const { phoneNumbers, message, imageUrl, userId, useQueue = false } = await req.json();
+    const { phoneNumbers, message, imageUrl, userId, useQueue = false, debugStatus = false } = await req.json();
 
     console.log("📤 [PJ-SEND] Recebido:", {
       phones: phoneNumbers?.length,
@@ -94,6 +105,35 @@ serve(async (req) => {
       }
       if (mappedInstance?.wuzapi_token) {
         wuzapiToken = mappedInstance.wuzapi_token;
+      }
+    }
+
+    // Diagnóstico opcional: status da sessão (não expõe token)
+    let instanceStatus: any = null;
+    if (debugStatus) {
+      try {
+        const statusResp = await fetch(`${baseUrl}/session/status`, {
+          method: "GET",
+          headers: {
+            "Token": wuzapiToken,
+          },
+        });
+        const rawStatus = await safeReadJson(statusResp);
+        const d = rawStatus?.data ?? rawStatus; // alguns builds usam {data:{...}}
+
+        // Nunca retornar token/segredos do provedor
+        instanceStatus = {
+          ok: statusResp.ok,
+          status: statusResp.status,
+          baseUrl,
+          connected: d?.connected ?? null,
+          loggedIn: d?.loggedIn ?? null,
+          jid: d?.jid ?? null,
+          name: d?.name ?? null,
+          events: d?.events ?? null,
+        };
+      } catch (e: any) {
+        instanceStatus = { ok: false, error: e?.message || String(e), baseUrl };
       }
     }
 
@@ -156,7 +196,7 @@ serve(async (req) => {
             }),
           });
 
-          payload = await response.json();
+          payload = await safeReadJson(response);
 
           // Fallback se imagem falhar (QUALQUER motivo)
           // Motivo: algumas infraestruturas bloqueiam fetch de imagem (403), timeouts, etc.
@@ -179,7 +219,7 @@ serve(async (req) => {
                 Body: message,
               }),
             });
-            payload = await response.json();
+            payload = await safeReadJson(response);
           }
         } else {
           response = await fetch(`${baseUrl}/chat/send/text`, {
@@ -193,7 +233,7 @@ serve(async (req) => {
               Body: message,
             }),
           });
-          payload = await response.json();
+          payload = await safeReadJson(response);
         }
 
         const success = response.ok && payload?.success !== false;
@@ -201,6 +241,7 @@ serve(async (req) => {
         results.push({
           phone: cleanPhone,
           success,
+          status: response.status,
           response: payload,
         });
 
@@ -228,11 +269,12 @@ serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-        success: true,
+        success: erros === 0,
         enviados,
         erros,
         total: phoneNumbers.length,
         results,
+        instanceStatus,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
