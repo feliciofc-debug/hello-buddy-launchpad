@@ -53,12 +53,12 @@ function generatePhoneVariants(phone: string): string[] {
   return [...new Set(variants)];
 }
 
-// Verifica se número existe no WhatsApp
+// Verifica se número existe no WhatsApp e retorna o JID/número REAL
 async function checkPhoneExists(
   baseUrl: string,
   token: string,
   phone: string
-): Promise<{ exists: boolean; jid?: string }> {
+): Promise<{ exists: boolean; jid?: string; realNumber?: string }> {
   try {
     const checkResp = await fetch(`${baseUrl}/user/check`, {
       method: "POST",
@@ -68,22 +68,43 @@ async function checkPhoneExists(
     
     const json = await safeReadJson(checkResp);
     
+    console.log(`[CHECK] ${phone} -> ${checkResp.status}:`, JSON.stringify(json));
+    
     if (checkResp.ok && json && (json.IsRegistered === true || json.isRegistered === true)) {
-      return { exists: true, jid: `${phone}@s.whatsapp.net` };
+      // CRÍTICO: Capturar o JID/número REAL retornado pela API
+      const realJid = json.Jid || json.JID || json.jid || null;
+      const realNumber = json.Number || json.number || json.Phone || json.phone || null;
+      
+      // Extrair número limpo do JID se disponível
+      let extractedNumber = phone;
+      if (realJid && realJid.includes("@")) {
+        extractedNumber = realJid.split("@")[0];
+      } else if (realNumber) {
+        extractedNumber = realNumber.replace(/\D/g, "");
+      }
+      
+      console.log(`[CHECK] ✅ Encontrado! Testado: ${phone}, JID real: ${realJid}, Número real: ${extractedNumber}`);
+      
+      return { 
+        exists: true, 
+        jid: realJid || `${extractedNumber}@s.whatsapp.net`,
+        realNumber: extractedNumber 
+      };
     }
     
     return { exists: false };
-  } catch {
+  } catch (err: any) {
+    console.error(`[CHECK] Erro:`, err.message);
     return { exists: false };
   }
 }
 
-// Encontra o número correto testando variantes
+// Encontra o número correto testando variantes e retorna o NÚMERO REAL do WhatsApp
 async function findValidPhone(
   baseUrl: string,
   token: string,
   phone: string
-): Promise<{ valid: boolean; phone: string; tested: string[] }> {
+): Promise<{ valid: boolean; phone: string; realNumber?: string; jid?: string; tested: string[] }> {
   const variants = generatePhoneVariants(phone);
   const tested: string[] = [];
   
@@ -91,8 +112,16 @@ async function findValidPhone(
     tested.push(variant);
     const result = await checkPhoneExists(baseUrl, token, variant);
     if (result.exists) {
-      console.log(`✅ [VALIDATE] Número válido encontrado: ${variant}`);
-      return { valid: true, phone: variant, tested };
+      // USAR O NÚMERO REAL RETORNADO PELA API, não a variante que testamos
+      const phoneToUse = result.realNumber || variant;
+      console.log(`✅ [VALIDATE] Número válido! Testado: ${variant}, Número REAL: ${phoneToUse}, JID: ${result.jid}`);
+      return { 
+        valid: true, 
+        phone: phoneToUse, 
+        realNumber: result.realNumber,
+        jid: result.jid,
+        tested 
+      };
     }
   }
   
@@ -234,14 +263,17 @@ serve(async (req) => {
       // Validar número antes de enviar (teste de variantes com/sem 9)
       if (validateBeforeSend) {
         const validation = await findValidPhone(baseUrl, wuzapiToken, phone);
-        targetPhone = validation.phone;
+        // CRÍTICO: Usar o número REAL retornado pela API, não o que normalizamos
+        targetPhone = validation.realNumber || validation.phone;
         validationInfo = {
           original: phone,
           validated: targetPhone,
+          realNumber: validation.realNumber,
+          jid: validation.jid,
           wasValidated: validation.valid,
           variantsTested: validation.tested,
         };
-        console.log(`📱 [VALIDATE] ${phone} -> ${targetPhone} (válido: ${validation.valid})`);
+        console.log(`📱 [VALIDATE] ${phone} -> REAL: ${targetPhone} (JID: ${validation.jid}) (válido: ${validation.valid})`);
       } else {
         // Normalização simples (comportamento antigo)
         let clean = phone.replace(/\D/g, "");

@@ -55,14 +55,14 @@ function generatePhoneVariants(phone: string): string[] {
   return [...new Set(variants)]; // Remove duplicatas
 }
 
-// Verifica se número existe no WhatsApp usando endpoint checkphones
+// Verifica se número existe no WhatsApp e retorna o JID REAL
 async function checkPhoneExists(
   baseUrl: string, 
   token: string, 
   phone: string
-): Promise<{ exists: boolean; jid?: string; error?: string }> {
+): Promise<{ exists: boolean; jid?: string; realNumber?: string; error?: string }> {
   try {
-    // Tentar endpoint /user/check primeiro (mais confiável)
+    // Tentar endpoint /user/check (retorna o JID real do usuário)
     const checkResp = await fetch(`${baseUrl}/user/check`, {
       method: "POST",
       headers: {
@@ -76,18 +76,37 @@ async function checkPhoneExists(
     
     const { json } = await safeReadJson(checkResp);
     
+    console.log(`[CHECK] ${phone} -> ${checkResp.status}:`, JSON.stringify(json));
+    
     if (checkResp.ok && json) {
-      // Wuzapi retorna: { "IsRegistered": true, "VerifiedName": "..." }
+      // Wuzapi pode retornar em diferentes formatos
       const isRegistered = json.IsRegistered === true || json.isRegistered === true;
+      
       if (isRegistered) {
+        // CRÍTICO: Usar o JID/número REAL retornado pela API
+        // A API pode retornar: Jid, JID, jid, Number, number, Phone
+        const realJid = json.Jid || json.JID || json.jid || null;
+        const realNumber = json.Number || json.number || json.Phone || json.phone || null;
+        
+        // Extrair número limpo do JID se disponível (ex: "5562999887766@s.whatsapp.net" -> "5562999887766")
+        let extractedNumber = phone;
+        if (realJid && realJid.includes("@")) {
+          extractedNumber = realJid.split("@")[0];
+        } else if (realNumber) {
+          extractedNumber = realNumber.replace(/\D/g, "");
+        }
+        
+        console.log(`[CHECK] ✅ ${phone} registrado! JID real: ${realJid}, Número real: ${extractedNumber}`);
+        
         return { 
           exists: true, 
-          jid: `${phone}@s.whatsapp.net` 
+          jid: realJid || `${extractedNumber}@s.whatsapp.net`,
+          realNumber: extractedNumber
         };
       }
     }
     
-    // Fallback: tentar /chat/presence
+    // Fallback: tentar /chat/presence (menos confiável)
     const presenceResp = await fetch(`${baseUrl}/chat/presence`, {
       method: "POST",
       headers: {
@@ -104,12 +123,15 @@ async function checkPhoneExists(
     
     // Presença sem erro geralmente indica que existe
     if (presenceResp.ok && presenceJson && !presenceJson.error) {
-      return { exists: true, jid: `${phone}@s.whatsapp.net` };
+      console.log(`[CHECK] ✅ ${phone} existe via presence (fallback)`);
+      return { exists: true, jid: `${phone}@s.whatsapp.net`, realNumber: phone };
     }
     
+    console.log(`[CHECK] ❌ ${phone} não encontrado`);
     return { exists: false };
     
   } catch (err: any) {
+    console.error(`[CHECK] Erro verificando ${phone}:`, err.message);
     return { exists: false, error: err.message };
   }
 }
@@ -174,6 +196,7 @@ serve(async (req) => {
       phone: string;
       exists: boolean;
       jid?: string;
+      realNumber?: string;
       error?: string;
     }> = [];
 
@@ -185,7 +208,7 @@ serve(async (req) => {
         ...result,
       });
       
-      console.log(`📞 ${variant}: ${result.exists ? "✅ EXISTE" : "❌ não existe"}`);
+      console.log(`📞 ${variant}: ${result.exists ? "✅ EXISTE" : "❌ não existe"} | JID real: ${result.jid || "N/A"}`);
       
       // Se encontrou uma variante válida, podemos parar (otimização)
       if (result.exists) {
@@ -200,10 +223,11 @@ serve(async (req) => {
       JSON.stringify({
         valid: !!validResult,
         phone_original: phone,
-        phone_validated: validResult?.phone || null,
+        phone_validated: validResult?.realNumber || validResult?.phone || null, // Usar número REAL
         jid: validResult?.jid || null,
+        jid_number: validResult?.realNumber || null, // Número extraído do JID real
         variants_tested: results,
-        baseUrl: baseUrl.replace(/token=[^&]+/, "token=***"), // Mascarar token
+        baseUrl: baseUrl.replace(/token=[^&]+/, "token=***"),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
