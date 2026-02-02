@@ -821,6 +821,104 @@ async function inserirImagemNaFilaPJ(
 }
 
 // ============================================
+// INSERIR ÁUDIO NA FILA ANTI-BLOQUEIO PJ (TTS)
+// ============================================
+async function inserirAudioNaFilaPJ(
+  supabase: any,
+  phone: string,
+  audioBase64: string,
+  wuzapiToken: string,
+  userId: string | null,
+  wuzapiUrl?: string | null
+) {
+  const cleanPhone = phone.replace(/\D/g, '');
+  const formattedPhone = cleanPhone.startsWith('55') ? cleanPhone : '55' + cleanPhone;
+  
+  // Delay maior para áudio (após o texto, antes da imagem)
+  const delayMs = Math.floor(Math.random() * 2000) + 4000; // 4-6 segundos após o texto
+  const scheduledAt = new Date(Date.now() + delayMs);
+  
+  const finalUrl = wuzapiUrl || 'http://191.252.193.73:8080';
+  
+  const { error } = await supabase
+    .from('fila_atendimento_pj')
+    .insert({
+      lead_phone: formattedPhone,
+      mensagem: '[ÁUDIO]',
+      audio_base64: audioBase64,
+      tipo_mensagem: 'audio',
+      prioridade: 1, // Mesma prioridade do texto
+      status: 'pendente',
+      wuzapi_token: wuzapiToken,
+      wuzapi_url: finalUrl,
+      user_id: userId,
+      scheduled_at: scheduledAt.toISOString()
+    });
+  
+  if (error) {
+    console.error('❌ [PJ-FILA] Erro ao inserir áudio:', error);
+    return false;
+  }
+  
+  console.log(`🔊 [PJ-FILA] Áudio agendado para ${formattedPhone}`);
+  return true;
+}
+
+// ============================================
+// GERAR ÁUDIO VIA ELEVENLABS TTS
+// ============================================
+async function gerarAudioTTS(
+  supabaseUrl: string,
+  supabaseKey: string,
+  texto: string,
+  voz: string = 'roger'
+): Promise<string | null> {
+  try {
+    // Limitar texto para TTS (máximo 500 chars para respostas curtas)
+    const textoLimpo = texto
+      .replace(/\*+/g, '') // Remove asteriscos (negrito)
+      .replace(/https?:\/\/\S+/g, 'link de compra') // Substitui URLs
+      .replace(/[📦💰🔥🛒🎉✨👉💬📷]/g, '') // Remove emojis
+      .slice(0, 500);
+    
+    console.log(`🎤 [TTS-PJ] Gerando áudio para: ${textoLimpo.slice(0, 50)}...`);
+    
+    const response = await fetch(`${supabaseUrl}/functions/v1/elevenlabs-tts-pj`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${supabaseKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: textoLimpo,
+        voice: voz,
+        returnBase64: true,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ [TTS-PJ] Erro ${response.status}:`, errorText);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (data.success && data.audioBase64) {
+      console.log(`✅ [TTS-PJ] Áudio gerado! Size: ${data.size} bytes`);
+      return data.audioBase64;
+    }
+    
+    console.error('❌ [TTS-PJ] Resposta sem áudio:', data);
+    return null;
+    
+  } catch (error) {
+    console.error('❌ [TTS-PJ] Erro ao gerar áudio:', error);
+    return null;
+  }
+}
+
+// ============================================
 // MAIN HANDLER
 // ============================================
 serve(async (req) => {
@@ -1243,6 +1341,25 @@ serve(async (req) => {
 
     // Adicionar texto à fila anti-bloqueio
     await inserirNaFilaPJ(supabase, cleanPhone, respostaFinal, wuzapiToken, userId, null, wuzapiUrl);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🔊 TTS: GERAR E ENVIAR ÁUDIO (se habilitado para este usuário)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const ttsAtivo = pjConfig?.tts_ativo === true;
+    const ttsVoz = pjConfig?.tts_voz || 'roger';
+    
+    if (ttsAtivo) {
+      console.log(`🔊 [PJ-WEBHOOK] TTS ativo! Gerando áudio com voz: ${ttsVoz}`);
+      
+      const audioBase64 = await gerarAudioTTS(supabaseUrl, supabaseKey, respostaFinal, ttsVoz);
+      
+      if (audioBase64) {
+        await inserirAudioNaFilaPJ(supabase, cleanPhone, audioBase64, wuzapiToken, userId, wuzapiUrl);
+        console.log(`🔊 [PJ-WEBHOOK] Áudio agendado para ${cleanPhone}`);
+      } else {
+        console.warn(`⚠️ [PJ-WEBHOOK] Falha ao gerar áudio TTS, enviando apenas texto`);
+      }
+    }
 
     // Enviar imagem APENAS se o cliente pediu produto (não em cumprimentos)
     if (clientePediuProduto && produtoPrincipal) {

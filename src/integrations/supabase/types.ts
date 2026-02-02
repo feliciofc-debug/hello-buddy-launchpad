@@ -1993,6 +1993,7 @@ export type Database = {
       }
       fila_atendimento_pj: {
         Row: {
+          audio_base64: string | null
           created_at: string | null
           erro: string | null
           id: string
@@ -2012,6 +2013,7 @@ export type Database = {
           wuzapi_url: string | null
         }
         Insert: {
+          audio_base64?: string | null
           created_at?: string | null
           erro?: string | null
           id?: string
@@ -2031,6 +2033,7 @@ export type Database = {
           wuzapi_url?: string | null
         }
         Update: {
+          audio_base64?: string | null
           created_at?: string | null
           erro?: string | null
           id?: string
@@ -4124,6 +4127,8 @@ export type Database = {
           id: string
           nome_assistente: string | null
           personalidade_assistente: string | null
+          tts_ativo: boolean | null
+          tts_voz: string | null
           ultimo_status_check: string | null
           updated_at: string | null
           user_id: string
@@ -4138,6 +4143,8 @@ export type Database = {
           id?: string
           nome_assistente?: string | null
           personalidade_assistente?: string | null
+          tts_ativo?: boolean | null
+          tts_voz?: string | null
           ultimo_status_check?: string | null
           updated_at?: string | null
           user_id: string
@@ -4152,6 +4159,8 @@ export type Database = {
           id?: string
           nome_assistente?: string | null
           personalidade_assistente?: string | null
+          tts_ativo?: boolean | null
+          tts_voz?: string | null
           ultimo_status_check?: string | null
           updated_at?: string | null
           user_id?: string
@@ -6702,6 +6711,7 @@ export type Database = {
       pegar_proximo_fila_pj: {
         Args: { p_limit?: number; p_user_id?: string }
         Returns: {
+          audio_base64: string | null
           created_at: string | null
           erro: string | null
           id: string
