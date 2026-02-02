@@ -74,8 +74,11 @@ export function CampaignScheduler() {
 
   const effectiveUserId = useMemo(() => (isLeader ? userId : undefined), [isLeader, userId]);
 
-  // Hook para campanhas PJ (campanhas_recorrentes)
-  useScheduledCampaigns(effectiveUserId);
+  // ✅ DESABILITADO: O hook useScheduledCampaigns está desabilitado porque
+  // as campanhas PJ agora são executadas 100% no servidor via Edge Function
+  // "executar-campanhas-agendadas" (chamada a cada minuto pelo pg_cron).
+  // Isso garante execução 24/7 mesmo com navegador fechado.
+  // useScheduledCampaigns(effectiveUserId);
 
   // Hook para campanhas AFILIADO (afiliado_campanhas)
   useAfiliadoScheduledCampaigns(effectiveUserId);
