@@ -919,6 +919,88 @@ async function gerarAudioTTS(
 }
 
 // ============================================
+// TRANSCREVER ÁUDIO VIA LOVABLE AI (GEMINI)
+// ============================================
+async function transcreverAudio(
+  audioUrl: string
+): Promise<string | null> {
+  try {
+    console.log(`🎧 [STT-PJ] Baixando áudio de: ${audioUrl.slice(0, 80)}...`);
+    
+    // 1. Baixar o áudio do WhatsApp
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok) {
+      console.error(`❌ [STT-PJ] Erro ao baixar áudio: ${audioResponse.status}`);
+      return null;
+    }
+    
+    const audioBuffer = await audioResponse.arrayBuffer();
+    const audioBase64 = btoa(
+      new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+    
+    console.log(`🎧 [STT-PJ] Áudio baixado! Size: ${audioBuffer.byteLength} bytes`);
+    
+    // 2. Usar Lovable AI (Gemini) para transcrever
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
+      console.error("❌ [STT-PJ] LOVABLE_API_KEY não configurada");
+      return null;
+    }
+    
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Transcreva exatamente o que é dito neste áudio em português. Retorne APENAS a transcrição, sem comentários ou explicações adicionais."
+              },
+              {
+                type: "input_audio",
+                input_audio: {
+                  data: audioBase64,
+                  format: "ogg"
+                }
+              }
+            ]
+          }
+        ],
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ [STT-PJ] Erro Lovable AI ${response.status}:`, errorText);
+      return null;
+    }
+    
+    const data = await response.json();
+    const transcricao = data.choices?.[0]?.message?.content?.trim();
+    
+    if (transcricao) {
+      console.log(`✅ [STT-PJ] Transcrição: "${transcricao.slice(0, 100)}..."`);
+      return transcricao;
+    }
+    
+    console.error('❌ [STT-PJ] Resposta sem transcrição:', data);
+    return null;
+    
+  } catch (error) {
+    console.error('❌ [STT-PJ] Erro ao transcrever:', error);
+    return null;
+  }
+}
+
+// ============================================
 // MAIN HANDLER
 // ============================================
 serve(async (req) => {
@@ -996,7 +1078,7 @@ serve(async (req) => {
     ].filter(Boolean);
 
     const msg = messageData?.Message || messageData?.message || {};
-    const messageText =
+    let messageText =
       msg?.Conversation ||
       msg?.conversation ||
       msg?.ExtendedTextMessage?.Text ||
@@ -1004,6 +1086,31 @@ serve(async (req) => {
       messageData?.body ||
       messageData?.text ||
       "";
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DETECTAR E TRANSCREVER ÁUDIO (PTT / Voice Message)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const audioMessage = msg?.audioMessage || msg?.AudioMessage || null;
+    const isPTT = audioMessage?.PTT || audioMessage?.ptt || false;
+    const audioUrl = audioMessage?.URL || audioMessage?.url || null;
+    let isAudioMessage = false;
+
+    if (audioMessage && audioUrl) {
+      console.log(`🎧 [PJ-WEBHOOK] Áudio detectado! PTT: ${isPTT}, URL: ${audioUrl.slice(0, 80)}...`);
+      isAudioMessage = true;
+      
+      // Tentar transcrever o áudio
+      const transcricao = await transcreverAudio(audioUrl);
+      
+      if (transcricao) {
+        messageText = transcricao;
+        console.log(`✅ [PJ-WEBHOOK] Áudio transcrito: "${messageText.slice(0, 100)}..."`);
+      } else {
+        // Fallback: informar que não conseguiu transcrever
+        messageText = "[áudio não transcrito - cliente enviou mensagem de voz]";
+        console.log(`⚠️ [PJ-WEBHOOK] Falha na transcrição, usando fallback`);
+      }
+    }
 
     const messageId = info?.ID || info?.Id || messageData?.id || messageData?.Info?.id || "";
     const isFromMe = info?.IsFromMe || messageData?.fromMe || false;
@@ -1035,12 +1142,14 @@ serve(async (req) => {
     const isGroup = Boolean(info?.IsGroup) || String(bestCandidate).includes("@g.us") || false;
 
     // Ignorar mensagens próprias, grupos e remetentes inválidos (ex: @lid)
-    if (isFromMe || isGroup || senderInvalid || !messageText) {
+    // MAS processar áudios mesmo sem texto (já que vamos transcrever)
+    if (isFromMe || isGroup || senderInvalid || (!messageText && !isAudioMessage)) {
       console.log("⏭️ [PJ-WEBHOOK] Ignorando:", {
         isFromMe,
         isGroup,
         senderInvalid,
         hasText: !!messageText,
+        isAudioMessage,
         bestCandidate,
         candidatesPreview: candidateSenders.slice(0, 10),
       });
