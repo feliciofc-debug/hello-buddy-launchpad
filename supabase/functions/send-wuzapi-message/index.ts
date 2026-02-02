@@ -6,6 +6,144 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ═══════════════════════════════════════════════════════════════
+// 🔧 VALIDAÇÃO INTELIGENTE DE NÚMEROS (DDD 62 e outros)
+// Testa variantes com/sem 9º dígito e usa o JID real do WhatsApp
+// ═══════════════════════════════════════════════════════════════
+
+async function safeReadJson(response: Response): Promise<any> {
+  const text = await response.text().catch(() => "");
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text.slice(0, 1000) };
+  }
+}
+
+// Gera variantes do número para testar (com e sem 9º dígito)
+function generatePhoneVariants(phone: string): string[] {
+  let clean = phone.replace(/\D/g, "");
+  
+  if (clean.startsWith("55") && clean.length >= 12) {
+    clean = clean.substring(2);
+  }
+  
+  const variants: string[] = [];
+  
+  // Número com 11 dígitos (DDD + 9 + 8 dígitos) - testar também SEM o 9
+  if (clean.length === 11 && clean[2] === "9") {
+    const comNove = "55" + clean;
+    const semNove = "55" + clean.substring(0, 2) + clean.substring(3);
+    variants.push(comNove);
+    variants.push(semNove);
+  }
+  // Número com 10 dígitos (DDD + 8 dígitos) - testar também COM o 9
+  else if (clean.length === 10) {
+    const ddd = clean.substring(0, 2);
+    const numero = clean.substring(2);
+    const comNove = "55" + ddd + "9" + numero;
+    const semNove = "55" + clean;
+    variants.push(comNove);
+    variants.push(semNove);
+  }
+  else {
+    if (!clean.startsWith("55")) clean = "55" + clean;
+    variants.push(clean);
+  }
+  
+  return [...new Set(variants)];
+}
+
+// Verifica se número existe no WhatsApp e retorna o JID/número REAL
+async function checkPhoneExists(
+  baseUrl: string,
+  token: string,
+  phone: string
+): Promise<{ exists: boolean; jid?: string; realNumber?: string }> {
+  try {
+    // CRÍTICO: Enviar Phone como ARRAY - formato correto da WuzAPI!
+    const checkResp = await fetch(`${baseUrl}/user/check`, {
+      method: "POST",
+      headers: { "Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify({ Phone: [phone] }),
+    });
+    
+    const json = await safeReadJson(checkResp);
+    
+    console.log(`[CHECK] ${phone} -> ${checkResp.status}:`, JSON.stringify(json));
+    
+    // Formato: { data: { Users: [{ IsInWhatsapp, JID, Query }] } }
+    if (checkResp.ok && json?.data?.Users && Array.isArray(json.data.Users)) {
+      const user = json.data.Users[0];
+      
+      if (user && user.IsInWhatsapp === true) {
+        const realJid = user.JID || user.jid || null;
+        
+        // Extrair número limpo do JID (ex: "556292879397@s.whatsapp.net" -> "556292879397")
+        let extractedNumber = phone;
+        if (realJid && realJid.includes("@")) {
+          extractedNumber = realJid.split("@")[0];
+        }
+        
+        console.log(`[CHECK] ✅ ENCONTRADO! Query: ${user.Query}, JID REAL: ${realJid}, Número real: ${extractedNumber}`);
+        
+        return { 
+          exists: true, 
+          jid: realJid,
+          realNumber: extractedNumber 
+        };
+      }
+    }
+    
+    // Fallback para formato antigo (compatibilidade)
+    if (checkResp.ok && json && (json.IsRegistered === true || json.isRegistered === true)) {
+      const realJid = json.Jid || json.JID || json.jid || null;
+      let extractedNumber = phone;
+      if (realJid && realJid.includes("@")) {
+        extractedNumber = realJid.split("@")[0];
+      }
+      return { exists: true, jid: realJid, realNumber: extractedNumber };
+    }
+    
+    return { exists: false };
+  } catch (err: any) {
+    console.error(`[CHECK] Erro:`, err.message);
+    return { exists: false };
+  }
+}
+
+// Encontra o número correto testando variantes e retorna o NÚMERO REAL do WhatsApp
+async function findValidPhone(
+  baseUrl: string,
+  token: string,
+  phone: string
+): Promise<{ valid: boolean; phone: string; realNumber?: string; jid?: string; tested: string[] }> {
+  const variants = generatePhoneVariants(phone);
+  const tested: string[] = [];
+  
+  for (const variant of variants) {
+    tested.push(variant);
+    const result = await checkPhoneExists(baseUrl, token, variant);
+    if (result.exists) {
+      // USAR O NÚMERO REAL RETORNADO PELA API, não a variante que testamos
+      const phoneToUse = result.realNumber || variant;
+      console.log(`✅ [VALIDATE] Número válido! Testado: ${variant}, Número REAL: ${phoneToUse}, JID: ${result.jid}`);
+      return { 
+        valid: true, 
+        phone: phoneToUse, 
+        realNumber: result.realNumber,
+        jid: result.jid,
+        tested 
+      };
+    }
+  }
+  
+  // Se nenhum validou, usa a primeira variante (comportamento anterior)
+  console.log(`⚠️ [VALIDATE] Nenhuma variante confirmada, usando: ${variants[0]}`);
+  return { valid: false, phone: variants[0], tested };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -308,13 +446,11 @@ serve(async (req) => {
     
     for (const phone of numbersToSend) {
       try {
-        // Formatar o número no padrão internacional (apenas dígitos)
-        let formattedPhone = phone.replace(/\D/g, '');
+        // 🔧 VALIDAÇÃO INTELIGENTE: Testa variantes com/sem 9º dígito
+        const validation = await findValidPhone(baseUrl, wuzapiToken, phone);
+        const formattedPhone = validation.realNumber || validation.phone;
         
-        // Adiciona código do país +55 se não tiver
-        if (!formattedPhone.startsWith('55') && formattedPhone.length === 11) {
-          formattedPhone = '55' + formattedPhone;
-        }
+        console.log(`📱 [VALIDATE] ${phone} -> REAL: ${formattedPhone} (JID: ${validation.jid}) (válido: ${validation.valid})`);
 
         // Escolhe endpoint baseado se tem imagem ou não
         const endpoint = imageUrl ? '/chat/send/image' : '/chat/send/text';
@@ -357,6 +493,13 @@ serve(async (req) => {
 
         results.push({
           phoneNumber: formattedPhone,
+          phoneOriginal: phone,
+          validation: {
+            wasValidated: validation.valid,
+            realNumber: validation.realNumber,
+            jid: validation.jid,
+            variantsTested: validation.tested,
+          },
           success: response.ok,
           instance: instance.instance_name,
           data: responseData
