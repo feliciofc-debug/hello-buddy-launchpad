@@ -52,9 +52,19 @@ serve(async (req) => {
       );
     }
 
-    // Limitar texto a 5000 caracteres
-    const textToConvert = text.slice(0, 5000);
+    // Sanitizar texto: remover caracteres Unicode inválidos e limitar a 5000
+    const sanitizedText = text
+      .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '') // Remove lone high surrogates
+      .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '') // Remove lone low surrogates
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove control characters
+      .replace(/\uFFFD/g, '') // Remove replacement character
+      .normalize('NFC') // Normalize Unicode
+      .trim();
+    
+    const textToConvert = sanitizedText.slice(0, 5000);
     const voiceId = VOICES[voice as keyof typeof VOICES] || VOICES.roger;
+    
+    console.log(`🧹 [TTS-PJ] Texto sanitizado: ${text.length} -> ${sanitizedText.length} chars`);
 
     console.log(`🎤 [TTS-PJ] Gerando áudio para ${textToConvert.length} caracteres...`);
     console.log(`🎤 [TTS-PJ] Voz selecionada: ${voice} (${voiceId})`);
