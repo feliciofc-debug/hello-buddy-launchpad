@@ -435,8 +435,15 @@ function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
     return []; // Retorna vazio = não vai oferecer produto
   }
   
-  const msgLower = mensagem.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Remove acentos para busca
+  // 🔧 LIMPEZA AGRESSIVA: Remove acentos E pontuação
+  const limparTexto = (texto: string): string => {
+    return (texto || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove acentos
+      .replace(/[?!.,;:'"()\[\]{}]/g, '') // Remove pontuação
+      .trim();
+  };
+  
+  const msgLower = limparTexto(mensagem);
   
   // Stop words expandida
   const stopWords = [
@@ -488,6 +495,19 @@ function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
   // Coletar todos os termos para busca
   const termosParaBuscar: string[] = [];
   
+  // 🔧 PRIORIDADE 0: Extrair nomes de produtos conhecidos diretamente da mensagem
+  const produtosConhecidos = ['arroz', 'feijao', 'feijão', 'farinha', 'acucar', 'açucar', 'oleo', 'óleo', 
+    'leite', 'cafe', 'café', 'manteiga', 'queijo', 'presunto', 'flocao', 'flocão', 'milho', 'sal',
+    'macarrao', 'macarrão', 'molho', 'sardinha', 'atum', 'biscoito', 'bolacha', 'pao', 'pão'];
+  
+  for (const prod of produtosConhecidos) {
+    const prodNorm = limparTexto(prod);
+    if (msgLower.includes(prodNorm)) {
+      termosParaBuscar.push(prodNorm);
+      console.log(`🎯 [PJ-AI] Produto conhecido detectado: "${prodNorm}"`);
+    }
+  }
+  
   // Prioridade 1: produto específico de expressão de interesse
   if (produtoEspecifico) {
     termosParaBuscar.push(...produtoEspecifico.split(/\s+/).filter(p => p.length >= 2));
@@ -505,17 +525,20 @@ function filtrarProdutosRelevantes(produtos: any[], mensagem: string): any[] {
     termosParaBuscar.push(...palavras);
   }
   
-  // Remover duplicatas
-  const termosUnicos = [...new Set(termosParaBuscar)];
+  // 🔧 Limpar termos e remover duplicatas
+  const termosUnicos = [...new Set(termosParaBuscar.map(t => limparTexto(t)).filter(t => t.length >= 2))];
   console.log(`🔍 [PJ-AI] Termos para buscar: ${termosUnicos.join(', ')}`);
   
   if (termosUnicos.length === 0) {
     return []; // Sem termos válidos = não buscar produtos
   }
   
-  // Normalizar texto para busca (remover acentos)
+  // Normalizar texto para busca (remover acentos E pontuação)
   const normalizar = (texto: string) => {
-    return (texto || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return (texto || '').toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[?!.,;:'"()\[\]{}]/g, '')
+      .trim();
   };
   
   // Buscar produtos que contenham QUALQUER um dos termos
