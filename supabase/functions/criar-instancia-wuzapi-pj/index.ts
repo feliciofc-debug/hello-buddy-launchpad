@@ -214,18 +214,21 @@ serve(async (req) => {
           console.log(`📲 Tentando ${candidate.method} ${candidate.url}...`);
           
           let resp: Response;
+          let parsed: { ok: boolean; json?: any; text: string; error?: string };
+          
           if (candidate.method === "GET" || candidate.noBody) {
             resp = await fetch(candidate.url, {
               method: candidate.method,
               headers: { "Token": wuzapiToken },
             });
+            parsed = await safeReadJson(resp);
           } else {
             const result = await tryPostJson(candidate.url, { Token: wuzapiToken }, connectPayload);
             resp = result.resp;
+            parsed = result.parsed;
           }
           
           lastConnectStatus = resp.status;
-          const parsed = await safeReadJson(resp);
           lastConnectRaw = parsed.text;
 
           console.log(`   Status: ${resp.status}, OK: ${resp.ok}`);
