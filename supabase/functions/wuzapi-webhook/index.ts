@@ -101,6 +101,41 @@ serve(async (req) => {
     console.log('📦 Webhook data parseado:', JSON.stringify(webhookData).substring(0, 500));
     
     // ═══════════════════════════════════════
+    // 🔄 REDIRECIONAMENTO PARA INSTÂNCIAS PJ
+    // Instâncias PJ (amz-03, etc.) devem ser processadas pelo webhook PJ
+    // ═══════════════════════════════════════
+    const pjInstanceName = webhookData.instanceName || webhookData.instance || '';
+    const pjInstances = ['amz-03']; // Instâncias que pertencem ao sistema PJ
+    
+    if (pjInstances.includes(pjInstanceName)) {
+      console.log(`🔄 Redirecionando instância PJ "${pjInstanceName}" para wuzapi-webhook-pj...`);
+      
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+        const pjWebhookUrl = `${supabaseUrl}/functions/v1/wuzapi-webhook-pj`;
+        
+        const pjResponse = await fetch(pjWebhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(webhookData),
+        });
+        
+        const pjResult = await pjResponse.text();
+        console.log(`✅ Redirecionado para PJ - Status: ${pjResponse.status}`);
+        
+        return new Response(pjResult, {
+          status: pjResponse.status,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      } catch (redirectError) {
+        console.error("❌ Erro ao redirecionar para webhook PJ:", redirectError);
+        // Continue o processamento normal como fallback
+      }
+    }
+    
+    // ═══════════════════════════════════════
     // 🚫 FILTRAR TIPOS DE EVENTO - MUITO IMPORTANTE!
     // ═══════════════════════════════════════
     const eventType = webhookData.type || '';
