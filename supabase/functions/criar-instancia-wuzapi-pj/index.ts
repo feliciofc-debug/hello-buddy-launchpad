@@ -529,51 +529,40 @@ serve(async (req) => {
       const supabaseUrlEnv = Deno.env.get("SUPABASE_URL")!;
       const webhookUrl = `${supabaseUrlEnv}/functions/v1/wuzapi-webhook-pj`;
       
-      // Configurar webhook URL + eventos importantes
-      // Eventos que precisamos: Message (para receber mensagens)
-      const webhookPayload = {
-        webhookURL: webhookUrl,
-        events: "Message,ReadReceipt,ChatPresence,Presence,HistorySync,Receipt"
-      };
-      
       let webhookConfigured = false;
       let eventsConfigured = false;
       let lastResponse: any = null;
 
-      // Primeiro, configurar o webhook
-      try {
-        const { resp, parsed } = await tryPostJson(`${baseUrl}/webhook`, { Token: wuzapiToken }, webhookPayload);
-        lastResponse = { url: `${baseUrl}/webhook`, status: resp.status, data: parsed.json || parsed.text };
-        
-        if (resp.ok && parsed.ok) {
-          console.log(`✅ Webhook + eventos configurados:`, parsed.json);
-          webhookConfigured = true;
-          eventsConfigured = true;
-        }
-      } catch (e) {
-        console.error(`❌ Erro ao configurar webhook:`, e);
-      }
+      // Tentar múltiplos endpoints (builds diferentes de WuzAPI)
+      const webhookCandidates = [
+        // Formato Locaweb/WuzAPI moderno
+        { url: `${baseUrl}/admin/webhook`, body: { WebhookURL: webhookUrl, Events: "Message,ReadReceipt,ChatPresence,Presence" } },
+        { url: `${baseUrl}/webhook`, body: { webhookURL: webhookUrl, events: "Message,ReadReceipt,ChatPresence,Presence,HistorySync,Receipt" } },
+        // Formatos alternativos
+        { url: `${baseUrl}/session/webhook`, body: { url: webhookUrl, events: "Message,ReadReceipt" } },
+        { url: `${baseUrl}/settings/webhook`, body: { webhook: webhookUrl, events: "Message,ReadReceipt" } },
+        // Formato com lowercase
+        { url: `${baseUrl}/admin/webhook`, body: { webhookurl: webhookUrl, events: "Message,ReadReceipt,ChatPresence,Presence" } },
+      ];
 
-      // Se falhou, tentar endpoint alternativo
-      if (!webhookConfigured) {
-        const webhookCandidates = [
-          { url: `${baseUrl}/session/webhook`, body: { url: webhookUrl, events: "Message,ReadReceipt" } },
-          { url: `${baseUrl}/settings/webhook`, body: { webhook: webhookUrl, events: "Message,ReadReceipt" } },
-        ];
-
-        for (const candidate of webhookCandidates) {
-          try {
-            const { resp, parsed } = await tryPostJson(candidate.url, { Token: wuzapiToken }, candidate.body);
-            lastResponse = { url: candidate.url, status: resp.status, data: parsed.json || parsed.text };
-            
-            if (resp.ok && parsed.ok) {
-              console.log(`✅ Webhook configurado via ${candidate.url}:`, parsed.json);
-              webhookConfigured = true;
-              break;
-            }
-          } catch (e) {
-            console.error(`❌ Erro em ${candidate.url}:`, e);
+      for (const candidate of webhookCandidates) {
+        try {
+          console.log(`🔧 Tentando ${candidate.url}...`);
+          const { resp, parsed } = await tryPostJson(candidate.url, { Token: wuzapiToken }, candidate.body);
+          lastResponse = { url: candidate.url, status: resp.status, data: parsed.json || parsed.text };
+          
+          console.log(`   Status: ${resp.status}, resposta: ${JSON.stringify(parsed.json || parsed.text).slice(0, 200)}`);
+          
+          if (resp.status === 404) continue;
+          
+          if (resp.ok && parsed.ok) {
+            console.log(`✅ Webhook configurado via ${candidate.url}:`, parsed.json);
+            webhookConfigured = true;
+            eventsConfigured = true;
+            break;
           }
+        } catch (e) {
+          console.error(`❌ Erro em ${candidate.url}:`, e);
         }
       }
 
@@ -584,9 +573,10 @@ serve(async (req) => {
           eventsConfigured,
           events: "Message,ReadReceipt,ChatPresence,Presence,HistorySync,Receipt",
           message: webhookConfigured 
-            ? "Webhook e eventos configurados com sucesso!" 
-            : "Não foi possível configurar o webhook automaticamente. Configure manualmente.",
+            ? "Webhook configurado para wuzapi-webhook-pj com sucesso!" 
+            : "Não foi possível configurar o webhook automaticamente. Configure manualmente no painel WuzAPI.",
           lastResponse,
+          hint: !webhookConfigured ? "Acesse http://191.252.193.73:8083 e configure o webhook para: " + webhookUrl : undefined,
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
