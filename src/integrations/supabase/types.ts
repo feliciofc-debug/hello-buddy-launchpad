@@ -1474,60 +1474,75 @@ export type Database = {
       campanhas_recorrentes: {
         Row: {
           ativa: boolean | null
+          categoria_rotacao: string | null
           created_at: string | null
           data_inicio: string
           dias_semana: number[] | null
           frequencia: string
           horarios: string[]
           id: string
+          intervalo_minutos: number | null
           listas_ids: string[]
           mensagem_template: string
           nome: string
+          pj_grupos_ids: string[] | null
           produto_id: string
+          produtos_ids: string[] | null
           proxima_execucao: string | null
           status: string | null
           total_enviados: number | null
           ultima_execucao: string | null
+          ultimo_produto_index: number | null
           updated_at: string | null
           user_id: string
           vendedor_id: string | null
         }
         Insert: {
           ativa?: boolean | null
+          categoria_rotacao?: string | null
           created_at?: string | null
           data_inicio: string
           dias_semana?: number[] | null
           frequencia: string
           horarios?: string[]
           id?: string
+          intervalo_minutos?: number | null
           listas_ids: string[]
           mensagem_template: string
           nome: string
+          pj_grupos_ids?: string[] | null
           produto_id: string
+          produtos_ids?: string[] | null
           proxima_execucao?: string | null
           status?: string | null
           total_enviados?: number | null
           ultima_execucao?: string | null
+          ultimo_produto_index?: number | null
           updated_at?: string | null
           user_id: string
           vendedor_id?: string | null
         }
         Update: {
           ativa?: boolean | null
+          categoria_rotacao?: string | null
           created_at?: string | null
           data_inicio?: string
           dias_semana?: number[] | null
           frequencia?: string
           horarios?: string[]
           id?: string
+          intervalo_minutos?: number | null
           listas_ids?: string[]
           mensagem_template?: string
           nome?: string
+          pj_grupos_ids?: string[] | null
           produto_id?: string
+          produtos_ids?: string[] | null
           proxima_execucao?: string | null
           status?: string | null
           total_enviados?: number | null
           ultima_execucao?: string | null
+          ultimo_produto_index?: number | null
           updated_at?: string | null
           user_id?: string
           vendedor_id?: string | null

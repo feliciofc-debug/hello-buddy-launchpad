@@ -26,21 +26,21 @@ serve(async (req) => {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).format(now); // YYYY-MM-DD (no fuso de SP)
+    }).format(now);
 
     const currentTime = new Intl.DateTimeFormat('en-GB', {
       timeZone,
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-    }).format(now); // HH:MM (no fuso de SP)
+    }).format(now);
 
     const spNow = new Date(`${currentDate}T${currentTime}:00-03:00`);
-    const currentDay = spNow.getDay(); // 0-6 (no fuso de SP)
+    const currentDay = spNow.getDay();
 
     console.log(`⏰ Hora atual (SP): ${currentTime}, Dia da semana (SP): ${currentDay}`);
 
-    // Buscar campanhas ativas que devem ser executadas agora
+    // Buscar campanhas ativas
     const { data: campanhas, error: fetchError } = await supabase
       .from("campanhas_recorrentes")
       .select(`
@@ -48,8 +48,7 @@ serve(async (req) => {
         produtos(id, nome, descricao, preco, imagem_url, imagens)
       `)
       .eq("ativa", true)
-      .lte("data_inicio", currentDate)
-      .not("horarios", "is", null);
+      .lte("data_inicio", currentDate);
 
     if (fetchError) {
       console.error("❌ Erro ao buscar campanhas:", fetchError);
@@ -63,123 +62,160 @@ serve(async (req) => {
 
     for (const campanha of campanhas || []) {
       try {
-        // ✅ VERIFICAR HORÁRIO - SÓ EXECUTA NO HORÁRIO EXATO OU ATÉ 3MIN DEPOIS (nunca antes!)
-        const horariosNormalizados = (campanha.horarios || []).map((h: string) =>
-          typeof h === "string" ? h.slice(0, 5) : h
-        );
+        // ✅ MODO INTERVALO: frequencia = 'intervalo' + intervalo_minutos definido
+        const isIntervaloMode = campanha.frequencia === 'intervalo' && campanha.intervalo_minutos > 0;
         
-        // Converter hora atual para minutos totais
-        const [horaAtual, minutoAtual] = currentTime.split(':').map(Number);
-        const minutosTotaisAgora = horaAtual * 60 + minutoAtual;
-        
-        let horarioMatch = false;
-        let horarioEncontrado = '';
-        let menorAtraso = 999;
-        
-        // ✅ CRÍTICO: Verificar TODOS os horários e pegar o MAIS PRÓXIMO (menor atraso)
-        // Isso evita que 11:56 (atraso 3min) bloqueie 11:59 (atraso 0min)
-        for (const horarioConfig of horariosNormalizados) {
-          const [horaConfig, minutoConfig] = horarioConfig.split(':').map(Number);
-          const minutosTotaisConfig = horaConfig * 60 + minutoConfig;
-          
-          // Hora atual DEVE ser >= horário configurado (nunca antes!)
-          // E tolerância máxima de 3 minutos de ATRASO (para cobrir delays do cron)
-          const diferencaMinutos = minutosTotaisAgora - minutosTotaisConfig;
-          
-          // Só considera se: horário passou (diferença >= 0) E atraso <= 3 minutos
-          if (diferencaMinutos >= 0 && diferencaMinutos <= 3) {
-            console.log(`🔍 Horário candidato: ${horarioConfig} (atraso: ${diferencaMinutos}min)`);
+        let shouldExecute = false;
+        let horarioEncontrado = currentTime;
+
+        if (isIntervaloMode) {
+          // ✅ VERIFICAR SE JÁ PASSOU O INTERVALO DESDE A ÚLTIMA EXECUÇÃO
+          if (!campanha.ultima_execucao) {
+            shouldExecute = true;
+            console.log(`🆕 Campanha ${campanha.nome} - Primeira execução (intervalo: ${campanha.intervalo_minutos}min)`);
+          } else {
+            const ultimaExecucao = new Date(campanha.ultima_execucao);
+            const diffMs = now.getTime() - ultimaExecucao.getTime();
+            const diffMinutos = Math.floor(diffMs / 60000);
             
-            // ✅ PEGA O HORÁRIO COM MENOR ATRASO (mais recente)
-            if (diferencaMinutos < menorAtraso) {
-              menorAtraso = diferencaMinutos;
-              horarioMatch = true;
-              horarioEncontrado = horarioConfig;
-            }
-          }
-        }
-        
-        if (horarioMatch) {
-          console.log(`✅ Horário selecionado: ${horarioEncontrado} (atraso: ${menorAtraso}min)`);
-        }
-        
-        if (!horarioMatch) {
-          console.log(
-            `⏭️ Campanha ${campanha.nome} - Horário não corresponde (agora=${currentTime}, horarios=${JSON.stringify(horariosNormalizados)})`
-          );
-          continue;
-        }
-
-        // Para campanhas diárias/semanais, verificar dia da semana
-        if ((campanha.frequencia === 'diario' || campanha.frequencia === 'semanal') && campanha.dias_semana) {
-          if (!campanha.dias_semana.includes(currentDay)) {
-            console.log(`⏭️ Campanha ${campanha.nome} - Dia da semana não corresponde`);
-            continue;
-          }
-        }
-
-        // ✅ VERIFICAR SE JÁ EXECUTOU ESTE *SLOT* (mesmo horário agendado) HOJE (SP)
-        // (evita bloquear um horário 11:20 só porque executou 11:18, por exemplo)
-        if (campanha.ultima_execucao) {
-          const ultimaExecucao = new Date(campanha.ultima_execucao);
-
-          const ultimaDateSP = new Intl.DateTimeFormat('en-CA', {
-            timeZone,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-          }).format(ultimaExecucao);
-
-          const ultimaTimeSP = new Intl.DateTimeFormat('en-GB', {
-            timeZone,
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-          }).format(ultimaExecucao);
-
-          if (ultimaDateSP === currentDate) {
-            const ultimoSlotExecutado = resolveExecutedSlot(
-              ultimaTimeSP,
-              horariosNormalizados,
-              3 // mesma tolerância do cron
-            );
-
-            if (ultimoSlotExecutado && ultimoSlotExecutado === horarioEncontrado) {
-              console.log(
-                `⏭️ Campanha ${campanha.nome} - Já executou HOJE no mesmo horário (${horarioEncontrado}) (ultima=${ultimaTimeSP})`
-              );
+            if (diffMinutos >= campanha.intervalo_minutos) {
+              shouldExecute = true;
+              console.log(`✅ Campanha ${campanha.nome} - Intervalo atingido (${diffMinutos}min >= ${campanha.intervalo_minutos}min)`);
+            } else {
+              console.log(`⏭️ Campanha ${campanha.nome} - Aguardando intervalo (${diffMinutos}min < ${campanha.intervalo_minutos}min)`);
               continue;
             }
           }
+          
+          // Para modo intervalo, verificar dia da semana
+          if (campanha.dias_semana && campanha.dias_semana.length > 0) {
+            if (!campanha.dias_semana.includes(currentDay)) {
+              console.log(`⏭️ Campanha ${campanha.nome} - Dia da semana não permitido`);
+              continue;
+            }
+          }
+        } else {
+          // ✅ MODO HORÁRIOS FIXOS (comportamento original)
+          if (!campanha.horarios || campanha.horarios.length === 0) {
+            console.log(`⏭️ Campanha ${campanha.nome} - Sem horários configurados`);
+            continue;
+          }
+          
+          const horariosNormalizados = (campanha.horarios || []).map((h: string) =>
+            typeof h === "string" ? h.slice(0, 5) : h
+          );
+          
+          const [horaAtual, minutoAtual] = currentTime.split(':').map(Number);
+          const minutosTotaisAgora = horaAtual * 60 + minutoAtual;
+          
+          let horarioMatch = false;
+          let menorAtraso = 999;
+          
+          for (const horarioConfig of horariosNormalizados) {
+            const [horaConfig, minutoConfig] = horarioConfig.split(':').map(Number);
+            const minutosTotaisConfig = horaConfig * 60 + minutoConfig;
+            const diferencaMinutos = minutosTotaisAgora - minutosTotaisConfig;
+            
+            if (diferencaMinutos >= 0 && diferencaMinutos <= 3) {
+              if (diferencaMinutos < menorAtraso) {
+                menorAtraso = diferencaMinutos;
+                horarioMatch = true;
+                horarioEncontrado = horarioConfig;
+              }
+            }
+          }
+          
+          if (!horarioMatch) {
+            console.log(`⏭️ Campanha ${campanha.nome} - Horário não corresponde (agora=${currentTime})`);
+            continue;
+          }
+
+          // Verificar dia da semana para campanhas diárias/semanais
+          if ((campanha.frequencia === 'diario' || campanha.frequencia === 'semanal') && campanha.dias_semana) {
+            if (!campanha.dias_semana.includes(currentDay)) {
+              console.log(`⏭️ Campanha ${campanha.nome} - Dia da semana não corresponde`);
+              continue;
+            }
+          }
+
+          // Verificar se já executou este slot hoje
+          if (campanha.ultima_execucao) {
+            const ultimaExecucao = new Date(campanha.ultima_execucao);
+            const ultimaDateSP = new Intl.DateTimeFormat('en-CA', {
+              timeZone,
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }).format(ultimaExecucao);
+
+            const ultimaTimeSP = new Intl.DateTimeFormat('en-GB', {
+              timeZone,
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            }).format(ultimaExecucao);
+
+            if (ultimaDateSP === currentDate) {
+              const ultimoSlotExecutado = resolveExecutedSlot(
+                ultimaTimeSP,
+                horariosNormalizados,
+                3
+              );
+
+              if (ultimoSlotExecutado && ultimoSlotExecutado === horarioEncontrado) {
+                console.log(`⏭️ Campanha ${campanha.nome} - Já executou HOJE no mesmo horário (${horarioEncontrado})`);
+                continue;
+              }
+            }
+          }
+          
+          shouldExecute = true;
         }
 
-        console.log(`✅ Executando campanha: ${campanha.nome} (horário slot: ${horarioEncontrado}, hora atual: ${currentTime})`);
+        if (!shouldExecute) continue;
+
+        console.log(`✅ Executando campanha: ${campanha.nome} (modo: ${isIntervaloMode ? 'intervalo' : 'horário fixo'})`);
 
         let enviados = 0;
         let errosEnvio = 0;
-        const imagemUrl = campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0];
+        
+        // ✅ OBTER PRODUTO (rotação ou fixo)
+        let produtoParaEnviar = campanha.produtos;
+        let imagemUrl = produtoParaEnviar?.imagem_url || produtoParaEnviar?.imagens?.[0];
+        
+        // Se modo intervalo com rotação de produtos
+        if (isIntervaloMode && (campanha.produtos_ids?.length > 0 || campanha.categoria_rotacao)) {
+          const produtoRotacionado = await obterProximoProduto(supabase, campanha);
+          if (produtoRotacionado) {
+            produtoParaEnviar = produtoRotacionado;
+            imagemUrl = produtoRotacionado.imagem_url || produtoRotacionado.imagens?.[0];
+            console.log(`🔄 Produto rotacionado: ${produtoRotacionado.nome}`);
+          }
+        }
 
-        // ✅ VERIFICAR SE ALGUM ID É UM GRUPO PJ (enviado pelo JID, não por contatos)
+        // ✅ ENVIAR PARA GRUPOS PJ (pj_grupos_ids ou listas_ids que são grupos PJ)
+        const gruposIdsParaBuscar = campanha.pj_grupos_ids?.length > 0 
+          ? campanha.pj_grupos_ids 
+          : campanha.listas_ids || [];
+
         const { data: gruposPJ } = await supabase
           .from("pj_grupos_whatsapp")
           .select("id, grupo_jid, nome")
-          .in("id", campanha.listas_ids || []);
+          .in("id", gruposIdsParaBuscar);
 
         if (gruposPJ && gruposPJ.length > 0) {
-          console.log(`👥 Detectados ${gruposPJ.length} grupos PJ na campanha`);
+          console.log(`👥 Enviando para ${gruposPJ.length} grupos PJ`);
           
-          // ✅ ENVIAR PARA GRUPOS PJ (direto pelo JID)
           for (const grupo of gruposPJ) {
             try {
               console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
               
-              // Para grupos, substituir {{nome}} por "pessoal"
               const mensagemGrupo = campanha.mensagem_template
                 .replace(/\{\{nome\}\}/gi, 'pessoal')
                 .replace(/Olá\s+,/gi, 'Olá pessoal,')
                 .replace(/Oi\s+,/gi, 'Oi pessoal,')
-                .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || "")
-                .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || "");
+                .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
+                .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
               
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
                 body: {
@@ -198,7 +234,6 @@ serve(async (req) => {
                 errosEnvio++;
               }
 
-              // Delay entre envios
               await new Promise(r => setTimeout(r, 500));
 
             } catch (error) {
@@ -208,7 +243,7 @@ serve(async (req) => {
           }
         }
 
-        // ✅ PROCESSAR LISTAS NORMAIS (whatsapp_groups) - excluir IDs que já são grupos PJ
+        // ✅ PROCESSAR LISTAS NORMAIS (whatsapp_groups) - excluir IDs que são grupos PJ
         const gruposPJIds = (gruposPJ || []).map(g => g.id);
         const listasNormaisIds = (campanha.listas_ids || []).filter((id: string) => !gruposPJIds.includes(id));
         
@@ -221,10 +256,8 @@ serve(async (req) => {
           const todosContatos = listas?.flatMap((l: any) => l.phone_numbers || []) || [];
           console.log(`📞 Total de contatos em listas normais: ${todosContatos.length}`);
 
-          // ✅ ENVIAR PARA CADA CONTATO VIA EDGE FUNCTION
           for (const phone of todosContatos) {
             try {
-              // Buscar nome do contato
               const { data: contact } = await supabase
                 .from("whatsapp_contacts")
                 .select("nome")
@@ -234,13 +267,11 @@ serve(async (req) => {
 
               const nome = contact?.nome || "Cliente";
 
-              // Personalizar mensagem
               const mensagemPersonalizada = campanha.mensagem_template
                 .replace(/\{\{nome\}\}/gi, nome)
-                .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || "")
-                .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || "");
+                .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
+                .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
 
-              // ✅ ENVIAR VIA EDGE FUNCTION
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
                 body: {
                   phoneNumbers: [phone],
@@ -259,7 +290,6 @@ serve(async (req) => {
                 errosEnvio++;
               }
 
-              // Delay entre mensagens
               await new Promise(r => setTimeout(r, 500));
 
             } catch (error) {
@@ -275,35 +305,35 @@ serve(async (req) => {
         const totalAlvos = (gruposPJ?.length || 0) + (listasNormaisIds.length > 0 ? 1 : 0);
         if (enviados === 0 && totalAlvos > 0) {
           console.log(`⚠️ Campanha ${campanha.nome} - Nenhuma mensagem enviada, NÃO atualizando ultima_execucao`);
-          continue; // Não marca como executado se não enviou nada
+          continue;
         }
 
-        // ✅ CALCULAR PRÓXIMA EXECUÇÃO (suporta múltiplos horários)
-        const proximaExecucao = calcularProximaExecucao(
-          campanha.frequencia,
-          campanha.horarios,
-          campanha.dias_semana
-        );
-
-        // ✅ GRAVAR O HORÁRIO DO SLOT EXECUTADO (não o horário atual!)
-        // Isso garante que a verificação de "já executou este slot" funcione corretamente
-        const slotExecutadoISO = new Date(`${currentDate}T${horarioEncontrado}:00-03:00`).toISOString();
+        // ✅ CALCULAR PRÓXIMA EXECUÇÃO
+        let proximaExecucao: string | null = null;
         
+        if (isIntervaloMode) {
+          // Para modo intervalo, próxima execução é agora + intervalo
+          const proxima = new Date(now.getTime() + campanha.intervalo_minutos * 60000);
+          proximaExecucao = proxima.toISOString();
+        } else {
+          proximaExecucao = calcularProximaExecucao(
+            campanha.frequencia,
+            campanha.horarios,
+            campanha.dias_semana
+          );
+        }
+
         // Atualizar campanha
         const updateData: any = {
-          ultima_execucao: slotExecutadoISO, // ✅ USA O HORÁRIO DO SLOT, NÃO now()
+          ultima_execucao: now.toISOString(),
           total_enviados: (campanha.total_enviados || 0) + enviados,
-          proxima_execucao: proximaExecucao
+          proxima_execucao: proximaExecucao,
+          status: 'ativa'
         };
-        
-        console.log(`📝 Atualizando ultima_execucao para slot ${horarioEncontrado} (${slotExecutadoISO})`);
 
-        // Se for uma_vez, desativar
         if (campanha.frequencia === 'uma_vez') {
           updateData.ativa = false;
           updateData.status = 'encerrada';
-        } else {
-          updateData.status = 'ativa';
         }
 
         await supabase
@@ -320,7 +350,7 @@ serve(async (req) => {
 
     console.log(`✅ Execução concluída: ${executadas} campanhas executadas, ${erros} erros`);
 
-    // ✅ TAMBÉM DISPARA O ENVIO PROGRAMADO DE AFILIADOS (aproveita o mesmo cron)
+    // ✅ TAMBÉM DISPARA O ENVIO PROGRAMADO DE AFILIADOS
     let envioProgramadoResult = null;
     try {
       console.log('📤 [AFILIADO] Disparando executar-envio-programado...');
@@ -338,7 +368,7 @@ serve(async (req) => {
       console.error('❌ [AFILIADO] Erro ao chamar envio programado:', epError);
     }
 
-    // ✅ PROCESSAR FILA DE ATENDIMENTO ANTI-BLOQUEIO (respostas da IA)
+    // ✅ PROCESSAR FILA DE ATENDIMENTO ANTI-BLOQUEIO
     let filaAtendimentoResult = null;
     try {
       console.log('📤 [FILA] Processando fila de atendimento anti-bloqueio...');
@@ -387,6 +417,53 @@ serve(async (req) => {
   }
 });
 
+// ✅ FUNÇÃO PARA OBTER PRÓXIMO PRODUTO (rotação)
+async function obterProximoProduto(supabase: any, campanha: any): Promise<any> {
+  try {
+    let query = supabase
+      .from("produtos")
+      .select("id, nome, descricao, preco, imagem_url, imagens, categoria")
+      .eq("user_id", campanha.user_id)
+      .eq("ativo", true);
+
+    // Se tem lista específica de produtos
+    if (campanha.produtos_ids && campanha.produtos_ids.length > 0) {
+      query = query.in("id", campanha.produtos_ids);
+    }
+    
+    // Se tem filtro de categoria
+    if (campanha.categoria_rotacao) {
+      query = query.eq("categoria", campanha.categoria_rotacao);
+    }
+
+    const { data: produtos, error } = await query;
+
+    if (error || !produtos || produtos.length === 0) {
+      console.log(`⚠️ Nenhum produto encontrado para rotação`);
+      return null;
+    }
+
+    // Calcular próximo índice
+    const ultimoIndex = campanha.ultimo_produto_index || 0;
+    const proximoIndex = (ultimoIndex + 1) % produtos.length;
+    
+    const produtoSelecionado = produtos[proximoIndex];
+
+    // Atualizar índice na campanha
+    await supabase
+      .from("campanhas_recorrentes")
+      .update({ ultimo_produto_index: proximoIndex })
+      .eq("id", campanha.id);
+
+    console.log(`🔄 Produto ${proximoIndex + 1}/${produtos.length}: ${produtoSelecionado.nome}`);
+    
+    return produtoSelecionado;
+  } catch (error) {
+    console.error("❌ Erro ao obter próximo produto:", error);
+    return null;
+  }
+}
+
 function resolveExecutedSlot(
   executedTimeHHMM: string,
   scheduleHHMMList: string[],
@@ -396,19 +473,17 @@ function resolveExecutedSlot(
   if (Number.isNaN(eh) || Number.isNaN(em)) return null;
   const executedTotal = eh * 60 + em;
 
-  // Normaliza e ordena
   const schedule = (scheduleHHMMList || [])
     .map((h) => (typeof h === 'string' ? h.slice(0, 5) : String(h)))
     .filter((h) => /^\d{2}:\d{2}$/.test(h))
     .sort();
 
-  // Heurística: o slot executado é o mais próximo (em até tolerance) cujo horário <= executedTime
   let best: { h: string; diff: number } | null = null;
   for (const h of schedule) {
     const [sh, sm] = h.split(':').map(Number);
     const scheduledTotal = sh * 60 + sm;
     const diff = executedTotal - scheduledTotal;
-    if (diff < 0) continue; // executou antes do slot
+    if (diff < 0) continue;
     if (diff <= toleranceMinutes) {
       if (!best || diff < best.diff) best = { h, diff };
     }
@@ -417,7 +492,6 @@ function resolveExecutedSlot(
   return best?.h ?? null;
 }
 
-// ✅ FUNÇÃO CORRIGIDA - SUPORTA MÚLTIPLOS HORÁRIOS NO MESMO DIA (FUSO SP)
 function calcularProximaExecucao(
   frequencia: string,
   horarios: string[],
@@ -431,16 +505,15 @@ function calcularProximaExecucao(
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(now); // YYYY-MM-DD (SP)
+  }).format(now);
 
   const horaAtual = new Intl.DateTimeFormat('en-GB', {
     timeZone,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-  }).format(now); // HH:MM (SP)
+  }).format(now);
 
-  // Normalizar horários para HH:MM
   const horariosNormalizados = (horarios || []).map((h: string) =>
     typeof h === 'string' ? h.slice(0, 5) : h
   );
@@ -449,21 +522,17 @@ function calcularProximaExecucao(
 
   if (frequencia === 'uma_vez') return null;
 
-  // ✅ VERIFICAR SE HÁ MAIS HORÁRIOS HOJE
   const proximoHorarioHoje = horariosOrdenados.find((h: string) => h > horaAtual);
 
   if (proximoHorarioHoje) {
-    // Se for semanal, verificar se hoje é dia válido
     const spNow = new Date(`${currentDate}T${horaAtual}:00-03:00`);
     if (frequencia === 'semanal' && diasSemana && !diasSemana.includes(spNow.getDay())) {
       return calcularProximoDiaExecucao(frequencia, horariosOrdenados[0], diasSemana);
     }
 
-    console.log(`📅 Próximo horário HOJE (SP): ${proximoHorarioHoje}`);
     return new Date(`${currentDate}T${proximoHorarioHoje}:00-03:00`).toISOString();
   }
 
-  // Não há mais horários hoje, ir para próximo dia
   return calcularProximoDiaExecucao(frequencia, horariosOrdenados[0], diasSemana);
 }
 
@@ -480,10 +549,9 @@ function calcularProximoDiaExecucao(
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(now); // YYYY-MM-DD (SP)
+  }).format(now);
 
-  // Criar um Date “SP” para fazer contas de dia com segurança
-  const base = new Date(`${currentDate}T12:00:00-03:00`); // meio-dia evita edge cases
+  const base = new Date(`${currentDate}T12:00:00-03:00`);
 
   if (frequencia === 'diario' || frequencia === 'personalizado') {
     const proxima = new Date(base);
