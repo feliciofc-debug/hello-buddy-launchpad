@@ -958,11 +958,26 @@ async function transcreverAudio(
         model: "google/gemini-2.5-flash",
         messages: [
           {
+            role: "system",
+            content: `Você é um transcritor de áudio de WhatsApp em português brasileiro.
+
+REGRAS ABSOLUTAS:
+1. Transcreva EXATAMENTE e LITERALMENTE o que a pessoa está falando
+2. NÃO INVENTE conteúdo - se não entender, escreva "[inaudível]"
+3. NÃO INTERPRETE ou ADICIONE informações que não foram ditas
+4. O áudio é de uma conversa INFORMAL de WhatsApp (geralmente cumprimentos, perguntas simples, pedidos)
+5. Pessoas costumam dizer coisas como: "oi", "tudo bem?", "bom dia", "quero comprar X", "tem Y?", etc.
+6. Se o áudio estiver vazio, ruído ou incompreensível, retorne: "[áudio não compreendido]"
+7. NÃO transcreva notícias, textos longos ou conteúdos formais - isso indica erro
+
+Retorne APENAS a transcrição literal, sem aspas, sem explicações, sem prefixos.`
+          },
+          {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Transcreva exatamente o que é dito neste áudio em português. Retorne APENAS a transcrição, sem comentários ou explicações adicionais."
+                text: "Transcreva este áudio de WhatsApp:"
               },
               {
                 type: "input_audio",
@@ -974,6 +989,7 @@ async function transcreverAudio(
             ]
           }
         ],
+        temperature: 0.1, // Baixa temperatura para transcrição literal
       }),
     });
     
