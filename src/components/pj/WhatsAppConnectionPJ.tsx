@@ -62,16 +62,48 @@ export default function WhatsAppConnectionPJ() {
     if (config) {
       setHasConfig(true);
       setInstanceName(config.wuzapi_instance_name || '');
-      if (config.whatsapp_conectado) {
-        // Remove o device ID (:XX) e @s.whatsapp.net do JID
-        const cleanPhone = config.wuzapi_jid
-          ?.replace('@s.whatsapp.net', '')
-          ?.replace(/:\d+$/, ''); // Remove :21, :42, etc
-        setStatus({
-          connected: true,
-          jid: config.wuzapi_jid,
-          phone: cleanPhone,
+      
+      // SEMPRE verificar o status real via API, não confiar apenas no banco
+      // O banco pode estar desatualizado se a sessão WuzAPI desconectou
+      try {
+        const { data: statusData, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
+          body: { userId: user.id, action: 'status' }
         });
+        
+        if (!error && statusData) {
+          // Usa o status REAL retornado pela API
+          const isReallyConnected = statusData.connected === true;
+          
+          if (isReallyConnected && statusData.jid) {
+            const cleanPhone = statusData.jid
+              ?.replace('@s.whatsapp.net', '')
+              ?.replace(/:\d+$/, '');
+            setStatus({
+              connected: true,
+              jid: statusData.jid,
+              phone: cleanPhone,
+            });
+          } else {
+            // NÃO está conectado de verdade
+            setStatus({ connected: false });
+          }
+        } else {
+          // Fallback para o valor do banco se API falhar
+          if (config.whatsapp_conectado && config.wuzapi_jid) {
+            const cleanPhone = config.wuzapi_jid
+              ?.replace('@s.whatsapp.net', '')
+              ?.replace(/:\d+$/, '');
+            setStatus({
+              connected: true,
+              jid: config.wuzapi_jid,
+              phone: cleanPhone,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao verificar status real:', err);
+        // Fallback seguro: assume desconectado se não conseguir verificar
+        setStatus({ connected: false });
       }
     }
   };
