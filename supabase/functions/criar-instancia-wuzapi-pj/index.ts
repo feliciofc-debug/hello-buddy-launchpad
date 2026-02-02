@@ -126,6 +126,7 @@ serve(async (req) => {
       // A WuzAPI da Locaweb usa endpoint diferente!
       // Primeiro, verificar se já está conectado
       let isAlreadyConnected = false;
+      let hasStaleSession = false;
       try {
         const statusResp = await fetch(`${baseUrl}/session/status`, {
           method: "GET",
@@ -135,7 +136,14 @@ serve(async (req) => {
         if (statusParsed.ok) {
           const innerData = statusParsed.json?.data || statusParsed.json;
           isAlreadyConnected = innerData?.connected === true || innerData?.loggedIn === true;
-          console.log("📊 Status atual:", { connected: isAlreadyConnected, jid: innerData?.jid });
+          const hasJid = !!(innerData?.jid);
+          console.log("📊 Status atual:", { connected: isAlreadyConnected, jid: innerData?.jid, loggedIn: innerData?.loggedIn });
+          
+          // Detectar sessão "limbo": tem JID mas não está realmente conectado
+          if (!isAlreadyConnected && hasJid) {
+            hasStaleSession = true;
+            console.log("⚠️ Sessão em estado limbo detectada - forçando logout...");
+          }
           
           if (isAlreadyConnected) {
             return new Response(
@@ -151,6 +159,33 @@ serve(async (req) => {
         }
       } catch (e) {
         console.log("⚠️ Não foi possível verificar status:", e);
+      }
+
+      // Se há sessão em limbo, forçar logout antes de tentar reconectar
+      if (hasStaleSession) {
+        console.log("🔄 Limpando sessão antiga...");
+        const logoutEndpoints = [
+          `${baseUrl}/session/logout`,
+          `${baseUrl}/session/disconnect`,
+        ];
+        
+        for (const logoutUrl of logoutEndpoints) {
+          try {
+            const logoutResp = await fetch(logoutUrl, {
+              method: "POST",
+              headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
+              body: JSON.stringify({}),
+            });
+            console.log(`   Logout ${logoutUrl}: ${logoutResp.status}`);
+            if (logoutResp.ok) {
+              // Aguardar servidor processar logout
+              await new Promise((r) => setTimeout(r, 2000));
+              break;
+            }
+          } catch (e) {
+            console.log(`   Erro logout ${logoutUrl}:`, e);
+          }
+        }
       }
 
       // 0) Tenta pegar QR direto primeiro (build Locaweb pode já ter QR disponível)
