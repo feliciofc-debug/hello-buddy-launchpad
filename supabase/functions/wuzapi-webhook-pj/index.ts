@@ -999,8 +999,76 @@ serve(async (req) => {
 
     console.log(`🔍 [PJ-WEBHOOK] Procurando config para instanceName: "${instanceName || 'NÃO RECEBIDO'}"`);
 
-    // PRIORIDADE 1: Buscar pela config conectada COM PRODUTOS
-    // (Resolve o problema de pegar user errado que não tem produtos)
+    // 🚨 PRIORIDADE MÁXIMA: Buscar por instanceName específico PRIMEIRO!
+    // Isso garante que cada assistente (ex: Moreirinha) responda pela instância correta
+    if (instanceName) {
+      // Tentar buscar pela config que tem esse instanceName
+      const { data: configPorInstance } = await supabase
+        .from("pj_clientes_config")
+        .select("*")
+        .eq("wuzapi_instance_name", instanceName)
+        .maybeSingle();
+      
+      if (configPorInstance) {
+        pjConfig = configPorInstance;
+        console.log(`✅ [PJ-WEBHOOK] Config encontrada por instanceName: ${instanceName}, user: ${configPorInstance.user_id?.slice(0, 8)}, nome: ${configPorInstance.nome_assistente}`);
+      } else {
+        // Também buscar na tabela wuzapi_instances para encontrar o user_id
+        const { data: instanceData } = await supabase
+          .from("wuzapi_instances")
+          .select("assigned_to_user, port, wuzapi_token")
+          .eq("instance_name", instanceName)
+          .maybeSingle();
+        
+        if (instanceData?.assigned_to_user) {
+          const { data: configByUser } = await supabase
+            .from("pj_clientes_config")
+            .select("*")
+            .eq("user_id", instanceData.assigned_to_user)
+            .maybeSingle();
+          
+          if (configByUser) {
+            pjConfig = configByUser;
+            // Usar a porta e token da instância encontrada se for mais específica
+            if (instanceData.port && instanceData.port !== 8080) {
+              pjConfig.wuzapi_port = instanceData.port;
+            }
+            if (instanceData.wuzapi_token) {
+              pjConfig.wuzapi_token = instanceData.wuzapi_token;
+            }
+            console.log(`✅ [PJ-WEBHOOK] Config encontrada via wuzapi_instances (${instanceName}): user ${configByUser.user_id?.slice(0, 8)}, porta: ${pjConfig.wuzapi_port}, nome: ${configByUser.nome_assistente}`);
+          }
+        }
+      }
+    }
+
+    // PRIORIDADE 2: Buscar pela wuzapi_instances conectada (qualquer porta)
+    if (!pjConfig && instanceName) {
+      const { data: instances } = await supabase
+        .from("wuzapi_instances")
+        .select("assigned_to_user, port, instance_name, wuzapi_token")
+        .eq("instance_name", instanceName)
+        .limit(1);
+      
+      if (instances && instances.length > 0 && instances[0]?.assigned_to_user) {
+        const { data: configByUser } = await supabase
+          .from("pj_clientes_config")
+          .select("*")
+          .eq("user_id", instances[0].assigned_to_user)
+          .maybeSingle();
+        
+        if (configByUser) {
+          pjConfig = {
+            ...configByUser,
+            wuzapi_port: instances[0].port,
+            wuzapi_token: instances[0].wuzapi_token || configByUser.wuzapi_token,
+          };
+          console.log(`✅ [PJ-WEBHOOK] Config encontrada por wuzapi_instances: ${instanceName}, porta ${instances[0].port}, user ${configByUser.user_id?.slice(0, 8)}`);
+        }
+      }
+    }
+
+    // PRIORIDADE 3 (FALLBACK): Buscar pela config na porta 8080 que tenha produtos
     if (!pjConfig) {
       const { data: configsConectadas } = await supabase
         .from("pj_clientes_config")
@@ -1019,52 +1087,14 @@ serve(async (req) => {
           
           if (count && count > 0) {
             pjConfig = cfg;
-            console.log(`✅ [PJ-WEBHOOK] Config encontrada com ${count} produtos! user: ${cfg.user_id?.slice(0, 8)}, nome: ${cfg.nome_assistente}`);
+            console.log(`⚠️ [PJ-WEBHOOK] Fallback: Config porta 8080 com ${count} produtos! user: ${cfg.user_id?.slice(0, 8)}, nome: ${cfg.nome_assistente}`);
             break;
           }
         }
       }
     }
 
-    // PRIORIDADE 2: Buscar por instanceName específico
-    if (!pjConfig && instanceName) {
-      const { data } = await supabase
-        .from("pj_clientes_config")
-        .select("*")
-        .eq("wuzapi_instance_name", instanceName)
-        .maybeSingle();
-      
-      if (data) {
-        pjConfig = data;
-        console.log(`✅ [PJ-WEBHOOK] Config encontrada por instanceName: ${instanceName}, user: ${data.user_id?.slice(0, 8)}`);
-      }
-    }
-
-    // PRIORIDADE 3: Buscar pela wuzapi_instances conectada na porta 8080
-    if (!pjConfig) {
-      const { data: instances } = await supabase
-        .from("wuzapi_instances")
-        .select("assigned_to_user, port, instance_name, wuzapi_token")
-        .eq("is_connected", true)
-        .eq("port", 8080)
-        .order("updated_at", { ascending: false })
-        .limit(1);
-      
-      if (instances && instances.length > 0 && instances[0]?.assigned_to_user) {
-        const { data: configByUser } = await supabase
-          .from("pj_clientes_config")
-          .select("*")
-          .eq("user_id", instances[0].assigned_to_user)
-          .maybeSingle();
-        
-        if (configByUser) {
-          pjConfig = configByUser;
-          console.log(`✅ [PJ-WEBHOOK] Config encontrada por wuzapi_instances (porta 8080): user ${configByUser.user_id?.slice(0, 8)}`);
-        }
-      }
-    }
-
-    // PRIORIDADE 4: Pegar a config com porta 8080 que tenha produtos
+    // PRIORIDADE 4: Pegar qualquer config na porta 8080 com produtos
     if (!pjConfig) {
       const { data: configsPorPorta } = await supabase
         .from("pj_clientes_config")
@@ -1082,7 +1112,7 @@ serve(async (req) => {
           
           if (count && count > 0) {
             pjConfig = cfg;
-            console.log(`✅ [PJ-WEBHOOK] Config encontrada por porta 8080 com ${count} produtos: user ${cfg.user_id?.slice(0, 8)}`);
+            console.log(`⚠️ [PJ-WEBHOOK] Fallback porta 8080 com ${count} produtos: user ${cfg.user_id?.slice(0, 8)}`);
             break;
           }
         }
