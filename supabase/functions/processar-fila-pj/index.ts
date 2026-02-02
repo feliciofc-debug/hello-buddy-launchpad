@@ -115,7 +115,9 @@ async function enviarMensagem(
   token: string,
   phone: string,
   message: string,
-  imageUrl?: string
+  imageUrl?: string,
+  audioBase64?: string,
+  tipoMensagem?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let formattedPhone = phone.replace(/\D/g, "");
@@ -125,9 +127,71 @@ async function enviarMensagem(
 
     const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
     
-    console.log(`📤 [PJ-FILA] Enviando para ${formattedPhone}...`);
+    console.log(`📤 [PJ-FILA] Enviando para ${formattedPhone} (tipo: ${tipoMensagem || 'texto'})...`);
 
-    // Se tem imagem, tentar enviar com imagem primeiro
+    // ═══════════════════════════════════════
+    // 🔊 ENVIAR ÁUDIO (TTS)
+    // ═══════════════════════════════════════
+    if (tipoMensagem === 'audio' && audioBase64) {
+      console.log(`🔊 [PJ-FILA] Enviando áudio para ${formattedPhone}...`);
+      
+      const response = await fetch(`${baseUrl}/chat/send/audio`, {
+        method: "POST",
+        headers: { 
+          "Token": token, 
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          Phone: formattedPhone,
+          Audio: audioBase64,
+          // Formato base64 MP3
+        })
+      });
+
+      const responseText = await response.text();
+
+      if (response.ok) {
+        try {
+          const data = JSON.parse(responseText);
+          if (data.success !== false && !data.error) {
+            console.log(`✅ [PJ-FILA] Áudio enviado para ${formattedPhone}`);
+            return { success: true };
+          }
+        } catch {
+          // HTTP OK = sucesso
+          console.log(`✅ [PJ-FILA] Áudio enviado para ${formattedPhone}`);
+          return { success: true };
+        }
+      }
+
+      // Fallback: tentar endpoint alternativo de documento/mídia
+      console.log("🧯 [PJ-FILA] Tentando endpoint alternativo para áudio...");
+      const response2 = await fetch(`${baseUrl}/chat/send/document`, {
+        method: "POST",
+        headers: { 
+          "Token": token, 
+          "Content-Type": "application/json" 
+        },
+        body: JSON.stringify({
+          Phone: formattedPhone,
+          Document: audioBase64,
+          FileName: "audio.mp3",
+          Mimetype: "audio/mpeg"
+        })
+      });
+
+      if (response2.ok) {
+        console.log(`✅ [PJ-FILA] Áudio enviado como documento para ${formattedPhone}`);
+        return { success: true };
+      }
+
+      console.error(`❌ [PJ-FILA] Falha ao enviar áudio:`, responseText);
+      return { success: false, error: `Erro ao enviar áudio: ${responseText}` };
+    }
+
+    // ═══════════════════════════════════════
+    // 📷 ENVIAR IMAGEM
+    // ═══════════════════════════════════════
     if (imageUrl) {
       const response = await fetch(`${baseUrl}/chat/send/image`, {
         method: "POST",
@@ -162,7 +226,9 @@ async function enviarMensagem(
       console.log("🧯 [PJ-FILA] Imagem falhou, tentando fallback para texto...");
     }
 
-    // Enviar só texto
+    // ═══════════════════════════════════════
+    // 💬 ENVIAR TEXTO
+    // ═══════════════════════════════════════
     const textResponse = await fetch(`${baseUrl}/chat/send/text`, {
       method: "POST",
       headers: { 
@@ -219,8 +285,11 @@ async function processarItem(
 
     const phone = item.lead_phone || item.phone;
     const mensagem = item.mensagem;
+    const tipoMensagem = item.tipo_mensagem || 'texto';
+    const audioBase64 = item.audio_base64;
 
-    if (!mensagem) {
+    // Áudio não precisa de mensagem obrigatória
+    if (!mensagem && tipoMensagem !== 'audio') {
       throw new Error("Mensagem não encontrada");
     }
 
@@ -255,21 +324,30 @@ async function processarItem(
       .update({ status: "processando" })
       .eq("id", item.id);
 
-    // 2️⃣ ENVIAR STATUS "DIGITANDO" (humaniza)
-    await enviarStatusDigitando(wuzapiUrl, wuzapiToken, phone);
+    // 2️⃣ ENVIAR STATUS "DIGITANDO" (humaniza) - apenas para texto/imagem
+    if (tipoMensagem !== 'audio') {
+      await enviarStatusDigitando(wuzapiUrl, wuzapiToken, phone);
+    }
 
-    // 3️⃣ AGUARDAR TEMPO DE DIGITAÇÃO (humaniza)
-    const tempoDigitacao = calcularTempoDigitacao(mensagem);
-    console.log(`⏳ [PJ-FILA] Simulando digitação por ${tempoDigitacao}ms...`);
-    await sleep(tempoDigitacao);
+    // 3️⃣ AGUARDAR TEMPO DE DIGITAÇÃO (humaniza) - apenas para texto/imagem
+    if (tipoMensagem !== 'audio') {
+      const tempoDigitacao = calcularTempoDigitacao(mensagem);
+      console.log(`⏳ [PJ-FILA] Simulando digitação por ${tempoDigitacao}ms...`);
+      await sleep(tempoDigitacao);
+    } else {
+      // Pequeno delay para áudio
+      await sleep(1000);
+    }
 
-    // 4️⃣ ENVIAR MENSAGEM
+    // 4️⃣ ENVIAR MENSAGEM/ÁUDIO/IMAGEM
     const resultado = await enviarMensagem(
       wuzapiUrl,
       wuzapiToken,
       phone,
       mensagem,
-      item.imagem_url
+      item.imagem_url,
+      audioBase64,
+      tipoMensagem
     );
 
     const tempoTotal = Date.now() - startTime;
