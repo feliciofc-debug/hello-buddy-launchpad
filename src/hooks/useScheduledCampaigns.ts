@@ -50,15 +50,20 @@ async function verificarCooldown(whatsapp: string): Promise<boolean> {
 }
 
 /**
- * Verifica se cliente tem campanha ativa
+ * Verifica se cliente tem campanha ativa RECENTE (< 60 minutos)
+ * Campanhas antigas são ignoradas para não bloquear novos envios
  */
 async function temCampanhaAtiva(whatsapp: string): Promise<boolean> {
+  // Só considera campanhas ativas criadas nas últimas 1 hora
+  const limiteAntiguidade = new Date(Date.now() - 60 * 60000).toISOString();
+  
   const { data, error } = await supabase
     .from('campanhas_ativas')
     .select('id')
     .eq('whatsapp', whatsapp)
     .eq('aguardando_resposta', true)
     .eq('pausado', false)
+    .gte('created_at', limiteAntiguidade)
     .limit(1)
     .maybeSingle();
 
