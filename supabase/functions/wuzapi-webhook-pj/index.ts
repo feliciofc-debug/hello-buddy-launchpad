@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import {
+  encode as base64Encode,
+  decode as base64Decode,
+} from "https://deno.land/std@0.168.0/encoding/base64.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -921,10 +925,66 @@ async function gerarAudioTTS(
 // ============================================
 // TRANSCREVER ÁUDIO VIA LOVABLE AI (GEMINI)
 // ============================================
+type TranscreverAudioInput = {
+  audioUrl: string;
+  mediaKeyBase64?: string | null;
+};
+
+function toArrayBuffer(view: Uint8Array): ArrayBuffer {
+  return view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer;
+}
+
+async function decryptWhatsAppMedia(encrypted: Uint8Array, mediaKeyBase64: string, mediaType: "audio"): Promise<Uint8Array> {
+  // WhatsApp media encryption (Baileys-compatible): HKDF-SHA256 with info string.
+  // For audio: "WhatsApp Audio Keys".
+  const infoStr = mediaType === "audio" ? "WhatsApp Audio Keys" : "WhatsApp Media Keys";
+  const mediaKeyBytes = new Uint8Array(base64Decode(mediaKeyBase64));
+  const hkdfKey = await crypto.subtle.importKey(
+    "raw",
+    toArrayBuffer(mediaKeyBytes),
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+
+  const salt = new Uint8Array(32); // 32 zero bytes
+  const info = new TextEncoder().encode(infoStr);
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt, info },
+    hkdfKey,
+    112 * 8,
+  );
+  const derived = new Uint8Array(derivedBits);
+  const iv = derived.slice(0, 16);
+  const cipherKey = derived.slice(16, 48);
+  // const macKey = derived.slice(48, 80); // not verifying MAC for now
+
+  // WhatsApp appends a 10-byte MAC at the end.
+  const macLen = 10;
+  const ciphertext = encrypted.length > macLen ? encrypted.slice(0, encrypted.length - macLen) : encrypted;
+
+  const aesKey = await crypto.subtle.importKey(
+    "raw",
+    cipherKey,
+    { name: "AES-CBC" },
+    false,
+    ["decrypt"],
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-CBC", iv },
+    aesKey,
+    toArrayBuffer(ciphertext),
+  );
+
+  return new Uint8Array(decrypted);
+}
+
 async function transcreverAudio(
-  audioUrl: string
+  input: TranscreverAudioInput
 ): Promise<string | null> {
   try {
+    const { audioUrl, mediaKeyBase64 } = input;
     console.log(`🎧 [STT-PJ] Baixando áudio de: ${audioUrl.slice(0, 80)}...`);
     
     // 1. Baixar o áudio do WhatsApp
@@ -935,11 +995,24 @@ async function transcreverAudio(
     }
     
     const audioBuffer = await audioResponse.arrayBuffer();
-    const audioBase64 = btoa(
-      new Uint8Array(audioBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
-    
-    console.log(`🎧 [STT-PJ] Áudio baixado! Size: ${audioBuffer.byteLength} bytes`);
+    let audioBytes: Uint8Array = new Uint8Array(audioBuffer);
+    console.log(`🎧 [STT-PJ] Áudio baixado! Size: ${audioBytes.byteLength} bytes`);
+
+    // URLs do WhatsApp geralmente são .enc (criptografadas). Se tiver mediaKey, descriptografar antes.
+    if (mediaKeyBase64) {
+      try {
+        const decrypted = await decryptWhatsAppMedia(audioBytes, mediaKeyBase64, "audio");
+        // Heurística simples: só troca se vier algo maior e plausível
+        if (decrypted?.byteLength && decrypted.byteLength > 1000) {
+          audioBytes = decrypted;
+          console.log(`🔓 [STT-PJ] Áudio descriptografado! Size: ${audioBytes.byteLength} bytes`);
+        }
+      } catch (e) {
+        console.warn("⚠️ [STT-PJ] Falha ao descriptografar áudio, tentando bruto...", e);
+      }
+    }
+
+    const audioBase64 = base64Encode(toArrayBuffer(audioBytes));
     
     // 2. Usar Lovable AI (Gemini) para transcrever
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
@@ -1116,7 +1189,10 @@ serve(async (req) => {
       isAudioMessage = true;
       
       // Tentar transcrever o áudio
-      const transcricao = await transcreverAudio(audioUrl);
+      const transcricao = await transcreverAudio({
+        audioUrl,
+        mediaKeyBase64: audioMessage?.mediaKey || audioMessage?.MediaKey || null,
+      });
       
       if (transcricao) {
         messageText = transcricao;
