@@ -283,3 +283,6 @@ verify_jwt = false
 [functions.wuzapi-webhook-pj]
 verify_jwt = false
 
+[functions.elevenlabs-tts-pj]
+verify_jwt = false
+
