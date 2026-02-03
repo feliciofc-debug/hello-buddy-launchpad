@@ -607,30 +607,45 @@ serve(async (req) => {
       // WuzAPI retorna: { code: 200, data: { connected: true, loggedIn: true, jid: "..." }, success: true }
       // Precisamos extrair do objeto `data` interno
       const innerData = statusData?.data || statusData;
-      const isConnected = innerData?.connected === true || innerData?.loggedIn === true || statusData?.Connected === true;
-      const jid = innerData?.jid || statusData?.JID || statusData?.jid || "";
+      
+      // CORREÇÃO: Verificar AMBOS connected E loggedIn para evitar falsos positivos
+      const isReallyConnected = (innerData?.connected === true && innerData?.loggedIn === true) || 
+                                 (statusData?.Connected === true && statusData?.LoggedIn === true);
+      
+      // Só extrair JID se estiver REALMENTE conectado (evita JID fantasma de sessões antigas)
+      const jid = isReallyConnected ? (innerData?.jid || statusData?.JID || statusData?.jid || "") : "";
+
+      console.log("📊 [Status] Análise:", { 
+        rawConnected: innerData?.connected, 
+        rawLoggedIn: innerData?.loggedIn, 
+        isReallyConnected, 
+        jidFromApi: innerData?.jid,
+        jidToSave: jid 
+      });
 
       // Atualizar status no banco (somente se a instância é do userId ou se não foi forçado por instanceId)
+      // CORREÇÃO: Se não está conectado, LIMPAR o JID para evitar dados residuais
       if (!instanceId || effectiveInstance?.assigned_to_user === userId) {
         await supabase
           .from("pj_clientes_config")
           .update({
-            whatsapp_conectado: isConnected,
-            wuzapi_jid: jid,
+            whatsapp_conectado: isReallyConnected,
+            wuzapi_jid: isReallyConnected ? jid : null, // LIMPAR se não conectado!
             ultimo_status_check: new Date().toISOString(),
           })
           .eq("user_id", userId);
       }
 
       // Também sincronizar o status da instância (melhora confiabilidade dos envios e diagnósticos)
+      // CORREÇÃO: Se não conectado, limpar phone_number também
       try {
         if (effectiveInstance?.id) {
           await supabase
             .from("wuzapi_instances")
             .update({
-              is_connected: isConnected,
-              connected_at: isConnected ? new Date().toISOString() : null,
-              phone_number: jid ? String(jid).split("@")[0] : null,
+              is_connected: isReallyConnected,
+              connected_at: isReallyConnected ? new Date().toISOString() : null,
+              phone_number: isReallyConnected && jid ? String(jid).split("@")[0] : null,
             })
             .eq("id", effectiveInstance.id);
         }
@@ -641,7 +656,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: true,
-          connected: isConnected,
+          connected: isReallyConnected,
           jid,
           port: effectivePort,
           baseUrl,
