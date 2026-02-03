@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,22 @@ export default function WhatsAppConnectionPJ() {
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [instanceName, setInstanceName] = useState('');
   const [hasConfig, setHasConfig] = useState(false);
+
+  const canShowDisconnect = useMemo(() => {
+    // Mesmo se o status estiver “desconectado”, pode existir sessão presa no servidor.
+    // Mostrar a ação evita o botão “fantasma” (sumindo quando o usuário mais precisa).
+    return hasConfig;
+  }, [hasConfig]);
+
+  const normalizeQrString = (raw: unknown) => {
+    if (!raw) return null;
+    const str = String(raw).trim();
+    if (!str) return null;
+    // Algumas APIs já retornam data URL completa.
+    if (str.startsWith('data:image')) return str;
+    // Caso contrário, assumimos base64 do PNG.
+    return `data:image/png;base64,${str}`;
+  };
 
   const requireSession = async () => {
     // getUser() pode retornar null em algumas condições de cache/latência.
@@ -154,8 +170,20 @@ export default function WhatsAppConnectionPJ() {
 
       if (error) throw error;
 
-      if (data.qrCode || data.qrcode) {
-        setQrCode(data.qrCode || data.qrcode);
+      const possibleQr =
+        data?.qrCode ??
+        data?.qrcode ??
+        data?.qr ??
+        data?.code ??
+        data?.data?.qrcode ??
+        data?.data?.qr ??
+        data?.data?.code ??
+        null;
+
+      const normalized = normalizeQrString(possibleQr);
+
+      if (normalized) {
+        setQrCode(normalized);
         toast.success('📲 QR Code gerado! Escaneie com seu WhatsApp');
         
         // Poll for connection
@@ -184,13 +212,15 @@ export default function WhatsAppConnectionPJ() {
             toast.success('🎉 WhatsApp conectado com sucesso!');
           }
         }, 3000);
-      } else if (data.connected) {
+      } else if (data?.connected) {
         setStatus({
           connected: true,
           jid: data.jid,
           phone: data.phone,
         });
         toast.success('✅ Já estava conectado!');
+      } else if (data?.retry) {
+        toast.info('⏳ Gerando QR Code... tente novamente em alguns segundos.');
       }
     } catch (err: any) {
       console.error('Erro ao gerar QR:', err);
@@ -230,7 +260,7 @@ export default function WhatsAppConnectionPJ() {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Smartphone className="h-6 w-6 text-green-500" />
+            <Smartphone className="h-6 w-6 text-primary" />
             <div>
               <CardTitle>WhatsApp Business (PJ)</CardTitle>
               <CardDescription>Gerencie sua conexão empresarial</CardDescription>
@@ -292,13 +322,36 @@ export default function WhatsAppConnectionPJ() {
           </div>
         )}
 
+        {/* Desconectar (sempre visível quando há config) */}
+        {!status.connected && canShowDisconnect && (
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Se você trocou de chip/número ou a sessão ficou presa, use “Limpar sessão”.
+              </p>
+            </div>
+            <div className="mt-3">
+              <Button
+                variant="destructive"
+                onClick={disconnect}
+                disabled={loading}
+                className="w-full"
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Desconectar / Limpar sessão
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* QR Code */}
         {qrCode && !status.connected && (
           <div className="flex flex-col items-center gap-4 p-4 border rounded-lg">
             <p className="text-sm font-medium">Escaneie o QR Code com seu WhatsApp</p>
             <div className="bg-background p-4 rounded-lg border">
               <img 
-                src={`data:image/png;base64,${qrCode}`} 
+                src={qrCode}
                 alt="QR Code WhatsApp"
                 className="w-64 h-64"
               />
