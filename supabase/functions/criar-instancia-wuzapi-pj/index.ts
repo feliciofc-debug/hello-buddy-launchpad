@@ -19,6 +19,27 @@ async function safeReadJson(resp: Response) {
   }
 }
 
+function looksLikeSuccessText(text: string | null | undefined) {
+  if (!text) return false;
+  const t = text.toLowerCase();
+  return (
+    t.includes("success") ||
+    t.includes("logged out") ||
+    t.includes("logout") ||
+    t.includes("disconnected") ||
+    t.includes("disconnect") ||
+    t.includes("ok")
+  );
+}
+
+function isLogicalSuccess(resp: Response, parsed: { ok: boolean; json?: any; text: string }) {
+  if (resp.ok) return true;
+  if (parsed.ok && parsed.json?.success !== false) return true;
+  // Algumas builds retornam 500 com texto simples mesmo quando a ação funciona.
+  if (resp.status >= 500 && looksLikeSuccessText(parsed.text)) return true;
+  return false;
+}
+
 function extractQrCodePayload(qrData: any): string | null {
   // WuzAPI builds vary a lot in the QR payload keys.
   // Support the most common shapes we've seen in production.
@@ -46,6 +67,36 @@ function extractQrCodePayload(qrData: any): string | null {
   return raw;
 }
 
+function extractQrFromText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const t = text.trim();
+
+  // data URL
+  if (t.startsWith("data:image")) {
+    const idx = t.indexOf("base64,");
+    return idx >= 0 ? t.slice(idx + "base64,".length) : t;
+  }
+
+  // Algumas builds retornam apenas o base64 puro
+  const looksBase64 = /^[A-Za-z0-9+/=\r\n]+$/.test(t) && t.replace(/\s+/g, "").length > 400;
+  if (looksBase64) return t.replace(/\s+/g, "");
+
+  // Algumas retornam JSON como string dentro do texto
+  try {
+    const asJson = JSON.parse(t);
+    return extractQrCodePayload(asJson);
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
+
+function extractQrAny(parsed: { ok: boolean; json?: any; text: string }): string | null {
+  if (parsed.ok) return extractQrCodePayload(parsed.json);
+  return extractQrFromText(parsed.text);
+}
+
 async function tryPostJson(url: string, headers: Record<string, string>, body: any) {
   const resp = await fetch(url, {
     method: "POST",
@@ -62,7 +113,16 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json().catch(() => ({}));
+    // Algumas chamadas podem chegar sem Content-Type correto; então parseamos de forma tolerante.
+    const rawBody = await req.text().catch(() => "");
+    const body = (() => {
+      if (!rawBody) return {};
+      try {
+        return JSON.parse(rawBody);
+      } catch {
+        return {};
+      }
+    })();
     let userId: string | undefined = body?.userId;
     const action: string | undefined = body?.action;
 
@@ -121,18 +181,45 @@ serve(async (req) => {
       clienteConfig = newConfig;
     }
 
-    // ✅ Igual ao PJ antigo: usar a instância real (http://191.252.193.73:808x) vinda de wuzapi_instances
+    // ✅ Resolver instância alvo
+    // - Por padrão: usa a instância mapeada do usuário (porta em pj_clientes_config)
+    // - Admin/urgência: permite forçar por instanceId (ex: amz-03 / porta 8083)
+    const instanceId: string | undefined = body?.instanceId;
+
+    // Igual ao PJ antigo: usar a instância real (http://191.252.193.73:808x) vinda de wuzapi_instances
     // Isso evita o 404 do domínio wuzapi.amzofertas.com.br em /session/connect.
     const targetPort = Number(clienteConfig.wuzapi_port || 8080);
-    const { data: mappedInstance } = await supabase
-      .from("wuzapi_instances")
-      .select("wuzapi_url, wuzapi_token, instance_name, port")
-      .eq("assigned_to_user", userId)
-      .eq("port", targetPort)
-      .maybeSingle();
 
-    const baseUrl = (mappedInstance?.wuzapi_url || LOCAWEB_WUZAPI_URL).replace(/\/+$/, "");
-    const wuzapiToken = mappedInstance?.wuzapi_token || clienteConfig.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
+    const { data: forcedInstance } = instanceId
+      ? await supabase
+          .from("wuzapi_instances")
+          .select("id, wuzapi_url, wuzapi_token, instance_name, port, assigned_to_user")
+          .eq("id", instanceId)
+          .maybeSingle()
+      : ({ data: null } as any);
+
+    const { data: mappedInstance } = !forcedInstance
+      ? await supabase
+          .from("wuzapi_instances")
+          .select("id, wuzapi_url, wuzapi_token, instance_name, port, assigned_to_user")
+          .eq("assigned_to_user", userId)
+          .eq("port", targetPort)
+          .maybeSingle()
+      : ({ data: null } as any);
+
+    const effectiveInstance = forcedInstance || mappedInstance;
+    const effectivePort = Number(effectiveInstance?.port || targetPort);
+
+    console.log("🔧 [PJ-WUZAPI] Resolve instance:", {
+      instanceId: instanceId || null,
+      hasForced: Boolean(forcedInstance),
+      hasMapped: Boolean(mappedInstance),
+      effectivePort,
+      effectiveInstanceName: effectiveInstance?.instance_name || null,
+    });
+
+    const baseUrl = (effectiveInstance?.wuzapi_url || LOCAWEB_WUZAPI_URL).replace(/\/+$/, "");
+    const wuzapiToken = effectiveInstance?.wuzapi_token || clienteConfig.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
 
     if (action === "connect" || action === "qrcode") {
       // Gerar QR Code para conexão
@@ -194,13 +281,11 @@ serve(async (req) => {
             });
 
             const parsed = await safeReadJson(logoutResp);
-            const payload = parsed.ok ? parsed.json : null;
-            const logicalSuccess = parsed.ok && payload?.success !== false;
+            const logicalSuccess = isLogicalSuccess(logoutResp, parsed);
 
             console.log(`   Logout ${logoutUrl}: status=${logoutResp.status} logicalSuccess=${logicalSuccess}`);
 
-            // Algumas builds retornam 500 mesmo quando a ação funciona (com JSON success=true).
-            if (logoutResp.ok || logicalSuccess) {
+            if (logicalSuccess) {
               await new Promise((r) => setTimeout(r, 2000));
               break;
             }
@@ -229,15 +314,13 @@ serve(async (req) => {
           if (preQrResp.status === 404) continue;
 
           const preQrParsed = await safeReadJson(preQrResp);
-          if (preQrParsed.ok) {
-            const preQrCode = extractQrCodePayload(preQrParsed.json);
-            if (preQrCode) {
-              console.log("✅ QR Code encontrado!");
-              return new Response(
-                JSON.stringify({ success: true, qrCode: preQrCode, status: "awaiting_scan" }),
-                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-              );
-            }
+          const preQrCode = extractQrAny(preQrParsed);
+          if (preQrCode) {
+            console.log("✅ QR Code encontrado!");
+            return new Response(
+              JSON.stringify({ success: true, qrCode: preQrCode, status: "awaiting_scan" }),
+              { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
           }
         } catch (_) {
           // ignore
@@ -292,21 +375,21 @@ serve(async (req) => {
 
           if (resp.status === 404) continue;
           
-          if (parsed.ok) {
-            // Verificar se a resposta já contém QR code
-            const possibleQr = extractQrCodePayload(parsed.json);
-            if (possibleQr) {
-              qrCodeFound = possibleQr;
-              console.log("✅ QR Code encontrado na resposta!");
-              break;
-            }
-            
-            if (resp.ok && parsed.json?.success !== false) {
-              connectOk = true;
-              console.log("✅ Endpoint funcionou:", candidate.url);
-              break;
-            }
-          }
+           // Verificar se a resposta já contém QR code (mesmo não-JSON)
+           const possibleQr = extractQrAny(parsed);
+           if (possibleQr) {
+             qrCodeFound = possibleQr;
+             console.log("✅ QR Code encontrado na resposta!");
+             break;
+           }
+
+           if (parsed.ok) {
+             if (resp.ok && parsed.json?.success !== false) {
+               connectOk = true;
+               console.log("✅ Endpoint funcionou:", candidate.url);
+               break;
+             }
+           }
           
           if (resp.ok) {
             connectOk = true;
@@ -336,16 +419,14 @@ serve(async (req) => {
 
             if (qrResponse.status === 404) continue;
 
-            const qrParsed = await safeReadJson(qrResponse);
-            if (qrParsed.ok) {
-              const qrCode = extractQrCodePayload(qrParsed.json);
-              if (qrCode) {
-                return new Response(
-                  JSON.stringify({ success: true, qrCode, status: "awaiting_scan" }),
-                  { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-                );
-              }
-            }
+             const qrParsed = await safeReadJson(qrResponse);
+             const qrCode = extractQrAny(qrParsed);
+             if (qrCode) {
+               return new Response(
+                 JSON.stringify({ success: true, qrCode, status: "awaiting_scan" }),
+                 { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+               );
+             }
           } catch (_) {
             // ignore
           }
@@ -400,27 +481,30 @@ serve(async (req) => {
       const isConnected = innerData?.connected === true || innerData?.loggedIn === true || statusData?.Connected === true;
       const jid = innerData?.jid || statusData?.JID || statusData?.jid || "";
 
-      // Atualizar status no banco
-      await supabase
-        .from("pj_clientes_config")
-        .update({
-          whatsapp_conectado: isConnected,
-          wuzapi_jid: jid,
-          ultimo_status_check: new Date().toISOString(),
-        })
-        .eq("user_id", userId);
+      // Atualizar status no banco (somente se a instância é do userId ou se não foi forçado por instanceId)
+      if (!instanceId || effectiveInstance?.assigned_to_user === userId) {
+        await supabase
+          .from("pj_clientes_config")
+          .update({
+            whatsapp_conectado: isConnected,
+            wuzapi_jid: jid,
+            ultimo_status_check: new Date().toISOString(),
+          })
+          .eq("user_id", userId);
+      }
 
       // Também sincronizar o status da instância (melhora confiabilidade dos envios e diagnósticos)
       try {
-        await supabase
-          .from("wuzapi_instances")
-          .update({
-            is_connected: isConnected,
-            connected_at: isConnected ? new Date().toISOString() : null,
-            phone_number: jid ? String(jid).split("@")[0] : null,
-          })
-          .eq("assigned_to_user", userId)
-          .eq("port", targetPort);
+        if (effectiveInstance?.id) {
+          await supabase
+            .from("wuzapi_instances")
+            .update({
+              is_connected: isConnected,
+              connected_at: isConnected ? new Date().toISOString() : null,
+              phone_number: jid ? String(jid).split("@")[0] : null,
+            })
+            .eq("id", effectiveInstance.id);
+        }
       } catch (e) {
         console.log("⚠️ [PJ-WUZAPI] Falha ao sincronizar wuzapi_instances:", e);
       }
@@ -430,7 +514,7 @@ serve(async (req) => {
           success: true,
           connected: isConnected,
           jid,
-          port: targetPort,
+          port: effectivePort,
           baseUrl,
           raw: statusData,
         }),
@@ -510,33 +594,59 @@ serve(async (req) => {
     if (action === "disconnect") {
       // Desconectar WhatsApp
       const disconnectCandidates = [
+        // soft
         `${baseUrl}/session/disconnect`,
+        // hard
         `${baseUrl}/session/logout`,
+        `${baseUrl}/session/logout?force=true`,
+        // various builds
+        `${baseUrl}/session/reset`,
+        `${baseUrl}/session/restart`,
+        `${baseUrl}/session/kill`,
+        `${baseUrl}/session/clear`,
+        `${baseUrl}/session/delete`,
+        `${baseUrl}/session/remove`,
       ];
 
       let disconnectData: any = null;
       for (const url of disconnectCandidates) {
         const { resp, parsed } = await tryPostJson(url, { Token: wuzapiToken }, {});
-        if (parsed.ok) {
-          disconnectData = parsed.json;
-          console.log("🔌 Disconnect:", disconnectData);
-          if (resp.ok && disconnectData?.success !== false) break;
-          if (resp.status === 404) continue;
-          break;
-        }
+
+        const logicalSuccess = isLogicalSuccess(resp, parsed);
+        if (parsed.ok) disconnectData = parsed.json;
+        console.log("🔌 Disconnect:", {
+          url,
+          status: resp.status,
+          logicalSuccess,
+          data: disconnectData || parsed.text?.slice(0, 160),
+        });
+
         if (resp.status === 404) continue;
-        // se não for JSON e não 404, não bloqueia o fluxo
-        if (resp.ok) break;
+        if (logicalSuccess) break;
       }
 
-      // Atualizar status no banco
-      await supabase
-        .from("pj_clientes_config")
-        .update({
-          whatsapp_conectado: false,
-          wuzapi_jid: null,
-        })
-        .eq("user_id", userId);
+      // Atualizar status no banco (somente se a instância é do userId ou se não foi forçado por instanceId)
+      if (!instanceId || effectiveInstance?.assigned_to_user === userId) {
+        await supabase
+          .from("pj_clientes_config")
+          .update({
+            whatsapp_conectado: false,
+            wuzapi_jid: null,
+          })
+          .eq("user_id", userId);
+      }
+
+      // Sempre sincronizar a instância alvo
+      if (effectiveInstance?.id) {
+        await supabase
+          .from("wuzapi_instances")
+          .update({
+            is_connected: false,
+            phone_number: null,
+            connected_at: null,
+          })
+          .eq("id", effectiveInstance.id);
+      }
 
       return new Response(
         JSON.stringify({ success: true, message: "Desconectado com sucesso" }),
