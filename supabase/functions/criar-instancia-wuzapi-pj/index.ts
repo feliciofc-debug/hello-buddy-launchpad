@@ -437,60 +437,148 @@ serve(async (req) => {
         );
       }
 
-      // 2) Buscar QR Code (retry, igual Afiliados)
-      // Se conseguimos iniciar sessão em algum endpoint, dar um tempo extra pro servidor preparar o QR.
+      // 2) Buscar QR Code com lógica robusta e logs detalhados
+      // Aguardar 3 segundos após connect para WuzAPI gerar o QR
       if (connectOk) {
-        await new Promise((r) => setTimeout(r, 2000));
+        console.log("⏳ Aguardando 3 segundos para WuzAPI preparar o QR code...");
+        await new Promise((r) => setTimeout(r, 3000));
       }
 
-      for (let i = 0; i < 12; i++) {
-        for (const qrUrl of qrEndpoints) {
+      // Endpoints de QR para tentar (inclui variações de diferentes builds WuzAPI)
+      const qrFetchEndpoints = [
+        { method: 'GET', path: '/session/qr' },
+        { method: 'GET', path: '/session/qr/image' },
+        { method: 'POST', path: '/session/qr' },
+        { method: 'GET', path: '/qr' },
+        { method: 'GET', path: '/api/qr' },
+      ];
+
+      let qrCodeResult: string | null = null;
+      const qrAttempts: string[] = [];
+      const maxRetries = 10;
+
+      for (let retry = 0; retry < maxRetries && !qrCodeResult; retry++) {
+        console.log(`[QR] Tentativa ${retry + 1}/${maxRetries}...`);
+        
+        for (const endpoint of qrFetchEndpoints) {
           try {
-            const isPost = qrUrl.endsWith("__POST__");
-            const realUrl = isPost ? qrUrl.replace(/__POST__$/, "") : qrUrl;
-
-            const qrResponse = await fetch(realUrl, {
-              method: isPost ? "POST" : "GET",
-              headers: {
-                "Token": wuzapiToken,
-                ...(isPost ? { "Content-Type": "application/json" } : {}),
+            const qrUrl = `${baseUrl}${endpoint.path}`;
+            console.log(`[QR] Tentando ${endpoint.method} ${qrUrl}`);
+            
+            const qrResponse = await fetch(qrUrl, {
+              method: endpoint.method,
+              headers: { 
+                'Token': wuzapiToken,
+                'Content-Type': 'application/json'
               },
-              ...(isPost ? { body: JSON.stringify({}) } : {}),
+              ...(endpoint.method === 'POST' ? { body: JSON.stringify({}) } : {})
             });
-
-            if (qrResponse.status === 404) continue;
-
-             const qrParsed = await safeReadJson(qrResponse);
-             const qrCode = extractQrAny(qrParsed);
-             if (qrCode) {
-               return new Response(
-                 JSON.stringify({ success: true, qrCode, status: "awaiting_scan" }),
-                 { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-               );
-             }
-          } catch (_) {
-            // ignore
+            
+            const contentType = qrResponse.headers.get('content-type') || '';
+            console.log(`[QR] Status: ${qrResponse.status}, Content-Type: ${contentType}`);
+            
+            if (qrResponse.status === 404) {
+              qrAttempts.push(`${endpoint.path}: 404 (não existe)`);
+              continue;
+            }
+            
+            if (qrResponse.ok) {
+              // Se retornou imagem diretamente (binário)
+              if (contentType.includes('image')) {
+                const arrayBuffer = await qrResponse.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < uint8Array.length; i++) {
+                  binary += String.fromCharCode(uint8Array[i]);
+                }
+                const base64 = btoa(binary);
+                qrCodeResult = `data:image/png;base64,${base64}`;
+                qrAttempts.push(`${endpoint.path}: ✅ SUCESSO (imagem binária)`);
+                console.log(`[QR] ✅ Imagem binária obtida!`);
+                break;
+              }
+              
+              // Se retornou JSON
+              const qrParsed = await safeReadJson(qrResponse);
+              console.log(`[QR] Dados recebidos:`, JSON.stringify(qrParsed.json || qrParsed.text).substring(0, 300));
+              
+              // Tentar extrair QR de diferentes formatos de resposta
+              const possibleQr = extractQrAny(qrParsed);
+              if (possibleQr) {
+                // Garantir formato data URL
+                if (possibleQr.startsWith('data:')) {
+                  qrCodeResult = possibleQr;
+                } else if (possibleQr.length > 100) {
+                  qrCodeResult = `data:image/png;base64,${possibleQr}`;
+                }
+                if (qrCodeResult) {
+                  qrAttempts.push(`${endpoint.path}: ✅ SUCESSO (JSON)`);
+                  console.log(`[QR] ✅ QR Code extraído do JSON!`);
+                  break;
+                }
+              }
+              
+              // Tentar campos específicos que podem existir
+              const qrData = qrParsed.json || {};
+              const possibleFields = ['qrcode', 'qrCode', 'QRCode', 'code', 'data', 'image', 'qr'];
+              for (const field of possibleFields) {
+                const val = qrData[field] || qrData?.data?.[field];
+                if (val && typeof val === 'string' && val.length > 100) {
+                  qrCodeResult = val.startsWith('data:') ? val : `data:image/png;base64,${val}`;
+                  qrAttempts.push(`${endpoint.path}: ✅ SUCESSO (campo ${field})`);
+                  console.log(`[QR] ✅ QR encontrado no campo '${field}'!`);
+                  break;
+                }
+              }
+              
+              if (qrCodeResult) break;
+              qrAttempts.push(`${endpoint.path}: 200 mas sem QR no response`);
+            } else {
+              const errorText = await qrResponse.text().catch(() => '');
+              qrAttempts.push(`${endpoint.path}: ${qrResponse.status} - ${errorText.substring(0, 50)}`);
+            }
+          } catch (e: any) {
+            qrAttempts.push(`${endpoint.path}: erro - ${e.message}`);
+            console.error(`[QR] Erro em ${endpoint.path}:`, e.message);
           }
         }
-        await new Promise((r) => setTimeout(r, 1500));
+        
+        if (!qrCodeResult && retry < maxRetries - 1) {
+          console.log(`[QR] Aguardando 2s antes de tentar novamente...`);
+          await new Promise((r) => setTimeout(r, 2000));
+        }
       }
 
-      // Se chegou aqui, não conseguiu QR.
-      // Retornar diagnóstico detalhado para ajudar a resolver
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Não foi possível gerar QR Code. A sessão pode precisar ser reiniciada no servidor.",
-          details: {
-            baseUrl,
-            lastStatus: lastConnectStatus,
-            connectOk,
-            hint: "Tente desconectar e reconectar, ou verifique o painel WuzAPI diretamente.",
-          },
-          raw: (lastConnectRaw || "").slice(0, 300),
-        }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      // SEMPRE retornar com detalhes para debug
+      if (qrCodeResult) {
+        console.log("✅ [QR] QR Code obtido com sucesso!");
+        return new Response(
+          JSON.stringify({
+            success: true,
+            qrCode: qrCodeResult,
+            status: "awaiting_scan",
+            debug: { qrAttempts, baseUrl, connectOk }
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      } else {
+        console.log("❌ [QR] Não foi possível obter QR Code");
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: "QR code não retornado pela WuzAPI após múltiplas tentativas",
+            details: {
+              qrAttempts,
+              baseUrl,
+              lastStatus: lastConnectStatus,
+              connectOk,
+              hint: "A sessão pode estar conectada ou presa. Tente fazer logout/reset primeiro."
+            },
+            raw: (lastConnectRaw || "").slice(0, 300),
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
     }
 
     if (action === "status") {
