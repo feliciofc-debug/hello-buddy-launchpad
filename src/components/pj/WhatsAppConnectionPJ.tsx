@@ -278,66 +278,96 @@ export default function WhatsAppConnectionPJ() {
     setQrCode(null);
     setLastQrError(null);
     
+    // Limpar status para evitar que o polling antigo interfira
+    setStatus({ connected: false });
+    
     try {
-      const sessionInfo = await requireSession();
-      if (!sessionInfo) {
+      // Obter sessão diretamente para evitar redirecionamento
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !sessionData?.session?.user?.id) {
+        console.error('[SwapPhone] Erro de sessão:', sessionError);
+        toast.error('Sessão expirada. Faça login novamente.');
         setSwapLoading(false);
         return;
       }
 
-      console.log('[SwapPhone] Iniciando reset total...');
+      const userId = sessionData.session.user.id;
+      console.log('=== INÍCIO TROCAR TELEFONE ===');
+      console.log('userId:', userId);
+      console.log('instanceName:', instanceName || 'auto');
       
       const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
         body: {
           action: 'swap_phone',
-          userId: sessionInfo.userId
+          userId: userId
         }
       });
 
-      console.log('[SwapPhone] Resposta:', data, error);
+      console.log('[SwapPhone] Resposta completa:', JSON.stringify(data, null, 2));
+      console.log('[SwapPhone] Erro:', error);
 
       if (error) {
+        console.error('=== ERRO TROCAR TELEFONE ===');
+        console.error('Erro completo:', error);
+        console.error('Response data:', data);
         setSwapError({ error: error.message, details: data });
         toast.error('Erro ao trocar telefone');
         return;
       }
 
       if (data?.success && data?.qrCode) {
+        console.log('[SwapPhone] QR Code recebido! Tamanho:', data.qrCode.length);
         setQrCode(data.qrCode);
         toast.success('📲 QR Code gerado! Escaneie com seu WhatsApp.');
         
-        // Poll for connection
+        // Poll for connection - 60 segundos (20 tentativas x 3s)
         let attempts = 0;
+        const maxAttempts = 20; // 60 segundos total
         const pollInterval = setInterval(async () => {
           attempts++;
-          if (attempts > 30) {
+          console.log(`[SwapPhone] Verificando conexão... tentativa ${attempts}/${maxAttempts}`);
+          
+          if (attempts > maxAttempts) {
             clearInterval(pollInterval);
+            console.log('[SwapPhone] QR Code expirou após 60 segundos');
             setQrCode(null);
             toast.error('⏰ QR Code expirou. Tente novamente.');
             return;
           }
 
-          const { data: statusData } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
-            body: { userId: sessionInfo.userId, action: 'status' }
-          });
-
-          if (statusData?.connected) {
-            clearInterval(pollInterval);
-            setQrCode(null);
-            setStatus({
-              connected: true,
-              jid: statusData.jid,
-              phone: statusData.phone,
+          try {
+            const { data: statusData } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
+              body: { userId: userId, action: 'status' }
             });
-            toast.success('🎉 WhatsApp conectado com sucesso!');
+
+            console.log('[SwapPhone] Status:', statusData);
+
+            if (statusData?.connected) {
+              clearInterval(pollInterval);
+              setQrCode(null);
+              const cleanPhone = statusData.jid
+                ?.replace('@s.whatsapp.net', '')
+                ?.replace(/:\d+$/, '');
+              setStatus({
+                connected: true,
+                jid: statusData.jid,
+                phone: cleanPhone,
+              });
+              toast.success('🎉 WhatsApp conectado com sucesso!');
+            }
+          } catch (pollError) {
+            console.error('[SwapPhone] Erro no polling:', pollError);
           }
         }, 3000);
       } else {
+        console.error('[SwapPhone] Resposta sem QR:', data);
         setSwapError(data);
         toast.error(data?.error || 'Falha ao gerar QR code');
       }
     } catch (error: any) {
-      console.error('[SwapPhone] Erro:', error);
+      console.error('=== ERRO TROCAR TELEFONE ===');
+      console.error('Erro completo:', error);
       setSwapError({ error: error.message });
       toast.error('Erro ao trocar telefone');
     } finally {
