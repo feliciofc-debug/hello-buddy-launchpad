@@ -20,7 +20,23 @@ async function safeReadJson(resp: Response) {
 }
 
 function extractQrCodePayload(qrData: any): string | null {
-  const raw = qrData?.QRCode || qrData?.qrcode || qrData?.data?.QRCode || qrData?.data?.qrcode || qrData?.qr?.QRCode || null;
+  // WuzAPI builds vary a lot in the QR payload keys.
+  // Support the most common shapes we've seen in production.
+  const raw =
+    qrData?.QRCode ||
+    qrData?.qrcode ||
+    qrData?.qr ||
+    qrData?.code ||
+    qrData?.Code ||
+    qrData?.data?.QRCode ||
+    qrData?.data?.qrcode ||
+    qrData?.data?.qr ||
+    qrData?.data?.code ||
+    qrData?.data?.Code ||
+    qrData?.qr?.QRCode ||
+    qrData?.qr?.qrcode ||
+    qrData?.qr?.code ||
+    null;
   if (!raw) return null;
   if (typeof raw !== "string") return null;
   if (raw.startsWith("data:image")) {
@@ -176,9 +192,15 @@ serve(async (req) => {
               headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
               body: JSON.stringify({}),
             });
-            console.log(`   Logout ${logoutUrl}: ${logoutResp.status}`);
-            if (logoutResp.ok) {
-              // Aguardar servidor processar logout
+
+            const parsed = await safeReadJson(logoutResp);
+            const payload = parsed.ok ? parsed.json : null;
+            const logicalSuccess = parsed.ok && payload?.success !== false;
+
+            console.log(`   Logout ${logoutUrl}: status=${logoutResp.status} logicalSuccess=${logicalSuccess}`);
+
+            // Algumas builds retornam 500 mesmo quando a ação funciona (com JSON success=true).
+            if (logoutResp.ok || logicalSuccess) {
               await new Promise((r) => setTimeout(r, 2000));
               break;
             }
