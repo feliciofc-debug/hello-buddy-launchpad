@@ -827,6 +827,179 @@ serve(async (req) => {
       );
     }
 
+    if (action === "swap_phone") {
+      // ============================================================
+      // RESET TOTAL DA SESSÃO - Trocar telefone / limpar sessão presa
+      // ============================================================
+      console.log("[swap_phone] Iniciando reset completo da sessão...");
+      
+      const statusAntes = { connected: false, loggedIn: false, jid: null as string | null };
+      const tentativas: string[] = [];
+      
+      try {
+        // 1. Capturar status atual
+        try {
+          const statusRes = await fetch(`${baseUrl}/session/status`, {
+            method: "GET",
+            headers: { "Token": wuzapiToken, "Content-Type": "application/json" }
+          });
+          if (statusRes.ok) {
+            const statusParsed = await safeReadJson(statusRes);
+            if (statusParsed.ok) {
+              const innerData = statusParsed.json?.data || statusParsed.json;
+              statusAntes.connected = innerData?.connected || false;
+              statusAntes.loggedIn = innerData?.loggedIn || false;
+              statusAntes.jid = innerData?.jid || null;
+            }
+          }
+          tentativas.push(`status: ${JSON.stringify(statusAntes)}`);
+        } catch (e: any) {
+          tentativas.push(`status falhou: ${e.message}`);
+        }
+
+        // 2. Logout
+        try {
+          await fetch(`${baseUrl}/session/logout`, {
+            method: "POST",
+            headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          });
+          tentativas.push("logout: ok");
+        } catch (e: any) {
+          tentativas.push(`logout: ${e.message}`);
+        }
+        await new Promise(r => setTimeout(r, 2000));
+
+        // 3. Disconnect
+        try {
+          await fetch(`${baseUrl}/session/disconnect`, {
+            method: "POST",
+            headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          });
+          tentativas.push("disconnect: ok");
+        } catch (e: any) {
+          tentativas.push(`disconnect: ${e.message}`);
+        }
+        await new Promise(r => setTimeout(r, 2000));
+
+        // 4. Connect com Subscribe
+        try {
+          const connectRes = await fetch(`${baseUrl}/session/connect`, {
+            method: "POST",
+            headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              Subscribe: ["Message", "ReadReceipt", "ChatPresence", "Presence"]
+            })
+          });
+          const connectText = await connectRes.text();
+          tentativas.push(`connect: ${connectRes.status} - ${connectText.substring(0, 100)}`);
+        } catch (e: any) {
+          tentativas.push(`connect: ${e.message}`);
+        }
+        await new Promise(r => setTimeout(r, 3000));
+
+        // 5. Buscar QR code com retry
+        let qrCode: string | null = null;
+        const qrEndpoints = ["/session/qr", "/session/qr/image", "/qr"];
+        const maxRetries = 10;
+        
+        for (let i = 0; i < maxRetries && !qrCode; i++) {
+          for (const endpoint of qrEndpoints) {
+            try {
+              const qrRes = await fetch(`${baseUrl}${endpoint}`, {
+                method: "GET",
+                headers: { "Token": wuzapiToken }
+              });
+              
+              if (qrRes.ok) {
+                const contentType = qrRes.headers.get("content-type") || "";
+                
+                if (contentType.includes("image")) {
+                  const buffer = await qrRes.arrayBuffer();
+                  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+                  qrCode = `data:image/png;base64,${base64}`;
+                  tentativas.push(`qr ${endpoint}: imagem obtida`);
+                  break;
+                } else {
+                  const qrParsed = await safeReadJson(await fetch(`${baseUrl}${endpoint}`, {
+                    method: "GET",
+                    headers: { "Token": wuzapiToken }
+                  }));
+                  
+                  if (qrParsed.ok) {
+                    const extracted = extractQrCodePayload(qrParsed.json);
+                    if (extracted) {
+                      qrCode = extracted.startsWith("data:") ? extracted : `data:image/png;base64,${extracted}`;
+                      tentativas.push(`qr ${endpoint}: json obtido`);
+                      break;
+                    }
+                  }
+                }
+              } else {
+                tentativas.push(`qr ${endpoint}: ${qrRes.status}`);
+              }
+            } catch (e: any) {
+              tentativas.push(`qr ${endpoint}: ${e.message}`);
+            }
+          }
+          
+          if (!qrCode) {
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+
+        // 6. Atualizar banco
+        if (effectiveInstance?.id) {
+          await supabase
+            .from("wuzapi_instances")
+            .update({
+              is_connected: false,
+              phone_number: null,
+              connected_at: null,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", effectiveInstance.id);
+
+          tentativas.push("wuzapi_instances atualizado");
+        }
+
+        await supabase
+          .from("pj_clientes_config")
+          .update({
+            whatsapp_conectado: false,
+            wuzapi_jid: null,
+            ultimo_status_check: new Date().toISOString()
+          })
+          .eq("user_id", userId);
+          
+        tentativas.push("pj_clientes_config atualizado");
+
+        // 7. Retornar resultado
+        if (qrCode) {
+          return new Response(JSON.stringify({
+            success: true,
+            qrCode,
+            status: "awaiting_scan",
+            details: { tentativas, statusAntes }
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        } else {
+          return new Response(JSON.stringify({
+            success: false,
+            error: "Não foi possível obter QR code após reset",
+            details: { tentativas, statusAntes, baseUrl }
+          }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+
+      } catch (error: any) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: error.message,
+          details: { tentativas, statusAntes }
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     return new Response(
       JSON.stringify({ success: false, error: "Ação não reconhecida" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }

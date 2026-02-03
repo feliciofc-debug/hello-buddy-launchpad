@@ -31,6 +31,8 @@ export default function WhatsAppConnectionPJ() {
     details?: any;
     raw?: string;
   }>(null);
+  const [swapLoading, setSwapLoading] = useState(false);
+  const [swapError, setSwapError] = useState<any>(null);
 
   const canShowDisconnect = useMemo(() => {
     // Mesmo se o status estiver “desconectado”, pode existir sessão presa no servidor.
@@ -270,6 +272,79 @@ export default function WhatsAppConnectionPJ() {
     }
   };
 
+  const handleSwapPhone = async () => {
+    setSwapLoading(true);
+    setSwapError(null);
+    setQrCode(null);
+    setLastQrError(null);
+    
+    try {
+      const sessionInfo = await requireSession();
+      if (!sessionInfo) {
+        setSwapLoading(false);
+        return;
+      }
+
+      console.log('[SwapPhone] Iniciando reset total...');
+      
+      const { data, error } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
+        body: {
+          action: 'swap_phone',
+          userId: sessionInfo.userId
+        }
+      });
+
+      console.log('[SwapPhone] Resposta:', data, error);
+
+      if (error) {
+        setSwapError({ error: error.message, details: data });
+        toast.error('Erro ao trocar telefone');
+        return;
+      }
+
+      if (data?.success && data?.qrCode) {
+        setQrCode(data.qrCode);
+        toast.success('📲 QR Code gerado! Escaneie com seu WhatsApp.');
+        
+        // Poll for connection
+        let attempts = 0;
+        const pollInterval = setInterval(async () => {
+          attempts++;
+          if (attempts > 30) {
+            clearInterval(pollInterval);
+            setQrCode(null);
+            toast.error('⏰ QR Code expirou. Tente novamente.');
+            return;
+          }
+
+          const { data: statusData } = await supabase.functions.invoke('criar-instancia-wuzapi-pj', {
+            body: { userId: sessionInfo.userId, action: 'status' }
+          });
+
+          if (statusData?.connected) {
+            clearInterval(pollInterval);
+            setQrCode(null);
+            setStatus({
+              connected: true,
+              jid: statusData.jid,
+              phone: statusData.phone,
+            });
+            toast.success('🎉 WhatsApp conectado com sucesso!');
+          }
+        }, 3000);
+      } else {
+        setSwapError(data);
+        toast.error(data?.error || 'Falha ao gerar QR code');
+      }
+    } catch (error: any) {
+      console.error('[SwapPhone] Erro:', error);
+      setSwapError({ error: error.message });
+      toast.error('Erro ao trocar telefone');
+    } finally {
+      setSwapLoading(false);
+    }
+  };
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -424,6 +499,40 @@ export default function WhatsAppConnectionPJ() {
               )}
               Conectar WhatsApp
             </Button>
+
+            <Button
+              onClick={handleSwapPhone}
+              disabled={swapLoading}
+              variant="destructive"
+              className="w-full"
+            >
+              {swapLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetando sessão...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  🔄 Trocar Telefone (Reset Total)
+                </>
+              )}
+            </Button>
+
+            {swapError && (
+              <div className="mt-4 p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                <h4 className="font-semibold text-destructive mb-2">❌ Erro no Reset</h4>
+                <p className="text-destructive/80 mb-2">{swapError.error}</p>
+                {swapError.details && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-destructive/60">Ver detalhes técnicos</summary>
+                    <pre className="mt-2 p-2 bg-destructive/5 rounded overflow-auto max-h-40">
+                      {JSON.stringify(swapError.details, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            )}
 
             <Button 
               variant="outline"
