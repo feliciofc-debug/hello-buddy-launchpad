@@ -270,8 +270,10 @@ serve(async (req) => {
         const logoutEndpoints = [
           `${baseUrl}/session/logout`,
           `${baseUrl}/session/disconnect`,
+          `${baseUrl}/user/disconnect`,
         ];
         
+        let cleanupSuccess = false;
         for (const logoutUrl of logoutEndpoints) {
           try {
             const logoutResp = await fetch(logoutUrl, {
@@ -286,11 +288,29 @@ serve(async (req) => {
             console.log(`   Logout ${logoutUrl}: status=${logoutResp.status} logicalSuccess=${logicalSuccess}`);
 
             if (logicalSuccess) {
-              await new Promise((r) => setTimeout(r, 2000));
+              cleanupSuccess = true;
               break;
             }
           } catch (e) {
             console.log(`   Erro logout ${logoutUrl}:`, e);
+          }
+        }
+
+        // Aguardar mais tempo para o servidor processar
+        console.log("⏳ Aguardando servidor limpar sessão...");
+        await new Promise((r) => setTimeout(r, 3000));
+
+        // Tentar DELETE no session se os POSTs falharam (algumas builds aceitam)
+        if (!cleanupSuccess) {
+          try {
+            const deleteResp = await fetch(`${baseUrl}/session`, {
+              method: "DELETE",
+              headers: { "Token": wuzapiToken },
+            });
+            console.log(`   DELETE /session: status=${deleteResp.status}`);
+            await new Promise((r) => setTimeout(r, 2000));
+          } catch (e) {
+            console.log(`   Erro DELETE /session:`, e);
           }
         }
       }
