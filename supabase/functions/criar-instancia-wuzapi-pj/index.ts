@@ -318,18 +318,27 @@ serve(async (req) => {
       // 0) Tenta pegar QR direto primeiro (build Locaweb pode já ter QR disponível)
       const qrEndpoints = [
         `${baseUrl}/session/qr`,
+        // Algumas builds só respondem por POST
+        `${baseUrl}/session/qr__POST__`,
         `${baseUrl}/qr`,
         `${baseUrl}/api/qr`,
       ];
 
       for (const qrUrl of qrEndpoints) {
         try {
-          const preQrResp = await fetch(qrUrl, {
-            method: "GET",
-            headers: { "Token": wuzapiToken },
+          const isPost = qrUrl.endsWith("__POST__");
+          const realUrl = isPost ? qrUrl.replace(/__POST__$/, "") : qrUrl;
+
+          const preQrResp = await fetch(realUrl, {
+            method: isPost ? "POST" : "GET",
+            headers: {
+              "Token": wuzapiToken,
+              ...(isPost ? { "Content-Type": "application/json" } : {}),
+            },
+            ...(isPost ? { body: JSON.stringify({}) } : {}),
           });
 
-          console.log(`📲 Tentando QR em ${qrUrl}: status ${preQrResp.status}`);
+          console.log(`📲 Tentando QR em ${realUrl} (${isPost ? "POST" : "GET"}): status ${preQrResp.status}`);
           
           if (preQrResp.status === 404) continue;
 
@@ -429,12 +438,24 @@ serve(async (req) => {
       }
 
       // 2) Buscar QR Code (retry, igual Afiliados)
-      for (let i = 0; i < 5; i++) {
+      // Se conseguimos iniciar sessão em algum endpoint, dar um tempo extra pro servidor preparar o QR.
+      if (connectOk) {
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+
+      for (let i = 0; i < 12; i++) {
         for (const qrUrl of qrEndpoints) {
           try {
-            const qrResponse = await fetch(qrUrl, {
-              method: "GET",
-              headers: { "Token": wuzapiToken },
+            const isPost = qrUrl.endsWith("__POST__");
+            const realUrl = isPost ? qrUrl.replace(/__POST__$/, "") : qrUrl;
+
+            const qrResponse = await fetch(realUrl, {
+              method: isPost ? "POST" : "GET",
+              headers: {
+                "Token": wuzapiToken,
+                ...(isPost ? { "Content-Type": "application/json" } : {}),
+              },
+              ...(isPost ? { body: JSON.stringify({}) } : {}),
             });
 
             if (qrResponse.status === 404) continue;
@@ -451,7 +472,7 @@ serve(async (req) => {
             // ignore
           }
         }
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 1500));
       }
 
       // Se chegou aqui, não conseguiu QR.

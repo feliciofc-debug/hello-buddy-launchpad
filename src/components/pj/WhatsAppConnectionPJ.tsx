@@ -26,6 +26,11 @@ export default function WhatsAppConnectionPJ() {
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [instanceName, setInstanceName] = useState('');
   const [hasConfig, setHasConfig] = useState(false);
+  const [lastQrError, setLastQrError] = useState<null | {
+    message: string;
+    details?: any;
+    raw?: string;
+  }>(null);
 
   const canShowDisconnect = useMemo(() => {
     // Mesmo se o status estiver “desconectado”, pode existir sessão presa no servidor.
@@ -159,6 +164,7 @@ export default function WhatsAppConnectionPJ() {
   const generateQRCode = async () => {
     setLoading(true);
     setQrCode(null);
+    setLastQrError(null);
 
     try {
       const sessionInfo = await requireSession();
@@ -221,6 +227,15 @@ export default function WhatsAppConnectionPJ() {
         toast.success('✅ Já estava conectado!');
       } else if (data?.retry) {
         toast.info('⏳ Gerando QR Code... tente novamente em alguns segundos.');
+      } else if (data?.success === false) {
+        // Quando o backend retorna diagnóstico (ex: QR não gerado), não pode ficar “silencioso”.
+        const msg = data?.error || 'Não foi possível gerar o QR Code agora.';
+        setLastQrError({ message: msg, details: data?.details, raw: data?.raw });
+        toast.error(msg);
+      } else {
+        const msg = 'Não foi possível gerar o QR Code agora.';
+        setLastQrError({ message: msg, details: data });
+        toast.error(msg);
       }
     } catch (err: any) {
       console.error('Erro ao gerar QR:', err);
@@ -359,6 +374,25 @@ export default function WhatsAppConnectionPJ() {
             <p className="text-xs text-muted-foreground">
               Abra WhatsApp → Configurações → Aparelhos conectados → Conectar
             </p>
+          </div>
+        )}
+
+        {/* Diagnóstico quando o QR não vem */}
+        {lastQrError && !status.connected && !qrCode && (
+          <div className="rounded-lg border p-4 space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="h-5 w-5 text-muted-foreground mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Não consegui mostrar o QR Code</p>
+                <p className="text-sm text-muted-foreground">{lastQrError.message}</p>
+              </div>
+            </div>
+
+            {lastQrError.details && (
+              <pre className="text-xs overflow-auto rounded-md bg-muted p-3 max-h-48">
+{JSON.stringify(lastQrError.details, null, 2)}
+              </pre>
+            )}
           </div>
         )}
 
