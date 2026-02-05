@@ -106,7 +106,7 @@ export default function DashboardMetricas() {
   });
   const [userProfile, setUserProfile] = useState<any>(null);
 
-  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo);
+  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo, userProfile?.nome_fantasia);
 
   const carregarPerfil = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -114,7 +114,7 @@ export default function DashboardMetricas() {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tipo')
+      .select('tipo, nome_fantasia')
       .eq('id', user.id)
       .maybeSingle();
 
