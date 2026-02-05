@@ -191,23 +191,58 @@ serve(async (req) => {
 
     console.log(`📅 [PJ-SCHEDULER] Hora: ${horaAtual}, Dia: ${diaSemana}`);
 
-    // Buscar programações que precisam ser executadas
-    const { data: programacoes, error: fetchError } = await supabase
+    // ═══════════════════════════════════════
+    // BUSCAR DE AMBAS AS TABELAS
+    // ═══════════════════════════════════════
+    
+    // 1. Buscar de pj_envios_programados (sistema de intervalos)
+    const { data: programacoesEnvio, error: fetchError1 } = await supabase
       .from("pj_envios_programados")
       .select("*")
       .eq("ativo", true)
       .eq("pausado", false)
       .lte("proximo_envio", agora.toISOString());
 
-    if (fetchError) {
-      console.error("❌ [PJ-SCHEDULER] Erro ao buscar programações:", fetchError);
-      throw fetchError;
+    if (fetchError1) {
+      console.error("❌ [PJ-SCHEDULER] Erro ao buscar pj_envios_programados:", fetchError1);
     }
 
-    if (!programacoes || programacoes.length === 0) {
+    // 2. Buscar de campanhas_recorrentes (sistema de horários/dias - área de produtos)
+    const { data: campanhasRecorrentes, error: fetchError2 } = await supabase
+      .from("campanhas_recorrentes")
+      .select("*")
+      .eq("ativa", true)
+      .contains("dias_semana", [diaSemana]);
+
+    if (fetchError2) {
+      console.error("❌ [PJ-SCHEDULER] Erro ao buscar campanhas_recorrentes:", fetchError2);
+    }
+
+    // Filtrar campanhas_recorrentes que têm horário agora
+    const campanhasParaExecutar = (campanhasRecorrentes || []).filter((camp: any) => {
+      if (!camp.horarios || camp.horarios.length === 0) return false;
+      
+      // Verificar se algum horário bate com a hora atual (com margem de 2 minutos)
+      const horaAtualMinutos = parseInt(horaAtual.split(":")[0]) * 60 + parseInt(horaAtual.split(":")[1]);
+      
+      return camp.horarios.some((horario: string) => {
+        const [h, m] = horario.split(":").map(Number);
+        const horarioMinutos = h * 60 + m;
+        const diff = Math.abs(horaAtualMinutos - horarioMinutos);
+        return diff <= 2; // Margem de 2 minutos
+      });
+    });
+
+    console.log(`📋 [PJ-SCHEDULER] Encontradas: ${programacoesEnvio?.length || 0} envios programados, ${campanhasParaExecutar.length} campanhas recorrentes`);
+
+    // Combinar ambas as fontes
+    const programacoes = programacoesEnvio || [];
+    const campanhas = campanhasParaExecutar || [];
+
+    if (programacoes.length === 0 && campanhas.length === 0) {
       console.log("✅ [PJ-SCHEDULER] Nenhuma programação para executar agora");
       return new Response(
-        JSON.stringify({ success: true, executadas: 0 }),
+        JSON.stringify({ success: true, executadas: 0, fonte: "ambas" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -365,14 +400,161 @@ serve(async (req) => {
       }
     }
 
-    console.log(`📊 [PJ-SCHEDULER] Resultado: ${executadas} executadas, ${erros} erros`);
+    // ═══════════════════════════════════════
+    // PROCESSAR CAMPANHAS_RECORRENTES (área de produtos)
+    // ═══════════════════════════════════════
+    for (const camp of campanhas) {
+      try {
+        console.log(`🔄 [PJ-SCHEDULER] Processando campanha recorrente: ${camp.nome}...`);
+
+        // Verificar se já foi executada neste horário (evitar duplicata)
+        if (camp.ultima_execucao) {
+          const ultimaExec = new Date(camp.ultima_execucao);
+          const diffMinutos = (agora.getTime() - ultimaExec.getTime()) / (1000 * 60);
+          if (diffMinutos < 5) {
+            console.log(`⏭️ [PJ-SCHEDULER] Campanha ${camp.nome} já executada há ${diffMinutos.toFixed(0)} minutos`);
+            continue;
+          }
+        }
+
+        // Buscar destinos: pj_grupos_ids ou listas_ids
+        let destinosJids: string[] = [];
+        
+        if (camp.pj_grupos_ids && camp.pj_grupos_ids.length > 0) {
+          destinosJids = camp.pj_grupos_ids;
+        } else if (camp.listas_ids && camp.listas_ids.length > 0) {
+          // Buscar grupos das listas
+          const { data: grupos } = await supabase
+            .from("pj_grupos_whatsapp")
+            .select("grupo_jid")
+            .eq("user_id", camp.user_id)
+            .eq("ativo", true);
+          
+          if (grupos && grupos.length > 0) {
+            destinosJids = grupos.map((g: any) => g.grupo_jid);
+          }
+        }
+
+        if (destinosJids.length === 0) {
+          console.log(`⚠️ [PJ-SCHEDULER] Campanha ${camp.nome} sem destinos configurados`);
+          continue;
+        }
+
+        // Buscar produto (usar produtos_ids ou buscar do user)
+        let produto: any = null;
+        
+        if (camp.produtos_ids && camp.produtos_ids.length > 0) {
+          const idx = camp.ultimo_produto_index || 0;
+          const produtoId = camp.produtos_ids[idx % camp.produtos_ids.length];
+          
+          const { data: prod } = await supabase
+            .from("produtos")
+            .select("*")
+            .eq("id", produtoId)
+            .maybeSingle();
+          
+          produto = prod;
+        } else {
+          // Buscar qualquer produto do usuário
+          const { data: prods } = await supabase
+            .from("produtos")
+            .select("*")
+            .eq("user_id", camp.user_id)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          
+          if (prods && prods.length > 0) {
+            produto = prods[0];
+          }
+        }
+
+        if (!produto) {
+          console.log(`⚠️ [PJ-SCHEDULER] Campanha ${camp.nome} sem produto encontrado`);
+          continue;
+        }
+
+        console.log(`📦 [PJ-SCHEDULER] Produto: ${produto.titulo?.substring(0, 40)}...`);
+
+        // Buscar token do usuário
+        let wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
+        const { data: config } = await supabase
+          .from("pj_clientes_config")
+          .select("wuzapi_token")
+          .eq("user_id", camp.user_id)
+          .maybeSingle();
+
+        if (config?.wuzapi_token) {
+          wuzapiToken = config.wuzapi_token;
+        }
+
+        // Montar mensagem
+        const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2)}` : "";
+        let mensagemBase = camp.mensagem_template || `🔥 *${produto.titulo}*\n\n`;
+        
+        // Substituir variáveis
+        mensagemBase = mensagemBase
+          .replace("{{produto}}", produto.titulo || "")
+          .replace("{{preco}}", preco)
+          .replace("{{link}}", produto.link_afiliado || produto.url || "");
+        
+        if (!mensagemBase.includes(produto.titulo)) {
+          mensagemBase = `🔥 *${produto.titulo}*\n\n`;
+          if (preco) mensagemBase += `💰 *${preco}*\n\n`;
+          mensagemBase += `🛒 *Compre aqui:* ${produto.link_afiliado || produto.url || ""}`;
+        }
+
+        // Gerar variação de mensagem
+        const mensagem = await gerarVariacaoMensagem(mensagemBase);
+
+        // Enviar para cada destino
+        let sucessosCampanha = 0;
+        for (const jid of destinosJids) {
+          const resultado = await enviarParaGrupo(
+            wuzapiToken,
+            jid,
+            mensagem,
+            produto.imagem_url || produto.imagem
+          );
+
+          if (resultado.success) {
+            sucessosCampanha++;
+            executadas++;
+          } else {
+            erros++;
+          }
+
+          await sleep(CONFIG.DELAY_ENTRE_ENVIOS_MS);
+        }
+
+        console.log(`✅ [PJ-SCHEDULER] Campanha ${camp.nome}: ${sucessosCampanha}/${destinosJids.length} enviados`);
+
+        // Atualizar campanha
+        const novoIndex = ((camp.ultimo_produto_index || 0) + 1) % (camp.produtos_ids?.length || 1);
+        
+        await supabase
+          .from("campanhas_recorrentes")
+          .update({
+            ultima_execucao: agora.toISOString(),
+            ultimo_produto_index: novoIndex,
+            total_enviados: (camp.total_enviados || 0) + sucessosCampanha,
+          })
+          .eq("id", camp.id);
+
+      } catch (campError: any) {
+        console.error(`❌ [PJ-SCHEDULER] Erro na campanha ${camp.id}:`, campError);
+        erros++;
+      }
+    }
+
+    console.log(`📊 [PJ-SCHEDULER] Resultado final: ${executadas} executadas, ${erros} erros`);
 
     return new Response(
       JSON.stringify({
         success: true,
         executadas,
         erros,
-        total: programacoes.length,
+        total: programacoes.length + campanhas.length,
+        fonte: "ambas_tabelas",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
