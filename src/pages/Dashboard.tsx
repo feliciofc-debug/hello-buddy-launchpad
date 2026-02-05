@@ -29,7 +29,7 @@ const Dashboard = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Hook para gerenciar menus baseado no tipo de cliente
-  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo);
+  const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo, userProfile?.nome_fantasia);
 
   // Calcular métricas reais baseadas nos produtos (SEMPRE executado - antes do early return)
   const metrics = useMemo(() => {
