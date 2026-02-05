@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -272,7 +272,7 @@ serve(async (req) => {
                 .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
                 .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
 
-              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-afiliado', {
+              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
                 body: {
                   phoneNumbers: [phone],
                   message: mensagemPersonalizada,
