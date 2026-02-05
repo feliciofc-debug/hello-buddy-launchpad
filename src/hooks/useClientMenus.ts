@@ -29,7 +29,7 @@ const routeToMenuId: Record<string, string> = {
   '/produtos': 'shopee',
 };
 
-export function useClientMenus(userTipo: string | null | undefined) {
+export function useClientMenus(userTipo: string | null | undefined, userNomeFantasia?: string | null) {
   const [menuConfig, setMenuConfig] = useState<MenuConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -91,11 +91,14 @@ export function useClientMenus(userTipo: string | null | undefined) {
     return isMenuAllowed(menuId);
   };
 
+  // Priorizar nome_fantasia do perfil do usuário sobre a config genérica
+  const empresaNome = userNomeFantasia || menuConfig?.empresa_nome || 'AMZ Ofertas';
+
   return {
     menuConfig,
     isLoading,
     isMenuAllowed,
     isRouteAllowed,
-    empresaNome: menuConfig?.empresa_nome || 'AMZ Ofertas'
+    empresaNome
   };
 }
