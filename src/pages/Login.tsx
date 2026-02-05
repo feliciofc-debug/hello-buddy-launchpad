@@ -37,9 +37,19 @@ export default function Login() {
       // Verificar perfil do usuário
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tipo')
+        .select('tipo, validade_acesso')
         .eq('id', data.user.id)
         .maybeSingle();
+
+      // Verificar se o acesso expirou (para parceiros com validade definida)
+      if (profile?.validade_acesso) {
+        const validade = new Date(profile.validade_acesso);
+        if (validade < new Date()) {
+          await supabase.auth.signOut();
+          toast.error('Seu acesso expirou. Entre em contato para renovar.');
+          return;
+        }
+      }
 
       // Afiliados vão direto para dashboard de afiliados
       if (profile?.tipo === 'afiliado_admin' || profile?.tipo === 'afiliado') {
