@@ -4855,6 +4855,7 @@ export type Database = {
           shopee_id: string | null
           tipo: string | null
           updated_at: string
+          validade_acesso: string | null
           valor_plano: number | null
           whatsapp: string
         }
@@ -4877,6 +4878,7 @@ export type Database = {
           shopee_id?: string | null
           tipo?: string | null
           updated_at?: string
+          validade_acesso?: string | null
           valor_plano?: number | null
           whatsapp: string
         }
@@ -4899,6 +4901,7 @@ export type Database = {
           shopee_id?: string | null
           tipo?: string | null
           updated_at?: string
+          validade_acesso?: string | null
           valor_plano?: number | null
           whatsapp?: string
         }
