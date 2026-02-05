@@ -272,7 +272,7 @@ serve(async (req) => {
                 .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
                 .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
 
-              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-afiliado', {
                 body: {
                   phoneNumbers: [phone],
                   message: mensagemPersonalizada,
