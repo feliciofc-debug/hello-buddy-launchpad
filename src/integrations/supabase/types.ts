@@ -1794,6 +1794,69 @@ export type Database = {
         }
         Relationships: []
       }
+      edge_functions_health: {
+        Row: {
+          consecutive_failures: number | null
+          created_at: string | null
+          function_name: string
+          id: string
+          is_critical: boolean | null
+          last_check: string | null
+          last_error: string | null
+          last_online: string | null
+          status: string
+          updated_at: string | null
+        }
+        Insert: {
+          consecutive_failures?: number | null
+          created_at?: string | null
+          function_name: string
+          id?: string
+          is_critical?: boolean | null
+          last_check?: string | null
+          last_error?: string | null
+          last_online?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Update: {
+          consecutive_failures?: number | null
+          created_at?: string | null
+          function_name?: string
+          id?: string
+          is_critical?: boolean | null
+          last_check?: string | null
+          last_error?: string | null
+          last_online?: string | null
+          status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      edge_functions_incidents: {
+        Row: {
+          created_at: string | null
+          details: string | null
+          function_name: string
+          id: string
+          incident_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          details?: string | null
+          function_name: string
+          id?: string
+          incident_type: string
+        }
+        Update: {
+          created_at?: string | null
+          details?: string | null
+          function_name?: string
+          id?: string
+          incident_type?: string
+        }
+        Relationships: []
+      }
       empresa_config: {
         Row: {
           created_at: string | null
