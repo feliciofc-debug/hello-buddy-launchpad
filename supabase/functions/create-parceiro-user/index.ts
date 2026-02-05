@@ -15,11 +15,19 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Dados do usuário parceiro de Goiânia
-    const email = 'rfreitas@teste.com.br';
-    const password = 'Teste123456';
+    // Receber dados do body da requisição
+    const body = await req.json();
+    const email = body.email;
+    const password = body.password;
     const tipo = 'parceiro';
-    const empresa = 'Parceiro Goiânia';
+    const empresa = body.empresa || 'Parceiro';
+
+    if (!email || !password) {
+      return new Response(
+        JSON.stringify({ error: 'Email e senha são obrigatórios' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log(`🏢 Criando usuário parceiro: ${email}`);
 
