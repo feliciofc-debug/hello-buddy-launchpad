@@ -19,6 +19,60 @@ async function safeReadJson(response: Response): Promise<any> {
   }
 }
 
+// Converte base64 para URL pública via Supabase Storage
+async function uploadBase64ToStorage(
+  supabase: any,
+  base64Data: string,
+  userId: string
+): Promise<string | null> {
+  try {
+    console.log("[PJ-SEND] Detectado base64, fazendo upload...");
+    
+    // Extrair tipo e dados do base64
+    const matches = base64Data.match(/^data:(.+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      console.error("[PJ-SEND] Formato base64 inválido");
+      return null;
+    }
+    
+    const mimeType = matches[1];
+    const base64Content = matches[2];
+    const extension = mimeType.split("/")[1] || "png";
+    const fileName = `whatsapp-images/${userId}/${Date.now()}.${extension}`;
+    
+    // Converter base64 para Uint8Array
+    const binaryString = atob(base64Content);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("produtos")
+      .upload(fileName, bytes, {
+        contentType: mimeType,
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("[PJ-SEND] Erro no upload:", uploadError);
+      return null;
+    }
+    
+    // Gerar URL pública
+    const { data: publicUrlData } = supabase.storage
+      .from("produtos")
+      .getPublicUrl(fileName);
+    
+    const publicUrl = publicUrlData?.publicUrl || null;
+    console.log("[PJ-SEND] Imagem uploaded:", publicUrl);
+    return publicUrl;
+  } catch (uploadErr) {
+    console.error("[PJ-SEND] Erro ao processar base64:", uploadErr);
+    return null;
+  }
+}
+
 // Gera variantes do número para testar (com e sem 9º dígito)
 function generatePhoneVariants(phone: string): string[] {
   let clean = phone.replace(/\D/g, "");
@@ -267,6 +321,20 @@ serve(async (req) => {
       );
     }
 
+    // Processar imagem base64 se necessário (converter para URL pública)
+    let finalImageUrl = imageUrl;
+    if (imageUrl && imageUrl.startsWith("data:")) {
+      console.log("🖼️ [PJ-SEND] Imagem base64 detectada, fazendo upload para storage...");
+      const uploadedUrl = await uploadBase64ToStorage(supabase, imageUrl, userId || "anonymous");
+      if (uploadedUrl) {
+        finalImageUrl = uploadedUrl;
+        console.log("✅ [PJ-SEND] Imagem convertida para URL:", finalImageUrl);
+      } else {
+        console.warn("⚠️ [PJ-SEND] Falha ao fazer upload da imagem, enviando só texto");
+        finalImageUrl = null;
+      }
+    }
+
     // Envio direto
     const results: any[] = [];
 
@@ -311,14 +379,14 @@ serve(async (req) => {
         let response: Response;
         let payload: any;
 
-        if (imageUrl) {
+        if (finalImageUrl) {
           response = await fetch(`${baseUrl}/chat/send/image`, {
             method: "POST",
             headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
             body: JSON.stringify({
               Phone: targetPhone,
               Caption: message,
-              Image: imageUrl,
+              Image: finalImageUrl,
             }),
           });
 
@@ -373,7 +441,7 @@ serve(async (req) => {
                 user_id: userId,
                 phone: targetPhone,
                 message_id: messageId,
-                tipo: imageUrl ? "imagem" : "texto",
+                tipo: finalImageUrl ? "imagem" : "texto",
                 status: "enviado",
                 enviado_at: new Date().toISOString(),
               });
