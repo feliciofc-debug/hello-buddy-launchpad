@@ -4124,7 +4124,11 @@ export type Database = {
       pj_clientes_config: {
         Row: {
           created_at: string | null
+          envios_mes_atual: number | null
+          envios_utilizados: number | null
           id: string
+          limite_envios: number | null
+          mes_referencia: string | null
           nome_assistente: string | null
           personalidade_assistente: string | null
           tts_ativo: boolean | null
@@ -4140,7 +4144,11 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          envios_mes_atual?: number | null
+          envios_utilizados?: number | null
           id?: string
+          limite_envios?: number | null
+          mes_referencia?: string | null
           nome_assistente?: string | null
           personalidade_assistente?: string | null
           tts_ativo?: boolean | null
@@ -4156,7 +4164,11 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          envios_mes_atual?: number | null
+          envios_utilizados?: number | null
           id?: string
+          limite_envios?: number | null
+          mes_referencia?: string | null
           nome_assistente?: string | null
           personalidade_assistente?: string | null
           tts_ativo?: boolean | null
@@ -6675,6 +6687,10 @@ export type Database = {
       increment_afiliado_indicacoes: {
         Args: { afiliado_uuid: string }
         Returns: undefined
+      }
+      incrementar_envio_pj: {
+        Args: { p_quantidade?: number; p_user_id: string }
+        Returns: Json
       }
       limpar_estados_antigos_afiliado: { Args: never; Returns: number }
       limpar_webhook_dedup_antigos: { Args: never; Returns: number }
