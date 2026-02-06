@@ -218,7 +218,9 @@ serve(async (req) => {
       effectiveInstanceName: effectiveInstance?.instance_name || null,
     });
 
-    const baseUrl = (effectiveInstance?.wuzapi_url || LOCAWEB_WUZAPI_URL).replace(/\/+$/, "");
+    // Se não há instância mapeada, construir URL com IP + porta do pj_clientes_config
+    const rawBaseUrl = effectiveInstance?.wuzapi_url || `http://191.252.193.73:${effectivePort}`;
+    const baseUrl = rawBaseUrl.replace(/\/+$/, "");
     const wuzapiToken = effectiveInstance?.wuzapi_token || clienteConfig.wuzapi_token || LOCAWEB_WUZAPI_TOKEN;
 
     if (action === "connect" || action === "qrcode") {
