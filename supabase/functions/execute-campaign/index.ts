@@ -115,8 +115,10 @@ serve(async (req) => {
           erros++
         }
 
-        // Delay entre envios
-        await new Promise(r => setTimeout(r, 500))
+        // Delay aleatório entre 3-7 segundos (simula comportamento humano)
+        const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
+        console.log(`⏱️ Aguardando ${delay}ms antes do próximo envio...`);
+        await new Promise(r => setTimeout(r, delay))
 
       } catch (err) {
         console.error(`❌ Erro ao processar ${phone}:`, err)
