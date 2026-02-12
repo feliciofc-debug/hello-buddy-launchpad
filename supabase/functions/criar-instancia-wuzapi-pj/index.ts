@@ -319,11 +319,10 @@ serve(async (req) => {
 
       // 0) Tenta pegar QR direto primeiro (build Locaweb pode já ter QR disponível)
       const qrEndpoints = [
+        `${baseUrl}/session/qr/image`,
         `${baseUrl}/session/qr`,
         // Algumas builds só respondem por POST
         `${baseUrl}/session/qr__POST__`,
-        `${baseUrl}/qr`,
-        `${baseUrl}/api/qr`,
       ];
 
       for (const qrUrl of qrEndpoints) {
@@ -361,12 +360,11 @@ serve(async (req) => {
       // 1) Tenta iniciar sessão com múltiplos endpoints (diferentes builds de WuzAPI)
       // IMPORTANTE: Incluir Subscribe para receber eventos de mensagem!
       const connectCandidates = [
-        { url: `${baseUrl}/user/qr`, method: "GET", noBody: true },
-        { url: `${baseUrl}/session/qr`, method: "POST", noBody: false },
         { url: `${baseUrl}/session/connect`, method: "POST", noBody: false },
         { url: `${baseUrl}/session/start`, method: "POST", noBody: false },
         { url: `${baseUrl}/session/login`, method: "POST", noBody: false },
-        { url: `${baseUrl}/api/session/connect`, method: "POST", noBody: false },
+        { url: `${baseUrl}/user/qr`, method: "GET", noBody: true },
+        { url: `${baseUrl}/session/qr`, method: "POST", noBody: false },
       ];
 
       // Payload com eventos para receber mensagens
@@ -448,11 +446,9 @@ serve(async (req) => {
 
       // Endpoints de QR para tentar (inclui variações de diferentes builds WuzAPI)
       const qrFetchEndpoints = [
-        { method: 'GET', path: '/session/qr' },
         { method: 'GET', path: '/session/qr/image' },
+        { method: 'GET', path: '/session/qr' },
         { method: 'POST', path: '/session/qr' },
-        { method: 'GET', path: '/qr' },
-        { method: 'GET', path: '/api/qr' },
       ];
 
       let qrCodeResult: string | null = null;
