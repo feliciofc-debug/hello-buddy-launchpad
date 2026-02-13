@@ -178,7 +178,14 @@ export default function ImportContatosPJ() {
             </div>
           </div>
 
-          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+          <Button asChild className="w-full bg-purple-600 hover:bg-purple-700 text-white">
+            <a href="/AMZ-Extrator-v2.zip" download>
+              <Download className="h-4 w-4 mr-2" />
+              Baixar Extensão AMZ Extrator
+            </a>
+          </Button>
+
+          <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
             <p className="font-semibold mb-1">💡 Dica:</p>
             <p>Use os filtros da extensão para selecionar apenas números brasileiros (+55) e remover duplicados antes de exportar.</p>
           </div>
