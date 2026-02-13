@@ -65,6 +65,7 @@ import TikTokCallback from "./pages/TikTokCallback";
 import Termos from "./pages/Termos";
 import Privacidade from "./pages/Privacidade";
 import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
+import ExtensaoDownload from "./pages/ExtensaoDownload";
 
 // Páginas Afiliados
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
@@ -155,6 +156,7 @@ const App = () => (
             
             {/* Rotas PJ */}
             <Route path="/pj/whatsapp-automacao" element={<WhatsAppAutomacaoPJ />} />
+            <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
             
             {/* TikTok OAuth Callback */}
             <Route path="/tiktok/callback" element={<TikTokCallback />} />
