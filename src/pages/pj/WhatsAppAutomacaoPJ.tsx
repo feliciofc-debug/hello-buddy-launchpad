@@ -64,6 +64,10 @@ export default function WhatsAppAutomacaoPJ() {
           </div>
         </TabsContent>
 
+        <TabsContent value="importar">
+          <ImportContatosPJ />
+        </TabsContent>
+
         <TabsContent value="grupos">
           <div className="grid gap-6 md:grid-cols-2">
             <CriarGrupoWhatsAppPJ />
