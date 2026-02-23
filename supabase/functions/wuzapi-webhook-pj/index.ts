@@ -1277,6 +1277,123 @@ serve(async (req) => {
       await supabase.from("pj_webhook_dedup").insert({ message_id: messageId });
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🛑 COMANDO DE PARADA: Se o cliente pedir para parar, não responder mais
+    // ═══════════════════════════════════════════════════════════════════════════
+    const msgLowerTrim = messageText.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const STOP_COMMANDS = [
+      'parar', 'pare', 'stop', 'para', 'chega', 'basta', 'cancelar',
+      'para de mandar mensagem', 'pare de responder', 'nao responda mais',
+      'nao quero mais', 'encerrar', 'encerra', 'silencio', 'cala a boca',
+      'desativar', 'sair', 'exit', 'quit', 'fim', 'acabou',
+      'para bot', 'para robo', 'desliga', 'desligar'
+    ];
+    
+    const isStopCommand = STOP_COMMANDS.some(cmd => {
+      const cmdNorm = cmd.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      return msgLowerTrim === cmdNorm || msgLowerTrim.includes(cmdNorm);
+    });
+
+    if (isStopCommand) {
+      console.log(`🛑 [PJ-WEBHOOK] Comando de PARADA detectado de ${cleanPhone}: "${messageText}"`);
+      
+      // Salvar mensagem do usuário
+      await supabase.from("pj_conversas").insert({
+        phone: cleanPhone,
+        role: "user",
+        content: messageText,
+      });
+      
+      // Marcar como "pausado" na tabela de conversas (cooldown longo)
+      await supabase.from("pj_conversas").insert({
+        phone: cleanPhone,
+        role: "system",
+        content: "[CONVERSA PAUSADA - Cliente solicitou parada]",
+      });
+      
+      return new Response(
+        JSON.stringify({ success: true, stopped: true, reason: "stop_command", phone: cleanPhone }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🔄 ANTI-LOOP: Detectar se há muitas mensagens recentes (loop entre bots)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const LOOP_WINDOW_MINUTES = 3; // Janela de tempo
+    const LOOP_MAX_MESSAGES = 6;   // Máximo de mensagens nessa janela
+    const COOLDOWN_SECONDS = 30;   // Cooldown mínimo entre respostas ao mesmo número
+
+    // Verificar se já existe uma pausa ativa (comando "parar")
+    const { data: pauseCheck } = await supabase
+      .from("pj_conversas")
+      .select("id, created_at")
+      .eq("phone", cleanPhone)
+      .eq("role", "system")
+      .ilike("content", "%CONVERSA PAUSADA%")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pauseCheck) {
+      const pausedAt = new Date(pauseCheck.created_at).getTime();
+      const PAUSE_DURATION_MS = 30 * 60 * 1000; // 30 minutos de pausa
+      if (Date.now() - pausedAt < PAUSE_DURATION_MS) {
+        console.log(`🛑 [PJ-WEBHOOK] Conversa PAUSADA para ${cleanPhone} (pausa ativa há ${Math.round((Date.now() - pausedAt) / 60000)}min)`);
+        return new Response(
+          JSON.stringify({ success: true, ignored: true, reason: "conversation_paused" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Contar mensagens recentes do assistente para este número
+    const loopCutoff = new Date(Date.now() - LOOP_WINDOW_MINUTES * 60 * 1000).toISOString();
+    const { count: recentAssistantMsgs } = await supabase
+      .from("pj_conversas")
+      .select("id", { count: "exact", head: true })
+      .eq("phone", cleanPhone)
+      .eq("role", "assistant")
+      .gte("created_at", loopCutoff);
+
+    if ((recentAssistantMsgs || 0) >= LOOP_MAX_MESSAGES) {
+      console.warn(`🔄🛑 [PJ-WEBHOOK] LOOP DETECTADO para ${cleanPhone}! ${recentAssistantMsgs} msgs assistente em ${LOOP_WINDOW_MINUTES}min. PARANDO!`);
+      
+      // Inserir pausa automática
+      await supabase.from("pj_conversas").insert({
+        phone: cleanPhone,
+        role: "system",
+        content: "[LOOP DETECTADO - Pausa automática de 30 minutos]",
+      });
+      
+      return new Response(
+        JSON.stringify({ success: true, ignored: true, reason: "loop_detected", recentMessages: recentAssistantMsgs }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Cooldown: verificar última resposta do assistente para este número
+    const { data: lastAssistantMsg } = await supabase
+      .from("pj_conversas")
+      .select("created_at")
+      .eq("phone", cleanPhone)
+      .eq("role", "assistant")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastAssistantMsg) {
+      const lastResponseAt = new Date(lastAssistantMsg.created_at).getTime();
+      const elapsedSec = (Date.now() - lastResponseAt) / 1000;
+      if (elapsedSec < COOLDOWN_SECONDS) {
+        console.log(`⏳ [PJ-WEBHOOK] Cooldown ativo para ${cleanPhone}: última resposta há ${elapsedSec.toFixed(0)}s (mín: ${COOLDOWN_SECONDS}s)`);
+        return new Response(
+          JSON.stringify({ success: true, ignored: true, reason: "cooldown", elapsedSeconds: elapsedSec }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Salvar mensagem do usuário
     await supabase.from("pj_conversas").insert({
       phone: cleanPhone,
