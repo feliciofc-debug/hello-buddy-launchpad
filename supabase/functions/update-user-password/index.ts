@@ -17,11 +17,11 @@ Deno.serve(async (req) => {
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { userId, email, newPassword } = body;
+    const { userId, email, newPassword, newEmail } = body;
 
-    if (!newPassword) {
+    if (!newPassword && !newEmail) {
       return new Response(
-        JSON.stringify({ error: 'newPassword é obrigatório' }),
+        JSON.stringify({ error: 'newPassword ou newEmail é obrigatório' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -44,26 +44,34 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Atualizar senha
+    // Montar objeto de update
+    const updateData: any = {};
+    if (newPassword) updateData.password = newPassword;
+    if (newEmail) {
+      updateData.email = newEmail;
+      updateData.email_confirm = true;
+    }
+
+    // Atualizar usuário
     const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       targetUserId,
-      { password: newPassword }
+      updateData
     );
 
     if (updateError) {
-      console.error('Erro ao atualizar senha:', updateError);
+      console.error('Erro ao atualizar usuário:', updateError);
       return new Response(
         JSON.stringify({ error: updateError.message }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('✅ Senha atualizada para:', updatedUser.user?.email);
+    console.log('✅ Usuário atualizado:', updatedUser.user?.email);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Senha atualizada com sucesso!',
+        message: 'Usuário atualizado com sucesso!',
         email: updatedUser.user?.email,
         userId: updatedUser.user?.id
       }),
