@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { VideoGenerator } from "@/components/VideoGenerator";
+import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
 
 interface PostVariations {
   opcaoA: string;
@@ -40,6 +41,7 @@ const IAMarketing = () => {
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [userType, setUserType] = useState<string>('empresa');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [selectedVariations, setSelectedVariations] = useState({
@@ -599,30 +601,15 @@ const IAMarketing = () => {
                           </Button>
                         </div>
                         
-                        {/* Botão Envio em Massa WhatsApp */}
+                        {/* Botão Envio WhatsApp via Modal */}
                         <Button
-                          onClick={() => {
-                            const texto = editableTexts.whatsapp[selectedVariations.whatsapp];
-                            const imagemProduto = resultado?.generatedImage || resultado?.produto?.imagem;
-                            const tituloProduto = resultado?.produto?.titulo;
-                            
-                            // Navegar para página WhatsApp com dados da campanha
-                            navigate('/whatsapp', {
-                              state: {
-                                messageTemplate: texto,
-                                productImage: imagemProduto,
-                                productTitle: tituloProduto,
-                                campaignName: `Campanha ${tituloProduto || 'Marketing'}`,
-                                fromIAMarketing: true
-                              }
-                            });
-                            
-                            toast.success('✅ Redirecionando para WhatsApp...');
-                          }}
+                          onClick={() => setShowWhatsAppModal(true)}
+                          disabled={!editableTexts.whatsapp[selectedVariations.whatsapp]?.trim()}
+                          title={!editableTexts.whatsapp[selectedVariations.whatsapp]?.trim() ? "Gere uma mensagem primeiro" : ""}
                           className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                         >
                           <MessageCircle className="mr-2 h-4 w-4" />
-                          📤 Enviar para WhatsApp (Grupos)
+                          📲 Enviar via WhatsApp
                         </Button>
                         
                         {/* 🚀 PILAR 2: Botão Criar Campanha de Prospecção */}
@@ -682,6 +669,14 @@ const IAMarketing = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modal de Envio WhatsApp */}
+      <EnviarWhatsAppModal
+        open={showWhatsAppModal}
+        onOpenChange={setShowWhatsAppModal}
+        mensagem={editableTexts.whatsapp[selectedVariations.whatsapp] || ""}
+        imagemUrl={resultado?.generatedImage || resultado?.produto?.imagem}
+      />
 
       {/* Modal de Agendamento */}
       {resultado && (
