@@ -162,10 +162,11 @@ _Escolha quantidade e finalize!_ ✅`);
         console.error('⚠️ Erro ao buscar listas manuais:', manualError);
       }
 
-      // Buscar listas automáticas por categoria
+      // Buscar listas automáticas por categoria (apenas do usuário logado)
       const { data: autoListas, error: autoError } = await supabase
         .from('afiliado_listas_categoria')
         .select('*')
+        .eq('user_id', user.id)
         .eq('ativa', true)
         .order('total_membros', { ascending: false });
 
