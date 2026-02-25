@@ -26,7 +26,7 @@ export default function WhatsAppAutomacaoPJ() {
         </p>
       </div>
 
-      <Tabs defaultValue="conexao" className="space-y-6">
+      <Tabs defaultValue="contatos" className="space-y-6">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="conexao">Conexão</TabsTrigger>
           <TabsTrigger value="contatos">Contatos & Listas</TabsTrigger>
