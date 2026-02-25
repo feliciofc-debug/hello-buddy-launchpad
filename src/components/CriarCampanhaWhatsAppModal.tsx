@@ -173,17 +173,7 @@ _Escolha quantidade e finalize!_ ✅`);
         console.error('⚠️ Erro ao buscar listas automáticas:', autoError);
       }
 
-      // 🆕 Buscar grupos WhatsApp PJ
-      const { data: gruposPJ, error: gruposPJError } = await supabase
-        .from('pj_grupos_whatsapp')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('ativo', true)
-        .order('nome');
-
-      if (gruposPJError) {
-        console.error('⚠️ Erro ao buscar grupos PJ:', gruposPJError);
-      }
+      // Grupos PJ removidos - apenas listas são exibidas
 
       // Para cada lista automática, buscar os telefones dos membros
       const listasAutoComTelefones = await Promise.all(
@@ -216,18 +206,8 @@ _Escolha quantidade e finalize!_ ✅`);
         })
       );
 
-      // Mapear grupos PJ para o formato esperado
-      const gruposPJMapped: WhatsAppGroup[] = (gruposPJ || []).map(g => ({
-        id: g.id,
-        group_id: g.grupo_jid,
-        group_name: `👥 ${g.nome}`,
-        member_count: g.participantes_count || 0,
-        phone_numbers: [] // Grupos são enviados pelo JID, não por telefones individuais
-      }));
-
-      // Combinar listas e grupos
+      // Combinar apenas listas (sem grupos PJ)
       const todasListas: WhatsAppGroup[] = [
-        ...gruposPJMapped, // Grupos PJ primeiro
         ...listasAutoComTelefones,
         ...(manualListas || []).map(g => ({
           id: g.id,
@@ -238,7 +218,7 @@ _Escolha quantidade e finalize!_ ✅`);
         }))
       ];
 
-      console.log(`✅ ${todasListas.length} itens carregados (${gruposPJMapped.length} grupos PJ + ${listasAutoComTelefones.length} listas automáticas + ${manualListas?.length || 0} manuais)`);
+      console.log(`✅ ${todasListas.length} listas carregadas (${listasAutoComTelefones.length} automáticas + ${manualListas?.length || 0} manuais)`);
       setListas(todasListas);
     } catch (error) {
       console.error('❌ ERRO ao buscar listas:', error);
@@ -395,80 +375,18 @@ _Escolha quantidade e finalize!_ ✅`;
     
     console.log('📦 Produto:', produto.nome);
 
-    // 🆕 Separar grupos PJ de listas normais
-    const { data: gruposPJ } = await supabase
-      .from('pj_grupos_whatsapp')
-      .select('id, grupo_jid, nome')
-      .in('id', listasSelecionadas)
-      .eq('user_id', user.id);
-
-    const gruposPJIds = (gruposPJ || []).map(g => g.id);
-    const listasNormaisIds = listasSelecionadas.filter(id => !gruposPJIds.includes(id));
-
-    console.log('📊 Grupos PJ selecionados:', gruposPJ?.length || 0);
-    console.log('📊 Listas normais selecionadas:', listasNormaisIds.length);
-
-    // 🆕 Enviar para grupos PJ diretamente via JID
-    if (gruposPJ && gruposPJ.length > 0) {
-      for (const grupo of gruposPJ) {
-        console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
-        
-        // 🎯 Para grupos, substituir {{nome}} por "pessoal"
-        const mensagemGrupo = mensagem
-          .replace(/\{\{nome\}\}/gi, 'pessoal')
-          .replace(/Olá\s+,/gi, 'Olá pessoal,')
-          .replace(/Oi\s+,/gi, 'Oi pessoal,');
-        
-        try {
-          const { error } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
-            body: {
-              userId: user.id,
-              groupJid: grupo.grupo_jid,
-              message: mensagemGrupo,
-              imageUrl: produto.imagem_url
-            }
-          });
-
-          if (error) {
-            console.error(`❌ Erro ao enviar para grupo ${grupo.nome}:`, error);
-            toast.error(`Erro ao enviar para ${grupo.nome}`);
-          } else {
-            console.log(`✅ Enviado para grupo ${grupo.nome}`);
-            toast.success(`✅ Enviado para grupo ${grupo.nome}`);
-          }
-        } catch (err) {
-          console.error(`❌ Erro ao enviar para grupo ${grupo.nome}:`, err);
-        }
-      }
-    }
-
-    // Se não há listas normais, terminar aqui
-    if (listasNormaisIds.length === 0) {
-      if (gruposPJ && gruposPJ.length > 0) {
-        console.log('✅ Campanha enviada apenas para grupos PJ');
-        return;
-      }
-      toast.error('Nenhum grupo ou lista selecionada');
-      return;
-    }
-
-    // Buscar contatos das listas normais
+    // Buscar contatos das listas selecionadas
     const { data: listasData } = await supabase
       .from('whatsapp_groups')
       .select('phone_numbers')
-      .in('id', listasNormaisIds);
+      .in('id', listasSelecionadas);
 
     const todosContatos = listasData?.flatMap(l => l.phone_numbers || []) || [];
-    console.log('📋 Total contatos (listas normais):', todosContatos.length);
+    console.log('📋 Total contatos:', todosContatos.length);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (todosContatos.length === 0 && (!gruposPJ || gruposPJ.length === 0)) {
-      toast.error('Nenhum contato encontrado nas listas selecionadas');
-      return;
-    }
-    
-    // Se só tinha grupos PJ e já enviou, terminar
     if (todosContatos.length === 0) {
+      toast.error('Nenhum contato encontrado nas listas selecionadas');
       return;
     }
 
