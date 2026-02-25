@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2, Sparkles } from 'lucide-react';
+import { Bell, User, Menu, X, Package, UserCircle, DollarSign, TrendingUp, Target, BarChart3, ShoppingBag, LogOut, Moon, Sun, Settings, MessageCircle, Bot, Instagram, BookOpen, Megaphone, CreditCard, Users, Award, MapPin, Star, Calendar, FileText, Download, Plus, Eye, UserPlus, Package2, Link2, Send, Video, Building2, Sparkles, Smartphone } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart as RechartsBarChart, Bar, Legend } from 'recharts';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTheme } from 'next-themes';
@@ -353,19 +353,20 @@ const Dashboard = () => {
               IA Marketing
             </a>
           )}
-          {isMenuAllowed('whatsapp') && (
-            <>
+          {isMenuAllowed('conectar-whatsapp') && (
               <a
-                href="/whatsapp"
-                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md hover:shadow-lg ${
-                  window.location.pathname === '/whatsapp' 
-                    ? 'ring-2 ring-green-300' 
-                    : ''
+                href="/configuracoes-whatsapp"
+                className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+                  window.location.pathname === '/configuracoes-whatsapp' 
+                    ? 'bg-blue-500 text-white' 
+                    : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
               >
-                <MessageCircle size={20} />
-                <span className="font-semibold">📱 WhatsApp</span>
+                <Smartphone size={20} />
+                📱 Conectar Celular
               </a>
+          )}
+          {isMenuAllowed('automacao-grupos') && (
               <a
                 href="/pj/whatsapp-automacao"
                 className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
@@ -377,7 +378,6 @@ const Dashboard = () => {
                 <Send size={20} />
                 📋 Contatos & Listas
               </a>
-            </>
           )}
           {isMenuAllowed('ia-conversas') && (
             <a
