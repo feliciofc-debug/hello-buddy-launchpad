@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +26,7 @@ import {
 import { toast } from "sonner";
 import ImportContatosPJ from "./ImportContatosPJ";
 import EnviosProgramadosPJ from "./EnviosProgramadosPJ";
+import CriarGrupoWhatsAppPJ from "./CriarGrupoWhatsAppPJ";
 
 interface ListaItem {
   id: string;
@@ -85,6 +88,15 @@ export default function ContatosListasPJ() {
 
   // Envios programados
   const [enviosAberto, setEnviosAberto] = useState(false);
+
+  // Criar lista manual
+  const [showCriarLista, setShowCriarLista] = useState(false);
+  const [novaListaNome, setNovaListaNome] = useState("");
+  const [novaListaDesc, setNovaListaDesc] = useState("");
+  const [criandoLista, setCriandoLista] = useState(false);
+
+  // Criar grupo manual
+  const [showCriarGrupo, setShowCriarGrupo] = useState(false);
 
   useEffect(() => {
     loadUser();
@@ -252,6 +264,32 @@ export default function ContatosListasPJ() {
       )
     : contatos;
 
+  const handleCriarLista = async () => {
+    if (!novaListaNome.trim()) {
+      toast.error("Digite o nome da lista");
+      return;
+    }
+    setCriandoLista(true);
+    try {
+      const { error } = await supabase.from("pj_listas_categoria").insert({
+        user_id: userId,
+        nome: novaListaNome.trim(),
+        descricao: novaListaDesc.trim() || null,
+        ativa: true,
+        total_membros: 0,
+      });
+      if (error) throw error;
+      toast.success(`Lista "${novaListaNome}" criada!`);
+      setNovaListaNome("");
+      setNovaListaDesc("");
+      setShowCriarLista(false);
+      await loadListas();
+    } catch (err: any) {
+      toast.error("Erro: " + err.message);
+    }
+    setCriandoLista(false);
+  };
+
   const openImport = (tipo: "lista" | "grupo") => {
     setImportTipo(tipo);
     setShowImportModal(true);
@@ -278,9 +316,14 @@ export default function ContatosListasPJ() {
                 ⚠️ Máx 256
               </Badge>
             </h3>
-            <Button size="sm" variant="outline" onClick={() => openImport("lista")}>
-              <Plus className="h-4 w-4 mr-1" /> Nova Lista
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => setShowCriarLista(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Criar
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openImport("lista")}>
+                <Users className="h-4 w-4 mr-1" /> Importar
+              </Button>
+            </div>
           </div>
 
           {listas.length === 0 ? (
@@ -348,9 +391,14 @@ export default function ContatosListasPJ() {
                 ✅ Ilimitado
               </Badge>
             </h3>
-            <Button size="sm" variant="outline" onClick={() => openImport("grupo")}>
-              <Plus className="h-4 w-4 mr-1" /> Novo Grupo
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => setShowCriarGrupo(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Criar
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openImport("grupo")}>
+                <Users className="h-4 w-4 mr-1" /> Importar
+              </Button>
+            </div>
           </div>
 
           {grupos.length === 0 ? (
@@ -503,6 +551,48 @@ export default function ContatosListasPJ() {
               Adicionar
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL — Criar Lista Manual */}
+      <Dialog open={showCriarLista} onOpenChange={setShowCriarLista}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>📋 Criar Lista de Transmissão</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2">
+            <div className="space-y-1">
+              <Label>Nome da Lista</Label>
+              <Input
+                placeholder="Ex: Clientes VIP"
+                value={novaListaNome}
+                onChange={(e) => setNovaListaNome(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Descrição (opcional)</Label>
+              <Textarea
+                placeholder="Descrição da lista..."
+                value={novaListaDesc}
+                onChange={(e) => setNovaListaDesc(e.target.value)}
+                className="min-h-[60px]"
+              />
+            </div>
+            <Button className="w-full" onClick={handleCriarLista} disabled={criandoLista || !novaListaNome.trim()}>
+              {criandoLista ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+              Criar Lista
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL — Criar Grupo WhatsApp Manual */}
+      <Dialog open={showCriarGrupo} onOpenChange={(open) => { setShowCriarGrupo(open); if (!open) loadGrupos(); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>👥 Criar Grupo WhatsApp</DialogTitle>
+          </DialogHeader>
+          <CriarGrupoWhatsAppPJ />
         </DialogContent>
       </Dialog>
 
