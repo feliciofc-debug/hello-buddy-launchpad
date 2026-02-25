@@ -1,14 +1,467 @@
 "use client";
 
-import { useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { ArrowLeft, Smartphone, Users, Trash2, Eye, EyeOff, Link2, Plus, Search, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Smartphone, Users } from 'lucide-react';
-import WhatsAppConnectionPJ from '@/components/pj/WhatsAppConnectionPJ';
-import ContatosListasPJ from '@/components/pj/ContatosListasPJ';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Label } from '@/components/ui/label';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
+import WhatsAppConnectionPJ from '@/components/pj/WhatsAppConnectionPJ';
+import EnviosProgramadosPJ from '@/components/pj/EnviosProgramadosPJ';
+import ImportContatosPJ from '@/components/pj/ImportContatosPJ';
+
+// ─── Types ────────────────────────────────────────────
+interface Lista {
+  id: string;
+  nome: string;
+  total_membros: number | null;
+  created_at: string | null;
+}
+interface Membro {
+  id: string;
+  nome: string | null;
+  telefone: string | null;
+}
+interface Grupo {
+  id: string;
+  nome: string;
+  participantes_count: number | null;
+  created_at: string | null;
+  invite_link: string | null;
+}
+interface Contato {
+  id: string;
+  nome: string | null;
+  telefone: string | null;
+}
+
+// ─── Contatos Tab ─────────────────────────────────────
+function ContatosTab() {
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Lists
+  const [listas, setListas] = useState<Lista[]>([]);
+  const [expandedLista, setExpandedLista] = useState<string | null>(null);
+  const [listaMembros, setListaMembros] = useState<Membro[]>([]);
+  const [loadingMembros, setLoadingMembros] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importTipo, setImportTipo] = useState<'lista' | 'grupo'>('lista');
+
+  // Groups
+  const [grupos, setGrupos] = useState<Grupo[]>([]);
+  const [expandedGrupo, setExpandedGrupo] = useState<string | null>(null);
+
+  // Individual contacts
+  const [contatos, setContatos] = useState<Contato[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [newNome, setNewNome] = useState('');
+  const [newTelefone, setNewTelefone] = useState('');
+
+  // Envios programados
+  const [enviosOpen, setEnviosOpen] = useState(false);
+
+  // Init
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (userId) {
+      loadListas();
+      loadGrupos();
+      loadContatos();
+    }
+  }, [userId]);
+
+  // ── Listas ──
+  const loadListas = async () => {
+    if (!userId) return;
+    const { data } = await supabase
+      .from('pj_listas_categoria')
+      .select('id, nome, total_membros, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    setListas(data || []);
+  };
+
+  const toggleListaMembros = async (listaId: string) => {
+    if (expandedLista === listaId) {
+      setExpandedLista(null);
+      setListaMembros([]);
+      return;
+    }
+    setLoadingMembros(true);
+    setExpandedLista(listaId);
+    const { data } = await supabase
+      .from('pj_lista_membros')
+      .select('id, nome, telefone')
+      .eq('lista_id', listaId);
+    setListaMembros(data || []);
+    setLoadingMembros(false);
+  };
+
+  const deleteLista = async (listaId: string) => {
+    await supabase.from('pj_lista_membros').delete().eq('lista_id', listaId);
+    await supabase.from('pj_listas_categoria').delete().eq('id', listaId);
+    toast.success('Lista removida');
+    if (expandedLista === listaId) {
+      setExpandedLista(null);
+      setListaMembros([]);
+    }
+    loadListas();
+  };
+
+  // ── Grupos ──
+  const loadGrupos = async () => {
+    if (!userId) return;
+    const { data } = await supabase
+      .from('pj_grupos_whatsapp')
+      .select('id, nome, participantes_count, created_at, invite_link')
+      .eq('user_id', userId)
+      .eq('ativo', true)
+      .order('created_at', { ascending: false });
+    setGrupos(data || []);
+  };
+
+  const deleteGrupo = async (grupoId: string) => {
+    await supabase.from('pj_grupos_whatsapp').update({ ativo: false }).eq('id', grupoId);
+    toast.success('Grupo removido');
+    loadGrupos();
+  };
+
+  const copyLink = (link: string | null) => {
+    if (!link) { toast.error('Sem link disponível'); return; }
+    navigator.clipboard.writeText(link);
+    toast.success('Link copiado!');
+  };
+
+  // ── Contatos individuais ──
+  const loadContatos = async () => {
+    if (!userId) return;
+    const { data } = await supabase
+      .from('pj_lista_membros')
+      .select('id, nome, telefone')
+      .order('nome', { ascending: true });
+    // Deduplicate by telefone
+    const seen = new Set<string>();
+    const unique: Contato[] = [];
+    (data || []).forEach(c => {
+      if (c.telefone && !seen.has(c.telefone)) {
+        seen.add(c.telefone);
+        unique.push(c);
+      }
+    });
+    setContatos(unique);
+  };
+
+  const filteredContatos = useMemo(() => {
+    if (!searchTerm) return contatos;
+    const term = searchTerm.toLowerCase();
+    return contatos.filter(c =>
+      (c.nome?.toLowerCase().includes(term)) ||
+      (c.telefone?.includes(term))
+    );
+  }, [contatos, searchTerm]);
+
+  const addContact = async () => {
+    if (!newTelefone.trim()) { toast.error('Telefone obrigatório'); return; }
+    const { error } = await supabase.from('pj_lista_membros').insert({
+      nome: newNome.trim() || null,
+      telefone: newTelefone.trim(),
+      lista_id: null,
+    });
+    if (error) { toast.error('Erro ao adicionar'); return; }
+    toast.success('Contato adicionado');
+    setNewNome('');
+    setNewTelefone('');
+    setAddContactOpen(false);
+    loadContatos();
+  };
+
+  const deleteContato = async (id: string) => {
+    await supabase.from('pj_lista_membros').delete().eq('id', id);
+    toast.success('Contato removido');
+    loadContatos();
+  };
+
+  const openImport = (tipo: 'lista' | 'grupo') => {
+    setImportTipo(tipo);
+    setImportDialogOpen(true);
+  };
+
+  const fmtDate = (d: string | null) => {
+    if (!d) return '—';
+    try { return format(new Date(d), "dd/MM/yyyy", { locale: ptBR }); }
+    catch { return '—'; }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* ── PARTE 1: Duas colunas ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* COLUNA ESQUERDA — Listas */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-lg">📋 Listas de Transmissão</CardTitle>
+            <Button size="sm" onClick={() => openImport('lista')}>
+              <Plus className="h-4 w-4 mr-1" /> Nova Lista
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {listas.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhuma lista criada</p>
+            )}
+            {listas.map(lista => (
+              <div key={lista.id} className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-sm">{lista.nome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {lista.total_membros || 0} membros · {fmtDate(lista.created_at)}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-orange-600 border-orange-300 bg-orange-50 text-xs">
+                    ⚠️ Máx 256
+                  </Badge>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => toggleListaMembros(lista.id)}>
+                    {expandedLista === lista.id ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
+                    {expandedLista === lista.id ? 'Fechar' : 'Ver'}
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="h-3 w-3 mr-1" /> Deletar
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Tem certeza? Isso remove a lista e todos os contatos dela.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => deleteLista(lista.id)}>Confirmar</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+                {expandedLista === lista.id && (
+                  <div className="mt-2 border-t pt-2 space-y-1 max-h-48 overflow-y-auto">
+                    {loadingMembros ? (
+                      <p className="text-xs text-muted-foreground">Carregando...</p>
+                    ) : listaMembros.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Nenhum membro</p>
+                    ) : (
+                      listaMembros.map(m => (
+                        <div key={m.id} className="flex justify-between text-xs py-1">
+                          <span>{m.nome || 'Sem nome'}</span>
+                          <span className="text-muted-foreground">{m.telefone}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        {/* COLUNA DIREITA — Grupos */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-3">
+            <CardTitle className="text-lg">👥 Grupos WhatsApp</CardTitle>
+            <Button size="sm" onClick={() => openImport('grupo')}>
+              <Plus className="h-4 w-4 mr-1" /> Novo Grupo
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {grupos.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhum grupo ativo</p>
+            )}
+            {grupos.map(grupo => (
+              <div key={grupo.id} className="border rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-sm">{grupo.nome}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {grupo.participantes_count || 0} participantes · {fmtDate(grupo.created_at)}
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-green-600 border-green-300 bg-green-50 text-xs">
+                    ✅ Ilimitado
+                  </Badge>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {grupo.invite_link && (
+                    <Button variant="outline" size="sm" onClick={() => copyLink(grupo.invite_link)}>
+                      <Link2 className="h-3 w-3 mr-1" /> Copiar link
+                    </Button>
+                  )}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="h-3 w-3 mr-1" /> Deletar
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Deseja desativar este grupo?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => deleteGrupo(grupo.id)}>Confirmar</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── PARTE 2: Contatos individuais ── */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-3">
+          <CardTitle className="text-lg">👤 Contatos Salvos</CardTitle>
+          <Dialog open={addContactOpen} onOpenChange={setAddContactOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Adicionar contato</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Novo Contato</DialogTitle>
+                <DialogDescription>Adicione um contato individual</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div>
+                  <Label>Nome</Label>
+                  <Input value={newNome} onChange={e => setNewNome(e.target.value)} placeholder="Nome (opcional)" />
+                </div>
+                <div>
+                  <Label>Telefone *</Label>
+                  <Input value={newTelefone} onChange={e => setNewTelefone(e.target.value)} placeholder="5511999999999" />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button onClick={addContact}>Salvar</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome ou telefone..."
+                className="pl-9"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+            </div>
+          </div>
+          {filteredContatos.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Nenhum contato encontrado</p>
+          ) : (
+            <div className="max-h-80 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Telefone</TableHead>
+                    <TableHead className="w-16"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredContatos.map(c => (
+                    <TableRow key={c.id}>
+                      <TableCell className="text-sm">{c.nome || '—'}</TableCell>
+                      <TableCell className="text-sm font-mono">{c.telefone}</TableCell>
+                      <TableCell>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm"><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remover contato?</AlertDialogTitle>
+                              <AlertDialogDescription>Essa ação não pode ser desfeita.</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteContato(c.id)}>Remover</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── PARTE 3: Envios Programados (colapsável) ── */}
+      <Collapsible open={enviosOpen} onOpenChange={setEnviosOpen}>
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer flex flex-row items-center justify-between pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Calendar className="h-5 w-5" /> 📅 Envios Programados
+              </CardTitle>
+              {enviosOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent>
+              <EnviosProgramadosPJ />
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
+
+      {/* ── Dialog para importação ── */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{importTipo === 'grupo' ? 'Novo Grupo WhatsApp' : 'Nova Lista de Transmissão'}</DialogTitle>
+          </DialogHeader>
+          <ImportContatosPJ />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────
 export default function WhatsAppAutomacaoPJ() {
   return (
     <div className="container mx-auto p-6 max-w-5xl">
@@ -39,13 +492,13 @@ export default function WhatsAppAutomacaoPJ() {
             Contatos & Listas
           </TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="conexao" className="mt-4">
           <WhatsAppConnectionPJ />
         </TabsContent>
-        
+
         <TabsContent value="contatos" className="mt-4">
-          <ContatosListasPJ />
+          <ContatosTab />
         </TabsContent>
       </Tabs>
     </div>
