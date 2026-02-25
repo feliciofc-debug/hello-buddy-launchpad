@@ -3,8 +3,6 @@
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import WhatsAppConnectionPJ from '@/components/pj/WhatsAppConnectionPJ';
 import ContatosListasPJ from '@/components/pj/ContatosListasPJ';
 
 export default function WhatsAppAutomacaoPJ() {
@@ -20,45 +18,13 @@ export default function WhatsAppAutomacaoPJ() {
       </div>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Contatos & Listas</h1>
+        <h1 className="text-2xl font-bold">📋 Contatos & Listas</h1>
         <p className="text-muted-foreground">
-          Gerencie sua conexão, contatos e listas
+          Gerencie suas listas de transmissão, grupos e contatos
         </p>
       </div>
 
-      <Tabs defaultValue="contatos" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="conexao">Conexão</TabsTrigger>
-          <TabsTrigger value="contatos">Contatos & Listas</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="conexao">
-          <WhatsAppConnectionPJ />
-          
-          <div className="mt-6 bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
-            <p className="font-semibold mb-2">📱 Como conectar:</p>
-            <ol className="space-y-1 list-decimal list-inside">
-              <li>Clique em "Conectar WhatsApp"</li>
-              <li>Abra o WhatsApp no seu celular</li>
-              <li>Vá em <strong>Configurações → Aparelhos conectados</strong></li>
-              <li>Toque em <strong>"Conectar aparelho"</strong></li>
-              <li>Escaneie o QR Code exibido</li>
-            </ol>
-            
-            <p className="font-semibold mt-4 mb-2">ℹ️ Importante:</p>
-            <ul className="space-y-1 list-disc list-inside">
-              <li>Use um número dedicado para atendimento</li>
-              <li>Mantenha o celular com bateria e internet</li>
-              <li>Não desconecte o WhatsApp Web manualmente</li>
-              <li>O QR Code expira em ~60 segundos</li>
-            </ul>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="contatos">
-          <ContatosListasPJ />
-        </TabsContent>
-      </Tabs>
+      <ContatosListasPJ />
     </div>
   );
 }
