@@ -21,6 +21,9 @@ import { ptBR } from 'date-fns/locale';
 import WhatsAppConnectionPJ from '@/components/pj/WhatsAppConnectionPJ';
 import EnviosProgramadosPJ from '@/components/pj/EnviosProgramadosPJ';
 import ImportContatosPJ from '@/components/pj/ImportContatosPJ';
+import CriarGrupoWhatsAppPJ from '@/components/pj/CriarGrupoWhatsAppPJ';
+import { Textarea } from '@/components/ui/textarea';
+import { Loader2 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────
 interface Lista {
@@ -72,6 +75,15 @@ function ContatosTab() {
 
   // Envios programados
   const [enviosOpen, setEnviosOpen] = useState(false);
+
+  // Criar lista manual
+  const [showCriarLista, setShowCriarLista] = useState(false);
+  const [novaListaNome, setNovaListaNome] = useState('');
+  const [novaListaDesc, setNovaListaDesc] = useState('');
+  const [criandoLista, setCriandoLista] = useState(false);
+
+  // Criar grupo manual
+  const [showCriarGrupo, setShowCriarGrupo] = useState(false);
 
   // Init
   useEffect(() => {
@@ -207,6 +219,29 @@ function ContatosTab() {
     setImportDialogOpen(true);
   };
 
+  const handleCriarLista = async () => {
+    if (!novaListaNome.trim()) { toast.error('Digite o nome da lista'); return; }
+    setCriandoLista(true);
+    try {
+      const { error } = await supabase.from('pj_listas_categoria').insert({
+        user_id: userId,
+        nome: novaListaNome.trim(),
+        descricao: novaListaDesc.trim() || null,
+        ativa: true,
+        total_membros: 0,
+      });
+      if (error) throw error;
+      toast.success(`Lista "${novaListaNome}" criada!`);
+      setNovaListaNome('');
+      setNovaListaDesc('');
+      setShowCriarLista(false);
+      loadListas();
+    } catch (err: any) {
+      toast.error('Erro: ' + err.message);
+    }
+    setCriandoLista(false);
+  };
+
   const fmtDate = (d: string | null) => {
     if (!d) return '—';
     try { return format(new Date(d), "dd/MM/yyyy", { locale: ptBR }); }
@@ -221,9 +256,14 @@ function ContatosTab() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-lg">📋 Listas de Transmissão</CardTitle>
-            <Button size="sm" onClick={() => openImport('lista')}>
-              <Plus className="h-4 w-4 mr-1" /> Nova Lista
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => setShowCriarLista(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Criar
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openImport('lista')}>
+                <Users className="h-4 w-4 mr-1" /> Importar
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {listas.length === 0 && (
@@ -292,9 +332,14 @@ function ContatosTab() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <CardTitle className="text-lg">👥 Grupos WhatsApp</CardTitle>
-            <Button size="sm" onClick={() => openImport('grupo')}>
-              <Plus className="h-4 w-4 mr-1" /> Novo Grupo
-            </Button>
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => setShowCriarGrupo(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Criar
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => openImport('grupo')}>
+                <Users className="h-4 w-4 mr-1" /> Importar
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {grupos.length === 0 && (
@@ -452,9 +497,46 @@ function ContatosTab() {
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{importTipo === 'grupo' ? 'Novo Grupo WhatsApp' : 'Nova Lista de Transmissão'}</DialogTitle>
+            <DialogTitle>{importTipo === 'grupo' ? 'Importar Grupo WhatsApp' : 'Importar Lista de Transmissão'}</DialogTitle>
           </DialogHeader>
           <ImportContatosPJ />
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog para criar lista manual ── */}
+      <Dialog open={showCriarLista} onOpenChange={setShowCriarLista}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Criar Lista de Transmissão</DialogTitle>
+            <DialogDescription>Crie uma lista vazia e adicione contatos depois.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Nome da Lista *</Label>
+              <Input value={novaListaNome} onChange={e => setNovaListaNome(e.target.value)} placeholder="Ex: Clientes VIP" />
+            </div>
+            <div>
+              <Label>Descrição (opcional)</Label>
+              <Textarea value={novaListaDesc} onChange={e => setNovaListaDesc(e.target.value)} placeholder="Descrição da lista..." className="min-h-[80px]" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCriarLista(false)}>Cancelar</Button>
+            <Button onClick={handleCriarLista} disabled={criandoLista || !novaListaNome.trim()}>
+              {criandoLista ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Criando...</> : 'Criar Lista'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog para criar grupo manual ── */}
+      <Dialog open={showCriarGrupo} onOpenChange={setShowCriarGrupo}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Criar Grupo WhatsApp</DialogTitle>
+            <DialogDescription>Crie um grupo real no WhatsApp via seu celular conectado.</DialogDescription>
+          </DialogHeader>
+          <CriarGrupoWhatsAppPJ />
         </DialogContent>
       </Dialog>
     </div>
