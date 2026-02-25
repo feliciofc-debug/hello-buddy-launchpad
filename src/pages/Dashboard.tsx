@@ -353,11 +353,11 @@ const Dashboard = () => {
               IA Marketing
             </a>
           )}
-          {isMenuAllowed('conectar-whatsapp') && (
+          {isMenuAllowed('whatsapp') && (
               <a
-                href="/configuracoes-whatsapp"
+                href="/pj/whatsapp-automacao"
                 className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                  window.location.pathname === '/configuracoes-whatsapp' 
+                  window.location.pathname === '/pj/whatsapp-automacao' 
                     ? 'bg-blue-500 text-white' 
                     : 'hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
