@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Upload, FileSpreadsheet, Users, CheckCircle2, AlertCircle, Download, Settings, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 interface ParsedContact {
   nome: string | null;
@@ -149,19 +150,35 @@ export default function ContatosWhatsApp() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
-    if (!selectedFile.name.endsWith('.csv') && !selectedFile.name.endsWith('.txt')) {
-      toast.error('Formato inválido. Use CSV ou TXT.');
+    const name = selectedFile.name.toLowerCase();
+    const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+    const isText = name.endsWith('.csv') || name.endsWith('.txt');
+    if (!isExcel && !isText) {
+      toast.error('Formato inválido. Use CSV, TXT ou Excel (.xls, .xlsx).');
       return;
     }
     setFile(selectedFile);
     setImported(false);
     setSummary(null);
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      processText(text, selectedFile.name);
-    };
-    reader.readAsText(selectedFile, 'UTF-8');
+
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const csv = XLSX.utils.sheet_to_csv(firstSheet);
+        processText(csv, selectedFile.name);
+      };
+      reader.readAsArrayBuffer(selectedFile);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target?.result as string;
+        processText(text, selectedFile.name);
+      };
+      reader.readAsText(selectedFile, 'UTF-8');
+    }
   };
 
   const processText = (text: string, fileName?: string) => {
@@ -174,7 +191,7 @@ export default function ContatosWhatsApp() {
       toast.success(`${result.contacts.length} contatos encontrados!`);
     }
     if (!listName && fileName) {
-      setListName(fileName.replace(/\.(csv|txt)$/i, '').replace(/_/g, ' '));
+      setListName(fileName.replace(/\.(csv|txt|xlsx|xls)$/i, '').replace(/_/g, ' '));
     }
   };
 
@@ -437,7 +454,7 @@ export default function ContatosWhatsApp() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.txt"
+                  accept=".csv,.txt,.xls,.xlsx"
                   className="hidden"
                   onChange={handleFileChange}
                 />
@@ -445,7 +462,7 @@ export default function ContatosWhatsApp() {
                   <Upload className="w-8 h-8 text-white/30 group-hover:text-emerald-400 transition-colors" />
                 </div>
                 <p className="text-white/60 font-medium">Arraste ou clique para subir</p>
-                <p className="text-xs text-white/30 mt-1">CSV, TXT — qualquer separador</p>
+                <p className="text-xs text-white/30 mt-1">CSV, TXT, Excel (.xls, .xlsx) — qualquer separador</p>
               </div>
 
               {/* Paste area */}
