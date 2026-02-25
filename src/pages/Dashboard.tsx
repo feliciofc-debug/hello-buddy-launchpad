@@ -375,7 +375,7 @@ const Dashboard = () => {
                 }`}
               >
                 <Send size={20} />
-                🤖 Automação Grupos
+                📋 Contatos & Listas
               </a>
             </>
           )}
