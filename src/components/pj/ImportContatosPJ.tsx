@@ -9,39 +9,133 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface ParsedContact {
-  nome: string;
+  nome: string | null;
   telefone: string;
+}
+
+interface ParseResult {
+  contacts: ParsedContact[];
+  ignored: { linha: number; valor: string; motivo: string }[];
+}
+
+interface ImportSummary {
+  total: number;
+  importados: number;
+  ignorados: number;
+  detalhes: { linha: number; valor: string; motivo: string }[];
+}
+
+function isPhoneValue(val: string): boolean {
+  const digits = val.replace(/[\s\-\(\)\+\.]/g, '');
+  return /^\d{8,15}$/.test(digits);
+}
+
+function normalizePhone(val: string): string {
+  return val.replace(/[\s\-\(\)\.]/g, '');
+}
+
+function parseCSV(text: string): ParseResult {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length === 0) return { contacts: [], ignored: [] };
+
+  const firstLine = lines[0];
+  const separator = firstLine.includes(';') ? ';' : 
+                    firstLine.includes('\t') ? '\t' : ',';
+
+  const firstCols = firstLine.split(separator).map(c => c.trim().toLowerCase().replace(/"/g, ''));
+  const hasHeader = firstCols.some(c =>
+    ['nome', 'name', 'telefone', 'phone', 'celular', 'whatsapp', 'numero', 'número', 'tel', 'contato'].includes(c)
+  );
+
+  let phoneIdx = -1;
+  let nameIdx = -1;
+
+  if (hasHeader) {
+    firstCols.forEach((col, i) => {
+      if (['telefone', 'phone', 'celular', 'whatsapp', 'numero', 'número', 'tel'].includes(col)) phoneIdx = i;
+      if (['nome', 'name', 'contato'].includes(col)) nameIdx = i;
+    });
+  }
+
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  if (phoneIdx === -1 && dataLines.length > 0) {
+    const sampleCols = dataLines[0]?.split(separator).map(c => c.trim().replace(/"/g, '')) ?? [];
+    sampleCols.forEach((col, i) => {
+      if (phoneIdx === -1 && isPhoneValue(col)) phoneIdx = i;
+    });
+    if (phoneIdx !== -1) {
+      nameIdx = phoneIdx === 0 ? 1 : 0;
+    }
+  }
+
+  const contacts: ParsedContact[] = [];
+  const ignored: ParseResult['ignored'] = [];
+
+  dataLines.forEach((line, lineNum) => {
+    if (!line.trim()) return;
+
+    const parts = line.split(separator).map(p => p.trim().replace(/^"|"$/g, ''));
+
+    let telefone = '';
+    let nome: string | null = null;
+
+    if (phoneIdx !== -1) {
+      telefone = normalizePhone(parts[phoneIdx] ?? '');
+      nome = nameIdx !== -1 && nameIdx < parts.length ? (parts[nameIdx] || null) : null;
+    } else {
+      for (let i = 0; i < parts.length; i++) {
+        if (isPhoneValue(parts[i])) {
+          telefone = normalizePhone(parts[i]);
+          nome = parts.find((p, idx) => idx !== i && p.length > 1 && !isPhoneValue(p)) ?? null;
+          break;
+        }
+      }
+    }
+
+    const digits = telefone.replace(/\D/g, '');
+    if (!telefone || digits.length < 8) {
+      ignored.push({
+        linha: lineNum + (hasHeader ? 2 : 1),
+        valor: line.substring(0, 50),
+        motivo: !telefone ? 'Telefone não encontrado' : `Telefone inválido (${digits.length} dígitos)`
+      });
+      return;
+    }
+
+    if (nome) {
+      nome = nome.split(' ')
+        .filter(w => w.length > 0)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+      if (nome.length < 2 || /^\d+$/.test(nome)) nome = null;
+    }
+
+    contacts.push({ nome: nome || null, telefone });
+  });
+
+  const seen = new Set<string>();
+  const unique = contacts.filter(c => {
+    if (seen.has(c.telefone)) {
+      ignored.push({ linha: 0, valor: c.telefone, motivo: 'Duplicata removida' });
+      return false;
+    }
+    seen.add(c.telefone);
+    return true;
+  });
+
+  return { contacts: unique, ignored };
 }
 
 export default function ImportContatosPJ() {
   const [file, setFile] = useState<File | null>(null);
   const [contacts, setContacts] = useState<ParsedContact[]>([]);
+  const [parseResult, setParseResult] = useState<ParseResult>({ contacts: [], ignored: [] });
   const [listName, setListName] = useState('');
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState(false);
+  const [summary, setSummary] = useState<ImportSummary | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const parseCSV = (text: string): ParsedContact[] => {
-    const lines = text.trim().split('\n');
-    if (lines.length < 2) return [];
-
-    // Detect separator
-    const header = lines[0];
-    const separator = header.includes(';') ? ';' : ',';
-
-    const result: ParsedContact[] = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const parts = line.split(separator);
-      const nome = (parts[0] || '').trim().replace(/^"|"$/g, '');
-      const telefone = (parts[1] || '').trim().replace(/^"|"$/g, '').replace(/[^\d+]/g, '');
-      if (telefone && telefone.length >= 8) {
-        result.push({ nome, telefone });
-      }
-    }
-    return result;
-  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -54,20 +148,24 @@ export default function ImportContatosPJ() {
 
     setFile(selectedFile);
     setImported(false);
+    setSummary(null);
 
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      const parsed = parseCSV(text);
-      setContacts(parsed);
+      const result = parseCSV(text);
+      setParseResult(result);
+      setContacts(result.contacts);
 
-      if (parsed.length === 0) {
+      if (result.contacts.length === 0) {
         toast.error('Nenhum contato válido encontrado no arquivo.');
       } else {
-        toast.success(`${parsed.length} contatos encontrados!`);
+        const msg = result.ignored.length > 0
+          ? `${result.contacts.length} contatos encontrados! (${result.ignored.length} ignorados)`
+          : `${result.contacts.length} contatos encontrados!`;
+        toast.success(msg);
       }
 
-      // Auto-set list name from filename
       if (!listName) {
         const name = selectedFile.name.replace(/\.(csv|txt)$/i, '').replace(/_/g, ' ');
         setListName(name);
@@ -77,8 +175,12 @@ export default function ImportContatosPJ() {
   };
 
   const handleImport = async () => {
-    if (contacts.length === 0 || !listName.trim()) {
-      toast.error('Preencha o nome da lista e selecione um arquivo.');
+    if (!listName.trim()) {
+      toast.error('Preencha o nome da lista antes de importar.');
+      return;
+    }
+    if (contacts.length === 0) {
+      toast.error('Nenhum contato válido para importar.');
       return;
     }
 
@@ -90,13 +192,12 @@ export default function ImportContatosPJ() {
         return;
       }
 
-      // Create list
       const { data: lista, error: listaError } = await supabase
         .from('pj_listas_categoria')
         .insert({
           user_id: user.id,
           nome: listName.trim(),
-          descricao: `Importado via extensão AMZ (${contacts.length} contatos)`,
+          descricao: `Importado via AMZ (${contacts.length} contatos)`,
           cor: '#7e22ce',
           icone: '📱',
           ativa: true,
@@ -107,27 +208,28 @@ export default function ImportContatosPJ() {
 
       if (listaError) throw listaError;
 
-      // Insert contacts in batches of 100
       const batchSize = 100;
       for (let i = 0; i < contacts.length; i += batchSize) {
         const batch = contacts.slice(i, i + batchSize).map(c => ({
           lista_id: lista.id,
-          nome: c.nome || null,
+          nome: c.nome ?? null,
           telefone: c.telefone,
         }));
-
-        const { error: membrosError } = await supabase
-          .from('pj_lista_membros')
-          .insert(batch);
-
-        if (membrosError) throw membrosError;
+        const { error } = await supabase.from('pj_lista_membros').insert(batch);
+        if (error) throw error;
       }
 
+      setSummary({
+        total: contacts.length + parseResult.ignored.length,
+        importados: contacts.length,
+        ignorados: parseResult.ignored.length,
+        detalhes: parseResult.ignored,
+      });
       setImported(true);
-      toast.success(`${contacts.length} contatos importados com sucesso!`);
+      toast.success(`${contacts.length} contatos importados!`);
     } catch (err: any) {
       console.error('Erro ao importar:', err);
-      toast.error('Erro ao importar: ' + (err.message || 'Erro desconhecido'));
+      toast.error('Erro: ' + (err.message || 'Erro desconhecido'));
     } finally {
       setImporting(false);
     }
@@ -136,8 +238,10 @@ export default function ImportContatosPJ() {
   const resetForm = () => {
     setFile(null);
     setContacts([]);
+    setParseResult({ contacts: [], ignored: [] });
     setListName('');
     setImported(false);
+    setSummary(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -204,19 +308,58 @@ export default function ImportContatosPJ() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {imported ? (
-            <div className="text-center py-8 space-y-4">
-              <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
-              <div>
-                <p className="text-lg font-bold text-green-700">{contacts.length} contatos importados!</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Lista "<strong>{listName}</strong>" criada com sucesso.
-                </p>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Agora você pode usar esta lista na aba <strong>Envios</strong> para criar campanhas.
-                </p>
+          {imported && summary ? (
+            <div className="space-y-4">
+              {/* Cards de resumo */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-muted/50 rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold">{summary.total}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Total na planilha</p>
+                </div>
+                <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-green-600">{summary.importados}</p>
+                  <p className="text-xs text-muted-foreground mt-1">✅ Importados</p>
+                </div>
+                <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-red-500">{summary.ignorados}</p>
+                  <p className="text-xs text-muted-foreground mt-1">❌ Ignorados</p>
+                </div>
               </div>
-              <Button variant="outline" onClick={resetForm}>
+
+              {/* Mensagem de sucesso */}
+              <div className="flex items-start gap-3 bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold text-green-700">
+                    Lista &quot;{listName}&quot; criada com sucesso!
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    {summary.importados} contatos prontos para uso em campanhas.
+                  </p>
+                </div>
+              </div>
+
+              {/* Detalhes dos ignorados */}
+              {summary.detalhes.length > 0 && (
+                <details className="bg-muted/30 rounded-lg p-3">
+                  <summary className="text-sm font-medium cursor-pointer flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-500" />
+                    Ver {summary.detalhes.length} registros ignorados
+                  </summary>
+                  <div className="mt-3 space-y-1 max-h-40 overflow-y-auto">
+                    {summary.detalhes.map((d, i) => (
+                      <div key={i} className="flex justify-between text-xs py-1.5 border-b border-muted last:border-0">
+                        <span className="text-muted-foreground font-mono truncate max-w-[200px]">
+                          {d.linha > 0 ? `Linha ${d.linha}: ` : ''}{d.valor}
+                        </span>
+                        <span className="text-amber-600 ml-2 shrink-0">{d.motivo}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              <Button variant="outline" onClick={resetForm} className="w-full">
                 Importar outro arquivo
               </Button>
             </div>
@@ -238,10 +381,18 @@ export default function ImportContatosPJ() {
                   <div className="space-y-2">
                     <FileSpreadsheet className="h-10 w-10 text-purple-500 mx-auto" />
                     <p className="font-semibold text-sm">{file.name}</p>
-                    <Badge variant="secondary" className="gap-1">
-                      <Users className="h-3 w-3" />
-                      {contacts.length} contatos
-                    </Badge>
+                    <div className="flex items-center justify-center gap-2">
+                      <Badge variant="secondary" className="gap-1">
+                        <Users className="h-3 w-3" />
+                        {contacts.length} válidos
+                      </Badge>
+                      {parseResult.ignored.length > 0 && (
+                        <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
+                          <AlertCircle className="h-3 w-3" />
+                          {parseResult.ignored.length} ignorados
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -250,7 +401,7 @@ export default function ImportContatosPJ() {
                       Clique para selecionar o arquivo CSV
                     </p>
                     <p className="text-xs text-muted-foreground/70">
-                      CSV com colunas Nome e Telefone
+                      CSV com Telefone e Nome (qualquer ordem, nome opcional)
                     </p>
                   </div>
                 )}
