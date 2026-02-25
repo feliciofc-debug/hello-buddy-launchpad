@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Upload, FileSpreadsheet, Users, CheckCircle2, AlertCircle, Download, Chrome, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 interface ParsedContact {
   nome: string | null;
@@ -141,8 +142,12 @@ export default function ImportContatosPJ() {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    if (!selectedFile.name.endsWith('.csv') && !selectedFile.name.endsWith('.txt')) {
-      toast.error('Formato inválido. Use CSV ou TXT.');
+    const name = selectedFile.name.toLowerCase();
+    const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
+    const isText = name.endsWith('.csv') || name.endsWith('.txt');
+
+    if (!isExcel && !isText) {
+      toast.error('Formato inválido. Use CSV, TXT, Excel (.xls, .xlsx).');
       return;
     }
 
@@ -150,28 +155,45 @@ export default function ImportContatosPJ() {
     setImported(false);
     setSummary(null);
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const result = parseCSV(text);
-      setParseResult(result);
-      setContacts(result.contacts);
+    if (isExcel) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const csv = XLSX.utils.sheet_to_csv(firstSheet);
+        const result = parseCSV(csv);
+        handleParseResult(result, selectedFile);
+      };
+      reader.readAsArrayBuffer(selectedFile);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const text = ev.target?.result as string;
+        const result = parseCSV(text);
+        handleParseResult(result, selectedFile);
+      };
+      reader.readAsText(selectedFile, 'UTF-8');
+    }
+  };
 
-      if (result.contacts.length === 0) {
-        toast.error('Nenhum contato válido encontrado no arquivo.');
-      } else {
-        const msg = result.ignored.length > 0
-          ? `${result.contacts.length} contatos encontrados! (${result.ignored.length} ignorados)`
-          : `${result.contacts.length} contatos encontrados!`;
-        toast.success(msg);
-      }
+  const handleParseResult = (result: ParseResult, selectedFile: File) => {
+    setParseResult(result);
+    setContacts(result.contacts);
 
-      if (!listName) {
-        const name = selectedFile.name.replace(/\.(csv|txt)$/i, '').replace(/_/g, ' ');
-        setListName(name);
-      }
-    };
-    reader.readAsText(selectedFile, 'UTF-8');
+    if (result.contacts.length === 0) {
+      toast.error('Nenhum contato válido encontrado no arquivo.');
+    } else {
+      const msg = result.ignored.length > 0
+        ? `${result.contacts.length} contatos encontrados! (${result.ignored.length} ignorados)`
+        : `${result.contacts.length} contatos encontrados!`;
+      toast.success(msg);
+    }
+
+    if (!listName) {
+      const cleanName = selectedFile.name.replace(/\.(csv|txt|xlsx|xls)$/i, '').replace(/_/g, ' ');
+      setListName(cleanName);
+    }
   };
 
   const handleImport = async () => {
@@ -373,7 +395,7 @@ export default function ImportContatosPJ() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".csv,.txt"
+                  accept=".csv,.txt,.xls,.xlsx"
                   className="hidden"
                   onChange={handleFileChange}
                 />
@@ -398,10 +420,10 @@ export default function ImportContatosPJ() {
                   <div className="space-y-2">
                     <Upload className="h-10 w-10 text-muted-foreground/50 mx-auto" />
                     <p className="text-sm font-medium text-muted-foreground">
-                      Clique para selecionar o arquivo CSV
+                      Clique para selecionar o arquivo
                     </p>
                     <p className="text-xs text-muted-foreground/70">
-                      CSV com Telefone e Nome (qualquer ordem, nome opcional)
+                      CSV, TXT ou Excel (.xls, .xlsx) com Telefone e Nome
                     </p>
                   </div>
                 )}
