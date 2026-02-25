@@ -462,8 +462,10 @@ export default function ContatosWhatsApp() {
                   <Upload className="w-8 h-8 text-white/30 group-hover:text-emerald-400 transition-colors" />
                 </div>
                 <p className="text-white/60 font-medium">Arraste ou clique para subir</p>
-                <p className="text-xs text-white/30 mt-1">CSV, TXT, Excel (.xls, .xlsx) — qualquer separador</p>
+                <p className="text-xs text-white/30 mt-1">Aceita: CSV, TXT, Excel (.xls, .xlsx)</p>
               </div>
+
+              <p className="text-xs text-white/40 text-center mt-3">📎 Formatos aceitos: <strong className="text-white/60">.csv</strong>, <strong className="text-white/60">.txt</strong>, <strong className="text-white/60">.xls</strong>, <strong className="text-white/60">.xlsx</strong> — qualquer separador, qualquer ordem de colunas</p>
 
               {/* Paste area */}
               <div className="mt-6">
