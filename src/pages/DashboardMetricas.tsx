@@ -268,7 +268,7 @@ export default function DashboardMetricas() {
   const menuItemsAll = [
     { id: 'dashboard', icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
     { id: 'produtos', icon: Package, label: 'Produtos', path: '/meus-produtos' },
-    { id: 'conectar-whatsapp', icon: Smartphone, label: '📱 Conectar Celular', path: '/configuracoes-whatsapp' },
+    { id: 'whatsapp', icon: Smartphone, label: '📱 Conectar Celular', path: '/pj/whatsapp-automacao' },
     { id: 'automacao-grupos', icon: Send, label: '📋 Contatos & Listas', path: '/pj/whatsapp-automacao' },
     { id: 'ia-marketing', icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
 
