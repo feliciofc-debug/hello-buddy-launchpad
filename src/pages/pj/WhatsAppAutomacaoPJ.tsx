@@ -20,7 +20,7 @@ export default function WhatsAppAutomacaoPJ() {
       </div>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold">Automação WhatsApp PJ</h1>
+        <h1 className="text-2xl font-bold">Contatos & Listas</h1>
         <p className="text-muted-foreground">
           Gerencie sua conexão, contatos e listas
         </p>
