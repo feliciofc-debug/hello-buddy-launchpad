@@ -139,6 +139,7 @@ export default function ContatosWhatsApp() {
   const [contacts, setContacts] = useState<ParsedContact[]>([]);
   const [parseResult, setParseResult] = useState<ParseResult>({ contacts: [], ignored: [] });
   const [listName, setListName] = useState('');
+  const [destino, setDestino] = useState<'lista' | 'grupo'>('lista');
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState(false);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
@@ -201,47 +202,64 @@ export default function ContatosWhatsApp() {
   };
 
   const handleImport = async () => {
-    if (!listName.trim()) { toast.error('Preencha o nome da lista.'); return; }
+    if (!listName.trim()) { toast.error(`Preencha o nome ${destino === 'lista' ? 'da lista' : 'do grupo'}.`); return; }
     if (contacts.length === 0) { toast.error('Nenhum contato válido.'); return; }
     setImporting(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error('Usuário não autenticado'); return; }
 
-      const { data: lista, error: listaError } = await supabase
-        .from('pj_listas_categoria')
-        .insert({
-          user_id: user.id,
-          nome: listName.trim(),
-          descricao: `Importado via AMZ (${contacts.length} contatos)`,
-          cor: '#7e22ce',
-          icone: '📱',
-          ativa: true,
-          total_membros: contacts.length,
-        })
-        .select('id')
-        .single();
-      if (listaError) throw listaError;
+      const contactsToImport = destino === 'lista' ? contacts.slice(0, 256) : contacts;
 
-      const batchSize = 100;
-      for (let i = 0; i < contacts.length; i += batchSize) {
-        const batch = contacts.slice(i, i + batchSize).map(c => ({
-          lista_id: lista.id,
-          nome: c.nome ?? null,
-          telefone: c.telefone,
-        }));
-        const { error } = await supabase.from('pj_lista_membros').insert(batch);
-        if (error) throw error;
+      if (destino === 'grupo') {
+        // Save to pj_grupos_whatsapp
+        const { error: grupoError } = await supabase
+          .from('pj_grupos_whatsapp')
+          .insert({
+            user_id: user.id,
+            nome: listName.trim(),
+            grupo_jid: `imported-${Date.now()}@g.us`,
+            total_membros: contactsToImport.length,
+          });
+        if (grupoError) throw grupoError;
+      } else {
+        // Save to pj_listas_categoria + pj_lista_membros
+        const { data: lista, error: listaError } = await supabase
+          .from('pj_listas_categoria')
+          .insert({
+            user_id: user.id,
+            nome: listName.trim(),
+            descricao: `Importado via AMZ (${contactsToImport.length} contatos)`,
+            cor: '#7e22ce',
+            icone: '📱',
+            ativa: true,
+            total_membros: contactsToImport.length,
+          })
+          .select('id')
+          .single();
+        if (listaError) throw listaError;
+
+        const batchSize = 100;
+        for (let i = 0; i < contactsToImport.length; i += batchSize) {
+          const batch = contactsToImport.slice(i, i + batchSize).map(c => ({
+            lista_id: lista.id,
+            nome: c.nome ?? null,
+            telefone: c.telefone,
+          }));
+          const { error } = await supabase.from('pj_lista_membros').insert(batch);
+          if (error) throw error;
+        }
       }
 
+      const ignoredFromLimit = destino === 'lista' && contacts.length > 256 ? contacts.length - 256 : 0;
       setSummary({
         total: contacts.length + parseResult.ignored.length,
-        importados: contacts.length,
-        ignorados: parseResult.ignored.length,
+        importados: contactsToImport.length,
+        ignorados: parseResult.ignored.length + ignoredFromLimit,
         detalhes: parseResult.ignored,
       });
       setImported(true);
-      toast.success(`${contacts.length} contatos importados!`);
+      toast.success(`${contactsToImport.length} contatos importados!`);
     } catch (err: any) {
       console.error('Erro ao importar:', err);
       toast.error('Erro: ' + (err.message || 'Erro desconhecido'));
@@ -255,6 +273,7 @@ export default function ContatosWhatsApp() {
     setContacts([]);
     setParseResult({ contacts: [], ignored: [] });
     setListName('');
+    setDestino('lista');
     setImported(false);
     setSummary(null);
     setPasteText('');
@@ -386,12 +405,70 @@ export default function ContatosWhatsApp() {
               </div>
             )}
 
+            {/* Destination selector */}
+            <div className="space-y-3">
+              <Label className="text-white/70">Destino dos contatos</Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDestino('lista')}
+                  className={`rounded-xl p-4 text-left border-2 transition-all ${
+                    destino === 'lista'
+                      ? 'border-emerald-500 bg-emerald-500/10'
+                      : 'border-white/10 bg-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-2xl">📋</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                      ⚠️ Máx 256
+                    </span>
+                  </div>
+                  <p className="font-semibold text-sm text-white">Lista de Transmissão</p>
+                  <p className="text-xs text-white/40 mt-0.5">Limite de 256 pessoas</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDestino('grupo')}
+                  className={`rounded-xl p-4 text-left border-2 transition-all ${
+                    destino === 'grupo'
+                      ? 'border-emerald-500 bg-emerald-500/10'
+                      : 'border-white/10 bg-white/5 hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-2xl">👥</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      ✅ Ilimitado
+                    </span>
+                  </div>
+                  <p className="font-semibold text-sm text-white">Grupo WhatsApp</p>
+                  <p className="text-xs text-white/40 mt-0.5">Sem limite de membros</p>
+                </button>
+              </div>
+
+              {/* Conditional alerts */}
+              {destino === 'lista' && contacts.length > 256 && (
+                <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2 text-sm text-red-300">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  ⚠️ Você tem {contacts.length} contatos. A lista de transmissão aceita no máximo 256. Os primeiros 256 serão importados, o restante será ignorado.
+                </div>
+              )}
+              {destino === 'grupo' && contacts.length > 256 && (
+                <div className="flex items-start gap-2 bg-blue-500/10 border border-blue-500/20 rounded-lg px-4 py-2 text-sm text-blue-300">
+                  <span className="shrink-0 mt-0.5">ℹ️</span>
+                  Todos os {contacts.length} contatos serão adicionados ao grupo.
+                </div>
+              )}
+            </div>
+
             <div className="space-y-2">
-              <Label className="text-white/70">Nome da lista</Label>
+              <Label className="text-white/70">{destino === 'lista' ? 'Nome da lista' : 'Nome do grupo'}</Label>
               <Input
                 value={listName}
                 onChange={(e) => setListName(e.target.value)}
-                placeholder="Ex: Grupo VIP Eletrônicos"
+                placeholder={destino === 'lista' ? 'Ex: Clientes Shopping Barra World — Outubro' : 'Ex: Grupo VIP Barra World'}
                 className="bg-white/5 border-white/10 text-white placeholder:text-white/30"
               />
             </div>
@@ -424,7 +501,7 @@ export default function ContatosWhatsApp() {
                 disabled={importing || !listName.trim()}
                 className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
               >
-                {importing ? 'Importando...' : `Importar ${contacts.length} contatos`}
+                {importing ? 'Importando...' : `Importar ${destino === 'lista' ? Math.min(contacts.length, 256) : contacts.length} contatos`}
               </Button>
             </div>
           </div>
