@@ -174,9 +174,19 @@ _Escolha quantidade e finalize!_ ✅`);
         console.error('⚠️ Erro ao buscar listas automáticas:', autoError);
       }
 
-      // Grupos PJ removidos - apenas listas são exibidas
+      // Buscar listas PJ (pj_listas_categoria)
+      const { data: pjListas, error: pjError } = await supabase
+        .from('pj_listas_categoria')
+        .select('id, nome, total_membros')
+        .eq('user_id', user.id)
+        .eq('ativa', true)
+        .order('total_membros', { ascending: false });
 
-      // Para cada lista automática, buscar os telefones dos membros
+      if (pjError) {
+        console.error('⚠️ Erro ao buscar listas PJ:', pjError);
+      }
+
+      // Para cada lista automática (afiliado), buscar os telefones dos membros
       const listasAutoComTelefones = await Promise.all(
         (autoListas || []).filter(l => (l.total_membros || 0) > 0).map(async (lista) => {
           const { data: membros } = await supabase
@@ -184,7 +194,6 @@ _Escolha quantidade e finalize!_ ✅`);
             .select('lead_id')
             .eq('lista_id', lista.id);
           
-          // Buscar telefones dos leads
           const leadIds = membros?.map(m => m.lead_id) || [];
           let phoneNumbers: string[] = [];
           
@@ -207,9 +216,28 @@ _Escolha quantidade e finalize!_ ✅`);
         })
       );
 
-      // Combinar apenas listas (sem grupos PJ)
+      // Para cada lista PJ, buscar os telefones dos membros
+      const listasPJComTelefones = await Promise.all(
+        (pjListas || []).filter(l => (l.total_membros || 0) > 0).map(async (lista) => {
+          const { data: membros } = await supabase
+            .from('pj_lista_membros')
+            .select('telefone')
+            .eq('lista_id', lista.id);
+          
+          return {
+            id: lista.id,
+            group_id: lista.id,
+            group_name: `📋 ${lista.nome}`,
+            member_count: lista.total_membros || 0,
+            phone_numbers: membros?.map(m => m.telefone) || []
+          } as WhatsAppGroup;
+        })
+      );
+
+      // Combinar todas as listas
       const todasListas: WhatsAppGroup[] = [
         ...listasAutoComTelefones,
+        ...listasPJComTelefones,
         ...(manualListas || []).map(g => ({
           id: g.id,
           group_id: g.group_id,
