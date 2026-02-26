@@ -218,7 +218,7 @@ _Escolha quantidade e finalize!_ ✅`);
 
       // Para cada lista PJ, buscar os telefones dos membros
       const listasPJComTelefones = await Promise.all(
-        (pjListas || []).filter(l => (l.total_membros || 0) > 0).map(async (lista) => {
+        (pjListas || []).map(async (lista) => {
           const { data: membros } = await supabase
             .from('pj_lista_membros')
             .select('telefone')
@@ -228,7 +228,7 @@ _Escolha quantidade e finalize!_ ✅`);
             id: lista.id,
             group_id: lista.id,
             group_name: `📋 ${lista.nome}`,
-            member_count: lista.total_membros || 0,
+            member_count: lista.total_membros || membros?.length || 0,
             phone_numbers: membros?.map(m => m.telefone) || []
           } as WhatsAppGroup;
         })
