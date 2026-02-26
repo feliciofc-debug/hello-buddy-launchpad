@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { ArrowLeft, Smartphone, Users, Trash2, Eye, EyeOff, Link2, Plus, Search, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
+import { ArrowLeft, Smartphone, Users, Trash2, Eye, EyeOff, Link2, Plus, Search, ChevronDown, ChevronUp, Calendar, Pencil, UserPlus, UserMinus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -84,6 +84,15 @@ function ContatosTab() {
 
   // Criar grupo manual
   const [showCriarGrupo, setShowCriarGrupo] = useState(false);
+
+  // Editar lista (gerenciar membros)
+  const [editListaId, setEditListaId] = useState<string | null>(null);
+  const [editListaNome, setEditListaNome] = useState('');
+  const [editMembros, setEditMembros] = useState<Membro[]>([]);
+  const [loadingEditMembros, setLoadingEditMembros] = useState(false);
+  const [addMembroNome, setAddMembroNome] = useState('');
+  const [addMembroTel, setAddMembroTel] = useState('');
+  const [addingMembro, setAddingMembro] = useState(false);
 
   // Init
   useEffect(() => {
@@ -242,6 +251,67 @@ function ContatosTab() {
     setCriandoLista(false);
   };
 
+  // ── Editar lista (gerenciar membros) ──
+  const openEditLista = async (lista: Lista) => {
+    setEditListaId(lista.id);
+    setEditListaNome(lista.nome);
+    setLoadingEditMembros(true);
+    setEditMembros([]);
+    const { data } = await supabase
+      .from('pj_lista_membros')
+      .select('id, nome, telefone')
+      .eq('lista_id', lista.id)
+      .order('nome', { ascending: true });
+    setEditMembros(data || []);
+    setLoadingEditMembros(false);
+  };
+
+  const addMembroToLista = async () => {
+    if (!addMembroTel.trim() || !editListaId) { toast.error('Telefone obrigatório'); return; }
+    setAddingMembro(true);
+    const { error } = await supabase.from('pj_lista_membros').insert({
+      lista_id: editListaId,
+      nome: addMembroNome.trim() || null,
+      telefone: addMembroTel.trim(),
+    });
+    if (error) { toast.error('Erro: ' + error.message); setAddingMembro(false); return; }
+    // Update count
+    await supabase.from('pj_listas_categoria').update({
+      total_membros: (editMembros.length + 1),
+    }).eq('id', editListaId);
+    setAddMembroNome('');
+    setAddMembroTel('');
+    setAddingMembro(false);
+    // Reload members
+    const { data } = await supabase
+      .from('pj_lista_membros')
+      .select('id, nome, telefone')
+      .eq('lista_id', editListaId)
+      .order('nome', { ascending: true });
+    setEditMembros(data || []);
+    toast.success('Membro adicionado!');
+  };
+
+  const removeMembroFromLista = async (membroId: string) => {
+    await supabase.from('pj_lista_membros').delete().eq('id', membroId);
+    const updated = editMembros.filter(m => m.id !== membroId);
+    setEditMembros(updated);
+    if (editListaId) {
+      await supabase.from('pj_listas_categoria').update({
+        total_membros: updated.length,
+      }).eq('id', editListaId);
+    }
+    toast.success('Membro removido');
+  };
+
+  const closeEditLista = () => {
+    setEditListaId(null);
+    setEditMembros([]);
+    setAddMembroNome('');
+    setAddMembroTel('');
+    loadListas();
+  };
+
   const fmtDate = (d: string | null) => {
     if (!d) return '—';
     try { return format(new Date(d), "dd/MM/yyyy", { locale: ptBR }); }
@@ -282,7 +352,10 @@ function ContatosTab() {
                     ⚠️ Máx 256
                   </Badge>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  <Button variant="outline" size="sm" onClick={() => openEditLista(lista)}>
+                    <Pencil className="h-3 w-3 mr-1" /> Editar
+                  </Button>
                   <Button variant="outline" size="sm" onClick={() => toggleListaMembros(lista.id)}>
                     {expandedLista === lista.id ? <EyeOff className="h-3 w-3 mr-1" /> : <Eye className="h-3 w-3 mr-1" />}
                     {expandedLista === lista.id ? 'Fechar' : 'Ver'}
@@ -360,9 +433,11 @@ function ContatosTab() {
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   {grupo.invite_link && (
-                    <Button variant="outline" size="sm" onClick={() => copyLink(grupo.invite_link)}>
-                      <Link2 className="h-3 w-3 mr-1" /> Copiar link
-                    </Button>
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => copyLink(grupo.invite_link)}>
+                        <Link2 className="h-3 w-3 mr-1" /> Copiar link
+                      </Button>
+                    </>
                   )}
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
@@ -537,6 +612,77 @@ function ContatosTab() {
             <DialogDescription>Crie um grupo real no WhatsApp via seu celular conectado.</DialogDescription>
           </DialogHeader>
           <CriarGrupoWhatsAppPJ />
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog para editar lista (gerenciar membros) ── */}
+      <Dialog open={!!editListaId} onOpenChange={(open) => !open && closeEditLista()}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>✏️ Editar Lista: {editListaNome}</DialogTitle>
+            <DialogDescription>Adicione ou remova membros desta lista.</DialogDescription>
+          </DialogHeader>
+
+          {/* Adicionar membro */}
+          <div className="border rounded-lg p-3 space-y-2 bg-muted/30">
+            <p className="text-sm font-medium flex items-center gap-1"><UserPlus className="h-4 w-4" /> Adicionar Membro</p>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Nome (opcional)"
+                value={addMembroNome}
+                onChange={e => setAddMembroNome(e.target.value)}
+                className="flex-1"
+              />
+              <Input
+                placeholder="5511999999999"
+                value={addMembroTel}
+                onChange={e => setAddMembroTel(e.target.value)}
+                className="flex-1"
+              />
+              <Button size="sm" onClick={addMembroToLista} disabled={addingMembro || !addMembroTel.trim()}>
+                {addingMembro ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+
+          {/* Lista de membros */}
+          <div className="space-y-1">
+            <p className="text-sm font-medium">{editMembros.length} membro(s)</p>
+            {loadingEditMembros ? (
+              <div className="flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            ) : editMembros.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhum membro nesta lista</p>
+            ) : (
+              <div className="max-h-60 overflow-y-auto border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead className="w-12"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {editMembros.map(m => (
+                      <TableRow key={m.id}>
+                        <TableCell className="text-sm">{m.nome || '—'}</TableCell>
+                        <TableCell className="text-sm font-mono">{m.telefone}</TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="sm" onClick={() => removeMembroFromLista(m.id)}>
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEditLista}>Fechar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
