@@ -657,10 +657,20 @@ _Escolha quantidade e finalize!_ ✅`;
         proximaExec = new Date(dataInicio);
         proximaExec.setHours(h, m, 0, 0);
         
-        // Se já passou, começar amanhã
+        // Se já passou, verificar há quanto tempo
         if (proximaExec <= agora) {
-          proximaExec.setDate(proximaExec.getDate() + 1);
-          console.log('⏭️ Horário passou, movendo para amanhã');
+          const diffMs = agora.getTime() - proximaExec.getTime();
+          const diffHoras = diffMs / (1000 * 60 * 60);
+          
+          if (diffHoras <= 2) {
+            // Passou há menos de 2 horas: disparar em 1 minuto
+            proximaExec = new Date(agora.getTime() + 60 * 1000);
+            console.log('🔥 Horário passou há menos de 2h, disparando em 1 minuto');
+          } else {
+            // Passou há mais de 2 horas: mover para amanhã
+            proximaExec.setDate(proximaExec.getDate() + 1);
+            console.log('⏭️ Horário passou há mais de 2h, movendo para amanhã');
+          }
         }
       } else if (frequencia === 'semanal') {
         proximaExec = new Date(dataInicio);
@@ -677,11 +687,17 @@ _Escolha quantidade e finalize!_ ✅`;
         }
         console.log('📆 Semanal - próximo dia válido:', proximaExec.toLocaleString('pt-BR'));
       } else {
-        // personalizado - mesmo que diário
+        // personalizado - mesmo que diário com proteção de 2h
         proximaExec = new Date(dataInicio);
         proximaExec.setHours(h, m, 0, 0);
         if (proximaExec <= agora) {
-          proximaExec.setDate(proximaExec.getDate() + 1);
+          const diffMs = agora.getTime() - proximaExec.getTime();
+          const diffHoras = diffMs / (1000 * 60 * 60);
+          if (diffHoras <= 2) {
+            proximaExec = new Date(agora.getTime() + 60 * 1000);
+          } else {
+            proximaExec.setDate(proximaExec.getDate() + 1);
+          }
         }
       }
 

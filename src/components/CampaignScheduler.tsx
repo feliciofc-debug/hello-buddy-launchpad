@@ -74,11 +74,8 @@ export function CampaignScheduler() {
 
   const effectiveUserId = useMemo(() => (isLeader ? userId : undefined), [isLeader, userId]);
 
-  // ✅ DESABILITADO: O hook useScheduledCampaigns está desabilitado porque
-  // as campanhas PJ agora são executadas 100% no servidor via Edge Function
-  // "executar-campanhas-agendadas" (chamada a cada minuto pelo pg_cron).
-  // Isso garante execução 24/7 mesmo com navegador fechado.
-  // useScheduledCampaigns(effectiveUserId);
+  // ✅ Hook PJ (campanhas_recorrentes) - fallback do browser caso pg_cron falhe
+  useScheduledCampaigns(effectiveUserId);
 
   // Hook para campanhas AFILIADO (afiliado_campanhas)
   useAfiliadoScheduledCampaigns(effectiveUserId);
@@ -93,19 +90,19 @@ export function CampaignScheduler() {
     lastEnvioProgramadoRef.current = now;
 
     try {
-      console.log('📤 [ENVIO PROGRAMADO] Disparando verificação...');
-      const response = await supabase.functions.invoke('executar-envio-programado', {
+      console.log('📤 [ENVIO PROGRAMADO PJ] Disparando verificação...');
+      const response = await supabase.functions.invoke('executar-envio-programado-pj', {
         body: { userId }
       });
       
       if (response.error) {
-        console.error('❌ [ENVIO PROGRAMADO] Erro:', response.error);
+        console.error('❌ [ENVIO PROGRAMADO PJ] Erro:', response.error);
       } else {
         const data = response.data;
         if (data?.enviados > 0) {
-          console.log(`✅ [ENVIO PROGRAMADO] ${data.enviados} mensagem(ns) enviada(s)`);
+          console.log(`✅ [ENVIO PROGRAMADO PJ] ${data.enviados} mensagem(ns) enviada(s)`);
         } else {
-          console.log('⏳ [ENVIO PROGRAMADO] Nenhum envio pendente');
+          console.log('⏳ [ENVIO PROGRAMADO PJ] Nenhum envio pendente');
         }
       }
     } catch (err) {
