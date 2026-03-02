@@ -246,29 +246,53 @@ serve(async (req) => {
           }
         }
 
-        // ✅ PROCESSAR LISTAS NORMAIS (whatsapp_groups) - excluir IDs que são grupos PJ
+        // ✅ PROCESSAR LISTAS NORMAIS - excluir IDs que são grupos PJ
         const gruposPJIds = (gruposPJ || []).map(g => g.id);
         const listasNormaisIds = (campanha.listas_ids || []).filter((id: string) => !gruposPJIds.includes(id));
         
         if (listasNormaisIds.length > 0) {
+          // ✅ Buscar contatos de AMBAS as tabelas: whatsapp_groups E pj_listas_categoria/pj_lista_membros
           const { data: listas } = await supabase
             .from("whatsapp_groups")
             .select("phone_numbers")
             .in("id", listasNormaisIds);
 
-          const todosContatos = listas?.flatMap((l: any) => l.phone_numbers || []) || [];
-          console.log(`📞 Total de contatos em listas normais: ${todosContatos.length}`);
+          const contatosWhatsappGroups = listas?.flatMap((l: any) => l.phone_numbers || []) || [];
+          
+          // ✅ NOVO: Buscar também de pj_lista_membros (listas PJ criadas na interface)
+          const { data: membrosPJ } = await supabase
+            .from("pj_lista_membros")
+            .select("telefone, nome")
+            .in("lista_id", listasNormaisIds);
+          
+          const contatosPJListas = (membrosPJ || []).map((m: any) => m.telefone).filter(Boolean);
+          
+          // Mesclar sem duplicatas
+          const todosContatosSet = new Set([...contatosWhatsappGroups, ...contatosPJListas]);
+          const todosContatos = Array.from(todosContatosSet);
+          
+          console.log(`📞 Total de contatos: ${todosContatos.length} (whatsapp_groups: ${contatosWhatsappGroups.length}, pj_listas: ${contatosPJListas.length})`);
 
           for (const phone of todosContatos) {
             try {
+              // Buscar nome do contato (tentar em whatsapp_contacts e pj_lista_membros)
+              let nome = "Cliente";
               const { data: contact } = await supabase
                 .from("whatsapp_contacts")
                 .select("nome")
                 .eq("phone", phone)
                 .eq("user_id", campanha.user_id)
                 .maybeSingle();
-
-              const nome = contact?.nome || "Cliente";
+              
+              if (contact?.nome) {
+                nome = contact.nome;
+              } else {
+                // Fallback: buscar nome de pj_lista_membros
+                const membroPJ = (membrosPJ || []).find((m: any) => m.telefone === phone);
+                if (membroPJ?.nome) {
+                  nome = membroPJ.nome;
+                }
+              }
 
               const mensagemPersonalizada = campanha.mensagem_template
                 .replace(/\{\{nome\}\}/gi, nome)
@@ -287,7 +311,7 @@ serve(async (req) => {
 
               if (!sendError && sendResult?.success) {
                 enviados++;
-                console.log(`✅ Enviado para ${phone}`);
+                console.log(`✅ Enviado para ${phone} (${nome})`);
               } else {
                 console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult);
                 errosEnvio++;

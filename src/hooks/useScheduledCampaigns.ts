@@ -320,6 +320,14 @@ export function useScheduledCampaigns(userId: string | undefined) {
             }
 
             console.log(`✅ Campanha ${campanha.nome}: ${enviados}/${contatos.length} enviados (${pulados} pulados)`);
+
+            // ✅ CRÍTICO: NÃO marcar como executada se NENHUMA mensagem foi enviada
+            if (enviados === 0 && contatos.length > 0) {
+              console.warn(`⚠️ Campanha ${campanha.nome} - NENHUM envio bem-sucedido! NÃO atualizando ultima_execucao para permitir retry`);
+              toast.error(`⚠️ Campanha ${campanha.nome}: falha no envio (sessão desconectada?)`);
+              continue; // Pula para próxima campanha sem atualizar
+            }
+
             toast.success(`✅ Campanha: ${enviados} enviados, ${pulados} protegidos`);
 
             // CALCULAR PRÓXIMA EXECUÇÃO

@@ -143,10 +143,14 @@ export default function WhatsAppConnectionPJ() {
 
       if (error) throw error;
 
+      const cleanPhone = data.phone || data.jid
+        ?.replace('@s.whatsapp.net', '')
+        ?.replace(/:\d+$/, '');
+      
       setStatus({
         connected: data.connected,
         jid: data.jid,
-        phone: data.phone,
+        phone: cleanPhone,
         lastChecked: new Date().toISOString()
       });
 
