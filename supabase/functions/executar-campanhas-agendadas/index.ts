@@ -62,6 +62,15 @@ serve(async (req) => {
 
     for (const campanha of campanhas || []) {
       try {
+        // ✅ VERIFICAR SE JÁ FOI EXECUTADA NOS ÚLTIMOS 2 MINUTOS (evitar duplicata com browser)
+        if (campanha.ultima_execucao) {
+          const diffMs = now.getTime() - new Date(campanha.ultima_execucao).getTime();
+          if (diffMs < 2 * 60 * 1000) {
+            console.log(`⏭️ Campanha ${campanha.nome} - já executada há ${Math.floor(diffMs/1000)}s, pulando`);
+            continue;
+          }
+        }
+
         // ✅ MODO INTERVALO: frequencia = 'intervalo' + intervalo_minutos definido
         const isIntervaloMode = campanha.frequencia === 'intervalo' && campanha.intervalo_minutos > 0;
         

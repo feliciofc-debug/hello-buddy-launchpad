@@ -145,15 +145,27 @@ export function useScheduledCampaigns(userId: string | undefined) {
 
         if (error) throw error;
 
-        console.log(`📋 Encontradas ${campanhas?.length || 0} campanhas para executar`);
+        // ✅ FILTRAR: ignorar campanhas que a edge function já executou nos últimos 3 minutos
+        const campanhasFiltradas = (campanhas || []).filter(c => {
+          if (c.ultima_execucao) {
+            const diffMs = agora.getTime() - new Date(c.ultima_execucao).getTime();
+            if (diffMs < 3 * 60 * 1000) {
+              console.log(`⏭️ Campanha ${c.nome} já executada há ${Math.floor(diffMs/1000)}s pela edge function, pulando`);
+              return false;
+            }
+          }
+          return true;
+        });
 
-        if (!campanhas || campanhas.length === 0) {
+        console.log(`📋 Encontradas ${campanhasFiltradas.length} campanhas para executar (${(campanhas?.length || 0) - campanhasFiltradas.length} já executadas pela edge function)`);
+
+        if (campanhasFiltradas.length === 0) {
           isExecuting.current = false;
           return;
         }
 
         // EXECUTAR CADA CAMPANHA
-        for (const campanha of campanhas) {
+        for (const campanha of campanhasFiltradas) {
           console.log(`🚀 Executando: ${campanha.nome}`);
           
           toast.info(`🚀 Executando campanha: ${campanha.nome}`);
@@ -165,8 +177,10 @@ export function useScheduledCampaigns(userId: string | undefined) {
               .select('phone_numbers, group_name')
               .in('id', campanha.listas_ids || []);
 
-            const contatos = listas?.flatMap(l => l.phone_numbers || []) || [];
-            console.log(`📱 Verificando ${contatos.length} contatos`);
+            // ✅ DEDUPLICAR contatos para não enviar repetido ao mesmo número
+            const contatosRaw = listas?.flatMap(l => l.phone_numbers || []) || [];
+            const contatos = [...new Set(contatosRaw)];
+            console.log(`📱 Verificando ${contatos.length} contatos únicos (${contatosRaw.length} antes de dedup)`);
 
             let enviados = 0;
             let pulados = 0;
