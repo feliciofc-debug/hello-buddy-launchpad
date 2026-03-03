@@ -493,132 +493,69 @@ _Escolha quantidade e finalize!_ ✅`;
     // Mostrar toast e iniciar envio em background
     toast.success(`🚀 Iniciando envio para ${todosContatos.length} contatos...`);
     
-    // Executar envio em background (não aguardar)
+    // Executar envio em background - ENVIO EM LOTE (evita SQLITE_BUSY)
     setTimeout(async () => {
       let enviados = 0;
       let erros = 0;
 
-      for (const [index, phone] of todosContatos.entries()) {
-        try {
-          // Buscar nome do contato
-          const { data: contact } = await supabase
-            .from('whatsapp_contacts')
-            .select('nome')
-            .eq('phone', phone)
-            .eq('user_id', user.id)
-            .maybeSingle();
+      try {
+        // Personalizar mensagem (sem {{nome}} para envio em lote)
+        const mensagemLote = mensagem
+          .replace(/\{\{nome\}\}/gi, 'Cliente')
+          .replace(/\{\{produto\}\}/gi, produto.nome)
+          .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
 
-          const nome = contact?.nome || 'Cliente';
-          
-          // Personalizar mensagem
-          const mensagemPersonalizada = mensagem
-            .replace(/\{\{nome\}\}/gi, nome)
-            .replace(/\{\{produto\}\}/gi, produto.nome)
-            .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
-
-          // Enviar via função PJ (Locaweb) com userId para resolver instância correta
-          const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
-            body: {
-              phoneNumbers: [phone],
-              message: mensagemPersonalizada,
-              imageUrl: produto.imagem_url,
-              userId: user.id
-            }
-          });
-
-          // IMPORTANT: invoke só retorna error quando HTTP não é 2xx.
-          // A função pode retornar 200 com success:false, então precisamos validar o corpo.
-          const firstResult = Array.isArray((sendData as any)?.results) ? (sendData as any).results[0] : null;
-          const envioOk = !sendError && (firstResult ? firstResult.success === true : (sendData as any)?.success !== false);
-          const erroDetalhado =
-            sendError?.message ||
-            firstResult?.error ||
-            firstResult?.response?.error ||
-            firstResult?.response?.message ||
-            (!envioOk ? 'Falha no envio (retorno do backend)' : null);
-
-          if (!envioOk) {
-            console.error('❌ Envio falhou (PJ):', { phone, sendError, firstResult, sendData });
-            throw new Error(typeof erroDetalhado === 'string' ? erroDetalhado : 'Falha no envio');
+        // ENVIAR TODOS DE UMA VEZ - evita múltiplas chamadas e contention SQLite
+        const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+          body: {
+            phoneNumbers: todosContatos,
+            message: mensagemLote,
+            imageUrl: produto.imagem_url,
+            userId: user.id,
+            validateBeforeSend: false, // CRÍTICO: Desativar validação para evitar SQLITE_BUSY
           }
+        });
 
-          enviados++;
-
-          // ✅ REGISTRAR ENVIO PARA EVITAR DUPLICATAS
-          await supabase.from('mensagens_enviadas').insert({
-            phone: phone,
-            message: mensagemPersonalizada,
-            user_id: user.id,
-            lead_tipo: 'campanha'
-          });
-
-          // ✅ CRIAR CONVERSA COM GARANTIA DE VENDEDOR_ID
-          const conversaData = {
-            user_id: user.id,
-            phone_number: phone,
-            origem: 'campanha',
-            vendedor_id: vendedorSelecionado || null,
-            contact_name: nome,
-            status: 'active',
-            last_message_at: new Date().toISOString(),
-            metadata: {
-              produto_id: produto.id,
-              produto_nome: produto.nome,
-              produto_descricao: produto.descricao,
-              produto_preco: produto.preco,
-              produto_imagem_url: produto.imagem_url,
-              campanha_id: campanhaTemp?.id,
-              data_envio: new Date().toISOString()
-            }
-          };
-
-          console.log(`[${index + 1}/${todosContatos.length}] ${phone}:`);
-          console.log('  📝 Dados conversa:', JSON.stringify({ vendedor_id: conversaData.vendedor_id }));
-
-          // DELETAR conversa antiga se existir (para garantir vendedor_id correto)
-          await supabase
-            .from('whatsapp_conversations')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('phone_number', phone);
-
-          console.log('  🗑️ Conversa antiga deletada (se existia)');
-
-          // CRIAR nova conversa com vendedor correto
-          const { data: novaConversa, error: erroConversa } = await supabase
-            .from('whatsapp_conversations')
-            .insert(conversaData)
-            .select('id, vendedor_id')
-            .single();
-
-          if (erroConversa) {
-            console.error('  ❌ Erro ao criar conversa:', erroConversa);
-          } else {
-            console.log('  ✅ Conversa criada:', novaConversa?.id);
-            console.log('  ✅ Vendedor confirmado:', novaConversa?.vendedor_id);
-            
-            // TRIPLA VERIFICAÇÃO
-            if (vendedorSelecionado && novaConversa?.vendedor_id !== vendedorSelecionado) {
-              console.error('  🚨 ALERTA: Vendedor divergente!');
-              console.error('  🚨 Esperado:', vendedorSelecionado);
-              console.error('  🚨 Salvo:', novaConversa?.vendedor_id);
-              
-              // Forçar update
-              await supabase
-                .from('whatsapp_conversations')
-                .update({ vendedor_id: vendedorSelecionado })
-                .eq('id', novaConversa.id);
-              
-              console.log('  🔧 Vendedor corrigido manualmente');
-            }
-          }
-
-          // Delay entre mensagens
-          await new Promise(r => setTimeout(r, 500));
-        } catch (error) {
-          console.error(`[${index + 1}] ❌ ${phone}:`, error);
-          erros++;
+        if (sendError) {
+          console.error('❌ Erro no envio em lote:', sendError);
+          erros = todosContatos.length;
+        } else {
+          enviados = sendData?.enviados || 0;
+          erros = sendData?.erros || 0;
         }
+
+        // Registrar conversas em lote para IA responder
+        for (const phone of todosContatos) {
+          try {
+            const conversaData = {
+              user_id: user.id,
+              phone_number: phone,
+              origem: 'campanha',
+              vendedor_id: vendedorSelecionado || null,
+              status: 'active',
+              last_message_at: new Date().toISOString(),
+              metadata: {
+                produto_id: produto.id,
+                produto_nome: produto.nome,
+                produto_preco: produto.preco,
+                campanha_id: campanhaTemp?.id,
+              }
+            };
+
+            await supabase
+              .from('whatsapp_conversations')
+              .delete()
+              .eq('user_id', user.id)
+              .eq('phone_number', phone);
+
+            await supabase
+              .from('whatsapp_conversations')
+              .insert(conversaData);
+          } catch (_) { /* ignorar */ }
+        }
+      } catch (error) {
+        console.error('❌ Erro geral no envio:', error);
+        erros = todosContatos.length;
       }
 
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
