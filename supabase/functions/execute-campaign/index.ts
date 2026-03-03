@@ -78,75 +78,57 @@ serve(async (req) => {
     let enviados = 0
     let erros = 0
 
-    // ENVIAR PARA CADA CONTATO
-    for (const phone of contatos) {
-      try {
-        // Buscar nome
-        const { data: contact } = await supabase
-          .from('whatsapp_contacts')
-          .select('name')
-          .eq('phone', phone)
-          .eq('user_id', campanha.user_id)
-          .maybeSingle()
+    // Personalizar mensagem (sem {{nome}} para envio em lote)
+    const mensagem = campanha.mensagem_template
+      .replace(/\{\{nome\}\}/gi, 'Cliente')
+      .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || '')
+      .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || '0')
 
-        const nome = contact?.name || 'Cliente'
+    console.log(`📤 Enviando para ${contatos.length} contatos em lote via send-wuzapi-message-pj`)
 
-        // Personalizar mensagem
-        const mensagem = campanha.mensagem_template
-          .replace(/\{\{nome\}\}/gi, nome)
-          .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || '')
-          .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || '0')
-
-        console.log(`📤 Enviando para ${phone} (${nome})`)
-
-        // ENVIAR VIA WUZAPI-PJ - usa instância correta do cliente PJ
-        const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
-          body: {
-            phoneNumbers: [phone],
-            message: mensagem,
-            imageUrl: campanha.produtos?.imagens?.[0],
-            userId: campanha.user_id,
-            skipProtection: true
-          }
-        })
-
-        if (!sendError && sendResult?.success) {
-          enviados++
-          console.log(`✅ Enviado para ${phone}`)
-          
-          // Salvar contexto para IA responder automaticamente
-          await supabase.from('whatsapp_conversations').upsert({
-            user_id: campanha.user_id,
-            phone_number: phone,
-            origem: 'campanha',
-            status: 'active',
-            metadata: {
-              produto_nome: campanha.produtos?.nome,
-              produto_preco: campanha.produtos?.preco,
-              produto_descricao: campanha.produtos?.descricao,
-              produto_estoque: campanha.produtos?.estoque || 10,
-              link_marketplace: campanha.produtos?.link_marketplace,
-              campanha_id: campanha.id
-            },
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'user_id,phone_number'
-          })
-          
-        } else {
-          console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult)
-          erros++
+    // ENVIAR TODOS DE UMA VEZ - evita múltiplas invocações e contention SQLite
+    try {
+      const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+        body: {
+          phoneNumbers: contatos,
+          message: mensagem,
+          imageUrl: campanha.produtos?.imagens?.[0],
+          userId: campanha.user_id,
+          validateBeforeSend: false, // CRÍTICO: Desativar validação para evitar SQLITE_BUSY
         }
+      })
 
-        // Delay aleatório entre 3-7 segundos (simula comportamento humano)
-        const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
-        console.log(`⏱️ Aguardando ${delay}ms antes do próximo envio...`);
-        await new Promise(r => setTimeout(r, delay))
+      if (sendError) {
+        console.error('❌ Erro na chamada send-wuzapi-message-pj:', sendError)
+        erros = contatos.length
+      } else {
+        enviados = sendResult?.enviados || 0
+        erros = sendResult?.erros || 0
+        console.log(`✅ Resultado: ${enviados} enviados, ${erros} erros`)
 
-      } catch (err) {
-        console.error(`❌ Erro ao processar ${phone}:`, err)
-        erros++
+        // Salvar contexto para IA responder
+        for (const phone of contatos) {
+          try {
+            await supabase.from('whatsapp_conversations').upsert({
+              user_id: campanha.user_id,
+              phone_number: phone,
+              origem: 'campanha',
+              status: 'active',
+              metadata: {
+                produto_nome: campanha.produtos?.nome,
+                produto_preco: campanha.produtos?.preco,
+                campanha_id: campanha.id
+              },
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'user_id,phone_number'
+            })
+          } catch (_) { /* ignorar */ }
+        }
       }
+    } catch (err) {
+      console.error('❌ Erro geral no envio em lote:', err)
+      erros = contatos.length
     }
 
     console.log(`✅ Enviados: ${enviados}/${contatos.length}, Erros: ${erros}`)

@@ -211,7 +211,7 @@ serve(async (req) => {
       userId, 
       useQueue = false, 
       debugStatus = false,
-      validateBeforeSend = true // Nova opção: validar antes de enviar
+      validateBeforeSend = false // DESATIVADO por padrão - causa SQLITE_BUSY na VPS Locaweb
     } = await req.json();
 
     console.log("📤 [PJ-SEND] Recebido:", {
