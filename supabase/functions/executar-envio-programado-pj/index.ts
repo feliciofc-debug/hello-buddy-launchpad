@@ -80,22 +80,66 @@ async function gerarVariacaoMensagem(mensagemBase: string): Promise<string> {
   }
 }
 
+// Resolver URL e token da instância WuzAPI do cliente PJ
+async function resolverInstanciaCliente(
+  supabase: any,
+  userId: string
+): Promise<{ baseUrl: string; token: string }> {
+  let baseUrl = LOCAWEB_WUZAPI_URL;
+  let token = LOCAWEB_WUZAPI_TOKEN;
+
+  try {
+    // 1. Buscar config do cliente PJ
+    const { data: config } = await supabase
+      .from("pj_clientes_config")
+      .select("wuzapi_token, wuzapi_port")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (config?.wuzapi_token) {
+      token = config.wuzapi_token;
+    }
+
+    // 2. Buscar instância mapeada com IP:Porta real
+    const targetPort = Number(config?.wuzapi_port || 8080);
+    const { data: mappedInstance } = await supabase
+      .from("wuzapi_instances")
+      .select("wuzapi_url, wuzapi_token")
+      .eq("assigned_to_user", userId)
+      .eq("port", targetPort)
+      .maybeSingle();
+
+    if (mappedInstance?.wuzapi_url) {
+      baseUrl = mappedInstance.wuzapi_url.replace(/\/+$/, "");
+      console.log(`📡 [PJ-SCHEDULER] Instância resolvida: ${baseUrl} (porta ${targetPort})`);
+    }
+    if (mappedInstance?.wuzapi_token) {
+      token = mappedInstance.wuzapi_token;
+    }
+  } catch (err) {
+    console.error("⚠️ [PJ-SCHEDULER] Erro ao resolver instância, usando fallback:", err);
+  }
+
+  return { baseUrl, token };
+}
+
 // Enviar mensagem para grupo
 async function enviarParaGrupo(
+  baseUrl: string,
   wuzapiToken: string,
   grupoJid: string,
   mensagem: string,
   imagemUrl?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    console.log(`📱 [PJ-SCHEDULER] Enviando para grupo ${grupoJid}...`);
+    console.log(`📱 [PJ-SCHEDULER] Enviando para grupo ${grupoJid} via ${baseUrl}...`);
 
     let response: Response;
     let payload: any;
 
     if (imagemUrl) {
       // Tentar enviar com imagem
-      response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/image`, {
+      response = await fetch(`${baseUrl}/chat/send/image`, {
         method: "POST",
         headers: {
           "Token": wuzapiToken,
@@ -122,7 +166,7 @@ async function enviarParaGrupo(
         if (isMediaError || !response.ok) {
           console.log("🧯 [PJ-SCHEDULER] Fallback para texto...");
           
-          response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/text`, {
+          response = await fetch(`${baseUrl}/chat/send/text`, {
             method: "POST",
             headers: {
               "Token": wuzapiToken,
@@ -139,7 +183,7 @@ async function enviarParaGrupo(
       }
     } else {
       // Enviar só texto
-      response = await fetch(`${LOCAWEB_WUZAPI_URL}/chat/send/text`, {
+      response = await fetch(`${baseUrl}/chat/send/text`, {
         method: "POST",
         headers: {
           "Token": wuzapiToken,
@@ -311,17 +355,8 @@ serve(async (req) => {
 
         console.log(`📦 [PJ-SCHEDULER] Produto selecionado: ${produto.titulo?.substring(0, 40)}...`);
 
-        // Buscar token do usuário
-        let wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
-        const { data: config } = await supabase
-          .from("pj_clientes_config")
-          .select("wuzapi_token")
-          .eq("user_id", prog.user_id)
-          .maybeSingle();
-
-        if (config?.wuzapi_token) {
-          wuzapiToken = config.wuzapi_token;
-        }
+        // Resolver instância WuzAPI do cliente (IP:Porta dinâmico)
+        const instancia = await resolverInstanciaCliente(supabase, prog.user_id);
 
         // Montar mensagem base
         const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2)}` : "";
@@ -334,7 +369,8 @@ serve(async (req) => {
 
         // Enviar para o grupo
         const resultado = await enviarParaGrupo(
-          wuzapiToken,
+          instancia.baseUrl,
+          instancia.token,
           prog.grupo_jid,
           mensagem,
           produto.imagem_url || produto.imagem
@@ -475,17 +511,8 @@ serve(async (req) => {
 
         console.log(`📦 [PJ-SCHEDULER] Produto: ${produto.titulo?.substring(0, 40)}...`);
 
-        // Buscar token do usuário
-        let wuzapiToken = LOCAWEB_WUZAPI_TOKEN;
-        const { data: config } = await supabase
-          .from("pj_clientes_config")
-          .select("wuzapi_token")
-          .eq("user_id", camp.user_id)
-          .maybeSingle();
-
-        if (config?.wuzapi_token) {
-          wuzapiToken = config.wuzapi_token;
-        }
+        // Resolver instância WuzAPI do cliente (IP:Porta dinâmico)
+        const instancia = await resolverInstanciaCliente(supabase, camp.user_id);
 
         // Montar mensagem
         const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2)}` : "";
@@ -510,7 +537,8 @@ serve(async (req) => {
         let sucessosCampanha = 0;
         for (const jid of destinosJids) {
           const resultado = await enviarParaGrupo(
-            wuzapiToken,
+            instancia.baseUrl,
+            instancia.token,
             jid,
             mensagem,
             produto.imagem_url || produto.imagem

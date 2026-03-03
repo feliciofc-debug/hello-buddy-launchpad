@@ -76,14 +76,14 @@ serve(async (req) => {
 
         console.log(`📤 Enviando para ${phone} (${nome})`)
 
-        // ENVIAR VIA WUZAPI - CORRIGIDO com userId e skipProtection
-        const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message', {
+        // ENVIAR VIA WUZAPI-PJ - usa instância correta do cliente PJ
+        const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
           body: {
             phoneNumbers: [phone],
             message: mensagem,
             imageUrl: campanha.produtos?.imagens?.[0],
-            userId: campanha.user_id, // ✅ CRÍTICO!
-            skipProtection: true // ✅ Ignora cooldown para campanhas
+            userId: campanha.user_id,
+            skipProtection: true
           }
         })
 
