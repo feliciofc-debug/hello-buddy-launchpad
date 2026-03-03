@@ -385,8 +385,14 @@ serve(async (req) => {
         let response: Response;
         let payload: any;
 
+        // Detecta erro SQLite em qualquer campo do JSON
+        function isSqliteError(json: any): boolean {
+          const fullText = JSON.stringify(json || {}).toLowerCase();
+          return fullText.includes("transaction") || fullText.includes("sqlite") || fullText.includes("database is locked");
+        }
+
         // Função helper para enviar com retry em caso de erro SQLite
-        async function sendWithRetry(url: string, body: any, maxRetries = 2): Promise<{ response: Response; payload: any }> {
+        async function sendWithRetry(url: string, body: any, maxRetries = 3): Promise<{ response: Response; payload: any }> {
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
             const resp = await fetch(url, {
               method: "POST",
@@ -395,11 +401,10 @@ serve(async (req) => {
             });
             const json = await safeReadJson(resp);
             
-            // Se erro de SQLite transaction, esperar e tentar novamente
-            const errorMsg = json?.error || "";
-            if (!resp.ok && errorMsg.includes("transaction") && attempt < maxRetries) {
-              const retryDelay = 3000 * (attempt + 1);
-              console.log(`🔄 [PJ-SEND] Erro SQLite detectado, retry ${attempt + 1}/${maxRetries} em ${retryDelay}ms...`);
+            // Se erro de SQLite/transaction em QUALQUER campo, esperar e tentar novamente
+            if (!resp.ok && isSqliteError(json) && attempt < maxRetries) {
+              const retryDelay = 5000 * (attempt + 1); // 5s, 10s, 15s
+              console.log(`🔄 [PJ-SEND] Erro SQLite detectado (tentativa ${attempt + 1}/${maxRetries}), aguardando ${retryDelay}ms... Resposta: ${JSON.stringify(json).slice(0, 200)}`);
               await new Promise((r) => setTimeout(r, retryDelay));
               continue;
             }
@@ -421,7 +426,7 @@ serve(async (req) => {
 
           // Fallback para texto se imagem falhar (mas NÃO se for erro de SQLite - já fez retry)
           if (!response.ok || payload?.success === false) {
-            const isTransactionError = (payload?.error || "").includes("transaction");
+            const isTransactionError = isSqliteError(payload);
             if (!isTransactionError) {
               console.log("🧯 [PJ-SEND] Imagem falhou (não-SQLite), fallback para texto...");
             } else {
