@@ -39,18 +39,41 @@ serve(async (req) => {
 
     console.log('📋 Campanha encontrada:', campanha.nome)
 
-    // Buscar contatos das listas
-    const { data: listas, error: listasError } = await supabase
+    // Buscar contatos das listas (whatsapp_groups + pj_lista_membros + afiliado)
+    const listasIds = campanha.listas_ids || []
+    let contatos: string[] = []
+
+    // 1. whatsapp_groups
+    const { data: listas } = await supabase
       .from('whatsapp_groups')
       .select('phone_numbers, group_name')
-      .in('id', campanha.listas_ids || [])
+      .in('id', listasIds)
+    contatos.push(...(listas?.flatMap(l => l.phone_numbers || []) || []))
 
-    if (listasError) {
-      console.error('Erro ao buscar listas:', listasError)
+    // 2. pj_lista_membros
+    const { data: membrosPJ } = await supabase
+      .from('pj_lista_membros')
+      .select('telefone')
+      .in('lista_id', listasIds)
+    contatos.push(...(membrosPJ?.map(m => m.telefone) || []))
+
+    // 3. afiliado_lista_membros -> leads_ebooks
+    const { data: membrosAfiliado } = await supabase
+      .from('afiliado_lista_membros')
+      .select('lead_id')
+      .in('lista_id', listasIds)
+    if (membrosAfiliado && membrosAfiliado.length > 0) {
+      const leadIds = membrosAfiliado.map((m: any) => m.lead_id)
+      const { data: leads } = await supabase
+        .from('leads_ebooks')
+        .select('phone')
+        .in('id', leadIds)
+      contatos.push(...(leads?.map((l: any) => l.phone) || []))
     }
 
-    const contatos = listas?.flatMap(l => l.phone_numbers || []) || []
-    console.log(`📱 Enviando para ${contatos.length} contatos`)
+    // Deduplicar
+    contatos = [...new Set(contatos)].filter(Boolean)
+    console.log(`📱 Enviando para ${contatos.length} contatos (deduplicados)`)
 
     let enviados = 0
     let erros = 0

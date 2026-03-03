@@ -404,14 +404,40 @@ _Escolha quantidade e finalize!_ ✅`;
     
     console.log('📦 Produto:', produto.nome);
 
-    // Buscar contatos das listas selecionadas
+    // Buscar contatos das listas selecionadas (whatsapp_groups + pj_lista_membros)
+    let todosContatos: string[] = [];
+
+    // 1. Buscar de whatsapp_groups (listas manuais)
     const { data: listasData } = await supabase
       .from('whatsapp_groups')
       .select('phone_numbers')
       .in('id', listasSelecionadas);
+    todosContatos.push(...(listasData?.flatMap(l => l.phone_numbers || []) || []));
 
-    const todosContatos = listasData?.flatMap(l => l.phone_numbers || []) || [];
-    console.log('📋 Total contatos:', todosContatos.length);
+    // 2. Buscar de pj_lista_membros (listas PJ)
+    const { data: membrosPJ } = await supabase
+      .from('pj_lista_membros')
+      .select('telefone')
+      .in('lista_id', listasSelecionadas);
+    todosContatos.push(...(membrosPJ?.map(m => m.telefone) || []));
+
+    // 3. Buscar de afiliado_lista_membros -> leads_ebooks (listas afiliado)
+    const { data: membrosAfiliado } = await supabase
+      .from('afiliado_lista_membros')
+      .select('lead_id')
+      .in('lista_id', listasSelecionadas);
+    if (membrosAfiliado && membrosAfiliado.length > 0) {
+      const leadIds = membrosAfiliado.map(m => m.lead_id);
+      const { data: leads } = await supabase
+        .from('leads_ebooks')
+        .select('phone')
+        .in('id', leadIds);
+      todosContatos.push(...(leads?.map(l => l.phone) || []));
+    }
+
+    // Deduplicar
+    todosContatos = [...new Set(todosContatos)].filter(Boolean);
+    console.log('📋 Total contatos (deduplicados):', todosContatos.length);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
     if (todosContatos.length === 0) {
