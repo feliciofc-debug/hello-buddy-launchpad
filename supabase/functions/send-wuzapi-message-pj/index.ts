@@ -373,42 +373,69 @@ serve(async (req) => {
         targetPhone = clean;
       }
 
+      // CRÍTICO: Delay de 2s após validação para liberar SQLite do WuzAPI
+      if (validateBeforeSend) {
+        console.log(`⏳ [PJ-SEND] Aguardando 2s para liberar SQLite após validação...`);
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+
       console.log(`📞 [PJ-SEND] Enviando para ${targetPhone}...`);
 
       try {
         let response: Response;
         let payload: any;
 
-        if (finalImageUrl) {
-          response = await fetch(`${baseUrl}/chat/send/image`, {
-            method: "POST",
-            headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
-            body: JSON.stringify({
-              Phone: targetPhone,
-              Caption: message,
-              Image: finalImageUrl,
-            }),
-          });
-
-          payload = await safeReadJson(response);
-
-          // Fallback para texto se imagem falhar
-          if (!response.ok || payload?.success === false) {
-            console.log("🧯 [PJ-SEND] Imagem falhou, fallback para texto...");
-            response = await fetch(`${baseUrl}/chat/send/text`, {
+        // Função helper para enviar com retry em caso de erro SQLite
+        async function sendWithRetry(url: string, body: any, maxRetries = 2): Promise<{ response: Response; payload: any }> {
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            const resp = await fetch(url, {
               method: "POST",
               headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
-              body: JSON.stringify({ Phone: targetPhone, Body: message }),
+              body: JSON.stringify(body),
             });
-            payload = await safeReadJson(response);
+            const json = await safeReadJson(resp);
+            
+            // Se erro de SQLite transaction, esperar e tentar novamente
+            const errorMsg = json?.error || "";
+            if (!resp.ok && errorMsg.includes("transaction") && attempt < maxRetries) {
+              const retryDelay = 3000 * (attempt + 1);
+              console.log(`🔄 [PJ-SEND] Erro SQLite detectado, retry ${attempt + 1}/${maxRetries} em ${retryDelay}ms...`);
+              await new Promise((r) => setTimeout(r, retryDelay));
+              continue;
+            }
+            
+            return { response: resp, payload: json };
+          }
+          // Não deveria chegar aqui, mas fallback
+          throw new Error("Max retries exceeded");
+        }
+
+        if (finalImageUrl) {
+          const imgResult = await sendWithRetry(`${baseUrl}/chat/send/image`, {
+            Phone: targetPhone,
+            Caption: message,
+            Image: finalImageUrl,
+          });
+          response = imgResult.response;
+          payload = imgResult.payload;
+
+          // Fallback para texto se imagem falhar (mas NÃO se for erro de SQLite - já fez retry)
+          if (!response.ok || payload?.success === false) {
+            const isTransactionError = (payload?.error || "").includes("transaction");
+            if (!isTransactionError) {
+              console.log("🧯 [PJ-SEND] Imagem falhou (não-SQLite), fallback para texto...");
+            } else {
+              console.log("🧯 [PJ-SEND] Imagem falhou após retries SQLite, tentando texto com delay...");
+              await new Promise((r) => setTimeout(r, 3000));
+            }
+            const txtResult = await sendWithRetry(`${baseUrl}/chat/send/text`, { Phone: targetPhone, Body: message });
+            response = txtResult.response;
+            payload = txtResult.payload;
           }
         } else {
-          response = await fetch(`${baseUrl}/chat/send/text`, {
-            method: "POST",
-            headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
-            body: JSON.stringify({ Phone: targetPhone, Body: message }),
-          });
-          payload = await safeReadJson(response);
+          const txtResult = await sendWithRetry(`${baseUrl}/chat/send/text`, { Phone: targetPhone, Body: message });
+          response = txtResult.response;
+          payload = txtResult.payload;
         }
 
         const success = response.ok && payload?.success !== false;
