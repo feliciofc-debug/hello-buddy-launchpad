@@ -8,6 +8,7 @@ import { Upload, FileSpreadsheet, Users, CheckCircle2, AlertCircle, Download, Se
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { normalizePhoneNumber, isPhoneValue as isPhoneUtil } from '@/lib/phoneUtils';
 
 interface ParsedContact {
   nome: string | null;
@@ -27,12 +28,7 @@ interface ImportSummary {
 }
 
 function isPhoneValue(val: string): boolean {
-  const digits = val.replace(/[\s\-\(\)\+\.]/g, '');
-  return /^\d{8,15}$/.test(digits);
-}
-
-function normalizePhone(val: string): string {
-  return val.replace(/[\s\-\(\)\.]/g, '');
+  return isPhoneUtil(val);
 }
 
 function parseCSV(text: string): ParseResult {
@@ -40,10 +36,16 @@ function parseCSV(text: string): ParseResult {
   if (lines.length === 0) return { contacts: [], ignored: [] };
 
   const firstLine = lines[0];
+  
+  // Detectar separador: ;, tab, ou vírgula
   const separator = firstLine.includes(';') ? ';' :
-    firstLine.includes('\t') ? '\t' : ',';
+    firstLine.includes('\t') ? '\t' : 
+    firstLine.includes(',') ? ',' : null;
 
-  const firstCols = firstLine.split(separator).map(c => c.trim().toLowerCase().replace(/"/g, ''));
+  const firstCols = separator 
+    ? firstLine.split(separator).map(c => c.trim().toLowerCase().replace(/"/g, ''))
+    : [firstLine.trim().toLowerCase()];
+    
   const hasHeader = firstCols.some(c =>
     ['nome', 'name', 'telefone', 'phone', 'celular', 'whatsapp', 'numero', 'número', 'tel', 'contato'].includes(c)
   );
@@ -51,7 +53,7 @@ function parseCSV(text: string): ParseResult {
   let phoneIdx = -1;
   let nameIdx = -1;
 
-  if (hasHeader) {
+  if (hasHeader && separator) {
     firstCols.forEach((col, i) => {
       if (['telefone', 'phone', 'celular', 'whatsapp', 'numero', 'número', 'tel'].includes(col)) phoneIdx = i;
       if (['nome', 'name', 'contato'].includes(col)) nameIdx = i;
@@ -60,7 +62,8 @@ function parseCSV(text: string): ParseResult {
 
   const dataLines = hasHeader ? lines.slice(1) : lines;
 
-  if (phoneIdx === -1 && dataLines.length > 0) {
+  // Se temos separador, tentar detectar coluna de telefone por amostra
+  if (separator && phoneIdx === -1 && dataLines.length > 0) {
     const sampleCols = dataLines[0]?.split(separator).map(c => c.trim().replace(/"/g, '')) ?? [];
     sampleCols.forEach((col, i) => {
       if (phoneIdx === -1 && isPhoneValue(col)) phoneIdx = i;
@@ -75,26 +78,55 @@ function parseCSV(text: string): ParseResult {
 
   dataLines.forEach((line, lineNum) => {
     if (!line.trim()) return;
-    const parts = line.split(separator).map(p => p.trim().replace(/^"|"$/g, ''));
 
     let telefone = '';
     let nome: string | null = null;
 
-    if (phoneIdx !== -1) {
-      telefone = normalizePhone(parts[phoneIdx] ?? '');
-      nome = nameIdx !== -1 && nameIdx < parts.length ? (parts[nameIdx] || null) : null;
-    } else {
-      for (let i = 0; i < parts.length; i++) {
-        if (isPhoneValue(parts[i])) {
-          telefone = normalizePhone(parts[i]);
-          nome = parts.find((p, idx) => idx !== i && p.length > 1 && !isPhoneValue(p)) ?? null;
-          break;
+    if (separator) {
+      // Parsing com separador padrão (;, tab, vírgula)
+      const parts = line.split(separator).map(p => p.trim().replace(/^"|"$/g, ''));
+
+      if (phoneIdx !== -1) {
+        telefone = parts[phoneIdx] ?? '';
+        nome = nameIdx !== -1 && nameIdx < parts.length ? (parts[nameIdx] || null) : null;
+      } else {
+        for (let i = 0; i < parts.length; i++) {
+          if (isPhoneValue(parts[i])) {
+            telefone = parts[i];
+            nome = parts.find((p, idx) => idx !== i && p.length > 1 && !isPhoneValue(p)) ?? null;
+            break;
+          }
+        }
+      }
+    }
+    
+    // Fallback: formato "Nome Numero" separado por espaço
+    if (!telefone || telefone.replace(/\D/g, '').length < 8) {
+      // Regex: captura tudo antes do último bloco de dígitos (com possíveis separadores)
+      const nameNumberMatch = line.trim().match(/^(.+?)\s+([\+]?[\d\s\-\.\/\(\)]{8,20})$/);
+      if (nameNumberMatch && nameNumberMatch[1] && nameNumberMatch[2]) {
+        const candidatePhone = nameNumberMatch[2].trim();
+        if (isPhoneValue(candidatePhone)) {
+          nome = nameNumberMatch[1].trim();
+          telefone = candidatePhone;
+        }
+      }
+      
+      // Se ainda não encontrou, talvez a linha inteira seja só um número
+      if (!telefone || telefone.replace(/\D/g, '').length < 8) {
+        const wholeLine = line.trim();
+        if (isPhoneValue(wholeLine)) {
+          telefone = wholeLine;
+          nome = null;
         }
       }
     }
 
-    const digits = telefone.replace(/\D/g, '');
-    if (!telefone || digits.length < 8) {
+    // Normalizar o telefone usando a função centralizada
+    const normalized = normalizePhoneNumber(telefone);
+    const digits = normalized.replace(/\D/g, '');
+    
+    if (!normalized || digits.length < 10) {
       ignored.push({
         linha: lineNum + (hasHeader ? 2 : 1),
         valor: line.substring(0, 50),
@@ -111,9 +143,10 @@ function parseCSV(text: string): ParseResult {
       if (nome.length < 2 || /^\d+$/.test(nome)) nome = null;
     }
 
-    contacts.push({ nome: nome || null, telefone });
+    contacts.push({ nome: nome || null, telefone: normalized });
   });
 
+  // Deduplicar por número normalizado
   const seen = new Set<string>();
   const unique = contacts.filter(c => {
     if (seen.has(c.telefone)) {

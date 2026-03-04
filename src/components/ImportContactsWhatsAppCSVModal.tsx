@@ -8,6 +8,7 @@ import { Upload, CheckCircle, AlertCircle, Users, FileSpreadsheet } from 'lucide
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
+import { normalizePhoneNumber } from '@/lib/phoneUtils';
 
 interface ImportContactsWhatsAppCSVModalProps {
   isOpen: boolean;
@@ -33,15 +34,7 @@ export default function ImportContactsWhatsAppCSVModal({ isOpen, onClose, onSucc
   } | null>(null);
 
   const cleanPhoneNumber = (phone: string): string => {
-    // Remove tudo que não é número
-    let cleaned = phone.replace(/\D/g, '');
-    
-    // Garantir que começa com 55 (Brasil)
-    if (!cleaned.startsWith('55') && cleaned.length >= 10) {
-      cleaned = '55' + cleaned;
-    }
-    
-    return cleaned;
+    return normalizePhoneNumber(phone, '21');
   };
 
   const parseCSVLine = (line: string): string[] => {
