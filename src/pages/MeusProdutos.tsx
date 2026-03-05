@@ -22,7 +22,7 @@ import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppMo
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 import StockIntegrations from '@/components/StockIntegrations';
-import GerenciarCampanhasProduto from '@/components/GerenciarCampanhasProduto';
+
 
 interface Campanha {
   id: string;
@@ -710,7 +710,7 @@ export default function MeusProdutos() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
-  const [managingProductId, setManagingProductId] = useState<string | null>(null);
+  
 
   // Form states
   const [formData, setFormData] = useState({
@@ -1475,10 +1475,10 @@ export default function MeusProdutos() {
                           variant="outline"
                           size="sm" 
                           className="w-full gap-2 border-primary text-primary hover:bg-primary/10"
-                          onClick={() => setManagingProductId(managingProductId === product.id ? null : product.id)}
+                          onClick={() => handleCreateCampaign(product)}
                         >
-                          <Megaphone className="w-4 h-4" />
-                          {managingProductId === product.id ? "Fechar Gestão" : "Gerenciar Campanhas"}
+                          <Rocket className="w-4 h-4" />
+                          Duplicar Campanha
                         </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
@@ -1503,15 +1503,6 @@ export default function MeusProdutos() {
                   </div>
                 </CardContent>
               </Card>
-              {managingProductId === product.id && (
-                <GerenciarCampanhasProduto
-                  produtoId={product.id}
-                  produtoNome={product.nome}
-                  produtoImagem={product.imagem_url}
-                  onClose={() => setManagingProductId(null)}
-                  onCriarNova={() => handleCreateCampaign(product)}
-                />
-              )}
               </div>
             ))}
           </div>
