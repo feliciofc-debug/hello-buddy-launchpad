@@ -1545,7 +1545,6 @@ export default function MeusProdutos() {
                       className="w-full gap-2"
                       onClick={() => {
                         handleCreateCampaign(product);
-                        setDuplicatingProduct(null);
                       }}
                     >
                       <Rocket className="w-4 h-4" />
