@@ -6,6 +6,62 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Envia mensagem diretamente via WuzAPI (sem invocar outra Edge Function)
+async function enviarMensagemDireta(
+  baseUrl: string,
+  token: string,
+  phone: string,
+  message: string,
+  imageUrl?: string
+): Promise<boolean> {
+  try {
+    let cleanPhone = phone.replace(/\D/g, '')
+    if (!cleanPhone.startsWith('55') && cleanPhone.length <= 11) {
+      cleanPhone = '55' + cleanPhone
+    }
+
+    const url = baseUrl.replace(/\/+$/, '')
+
+    // Se tem imagem, enviar como imagem com caption
+    if (imageUrl) {
+      const payload = {
+        Phone: cleanPhone,
+        Caption: message,
+        Image: imageUrl,
+      }
+
+      const resp = await fetch(`${url}/chat/send/image`, {
+        method: 'POST',
+        headers: { 'Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (resp.ok) return true
+
+      // Fallback: enviar só texto se imagem falhar
+      console.log(`⚠️ Imagem falhou para ${cleanPhone}, enviando só texto`)
+    }
+
+    // Enviar texto
+    const textPayload = { Phone: cleanPhone, Body: message }
+    const textResp = await fetch(`${url}/chat/send/text`, {
+      method: 'POST',
+      headers: { 'Token': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify(textPayload),
+    })
+
+    return textResp.ok
+  } catch (err) {
+    console.error(`❌ Erro ao enviar para ${phone}:`, err)
+    return false
+  }
+}
+
+// Delay humanizado entre 3-7 segundos
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -39,25 +95,22 @@ serve(async (req) => {
 
     console.log('📋 Campanha encontrada:', campanha.nome)
 
-    // Buscar contatos das listas (whatsapp_groups + pj_lista_membros + afiliado)
+    // Buscar contatos das listas
     const listasIds = campanha.listas_ids || []
     let contatos: string[] = []
 
-    // 1. whatsapp_groups
     const { data: listas } = await supabase
       .from('whatsapp_groups')
       .select('phone_numbers, group_name')
       .in('id', listasIds)
     contatos.push(...(listas?.flatMap(l => l.phone_numbers || []) || []))
 
-    // 2. pj_lista_membros
     const { data: membrosPJ } = await supabase
       .from('pj_lista_membros')
       .select('telefone')
       .in('lista_id', listasIds)
     contatos.push(...(membrosPJ?.map(m => m.telefone) || []))
 
-    // 3. afiliado_lista_membros -> leads_ebooks
     const { data: membrosAfiliado } = await supabase
       .from('afiliado_lista_membros')
       .select('lead_id')
@@ -73,84 +126,105 @@ serve(async (req) => {
 
     // Deduplicar
     contatos = [...new Set(contatos)].filter(Boolean)
-    console.log(`📱 Enviando para ${contatos.length} contatos (deduplicados)`)
+    console.log(`📱 Total: ${contatos.length} contatos (deduplicados)`)
 
-    let enviados = 0
-    let erros = 0
+    // Buscar instância WuzAPI do usuário
+    let baseUrl = Deno.env.get('WUZAPI_URL') || 'https://wuzapi.amzofertas.com.br'
+    let wuzapiToken = Deno.env.get('WUZAPI_TOKEN') || ''
 
-    // Personalizar mensagem (sem {{nome}} para envio em lote)
+    if (campanha.user_id) {
+      const { data: config } = await supabase
+        .from('pj_clientes_config')
+        .select('wuzapi_token, wuzapi_port')
+        .eq('user_id', campanha.user_id)
+        .maybeSingle()
+
+      if (config?.wuzapi_token) wuzapiToken = config.wuzapi_token
+
+      const targetPort = Number(config?.wuzapi_port || 8080)
+      const { data: instance } = await supabase
+        .from('wuzapi_instances')
+        .select('wuzapi_url, wuzapi_token')
+        .eq('assigned_to_user', campanha.user_id)
+        .eq('port', targetPort)
+        .maybeSingle()
+
+      if (instance?.wuzapi_url) {
+        baseUrl = instance.wuzapi_url.replace(/\/+$/, '')
+        console.log('📡 Usando instância:', baseUrl)
+      }
+      if (instance?.wuzapi_token) wuzapiToken = instance.wuzapi_token
+    }
+
+    // Personalizar mensagem
     const mensagem = campanha.mensagem_template
       .replace(/\{\{nome\}\}/gi, 'Cliente')
       .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || '')
       .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || '0')
 
-    console.log(`📤 Enviando para ${contatos.length} contatos em lote via send-wuzapi-message-pj`)
+    const imageUrl = campanha.produtos?.imagens?.[0]
 
-    // ENVIAR TODOS DE UMA VEZ - evita múltiplas invocações e contention SQLite
-    try {
-      const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
-        body: {
-          phoneNumbers: contatos,
-          message: mensagem,
-          imageUrl: campanha.produtos?.imagens?.[0],
-          userId: campanha.user_id,
-          validateBeforeSend: false, // CRÍTICO: Desativar validação para evitar SQLITE_BUSY
-        }
-      })
+    // ENVIAR UM POR UM diretamente via WuzAPI
+    let enviados = 0
+    let erros = 0
 
-      if (sendError) {
-        console.error('❌ Erro na chamada send-wuzapi-message-pj:', sendError)
-        erros = contatos.length
+    for (let i = 0; i < contatos.length; i++) {
+      const phone = contatos[i]
+      console.log(`📤 [${i + 1}/${contatos.length}] Enviando para ${phone}`)
+
+      const ok = await enviarMensagemDireta(baseUrl, wuzapiToken, phone, mensagem, imageUrl)
+      
+      if (ok) {
+        enviados++
+        console.log(`✅ Enviado para ${phone}`)
       } else {
-        enviados = sendResult?.enviados || 0
-        erros = sendResult?.erros || 0
-        console.log(`✅ Resultado: ${enviados} enviados, ${erros} erros`)
-
-        // Salvar contexto para IA responder
-        for (const phone of contatos) {
-          try {
-            await supabase.from('whatsapp_conversations').upsert({
-              user_id: campanha.user_id,
-              phone_number: phone,
-              origem: 'campanha',
-              status: 'active',
-              metadata: {
-                produto_nome: campanha.produtos?.nome,
-                produto_preco: campanha.produtos?.preco,
-                campanha_id: campanha.id
-              },
-              updated_at: new Date().toISOString()
-            }, {
-              onConflict: 'user_id,phone_number'
-            })
-          } catch (_) { /* ignorar */ }
-        }
+        erros++
+        console.log(`❌ Falhou para ${phone}`)
       }
-    } catch (err) {
-      console.error('❌ Erro geral no envio em lote:', err)
-      erros = contatos.length
+
+      // Delay humanizado entre mensagens (3-7s) - exceto na última
+      if (i < contatos.length - 1) {
+        const delayMs = 3000 + Math.random() * 4000
+        await delay(delayMs)
+      }
     }
 
-    console.log(`✅ Enviados: ${enviados}/${contatos.length}, Erros: ${erros}`)
+    console.log(`✅ Resultado: ${enviados}/${contatos.length} enviados, ${erros} erros`)
 
-    // CALCULAR PRÓXIMA EXECUÇÃO
+    // Salvar contexto para IA responder
+    for (const phone of contatos) {
+      try {
+        await supabase.from('whatsapp_conversations').upsert({
+          user_id: campanha.user_id,
+          phone_number: phone,
+          origem: 'campanha',
+          status: 'active',
+          metadata: {
+            produto_nome: campanha.produtos?.nome,
+            produto_preco: campanha.produtos?.preco,
+            campanha_id: campanha.id
+          },
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id,phone_number'
+        })
+      } catch (_) { /* ignorar */ }
+    }
+
+    // Calcular próxima execução
     const proximaExec = calcularProxima(campanha)
 
-    // ATUALIZAR CAMPANHA
-    const { error: updateError } = await supabase
+    // Atualizar campanha
+    await supabase
       .from('campanhas_recorrentes')
       .update({
         ultima_execucao: new Date().toISOString(),
         proxima_execucao: proximaExec,
         total_enviados: (campanha.total_enviados || 0) + enviados,
-        ativa: proximaExec ? true : false, // Desativa se não tem próxima
+        ativa: proximaExec ? true : false,
         status: proximaExec ? 'ativa' : 'encerrada'
       })
       .eq('id', campaign_id)
-
-    if (updateError) {
-      console.error('Erro ao atualizar campanha:', updateError)
-    }
 
     console.log(`📅 Próxima execução:`, proximaExec || 'Não repetirá')
 
@@ -181,39 +255,26 @@ serve(async (req) => {
 function calcularProxima(campanha: any): string | null {
   const agora = new Date()
   const horarios = campanha.horarios || ['09:00']
-  
-  // Ordenar horários
   const horariosOrdenados = [...horarios].sort()
   
-  if (campanha.frequencia === 'uma_vez') {
-    return null // Não repete
-  }
+  if (campanha.frequencia === 'uma_vez') return null
 
-  // Hora atual em formato HH:MM
   const horaAtual = agora.toTimeString().slice(0, 5)
-  
-  // NOVO: Verificar se há mais horários HOJE
   const proximoHorarioHoje = horariosOrdenados.find((h: string) => h > horaAtual)
   
   if (proximoHorarioHoje) {
-    // Se campanha é semanal, verificar se hoje é um dia válido
     if (campanha.frequencia === 'semanal') {
       const diasValidos = campanha.dias_semana || []
       if (!diasValidos.includes(agora.getDay())) {
-        // Hoje não é válido, ir para próximo dia
         return calcularProximoDia(campanha, horariosOrdenados[0])
       }
     }
-    
-    // Ainda há horário hoje
     const [hora, minuto] = proximoHorarioHoje.split(':').map(Number)
     const proxima = new Date()
     proxima.setHours(hora, minuto, 0, 0)
-    console.log(`📅 Próximo horário HOJE: ${proximoHorarioHoje}`)
     return proxima.toISOString()
   }
 
-  // Não há mais horários hoje, calcular próximo dia
   return calcularProximoDia(campanha, horariosOrdenados[0])
 }
 
@@ -230,14 +291,11 @@ function calcularProximoDia(campanha: any, primeiroHorario: string): string | nu
   if (campanha.frequencia === 'semanal') {
     const proxima = new Date()
     const diasValidos = campanha.dias_semana || []
-    
-    // Avançar até encontrar próximo dia válido
     let tentativas = 0
     do {
       proxima.setDate(proxima.getDate() + 1)
       tentativas++
     } while (!diasValidos.includes(proxima.getDay()) && tentativas < 8)
-    
     proxima.setHours(hora, minuto, 0, 0)
     return proxima.toISOString()
   }
