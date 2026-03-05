@@ -1468,6 +1468,15 @@ export default function MeusProdutos() {
                           <Rocket className="w-4 h-4" />
                           Criar Campanha
                         </Button>
+                        <Button 
+                          variant="outline"
+                          size="sm" 
+                          className="w-full gap-2 border-primary text-primary hover:bg-primary/10"
+                          onClick={() => handleCreateCampaign(product)}
+                        >
+                          <Rocket className="w-4 h-4" />
+                          Duplicar Campanha
+                        </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
