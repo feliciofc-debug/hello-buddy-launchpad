@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -22,6 +22,7 @@ import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppMo
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 import StockIntegrations from '@/components/StockIntegrations';
+import GerenciarCampanhasProduto from '@/components/GerenciarCampanhasProduto';
 
 interface Campanha {
   id: string;
@@ -709,6 +710,7 @@ export default function MeusProdutos() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [managingProductId, setManagingProductId] = useState<string | null>(null);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -1311,7 +1313,8 @@ export default function MeusProdutos() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => (
-              <Card key={product.id} className="hover:shadow-lg transition-all duration-300">
+              <div key={product.id} className="space-y-4">
+              <Card className="hover:shadow-lg transition-all duration-300">
                 <CardHeader>
                   <div className="flex items-start justify-between mb-3">
                     <div className="relative">
@@ -1472,10 +1475,10 @@ export default function MeusProdutos() {
                           variant="outline"
                           size="sm" 
                           className="w-full gap-2 border-primary text-primary hover:bg-primary/10"
-                          onClick={() => handleCreateCampaign(product)}
+                          onClick={() => setManagingProductId(managingProductId === product.id ? null : product.id)}
                         >
-                          <Rocket className="w-4 h-4" />
-                          Duplicar Campanha
+                          <Megaphone className="w-4 h-4" />
+                          {managingProductId === product.id ? "Fechar Gestão" : "Gerenciar Campanhas"}
                         </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
@@ -1500,6 +1503,16 @@ export default function MeusProdutos() {
                   </div>
                 </CardContent>
               </Card>
+              {managingProductId === product.id && (
+                <GerenciarCampanhasProduto
+                  produtoId={product.id}
+                  produtoNome={product.nome}
+                  produtoImagem={product.imagem_url}
+                  onClose={() => setManagingProductId(null)}
+                  onCriarNova={() => handleCreateCampaign(product)}
+                />
+              )}
+              </div>
             ))}
           </div>
         )}
