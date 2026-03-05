@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { 
-  ArrowLeft, Plus, Package, Trash2, Edit, Upload, Megaphone, 
+  ArrowLeft, Plus, Package, Trash2, Edit, Upload, Megaphone, Copy,
   ChefHat, Home, Smartphone, Gamepad2, Baby, Sparkles, Dumbbell, 
   Wrench, Cat, Shirt, Car, LayoutGrid, Sofa, BookOpen, BookMarked,
   Briefcase, Leaf, Tv, ShowerHead, Zap, UtensilsCrossed, HardHat,
@@ -1011,6 +1011,15 @@ export default function AfiliadoProdutos() {
                         >
                           <Megaphone className="h-4 w-4 mr-2" />
                           Criar Campanha
+                        </Button>
+
+                        <Button 
+                          variant="outline"
+                          className="w-full border-primary text-primary hover:bg-primary/10"
+                          onClick={() => handleCriarCampanha(produto)}
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Duplicar Campanha
                         </Button>
 
                         <div className="grid grid-cols-2 gap-2">
