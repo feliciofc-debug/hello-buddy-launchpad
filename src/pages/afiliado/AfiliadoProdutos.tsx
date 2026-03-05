@@ -201,6 +201,7 @@ export default function AfiliadoProdutos() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [campanhaModalOpen, setCampanhaModalOpen] = useState(false);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
+  const [duplicateData, setDuplicateData] = useState<any>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todos');
   const [reclassificando, setReclassificando] = useState<string | null>(null);
@@ -493,7 +494,46 @@ export default function AfiliadoProdutos() {
 
   const handleCriarCampanha = (produto: Produto) => {
     setProdutoSelecionado(produto);
+    setDuplicateData(null);
     setCampanhaModalOpen(true);
+  };
+
+  const handleDuplicarCampanha = async (produto: Produto) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Buscar última campanha desse produto
+      const { data: campanhas } = await supabase
+        .from('afiliado_campanhas')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('produto_id', produto.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const campanha = campanhas?.[0];
+
+      setProdutoSelecionado(produto);
+      setDuplicateData(campanha ? {
+        mensagem_template: campanha.mensagem_template,
+        frequencia: campanha.frequencia,
+        horarios: campanha.horarios,
+        dias_semana: campanha.dias_semana,
+        listas_ids: campanha.listas_ids,
+        data_inicio: new Date().toISOString().split('T')[0],
+      } : null);
+      setCampanhaModalOpen(true);
+
+      if (campanha) {
+        toast.info('📋 Campanha duplicada! Ajuste os horários e salve.');
+      } else {
+        toast.info('Nenhuma campanha anterior encontrada. Criando nova.');
+      }
+    } catch (error) {
+      console.error('Erro ao duplicar:', error);
+      toast.error('Erro ao buscar campanha para duplicar');
+    }
   };
 
   const marketplaces = [
@@ -1016,7 +1056,7 @@ export default function AfiliadoProdutos() {
                         <Button 
                           variant="outline"
                           className="w-full border-primary text-primary hover:bg-primary/10"
-                          onClick={() => handleCriarCampanha(produto)}
+                          onClick={() => handleDuplicarCampanha(produto)}
                         >
                           <Copy className="h-4 w-4 mr-2" />
                           Duplicar Campanha
@@ -1067,9 +1107,13 @@ export default function AfiliadoProdutos() {
               open={campanhaModalOpen}
               onOpenChange={(open) => {
                 setCampanhaModalOpen(open);
-                if (!open) setProdutoSelecionado(null);
+                if (!open) {
+                  setProdutoSelecionado(null);
+                  setDuplicateData(null);
+                }
               }}
               produto={produtoSelecionado}
+              duplicateFrom={duplicateData}
             />
           )}
         </div>

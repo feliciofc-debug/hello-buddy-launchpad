@@ -66,18 +66,29 @@ interface PostsGerados {
   promocional: string;
 }
 
+interface CampanhaDuplicar {
+  mensagem_template: string;
+  frequencia: string;
+  horarios: string[];
+  dias_semana: number[];
+  listas_ids: string[];
+  data_inicio: string;
+}
+
 interface CriarCampanhaAfiliadoModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   produto: Produto;
   onSuccess?: () => void;
+  duplicateFrom?: CampanhaDuplicar | null;
 }
 
 export function CriarCampanhaAfiliadoModal({ 
   open, 
   onOpenChange, 
   produto,
-  onSuccess
+  onSuccess,
+  duplicateFrom
 }: CriarCampanhaAfiliadoModalProps) {
   
   if (!produto) {
@@ -177,9 +188,19 @@ export function CriarCampanhaAfiliadoModal({
   useEffect(() => {
     if (open) {
       fetchListas();
-      // Template inicial COM LINK DE AFILIADO - usa formatação correta de preço
-      const precoFormatado = produto.preco ? formatarPrecoAfiliado(produto.preco) : '';
-      setMensagem(`Olá! 👋
+      
+      if (duplicateFrom) {
+        // Pre-fill from existing campaign
+        setMensagem(duplicateFrom.mensagem_template || '');
+        setFrequencia((duplicateFrom.frequencia as any) || 'diario');
+        setHorarios(duplicateFrom.horarios?.length ? [...duplicateFrom.horarios] : ['10:00']);
+        setDiasSemana(duplicateFrom.dias_semana?.length ? [...duplicateFrom.dias_semana] : [1, 2, 3, 4, 5]);
+        setListasSelecionadas(duplicateFrom.listas_ids?.length ? [...duplicateFrom.listas_ids] : []);
+        setDataInicio(duplicateFrom.data_inicio || new Date().toISOString().split('T')[0]);
+      } else {
+        // Template inicial COM LINK DE AFILIADO
+        const precoFormatado = produto.preco ? formatarPrecoAfiliado(produto.preco) : '';
+        setMensagem(`Olá! 👋
 
 Confira esta oferta incrível:
 
@@ -192,8 +213,14 @@ ${produto.descricao || ''}
 ${produto.link_afiliado}
 
 _Aproveite enquanto dura!_ ✅`);
+        setFrequencia('agora');
+        setHorarios(['10:00']);
+        setDiasSemana([1, 2, 3, 4, 5]);
+        setListasSelecionadas([]);
+        setDataInicio('');
+      }
     }
-  }, [open, produto]);
+  }, [open, produto, duplicateFrom]);
 
   const addHorario = () => {
     if (horarios.length < 10) {
@@ -496,7 +523,7 @@ _Aproveite enquanto dura!_ ✅`;
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">
-            🚀 Criar Campanha - {produto.titulo}
+            {duplicateFrom ? '📋 Duplicar Campanha' : '🚀 Criar Campanha'} - {produto.titulo}
           </DialogTitle>
         </DialogHeader>
 
