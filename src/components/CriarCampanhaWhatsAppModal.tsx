@@ -499,49 +499,49 @@ _Escolha quantidade e finalize!_ ✅`;
       let erros = 0;
 
       try {
-        // Personalizar mensagem (sem {{nome}} para envio em lote)
-        const mensagemLote = mensagem
-          .replace(/\{\{nome\}\}/gi, 'Cliente')
-          .replace(/\{\{produto\}\}/gi, produto.nome)
-          .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
-
-        // ENVIAR TODOS DE UMA VEZ - evita múltiplas chamadas e contention SQLite
-        const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
-          body: {
-            phoneNumbers: todosContatos,
-            message: mensagemLote,
-            imageUrl: produto.imagem_url,
-            userId: user.id,
-            validateBeforeSend: false, // CRÍTICO: Desativar validação para evitar SQLITE_BUSY
-          }
-        });
-
-        if (sendError) {
-          console.error('❌ Erro no envio em lote:', sendError);
-          erros = todosContatos.length;
-        } else {
-          enviados = sendData?.enviados || 0;
-          erros = sendData?.erros || 0;
-        }
-
-        // Registrar conversas em lote para IA responder
-        for (const phone of todosContatos) {
+        // ENVIAR UM POR UM com personalização de nome
+        for (const [index, phone] of todosContatos.entries()) {
           try {
-            const conversaData = {
-              user_id: user.id,
-              phone_number: phone,
-              origem: 'campanha',
-              vendedor_id: vendedorSelecionado || null,
-              status: 'active',
-              last_message_at: new Date().toISOString(),
-              metadata: {
-                produto_id: produto.id,
-                produto_nome: produto.nome,
-                produto_preco: produto.preco,
-                campanha_id: campanhaTemp?.id,
-              }
-            };
+            // Buscar nome do contato
+            const { data: contact } = await supabase
+              .from('whatsapp_contacts')
+              .select('nome')
+              .eq('phone', phone)
+              .eq('user_id', user.id)
+              .maybeSingle();
 
+            const nome = contact?.nome || 'Cliente';
+            
+            // Personalizar mensagem COM O NOME
+            const mensagemPersonalizada = mensagem
+              .replace(/\{\{nome\}\}/gi, nome)
+              .replace(/\{\{produto\}\}/gi, produto.nome)
+              .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
+
+            console.log(`📤 [${index + 1}/${todosContatos.length}] Enviando para ${phone} (${nome})`);
+
+            // Enviar UM POR UM via função PJ
+            const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+              body: {
+                phoneNumbers: [phone],
+                message: mensagemPersonalizada,
+                imageUrl: produto.imagem_url,
+                userId: user.id,
+                validateBeforeSend: false
+              }
+            });
+
+            const firstResult = Array.isArray(sendData?.results) ? sendData.results[0] : null;
+            const envioOk = !sendError && (firstResult ? firstResult.success === true : sendData?.success !== false);
+
+            if (envioOk) {
+              enviados++;
+            } else {
+              console.error('Envio falhou:', { phone, sendError, firstResult });
+              erros++;
+            }
+
+            // CRIAR CONVERSA com vendedor (se selecionado)
             await supabase
               .from('whatsapp_conversations')
               .delete()
@@ -550,8 +550,31 @@ _Escolha quantidade e finalize!_ ✅`;
 
             await supabase
               .from('whatsapp_conversations')
-              .insert(conversaData);
-          } catch (_) { /* ignorar */ }
+              .insert({
+                user_id: user.id,
+                phone_number: phone,
+                origem: 'campanha',
+                vendedor_id: vendedorSelecionado || null,
+                contact_name: nome,
+                status: 'active',
+                last_message_at: new Date().toISOString(),
+                metadata: {
+                  produto_id: produto.id,
+                  produto_nome: produto.nome,
+                  produto_preco: produto.preco,
+                  campanha_id: campanhaTemp?.id,
+                  data_envio: new Date().toISOString()
+                }
+              });
+
+            // Delay entre envios (2s)
+            if (index < todosContatos.length - 1) {
+              await new Promise(r => setTimeout(r, 2000));
+            }
+          } catch (error) {
+            console.error('Erro:', phone, error);
+            erros++;
+          }
         }
       } catch (error) {
         console.error('❌ Erro geral no envio:', error);
