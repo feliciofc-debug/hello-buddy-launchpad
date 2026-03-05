@@ -190,13 +190,13 @@ export function CriarCampanhaAfiliadoModal({
       fetchListas();
       
       if (duplicateFrom) {
-        // Pre-fill from existing campaign
+        // Pre-fill: mantém mensagem e listas, limpa horários/datas para configurar novos
         setMensagem(duplicateFrom.mensagem_template || '');
-        setFrequencia((duplicateFrom.frequencia as any) || 'diario');
-        setHorarios(duplicateFrom.horarios?.length ? [...duplicateFrom.horarios] : ['10:00']);
-        setDiasSemana(duplicateFrom.dias_semana?.length ? [...duplicateFrom.dias_semana] : [1, 2, 3, 4, 5]);
+        setFrequencia('diario');
+        setHorarios(['10:00']);
+        setDiasSemana([1, 2, 3, 4, 5]);
         setListasSelecionadas(duplicateFrom.listas_ids?.length ? [...duplicateFrom.listas_ids] : []);
-        setDataInicio(duplicateFrom.data_inicio || new Date().toISOString().split('T')[0]);
+        setDataInicio(new Date().toISOString().split('T')[0]);
       } else {
         // Template inicial COM LINK DE AFILIADO
         const precoFormatado = produto.preco ? formatarPrecoAfiliado(produto.preco) : '';
