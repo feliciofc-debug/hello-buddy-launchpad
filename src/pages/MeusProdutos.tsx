@@ -710,7 +710,7 @@ export default function MeusProdutos() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
-  const [duplicatingProduct, setDuplicatingProduct] = useState<Product | null>(null);
+  const [duplicateCards, setDuplicateCards] = useState<{id: string; product: Product}[]>([]);
   
 
   // Form states
@@ -1477,10 +1477,10 @@ export default function MeusProdutos() {
                           variant="outline"
                           size="sm" 
                           className="w-full gap-2 border-primary text-primary hover:bg-primary/10"
-                          onClick={() => setDuplicatingProduct(duplicatingProduct?.id === product.id ? null : product)}
+                          onClick={() => setDuplicateCards(prev => [...prev, { id: crypto.randomUUID(), product }])}
                         >
                           <Copy className="w-4 h-4" />
-                          {duplicatingProduct?.id === product.id ? "Fechar" : "Duplicar Campanha"}
+                          Duplicar Campanha
                         </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
@@ -1507,22 +1507,21 @@ export default function MeusProdutos() {
               </Card>
               </div>
 
-              {/* CARD DUPLICAR ao lado no grid */}
-              {duplicatingProduct?.id === product.id && (
-                <Card className="border-primary/40 shadow-lg flex flex-col justify-between">
+              {/* CARDS DUPLICAR ao lado no grid */}
+              {duplicateCards.filter(dc => dc.product.id === product.id).map(dc => (
+                <Card key={dc.id} className="border-primary/40 shadow-lg flex flex-col justify-between">
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-base flex items-center gap-2">
                         <Copy className="h-4 w-4 text-primary" />
                         Nova Campanha
                       </CardTitle>
-                      <Button variant="ghost" size="sm" onClick={() => setDuplicatingProduct(null)}>
+                      <Button variant="ghost" size="sm" onClick={() => setDuplicateCards(prev => prev.filter(c => c.id !== dc.id))}>
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-3 flex-1 flex flex-col">
-                    {/* Info do produto */}
                     <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg">
                       {product.imagem_url && (
                         <img src={product.imagem_url} alt={product.nome} className="w-12 h-12 object-cover rounded" />
@@ -1543,16 +1542,14 @@ export default function MeusProdutos() {
 
                     <Button 
                       className="w-full gap-2"
-                      onClick={() => {
-                        handleCreateCampaign(product);
-                      }}
+                      onClick={() => handleCreateCampaign(product)}
                     >
                       <Rocket className="w-4 h-4" />
                       Criar Campanha
                     </Button>
                   </CardContent>
                 </Card>
-              )}
+              ))}
               </React.Fragment>
             ))}
           </div>
