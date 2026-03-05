@@ -248,6 +248,15 @@ export default function AfiliadoProdutosMagalu() {
                   Criar Campanha
                 </Button>
                 <Button
+                  variant="outline"
+                  className="w-full mb-2 border-blue-500 text-blue-500 hover:bg-blue-50"
+                  size="sm"
+                  onClick={() => handleCriarCampanha({...produto, marketplace: 'magalu'})}
+                >
+                  <ShoppingBag className="h-4 w-4 mr-1" />
+                  Duplicar Campanha
+                </Button>
+                <Button
                   className="w-full mb-2 bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
                   size="sm"
                   onClick={() => handlePostTikTokDirect(produto)}
