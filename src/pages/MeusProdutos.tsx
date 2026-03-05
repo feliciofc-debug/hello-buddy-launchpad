@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -710,6 +710,7 @@ export default function MeusProdutos() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [duplicatingProduct, setDuplicatingProduct] = useState<Product | null>(null);
   
 
   // Form states
@@ -1313,7 +1314,8 @@ export default function MeusProdutos() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => (
-              <div key={product.id} className="space-y-4">
+              <React.Fragment key={product.id}>
+              <div className="space-y-4">
               <Card className="hover:shadow-lg transition-all duration-300">
                 <CardHeader>
                   <div className="flex items-start justify-between mb-3">
@@ -1475,10 +1477,10 @@ export default function MeusProdutos() {
                           variant="outline"
                           size="sm" 
                           className="w-full gap-2 border-primary text-primary hover:bg-primary/10"
-                          onClick={() => handleCreateCampaign(product)}
+                          onClick={() => setDuplicatingProduct(duplicatingProduct?.id === product.id ? null : product)}
                         >
-                          <Rocket className="w-4 h-4" />
-                          Duplicar Campanha
+                          <Copy className="w-4 h-4" />
+                          {duplicatingProduct?.id === product.id ? "Fechar" : "Duplicar Campanha"}
                         </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
@@ -1504,6 +1506,55 @@ export default function MeusProdutos() {
                 </CardContent>
               </Card>
               </div>
+
+              {/* CARD DUPLICAR ao lado no grid */}
+              {duplicatingProduct?.id === product.id && (
+                <Card className="border-primary/40 shadow-lg flex flex-col justify-between">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Copy className="h-4 w-4 text-primary" />
+                        Nova Campanha
+                      </CardTitle>
+                      <Button variant="ghost" size="sm" onClick={() => setDuplicatingProduct(null)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3 flex-1 flex flex-col">
+                    {/* Info do produto */}
+                    <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg">
+                      {product.imagem_url && (
+                        <img src={product.imagem_url} alt={product.nome} className="w-12 h-12 object-cover rounded" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{product.nome}</p>
+                        {product.preco && (
+                          <p className="text-xs text-primary font-bold">R$ {product.preco.toFixed(2)}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      Crie uma nova campanha para este produto com horários e datas diferentes.
+                    </p>
+
+                    <div className="flex-1" />
+
+                    <Button 
+                      className="w-full gap-2"
+                      onClick={() => {
+                        handleCreateCampaign(product);
+                        setDuplicatingProduct(null);
+                      }}
+                    >
+                      <Rocket className="w-4 h-4" />
+                      Criar Campanha
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+              </React.Fragment>
             ))}
           </div>
         )}
