@@ -1434,6 +1434,15 @@ export default function MeusProdutos() {
                             </Button>
                           )}
                         </div>
+                        <Button 
+                          variant="outline"
+                          size="sm" 
+                          className="w-full gap-2 border-primary text-primary hover:bg-primary/10"
+                          onClick={() => setDuplicateCards(prev => [...prev, { id: crypto.randomUUID(), product }])}
+                        >
+                          <Copy className="w-4 h-4" />
+                          Duplicar Campanha
+                        </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
