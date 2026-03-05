@@ -6,56 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Envia mensagem diretamente via WuzAPI (sem invocar outra Edge Function)
-async function enviarMensagemDireta(
-  baseUrl: string,
-  token: string,
-  phone: string,
-  message: string,
-  imageUrl?: string
-): Promise<boolean> {
-  try {
-    let cleanPhone = phone.replace(/\D/g, '')
-    if (!cleanPhone.startsWith('55') && cleanPhone.length <= 11) {
-      cleanPhone = '55' + cleanPhone
-    }
-
-    const url = baseUrl.replace(/\/+$/, '')
-
-    // Se tem imagem, enviar como imagem com caption
-    if (imageUrl) {
-      const payload = {
-        Phone: cleanPhone,
-        Caption: message,
-        Image: imageUrl,
-      }
-
-      const resp = await fetch(`${url}/chat/send/image`, {
-        method: 'POST',
-        headers: { 'Token': token, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      if (resp.ok) return true
-
-      // Fallback: enviar só texto se imagem falhar
-      console.log(`⚠️ Imagem falhou para ${cleanPhone}, enviando só texto`)
-    }
-
-    // Enviar texto
-    const textPayload = { Phone: cleanPhone, Body: message }
-    const textResp = await fetch(`${url}/chat/send/text`, {
-      method: 'POST',
-      headers: { 'Token': token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(textPayload),
-    })
-
-    return textResp.ok
-  } catch (err) {
-    console.error(`❌ Erro ao enviar para ${phone}:`, err)
-    return false
-  }
-}
+// NOTA: enviarMensagemDireta removida - agora usa send-wuzapi-message-pj para retry, validação e resolução de instância
 
 // Delay humanizado entre 3-7 segundos
 function delay(ms: number): Promise<void> {
@@ -156,15 +107,9 @@ serve(async (req) => {
       if (instance?.wuzapi_token) wuzapiToken = instance.wuzapi_token
     }
 
-    // Personalizar mensagem
-    const mensagem = campanha.mensagem_template
-      .replace(/\{\{nome\}\}/gi, 'Cliente')
-      .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || '')
-      .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || '0')
-
     const imageUrl = campanha.produtos?.imagens?.[0]
 
-    // ENVIAR UM POR UM diretamente via WuzAPI
+    // ENVIAR UM POR UM via send-wuzapi-message-pj com personalização de nome
     let enviados = 0
     let erros = 0
 
@@ -172,14 +117,42 @@ serve(async (req) => {
       const phone = contatos[i]
       console.log(`📤 [${i + 1}/${contatos.length}] Enviando para ${phone}`)
 
-      const ok = await enviarMensagemDireta(baseUrl, wuzapiToken, phone, mensagem, imageUrl)
-      
+      // Buscar nome do contato para personalizar
+      const { data: contact } = await supabase
+        .from('whatsapp_contacts')
+        .select('nome')
+        .eq('phone', phone)
+        .eq('user_id', campanha.user_id)
+        .maybeSingle()
+
+      const nome = contact?.nome || 'Cliente'
+
+      // Personalizar mensagem COM O NOME DO CONTATO
+      const mensagemPersonalizada = campanha.mensagem_template
+        .replace(/\{\{nome\}\}/gi, nome)
+        .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || '')
+        .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || '0')
+
+      // Enviar via send-wuzapi-message-pj (que já tem retry, validação e resolução de instância)
+      const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+        body: {
+          phoneNumbers: [phone],
+          message: mensagemPersonalizada,
+          imageUrl: imageUrl,
+          userId: campanha.user_id,
+          validateBeforeSend: false
+        }
+      })
+
+      const firstResult = Array.isArray(sendResult?.results) ? sendResult.results[0] : null
+      const ok = !sendError && (firstResult ? firstResult.success === true : sendResult?.success !== false)
+
       if (ok) {
         enviados++
-        console.log(`✅ Enviado para ${phone}`)
+        console.log(`✅ Enviado para ${phone} (nome: ${nome})`)
       } else {
         erros++
-        console.log(`❌ Falhou para ${phone}`)
+        console.log(`❌ Falhou para ${phone}:`, sendError || sendResult)
       }
 
       // Delay humanizado entre mensagens (3-7s) - exceto na última

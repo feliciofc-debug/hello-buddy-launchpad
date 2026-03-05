@@ -409,10 +409,14 @@ serve(async (req) => {
               continue;
             }
             
-            return { response: resp, payload: json };
+          return { response: resp, payload: json };
           }
-          // Não deveria chegar aqui, mas fallback
-          throw new Error("Max retries exceeded");
+          // Todas as tentativas falharam com SQLite error
+          console.error(`🔴 [PJ-SEND] Todas as ${maxRetries} tentativas falharam com erro SQLite`);
+          return { 
+            response: new Response(JSON.stringify({ success: false, error: "WuzAPI SQLite locked - container needs restart" }), { status: 503 }), 
+            payload: { success: false, error: "WuzAPI SQLite locked - container needs restart" } 
+          };
         }
 
         if (finalImageUrl) {
