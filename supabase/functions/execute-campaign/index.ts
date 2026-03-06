@@ -34,7 +34,7 @@ serve(async (req) => {
       .select(`
         *,
         produtos (
-          id, nome, descricao, preco, imagens
+          id, nome, descricao, preco, imagem_url, imagens
         )
       `)
       .eq('id', campaign_id)
@@ -107,7 +107,7 @@ serve(async (req) => {
       if (instance?.wuzapi_token) wuzapiToken = instance.wuzapi_token
     }
 
-    const imageUrl = campanha.produtos?.imagens?.[0]
+    const imageUrl = campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0]
 
     // ENVIAR UM POR UM via send-wuzapi-message-pj com personalização de nome
     let enviados = 0
