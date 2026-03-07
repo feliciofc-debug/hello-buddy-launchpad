@@ -87,11 +87,11 @@ export function AfiliadoSidebar() {
   };
 
   const sidebarContent = (
-    <div className="flex flex-col h-full bg-sidebar-background text-sidebar-foreground">
+    <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       {/* Logo */}
       <div className="flex items-center justify-between p-4 border-b border-sidebar-border">
         {!collapsed && (
-          <h1 className="text-lg font-bold text-sidebar-primary-foreground tracking-tight">
+          <h1 className="text-lg font-bold text-white tracking-tight">
             AMZ Ofertas
           </h1>
         )}
