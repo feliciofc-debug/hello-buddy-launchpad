@@ -332,14 +332,15 @@ export default function AfiliadoProdutos() {
             preco: produtoSelecionado.preco,
             link_afiliado: produtoSelecionado.link_afiliado,
             imagem_url: produtoSelecionado.imagem_url,
+            descricao: produtoSelecionado.descricao,
+            marketplace: produtoSelecionado.marketplace,
           }}
         />
       )}
 
       <ImportCSVAfiliadoModal
-        open={showImportModal}
-        onOpenChange={setShowImportModal}
-        onSuccess={loadProdutos}
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
       />
     </AfiliadoLayout>
   );
