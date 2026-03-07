@@ -72,19 +72,13 @@ import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
 import AfiliadoConectarCelular from "./pages/afiliado/AfiliadoConectarCelular";
 import AfiliadoProdutos from "./pages/afiliado/AfiliadoProdutos";
-import AfiliadoProdutosAmazon from "./pages/afiliado/AfiliadoProdutosAmazon";
-import AfiliadoProdutosMagalu from "./pages/afiliado/AfiliadoProdutosMagalu";
-import AfiliadoProdutosMercadoLivre from "./pages/afiliado/AfiliadoProdutosMercadoLivre";
-import AfiliadoProdutosShopee from "./pages/afiliado/AfiliadoProdutosShopee";
-import AfiliadoProdutosBoticario from "./pages/afiliado/AfiliadoProdutosBoticario";
 import AfiliadoVendas from "./pages/afiliado/AfiliadoVendas";
 import AfiliadoDisparos from "./pages/afiliado/AfiliadoDisparos";
 import AfiliadoIAMarketing from "./pages/afiliado/AfiliadoIAMarketing";
-import AfiliadoWhatsApp from "./pages/afiliado/AfiliadoWhatsAppPage";
-import AfiliadoEbooks from "./pages/afiliado/AfiliadoEbooks";
+import AfiliadoWhatsApp from "./pages/afiliado/AfiliadoWhatsApp";
 import AfiliadoGruposWhatsApp from "./pages/afiliado/AfiliadoGruposWhatsApp";
-import AfiliadoConectarCelular2 from "./pages/afiliado/AfiliadoConectarCelular2";
-import AfiliadoTikTok from "./pages/afiliado/AfiliadoTikTok";
+import AfiliadoContatos from "./pages/afiliado/AfiliadoContatos";
+import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 
 import CookieBanner from "./components/CookieBanner";
 
