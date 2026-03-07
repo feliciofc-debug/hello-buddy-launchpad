@@ -165,19 +165,17 @@ const App = () => (
             <Route path="/afiliado/dashboard" element={<AfiliadoDashboard />} />
             <Route path="/afiliado/conectar-celular" element={<AfiliadoConectarCelular />} />
             <Route path="/afiliado/produtos" element={<AfiliadoProdutos />} />
-            <Route path="/afiliado/produtos/amazon" element={<AfiliadoProdutosAmazon />} />
-            <Route path="/afiliado/produtos/magalu" element={<AfiliadoProdutosMagalu />} />
-            <Route path="/afiliado/produtos/mercado-livre" element={<AfiliadoProdutosMercadoLivre />} />
-            <Route path="/afiliado/produtos/shopee" element={<AfiliadoProdutosShopee />} />
-            <Route path="/afiliado/produtos/boticario" element={<AfiliadoProdutosShopee />} />
+            <Route path="/afiliado/produtos/amazon" element={<AfiliadoProdutos />} />
+            <Route path="/afiliado/produtos/magalu" element={<AfiliadoProdutos />} />
+            <Route path="/afiliado/produtos/mercado-livre" element={<AfiliadoProdutos />} />
+            <Route path="/afiliado/produtos/shopee" element={<AfiliadoProdutos />} />
             <Route path="/afiliado/vendas" element={<AfiliadoVendas />} />
             <Route path="/afiliado/disparos" element={<AfiliadoDisparos />} />
             <Route path="/afiliado/ia-marketing" element={<AfiliadoIAMarketing />} />
             <Route path="/afiliado/whatsapp" element={<AfiliadoWhatsApp />} />
-            <Route path="/afiliado/ebooks" element={<AfiliadoEbooks />} />
             <Route path="/afiliado/grupos" element={<AfiliadoGruposWhatsApp />} />
-            <Route path="/afiliado/conectar-celular-2" element={<AfiliadoConectarCelular2 />} />
-            <Route path="/afiliado/tiktok" element={<AfiliadoTikTok />} />
+            <Route path="/afiliado/contatos" element={<AfiliadoContatos />} />
+            <Route path="/afiliado/campanhas" element={<AfiliadoCampanhas />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
