@@ -72,19 +72,13 @@ import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
 import AfiliadoConectarCelular from "./pages/afiliado/AfiliadoConectarCelular";
 import AfiliadoProdutos from "./pages/afiliado/AfiliadoProdutos";
-import AfiliadoProdutosAmazon from "./pages/afiliado/AfiliadoProdutosAmazon";
-import AfiliadoProdutosMagalu from "./pages/afiliado/AfiliadoProdutosMagalu";
-import AfiliadoProdutosMercadoLivre from "./pages/afiliado/AfiliadoProdutosMercadoLivre";
-import AfiliadoProdutosShopee from "./pages/afiliado/AfiliadoProdutosShopee";
-import AfiliadoProdutosBoticario from "./pages/afiliado/AfiliadoProdutosBoticario";
 import AfiliadoVendas from "./pages/afiliado/AfiliadoVendas";
 import AfiliadoDisparos from "./pages/afiliado/AfiliadoDisparos";
 import AfiliadoIAMarketing from "./pages/afiliado/AfiliadoIAMarketing";
-import AfiliadoWhatsApp from "./pages/afiliado/AfiliadoWhatsAppPage";
-import AfiliadoEbooks from "./pages/afiliado/AfiliadoEbooks";
+import AfiliadoWhatsApp from "./pages/afiliado/AfiliadoWhatsApp";
 import AfiliadoGruposWhatsApp from "./pages/afiliado/AfiliadoGruposWhatsApp";
-import AfiliadoConectarCelular2 from "./pages/afiliado/AfiliadoConectarCelular2";
-import AfiliadoTikTok from "./pages/afiliado/AfiliadoTikTok";
+import AfiliadoContatos from "./pages/afiliado/AfiliadoContatos";
+import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 
 import CookieBanner from "./components/CookieBanner";
 
@@ -171,19 +165,17 @@ const App = () => (
             <Route path="/afiliado/dashboard" element={<AfiliadoDashboard />} />
             <Route path="/afiliado/conectar-celular" element={<AfiliadoConectarCelular />} />
             <Route path="/afiliado/produtos" element={<AfiliadoProdutos />} />
-            <Route path="/afiliado/produtos/amazon" element={<AfiliadoProdutosAmazon />} />
-            <Route path="/afiliado/produtos/magalu" element={<AfiliadoProdutosMagalu />} />
-            <Route path="/afiliado/produtos/mercado-livre" element={<AfiliadoProdutosMercadoLivre />} />
-            <Route path="/afiliado/produtos/shopee" element={<AfiliadoProdutosShopee />} />
-            <Route path="/afiliado/produtos/boticario" element={<AfiliadoProdutosShopee />} />
+            <Route path="/afiliado/produtos/amazon" element={<AfiliadoProdutos />} />
+            <Route path="/afiliado/produtos/magalu" element={<AfiliadoProdutos />} />
+            <Route path="/afiliado/produtos/mercado-livre" element={<AfiliadoProdutos />} />
+            <Route path="/afiliado/produtos/shopee" element={<AfiliadoProdutos />} />
             <Route path="/afiliado/vendas" element={<AfiliadoVendas />} />
             <Route path="/afiliado/disparos" element={<AfiliadoDisparos />} />
             <Route path="/afiliado/ia-marketing" element={<AfiliadoIAMarketing />} />
             <Route path="/afiliado/whatsapp" element={<AfiliadoWhatsApp />} />
-            <Route path="/afiliado/ebooks" element={<AfiliadoEbooks />} />
             <Route path="/afiliado/grupos" element={<AfiliadoGruposWhatsApp />} />
-            <Route path="/afiliado/conectar-celular-2" element={<AfiliadoConectarCelular2 />} />
-            <Route path="/afiliado/tiktok" element={<AfiliadoTikTok />} />
+            <Route path="/afiliado/contatos" element={<AfiliadoContatos />} />
+            <Route path="/afiliado/campanhas" element={<AfiliadoCampanhas />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

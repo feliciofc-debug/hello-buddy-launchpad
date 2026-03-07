@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ArrowLeft, MessageSquare, Send, User, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { AfiliadoLayout } from "@/components/afiliado/AfiliadoLayout";
 
 export default function AfiliadoWhatsApp() {
   const navigate = useNavigate();
@@ -74,14 +75,17 @@ export default function AfiliadoWhatsApp() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
+      <AfiliadoLayout>
+        <div className="flex items-center justify-center h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        </div>
+      </AfiliadoLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
+    <AfiliadoLayout>
+    <div className="p-4 md:p-8">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
@@ -162,5 +166,6 @@ export default function AfiliadoWhatsApp() {
         )}
       </div>
     </div>
+    </AfiliadoLayout>
   );
 }
