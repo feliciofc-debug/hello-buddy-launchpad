@@ -1,40 +1,33 @@
-import { ArrowLeft } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Link } from 'react-router-dom'
-import AfiliadoWhatsAppConnection from '@/components/AfiliadoWhatsAppConnection'
+import { AfiliadoLayout } from '@/components/afiliado/AfiliadoLayout';
+import AfiliadoWhatsAppConnection from '@/components/AfiliadoWhatsAppConnection';
 
 export default function AfiliadoConectarCelular() {
   return (
-    <div className="container mx-auto p-6 max-w-2xl">
-      <div className="mb-6">
-        <Link to="/afiliado/dashboard">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar ao Dashboard
-          </Button>
-        </Link>
-      </div>
+    <AfiliadoLayout>
+      <div className="p-6 md:p-8 max-w-2xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Conectar WhatsApp</h1>
+          <p className="text-sm text-muted-foreground">Conecte seu celular para enviar mensagens</p>
+        </div>
 
-      <AfiliadoWhatsAppConnection />
+        <AfiliadoWhatsAppConnection />
 
-      <div className="mt-6 bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
-        <p className="font-semibold mb-2">📱 Como conectar:</p>
-        <ol className="space-y-1 list-decimal list-inside">
-          <li>Clique em "Conectar WhatsApp"</li>
-          <li>Abra o WhatsApp no seu celular</li>
-          <li>Vá em <strong>Configurações → Aparelhos conectados</strong></li>
-          <li>Toque em <strong>"Conectar aparelho"</strong></li>
-          <li>Escaneie o QR Code exibido</li>
-        </ol>
-        
-        <p className="font-semibold mt-4 mb-2">ℹ️ Importante:</p>
-        <ul className="space-y-1 list-disc list-inside">
-          <li>Use um número dedicado para atendimento</li>
-          <li>Mantenha o celular com bateria e internet</li>
-          <li>Não desconecte o WhatsApp Web manualmente</li>
-          <li>O QR Code expira em ~60 segundos</li>
-        </ul>
+        <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
+          <p className="font-semibold mb-2">📱 Como conectar:</p>
+          <ol className="space-y-1 list-decimal list-inside">
+            <li>Clique em "Conectar WhatsApp"</li>
+            <li>Abra o WhatsApp no seu celular</li>
+            <li>Vá em <strong>Configurações → Aparelhos conectados</strong></li>
+            <li>Toque em <strong>"Conectar aparelho"</strong></li>
+            <li>Escaneie o QR Code exibido</li>
+          </ol>
+          <p className="font-semibold mt-4 mb-2">ℹ️ Importante:</p>
+          <ul className="space-y-1 list-disc list-inside">
+            <li>Mantenha o celular conectado à internet</li>
+            <li>Use o mesmo número do WhatsApp cadastrado</li>
+          </ul>
+        </div>
       </div>
-    </div>
-  )
+    </AfiliadoLayout>
+  );
 }
