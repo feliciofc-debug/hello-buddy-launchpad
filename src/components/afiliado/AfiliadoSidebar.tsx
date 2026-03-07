@@ -134,8 +134,8 @@ export function AfiliadoSidebar() {
                   className={cn(
                     "flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                     isActive(item.path)
-                      ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      ? "bg-sidebar-primary text-white"
+                      : "text-slate-300 hover:bg-white/10 hover:text-white"
                   )}
                   title={collapsed ? item.title : undefined}
                 >
@@ -157,8 +157,8 @@ export function AfiliadoSidebar() {
             className={cn(
               "flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
               isActive(item.path)
-                ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                ? "bg-sidebar-primary text-white"
+                : "text-slate-300 hover:bg-white/10 hover:text-white"
             )}
             title={collapsed ? item.title : undefined}
           >
