@@ -341,6 +341,7 @@ export default function AfiliadoProdutos() {
       <ImportCSVAfiliadoModal
         isOpen={showImportModal}
         onClose={() => setShowImportModal(false)}
+        onSuccess={loadProdutos}
       />
     </AfiliadoLayout>
   );
