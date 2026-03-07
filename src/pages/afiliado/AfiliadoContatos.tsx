@@ -7,9 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AfiliadoLayout } from "@/components/afiliado/AfiliadoLayout";
-import ImportContactsWhatsAppCSVModal from "@/components/ImportContactsWhatsAppCSVModal";
+import AfiliadoImportador from "@/components/afiliado/AfiliadoImportador";
 import {
-  Contact,
   Upload,
   Search,
   Trash2,
@@ -41,7 +40,7 @@ export default function AfiliadoContatos() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [showImportModal, setShowImportModal] = useState(false);
+  const [showImportador, setShowImportador] = useState(false);
   const [totalContatos, setTotalContatos] = useState(0);
   const [leads, setLeads] = useState<LeadCapturado[]>([]);
   const [deletingLead, setDeletingLead] = useState<string | null>(null);
@@ -120,11 +119,19 @@ export default function AfiliadoContatos() {
             <h1 className="text-2xl font-bold text-foreground">Contatos</h1>
             <p className="text-sm text-muted-foreground">{totalContatos} contatos cadastrados • {leads.length} leads capturados</p>
           </div>
-          <Button onClick={() => setShowImportModal(true)} className="gap-2">
+          <Button onClick={() => setShowImportador(true)} className="gap-2">
             <Upload className="h-4 w-4" />
-            Importar CSV
+            Importar Contatos
           </Button>
         </div>
+
+        {/* Importador inteligente */}
+        {showImportador && (
+          <AfiliadoImportador
+            onSuccess={loadContatos}
+            onClose={() => setShowImportador(false)}
+          />
+        )}
 
         {/* Search */}
         <div className="relative">
@@ -200,12 +207,6 @@ export default function AfiliadoContatos() {
           </CardContent>
         </Card>
       </div>
-
-      <ImportContactsWhatsAppCSVModal
-        isOpen={showImportModal}
-        onClose={() => setShowImportModal(false)}
-        onSuccess={loadContatos}
-      />
     </AfiliadoLayout>
   );
 }
