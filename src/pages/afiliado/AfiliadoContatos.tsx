@@ -162,7 +162,7 @@ export default function AfiliadoContatos() {
 
         {showImportador && (
           <AfiliadoImportador
-            onSuccess={loadContatos}
+            onSuccess={() => loadContatos(userId || undefined)}
             onClose={() => setShowImportador(false)}
           />
         )}
