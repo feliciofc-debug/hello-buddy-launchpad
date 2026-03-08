@@ -47,22 +47,53 @@ export default function AfiliadoContatos() {
   const [showImportador, setShowImportador] = useState(false);
   const [leads, setLeads] = useState<LeadCapturado[]>([]);
   const [deletingLead, setDeletingLead] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadContatos();
+    // Wait for auth session to be fully restored before querying
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session?.user) {
+        navigate("/login");
+        return;
+      }
+      setUserId(session.user.id);
+      loadContatos(session.user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) {
+        navigate("/login");
+        return;
+      }
+      if (session.user.id !== userId) {
+        setUserId(session.user.id);
+        loadContatos(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const loadContatos = async () => {
+  const loadContatos = async (uid?: string) => {
+    const currentUserId = uid || userId;
+    if (!currentUserId) return;
+    
+    setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { navigate("/login"); return; }
-
-      const { data: cadastrosData } = await supabase
+      const { data: cadastrosData, error } = await supabase
         .from("cadastros")
         .select("id, nome, whatsapp, origem, tags, created_at")
-        .eq("user_id", user.id)
+        .eq("user_id", currentUserId)
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(1000);
+
+      if (error) {
+        console.error("Erro ao buscar contatos:", error);
+        toast.error("Erro ao carregar contatos");
+        return;
+      }
+
+      console.log(`[AfiliadoContatos] Carregados ${cadastrosData?.length || 0} contatos para user ${currentUserId}`);
 
       setLeads((cadastrosData || []).map((c: any) => ({
         id: c.id,
@@ -75,6 +106,7 @@ export default function AfiliadoContatos() {
       })));
     } catch (error) {
       console.error("Erro:", error);
+      toast.error("Erro ao carregar contatos");
     } finally {
       setLoading(false);
     }
