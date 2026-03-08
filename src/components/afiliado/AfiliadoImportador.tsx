@@ -178,6 +178,7 @@ export default function AfiliadoImportador({ onSuccess, onClose }: AfiliadoImpor
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
+    console.log('[AfiliadoImportador] handleFileChange disparado, arquivo:', selectedFile?.name, selectedFile?.size);
     if (!selectedFile) return;
     const name = selectedFile.name.toLowerCase();
     const isExcel = name.endsWith('.xlsx') || name.endsWith('.xls');
@@ -193,10 +194,12 @@ export default function AfiliadoImportador({ onSuccess, onClose }: AfiliadoImpor
     if (isExcel) {
       const reader = new FileReader();
       reader.onload = (ev) => {
+        console.log('[AfiliadoImportador] Excel lido, convertendo para CSV...');
         const data = new Uint8Array(ev.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const csv = XLSX.utils.sheet_to_csv(firstSheet);
+        console.log('[AfiliadoImportador] CSV gerado do Excel, primeiras 200 chars:', csv.substring(0, 200));
         processText(csv, selectedFile.name);
       };
       reader.readAsArrayBuffer(selectedFile);
@@ -204,6 +207,7 @@ export default function AfiliadoImportador({ onSuccess, onClose }: AfiliadoImpor
       const reader = new FileReader();
       reader.onload = (ev) => {
         const text = ev.target?.result as string;
+        console.log('[AfiliadoImportador] Arquivo texto lido, tamanho:', text.length, 'primeiras 200 chars:', text.substring(0, 200));
         processText(text, selectedFile.name);
       };
       reader.readAsText(selectedFile, 'UTF-8');
@@ -211,7 +215,15 @@ export default function AfiliadoImportador({ onSuccess, onClose }: AfiliadoImpor
   };
 
   const processText = (text: string, fileName?: string) => {
+    console.log('[AfiliadoImportador] processText chamado, linhas:', text.trim().split(/\r?\n/).length);
     const result = parseCSV(text);
+    console.log('[AfiliadoImportador] parseCSV resultado:', result.contacts.length, 'contatos,', result.ignored.length, 'ignorados');
+    if (result.contacts.length > 0) {
+      console.log('[AfiliadoImportador] Primeiro contato:', JSON.stringify(result.contacts[0]));
+    }
+    if (result.ignored.length > 0) {
+      console.log('[AfiliadoImportador] Primeiro ignorado:', JSON.stringify(result.ignored[0]));
+    }
     setParseResult(result);
     setContacts(result.contacts);
     if (result.contacts.length === 0) {
@@ -225,6 +237,7 @@ export default function AfiliadoImportador({ onSuccess, onClose }: AfiliadoImpor
   };
 
   const handlePasteImport = () => {
+    console.log('[AfiliadoImportador] handlePasteImport chamado, texto:', pasteText.substring(0, 100));
     if (!pasteText.trim()) return;
     processText(pasteText);
   };
