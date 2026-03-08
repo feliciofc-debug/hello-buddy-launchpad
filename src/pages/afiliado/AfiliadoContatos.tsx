@@ -83,18 +83,7 @@ export default function AfiliadoContatos() {
   const handleDeleteLead = async (lead: LeadCapturado) => {
     setDeletingLead(lead.id);
     try {
-      if (lead.tipo === "lead") {
-        await Promise.all([
-          supabase.from("leads_ebooks").delete().eq("id", lead.id),
-          supabase.from("afiliado_clientes_ebooks").delete().eq("phone", lead.phone),
-          supabase.from("afiliado_user_states").delete().eq("phone", lead.phone),
-          supabase.from("afiliado_conversas").delete().eq("phone", lead.phone),
-          supabase.from("afiliado_cliente_preferencias").delete().eq("phone", lead.phone),
-          supabase.from("afiliado_cashback").delete().eq("phone", lead.phone),
-        ]);
-      } else {
-        await supabase.from("cadastros").delete().eq("id", lead.id);
-      }
+      await supabase.from("cadastros").delete().eq("id", lead.id);
       setLeads((prev) => prev.filter((l) => l.id !== lead.id));
       toast.success("Contato removido");
     } catch (error) {
