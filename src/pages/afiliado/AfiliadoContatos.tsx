@@ -100,8 +100,7 @@ export default function AfiliadoContatos() {
       l.nome?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalCadastros = leads.filter(l => l.tipo === "cadastro").length;
-  const totalLeads = leads.filter(l => l.tipo === "lead").length;
+  const totalContatos = leads.length;
 
   if (loading) {
     return (
