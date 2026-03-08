@@ -119,7 +119,7 @@ export default function AfiliadoContatos() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Contatos</h1>
             <p className="text-sm text-muted-foreground">
-              {leads.length} contatos totais • {totalCadastros} importados • {totalLeads} leads capturados
+              {totalContatos} contatos cadastrados
             </p>
           </div>
           <Button onClick={() => setShowImportador(true)} className="gap-2">
