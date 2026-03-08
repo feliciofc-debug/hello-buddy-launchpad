@@ -163,9 +163,6 @@ export default function AfiliadoContatos() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium">{lead.nome || "Contato"}</p>
-                          <Badge variant={lead.tipo === "lead" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
-                            {lead.tipo === "lead" ? "Lead" : "Importado"}
-                          </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">{lead.phone}</p>
                         {lead.origem && (
