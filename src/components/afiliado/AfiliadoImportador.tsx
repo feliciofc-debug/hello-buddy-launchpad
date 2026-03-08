@@ -215,7 +215,15 @@ export default function AfiliadoImportador({ onSuccess, onClose }: AfiliadoImpor
   };
 
   const processText = (text: string, fileName?: string) => {
+    console.log('[AfiliadoImportador] processText chamado, linhas:', text.trim().split(/\r?\n/).length);
     const result = parseCSV(text);
+    console.log('[AfiliadoImportador] parseCSV resultado:', result.contacts.length, 'contatos,', result.ignored.length, 'ignorados');
+    if (result.contacts.length > 0) {
+      console.log('[AfiliadoImportador] Primeiro contato:', JSON.stringify(result.contacts[0]));
+    }
+    if (result.ignored.length > 0) {
+      console.log('[AfiliadoImportador] Primeiro ignorado:', JSON.stringify(result.ignored[0]));
+    }
     setParseResult(result);
     setContacts(result.contacts);
     if (result.contacts.length === 0) {
@@ -229,6 +237,7 @@ export default function AfiliadoImportador({ onSuccess, onClose }: AfiliadoImpor
   };
 
   const handlePasteImport = () => {
+    console.log('[AfiliadoImportador] handlePasteImport chamado, texto:', pasteText.substring(0, 100));
     if (!pasteText.trim()) return;
     processText(pasteText);
   };
