@@ -74,6 +74,10 @@ function parseCSV(text: string): ParseResult {
   const contacts: ParsedContact[] = [];
   const ignored: ParseResult['ignored'] = [];
 
+  // Pre-scan: detect alternating name/phone pattern (name line then phone line)
+  let pendingName: string | null = null;
+  let pendingLineNum = 0;
+
   dataLines.forEach((line, lineNum) => {
     if (!line.trim()) return;
 
@@ -119,12 +123,27 @@ function parseCSV(text: string): ParseResult {
     const digits = normalized.replace(/\D/g, '');
 
     if (!normalized || digits.length < 10) {
-      ignored.push({
-        linha: lineNum + (hasHeader ? 2 : 1),
-        valor: line.substring(0, 50),
-        motivo: !telefone ? 'Telefone não encontrado' : `Telefone inválido (${digits.length} dígitos)`
-      });
+      // This line has no valid phone — it might be a name for the next line
+      const trimmed = line.trim();
+      if (trimmed.length >= 2 && !/^\d+$/.test(trimmed.replace(/\D/g, '')) && !isPhoneValue(trimmed)) {
+        pendingName = trimmed;
+        pendingLineNum = lineNum;
+      } else {
+        ignored.push({
+          linha: lineNum + (hasHeader ? 2 : 1),
+          valor: line.substring(0, 50),
+          motivo: !telefone ? 'Telefone não encontrado' : `Telefone inválido (${digits.length} dígitos)`
+        });
+      }
       return;
+    }
+
+    // If we have a pending name from the previous line and this line is phone-only, pair them
+    if (!nome && pendingName) {
+      nome = pendingName;
+      pendingName = null;
+    } else {
+      pendingName = null;
     }
 
     if (nome) {
