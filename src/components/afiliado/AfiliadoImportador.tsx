@@ -262,39 +262,55 @@ export default function AfiliadoImportador({ onSuccess, onClose }: AfiliadoImpor
       let duplicateCount = 0;
       let errorCount = 0;
 
-      const batchSize = 50;
-      for (let i = 0; i < contacts.length; i += batchSize) {
-        const batch = contacts.slice(i, i + batchSize);
-        for (const contact of batch) {
-          if (existingPhones.has(contact.telefone)) {
-            duplicateCount++;
-            continue;
-          }
-          try {
-            const { error } = await supabase
-              .from('cadastros')
-              .insert({
-                user_id: user.id,
-                nome: contact.nome || 'Contato',
-                whatsapp: contact.telefone,
-                origem: `Importado: ${listName.trim()}`,
-                opt_in: true,
-                tags: ['importado-csv', listName.trim().replace(/\s+/g, '-').toLowerCase()]
-              });
-            if (error) {
-              if (error.code === '23505') {
-                duplicateCount++;
-              } else {
-                errorCount++;
-              }
-            } else {
-              importedCount++;
-              existingPhones.add(contact.telefone);
-            }
-          } catch {
-            errorCount++;
-          }
+      // Filtrar duplicatas locais primeiro
+      const newContacts = contacts.filter(c => {
+        if (existingPhones.has(c.telefone)) {
+          duplicateCount++;
+          return false;
         }
+        return true;
+      });
+
+      // Inserir em lotes de 50 de uma vez (batch insert)
+      const batchSize = 50;
+      for (let i = 0; i < newContacts.length; i += batchSize) {
+        const batch = newContacts.slice(i, i + batchSize);
+        const rows = batch.map(contact => ({
+          user_id: user.id,
+          nome: contact.nome || 'Contato',
+          whatsapp: contact.telefone,
+          origem: `Importado: ${listName.trim()}`,
+          opt_in: true,
+          tags: ['importado-csv', listName.trim().replace(/\s+/g, '-').toLowerCase()]
+        }));
+
+        try {
+          const { data, error } = await supabase
+            .from('cadastros')
+            .insert(rows)
+            .select('id');
+
+          if (error) {
+            console.error('[AfiliadoImportador] Erro batch:', error);
+            // Se batch falhar, tentar um a um como fallback
+            for (const row of rows) {
+              try {
+                const { error: singleErr } = await supabase.from('cadastros').insert(row);
+                if (singleErr) {
+                  if (singleErr.code === '23505') duplicateCount++;
+                  else errorCount++;
+                } else {
+                  importedCount++;
+                }
+              } catch { errorCount++; }
+            }
+          } else {
+            importedCount += data?.length || batch.length;
+          }
+        } catch {
+          errorCount += batch.length;
+        }
+        console.log(`[AfiliadoImportador] Progresso: ${Math.min(i + batchSize, newContacts.length)}/${newContacts.length}`);
       }
 
       setSummary({
