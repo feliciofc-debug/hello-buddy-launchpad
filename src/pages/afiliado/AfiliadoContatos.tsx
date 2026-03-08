@@ -57,21 +57,14 @@ export default function AfiliadoContatos() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { navigate("/login"); return; }
 
-      const [leadsRes, cadastrosRes] = await Promise.all([
-        supabase.from("leads_ebooks").select("id, phone, nome, categorias, created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
-        supabase.from("cadastros").select("id, nome, whatsapp, origem, tags, created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
-      ]);
+      const { data: cadastrosData } = await supabase
+        .from("cadastros")
+        .select("id, nome, whatsapp, origem, tags, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(500);
 
-      const leadsData: LeadCapturado[] = (leadsRes.data || []).map((c: any) => ({
-        id: c.id,
-        phone: c.phone,
-        nome: c.nome,
-        categorias: Array.isArray(c.categorias) ? c.categorias : null,
-        created_at: c.created_at,
-        tipo: "lead" as const,
-      }));
-
-      const cadastrosData: LeadCapturado[] = (cadastrosRes.data || []).map((c: any) => ({
+      setLeads((cadastrosData || []).map((c: any) => ({
         id: c.id,
         phone: c.whatsapp,
         nome: c.nome,
@@ -79,20 +72,7 @@ export default function AfiliadoContatos() {
         created_at: c.created_at,
         tipo: "cadastro" as const,
         origem: c.origem,
-      }));
-
-      // Merge and deduplicate by phone
-      const seen = new Set<string>();
-      const merged: LeadCapturado[] = [];
-      for (const item of [...cadastrosData, ...leadsData]) {
-        if (!seen.has(item.phone)) {
-          seen.add(item.phone);
-          merged.push(item);
-        }
-      }
-      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      setLeads(merged);
+      })));
     } catch (error) {
       console.error("Erro:", error);
     } finally {
