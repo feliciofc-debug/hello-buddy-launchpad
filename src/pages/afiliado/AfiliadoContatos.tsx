@@ -57,21 +57,14 @@ export default function AfiliadoContatos() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { navigate("/login"); return; }
 
-      const [leadsRes, cadastrosRes] = await Promise.all([
-        supabase.from("leads_ebooks").select("id, phone, nome, categorias, created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
-        supabase.from("cadastros").select("id, nome, whatsapp, origem, tags, created_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
-      ]);
+      const { data: cadastrosData } = await supabase
+        .from("cadastros")
+        .select("id, nome, whatsapp, origem, tags, created_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(500);
 
-      const leadsData: LeadCapturado[] = (leadsRes.data || []).map((c: any) => ({
-        id: c.id,
-        phone: c.phone,
-        nome: c.nome,
-        categorias: Array.isArray(c.categorias) ? c.categorias : null,
-        created_at: c.created_at,
-        tipo: "lead" as const,
-      }));
-
-      const cadastrosData: LeadCapturado[] = (cadastrosRes.data || []).map((c: any) => ({
+      setLeads((cadastrosData || []).map((c: any) => ({
         id: c.id,
         phone: c.whatsapp,
         nome: c.nome,
@@ -79,20 +72,7 @@ export default function AfiliadoContatos() {
         created_at: c.created_at,
         tipo: "cadastro" as const,
         origem: c.origem,
-      }));
-
-      // Merge and deduplicate by phone
-      const seen = new Set<string>();
-      const merged: LeadCapturado[] = [];
-      for (const item of [...cadastrosData, ...leadsData]) {
-        if (!seen.has(item.phone)) {
-          seen.add(item.phone);
-          merged.push(item);
-        }
-      }
-      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      setLeads(merged);
+      })));
     } catch (error) {
       console.error("Erro:", error);
     } finally {
@@ -103,18 +83,7 @@ export default function AfiliadoContatos() {
   const handleDeleteLead = async (lead: LeadCapturado) => {
     setDeletingLead(lead.id);
     try {
-      if (lead.tipo === "lead") {
-        await Promise.all([
-          supabase.from("leads_ebooks").delete().eq("id", lead.id),
-          supabase.from("afiliado_clientes_ebooks").delete().eq("phone", lead.phone),
-          supabase.from("afiliado_user_states").delete().eq("phone", lead.phone),
-          supabase.from("afiliado_conversas").delete().eq("phone", lead.phone),
-          supabase.from("afiliado_cliente_preferencias").delete().eq("phone", lead.phone),
-          supabase.from("afiliado_cashback").delete().eq("phone", lead.phone),
-        ]);
-      } else {
-        await supabase.from("cadastros").delete().eq("id", lead.id);
-      }
+      await supabase.from("cadastros").delete().eq("id", lead.id);
       setLeads((prev) => prev.filter((l) => l.id !== lead.id));
       toast.success("Contato removido");
     } catch (error) {
@@ -131,8 +100,7 @@ export default function AfiliadoContatos() {
       l.nome?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalCadastros = leads.filter(l => l.tipo === "cadastro").length;
-  const totalLeads = leads.filter(l => l.tipo === "lead").length;
+  const totalContatos = leads.length;
 
   if (loading) {
     return (
@@ -151,7 +119,7 @@ export default function AfiliadoContatos() {
           <div>
             <h1 className="text-2xl font-bold text-foreground">Contatos</h1>
             <p className="text-sm text-muted-foreground">
-              {leads.length} contatos totais • {totalCadastros} importados • {totalLeads} leads capturados
+              {totalContatos} contatos cadastrados
             </p>
           </div>
           <Button onClick={() => setShowImportador(true)} className="gap-2">
@@ -195,9 +163,6 @@ export default function AfiliadoContatos() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-medium">{lead.nome || "Contato"}</p>
-                          <Badge variant={lead.tipo === "lead" ? "default" : "secondary"} className="text-[10px] px-1.5 py-0">
-                            {lead.tipo === "lead" ? "Lead" : "Importado"}
-                          </Badge>
                         </div>
                         <p className="text-xs text-muted-foreground">{lead.phone}</p>
                         {lead.origem && (
