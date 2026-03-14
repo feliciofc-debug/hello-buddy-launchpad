@@ -189,6 +189,7 @@ export default function AfiliadoContatos() {
               Importar Contatos
             </Button>
           </div>
+        </div>
 
         {showImportador && (
           <AfiliadoImportador
