@@ -44,7 +44,7 @@ export default function AfiliadoWhatsAppConnection() {
 
   // Monitoramento contínuo quando estiver conectado (alerta se cair)
   useEffect(() => {
-    let interval: NodeJS.Timeout | undefined
+    let interval: ReturnType<typeof setInterval> | undefined
 
     if (status.connected) {
       interval = setInterval(() => {
