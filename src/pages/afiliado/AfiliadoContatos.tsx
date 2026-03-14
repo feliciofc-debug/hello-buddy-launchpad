@@ -86,7 +86,7 @@ export default function AfiliadoContatos() {
         .select("id, nome, whatsapp, origem, tags, created_at")
         .eq("user_id", currentUserId)
         .order("created_at", { ascending: false })
-        .limit(1000);
+        .limit(2000);
 
       if (error) {
         console.error("Erro ao buscar contatos:", error);
