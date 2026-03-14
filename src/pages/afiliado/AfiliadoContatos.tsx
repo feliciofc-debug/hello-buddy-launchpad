@@ -155,11 +155,40 @@ export default function AfiliadoContatos() {
               {totalContatos} contatos cadastrados
             </p>
           </div>
-          <Button onClick={() => setShowImportador(true)} className="gap-2">
-            <Upload className="h-4 w-4" />
-            Importar Contatos
-          </Button>
-        </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (!userId) return;
+                toast.info("Gerando CSV...");
+                try {
+                  const { data, error } = await supabase.functions.invoke("exportar-contatos-csv", {
+                    body: { user_id: userId, tabela: "cadastros" },
+                  });
+                  if (error) throw error;
+                  const blob = new Blob([data], { type: "text/csv;charset=utf-8;" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "contatos-export.csv";
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success("CSV baixado com sucesso!");
+                } catch (e: any) {
+                  console.error(e);
+                  toast.error("Erro ao exportar CSV");
+                }
+              }}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Exportar CSV
+            </Button>
+            <Button onClick={() => setShowImportador(true)} className="gap-2">
+              <Upload className="h-4 w-4" />
+              Importar Contatos
+            </Button>
+          </div>
 
         {showImportador && (
           <AfiliadoImportador
