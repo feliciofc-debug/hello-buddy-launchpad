@@ -11,6 +11,7 @@ import { AfiliadoLayout } from "@/components/afiliado/AfiliadoLayout";
 import AfiliadoImportador from "@/components/afiliado/AfiliadoImportador";
 import {
   Upload,
+  Download,
   Search,
   Trash2,
   UserPlus,
