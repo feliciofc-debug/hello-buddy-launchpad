@@ -107,6 +107,7 @@ async function tryPostJson(url: string, headers: Record<string, string>, body: a
   return { resp, parsed };
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
