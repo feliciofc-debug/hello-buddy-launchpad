@@ -460,6 +460,7 @@ serve(async (req) => {
       let qrCodeResult: string | null = null;
       const qrAttempts: string[] = [];
       const maxRetries = 10;
+      let reconnectAfterNotConnected = false;
 
       for (let retry = 0; retry < maxRetries && !qrCodeResult; retry++) {
         console.log(`[QR] Tentativa ${retry + 1}/${maxRetries}...`);
