@@ -541,6 +541,21 @@ serve(async (req) => {
             } else {
               const errorText = await qrResponse.text().catch(() => '');
               qrAttempts.push(`${endpoint.path}: ${qrResponse.status} - ${errorText.substring(0, 50)}`);
+
+              if (
+                !reconnectAfterNotConnected &&
+                qrResponse.status >= 500 &&
+                /not\s*connected/i.test(errorText)
+              ) {
+                reconnectAfterNotConnected = true;
+                console.log("[QR] Detectado 'not connected' durante fetch QR. Forçando reconnect...");
+                try {
+                  await tryPostJson(`${baseUrl}/session/connect`, { Token: wuzapiToken }, {});
+                  await sleep(2000);
+                } catch (reconnectErr: any) {
+                  qrAttempts.push(`reconnect fallback falhou: ${reconnectErr.message}`);
+                }
+              }
             }
           } catch (e: any) {
             qrAttempts.push(`${endpoint.path}: erro - ${e.message}`);
