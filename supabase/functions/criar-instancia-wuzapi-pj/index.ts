@@ -267,41 +267,44 @@ serve(async (req) => {
         console.log("⚠️ Não foi possível verificar status:", e);
       }
 
-      // Se há sessão em limbo, forçar logout antes de tentar reconectar
+      // Se há sessão em limbo, fazer limpeza completa (logout + disconnect)
       if (hasStaleSession) {
-        console.log("🔄 Limpando sessão antiga...");
-        const logoutEndpoints = [
+        console.log("🔄 Limpando sessão antiga (hard reset)...");
+        const cleanupEndpoints = [
           `${baseUrl}/session/logout`,
           `${baseUrl}/session/disconnect`,
           `${baseUrl}/user/disconnect`,
+          `${baseUrl}/session/disconnect`, // repetição intencional para builds instáveis
         ];
-        
+
         let cleanupSuccess = false;
-        for (const logoutUrl of logoutEndpoints) {
+        for (const cleanupUrl of cleanupEndpoints) {
           try {
-            const logoutResp = await fetch(logoutUrl, {
+            const cleanupResp = await fetch(cleanupUrl, {
               method: "POST",
               headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
               body: JSON.stringify({}),
             });
 
-            const parsed = await safeReadJson(logoutResp);
-            const logicalSuccess = isLogicalSuccess(logoutResp, parsed);
+            const parsed = await safeReadJson(cleanupResp);
+            const logicalSuccess = isLogicalSuccess(cleanupResp, parsed);
 
-            console.log(`   Logout ${logoutUrl}: status=${logoutResp.status} logicalSuccess=${logicalSuccess}`);
+            console.log(`   Cleanup ${cleanupUrl}: status=${cleanupResp.status} logicalSuccess=${logicalSuccess}`);
 
             if (logicalSuccess) {
               cleanupSuccess = true;
-              break;
             }
+
+            // Pequeno respiro entre chamadas para evitar corrida no servidor WuzAPI
+            await sleep(1200);
           } catch (e) {
-            console.log(`   Erro logout ${logoutUrl}:`, e);
+            console.log(`   Erro cleanup ${cleanupUrl}:`, e);
           }
         }
 
-        // Aguardar mais tempo para o servidor processar
+        // Aguardar mais tempo para o servidor processar o reset
         console.log("⏳ Aguardando servidor limpar sessão...");
-        await new Promise((r) => setTimeout(r, 3000));
+        await sleep(3000);
 
         // Tentar DELETE no session se os POSTs falharam (algumas builds aceitam)
         if (!cleanupSuccess) {
@@ -311,7 +314,7 @@ serve(async (req) => {
               headers: { "Token": wuzapiToken },
             });
             console.log(`   DELETE /session: status=${deleteResp.status}`);
-            await new Promise((r) => setTimeout(r, 2000));
+            await sleep(2000);
           } catch (e) {
             console.log(`   Erro DELETE /session:`, e);
           }
