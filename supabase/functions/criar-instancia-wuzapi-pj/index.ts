@@ -369,7 +369,6 @@ serve(async (req) => {
         { url: `${baseUrl}/session/start`, method: "POST", noBody: false },
         { url: `${baseUrl}/session/login`, method: "POST", noBody: false },
         { url: `${baseUrl}/user/qr`, method: "GET", noBody: true },
-        { url: `${baseUrl}/session/qr`, method: "POST", noBody: false },
       ];
 
       // Payload com eventos para receber mensagens
