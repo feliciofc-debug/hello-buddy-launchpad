@@ -325,6 +325,7 @@ serve(async (req) => {
       const qrEndpoints = [
         `${baseUrl}/session/qr/image`,
         `${baseUrl}/session/qr`,
+        `${baseUrl}/qr`,
         // Algumas builds só respondem por POST
         `${baseUrl}/session/qr__POST__`,
       ];
