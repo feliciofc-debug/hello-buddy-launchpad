@@ -107,6 +107,7 @@ async function tryPostJson(url: string, headers: Record<string, string>, body: a
   return { resp, parsed };
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -266,41 +267,44 @@ serve(async (req) => {
         console.log("⚠️ Não foi possível verificar status:", e);
       }
 
-      // Se há sessão em limbo, forçar logout antes de tentar reconectar
+      // Se há sessão em limbo, fazer limpeza completa (logout + disconnect)
       if (hasStaleSession) {
-        console.log("🔄 Limpando sessão antiga...");
-        const logoutEndpoints = [
+        console.log("🔄 Limpando sessão antiga (hard reset)...");
+        const cleanupEndpoints = [
           `${baseUrl}/session/logout`,
           `${baseUrl}/session/disconnect`,
           `${baseUrl}/user/disconnect`,
+          `${baseUrl}/session/disconnect`, // repetição intencional para builds instáveis
         ];
-        
+
         let cleanupSuccess = false;
-        for (const logoutUrl of logoutEndpoints) {
+        for (const cleanupUrl of cleanupEndpoints) {
           try {
-            const logoutResp = await fetch(logoutUrl, {
+            const cleanupResp = await fetch(cleanupUrl, {
               method: "POST",
               headers: { "Token": wuzapiToken, "Content-Type": "application/json" },
               body: JSON.stringify({}),
             });
 
-            const parsed = await safeReadJson(logoutResp);
-            const logicalSuccess = isLogicalSuccess(logoutResp, parsed);
+            const parsed = await safeReadJson(cleanupResp);
+            const logicalSuccess = isLogicalSuccess(cleanupResp, parsed);
 
-            console.log(`   Logout ${logoutUrl}: status=${logoutResp.status} logicalSuccess=${logicalSuccess}`);
+            console.log(`   Cleanup ${cleanupUrl}: status=${cleanupResp.status} logicalSuccess=${logicalSuccess}`);
 
             if (logicalSuccess) {
               cleanupSuccess = true;
-              break;
             }
+
+            // Pequeno respiro entre chamadas para evitar corrida no servidor WuzAPI
+            await sleep(1200);
           } catch (e) {
-            console.log(`   Erro logout ${logoutUrl}:`, e);
+            console.log(`   Erro cleanup ${cleanupUrl}:`, e);
           }
         }
 
-        // Aguardar mais tempo para o servidor processar
+        // Aguardar mais tempo para o servidor processar o reset
         console.log("⏳ Aguardando servidor limpar sessão...");
-        await new Promise((r) => setTimeout(r, 3000));
+        await sleep(3000);
 
         // Tentar DELETE no session se os POSTs falharam (algumas builds aceitam)
         if (!cleanupSuccess) {
@@ -310,7 +314,7 @@ serve(async (req) => {
               headers: { "Token": wuzapiToken },
             });
             console.log(`   DELETE /session: status=${deleteResp.status}`);
-            await new Promise((r) => setTimeout(r, 2000));
+            await sleep(2000);
           } catch (e) {
             console.log(`   Erro DELETE /session:`, e);
           }
@@ -321,6 +325,7 @@ serve(async (req) => {
       const qrEndpoints = [
         `${baseUrl}/session/qr/image`,
         `${baseUrl}/session/qr`,
+        `${baseUrl}/qr`,
         // Algumas builds só respondem por POST
         `${baseUrl}/session/qr__POST__`,
       ];
@@ -364,7 +369,6 @@ serve(async (req) => {
         { url: `${baseUrl}/session/start`, method: "POST", noBody: false },
         { url: `${baseUrl}/session/login`, method: "POST", noBody: false },
         { url: `${baseUrl}/user/qr`, method: "GET", noBody: true },
-        { url: `${baseUrl}/session/qr`, method: "POST", noBody: false },
       ];
 
       // Payload com eventos para receber mensagens
@@ -449,11 +453,13 @@ serve(async (req) => {
         { method: 'GET', path: '/session/qr/image' },
         { method: 'GET', path: '/session/qr' },
         { method: 'POST', path: '/session/qr' },
+        { method: 'GET', path: '/qr' },
       ];
 
       let qrCodeResult: string | null = null;
       const qrAttempts: string[] = [];
       const maxRetries = 10;
+      let reconnectAfterNotConnected = false;
 
       for (let retry = 0; retry < maxRetries && !qrCodeResult; retry++) {
         console.log(`[QR] Tentativa ${retry + 1}/${maxRetries}...`);
@@ -534,6 +540,21 @@ serve(async (req) => {
             } else {
               const errorText = await qrResponse.text().catch(() => '');
               qrAttempts.push(`${endpoint.path}: ${qrResponse.status} - ${errorText.substring(0, 50)}`);
+
+              if (
+                !reconnectAfterNotConnected &&
+                qrResponse.status >= 500 &&
+                /not\s*connected/i.test(errorText)
+              ) {
+                reconnectAfterNotConnected = true;
+                console.log("[QR] Detectado 'not connected' durante fetch QR. Forçando reconnect...");
+                try {
+                  await tryPostJson(`${baseUrl}/session/connect`, { Token: wuzapiToken }, {});
+                  await sleep(2000);
+                } catch (reconnectErr: any) {
+                  qrAttempts.push(`reconnect fallback falhou: ${reconnectErr.message}`);
+                }
+              }
             }
           } catch (e: any) {
             qrAttempts.push(`${endpoint.path}: erro - ${e.message}`);
@@ -543,7 +564,7 @@ serve(async (req) => {
         
         if (!qrCodeResult && retry < maxRetries - 1) {
           console.log(`[QR] Aguardando 2s antes de tentar novamente...`);
-          await new Promise((r) => setTimeout(r, 2000));
+          await sleep(2000);
         }
       }
 
