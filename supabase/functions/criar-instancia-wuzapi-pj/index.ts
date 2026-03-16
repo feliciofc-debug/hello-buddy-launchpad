@@ -454,6 +454,7 @@ serve(async (req) => {
         { method: 'GET', path: '/session/qr/image' },
         { method: 'GET', path: '/session/qr' },
         { method: 'POST', path: '/session/qr' },
+        { method: 'GET', path: '/qr' },
       ];
 
       let qrCodeResult: string | null = null;
