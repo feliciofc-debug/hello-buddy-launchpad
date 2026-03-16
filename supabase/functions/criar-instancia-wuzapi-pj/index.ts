@@ -565,7 +565,7 @@ serve(async (req) => {
         
         if (!qrCodeResult && retry < maxRetries - 1) {
           console.log(`[QR] Aguardando 2s antes de tentar novamente...`);
-          await new Promise((r) => setTimeout(r, 2000));
+          await sleep(2000);
         }
       }
 
