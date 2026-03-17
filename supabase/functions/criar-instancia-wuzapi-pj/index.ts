@@ -488,40 +488,77 @@ serve(async (req) => {
 
       let qrCodeResult: string | null = null;
       const qrAttempts: string[] = [];
-      const maxRetries = 10;
-      let reconnectAfterNotConnected = false;
+      const maxRetries = 8;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 4;
 
       for (let retry = 0; retry < maxRetries && !qrCodeResult; retry++) {
         console.log(`[QR] Tentativa ${retry + 1}/${maxRetries}...`);
-        
+
+        // 2.1) Algumas builds expõem o QR em /session/status -> data.qrcode
+        try {
+          const statusResp = await fetch(`${baseUrl}/session/status`, {
+            method: "GET",
+            headers: { Token: wuzapiToken },
+          });
+
+          if (statusResp.ok) {
+            const statusParsed = await safeReadJson(statusResp);
+            if (statusParsed.ok) {
+              const qrFromStatus = extractQrFromStatusPayload(statusParsed.json);
+              if (qrFromStatus) {
+                qrCodeResult = qrFromStatus;
+                qrAttempts.push(`/session/status: ✅ SUCESSO (data.qrcode)`);
+                break;
+              }
+            }
+          }
+        } catch (statusErr: any) {
+          qrAttempts.push(`/session/status: erro - ${statusErr.message}`);
+        }
+
+        if (qrCodeResult) break;
+
+        // 2.2) Reconnect periódico aumenta a chance de geração de QR em sessões instáveis
+        if (retry > 0 && retry % 2 === 0 && reconnectAttempts < maxReconnectAttempts) {
+          reconnectAttempts++;
+          try {
+            const { resp } = await tryPostJson(`${baseUrl}/session/connect`, { Token: wuzapiToken }, {});
+            qrAttempts.push(`reconnect #${reconnectAttempts}: ${resp.status}`);
+            await sleep(1500);
+          } catch (reconnectErr: any) {
+            qrAttempts.push(`reconnect #${reconnectAttempts} falhou: ${reconnectErr.message}`);
+          }
+        }
+
         for (const endpoint of qrFetchEndpoints) {
           try {
             const qrUrl = `${baseUrl}${endpoint.path}`;
             console.log(`[QR] Tentando ${endpoint.method} ${qrUrl}`);
-            
+
             const qrResponse = await fetch(qrUrl, {
               method: endpoint.method,
-              headers: { 
-                'Token': wuzapiToken,
-                'Content-Type': 'application/json'
+              headers: {
+                "Token": wuzapiToken,
+                "Content-Type": "application/json",
               },
-              ...(endpoint.method === 'POST' ? { body: JSON.stringify({}) } : {})
+              ...(endpoint.method === "POST" ? { body: JSON.stringify({}) } : {}),
             });
-            
-            const contentType = qrResponse.headers.get('content-type') || '';
+
+            const contentType = qrResponse.headers.get("content-type") || "";
             console.log(`[QR] Status: ${qrResponse.status}, Content-Type: ${contentType}`);
-            
+
             if (qrResponse.status === 404) {
               qrAttempts.push(`${endpoint.path}: 404 (não existe)`);
               continue;
             }
-            
+
             if (qrResponse.ok) {
               // Se retornou imagem diretamente (binário)
-              if (contentType.includes('image')) {
+              if (contentType.includes("image")) {
                 const arrayBuffer = await qrResponse.arrayBuffer();
                 const uint8Array = new Uint8Array(arrayBuffer);
-                let binary = '';
+                let binary = "";
                 for (let i = 0; i < uint8Array.length; i++) {
                   binary += String.fromCharCode(uint8Array[i]);
                 }
@@ -531,56 +568,51 @@ serve(async (req) => {
                 console.log(`[QR] ✅ Imagem binária obtida!`);
                 break;
               }
-              
+
               // Se retornou JSON
               const qrParsed = await safeReadJson(qrResponse);
               console.log(`[QR] Dados recebidos:`, JSON.stringify(qrParsed.json || qrParsed.text).substring(0, 300));
-              
+
               // Tentar extrair QR de diferentes formatos de resposta
-              const possibleQr = extractQrAny(qrParsed);
+              const possibleQr = normalizeQrToDataUrl(extractQrAny(qrParsed));
               if (possibleQr) {
-                // Garantir formato data URL
-                if (possibleQr.startsWith('data:')) {
-                  qrCodeResult = possibleQr;
-                } else if (possibleQr.length > 100) {
-                  qrCodeResult = `data:image/png;base64,${possibleQr}`;
-                }
-                if (qrCodeResult) {
-                  qrAttempts.push(`${endpoint.path}: ✅ SUCESSO (JSON)`);
-                  console.log(`[QR] ✅ QR Code extraído do JSON!`);
-                  break;
-                }
+                qrCodeResult = possibleQr;
+                qrAttempts.push(`${endpoint.path}: ✅ SUCESSO (JSON)`);
+                console.log(`[QR] ✅ QR Code extraído do JSON!`);
+                break;
               }
-              
+
               // Tentar campos específicos que podem existir
               const qrData = qrParsed.json || {};
-              const possibleFields = ['qrcode', 'qrCode', 'QRCode', 'code', 'data', 'image', 'qr'];
+              const possibleFields = ["qrcode", "qrCode", "QRCode", "code", "data", "image", "qr"];
               for (const field of possibleFields) {
                 const val = qrData[field] || qrData?.data?.[field];
-                if (val && typeof val === 'string' && val.length > 100) {
-                  qrCodeResult = val.startsWith('data:') ? val : `data:image/png;base64,${val}`;
+                const normalizedFieldQr = normalizeQrToDataUrl(typeof val === "string" ? val : null);
+                if (normalizedFieldQr) {
+                  qrCodeResult = normalizedFieldQr;
                   qrAttempts.push(`${endpoint.path}: ✅ SUCESSO (campo ${field})`);
                   console.log(`[QR] ✅ QR encontrado no campo '${field}'!`);
                   break;
                 }
               }
-              
+
               if (qrCodeResult) break;
               qrAttempts.push(`${endpoint.path}: 200 mas sem QR no response`);
             } else {
-              const errorText = await qrResponse.text().catch(() => '');
+              const errorText = await qrResponse.text().catch(() => "");
               qrAttempts.push(`${endpoint.path}: ${qrResponse.status} - ${errorText.substring(0, 50)}`);
 
               if (
-                !reconnectAfterNotConnected &&
                 qrResponse.status >= 500 &&
-                /not\s*connected/i.test(errorText)
+                /not\s*connected/i.test(errorText) &&
+                reconnectAttempts < maxReconnectAttempts
               ) {
-                reconnectAfterNotConnected = true;
+                reconnectAttempts++;
                 console.log("[QR] Detectado 'not connected' durante fetch QR. Forçando reconnect...");
                 try {
-                  await tryPostJson(`${baseUrl}/session/connect`, { Token: wuzapiToken }, {});
-                  await sleep(2000);
+                  const { resp } = await tryPostJson(`${baseUrl}/session/connect`, { Token: wuzapiToken }, {});
+                  qrAttempts.push(`reconnect not-connected #${reconnectAttempts}: ${resp.status}`);
+                  await sleep(1500);
                 } catch (reconnectErr: any) {
                   qrAttempts.push(`reconnect fallback falhou: ${reconnectErr.message}`);
                 }
@@ -591,7 +623,7 @@ serve(async (req) => {
             console.error(`[QR] Erro em ${endpoint.path}:`, e.message);
           }
         }
-        
+
         if (!qrCodeResult && retry < maxRetries - 1) {
           console.log(`[QR] Aguardando 2s antes de tentar novamente...`);
           await sleep(2000);
