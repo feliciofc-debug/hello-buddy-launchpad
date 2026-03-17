@@ -31,7 +31,7 @@ export default function AfiliadoConectarCelular2() {
 
   // Polling quando QR visível
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let interval: ReturnType<typeof setInterval>
     if (qrCode) {
       interval = setInterval(checkStatus, 3000)
     }
