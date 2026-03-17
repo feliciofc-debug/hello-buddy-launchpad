@@ -1650,10 +1650,10 @@ serve(async (req) => {
     const isCumprimento = /^(oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|e a[ií]|fala|hey|hi|hello|salve|eai)[\s\?\!\.]*$/i.test(messageText.trim());
     
     // Garantia de venda: se cliente PEDIU produto, a IA achou mas não incluiu link, anexar bloco.
-    // MAS NÃO FAZER ISSO EM CUMPRIMENTOS!
+    // MAS NÃO FAZER ISSO EM CUMPRIMENTOS ou quando usando prompt customizado!
     let respostaFinal = resposta;
     const produtoPrincipal = produtosRelevantes?.[0];
-    const clientePediuProduto = !isCumprimento && produtosRelevantes.length > 0;
+    const clientePediuProduto = !isCumprimento && !promptCustomizado && produtosRelevantes.length > 0;
     
     if (clientePediuProduto && produtoPrincipal && !hasPurchaseLink(respostaFinal)) {
       const link = resolveProductLink(produtoPrincipal);
