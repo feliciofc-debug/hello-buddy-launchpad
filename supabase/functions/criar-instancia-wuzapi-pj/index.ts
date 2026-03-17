@@ -422,11 +422,15 @@ serve(async (req) => {
             });
             parsed = await safeReadJson(resp);
           } else {
-            const result = await tryPostJson(candidate.url, { Token: wuzapiToken }, connectPayload);
+            const result = await tryPostJson(
+              candidate.url,
+              { Token: wuzapiToken },
+              (candidate as any).body ?? {}
+            );
             resp = result.resp;
             parsed = result.parsed;
           }
-          
+
           lastConnectStatus = resp.status;
           lastConnectRaw = parsed.text;
 
