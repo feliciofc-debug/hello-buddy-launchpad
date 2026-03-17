@@ -4194,6 +4194,7 @@ export type Database = {
           mes_referencia: string | null
           nome_assistente: string | null
           personalidade_assistente: string | null
+          prompt_customizado: string | null
           tts_ativo: boolean | null
           tts_voz: string | null
           ultimo_status_check: string | null
@@ -4214,6 +4215,7 @@ export type Database = {
           mes_referencia?: string | null
           nome_assistente?: string | null
           personalidade_assistente?: string | null
+          prompt_customizado?: string | null
           tts_ativo?: boolean | null
           tts_voz?: string | null
           ultimo_status_check?: string | null
@@ -4234,6 +4236,7 @@ export type Database = {
           mes_referencia?: string | null
           nome_assistente?: string | null
           personalidade_assistente?: string | null
+          prompt_customizado?: string | null
           tts_ativo?: boolean | null
           tts_voz?: string | null
           ultimo_status_check?: string | null

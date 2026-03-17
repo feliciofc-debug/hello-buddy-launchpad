@@ -1555,14 +1555,28 @@ serve(async (req) => {
 
     const nomeAssistente = pjConfig?.nome_assistente || "Pietro Eugênio";
     const personalidade = pjConfig?.personalidade_assistente || "profissional e prestativo";
+    const promptCustomizado = pjConfig?.prompt_customizado || null;
     const userId = pjConfig?.user_id;
     const wuzapiToken = pjConfig?.wuzapi_token;
     const wuzapiPort = pjConfig?.wuzapi_port || 8080; // DEFAULT: 8080 (não 8081!)
     
     // Construir URL do WuzAPI baseado na porta
-    const wuzapiUrl = `http://191.252.193.73:${wuzapiPort}`;
+    // Verificar se temos URL da Contabo configurada
+    let wuzapiUrl = `http://191.252.193.73:${wuzapiPort}`;
     
-    console.log(`👤 [PJ-WEBHOOK] Config FINAL: ${nomeAssistente}, user: ${userId?.slice(0, 8) || 'N/A'}..., port: ${wuzapiPort}`);
+    // Se a instância está na Contabo (api2), usar essa URL
+    if (instanceName) {
+      const { data: instData } = await supabase
+        .from("wuzapi_instances")
+        .select("wuzapi_url")
+        .eq("instance_name", instanceName)
+        .maybeSingle();
+      if (instData?.wuzapi_url) {
+        wuzapiUrl = instData.wuzapi_url;
+      }
+    }
+    
+    console.log(`👤 [PJ-WEBHOOK] Config FINAL: ${nomeAssistente}, user: ${userId?.slice(0, 8) || 'N/A'}..., port: ${wuzapiPort}, url: ${wuzapiUrl}, promptCustomizado: ${promptCustomizado ? 'SIM' : 'NÃO'}`);
 
     if (!wuzapiToken) {
       console.error("❌ [PJ-WEBHOOK] wuzapi_token não configurado!");
@@ -1584,35 +1598,45 @@ serve(async (req) => {
       nomeEmpresa = empresaData.nome;
     }
 
-    // Buscar TODOS os produtos do usuário PJ
-    const todosProdutos = await getProdutosPJ(supabase, userId);
-    console.log(`📦 [PJ-WEBHOOK] Total produtos: ${todosProdutos.length}`);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CONSTRUIR SYSTEM PROMPT — CUSTOMIZADO OU GENÉRICO
+    // ═══════════════════════════════════════════════════════════════════════════
+    let systemPrompt: string;
+    let todosProdutos: any[] = [];
+    let produtosRelevantes: any[] = [];
 
-    // Pré-filtrar produtos baseado na mensagem
-    const produtosRelevantes = filtrarProdutosRelevantes(todosProdutos, messageText);
-    
-    // Formatar catálogo para a IA
-    let catalogoMD = "";
-    if (produtosRelevantes.length > 0) {
-      catalogoMD = formatarCatalogoMD(produtosRelevantes);
-      catalogoMD += `\n\n🚨 INSTRUÇÃO: Você TEM ${produtosRelevantes.length} produtos listados acima. ESCOLHA os melhores e MOSTRE com nome + preço + link!`;
-    } else if (todosProdutos.length > 0) {
-      // Mostrar amostra se não achou match específico
-      catalogoMD = formatarCatalogoMD(todosProdutos.slice(0, 10));
-      catalogoMD += `\n\nℹ️ Mostrando amostra do catálogo. Total: ${todosProdutos.length} produtos.`;
+    if (promptCustomizado) {
+      // ✅ PROMPT CUSTOMIZADO: usar diretamente (ex: Sophia para o livro)
+      console.log(`🎯 [PJ-WEBHOOK] Usando prompt CUSTOMIZADO para ${nomeAssistente}`);
+      systemPrompt = promptCustomizado + `\n\nHISTÓRICO DA CONVERSA:\n${historicoFormatado || 'Início da conversa.'}`;
+      // Não buscar produtos — o prompt já tem tudo
     } else {
-      catalogoMD = "Nenhum produto cadastrado ainda.";
-    }
+      // 🔧 PROMPT GENÉRICO: buscar produtos e montar catálogo
+      todosProdutos = await getProdutosPJ(supabase, userId);
+      console.log(`📦 [PJ-WEBHOOK] Total produtos: ${todosProdutos.length}`);
 
-    // Construir system prompt completo
-    const systemPrompt = buildSystemPrompt(
-      nomeAssistente,
-      personalidade,
-      nomeEmpresa,
-      catalogoMD,
-      historicoFormatado,
-      todosProdutos.length
-    );
+      produtosRelevantes = filtrarProdutosRelevantes(todosProdutos, messageText);
+      
+      let catalogoMD = "";
+      if (produtosRelevantes.length > 0) {
+        catalogoMD = formatarCatalogoMD(produtosRelevantes);
+        catalogoMD += `\n\n🚨 INSTRUÇÃO: Você TEM ${produtosRelevantes.length} produtos listados acima. ESCOLHA os melhores e MOSTRE com nome + preço + link!`;
+      } else if (todosProdutos.length > 0) {
+        catalogoMD = formatarCatalogoMD(todosProdutos.slice(0, 10));
+        catalogoMD += `\n\nℹ️ Mostrando amostra do catálogo. Total: ${todosProdutos.length} produtos.`;
+      } else {
+        catalogoMD = "Nenhum produto cadastrado ainda.";
+      }
+
+      systemPrompt = buildSystemPrompt(
+        nomeAssistente,
+        personalidade,
+        nomeEmpresa,
+        catalogoMD,
+        historicoFormatado,
+        todosProdutos.length
+      );
+    }
 
     // Gerar resposta com IA
     console.log("🧠 [PJ-WEBHOOK] Gerando resposta IA...");
@@ -1626,10 +1650,10 @@ serve(async (req) => {
     const isCumprimento = /^(oi|ol[aá]|bom dia|boa tarde|boa noite|tudo bem|e a[ií]|fala|hey|hi|hello|salve|eai)[\s\?\!\.]*$/i.test(messageText.trim());
     
     // Garantia de venda: se cliente PEDIU produto, a IA achou mas não incluiu link, anexar bloco.
-    // MAS NÃO FAZER ISSO EM CUMPRIMENTOS!
+    // MAS NÃO FAZER ISSO EM CUMPRIMENTOS ou quando usando prompt customizado!
     let respostaFinal = resposta;
     const produtoPrincipal = produtosRelevantes?.[0];
-    const clientePediuProduto = !isCumprimento && produtosRelevantes.length > 0;
+    const clientePediuProduto = !isCumprimento && !promptCustomizado && produtosRelevantes.length > 0;
     
     if (clientePediuProduto && produtoPrincipal && !hasPurchaseLink(respostaFinal)) {
       const link = resolveProductLink(produtoPrincipal);
