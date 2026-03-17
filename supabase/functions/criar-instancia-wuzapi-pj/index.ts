@@ -97,6 +97,29 @@ function extractQrAny(parsed: { ok: boolean; json?: any; text: string }): string
   return extractQrFromText(parsed.text);
 }
 
+function normalizeQrToDataUrl(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (!value) return null;
+  if (value.startsWith("data:image")) return value;
+  if (value.length < 80) return null;
+  return `data:image/png;base64,${value}`;
+}
+
+function extractQrFromStatusPayload(statusPayload: any): string | null {
+  const data = statusPayload?.data || statusPayload || {};
+  const raw =
+    data?.qrcode ||
+    data?.qrCode ||
+    data?.QRCode ||
+    statusPayload?.qrcode ||
+    statusPayload?.qrCode ||
+    statusPayload?.QRCode ||
+    null;
+
+  return normalizeQrToDataUrl(raw);
+}
+
 async function tryPostJson(url: string, headers: Record<string, string>, body: any) {
   const resp = await fetch(url, {
     method: "POST",
