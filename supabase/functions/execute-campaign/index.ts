@@ -117,15 +117,43 @@ serve(async (req) => {
       const phone = contatos[i]
       console.log(`📤 [${i + 1}/${contatos.length}] Enviando para ${phone}`)
 
-      // Buscar nome do contato para personalizar
-      const { data: contact } = await supabase
+      // Buscar nome do contato em múltiplas fontes
+      let nome = 'Cliente'
+      
+      // 1. Tentar whatsapp_contacts
+      const { data: wc } = await supabase
         .from('whatsapp_contacts')
         .select('nome')
         .eq('phone', phone)
         .eq('user_id', campanha.user_id)
         .maybeSingle()
+      if (wc?.nome) nome = wc.nome
 
-      const nome = contact?.nome || 'Cliente'
+      // 2. Tentar pj_lista_membros (busca por telefone nas listas da campanha)
+      if (nome === 'Cliente') {
+        const { data: plm } = await supabase
+          .from('pj_lista_membros')
+          .select('nome')
+          .eq('telefone', phone)
+          .not('nome', 'is', null)
+          .limit(1)
+          .maybeSingle()
+        if (plm?.nome) nome = plm.nome
+      }
+
+      // 3. Tentar cadastros (busca por whatsapp)
+      if (nome === 'Cliente') {
+        const cleanPhone = phone.replace(/\D/g, '')
+        const { data: cad } = await supabase
+          .from('cadastros')
+          .select('nome')
+          .or(`whatsapp.eq.${phone},whatsapp.eq.${cleanPhone}`)
+          .eq('user_id', campanha.user_id)
+          .maybeSingle()
+        if (cad?.nome) nome = cad.nome
+      }
+      
+      console.log(`👤 Nome resolvido para ${phone}: ${nome}`)
 
       // Personalizar mensagem COM O NOME DO CONTATO
       const mensagemPersonalizada = campanha.mensagem_template
