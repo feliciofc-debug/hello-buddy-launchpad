@@ -1,0 +1,1 @@
+ALTER TABLE pj_clientes_config ADD COLUMN IF NOT EXISTS prompt_customizado TEXT DEFAULT NULL;
