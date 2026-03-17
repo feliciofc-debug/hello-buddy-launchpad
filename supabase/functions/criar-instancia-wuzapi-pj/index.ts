@@ -1106,11 +1106,8 @@ serve(async (req) => {
                   tentativas.push(`qr ${endpoint}: imagem obtida`);
                   break;
                 } else {
-                  const qrParsed = await safeReadJson(await fetch(`${baseUrl}${endpoint}`, {
-                    method: "GET",
-                    headers: { "Token": wuzapiToken }
-                  }));
-                  
+                  const qrParsed = await safeReadJson(qrRes);
+
                   if (qrParsed.ok) {
                     const extracted = extractQrCodePayload(qrParsed.json);
                     if (extracted) {
