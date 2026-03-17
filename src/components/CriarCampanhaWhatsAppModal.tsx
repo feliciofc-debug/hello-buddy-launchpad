@@ -393,6 +393,72 @@ _Escolha quantidade e finalize!_ ✅`;
     toast.success('Post selecionado com link incluído!');
   };
 
+  const normalizarTelefone = (phone: string) => {
+    const somenteDigitos = (phone || '').replace(/\D/g, '');
+    if (!somenteDigitos) return '';
+    if (somenteDigitos.length === 10 || somenteDigitos.length === 11) {
+      return `55${somenteDigitos}`;
+    }
+    return somenteDigitos;
+  };
+
+  const gerarVariantesTelefone = (phone: string) => {
+    const base = normalizarTelefone(phone);
+    if (!base) return [];
+
+    const semDDI = base.startsWith('55') ? base.slice(2) : base;
+    return [...new Set([base, semDDI, `+${base}`].filter(Boolean))];
+  };
+
+  const resolverNomeContato = async (phone: string, userId: string, listaIds: string[]) => {
+    const variantes = gerarVariantesTelefone(phone);
+    if (variantes.length === 0) return 'Cliente';
+
+    // 1) Prioridade: contatos salvos do usuário
+    const { data: contato } = await supabase
+      .from('whatsapp_contacts')
+      .select('nome')
+      .eq('user_id', userId)
+      .in('phone', variantes)
+      .not('nome', 'is', null)
+      .limit(1)
+      .maybeSingle();
+
+    if (contato?.nome?.trim()) return contato.nome.trim();
+
+    // 2) Lista PJ (importações manuais)
+    const { data: membroPJ } = await supabase
+      .from('pj_lista_membros')
+      .select('nome')
+      .in('lista_id', listaIds)
+      .in('telefone', variantes)
+      .not('nome', 'is', null)
+      .limit(1)
+      .maybeSingle();
+
+    if (membroPJ?.nome?.trim()) return membroPJ.nome.trim();
+
+    // 3) Cadastros do usuário
+    const filtroWhatsapp = variantes
+      .map((numero) => `whatsapp.eq.${numero.replace('+', '')}`)
+      .join(',');
+
+    if (filtroWhatsapp) {
+      const { data: cadastro } = await supabase
+        .from('cadastros')
+        .select('nome')
+        .eq('user_id', userId)
+        .or(filtroWhatsapp)
+        .not('nome', 'is', null)
+        .limit(1)
+        .maybeSingle();
+
+      if (cadastro?.nome?.trim()) return cadastro.nome.trim();
+    }
+
+    return 'Cliente';
+  };
+
   const enviarCampanhaAgora = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -454,8 +520,8 @@ _Escolha quantidade e finalize!_ ✅`;
       todosContatos.push(...(leads?.map(l => l.phone) || []));
     }
 
-    // Deduplicar
-    todosContatos = [...new Set(todosContatos)].filter(Boolean);
+    // Deduplicar + normalizar telefone para melhorar resolução de nome
+    todosContatos = [...new Set(todosContatos.map(normalizarTelefone))].filter(Boolean);
     console.log('📋 Total contatos (deduplicados):', todosContatos.length);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
@@ -521,15 +587,7 @@ _Escolha quantidade e finalize!_ ✅`;
         // ENVIAR UM POR UM com personalização de nome
         for (const [index, phone] of todosContatos.entries()) {
           try {
-            // Buscar nome do contato
-            const { data: contact } = await supabase
-              .from('whatsapp_contacts')
-              .select('nome')
-              .eq('phone', phone)
-              .eq('user_id', user.id)
-              .maybeSingle();
-
-            const nome = contact?.nome || 'Cliente';
+            const nome = await resolverNomeContato(phone, user.id, listasSelecionadas);
             
             // Personalizar mensagem COM O NOME
             const mensagemPersonalizada = mensagem
