@@ -117,10 +117,28 @@ export function CriarCampanhaWhatsAppModal({
           setMensagem(campanhaExistente.mensagem_template);
           setListasSelecionadas(campanhaExistente.listas_ids);
         } else {
-          console.log('✨ Nova campanha - configurando template COM LINK');
-          // Template inicial COM LINK INCLUÍDO
-          const linkProduto = produto.link_marketplace || 'https://amzofertas.com.br/checkout';
-          setMensagem(`Olá {{nome}}! 👋
+          console.log('✨ Nova campanha - configurando template padrão');
+          const isArquivoConfidencial = produto.nome?.toLowerCase().includes('arquivo confidencial');
+
+          if (isArquivoConfidencial) {
+            setMensagem(`Oi {{nome}}! Tudo bem? 😊
+
+Me permite compartilhar algo rápido sobre desenvolvimento profissional?
+
+Existe uma habilidade que separa profissionais comuns de negociadores extraordinários — a capacidade de ler pessoas.
+
+Entender o que o outro precisa antes de ele dizer. Perceber resistência antes dela virar objeção.
+
+Isso tem nome: inteligência comportamental.
+
+O livro "Arquivo Confidencial" apresenta o Método ARC — um framework prático de Análise, Resistência e Conversão para quem leva negócios a sério.
+
+Se fizer sentido pra você: https://go.hotmart.com/C104903078G
+
+Qualquer dúvida, estou por aqui! Abraço 👊`);
+          } else {
+            const linkProduto = produto.link_marketplace || 'https://amzofertas.com.br/checkout';
+            setMensagem(`Olá {{nome}}! 👋
 
 Confira nosso produto:
 
@@ -133,6 +151,7 @@ ${produto.descricao || ''}
 ${linkProduto}
 
 _Escolha quantidade e finalize!_ ✅`);
+          }
         }
         console.log('✅ useEffect concluído com sucesso');
       } catch (error) {
