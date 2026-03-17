@@ -30,7 +30,7 @@ export default function AfiliadoWhatsAppConnection() {
 
   // Polling rápido apenas enquanto o QR estiver na tela
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let interval: ReturnType<typeof setInterval>
     if (polling && qrCode) {
       interval = setInterval(() => {
         checkStatus()
