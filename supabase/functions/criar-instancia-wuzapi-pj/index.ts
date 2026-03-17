@@ -386,19 +386,22 @@ serve(async (req) => {
       }
 
       // 1) Tenta iniciar sessão com múltiplos endpoints (diferentes builds de WuzAPI)
-      // IMPORTANTE: Incluir Subscribe para receber eventos de mensagem!
+      // Primeiro tentamos body vazio (mais compatível), depois payload com Subscribe.
       const connectCandidates = [
-        { url: `${baseUrl}/session/connect`, method: "POST", noBody: false },
-        { url: `${baseUrl}/session/start`, method: "POST", noBody: false },
-        { url: `${baseUrl}/session/login`, method: "POST", noBody: false },
+        { url: `${baseUrl}/session/connect`, method: "POST", noBody: false, body: {} },
+        {
+          url: `${baseUrl}/session/connect`,
+          method: "POST",
+          noBody: false,
+          body: {
+            Subscribe: ["Message", "ReadReceipt", "ChatPresence", "Presence"],
+            Immediate: true,
+          },
+        },
+        { url: `${baseUrl}/session/start`, method: "POST", noBody: false, body: {} },
+        { url: `${baseUrl}/session/login`, method: "POST", noBody: false, body: {} },
         { url: `${baseUrl}/user/qr`, method: "GET", noBody: true },
       ];
-
-      // Payload com eventos para receber mensagens
-      const connectPayload = {
-        Subscribe: ["Message", "ReadReceipt", "ChatPresence", "Presence"],
-        Immediate: true
-      };
 
       let connectOk = false;
       let lastConnectRaw: string | null = null;
