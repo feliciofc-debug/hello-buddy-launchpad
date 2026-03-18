@@ -196,9 +196,9 @@ serve(async (req) => {
 
       // Personalizar mensagem COM O NOME DO CONTATO
       const mensagemPersonalizada = campanha.mensagem_template
-        .replace(/\{\{nome\}\}/gi, nome)
-        .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || '')
-        .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || '0')
+        .replace(/\{\{nome\}\}|\{nome\}/gi, nome)
+        .replace(/\{\{produto\}\}|\{produto\}/gi, campanha.produtos?.nome || '')
+        .replace(/\{\{preco\}\}|\{preco\}/gi, campanha.produtos?.preco?.toString() || '0')
 
       // Enviar via send-wuzapi-message-pj (que já tem retry, validação e resolução de instância)
       const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
