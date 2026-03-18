@@ -6,6 +6,33 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function normalizePhone(phone: string): string {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.length === 10 || digits.length === 11) {
+    return `55${digits}`;
+  }
+
+  return digits;
+}
+
+function buildPhoneVariants(phone: string): string[] {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return [];
+
+  const withoutCountry = normalized.startsWith('55') ? normalized.slice(2) : normalized;
+  const variants = [normalized, withoutCountry];
+
+  if (withoutCountry.length === 11 && withoutCountry[2] === '9') {
+    variants.push(`55${withoutCountry.slice(0, 2)}${withoutCountry.slice(3)}`);
+  } else if (withoutCountry.length === 10) {
+    variants.push(`55${withoutCountry.slice(0, 2)}9${withoutCountry.slice(2)}`);
+  }
+
+  return [...new Set(variants.filter(Boolean))];
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -276,37 +303,48 @@ serve(async (req) => {
           
           const contatosPJListas = (membrosPJ || []).map((m: any) => m.telefone).filter(Boolean);
           
-          // Mesclar sem duplicatas
-          const todosContatosSet = new Set([...contatosWhatsappGroups, ...contatosPJListas]);
+          // Mesclar sem duplicatas + normalizar formato para lookup consistente
+          const todosContatosSet = new Set(
+            [...contatosWhatsappGroups, ...contatosPJListas]
+              .map((p: any) => normalizePhone(String(p || '')))
+              .filter(Boolean)
+          );
           const todosContatos = Array.from(todosContatosSet);
           
           console.log(`📞 Total de contatos: ${todosContatos.length} (whatsapp_groups: ${contatosWhatsappGroups.length}, pj_listas: ${contatosPJListas.length})`);
 
           for (const phone of todosContatos) {
             try {
+              const phoneVariants = buildPhoneVariants(String(phone));
+
               // Buscar nome do contato (tentar em whatsapp_contacts e pj_lista_membros)
               let nome = "Cliente";
               const { data: contact } = await supabase
                 .from("whatsapp_contacts")
                 .select("nome")
-                .eq("phone", phone)
                 .eq("user_id", campanha.user_id)
+                .in("phone", phoneVariants)
+                .not("nome", "is", null)
+                .limit(1)
                 .maybeSingle();
               
-              if (contact?.nome) {
-                nome = contact.nome;
+              if (contact?.nome?.trim()) {
+                nome = contact.nome.trim();
               } else {
-                // Fallback: buscar nome de pj_lista_membros
-                const membroPJ = (membrosPJ || []).find((m: any) => m.telefone === phone);
-                if (membroPJ?.nome) {
-                  nome = membroPJ.nome;
+                // Fallback: buscar nome de pj_lista_membros (comparando telefones normalizados)
+                const membroPJ = (membrosPJ || []).find((m: any) => {
+                  const telMembro = normalizePhone(String(m.telefone || ''));
+                  return phoneVariants.includes(telMembro);
+                });
+                if (membroPJ?.nome?.trim()) {
+                  nome = membroPJ.nome.trim();
                 }
               }
 
               const mensagemPersonalizada = campanha.mensagem_template
-                .replace(/\{\{nome\}\}/gi, nome)
-                .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
+                .replace(/\{\{nome\}\}|\{nome\}/gi, nome)
+                .replace(/\{\{produto\}\}|\{produto\}/gi, produtoParaEnviar?.nome || "")
+                .replace(/\{\{preco\}\}|\{preco\}/gi, produtoParaEnviar?.preco?.toString() || "");
 
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
                 body: {
