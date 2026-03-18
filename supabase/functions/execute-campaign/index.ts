@@ -146,40 +146,50 @@ serve(async (req) => {
       const phone = contatos[i]
       console.log(`📤 [${i + 1}/${contatos.length}] Enviando para ${phone}`)
 
-      // Buscar nome do contato em múltiplas fontes
+      // Buscar nome do contato em múltiplas fontes (com variantes de telefone)
+      const phoneVariants = buildPhoneVariants(phone)
       let nome = 'Cliente'
-      
+
       // 1. Tentar whatsapp_contacts
       const { data: wc } = await supabase
         .from('whatsapp_contacts')
         .select('nome')
-        .eq('phone', phone)
         .eq('user_id', campanha.user_id)
+        .in('phone', phoneVariants)
+        .not('nome', 'is', null)
+        .limit(1)
         .maybeSingle()
-      if (wc?.nome) nome = wc.nome
+      if (wc?.nome?.trim()) nome = wc.nome.trim()
 
       // 2. Tentar pj_lista_membros (busca por telefone nas listas da campanha)
       if (nome === 'Cliente') {
         const { data: plm } = await supabase
           .from('pj_lista_membros')
           .select('nome')
-          .eq('telefone', phone)
+          .in('lista_id', listasIds)
+          .in('telefone', phoneVariants)
           .not('nome', 'is', null)
           .limit(1)
           .maybeSingle()
-        if (plm?.nome) nome = plm.nome
+        if (plm?.nome?.trim()) nome = plm.nome.trim()
       }
 
       // 3. Tentar cadastros (busca por whatsapp)
-      if (nome === 'Cliente') {
-        const cleanPhone = phone.replace(/\D/g, '')
+      if (nome === 'Cliente' && phoneVariants.length > 0) {
+        const cadastrosFilter = phoneVariants
+          .map((variant) => `whatsapp.eq.${variant}`)
+          .join(',')
+
         const { data: cad } = await supabase
           .from('cadastros')
           .select('nome')
-          .or(`whatsapp.eq.${phone},whatsapp.eq.${cleanPhone}`)
           .eq('user_id', campanha.user_id)
+          .or(cadastrosFilter)
+          .not('nome', 'is', null)
+          .limit(1)
           .maybeSingle()
-        if (cad?.nome) nome = cad.nome
+
+        if (cad?.nome?.trim()) nome = cad.nome.trim()
       }
       
       console.log(`👤 Nome resolvido para ${phone}: ${nome}`)
