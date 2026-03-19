@@ -154,6 +154,7 @@ const App = () => (
             
             {/* Rotas PJ */}
             <Route path="/pj/whatsapp-automacao" element={<WhatsAppAutomacaoPJ />} />
+            <Route path="/pj/listas-contatos" element={<ListasContatosPJ />} />
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
             <Route path="/sophia-dispatcher" element={<SophiaDispatcher />} />
