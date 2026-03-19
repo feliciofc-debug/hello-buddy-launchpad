@@ -271,15 +271,8 @@ export default function DashboardMetricas() {
     { id: 'sophia-dispatcher', icon: Send, label: '🚀 Sophia Dispatcher', path: '/sophia-dispatcher' },
     { id: 'produtos', icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { id: 'ia-marketing', icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
-
-    { id: 'campanhas-prospeccao', icon: Users, label: 'Campanhas Prospecção', path: '/campanhas-prospeccao' },
-    { id: 'buscar-cnpj', icon: Search, label: 'Buscar CNPJ', path: '/prospects' },
-    { id: 'leads-funil', icon: Flame, label: 'Funil de Leads', path: '/leads-funil' },
-    { id: 'configurar-icp', icon: Target, label: 'Configurar ICP', path: '/configurar-icp' },
     { id: 'vendedores', icon: Users, label: 'Vendedores', path: '/vendedores' },
-    { id: 'biblioteca', icon: BookOpen, label: 'Biblioteca', path: '/biblioteca' },
     { id: 'analytics', icon: Activity, label: 'Analytics', path: '/analytics' },
-
     { id: 'google-ads', icon: BarChart3, label: 'Google Ads', path: '/google-ads' },
     { id: 'amz-imoveis', icon: Building2, label: 'AMZ Imóveis', path: '/imoveis/leads-enriquecidos' },
     { id: 'pietro-dashboard', icon: Sparkles, label: 'Pietro Dashboard', path: '/pietro-dashboard' },
