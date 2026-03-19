@@ -2057,14 +2057,17 @@ export type Database = {
       fila_atendimento_pj: {
         Row: {
           audio_base64: string | null
+          campanha_id: string | null
           created_at: string | null
           erro: string | null
           id: string
           imagem_url: string | null
           lead_name: string | null
           lead_phone: string
+          lead_source: string | null
           mensagem: string
           metadata: Json | null
+          opt_in_status: string | null
           prioridade: number | null
           scheduled_at: string | null
           sent_at: string | null
@@ -2077,14 +2080,17 @@ export type Database = {
         }
         Insert: {
           audio_base64?: string | null
+          campanha_id?: string | null
           created_at?: string | null
           erro?: string | null
           id?: string
           imagem_url?: string | null
           lead_name?: string | null
           lead_phone: string
+          lead_source?: string | null
           mensagem: string
           metadata?: Json | null
+          opt_in_status?: string | null
           prioridade?: number | null
           scheduled_at?: string | null
           sent_at?: string | null
@@ -2097,14 +2103,17 @@ export type Database = {
         }
         Update: {
           audio_base64?: string | null
+          campanha_id?: string | null
           created_at?: string | null
           erro?: string | null
           id?: string
           imagem_url?: string | null
           lead_name?: string | null
           lead_phone?: string
+          lead_source?: string | null
           mensagem?: string
           metadata?: Json | null
+          opt_in_status?: string | null
           prioridade?: number | null
           scheduled_at?: string | null
           sent_at?: string | null
@@ -2195,6 +2204,45 @@ export type Database = {
           requer_auth?: boolean | null
           tipo?: string
           url_base?: string | null
+        }
+        Relationships: []
+      }
+      gateway_status: {
+        Row: {
+          created_at: string | null
+          gateway_version: string | null
+          id: string
+          ip_type: string | null
+          last_heartbeat: string | null
+          metadata: Json | null
+          phone_number: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          gateway_version?: string | null
+          id?: string
+          ip_type?: string | null
+          last_heartbeat?: string | null
+          metadata?: Json | null
+          phone_number?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          gateway_version?: string | null
+          id?: string
+          ip_type?: string | null
+          last_heartbeat?: string | null
+          metadata?: Json | null
+          phone_number?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -5520,6 +5568,60 @@ export type Database = {
           },
         ]
       }
+      sophia_campanhas: {
+        Row: {
+          created_at: string | null
+          id: string
+          link_hotmart: string | null
+          mensagem_template: string
+          nome: string
+          produto: string | null
+          status: string | null
+          tipo: string | null
+          total_enviados: number | null
+          total_erros: number | null
+          total_frios: number | null
+          total_leads: number | null
+          total_quentes: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          link_hotmart?: string | null
+          mensagem_template: string
+          nome: string
+          produto?: string | null
+          status?: string | null
+          tipo?: string | null
+          total_enviados?: number | null
+          total_erros?: number | null
+          total_frios?: number | null
+          total_leads?: number | null
+          total_quentes?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          link_hotmart?: string | null
+          mensagem_template?: string
+          nome?: string
+          produto?: string | null
+          status?: string | null
+          tipo?: string | null
+          total_enviados?: number | null
+          total_erros?: number | null
+          total_frios?: number | null
+          total_leads?: number | null
+          total_quentes?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       stock_integrations: {
         Row: {
           active: boolean | null
@@ -6797,14 +6899,17 @@ export type Database = {
         Args: { p_limit?: number; p_user_id?: string }
         Returns: {
           audio_base64: string | null
+          campanha_id: string | null
           created_at: string | null
           erro: string | null
           id: string
           imagem_url: string | null
           lead_name: string | null
           lead_phone: string
+          lead_source: string | null
           mensagem: string
           metadata: Json | null
+          opt_in_status: string | null
           prioridade: number | null
           scheduled_at: string | null
           sent_at: string | null
