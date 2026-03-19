@@ -65,6 +65,7 @@ import TikTokCallback from "./pages/TikTokCallback";
 import Termos from "./pages/Termos";
 import Privacidade from "./pages/Privacidade";
 import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
+import ListasContatosPJ from "./pages/pj/ListasContatosPJ";
 import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import SophiaDispatcher from "./pages/SophiaDispatcher";
@@ -153,6 +154,7 @@ const App = () => (
             
             {/* Rotas PJ */}
             <Route path="/pj/whatsapp-automacao" element={<WhatsAppAutomacaoPJ />} />
+            <Route path="/pj/listas-contatos" element={<ListasContatosPJ />} />
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
             <Route path="/sophia-dispatcher" element={<SophiaDispatcher />} />
