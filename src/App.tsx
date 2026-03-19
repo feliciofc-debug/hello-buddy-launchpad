@@ -68,6 +68,7 @@ import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
 import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import SophiaDispatcher from "./pages/SophiaDispatcher";
+import GatewayWhatsApp from "./pages/GatewayWhatsApp";
 
 // Páginas Afiliados
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
@@ -155,6 +156,7 @@ const App = () => (
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
             <Route path="/sophia-dispatcher" element={<SophiaDispatcher />} />
+            <Route path="/gateway-whatsapp" element={<GatewayWhatsApp />} />
             
             {/* TikTok OAuth Callback */}
             <Route path="/tiktok/callback" element={<TikTokCallback />} />
