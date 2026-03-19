@@ -65,6 +65,7 @@ import TikTokCallback from "./pages/TikTokCallback";
 import Termos from "./pages/Termos";
 import Privacidade from "./pages/Privacidade";
 import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
+import ListasContatosPJ from "./pages/pj/ListasContatosPJ";
 import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import SophiaDispatcher from "./pages/SophiaDispatcher";
