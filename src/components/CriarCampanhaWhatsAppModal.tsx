@@ -611,47 +611,21 @@ _Escolha quantidade e finalize!_ ✅`;
         });
       }
 
-      // Inserir em lotes de 100
-      let inseridos = 0;
-      for (let i = 0; i < registrosFila.length; i += 100) {
-        const lote = registrosFila.slice(i, i + 100);
-        const { error: errFila } = await supabase
-          .from('fila_atendimento_pj')
-          .insert(lote);
+      // Inserção única na fila (queue-only)
+      const { error: errFila } = await supabase
+        .from('fila_atendimento_pj')
+        .insert(registrosFila);
 
-        if (errFila) {
-          console.error(`❌ Erro ao inserir lote ${i}-${i + lote.length}:`, errFila);
-        } else {
-          inseridos += lote.length;
-        }
+      if (errFila) {
+        console.error('❌ Erro ao inserir na fila:', errFila);
+        throw errFila;
       }
+
+      const inseridos = registrosFila.length;
 
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`✅ ${inseridos}/${todosContatos.length} contatos inseridos na fila`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-      // Criar conversas para rastreamento de vendedor
-      for (const phone of todosContatos) {
-        const nome = registrosFila.find(r => r.lead_phone === phone)?.lead_name || 'Cliente';
-        await supabase
-          .from('whatsapp_conversations')
-          .upsert({
-            user_id: user.id,
-            phone_number: phone,
-            origem: 'campanha',
-            vendedor_id: vendedorSelecionado || null,
-            contact_name: nome,
-            status: 'active',
-            last_message_at: new Date().toISOString(),
-            metadata: {
-              produto_id: produto.id,
-              produto_nome: produto.nome,
-              produto_preco: produto.preco,
-              campanha_id: campanhaTemp?.id,
-              data_envio: new Date().toISOString()
-            }
-          }, { onConflict: 'user_id,phone_number' });
-      }
 
       // Atualizar campanha com total
       if (campanhaTemp?.id) {
