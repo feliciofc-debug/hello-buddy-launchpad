@@ -156,6 +156,7 @@ const App = () => (
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
             <Route path="/sophia-dispatcher" element={<SophiaDispatcher />} />
+            <Route path="/gateway-whatsapp" element={<GatewayWhatsApp />} />
             
             {/* TikTok OAuth Callback */}
             <Route path="/tiktok/callback" element={<TikTokCallback />} />
