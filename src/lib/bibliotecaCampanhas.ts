@@ -31,12 +31,17 @@ export async function salvarCampanhaNaBiblioteca(params: SalvarCampanhaParams) {
     const { produto, campanha } = params;
 
     // Verificar se já existe essa campanha na biblioteca
-    const { data: existente } = await supabase
+    const { data: existente, error: erroExistente } = await supabase
       .from('biblioteca_campanhas')
       .select('id')
       .eq('user_id', userData.user.id)
       .eq('campanha_id', campanha.id)
-      .single();
+      .maybeSingle();
+
+    if (erroExistente) {
+      console.error('❌ Erro ao verificar biblioteca:', erroExistente);
+      return null;
+    }
 
     if (existente) {
       console.log('📚 Campanha já existe na biblioteca:', existente.id);
