@@ -68,6 +68,7 @@ import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
 import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import SophiaDispatcher from "./pages/SophiaDispatcher";
+import GatewayWhatsApp from "./pages/GatewayWhatsApp";
 
 // Páginas Afiliados
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
