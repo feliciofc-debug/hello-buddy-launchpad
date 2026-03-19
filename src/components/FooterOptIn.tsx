@@ -61,7 +61,6 @@ const FooterOptIn = () => {
     e.preventDefault();
     
     if (!validateForm()) {
-      // Shake animation nos campos com erro
       formRef.current?.classList.add('shake');
       setTimeout(() => formRef.current?.classList.remove('shake'), 500);
       return;
@@ -70,24 +69,20 @@ const FooterOptIn = () => {
     setLoading(true);
     
     try {
-      // Obter IP (opcional, pode falhar)
-      let ipAddress = '';
-      try {
-        const ipResponse = await fetch('https://api.ipify.org?format=json');
-        const ipData = await ipResponse.json();
-        ipAddress = ipData.ip;
-      } catch {
-        console.log('Não foi possível obter IP');
-      }
-      
-      // Chamar edge function que registra e envia WhatsApp
+      // Normalizar telefone
+      const telefoneLimpo = whatsapp.replace(/\D/g, '');
+      const telefoneFormatado = telefoneLimpo.length === 11 
+        ? `55${telefoneLimpo}` 
+        : telefoneLimpo;
+
+      // Salvar lead no Supabase via edge function
       const { data, error } = await supabase.functions.invoke('registrar-optin', {
         body: {
           nome: nome.trim(),
           whatsapp: whatsapp,
           aceite: true,
-          origem: 'site_footer',
-          ip_address: ipAddress,
+          origem: 'site_cadastro',
+          ip_address: '',
           user_agent: navigator.userAgent,
           termo_aceite: 'Autorizo a AMZ Ofertas a me enviar informações, ofertas e conteúdos via WhatsApp. Posso cancelar enviando SAIR.'
         }
@@ -98,27 +93,36 @@ const FooterOptIn = () => {
         throw new Error(error.message || 'Erro ao cadastrar');
       }
       
-      // Verificar resposta
       if (data?.duplicate) {
-        toast.warning('⚠️ Este WhatsApp já está cadastrado!');
+        toast.warning('⚠️ Este WhatsApp já está cadastrado! Redirecionando para o WhatsApp...');
       } else if (data?.success) {
-        toast.success('✅ Cadastro confirmado! Você receberá uma mensagem de boas-vindas no WhatsApp.');
-        
-        // Analytics event
-        if (typeof window !== 'undefined' && (window as any).gtag) {
-          (window as any).gtag('event', 'opt_in_footer', {
-            'event_category': 'cadastro',
-            'event_label': 'footer_whatsapp'
-          });
-        }
-        
-        // Limpar formulário
-        setNome('');
-        setWhatsapp('');
-        setAceite(false);
+        toast.success('✅ Cadastro confirmado! Abrindo WhatsApp...');
       } else if (data?.error) {
         throw new Error(data.error);
       }
+
+      // Analytics event
+      if (typeof window !== 'undefined' && (window as any).gtag) {
+        (window as any).gtag('event', 'opt_in_footer', {
+          'event_category': 'cadastro',
+          'event_label': 'footer_whatsapp_inbound'
+        });
+      }
+      
+      // Limpar formulário
+      setNome('');
+      setWhatsapp('');
+      setAceite(false);
+
+      // Redirecionar para WhatsApp com mensagem pré-preenchida (funil inbound)
+      const mensagemWhatsApp = encodeURIComponent('Oi Sophia, tudo bem? Vim pelo site e quero saber mais sobre desenvolvimento profissional 😊');
+      const waLink = `https://wa.me/5521995379550?text=${mensagemWhatsApp}`;
+      
+      // Pequeno delay para o toast aparecer antes do redirect
+      setTimeout(() => {
+        window.open(waLink, '_blank');
+      }, 800);
+
     } catch (error: any) {
       console.error('Erro ao cadastrar:', error);
       toast.error('❌ ' + (error.message || 'Erro ao cadastrar. Tente novamente.'));
