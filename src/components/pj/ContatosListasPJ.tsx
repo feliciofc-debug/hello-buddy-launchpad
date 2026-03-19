@@ -116,13 +116,41 @@ export default function ContatosListasPJ() {
   };
 
   const loadListas = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("pj_listas_categoria")
       .select("id, nome, descricao, total_membros, created_at")
       .eq("user_id", userId)
       .eq("ativa", true)
       .order("created_at", { ascending: false });
-    setListas((data as ListaItem[]) || []);
+
+    if (error || !data) {
+      setListas([]);
+      return;
+    }
+
+    const listaIds = data.map((lista) => lista.id);
+    if (listaIds.length === 0) {
+      setListas([]);
+      return;
+    }
+
+    const { data: membrosData } = await supabase
+      .from("pj_lista_membros")
+      .select("lista_id")
+      .in("lista_id", listaIds);
+
+    const membrosCountByLista = (membrosData || []).reduce<Record<string, number>>((acc, membro) => {
+      if (!membro.lista_id) return acc;
+      acc[membro.lista_id] = (acc[membro.lista_id] || 0) + 1;
+      return acc;
+    }, {});
+
+    const listasComContagemReal: ListaItem[] = data.map((lista) => ({
+      ...lista,
+      total_membros: membrosCountByLista[lista.id] ?? lista.total_membros ?? 0,
+    }));
+
+    setListas(listasComContagemReal);
   };
 
   const loadGrupos = async () => {
