@@ -269,7 +269,7 @@ export default function DashboardMetricas() {
     { id: 'dashboard', icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
     { id: 'gateway-whatsapp', icon: Smartphone, label: '📱 Gateway WhatsApp', path: '/gateway-whatsapp' },
     { id: 'sophia-dispatcher', icon: Send, label: '🚀 Sophia Dispatcher', path: '/sophia-dispatcher' },
-    { id: 'contatos', icon: Users, label: '📋 Contatos', path: '/contatoswhatsapp' },
+    { id: 'contatos', icon: BookOpen, label: '📋 Listas e Contatos', path: '/contatoswhatsapp' },
     { id: 'produtos', icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { id: 'ia-marketing', icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
     { id: 'vendedores', icon: Users, label: 'Vendedores', path: '/vendedores' },
