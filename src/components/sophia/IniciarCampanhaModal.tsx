@@ -72,25 +72,44 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
 
     setLoading(true);
     try {
+      // Verificar sessão antes de inserir
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        console.error("❌ [SOPHIA] Sessão inválida:", sessionError);
+        toast.error("Sessão expirada. Faça login novamente.");
+        return;
+      }
+      
+      const currentUserId = session.user.id;
+      console.log("🎯 [SOPHIA] Criando campanha com user_id:", currentUserId, "userId prop:", userId);
+
       // 1. Criar campanha
+      const insertData = {
+        user_id: currentUserId,
+        nome: nome.trim(),
+        tipo,
+        mensagem_template: template,
+        total_leads: contatos.length,
+        status: "agendada",
+      };
+      console.log("📝 [SOPHIA] Insert data:", JSON.stringify(insertData));
+
       const { data: campanha, error: errCampanha } = await supabase
         .from("sophia_campanhas")
-        .insert({
-          user_id: userId,
-          nome: nome.trim(),
-          tipo,
-          mensagem_template: template,
-          total_leads: contatos.length,
-          status: "agendada",
-        })
+        .insert(insertData)
         .select()
         .single();
 
-      if (errCampanha) throw errCampanha;
+      if (errCampanha) {
+        console.error("❌ [SOPHIA] Erro ao criar campanha:", JSON.stringify(errCampanha));
+        throw errCampanha;
+      }
+
+      console.log("✅ [SOPHIA] Campanha criada:", campanha?.id);
 
       // 2. Inserir na fila
       const filaItems = contatos.map((c) => ({
-        user_id: userId,
+        user_id: currentUserId,
         lead_phone: c.phone,
         lead_name: c.nome,
         mensagem: template.replace(/\{\{nome\}\}/g, c.nome),
@@ -105,7 +124,11 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
       for (let i = 0; i < filaItems.length; i += 100) {
         const batch = filaItems.slice(i, i + 100);
         const { error: errFila } = await supabase.from("fila_atendimento_pj").insert(batch);
-        if (errFila) throw errFila;
+        if (errFila) {
+          console.error("❌ [SOPHIA] Erro ao inserir fila batch", i, ":", JSON.stringify(errFila));
+          throw errFila;
+        }
+        console.log("✅ [SOPHIA] Fila batch", i, "inserida com", batch.length, "itens");
       }
 
       toast.success(`🚀 Campanha "${nome}" criada com ${contatos.length} contatos!`);
@@ -113,7 +136,7 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
       setContatosRaw("");
       onClose();
     } catch (err: any) {
-      console.error("Erro ao criar campanha:", err);
+      console.error("❌ [SOPHIA] Erro completo:", err);
       toast.error(`Erro: ${err.message}`);
     } finally {
       setLoading(false);
