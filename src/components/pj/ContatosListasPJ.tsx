@@ -244,11 +244,12 @@ export default function ContatosListasPJ() {
       return;
     }
     try {
-      await supabase.from("pj_lista_membros").insert({
+      const { error } = await supabase.from("pj_lista_membros").insert({
         lista_id: addMemberListaId,
         nome: newMemberNome.trim() || null,
         telefone: newMemberTelefone.trim(),
       });
+      if (error) throw error;
       toast.success("Membro adicionado!");
       setNewMemberNome("");
       setNewMemberTelefone("");
