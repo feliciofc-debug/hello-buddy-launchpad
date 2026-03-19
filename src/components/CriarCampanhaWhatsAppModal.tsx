@@ -575,116 +575,97 @@ _Escolha quantidade e finalize!_ ✅`;
       });
     }
 
-    // Mostrar toast e iniciar envio em background
-    toast.success(`🚀 Iniciando envio para ${todosContatos.length} contatos...`);
+    // INSERIR NA FILA para o dispatcher local processar
+    toast.success(`🚀 Inserindo ${todosContatos.length} contatos na fila de envio...`);
     
-    // Executar envio em background - ENVIO EM LOTE (evita SQLITE_BUSY)
-    setTimeout(async () => {
-      let enviados = 0;
-      let erros = 0;
+    try {
+      // Resolver nomes e preparar registros para a fila
+      const registrosFila = [];
+      for (const phone of todosContatos) {
+        const nome = await resolverNomeContato(phone, user.id, listasSelecionadas);
+        
+        const mensagemPersonalizada = mensagem
+          .replace(/\{\{nome\}\}/gi, nome)
+          .replace(/\{\{produto\}\}/gi, produto.nome)
+          .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
 
-      try {
-        // ENVIAR UM POR UM com personalização de nome
-        for (const [index, phone] of todosContatos.entries()) {
-          try {
-            const nome = await resolverNomeContato(phone, user.id, listasSelecionadas);
-            
-            // Personalizar mensagem COM O NOME
-            const mensagemPersonalizada = mensagem
-              .replace(/\{\{nome\}\}/gi, nome)
-              .replace(/\{\{produto\}\}/gi, produto.nome)
-              .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
-
-            console.log(`📤 [${index + 1}/${todosContatos.length}] Enviando para ${phone} (${nome})`);
-
-            // Enviar UM POR UM via função PJ
-            const { data: sendData, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
-              body: {
-                phoneNumbers: [phone],
-                message: mensagemPersonalizada,
-                imageUrl: produto.imagem_url,
-                userId: user.id,
-                validateBeforeSend: false
-              }
-            });
-
-            const firstResult = Array.isArray(sendData?.results) ? sendData.results[0] : null;
-            const envioOk = !sendError && (firstResult ? firstResult.success === true : sendData?.success !== false);
-
-            if (envioOk) {
-              enviados++;
-            } else {
-              console.error('Envio falhou:', { phone, sendError, firstResult });
-              erros++;
-            }
-
-            // CRIAR CONVERSA com vendedor (se selecionado)
-            await supabase
-              .from('whatsapp_conversations')
-              .delete()
-              .eq('user_id', user.id)
-              .eq('phone_number', phone);
-
-            await supabase
-              .from('whatsapp_conversations')
-              .insert({
-                user_id: user.id,
-                phone_number: phone,
-                origem: 'campanha',
-                vendedor_id: vendedorSelecionado || null,
-                contact_name: nome,
-                status: 'active',
-                last_message_at: new Date().toISOString(),
-                metadata: {
-                  produto_id: produto.id,
-                  produto_nome: produto.nome,
-                  produto_preco: produto.preco,
-                  campanha_id: campanhaTemp?.id,
-                  data_envio: new Date().toISOString()
-                }
-              });
-
-            // Delay entre envios (2s)
-            if (index < todosContatos.length - 1) {
-              await new Promise(r => setTimeout(r, 2000));
-            }
-          } catch (error) {
-            console.error('Erro:', phone, error);
-            erros++;
+        registrosFila.push({
+          user_id: user.id,
+          lead_phone: phone,
+          lead_name: nome,
+          mensagem: mensagemPersonalizada,
+          imagem_url: produto.imagem_url || null,
+          tipo_mensagem: 'campanha',
+          prioridade: 5,
+          status: 'pendente',
+          scheduled_at: new Date().toISOString(),
+          tentativas: 0,
+          lead_source: 'campanha_produtos',
+          campanha_id: campanhaTemp?.id || null,
+          metadata: {
+            produto_id: produto.id,
+            produto_nome: produto.nome,
+            produto_preco: produto.preco,
+            vendedor_id: vendedorSelecionado || null
           }
-        }
-      } catch (error) {
-        console.error('❌ Erro geral no envio:', error);
-        erros = todosContatos.length;
+        });
       }
 
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`✅ CONCLUÍDO: ${enviados} enviados, ${erros} erros`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      // Inserir em lotes de 100
+      let inseridos = 0;
+      for (let i = 0; i < registrosFila.length; i += 100) {
+        const lote = registrosFila.slice(i, i + 100);
+        const { error: errFila } = await supabase
+          .from('fila_atendimento_pj')
+          .insert(lote);
 
-      // VERIFICAÇÃO FINAL: Conferir se vendedor_id foi salvo
-      if (vendedorSelecionado) {
-        const { count: conversasCount } = await supabase
-          .from('whatsapp_conversations')
-          .select('*', { count: 'exact', head: true })
-          .eq('vendedor_id', vendedorSelecionado)
-          .gte('created_at', new Date(Date.now() - 120000).toISOString());
-        
-        console.log(`🔍 VERIFICAÇÃO: ${conversasCount || 0} conversas vinculadas ao vendedor`);
-        
-        if (!conversasCount || conversasCount === 0) {
-          console.error('❌ ERRO: Nenhuma conversa foi criada com vendedor_id!');
-          toast.error('Erro: Conversas não foram vinculadas ao vendedor!');
-        } else if (conversasCount < todosContatos.length) {
-          console.warn(`⚠️ ATENÇÃO: Apenas ${conversasCount}/${todosContatos.length} conversas vinculadas`);
+        if (errFila) {
+          console.error(`❌ Erro ao inserir lote ${i}-${i + lote.length}:`, errFila);
         } else {
-          console.log('✅ Todas as conversas foram vinculadas ao vendedor');
+          inseridos += lote.length;
         }
       }
 
-      // Toast final quando terminar
-      toast.success(`✅ Campanha concluída! ${enviados} enviados, ${erros} erros`);
-    }, 100);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`✅ ${inseridos}/${todosContatos.length} contatos inseridos na fila`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      // Criar conversas para rastreamento de vendedor
+      for (const phone of todosContatos) {
+        const nome = registrosFila.find(r => r.lead_phone === phone)?.lead_name || 'Cliente';
+        await supabase
+          .from('whatsapp_conversations')
+          .upsert({
+            user_id: user.id,
+            phone_number: phone,
+            origem: 'campanha',
+            vendedor_id: vendedorSelecionado || null,
+            contact_name: nome,
+            status: 'active',
+            last_message_at: new Date().toISOString(),
+            metadata: {
+              produto_id: produto.id,
+              produto_nome: produto.nome,
+              produto_preco: produto.preco,
+              campanha_id: campanhaTemp?.id,
+              data_envio: new Date().toISOString()
+            }
+          }, { onConflict: 'user_id,phone_number' });
+      }
+
+      // Atualizar campanha com total
+      if (campanhaTemp?.id) {
+        await supabase
+          .from('campanhas_recorrentes')
+          .update({ total_enviados: inseridos })
+          .eq('id', campanhaTemp.id);
+      }
+
+      toast.success(`✅ ${inseridos} contatos na fila! O dispatcher enviará automaticamente.`);
+    } catch (error) {
+      console.error('❌ Erro ao inserir na fila:', error);
+      toast.error('Erro ao inserir contatos na fila de envio');
+    }
   };
 
   const salvarCampanhaRecorrente = async () => {
