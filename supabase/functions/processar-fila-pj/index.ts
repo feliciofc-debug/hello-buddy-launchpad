@@ -43,6 +43,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function isGrupoJid(destino: string): boolean {
+  return (destino || '').includes('@g.us');
+}
+
+function formatarDestinoWhatsApp(destino: string): string {
+  const destinoLimpo = (destino || '').trim();
+
+  if (isGrupoJid(destinoLimpo)) {
+    return destinoLimpo;
+  }
+
+  let formattedPhone = destinoLimpo.replace(/\D/g, "");
+  if (!formattedPhone.startsWith("55") && formattedPhone.length === 11) {
+    formattedPhone = "55" + formattedPhone;
+  }
+
+  return formattedPhone;
+}
+
 function calcularTempoDigitacao(mensagem: string): number {
   const tamanho = mensagem?.length || 0;
   const base = CONFIG.TEMPO_TYPING_MIN_MS + 
@@ -65,10 +84,7 @@ async function enviarStatusDigitando(
   phone: string
 ): Promise<boolean> {
   try {
-    let formattedPhone = phone.replace(/\D/g, "");
-    if (!formattedPhone.startsWith("55") && formattedPhone.length === 11) {
-      formattedPhone = "55" + formattedPhone;
-    }
+    const formattedPhone = formatarDestinoWhatsApp(phone);
 
     const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
 
@@ -120,10 +136,7 @@ async function enviarMensagem(
   tipoMensagem?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    let formattedPhone = phone.replace(/\D/g, "");
-    if (!formattedPhone.startsWith("55") && formattedPhone.length === 11) {
-      formattedPhone = "55" + formattedPhone;
-    }
+    const formattedPhone = formatarDestinoWhatsApp(phone);
 
     const baseUrl = wuzapiUrl.endsWith('/') ? wuzapiUrl.slice(0, -1) : wuzapiUrl;
     
@@ -287,6 +300,7 @@ async function processarItem(
     const mensagem = item.mensagem;
     const tipoMensagem = item.tipo_mensagem || 'texto';
     const audioBase64 = item.audio_base64;
+    const destinoEhGrupo = isGrupoJid(phone);
 
     // Áudio não precisa de mensagem obrigatória
     if (!mensagem && tipoMensagem !== 'audio') {
@@ -325,15 +339,17 @@ async function processarItem(
       .eq("id", item.id);
 
     // 2️⃣ ENVIAR STATUS "DIGITANDO" (humaniza) - apenas para texto/imagem
-    if (tipoMensagem !== 'audio') {
+    if (tipoMensagem !== 'audio' && !destinoEhGrupo) {
       await enviarStatusDigitando(wuzapiUrl, wuzapiToken, phone);
     }
 
     // 3️⃣ AGUARDAR TEMPO DE DIGITAÇÃO (humaniza) - apenas para texto/imagem
-    if (tipoMensagem !== 'audio') {
+    if (tipoMensagem !== 'audio' && !destinoEhGrupo) {
       const tempoDigitacao = calcularTempoDigitacao(mensagem);
       console.log(`⏳ [PJ-FILA] Simulando digitação por ${tempoDigitacao}ms...`);
       await sleep(tempoDigitacao);
+    } else if (tipoMensagem !== 'audio') {
+      await sleep(600);
     } else {
       // Pequeno delay para áudio
       await sleep(1000);
