@@ -17,6 +17,8 @@ interface WhatsAppGroup {
   group_name: string;
   member_count: number;
   phone_numbers: string[];
+  source: 'whatsapp_group' | 'afiliado_lista' | 'pj_lista' | 'pj_grupo';
+  group_jid?: string | null;
 }
 
 interface Vendedor {
@@ -205,6 +207,19 @@ _Escolha quantidade e finalize!_ ✅`);
         console.error('⚠️ Erro ao buscar listas PJ:', pjError);
       }
 
+      // Buscar grupos PJ (destino de grupo real)
+      const { data: pjGrupos, error: pjGruposError } = await supabase
+        .from('pj_grupos_whatsapp')
+        .select('id, nome, grupo_jid, participantes_count')
+        .eq('user_id', user.id)
+        .eq('ativo', true)
+        .not('grupo_jid', 'is', null)
+        .order('created_at', { ascending: false });
+
+      if (pjGruposError) {
+        console.error('⚠️ Erro ao buscar grupos PJ:', pjGruposError);
+      }
+
       // Para cada lista automática (afiliado), buscar os telefones dos membros
       const listasAutoComTelefones = await Promise.all(
         (autoListas || []).filter(l => (l.total_membros || 0) > 0).map(async (lista) => {
@@ -230,7 +245,9 @@ _Escolha quantidade e finalize!_ ✅`);
             group_id: lista.id,
             group_name: `📂 ${lista.nome}`,
             member_count: lista.total_membros || 0,
-            phone_numbers: phoneNumbers
+            phone_numbers: phoneNumbers,
+            source: 'afiliado_lista',
+            group_jid: null,
           } as WhatsAppGroup;
         })
       );
@@ -248,25 +265,40 @@ _Escolha quantidade e finalize!_ ✅`);
             group_id: lista.id,
             group_name: `📋 ${lista.nome}`,
             member_count: lista.total_membros || membros?.length || 0,
-            phone_numbers: membros?.map(m => m.telefone) || []
+            phone_numbers: membros?.map(m => m.telefone) || [],
+            source: 'pj_lista',
+            group_jid: null,
           } as WhatsAppGroup;
         })
       );
+
+      const gruposPJComoDestinos: WhatsAppGroup[] = (pjGrupos || []).map((grupo) => ({
+        id: grupo.id,
+        group_id: grupo.id,
+        group_name: `👥 ${grupo.nome}`,
+        member_count: grupo.participantes_count || 0,
+        phone_numbers: [],
+        source: 'pj_grupo',
+        group_jid: grupo.grupo_jid,
+      }));
 
       // Combinar todas as listas
       const todasListas: WhatsAppGroup[] = [
         ...listasAutoComTelefones,
         ...listasPJComTelefones,
+        ...gruposPJComoDestinos,
         ...(manualListas || []).map(g => ({
           id: g.id,
           group_id: g.group_id,
           group_name: g.group_name,
           member_count: g.member_count || 0,
-          phone_numbers: g.phone_numbers || []
+          phone_numbers: g.phone_numbers || [],
+          source: 'whatsapp_group',
+          group_jid: g.group_id || null,
         }))
       ];
 
-      console.log(`✅ ${todasListas.length} listas carregadas (${listasAutoComTelefones.length} automáticas + ${manualListas?.length || 0} manuais)`);
+      console.log(`✅ ${todasListas.length} destinos carregados (${listasAutoComTelefones.length} afiliado + ${listasPJComTelefones.length} listas PJ + ${gruposPJComoDestinos.length} grupos PJ + ${manualListas?.length || 0} manuais)`);
       setListas(todasListas);
     } catch (error) {
       console.error('❌ ERRO ao buscar listas:', error);
@@ -491,44 +523,56 @@ _Escolha quantidade e finalize!_ ✅`;
     
     console.log('📦 Produto:', produto.nome);
 
-    // Buscar contatos das listas selecionadas (whatsapp_groups + pj_lista_membros)
+    // Separar destinos de contato x destinos de grupo
+    const destinosSelecionados = listas.filter((lista) => listasSelecionadas.includes(lista.id));
+    const gruposSelecionados = destinosSelecionados.filter(
+      (destino): destino is WhatsAppGroup & { group_jid: string } => destino.source === 'pj_grupo' && !!destino.group_jid,
+    );
+    const listasContatoIds = destinosSelecionados
+      .filter((destino) => destino.source !== 'pj_grupo')
+      .map((destino) => destino.id);
+
+    // Buscar contatos das listas selecionadas (whatsapp_groups + pj_lista_membros + afiliado_lista_membros)
     let todosContatos: string[] = [];
 
-    // 1. Buscar de whatsapp_groups (listas manuais)
-    const { data: listasData } = await supabase
-      .from('whatsapp_groups')
-      .select('phone_numbers')
-      .in('id', listasSelecionadas);
-    todosContatos.push(...(listasData?.flatMap(l => l.phone_numbers || []) || []));
+    if (listasContatoIds.length > 0) {
+      // 1. Buscar de whatsapp_groups (listas manuais)
+      const { data: listasData } = await supabase
+        .from('whatsapp_groups')
+        .select('phone_numbers')
+        .in('id', listasContatoIds);
+      todosContatos.push(...(listasData?.flatMap(l => l.phone_numbers || []) || []));
 
-    // 2. Buscar de pj_lista_membros (listas PJ)
-    const { data: membrosPJ } = await supabase
-      .from('pj_lista_membros')
-      .select('telefone')
-      .in('lista_id', listasSelecionadas);
-    todosContatos.push(...(membrosPJ?.map(m => m.telefone) || []));
+      // 2. Buscar de pj_lista_membros (listas PJ)
+      const { data: membrosPJ } = await supabase
+        .from('pj_lista_membros')
+        .select('telefone')
+        .in('lista_id', listasContatoIds);
+      todosContatos.push(...(membrosPJ?.map(m => m.telefone) || []));
 
-    // 3. Buscar de afiliado_lista_membros -> leads_ebooks (listas afiliado)
-    const { data: membrosAfiliado } = await supabase
-      .from('afiliado_lista_membros')
-      .select('lead_id')
-      .in('lista_id', listasSelecionadas);
-    if (membrosAfiliado && membrosAfiliado.length > 0) {
-      const leadIds = membrosAfiliado.map(m => m.lead_id);
-      const { data: leads } = await supabase
-        .from('leads_ebooks')
-        .select('phone')
-        .in('id', leadIds);
-      todosContatos.push(...(leads?.map(l => l.phone) || []));
+      // 3. Buscar de afiliado_lista_membros -> leads_ebooks (listas afiliado)
+      const { data: membrosAfiliado } = await supabase
+        .from('afiliado_lista_membros')
+        .select('lead_id')
+        .in('lista_id', listasContatoIds);
+      if (membrosAfiliado && membrosAfiliado.length > 0) {
+        const leadIds = membrosAfiliado.map(m => m.lead_id);
+        const { data: leads } = await supabase
+          .from('leads_ebooks')
+          .select('phone')
+          .in('id', leadIds);
+        todosContatos.push(...(leads?.map(l => l.phone) || []));
+      }
     }
 
     // Deduplicar + normalizar telefone para melhorar resolução de nome
     todosContatos = [...new Set(todosContatos.map(normalizarTelefone))].filter(Boolean);
     console.log('📋 Total contatos (deduplicados):', todosContatos.length);
+    console.log('👥 Total grupos selecionados:', gruposSelecionados.length);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    if (todosContatos.length === 0) {
-      toast.error('Nenhum contato encontrado nas listas selecionadas');
+    if (todosContatos.length === 0 && gruposSelecionados.length === 0) {
+      toast.error('Nenhum contato ou grupo válido encontrado nos destinos selecionados');
       return;
     }
 
@@ -578,7 +622,8 @@ _Escolha quantidade e finalize!_ ✅`;
     }
 
     // INSERIR NA FILA para o dispatcher local processar (1 insert por contato)
-    toast.success(`🚀 Inserindo ${todosContatos.length} contatos na fila de envio...`);
+    const totalDestinos = todosContatos.length + gruposSelecionados.length;
+    toast.success(`🚀 Inserindo ${totalDestinos} destino(s) na fila de envio...`);
 
     let inseridos = 0;
     let falhas = 0;
@@ -631,12 +676,57 @@ _Escolha quantidade e finalize!_ ✅`;
       inseridos++;
     }
 
+    // Inserir destinos de grupo (sem envio direto, apenas fila)
+    for (const grupo of gruposSelecionados) {
+      const mensagemGrupo = mensagem
+        .replace(/\{\{nome\}\}/gi, 'Pessoal')
+        .replace(/\{\{produto\}\}/gi, produto.nome)
+        .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
+
+      console.log('[CAMPANHA] Inserindo', grupo.group_jid, 'na fila...');
+
+      const { error } = await supabase.from('fila_atendimento_pj').insert({
+        user_id: user.id,
+        lead_phone: grupo.group_jid,
+        lead_name: grupo.group_name,
+        mensagem: mensagemGrupo,
+        imagem_url: produto.imagem_url || null,
+        tipo_mensagem: 'campanha',
+        prioridade: 5,
+        status: 'pendente',
+        scheduled_at: new Date().toISOString(),
+        tentativas: 0,
+        lead_source: 'campanha_produtos_grupo',
+        campanha_id: campanhaTemp?.id || null,
+        metadata: {
+          produto_id: produto.id,
+          produto_nome: produto.nome,
+          produto_preco: produto.preco,
+          vendedor_id: vendedorSelecionado || null,
+          destination_type: 'grupo_whatsapp',
+          grupo_id: grupo.id,
+          grupo_jid: grupo.group_jid,
+          grupo_nome: grupo.group_name,
+        },
+      });
+
+      console.log('[CAMPANHA] Resultado:', error ? error.message : 'OK');
+
+      if (error) {
+        console.error('ERRO INSERT FILA:', error);
+        falhas++;
+        continue;
+      }
+
+      inseridos++;
+    }
+
     if (inseridos === 0) {
       throw new Error('Nenhum contato foi inserido na fila_atendimento_pj');
     }
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`✅ ${inseridos}/${todosContatos.length} contatos inseridos na fila`);
+    console.log(`✅ ${inseridos}/${totalDestinos} destinos inseridos na fila`);
     console.log(`⚠️ Falhas: ${falhas}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
@@ -653,7 +743,7 @@ _Escolha quantidade e finalize!_ ✅`;
       return;
     }
 
-    toast.success(`✅ ${inseridos} contatos na fila! O dispatcher enviará automaticamente.`);
+    toast.success(`✅ ${inseridos} destino(s) na fila! O dispatcher enviará automaticamente.`);
   };
 
   const salvarCampanhaRecorrente = async () => {
