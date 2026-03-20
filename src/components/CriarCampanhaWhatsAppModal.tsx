@@ -577,72 +577,74 @@ _Escolha quantidade e finalize!_ ✅`;
       });
     }
 
-    // INSERIR NA FILA para o dispatcher local processar
+    // INSERIR NA FILA para o dispatcher local processar (1 insert por contato)
     toast.success(`🚀 Inserindo ${todosContatos.length} contatos na fila de envio...`);
-    
-    try {
-      // Resolver nomes e preparar registros para a fila
-      const registrosFila = [];
-      for (const phone of todosContatos) {
-        const nome = await resolverNomeContato(phone, user.id, listasSelecionadas);
-        
-        const mensagemPersonalizada = mensagem
-          .replace(/\{\{nome\}\}/gi, nome)
-          .replace(/\{\{produto\}\}/gi, produto.nome)
-          .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
 
-        registrosFila.push({
-          user_id: user.id,
-          lead_phone: phone,
-          lead_name: nome,
-          mensagem: mensagemPersonalizada,
-          imagem_url: produto.imagem_url || null,
-          tipo_mensagem: 'campanha',
-          prioridade: 5,
-          status: 'pendente',
-          scheduled_at: new Date().toISOString(),
-          tentativas: 0,
-          lead_source: 'campanha_produtos',
-          campanha_id: campanhaTemp?.id || null,
-          metadata: {
-            produto_id: produto.id,
-            produto_nome: produto.nome,
-            produto_preco: produto.preco,
-            vendedor_id: vendedorSelecionado || null
-          }
-        });
+    let inseridos = 0;
+    let falhas = 0;
+
+    for (const phone of todosContatos) {
+      let nomeContato = '';
+
+      try {
+        nomeContato = await resolverNomeContato(phone, user.id, listasSelecionadas);
+      } catch (nomeError) {
+        console.warn('[CAMPANHA] Falha ao resolver nome do contato, usando vazio:', phone, nomeError);
       }
 
-      // Inserção única na fila (queue-only)
-      const { error: errFila } = await supabase
-        .from('fila_atendimento_pj')
-        .insert(registrosFila);
+      const mensagemFormatada = mensagem
+        .replace(/\{\{nome\}\}/gi, nomeContato || '')
+        .replace(/\{\{produto\}\}/gi, produto.nome)
+        .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
 
-      if (errFila) {
-        console.error('❌ Erro ao inserir na fila:', errFila);
-        throw errFila;
+      console.log('[CAMPANHA] Inserindo', phone, 'na fila...');
+
+      const { error } = await supabase.from('fila_atendimento_pj').insert({
+        user_id: user.id,
+        lead_phone: phone,
+        lead_name: nomeContato || '',
+        mensagem: mensagemFormatada,
+        status: 'pendente',
+        scheduled_at: new Date().toISOString(),
+        tentativas: 0,
+        lead_source: 'campanha_produtos',
+        campanha_id: campanhaTemp?.id || null,
+      });
+
+      console.log('[CAMPANHA] Resultado:', error ? error.message : 'OK');
+
+      if (error) {
+        console.error('ERRO INSERT FILA:', error);
+        falhas++;
+        continue;
       }
 
-      const inseridos = registrosFila.length;
-
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`✅ ${inseridos}/${todosContatos.length} contatos inseridos na fila`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-      // Atualizar campanha com total
-      if (campanhaTemp?.id) {
-        await supabase
-          .from('campanhas_recorrentes')
-          .update({ total_enviados: inseridos })
-          .eq('id', campanhaTemp.id);
-      }
-
-      toast.success(`✅ ${inseridos} contatos na fila! O dispatcher enviará automaticamente.`);
-    } catch (error) {
-      console.error('❌ Erro ao inserir na fila:', error);
-      toast.error('Erro ao inserir contatos na fila de envio');
-      throw error;
+      inseridos++;
     }
+
+    if (inseridos === 0) {
+      throw new Error('Nenhum contato foi inserido na fila_atendimento_pj');
+    }
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`✅ ${inseridos}/${todosContatos.length} contatos inseridos na fila`);
+    console.log(`⚠️ Falhas: ${falhas}`);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+    // Atualizar campanha com total
+    if (campanhaTemp?.id) {
+      await supabase
+        .from('campanhas_recorrentes')
+        .update({ total_enviados: inseridos })
+        .eq('id', campanhaTemp.id);
+    }
+
+    if (falhas > 0) {
+      toast.warning(`⚠️ ${inseridos} inseridos e ${falhas} falharam. Veja o console para detalhes.`);
+      return;
+    }
+
+    toast.success(`✅ ${inseridos} contatos na fila! O dispatcher enviará automaticamente.`);
   };
 
   const salvarCampanhaRecorrente = async () => {
