@@ -14,6 +14,7 @@ import { salvarCampanhaNaBiblioteca } from '@/lib/bibliotecaCampanhas';
 
 interface WhatsAppGroup {
   id: string;
+  group_id?: string;
   group_name: string;
   member_count: number;
   phone_numbers: string[];
