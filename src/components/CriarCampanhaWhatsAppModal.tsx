@@ -622,12 +622,11 @@ _Escolha quantidade e finalize!_ ✅`;
       });
     }
 
-    // INSERIR NA FILA para o dispatcher local processar (1 insert por contato)
+    // INSERIR NA FILA para o dispatcher local processar (RPC única)
     const totalDestinos = todosContatos.length + gruposSelecionados.length;
     toast.success(`🚀 Inserindo ${totalDestinos} destino(s) na fila de envio...`);
 
-    let inseridos = 0;
-    let falhas = 0;
+    const contatosPayload: Array<Record<string, any>> = [];
 
     for (const phone of todosContatos) {
       let nomeContato = '';
@@ -643,21 +642,16 @@ _Escolha quantidade e finalize!_ ✅`;
         .replace(/\{\{produto\}\}/gi, produto.nome)
         .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
 
-      console.log('[CAMPANHA] Inserindo', phone, 'na fila...');
-
-      const { error } = await supabase.from('fila_atendimento_pj').insert({
-        user_id: user.id,
-        lead_phone: phone,
-        lead_name: nomeContato || '',
+      contatosPayload.push({
+        phone,
+        name: nomeContato || '',
         mensagem: mensagemFormatada,
+        campanha_id: campanhaTemp?.id || null,
+        lead_source: 'campanha_produtos',
         imagem_url: produto.imagem_url || null,
         tipo_mensagem: 'campanha',
         prioridade: 5,
-        status: 'pendente',
         scheduled_at: new Date().toISOString(),
-        tentativas: 0,
-        lead_source: 'campanha_produtos',
-        campanha_id: campanhaTemp?.id || null,
         metadata: {
           produto_id: produto.id,
           produto_nome: produto.nome,
@@ -665,40 +659,24 @@ _Escolha quantidade e finalize!_ ✅`;
           vendedor_id: vendedorSelecionado || null,
         },
       });
-
-      console.log('[CAMPANHA] Resultado:', error ? error.message : 'OK');
-
-      if (error) {
-        console.error('ERRO INSERT FILA:', error);
-        falhas++;
-        continue;
-      }
-
-      inseridos++;
     }
 
-    // Inserir destinos de grupo (sem envio direto, apenas fila)
     for (const grupo of gruposSelecionados) {
       const mensagemGrupo = mensagem
         .replace(/\{\{nome\}\}/gi, 'Pessoal')
         .replace(/\{\{produto\}\}/gi, produto.nome)
         .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
 
-      console.log('[CAMPANHA] Inserindo', grupo.group_jid, 'na fila...');
-
-      const { error } = await supabase.from('fila_atendimento_pj').insert({
-        user_id: user.id,
-        lead_phone: grupo.group_jid,
-        lead_name: grupo.group_name,
+      contatosPayload.push({
+        phone: grupo.group_jid,
+        name: grupo.group_name,
         mensagem: mensagemGrupo,
+        campanha_id: campanhaTemp?.id || null,
+        lead_source: 'campanha_produtos_grupo',
         imagem_url: produto.imagem_url || null,
         tipo_mensagem: 'campanha',
         prioridade: 5,
-        status: 'pendente',
         scheduled_at: new Date().toISOString(),
-        tentativas: 0,
-        lead_source: 'campanha_produtos_grupo',
-        campanha_id: campanhaTemp?.id || null,
         metadata: {
           produto_id: produto.id,
           produto_nome: produto.nome,
@@ -710,17 +688,33 @@ _Escolha quantidade e finalize!_ ✅`;
           grupo_nome: grupo.group_name,
         },
       });
-
-      console.log('[CAMPANHA] Resultado:', error ? error.message : 'OK');
-
-      if (error) {
-        console.error('ERRO INSERT FILA:', error);
-        falhas++;
-        continue;
-      }
-
-      inseridos++;
     }
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc('inserir_campanha_fila', {
+      p_user_id: user.id,
+      p_contatos: contatosPayload,
+      p_mensagem: mensagem,
+      p_lead_source: 'campanha_produtos',
+      p_campanha_id: campanhaTemp?.id || null,
+      p_imagem_url: produto.imagem_url || null,
+      p_tipo_mensagem: 'campanha',
+      p_prioridade: 5,
+      p_metadata: {
+        produto_id: produto.id,
+        produto_nome: produto.nome,
+        produto_preco: produto.preco,
+        vendedor_id: vendedorSelecionado || null,
+      },
+      p_scheduled_at: new Date().toISOString(),
+    });
+
+    if (rpcError) {
+      console.error('ERRO RPC inserir_campanha_fila:', rpcError);
+      throw rpcError;
+    }
+
+    const inseridos = Number((rpcData as { inseridos?: number } | null)?.inseridos ?? 0);
+    const falhas = Number((rpcData as { falhas?: number } | null)?.falhas ?? 0);
 
     if (inseridos === 0) {
       throw new Error('Nenhum contato foi inserido na fila_atendimento_pj');

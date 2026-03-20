@@ -184,19 +184,16 @@ export function useScheduledCampaigns(userId: string | undefined) {
 
             let enviados = 0;
             let pulados = 0;
-            const registrosFila: Array<{
-              user_id: string;
-              lead_phone: string;
-              lead_name: string;
+            const contatosParaFila: Array<{
+              phone: string;
+              name: string;
               mensagem: string;
               imagem_url: string | null;
               tipo_mensagem: string;
               prioridade: number;
-              status: string;
-              scheduled_at: string;
-              tentativas: number;
               lead_source: string;
               campanha_id: string;
+              scheduled_at: string;
               metadata: any;
             }> = [];
 
@@ -245,17 +242,14 @@ export function useScheduledCampaigns(userId: string | undefined) {
                   .replace(/\{\{produto\}\}/gi, campanha.produtos?.nome || 'Produto')
                   .replace(/\{\{preco\}\}/gi, campanha.produtos?.preco?.toString() || '0');
 
-                registrosFila.push({
-                  user_id: userId,
-                  lead_phone: phone,
-                  lead_name: nome,
+                contatosParaFila.push({
+                  phone,
+                  name: nome,
                   mensagem,
                   imagem_url: campanha.produtos?.imagem_url || null,
                   tipo_mensagem: 'campanha',
                   prioridade: 5,
-                  status: 'pendente',
                   scheduled_at: new Date().toISOString(),
-                  tentativas: 0,
                   lead_source: 'campanha_produtos',
                   campanha_id: campanha.id,
                   metadata: {
@@ -271,10 +265,25 @@ export function useScheduledCampaigns(userId: string | undefined) {
               }
             }
 
-            if (registrosFila.length > 0) {
-              const { error: filaError } = await supabase
-                .from('fila_atendimento_pj')
-                .insert(registrosFila);
+            if (contatosParaFila.length > 0) {
+              const { data: rpcData, error: filaError } = await supabase.rpc('inserir_campanha_fila', {
+                p_user_id: userId,
+                p_contatos: contatosParaFila,
+                p_mensagem: campanha.mensagem_template,
+                p_lead_source: 'campanha_produtos',
+                p_campanha_id: campanha.id,
+                p_imagem_url: campanha.produtos?.imagem_url || null,
+                p_tipo_mensagem: 'campanha',
+                p_prioridade: 5,
+                p_metadata: {
+                  produto_id: campanha.produtos?.id || null,
+                  produto_nome: campanha.produtos?.nome || null,
+                  produto_preco: campanha.produtos?.preco || null,
+                  vendedor_id: campanha.vendedor_id || null,
+                  origem: 'scheduler_browser_fallback',
+                },
+                p_scheduled_at: new Date().toISOString(),
+              });
 
               if (filaError) {
                 console.error('❌ Erro ao inserir campanha na fila:', filaError);
@@ -282,7 +291,12 @@ export function useScheduledCampaigns(userId: string | undefined) {
                 continue;
               }
 
-              enviados = registrosFila.length;
+              enviados = Number((rpcData as { inseridos?: number } | null)?.inseridos ?? 0);
+
+              const falhasRpc = Number((rpcData as { falhas?: number } | null)?.falhas ?? 0);
+              if (falhasRpc > 0) {
+                console.warn(`⚠️ ${falhasRpc} contato(s) falharam ao enfileirar na campanha ${campanha.nome}`);
+              }
             }
 
             console.log(`✅ Campanha ${campanha.nome}: ${enviados}/${contatos.length} enviados (${pulados} pulados)`);

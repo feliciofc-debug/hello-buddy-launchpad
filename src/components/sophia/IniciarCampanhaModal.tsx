@@ -107,31 +107,41 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
 
       console.log("✅ [SOPHIA] Campanha criada:", campanha?.id);
 
-      // 2. Inserir na fila
-      const filaItems = contatos.map((c) => ({
-        user_id: currentUserId,
-        lead_phone: c.phone,
-        lead_name: c.nome,
-        mensagem: template.replace(/\{\{nome\}\}/g, c.nome),
-        status: "pendente" as const,
-        opt_in_status: tipo === "optin" ? "aguardando" : "novo",
+      // 2. Inserir na fila (RPC única no backend)
+      const contatosPayload = contatos.map((c) => ({
+        phone: c.phone,
+        name: c.nome,
         campanha_id: campanha.id,
         lead_source: "sophia_campanha",
+        opt_in_status: tipo === "optin" ? "aguardando" : "novo",
         scheduled_at: new Date().toISOString(),
+        metadata: {
+          origem: "sophia_modal",
+          campanha_nome: nome.trim(),
+          campanha_tipo: tipo,
+        },
       }));
 
-      // Inserir em batches de 100
-      for (let i = 0; i < filaItems.length; i += 100) {
-        const batch = filaItems.slice(i, i + 100);
-        const { error: errFila } = await supabase.from("fila_atendimento_pj").insert(batch);
-        if (errFila) {
-          console.error("❌ [SOPHIA] Erro ao inserir fila batch", i, ":", JSON.stringify(errFila));
-          throw errFila;
-        }
-        console.log("✅ [SOPHIA] Fila batch", i, "inserida com", batch.length, "itens");
+      const { data: rpcData, error: errFila } = await supabase.rpc("inserir_campanha_fila", {
+        p_user_id: currentUserId,
+        p_contatos: contatosPayload,
+        p_mensagem: template,
+        p_lead_source: "sophia_campanha",
+        p_campanha_id: campanha.id,
+        p_opt_in_status: tipo === "optin" ? "aguardando" : "novo",
+      });
+
+      if (errFila) {
+        console.error("❌ [SOPHIA] Erro RPC inserir_campanha_fila:", JSON.stringify(errFila));
+        throw errFila;
       }
 
-      toast.success(`🚀 Campanha "${nome}" criada com ${contatos.length} contatos!`);
+      const inseridos = Number((rpcData as { inseridos?: number } | null)?.inseridos ?? 0);
+      if (inseridos === 0) {
+        throw new Error("Nenhum contato foi inserido na fila_atendimento_pj");
+      }
+
+      toast.success(`🚀 Campanha "${nome}" criada com ${inseridos} contatos na fila!`);
       setNome("");
       setContatosRaw("");
       onClose();
