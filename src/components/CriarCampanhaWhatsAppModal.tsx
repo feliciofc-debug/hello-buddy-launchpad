@@ -287,7 +287,7 @@ _Escolha quantidade e finalize!_ ✅`);
         ...listasAutoComTelefones,
         ...listasPJComTelefones,
         ...gruposPJComoDestinos,
-        ...(manualListas || []).map(g => ({
+        ...(manualListas || []).map((g): WhatsAppGroup => ({
           id: g.id,
           group_id: g.group_id,
           group_name: g.group_name,
@@ -632,7 +632,7 @@ _Escolha quantidade e finalize!_ ✅`;
       let nomeContato = '';
 
       try {
-        nomeContato = await resolverNomeContato(phone, user.id, listasSelecionadas);
+        nomeContato = await resolverNomeContato(phone, user.id, listasContatoIds);
       } catch (nomeError) {
         console.warn('[CAMPANHA] Falha ao resolver nome do contato, usando vazio:', phone, nomeError);
       }
