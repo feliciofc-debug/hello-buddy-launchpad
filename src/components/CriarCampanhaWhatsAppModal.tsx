@@ -461,7 +461,9 @@ _Escolha quantidade e finalize!_ ✅`;
 
   const enviarCampanhaAgora = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      throw new Error('Usuário não autenticado para inserir campanha na fila');
+    }
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('🎯 INICIANDO CAMPANHA COM VENDEDOR');
@@ -639,12 +641,15 @@ _Escolha quantidade e finalize!_ ✅`;
     } catch (error) {
       console.error('❌ Erro ao inserir na fila:', error);
       toast.error('Erro ao inserir contatos na fila de envio');
+      throw error;
     }
   };
 
   const salvarCampanhaRecorrente = async () => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      throw new Error('Usuário não autenticado para salvar campanha');
+    }
 
     // Calcular próxima execução COM LOGS
     const calcularProximaExecucao = () => {
