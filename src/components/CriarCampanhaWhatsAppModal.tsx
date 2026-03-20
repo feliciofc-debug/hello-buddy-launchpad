@@ -604,11 +604,20 @@ _Escolha quantidade e finalize!_ ✅`;
         lead_phone: phone,
         lead_name: nomeContato || '',
         mensagem: mensagemFormatada,
+        imagem_url: produto.imagem_url || null,
+        tipo_mensagem: 'campanha',
+        prioridade: 5,
         status: 'pendente',
         scheduled_at: new Date().toISOString(),
         tentativas: 0,
         lead_source: 'campanha_produtos',
         campanha_id: campanhaTemp?.id || null,
+        metadata: {
+          produto_id: produto.id,
+          produto_nome: produto.nome,
+          produto_preco: produto.preco,
+          vendedor_id: vendedorSelecionado || null,
+        },
       });
 
       console.log('[CAMPANHA] Resultado:', error ? error.message : 'OK');
