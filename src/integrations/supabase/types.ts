@@ -6860,6 +6860,22 @@ export type Database = {
         Args: { p_quantidade?: number; p_user_id: string }
         Returns: Json
       }
+      inserir_campanha_fila: {
+        Args: {
+          p_campanha_id?: string
+          p_contatos: Json
+          p_imagem_url?: string
+          p_lead_source?: string
+          p_mensagem: string
+          p_metadata?: Json
+          p_opt_in_status?: string
+          p_prioridade?: number
+          p_scheduled_at?: string
+          p_tipo_mensagem?: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
       limpar_estados_antigos_afiliado: { Args: never; Returns: number }
       limpar_webhook_dedup_antigos: { Args: never; Returns: number }
       pegar_proximo_fila_afiliado: {
