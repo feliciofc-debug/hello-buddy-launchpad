@@ -194,7 +194,7 @@ export function useScheduledCampaigns(userId: string | undefined) {
               lead_source: string;
               campanha_id: string;
               scheduled_at: string;
-              metadata: Record<string, unknown>;
+              metadata: any;
             }> = [];
 
             // ENFILEIRAR PARA CADA CONTATO (NÃO ENVIAR DIRETO DO NAVEGADOR)
