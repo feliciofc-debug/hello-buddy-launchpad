@@ -690,6 +690,8 @@ _Escolha quantidade e finalize!_ ✅`;
       });
     }
 
+    console.log('[CAMPANHA] Disparando para', contatosPayload.length, 'contatos');
+
     const { data: rpcData, error: rpcError } = await supabase.rpc('inserir_campanha_fila', {
       p_user_id: user.id,
       p_contatos: contatosPayload,
@@ -707,6 +709,8 @@ _Escolha quantidade e finalize!_ ✅`;
       },
       p_scheduled_at: new Date().toISOString(),
     });
+
+    console.log('[CAMPANHA] Resultado:', { data: rpcData, error: rpcError });
 
     if (rpcError) {
       console.error('ERRO RPC inserir_campanha_fila:', rpcError);
@@ -924,9 +928,9 @@ _Escolha quantidade e finalize!_ ✅`;
 
       onOpenChange(false);
       onSuccess?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro:', error);
-      toast.error('Erro ao criar campanha');
+      toast.error(`Erro: ${error?.message || 'Falha ao criar campanha'}`);
     } finally {
       setIsLoading(false);
     }
