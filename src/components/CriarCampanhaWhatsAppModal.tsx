@@ -701,6 +701,7 @@ _Escolha quantidade e finalize!_ ✅`;
       p_imagem_url: produto.imagem_url || null,
       p_tipo_mensagem: 'campanha',
       p_prioridade: 5,
+      p_opt_in_status: null,
       p_metadata: {
         produto_id: produto.id,
         produto_nome: produto.nome,
