@@ -984,29 +984,7 @@ export default function MeusProdutos() {
       return;
     }
 
-    toast.info('🧪 Testando envio imediato...');
-
-    try {
-      const { data, error } = await supabase.functions.invoke('execute-campaign', {
-        body: { campaign_id: product.campanha.id }
-      });
-
-      if (error) {
-        toast.error('Erro ao executar: ' + error.message);
-        console.error(error);
-      } else if (data?.success) {
-        toast.success(
-          `✅ ${data.enviados}/${data.total} mensagens enviadas!`,
-          { duration: 5000 }
-        );
-        fetchProducts();
-      } else {
-        toast.error('Erro: ' + (data?.error || 'Falha desconhecida'));
-      }
-    } catch (err) {
-      toast.error('Erro ao testar campanha');
-      console.error(err);
-    }
+    toast.warning('Dispatcher interno desativado: esta campanha já foi apenas enfileirada.');
   };
 
   const openAddModal = () => {

@@ -113,8 +113,6 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
         name: c.nome,
         campanha_id: campanha.id,
         lead_source: "sophia_campanha",
-        opt_in_status: tipo === "optin" ? "aguardando" : "novo",
-        scheduled_at: new Date().toISOString(),
         metadata: {
           origem: "sophia_modal",
           campanha_nome: nome.trim(),
@@ -126,9 +124,14 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
         p_user_id: currentUserId,
         p_contatos: contatosPayload,
         p_mensagem: template,
+        p_imagem_url: null,
         p_lead_source: "sophia_campanha",
         p_campanha_id: campanha.id,
-        p_opt_in_status: tipo === "optin" ? "aguardando" : "novo",
+        p_metadata: {
+          origem: "sophia_modal",
+          campanha_nome: nome.trim(),
+          campanha_tipo: tipo,
+        },
       });
 
       if (errFila) {

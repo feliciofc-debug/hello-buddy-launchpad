@@ -696,19 +696,15 @@ _Escolha quantidade e finalize!_ ✅`;
       p_user_id: user.id,
       p_contatos: contatosPayload,
       p_mensagem: mensagem,
+      p_imagem_url: produto.imagem_url || null,
       p_lead_source: 'campanha_produtos',
       p_campanha_id: campanhaTemp?.id || null,
-      p_imagem_url: produto.imagem_url || null,
-      p_tipo_mensagem: 'campanha',
-      p_prioridade: 5,
-      p_opt_in_status: null,
       p_metadata: {
         produto_id: produto.id,
         produto_nome: produto.nome,
         produto_preco: produto.preco,
         vendedor_id: vendedorSelecionado || null,
       },
-      p_scheduled_at: new Date().toISOString(),
     });
 
     console.log('[CAMPANHA] Resultado:', { data: rpcData, error: rpcError });
@@ -743,7 +739,7 @@ _Escolha quantidade e finalize!_ ✅`;
       return;
     }
 
-    toast.success(`✅ ${inseridos} destino(s) na fila! O dispatcher enviará automaticamente.`);
+    toast.success(`✅ ${inseridos} destino(s) na fila! O gateway local fará o envio.`);
   };
 
   const salvarCampanhaRecorrente = async () => {

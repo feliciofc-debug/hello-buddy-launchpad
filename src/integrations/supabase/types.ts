@@ -6868,10 +6868,6 @@ export type Database = {
           p_lead_source?: string
           p_mensagem: string
           p_metadata?: Json
-          p_opt_in_status?: string
-          p_prioridade?: number
-          p_scheduled_at?: string
-          p_tipo_mensagem?: string
           p_user_id: string
         }
         Returns: Json
