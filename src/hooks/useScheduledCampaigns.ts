@@ -270,11 +270,9 @@ export function useScheduledCampaigns(userId: string | undefined) {
                 p_user_id: userId,
                 p_contatos: contatosParaFila,
                 p_mensagem: campanha.mensagem_template,
+                p_imagem_url: campanha.produtos?.imagem_url || null,
                 p_lead_source: 'campanha_produtos',
                 p_campanha_id: campanha.id,
-                p_imagem_url: campanha.produtos?.imagem_url || null,
-                p_tipo_mensagem: 'campanha',
-                p_prioridade: 5,
                 p_metadata: {
                   produto_id: campanha.produtos?.id || null,
                   produto_nome: campanha.produtos?.nome || null,
@@ -282,7 +280,6 @@ export function useScheduledCampaigns(userId: string | undefined) {
                   vendedor_id: campanha.vendedor_id || null,
                   origem: 'scheduler_browser_fallback',
                 },
-                p_scheduled_at: new Date().toISOString(),
               });
 
               if (filaError) {
