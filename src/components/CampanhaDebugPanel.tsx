@@ -50,86 +50,13 @@ export function CampanhaDebugPanel() {
   };
 
   const testarSistema = async () => {
-    console.log('🧪 INICIANDO TESTE DO SISTEMA');
-    
-    try {
-      // 1. Verificar campanhas ativas
-      const { data: campanhasAtivas } = await supabase
-        .from('campanhas_recorrentes')
-        .select('*')
-        .eq('ativa', true);
-
-      console.log('📋 Campanhas ativas no banco:', campanhasAtivas);
-
-      // 2. Verificar quais deveriam executar AGORA
-      const agora = new Date();
-      const paraExecutar = campanhasAtivas?.filter(c => {
-        const proxima = new Date(c.proxima_execucao);
-        const deveria = proxima <= agora;
-        console.log(`⏰ Campanha ${c.nome}:`, {
-          proxima: proxima.toLocaleString('pt-BR'),
-          agora: agora.toLocaleString('pt-BR'),
-          deveExecutar: deveria,
-          diferenca: Math.round((proxima.getTime() - agora.getTime()) / 60000) + ' min'
-        });
-        return deveria;
-      }) || [];
-
-      console.log('⚡ Para executar AGORA:', paraExecutar);
-
-      if (paraExecutar.length === 0) {
-        toast.info('Nenhuma campanha agendada para executar agora', {
-          description: `Próximas execuções: ${campanhasAtivas?.map(c => 
-            new Date(c.proxima_execucao).toLocaleTimeString('pt-BR')
-          ).join(', ')}`
-        });
-        return;
-      }
-
-      // 3. Forçar execução manual de cada campanha
-      let sucessos = 0;
-      for (const camp of paraExecutar) {
-        console.log(`🚀 Forçando execução: ${camp.nome}`);
-        
-        const { data, error } = await supabase.functions.invoke('execute-campaign', {
-          body: { campaign_id: camp.id }
-        });
-
-        if (error) {
-          console.error(`❌ Erro em ${camp.nome}:`, error);
-          toast.error(`Erro em ${camp.nome}: ${error.message}`);
-        } else {
-          console.log(`✅ Sucesso em ${camp.nome}:`, data);
-          sucessos++;
-        }
-      }
-
-      toast.success(`✅ Executadas ${sucessos}/${paraExecutar.length} campanhas`);
-      await carregarCampanhas();
-      await carregarLogs();
-
-    } catch (error) {
-      console.error('❌ Erro no teste:', error);
-      toast.error('Erro ao testar sistema');
-    }
+    console.log('ℹ️ Dispatcher interno desativado (modo queue-only).');
+    toast.info('Dispatcher interno desativado: o envio é feito somente pelo gateway local.');
   };
 
   const executarCampanha = async (campaignId: string, nome: string) => {
-    console.log(`🚀 Executando campanha manual: ${nome}`);
-    try {
-      const { data, error } = await supabase.functions.invoke('execute-campaign', {
-        body: { campaign_id: campaignId }
-      });
-
-      if (error) throw error;
-      console.log('✅ Resultado:', data);
-      toast.success(`Campanha "${nome}" executada com sucesso!`);
-      await carregarCampanhas();
-      await carregarLogs();
-    } catch (error: any) {
-      console.error('❌ Erro:', error);
-      toast.error(`Erro: ${error.message}`);
-    }
+    console.log(`ℹ️ Execução manual bloqueada para campanha: ${nome}`, campaignId);
+    toast.info('Execução manual desativada: a campanha deve apenas entrar na fila.');
   };
 
   return (
@@ -237,9 +164,9 @@ export function CampanhaDebugPanel() {
         <p className="font-semibold">💡 Como usar:</p>
         <ol className="list-decimal list-inside space-y-1 text-xs">
           <li>Clique "Atualizar" para ver todas as campanhas</li>
-          <li>Campanhas com "PASSOU" deveriam ter executado automaticamente</li>
-          <li>Use "Executar Agora" para forçar execução manual</li>
-          <li>Use "Testar Sistema" para verificar e executar todas pendentes</li>
+          <li>Campanhas são processadas em modo queue-only (sem dispatcher interno)</li>
+          <li>Use "Executar Agora" apenas para validar estado da campanha</li>
+          <li>Use "Testar Sistema" para checar status, sem disparo direto</li>
           <li>Verifique os logs no console do navegador (F12)</li>
         </ol>
       </div>
