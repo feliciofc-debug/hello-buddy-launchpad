@@ -172,7 +172,7 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
               continue;
             }
 
-            const inseridos = rpcResult?.inseridos || 0;
+            const inseridos = (rpcResult as any)?.inseridos || 0;
             console.log(`✅ [AFILIADO] ${inseridos} contatos inseridos na fila`);
             toast.success(`✅ Campanha ${campanha.nome}: ${inseridos} contatos na fila!`);
 
@@ -211,7 +211,7 @@ export function useAfiliadoScheduledCampaigns(userId: string | undefined) {
               });
 
               if (!rpcGruposErr && rpcGrupos) {
-                console.log(`✅ [AFILIADO] ${rpcGrupos.inseridos} grupos inseridos na fila`);
+                console.log(`✅ [AFILIADO] ${(rpcGrupos as any).inseridos} grupos inseridos na fila`);
               }
             }
 
