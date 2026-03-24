@@ -6,39 +6,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// NOTA: enviarMensagemDireta removida - agora usa send-wuzapi-message-pj para retry, validação e resolução de instância
-
-// Delay humanizado entre 3-7 segundos
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+/**
+ * execute-campaign — QUEUE-ONLY
+ * 
+ * NÃO envia mensagens. Apenas insere na fila_atendimento_pj.
+ * O gateway local (.exe) cuida do envio real.
+ */
 
 function normalizePhone(phone: string): string {
   const digits = (phone || '').replace(/\D/g, '')
   if (!digits) return ''
-
   if (digits.length === 10 || digits.length === 11) {
     return `55${digits}`
   }
-
   return digits
 }
 
 function buildPhoneVariants(phone: string): string[] {
   const normalized = normalizePhone(phone)
   if (!normalized) return []
-
   const withoutCountry = normalized.startsWith('55') ? normalized.slice(2) : normalized
-
   const variants = [normalized, withoutCountry]
-
-  // Variante com/sem 9º dígito após DDD
   if (withoutCountry.length === 11 && withoutCountry[2] === '9') {
     variants.push(`55${withoutCountry.slice(0, 2)}${withoutCountry.slice(3)}`)
   } else if (withoutCountry.length === 10) {
     variants.push(`55${withoutCountry.slice(0, 2)}9${withoutCountry.slice(2)}`)
   }
-
   return [...new Set(variants.filter(Boolean))]
 }
 
@@ -55,7 +48,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    console.log('⚡ Executando campanha:', campaign_id)
+    console.log('⚡ Executando campanha (QUEUE-ONLY):', campaign_id)
 
     // Buscar campanha
     const { data: campanha, error: campError } = await supabase
@@ -108,45 +101,12 @@ serve(async (req) => {
     contatos = [...new Set(contatos)].filter(Boolean)
     console.log(`📱 Total: ${contatos.length} contatos (deduplicados)`)
 
-    // Buscar instância WuzAPI do usuário
-    let baseUrl = Deno.env.get('WUZAPI_URL') || 'https://wuzapi.amzofertas.com.br'
-    let wuzapiToken = Deno.env.get('WUZAPI_TOKEN') || ''
-
-    if (campanha.user_id) {
-      const { data: config } = await supabase
-        .from('pj_clientes_config')
-        .select('wuzapi_token, wuzapi_port')
-        .eq('user_id', campanha.user_id)
-        .maybeSingle()
-
-      if (config?.wuzapi_token) wuzapiToken = config.wuzapi_token
-
-      const targetPort = Number(config?.wuzapi_port || 8080)
-      const { data: instance } = await supabase
-        .from('wuzapi_instances')
-        .select('wuzapi_url, wuzapi_token')
-        .eq('assigned_to_user', campanha.user_id)
-        .eq('port', targetPort)
-        .maybeSingle()
-
-      if (instance?.wuzapi_url) {
-        baseUrl = instance.wuzapi_url.replace(/\/+$/, '')
-        console.log('📡 Usando instância:', baseUrl)
-      }
-      if (instance?.wuzapi_token) wuzapiToken = instance.wuzapi_token
-    }
-
     const imageUrl = campanha.produtos?.imagem_url || campanha.produtos?.imagens?.[0]
 
-    // ENVIAR UM POR UM via send-wuzapi-message-pj com personalização de nome
-    let enviados = 0
-    let erros = 0
+    // Buscar nomes dos contatos e montar array para RPC
+    const contatosParaFila = []
 
-    for (let i = 0; i < contatos.length; i++) {
-      const phone = contatos[i]
-      console.log(`📤 [${i + 1}/${contatos.length}] Enviando para ${phone}`)
-
-      // Buscar nome do contato em múltiplas fontes (com variantes de telefone)
+    for (const phone of contatos) {
       const phoneVariants = buildPhoneVariants(phone)
       let nome = 'Cliente'
 
@@ -161,7 +121,7 @@ serve(async (req) => {
         .maybeSingle()
       if (wc?.nome?.trim()) nome = wc.nome.trim()
 
-      // 2. Tentar pj_lista_membros (busca por telefone nas listas da campanha)
+      // 2. Tentar pj_lista_membros
       if (nome === 'Cliente') {
         const { data: plm } = await supabase
           .from('pj_lista_membros')
@@ -174,12 +134,11 @@ serve(async (req) => {
         if (plm?.nome?.trim()) nome = plm.nome.trim()
       }
 
-      // 3. Tentar cadastros (busca por whatsapp)
+      // 3. Tentar cadastros
       if (nome === 'Cliente' && phoneVariants.length > 0) {
         const cadastrosFilter = phoneVariants
           .map((variant) => `whatsapp.eq.${variant}`)
           .join(',')
-
         const { data: cad } = await supabase
           .from('cadastros')
           .select('nome')
@@ -188,48 +147,46 @@ serve(async (req) => {
           .not('nome', 'is', null)
           .limit(1)
           .maybeSingle()
-
         if (cad?.nome?.trim()) nome = cad.nome.trim()
       }
-      
-      console.log(`👤 Nome resolvido para ${phone}: ${nome}`)
 
-      // Personalizar mensagem COM O NOME DO CONTATO
+      // Personalizar mensagem
       const mensagemPersonalizada = campanha.mensagem_template
         .replace(/\{\{nome\}\}|\{nome\}/gi, nome)
         .replace(/\{\{produto\}\}|\{produto\}/gi, campanha.produtos?.nome || '')
         .replace(/\{\{preco\}\}|\{preco\}/gi, campanha.produtos?.preco?.toString() || '0')
 
-      // Enviar via send-wuzapi-message-pj (que já tem retry, validação e resolução de instância)
-      const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
-        body: {
-          phoneNumbers: [phone],
-          message: mensagemPersonalizada,
-          imageUrl: imageUrl,
-          userId: campanha.user_id,
-          validateBeforeSend: false
-        }
+      contatosParaFila.push({
+        phone: normalizePhone(phone),
+        name: nome,
+        mensagem: mensagemPersonalizada
       })
-
-      const firstResult = Array.isArray(sendResult?.results) ? sendResult.results[0] : null
-      const ok = !sendError && (firstResult ? firstResult.success === true : sendResult?.success !== false)
-
-      if (ok) {
-        enviados++
-        console.log(`✅ Enviado para ${phone} (nome: ${nome})`)
-      } else {
-        erros++
-        console.log(`❌ Falhou para ${phone}:`, sendError || sendResult)
-      }
-
-      // Delay humanizado entre mensagens (3-7s) - exceto na última
-      if (i < contatos.length - 1) {
-        const delayMs = 3000 + Math.random() * 4000
-        await delay(delayMs)
-      }
     }
 
-    console.log(`✅ Resultado: ${enviados}/${contatos.length} enviados, ${erros} erros`)
+    console.log(`📝 Inserindo ${contatosParaFila.length} contatos na fila via RPC...`)
+
+    // INSERIR NA FILA VIA RPC — NÃO ENVIAR DIRETAMENTE
+    const { data: rpcResult, error: rpcError } = await supabase.rpc('inserir_campanha_fila', {
+      p_user_id: campanha.user_id,
+      p_contatos: contatosParaFila,
+      p_mensagem: campanha.mensagem_template, // fallback, cada contato tem sua mensagem personalizada
+      p_imagem_url: imageUrl || null,
+      p_lead_source: 'campanha_recorrente',
+      p_campanha_id: campanha.id,
+      p_metadata: {
+        produto_nome: campanha.produtos?.nome,
+        produto_preco: campanha.produtos?.preco,
+        campanha_nome: campanha.nome
+      }
+    })
+
+    if (rpcError) {
+      console.error('❌ Erro RPC inserir_campanha_fila:', rpcError)
+      throw rpcError
+    }
+
+    const inseridos = rpcResult?.inseridos || 0
+    console.log(`✅ ${inseridos} contatos inseridos na fila (gateway local fará o envio)`)
 
     // Salvar contexto para IA responder
     for (const phone of contatos) {
@@ -260,7 +217,7 @@ serve(async (req) => {
       .update({
         ultima_execucao: new Date().toISOString(),
         proxima_execucao: proximaExec,
-        total_enviados: (campanha.total_enviados || 0) + enviados,
+        total_enviados: (campanha.total_enviados || 0) + inseridos,
         ativa: proximaExec ? true : false,
         status: proximaExec ? 'ativa' : 'encerrada'
       })
@@ -271,11 +228,11 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        enviados,
-        erros,
+        inseridos,
         total: contatos.length,
         proxima_execucao: proximaExec,
-        campanha_nome: campanha.nome
+        campanha_nome: campanha.nome,
+        modo: 'queue-only'
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
