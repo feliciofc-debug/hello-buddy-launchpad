@@ -11,6 +11,11 @@ interface MenuConfig {
 const routeToMenuId: Record<string, string> = {
   '/dashboard': 'dashboard',
   '/meus-produtos': 'produtos',
+
+  // PJ
+  '/pj/listas-contatos': 'contatos',
+  '/pj/whatsapp-automacao': 'gateway-whatsapp',
+
   '/whatsapp': 'whatsapp',
   '/configuracoes-whatsapp': 'conectar-whatsapp',
   '/ia-conversas': 'ia-conversas',
