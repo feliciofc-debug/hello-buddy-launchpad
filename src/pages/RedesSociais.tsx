@@ -58,21 +58,18 @@ const RedesSociais = () => {
     }
   };
 
-  const handleConnect = async (networkId: string) => {
+  const handleConnect = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       toast.error('Você precisa estar logado para conectar.');
       return;
     }
-    const META_APP_ID = '1254152493364240';
-    const redirectUri = 'https://www.amzofertas.com.br/auth/callback/meta';
-    const configId = '1640676087275214';
-    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&response_type=code&state=${user.id}`;
+    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=1254152493364240&redirect_uri=${encodeURIComponent('https://www.amzofertas.com.br/auth/callback/meta')}&scope=pages_show_list,pages_manage_posts,pages_read_engagement&response_type=code&state=${user.id}`;
     window.location.href = authUrl;
   };
 
-  const handleReconnect = (networkId: string) => {
-    handleConnect(networkId);
+  const handleReconnect = () => {
+    handleConnect();
   };
 
   const handleRemove = (networkId: string) => {
@@ -130,7 +127,7 @@ const RedesSociais = () => {
               </div>
               <div className="flex gap-2">
                 <Button 
-                  onClick={() => handleReconnect(network.id)}
+                  onClick={handleReconnect}
                   variant="outline"
                   className="flex-1"
                 >
@@ -151,7 +148,7 @@ const RedesSociais = () => {
                 Conecte sua conta {network.name} para automatizar suas postagens
               </CardDescription>
               <Button 
-                onClick={() => handleConnect(network.id)}
+                onClick={handleConnect}
                 className={`w-full ${network.color}`}
               >
                 ➕ Conectar {network.name}
