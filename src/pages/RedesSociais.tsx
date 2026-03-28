@@ -60,7 +60,7 @@ const RedesSociais = () => {
 
   const handleConnect = (networkId: string) => {
     const META_APP_ID = import.meta.env.VITE_META_APP_ID;
-    const redirectUri = `${window.location.origin}/auth/callback/meta`;
+    const redirectUri = 'https://www.amzofertas.com.br/auth/callback/meta';
     const scope = 'pages_show_list,pages_manage_posts,pages_read_engagement';
     const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&state=${userId}`;
     window.location.href = authUrl;
