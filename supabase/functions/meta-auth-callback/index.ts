@@ -17,10 +17,8 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
-    const origin = req.headers.get('origin') || req.headers.get('referer') || 'https://www.amzofertas.com.br'
-    const siteUrl = new URL(origin).origin
-    const REDIRECT_URI = `${siteUrl}/auth/callback/meta`
-    const SITE_URL = siteUrl
+    const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta'
+    const SITE_URL = 'https://www.amzofertas.com.br'
 
     if (!META_APP_ID || !META_APP_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Missing required environment variables')
