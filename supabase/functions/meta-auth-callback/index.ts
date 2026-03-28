@@ -70,9 +70,17 @@ serve(async (req) => {
     const userData = await userResponse.json()
     console.log('✅ Usuário:', userData.name)
 
+    // 3.5 Verificar permissões do token
+    const permissionsResponse = await fetch(`https://graph.facebook.com/v25.0/me/permissions?access_token=${longLivedUserToken}`)
+    const permissionsData = await permissionsResponse.json()
+    console.log('🔑 Permissões do token:', JSON.stringify(permissionsData))
+
     // 4. Buscar Pages + Page Tokens
-    const pagesResponse = await fetch(`https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token&access_token=${longLivedUserToken}`)
+    const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}`
+    console.log('📡 Buscando páginas...')
+    const pagesResponse = await fetch(pagesUrl)
     const pagesData = await pagesResponse.json()
+    console.log('📡 Resposta /me/accounts completa:', JSON.stringify(pagesData))
     const pages = pagesData.data || []
     console.log('✅ Páginas encontradas:', pages.length)
 
