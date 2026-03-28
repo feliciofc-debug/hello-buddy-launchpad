@@ -42,14 +42,10 @@ const SettingsPage = () => {
                     return;
                   }
                   
-                  const META_APP_ID = import.meta.env.VITE_META_APP_ID;
-                  const REDIRECT_URI = 'https://amzofertas.com.br/auth/callback/meta';
-                  const permissions = [
-                    'email',
-                    'public_profile'
-                  ].join(',');
-                  const encodedRedirectUri = encodeURIComponent(REDIRECT_URI);
-                  const loginUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodedRedirectUri}&scope=${permissions}&response_type=code&state=${user.id}`;
+                  const META_APP_ID = '1254152493364240';
+                  const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta';
+                  const configId = '1640676087275214';
+                  const loginUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&config_id=${configId}&response_type=code&state=${user.id}`;
                   console.log("Redirecionando para a URL de login da Meta:", loginUrl);
                   window.location.href = loginUrl;
                 }}
