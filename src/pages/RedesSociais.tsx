@@ -58,11 +58,16 @@ const RedesSociais = () => {
     }
   };
 
-  const handleConnect = (networkId: string) => {
+  const handleConnect = async (networkId: string) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Você precisa estar logado para conectar.');
+      return;
+    }
     const META_APP_ID = '1254152493364240';
     const redirectUri = 'https://www.amzofertas.com.br/auth/callback/meta';
     const configId = '1640676087275214';
-    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&response_type=code&state=${userId}`;
+    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&config_id=${configId}&response_type=code&state=${user.id}`;
     window.location.href = authUrl;
   };
 
