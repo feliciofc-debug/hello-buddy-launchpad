@@ -5518,6 +5518,63 @@ export type Database = {
         }
         Relationships: []
       }
+      social_posts_queue: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          fb_post_id: string | null
+          id: string
+          image_url: string | null
+          link_url: string | null
+          page_id: string
+          platform: string
+          post_text: string | null
+          produto_id: string | null
+          produto_source: string | null
+          published_at: string | null
+          scheduled_at: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          fb_post_id?: string | null
+          id?: string
+          image_url?: string | null
+          link_url?: string | null
+          page_id?: string
+          platform?: string
+          post_text?: string | null
+          produto_id?: string | null
+          produto_source?: string | null
+          published_at?: string | null
+          scheduled_at?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          fb_post_id?: string | null
+          id?: string
+          image_url?: string | null
+          link_url?: string | null
+          page_id?: string
+          platform?: string
+          post_text?: string | null
+          produto_id?: string | null
+          produto_source?: string | null
+          published_at?: string | null
+          scheduled_at?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       socios: {
         Row: {
           cpf: string | null
