@@ -1,11 +1,21 @@
-import { useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from 'sonner';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
+
+  const handleConnect = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Você precisa estar logado para conectar.');
+      return;
+    }
+    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=1254152493364240&redirect_uri=${encodeURIComponent('https://www.amzofertas.com.br/auth/callback/meta')}&scope=pages_show_list,pages_manage_posts,pages_read_engagement&response_type=code&state=${user.id}`;
+    window.location.href = authUrl;
+  };
 
 
   return (
@@ -35,20 +45,7 @@ const SettingsPage = () => {
                 Conecte sua conta comercial do Facebook e Instagram para automatizar suas postagens de produtos e gerenciar campanhas publicitárias.
               </p>
               <button
-                onClick={async () => {
-                  const { data: { user } } = await supabase.auth.getUser();
-                  if (!user) {
-                    alert('Você precisa estar logado para conectar com a Meta');
-                    return;
-                  }
-                  
-                  const META_APP_ID = '1254152493364240';
-                  const REDIRECT_URI = 'https://www.amzofertas.com.br/auth/callback/meta';
-                  const configId = '1640676087275214';
-                  const loginUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=${META_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&config_id=${configId}&response_type=code&state=${user.id}`;
-                  console.log("Redirecionando para a URL de login da Meta:", loginUrl);
-                  window.location.href = loginUrl;
-                }}
+                onClick={handleConnect}
                 className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
               >
                 Conectar com Meta Business
