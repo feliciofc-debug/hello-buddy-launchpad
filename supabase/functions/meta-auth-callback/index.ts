@@ -3,25 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-interface FacebookTokenResponse {
-  access_token: string
-  token_type: string
-  expires_in?: number
-}
-
-interface FacebookLongLivedTokenResponse {
-  access_token: string
-  token_type: string
-  expires_in: number
-}
-
-interface FacebookUserResponse {
-  id: string
-  name: string
-  email?: string
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
 serve(async (req) => {
@@ -34,14 +16,11 @@ serve(async (req) => {
     const META_APP_SECRET = Deno.env.get('META_APP_SECRET')
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    
-    // Get the origin from the request or use a default
-    const origin = req.headers.get('origin') || req.headers.get('referer') || 'https://249fa690-d3a6-4362-93a4-ec3d247f30f3.lovableproject.com'
+
+    const origin = req.headers.get('origin') || req.headers.get('referer') || 'https://www.amzofertas.com.br'
     const siteUrl = new URL(origin).origin
     const REDIRECT_URI = `${siteUrl}/auth/callback/meta`
     const SITE_URL = siteUrl
-    
-    console.log('🔍 Using redirect URI:', REDIRECT_URI)
 
     if (!META_APP_ID || !META_APP_SECRET || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Missing required environment variables')
@@ -53,98 +32,99 @@ serve(async (req) => {
     const error = url.searchParams.get('error')
 
     if (error) {
-      console.error('Facebook OAuth error:', error)
-      const redirectUrl = `${SITE_URL}/configuracoes?error=true&message=${encodeURIComponent('Permissão negada pelo usuário.')}`
-      return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': redirectUrl } })
+      return new Response(null, {
+        status: 302,
+        headers: { ...corsHeaders, 'Location': `${SITE_URL}/configuracoes?error=true&message=${encodeURIComponent('Permissão negada pelo usuário.')}` }
+      })
     }
 
-    if (!code) {
-      throw new Error('No authorization code provided')
-    }
+    if (!code) throw new Error('No authorization code provided')
 
-    const tokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token')
+    // 1. Trocar código por token curto
+    const tokenUrl = new URL('https://graph.facebook.com/v25.0/oauth/access_token')
     tokenUrl.searchParams.set('client_id', META_APP_ID)
     tokenUrl.searchParams.set('client_secret', META_APP_SECRET)
     tokenUrl.searchParams.set('redirect_uri', REDIRECT_URI)
     tokenUrl.searchParams.set('code', code)
 
-    console.log('🔄 Trocando código por token de curta duração...')
+    console.log('🔄 Trocando código por token...')
     const tokenResponse = await fetch(tokenUrl.toString())
-    if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.text()
-      console.error('❌ Erro ao trocar código:', errorData)
-      throw new Error(`Failed to exchange code for token: ${errorData}`)
-    }
-    const tokenData: FacebookTokenResponse = await tokenResponse.json()
+    if (!tokenResponse.ok) throw new Error(`Token exchange failed: ${await tokenResponse.text()}`)
+    const tokenData = await tokenResponse.json()
     const shortLivedToken = tokenData.access_token
-    console.log('✅ Token de curta duração obtido')
+    console.log('✅ Token curto obtido')
 
-    const longLivedTokenUrl = new URL('https://graph.facebook.com/v18.0/oauth/access_token')
-    longLivedTokenUrl.searchParams.set('grant_type', 'fb_exchange_token')
-    longLivedTokenUrl.searchParams.set('client_id', META_APP_ID)
-    longLivedTokenUrl.searchParams.set('client_secret', META_APP_SECRET)
-    longLivedTokenUrl.searchParams.set('fb_exchange_token', shortLivedToken)
+    // 2. Trocar por token longo (User)
+    const longLivedUrl = new URL('https://graph.facebook.com/v25.0/oauth/access_token')
+    longLivedUrl.searchParams.set('grant_type', 'fb_exchange_token')
+    longLivedUrl.searchParams.set('client_id', META_APP_ID)
+    longLivedUrl.searchParams.set('client_secret', META_APP_SECRET)
+    longLivedUrl.searchParams.set('fb_exchange_token', shortLivedToken)
 
-    console.log('🔄 Trocando por token de longa duração...')
-    const longLivedResponse = await fetch(longLivedTokenUrl.toString())
-    if (!longLivedResponse.ok) {
-      const errorData = await longLivedResponse.text()
-      console.error('❌ Erro ao obter token de longa duração:', errorData)
-      throw new Error(`Failed to get long-lived token: ${errorData}`)
-    }
-    const longLivedData: FacebookLongLivedTokenResponse = await longLivedResponse.json()
-    const longLivedToken = longLivedData.access_token
-    const expiresIn = longLivedData.expires_in
-    console.log('✅ Token de longa duração obtido (expira em', expiresIn, 'segundos)')
+    const longLivedResponse = await fetch(longLivedUrl.toString())
+    if (!longLivedResponse.ok) throw new Error(`Long-lived token failed: ${await longLivedResponse.text()}`)
+    const longLivedData = await longLivedResponse.json()
+    const longLivedUserToken = longLivedData.access_token
+    console.log('✅ Token longo do usuário obtido')
 
-    const userInfoUrl = new URL('https://graph.facebook.com/v18.0/me')
-    userInfoUrl.searchParams.set('fields', 'id,name,email')
-    userInfoUrl.searchParams.set('access_token', longLivedToken)
+    // 3. Dados do usuário
+    const userResponse = await fetch(`https://graph.facebook.com/v25.0/me?fields=id,name,email&access_token=${longLivedUserToken}`)
+    const userData = await userResponse.json()
+    console.log('✅ Usuário:', userData.name)
 
-    console.log('🔄 Obtendo informações do usuário...')
-    const userInfoResponse = await fetch(userInfoUrl.toString())
-    if (!userInfoResponse.ok) {
-      const errorData = await userInfoResponse.text()
-      console.error('❌ Erro ao obter informações do usuário:', errorData)
-      throw new Error(`Failed to get user info: ${errorData}`)
-    }
-    const userData: FacebookUserResponse = await userInfoResponse.json()
-    console.log('✅ Informações do usuário obtidas:', userData.id, userData.name)
+    // 4. Buscar Pages + Page Tokens
+    const pagesResponse = await fetch(`https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token&access_token=${longLivedUserToken}`)
+    const pagesData = await pagesResponse.json()
+    const pages = pagesData.data || []
+    console.log('✅ Páginas encontradas:', pages.length)
 
+    // 5. Salvar tudo no banco
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const expiresAt = new Date()
-    expiresAt.setSeconds(expiresAt.getSeconds() + expiresIn)
+    expiresAt.setSeconds(expiresAt.getSeconds() + (longLivedData.expires_in || 5184000))
 
-    console.log('🔄 Salvando integração no banco de dados...')
-    const { error: insertError } = await supabase
-      .from('integrations')
-      .upsert({
+    // Salvar user token
+    const { error: upsertError } = await supabase.from('integrations').upsert({
+      user_id: state,
+      platform: 'meta',
+      access_token: longLivedUserToken,
+      meta_user_id: userData.id,
+      meta_user_name: userData.name,
+      meta_user_email: userData.email || null,
+      token_expires_at: expiresAt.toISOString(),
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'user_id,platform' })
+
+    if (upsertError) console.error('❌ Erro salvando user token:', upsertError)
+
+    // Salvar cada Page Token
+    for (const page of pages) {
+      const { error: pageError } = await supabase.from('integrations').upsert({
         user_id: state,
-        platform: 'meta',
-        access_token: longLivedToken,
-        meta_user_id: userData.id,
-        meta_user_name: userData.name,
-        meta_user_email: userData.email,
-        token_expires_at: expiresAt.toISOString(),
+        platform: `meta_page_${page.id}`,
+        access_token: page.access_token,
+        meta_user_id: page.id,
+        meta_user_name: page.name,
         is_active: true,
         updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,platform'
-      })
+      }, { onConflict: 'user_id,platform' })
 
-    if (insertError) {
-      console.error('❌ Erro ao salvar no banco:', insertError)
-      throw new Error(`Failed to save to database: ${insertError.message}`)
+      if (pageError) console.error('❌ Erro salvando page token:', page.name, pageError)
+      else console.log('✅ Page token salvo:', page.name)
     }
-    console.log('✅ Integração salva com sucesso!')
 
-    const redirectUrl = `${SITE_URL}/configuracoes?success=true&platform=meta`
-    return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': redirectUrl } })
+    return new Response(null, {
+      status: 302,
+      headers: { ...corsHeaders, 'Location': `${SITE_URL}/configuracoes?success=true&platform=meta&pages=${pages.length}` }
+    })
 
   } catch (error) {
     console.error('❌ Meta auth callback error:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    const redirectUrl = `https://www.amzofertas.com.br/configuracoes?error=true&message=${encodeURIComponent(errorMessage)}`
-    return new Response(null, { status: 302, headers: { ...corsHeaders, 'Location': redirectUrl } })
+    return new Response(null, {
+      status: 302,
+      headers: { ...corsHeaders, 'Location': `https://www.amzofertas.com.br/configuracoes?error=true&message=${encodeURIComponent(errorMessage)}` }
+    })
   }
 })
