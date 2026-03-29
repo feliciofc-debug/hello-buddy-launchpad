@@ -39,7 +39,8 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
   const [textoPost, setTextoPost] = useState("");
   const [modoEnvio, setModoEnvio] = useState<"agora" | "agendar">("agora");
   const [incluirImagem, setIncluirImagem] = useState(true);
-  const [incluirLink, setIncluirLink] = useState(true);
+  const temLink = !!(produto.link);
+  const [incluirLink, setIncluirLink] = useState(temLink);
   const [dataAgendamento, setDataAgendamento] = useState<Date | undefined>();
   const [horaAgendamento, setHoraAgendamento] = useState("10:00");
 
@@ -83,6 +84,11 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
       return;
     }
 
+    const linkProduto = produto.link || null;
+    const mensagemFinal = incluirLink && linkProduto
+      ? `${textoPost.trim()}\n\n🔗 Compre aqui: ${linkProduto}`
+      : textoPost.trim();
+
     if (modoEnvio === "agendar" && !dataAgendamento) {
       toast.error("Selecione a data do agendamento");
       return;
@@ -96,7 +102,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         return;
       }
 
-      const linkProduto = produto.link_marketplace || produto.link || null;
       const imagemProduto = produto.imagem_url || null;
 
       let scheduledAt: string | null = null;
@@ -114,7 +119,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         produto_source: "produtos",
         platform: "facebook",
         page_id: PAGE_ID,
-        post_text: textoPost,
+        post_text: mensagemFinal,
         image_url: incluirImagem ? imagemProduto : null,
         link_url: incluirLink ? linkProduto : null,
         status: "pendente",
@@ -127,7 +132,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         // Call edge function to publish immediately
         const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
           body: {
-            message: textoPost,
+            message: mensagemFinal,
             page_id: PAGE_ID,
             user_id: user.id,
             image_url: incluirImagem ? imagemProduto : undefined,
@@ -250,9 +255,10 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
                 id="incluir-link"
                 checked={incluirLink}
                 onCheckedChange={(c) => setIncluirLink(!!c)}
+                disabled={!temLink}
               />
-              <Label htmlFor="incluir-link" className="text-sm cursor-pointer">
-                Incluir link do produto
+              <Label htmlFor="incluir-link" className={cn("text-sm cursor-pointer", !temLink && "text-muted-foreground")}>
+                {temLink ? "Incluir link do produto" : "Sem link disponível"}
               </Label>
             </div>
           </div>
