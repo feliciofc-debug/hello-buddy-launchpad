@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -23,6 +23,7 @@ import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
+import { PostarInstagramModal } from '@/components/PostarInstagramModal';
 
 
 interface Campanha {
@@ -714,6 +715,8 @@ export default function MeusProdutos() {
   const [duplicateCards, setDuplicateCards] = useState<{id: string; product: Product}[]>([]);
   const [isFacebookModalOpen, setIsFacebookModalOpen] = useState(false);
   const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
+  const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
+  const [instagramProduct, setInstagramProduct] = useState<Product | null>(null);
   
 
   // Form states
@@ -1431,7 +1434,16 @@ export default function MeusProdutos() {
                           onClick={() => { setFacebookProduct(product); setIsFacebookModalOpen(true); }}
                         >
                           <Facebook className="w-4 h-4" />
-                          📱 Postar no Facebook
+                           📱 Postar no Facebook
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-pink-600 border-pink-300 hover:bg-pink-50"
+                          onClick={() => { setInstagramProduct(product); setIsInstagramModalOpen(true); }}
+                        >
+                          <Instagram className="w-4 h-4" />
+                          📸 Postar no Instagram
                         </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
@@ -1479,7 +1491,16 @@ export default function MeusProdutos() {
                           onClick={() => { setFacebookProduct(product); setIsFacebookModalOpen(true); }}
                         >
                           <Facebook className="w-4 h-4" />
-                          📱 Postar no Facebook
+                           📱 Postar no Facebook
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-pink-600 border-pink-300 hover:bg-pink-50"
+                          onClick={() => { setInstagramProduct(product); setIsInstagramModalOpen(true); }}
+                        >
+                          <Instagram className="w-4 h-4" />
+                          📸 Postar no Instagram
                         </Button>
                         <Button 
                           variant="outline"
@@ -1664,6 +1685,16 @@ export default function MeusProdutos() {
             if (!open) setFacebookProduct(null);
           }}
           produto={facebookProduct}
+        />
+      )}
+      {instagramProduct && (
+        <PostarInstagramModal
+          open={isInstagramModalOpen}
+          onOpenChange={(open) => {
+            setIsInstagramModalOpen(open);
+            if (!open) setInstagramProduct(null);
+          }}
+          produto={instagramProduct}
         />
       )}
     </div>
