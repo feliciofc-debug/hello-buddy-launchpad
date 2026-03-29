@@ -1687,6 +1687,16 @@ export default function MeusProdutos() {
           produto={facebookProduct}
         />
       )}
+      {instagramProduct && (
+        <PostarInstagramModal
+          open={isInstagramModalOpen}
+          onOpenChange={(open) => {
+            setIsInstagramModalOpen(open);
+            if (!open) setInstagramProduct(null);
+          }}
+          produto={instagramProduct}
+        />
+      )}
     </div>
   );
 }
