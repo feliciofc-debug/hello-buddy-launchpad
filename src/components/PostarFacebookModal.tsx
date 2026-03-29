@@ -39,7 +39,8 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
   const [textoPost, setTextoPost] = useState("");
   const [modoEnvio, setModoEnvio] = useState<"agora" | "agendar">("agora");
   const [incluirImagem, setIncluirImagem] = useState(true);
-  const temLink = !!(produto.link);
+  const linkProduto = produto.link || produto.link_marketplace || null;
+  const temLink = !!linkProduto;
   const [incluirLink, setIncluirLink] = useState(temLink);
   const [dataAgendamento, setDataAgendamento] = useState<Date | undefined>();
   const [horaAgendamento, setHoraAgendamento] = useState("10:00");
@@ -84,7 +85,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
       return;
     }
 
-    const linkProduto = produto.link || null;
     const mensagemFinal = incluirLink && linkProduto
       ? `${textoPost.trim()}\n\n🔗 Compre aqui: ${linkProduto}`
       : textoPost.trim();
