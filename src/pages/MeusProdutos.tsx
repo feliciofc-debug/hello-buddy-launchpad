@@ -1656,6 +1656,16 @@ export default function MeusProdutos() {
           onSuccess={fetchProducts}
         />
       )}
+      {facebookProduct && (
+        <PostarFacebookModal
+          open={isFacebookModalOpen}
+          onOpenChange={(open) => {
+            setIsFacebookModalOpen(open);
+            if (!open) setFacebookProduct(null);
+          }}
+          produto={facebookProduct}
+        />
+      )}
     </div>
   );
 }
