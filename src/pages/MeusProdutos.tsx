@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -22,6 +22,7 @@ import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppMo
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 import StockIntegrations from '@/components/StockIntegrations';
+import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 
 
 interface Campanha {
@@ -711,6 +712,8 @@ export default function MeusProdutos() {
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [duplicateCards, setDuplicateCards] = useState<{id: string; product: Product}[]>([]);
+  const [isFacebookModalOpen, setIsFacebookModalOpen] = useState(false);
+  const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
   
 
   // Form states
@@ -1421,6 +1424,15 @@ export default function MeusProdutos() {
                           <Copy className="w-4 h-4" />
                           Duplicar Campanha
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+                          onClick={() => { setFacebookProduct(product); setIsFacebookModalOpen(true); }}
+                        >
+                          <Facebook className="w-4 h-4" />
+                          📱 Postar no Facebook
+                        </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
@@ -1459,6 +1471,15 @@ export default function MeusProdutos() {
                         >
                           <Rocket className="w-4 h-4" />
                           Criar Campanha
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
+                          onClick={() => { setFacebookProduct(product); setIsFacebookModalOpen(true); }}
+                        >
+                          <Facebook className="w-4 h-4" />
+                          📱 Postar no Facebook
                         </Button>
                         <Button 
                           variant="outline"
@@ -1633,6 +1654,16 @@ export default function MeusProdutos() {
           produto={selectedProduct}
           campanhaExistente={selectedCampanha}
           onSuccess={fetchProducts}
+        />
+      )}
+      {facebookProduct && (
+        <PostarFacebookModal
+          open={isFacebookModalOpen}
+          onOpenChange={(open) => {
+            setIsFacebookModalOpen(open);
+            if (!open) setFacebookProduct(null);
+          }}
+          produto={facebookProduct}
         />
       )}
     </div>
