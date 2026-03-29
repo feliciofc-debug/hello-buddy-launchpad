@@ -136,7 +136,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
             page_id: PAGE_ID,
             user_id: user.id,
             image_url: incluirImagem ? imagemProduto : undefined,
-            link_url: incluirLink ? linkProduto : undefined,
           },
         });
 
