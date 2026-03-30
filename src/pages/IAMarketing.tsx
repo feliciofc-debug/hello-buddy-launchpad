@@ -44,6 +44,9 @@ const IAMarketing = () => {
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [userType, setUserType] = useState<string>('empresa');
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [publicandoFacebook, setPublicandoFacebook] = useState(false);
+  const [publicandoInstagram, setPublicandoInstagram] = useState(false);
+  const [publicandoTodas, setPublicandoTodas] = useState(false);
   const [selectedVariations, setSelectedVariations] = useState({
     instagram: 'opcaoA' as keyof PostVariations,
     facebook: 'opcaoA' as keyof PostVariations,
@@ -246,15 +249,135 @@ const IAMarketing = () => {
       return;
     }
 
-    // Salvar no localStorage
     localStorage.setItem('campaignMessageTemplate', textoSelecionado);
-    
     toast.success("Texto salvo! Redirecionando para criar campanha...");
-    
-    // Navegar para página de campanhas
-    setTimeout(() => {
-      navigate('/campanhas-prospeccao');
-    }, 500);
+    setTimeout(() => navigate('/campanhas-prospeccao'), 500);
+  };
+
+  const handlePublicarFacebook = async () => {
+    const texto = editableTexts.facebook[selectedVariations.facebook];
+    if (!texto.trim()) { toast.error("Selecione um texto primeiro"); return; }
+
+    setPublicandoFacebook(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Você precisa estar logado"); return; }
+
+      const link = resultado?.produto?.originalUrl || resultado?.produto?.url || url;
+      const mensagemFinal = link ? `${texto.trim()}\n\n🔗 Compre aqui: ${link}` : texto.trim();
+      const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
+
+      await supabase.from("social_posts_queue" as any).insert({
+        user_id: user.id, platform: "facebook", page_id: "855785300949909",
+        post_text: mensagemFinal, image_url: imagemUrl, status: "pendente",
+      } as any);
+
+      const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
+        body: { message: mensagemFinal, page_id: "855785300949909", user_id: user.id, image_url: imagemUrl || undefined },
+      });
+      if (pubError) throw pubError;
+
+      const postId = pubData?.post_id || pubData?.id || "OK";
+      toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
+    } catch (err: any) {
+      console.error("Erro ao publicar no Facebook:", err);
+      toast.error(err.message || "Erro ao publicar no Facebook");
+    } finally {
+      setPublicandoFacebook(false);
+    }
+  };
+
+  const handlePublicarInstagram = async () => {
+    const texto = editableTexts.instagram[selectedVariations.instagram];
+    if (!texto.trim()) { toast.error("Selecione um texto primeiro"); return; }
+
+    const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
+    if (!imagemUrl) { toast.error("Instagram requer uma imagem. Gere uma imagem com IA ou use um produto com foto."); return; }
+
+    setPublicandoInstagram(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Você precisa estar logado"); return; }
+
+      const link = resultado?.produto?.originalUrl || resultado?.produto?.url || url;
+      const captionFinal = link ? `${texto.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : texto.trim();
+
+      await supabase.from("social_posts_queue" as any).insert({
+        user_id: user.id, platform: "instagram", page_id: "855785300949909",
+        post_text: captionFinal, image_url: imagemUrl, status: "pendente",
+      } as any);
+
+      const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
+        body: { caption: captionFinal, image_url: imagemUrl, user_id: user.id },
+      });
+      if (pubError) throw pubError;
+      if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
+
+      toast.success(`✅ Publicado no Instagram! Post ID: ${pubData?.post_id || "OK"}`);
+    } catch (err: any) {
+      console.error("Erro ao publicar no Instagram:", err);
+      toast.error(err.message || "Erro ao publicar no Instagram");
+    } finally {
+      setPublicandoInstagram(false);
+    }
+  };
+
+  const handlePublicarTodas = async () => {
+    if (!resultado) return;
+
+    const textoFb = editableTexts.facebook[selectedVariations.facebook];
+    const textoIg = editableTexts.instagram[selectedVariations.instagram];
+    const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
+    const link = resultado?.produto?.originalUrl || resultado?.produto?.url || url;
+
+    if (!textoFb.trim() && !textoIg.trim()) { toast.error("Nenhum texto disponível para publicar"); return; }
+
+    setPublicandoTodas(true);
+    const resultados: string[] = [];
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { toast.error("Você precisa estar logado"); return; }
+
+      if (textoFb.trim()) {
+        try {
+          const mensagemFb = link ? `${textoFb.trim()}\n\n🔗 Compre aqui: ${link}` : textoFb.trim();
+          await supabase.from("social_posts_queue" as any).insert({
+            user_id: user.id, platform: "facebook", page_id: "855785300949909",
+            post_text: mensagemFb, image_url: imagemUrl, status: "pendente",
+          } as any);
+          const { error } = await supabase.functions.invoke("meta-publish-post", {
+            body: { message: mensagemFb, page_id: "855785300949909", user_id: user.id, image_url: imagemUrl || undefined },
+          });
+          if (error) throw error;
+          resultados.push("✅ Facebook");
+        } catch (err: any) { resultados.push("❌ Facebook: " + (err.message || "erro")); }
+      }
+
+      if (textoIg.trim() && imagemUrl) {
+        try {
+          const captionIg = link ? `${textoIg.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : textoIg.trim();
+          await supabase.from("social_posts_queue" as any).insert({
+            user_id: user.id, platform: "instagram", page_id: "855785300949909",
+            post_text: captionIg, image_url: imagemUrl, status: "pendente",
+          } as any);
+          const { data: pubData, error } = await supabase.functions.invoke("meta-publish-instagram", {
+            body: { caption: captionIg, image_url: imagemUrl, user_id: user.id },
+          });
+          if (error) throw error;
+          if (!pubData?.success) throw new Error(pubData?.error);
+          resultados.push("✅ Instagram");
+        } catch (err: any) { resultados.push("❌ Instagram: " + (err.message || "erro")); }
+      } else if (textoIg.trim() && !imagemUrl) {
+        resultados.push("⚠️ Instagram pulado (sem imagem)");
+      }
+
+      toast.success(resultados.join(" | "));
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao publicar");
+    } finally {
+      setPublicandoTodas(false);
+    }
   };
 
   return (
@@ -432,14 +555,25 @@ const IAMarketing = () => {
                         className="min-h-[200px] text-sm"
                       />
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
                         <Button
                           onClick={() => handleCopy(editableTexts.instagram[selectedVariations.instagram], 'Instagram')}
                           variant="outline"
-                          className="flex-1"
+                          className="w-full"
                         >
                           <Copy className="mr-2 h-4 w-4" />
                           Copiar
+                        </Button>
+                        <Button
+                          onClick={handlePublicarInstagram}
+                          disabled={publicandoInstagram || !editableTexts.instagram[selectedVariations.instagram]?.trim()}
+                          className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 hover:from-purple-700 hover:via-pink-700 hover:to-orange-600 text-white"
+                        >
+                          {publicandoInstagram ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
+                          ) : (
+                            <><Instagram className="mr-2 h-4 w-4" /> 📸 Publicar no Instagram</>
+                          )}
                         </Button>
                       </div>
                     </CardContent>
@@ -478,14 +612,25 @@ const IAMarketing = () => {
                         className="min-h-[200px] text-sm"
                       />
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
                         <Button
                           onClick={() => handleCopy(editableTexts.facebook[selectedVariations.facebook], 'Facebook')}
                           variant="outline"
-                          className="flex-1"
+                          className="w-full"
                         >
                           <Copy className="mr-2 h-4 w-4" />
                           Copiar
+                        </Button>
+                        <Button
+                          onClick={handlePublicarFacebook}
+                          disabled={publicandoFacebook || !editableTexts.facebook[selectedVariations.facebook]?.trim()}
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {publicandoFacebook ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
+                          ) : (
+                            <><Facebook className="mr-2 h-4 w-4" /> 📱 Publicar no Facebook</>
+                          )}
                         </Button>
                       </div>
                     </CardContent>
@@ -626,14 +771,26 @@ const IAMarketing = () => {
                 </div>
 
                 {/* Botão Principal - Rodapé */}
-                <div className="flex justify-center pt-4">
+                <div className="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+                  <Button
+                    onClick={handlePublicarTodas}
+                    disabled={publicandoTodas}
+                    size="lg"
+                    className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-lg px-12 py-6 text-white"
+                  >
+                    {publicandoTodas ? (
+                      <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> Publicando...</>
+                    ) : (
+                      <>🚀 PUBLICAR AGORA EM TODAS AS REDES</>
+                    )}
+                  </Button>
                   <Button
                     onClick={handleScheduleAll}
                     size="lg"
                     className="bg-green-600 hover:bg-green-700 text-lg px-12 py-6"
                   >
                     <CalendarIcon className="mr-2 h-6 w-6" />
-                    📅 AGENDAR TODOS OS SELECIONADOS
+                    📅 AGENDAR
                   </Button>
                 </div>
               </div>
