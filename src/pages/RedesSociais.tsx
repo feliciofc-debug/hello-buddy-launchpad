@@ -164,12 +164,12 @@ const RedesSociais = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-6xl mx-auto">
         <Button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate(-1)}
           variant="ghost"
           className="mb-6"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Voltar para o Dashboard
+          Voltar
         </Button>
 
         <div className="mb-8">
