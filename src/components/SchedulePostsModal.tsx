@@ -252,6 +252,48 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
         .insert(agendamentos);
 
       if (scheduleError) throw scheduleError;
+
+      // Inserir também na social_posts_queue para o cron de publicação
+      const socialPosts: any[] = [];
+      for (const post of scheduledPosts) {
+        const [dia, mes, ano] = post.data.split('/');
+        const [hora, minuto] = post.hora.split(':');
+        const scheduledAt = new Date(parseInt(ano), parseInt(mes) - 1, parseInt(dia), parseInt(hora), parseInt(minuto));
+
+        for (const rede of post.redes) {
+          let platform = '';
+          let postText = '';
+
+          if (rede === 'Facebook') {
+            platform = 'facebook';
+            postText = postContent.facebook;
+          } else if (rede === 'Instagram Feed') {
+            platform = 'instagram';
+            postText = postContent.instagram;
+          }
+
+          if (platform) {
+            socialPosts.push({
+              user_id: userData.user.id,
+              platform,
+              page_id: '855785300949909',
+              post_text: postText,
+              image_url: null,
+              status: 'pendente',
+              scheduled_at: scheduledAt.toISOString(),
+            });
+          }
+        }
+      }
+
+      if (socialPosts.length > 0) {
+        const { error: socialError } = await supabase
+          .from('social_posts_queue' as any)
+          .insert(socialPosts as any);
+        if (socialError) {
+          console.error('Erro ao inserir na social_posts_queue:', socialError);
+        }
+      }
       
       toast.success(`✅ ${scheduledPosts.length} postagens agendadas com sucesso!`);
       onOpenChange(false);
