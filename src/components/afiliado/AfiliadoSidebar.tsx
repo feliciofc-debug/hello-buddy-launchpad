@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   ChevronLeft,
+  Share2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
@@ -65,6 +66,7 @@ export function AfiliadoSidebar() {
       label: "Marketing",
       items: [
         { title: "IA Marketing", icon: Sparkles, path: "/afiliado/ia-marketing" },
+        { title: "Redes Sociais", icon: Share2, path: "/afiliado/redes-sociais" },
         { title: "Vendas", icon: DollarSign, path: "/afiliado/vendas" },
       ],
     },
