@@ -36,7 +36,8 @@ import {
   Search,
   Smartphone,
   Building2,
-  Sparkles
+  Sparkles,
+  Share2
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import { LeadsQuentes } from '@/components/LeadsQuentes';
@@ -272,6 +273,7 @@ export default function DashboardMetricas() {
     { id: 'contatos', icon: BookOpen, label: '📋 Listas e Contatos', path: '/pj/listas-contatos' },
     { id: 'produtos', icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { id: 'ia-marketing', icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
+    { id: 'redes-sociais', icon: Share2, label: '📲 Redes Sociais', path: '/configuracoes/redes-sociais' },
     { id: 'vendedores', icon: Users, label: 'Vendedores', path: '/vendedores' },
     { id: 'analytics', icon: Activity, label: 'Analytics', path: '/analytics' },
     { id: 'google-ads', icon: BarChart3, label: 'Google Ads', path: '/google-ads' },
