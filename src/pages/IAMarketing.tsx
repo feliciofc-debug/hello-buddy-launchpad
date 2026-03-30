@@ -12,7 +12,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { VideoGenerator } from "@/components/VideoGenerator";
+import { VideoSlideshowGenerator } from "@/components/VideoSlideshowGenerator";
 import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
+import { Separator } from "@/components/ui/separator";
 
 interface PostVariations {
   opcaoA: string;
