@@ -1,0 +1,1 @@
+UPDATE client_menu_config SET menus_permitidos = array_append(menus_permitidos, 'redes-sociais') WHERE tipo_cliente = 'empresa' AND NOT ('redes-sociais' = ANY(menus_permitidos));
