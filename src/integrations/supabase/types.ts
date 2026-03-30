@@ -5575,6 +5575,60 @@ export type Database = {
         }
         Relationships: []
       }
+      social_schedule_config: {
+        Row: {
+          ativo: boolean | null
+          categoria_filtro: string | null
+          created_at: string | null
+          dias_semana: number[] | null
+          frequencia: string
+          horarios: string[]
+          id: string
+          incluir_imagem: boolean | null
+          incluir_link: boolean | null
+          page_id: string
+          platform: string
+          produtos_fonte: string | null
+          proxima_execucao: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          categoria_filtro?: string | null
+          created_at?: string | null
+          dias_semana?: number[] | null
+          frequencia: string
+          horarios?: string[]
+          id?: string
+          incluir_imagem?: boolean | null
+          incluir_link?: boolean | null
+          page_id?: string
+          platform: string
+          produtos_fonte?: string | null
+          proxima_execucao?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          categoria_filtro?: string | null
+          created_at?: string | null
+          dias_semana?: number[] | null
+          frequencia?: string
+          horarios?: string[]
+          id?: string
+          incluir_imagem?: boolean | null
+          incluir_link?: boolean | null
+          page_id?: string
+          platform?: string
+          produtos_fonte?: string | null
+          proxima_execucao?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       socios: {
         Row: {
           cpf: string | null
