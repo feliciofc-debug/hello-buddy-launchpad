@@ -180,6 +180,7 @@ const App = () => (
             <Route path="/afiliado/grupos" element={<AfiliadoGruposWhatsApp />} />
             <Route path="/afiliado/contatos" element={<AfiliadoContatos />} />
             <Route path="/afiliado/campanhas" element={<AfiliadoCampanhas />} />
+            <Route path="/afiliado/redes-sociais" element={<RedesSociais />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
