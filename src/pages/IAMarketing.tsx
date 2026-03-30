@@ -555,14 +555,25 @@ const IAMarketing = () => {
                         className="min-h-[200px] text-sm"
                       />
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
                         <Button
                           onClick={() => handleCopy(editableTexts.instagram[selectedVariations.instagram], 'Instagram')}
                           variant="outline"
-                          className="flex-1"
+                          className="w-full"
                         >
                           <Copy className="mr-2 h-4 w-4" />
                           Copiar
+                        </Button>
+                        <Button
+                          onClick={handlePublicarInstagram}
+                          disabled={publicandoInstagram || !editableTexts.instagram[selectedVariations.instagram]?.trim()}
+                          className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 hover:from-purple-700 hover:via-pink-700 hover:to-orange-600 text-white"
+                        >
+                          {publicandoInstagram ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
+                          ) : (
+                            <><Instagram className="mr-2 h-4 w-4" /> 📸 Publicar no Instagram</>
+                          )}
                         </Button>
                       </div>
                     </CardContent>
@@ -601,14 +612,25 @@ const IAMarketing = () => {
                         className="min-h-[200px] text-sm"
                       />
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2">
                         <Button
                           onClick={() => handleCopy(editableTexts.facebook[selectedVariations.facebook], 'Facebook')}
                           variant="outline"
-                          className="flex-1"
+                          className="w-full"
                         >
                           <Copy className="mr-2 h-4 w-4" />
                           Copiar
+                        </Button>
+                        <Button
+                          onClick={handlePublicarFacebook}
+                          disabled={publicandoFacebook || !editableTexts.facebook[selectedVariations.facebook]?.trim()}
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {publicandoFacebook ? (
+                            <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
+                          ) : (
+                            <><Facebook className="mr-2 h-4 w-4" /> 📱 Publicar no Facebook</>
+                          )}
                         </Button>
                       </div>
                     </CardContent>
@@ -749,14 +771,26 @@ const IAMarketing = () => {
                 </div>
 
                 {/* Botão Principal - Rodapé */}
-                <div className="flex justify-center pt-4">
+                <div className="flex flex-col sm:flex-row justify-center gap-4 pt-4">
+                  <Button
+                    onClick={handlePublicarTodas}
+                    disabled={publicandoTodas}
+                    size="lg"
+                    className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-lg px-12 py-6 text-white"
+                  >
+                    {publicandoTodas ? (
+                      <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> Publicando...</>
+                    ) : (
+                      <>🚀 PUBLICAR AGORA EM TODAS AS REDES</>
+                    )}
+                  </Button>
                   <Button
                     onClick={handleScheduleAll}
                     size="lg"
                     className="bg-green-600 hover:bg-green-700 text-lg px-12 py-6"
                   >
                     <CalendarIcon className="mr-2 h-6 w-6" />
-                    📅 AGENDAR TODOS OS SELECIONADOS
+                    📅 AGENDAR
                   </Button>
                 </div>
               </div>
