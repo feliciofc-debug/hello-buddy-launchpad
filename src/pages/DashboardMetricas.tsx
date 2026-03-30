@@ -36,7 +36,8 @@ import {
   Search,
   Smartphone,
   Building2,
-  Sparkles
+  Sparkles,
+  Share2
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import { LeadsQuentes } from '@/components/LeadsQuentes';

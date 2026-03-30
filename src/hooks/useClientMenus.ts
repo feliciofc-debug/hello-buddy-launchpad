@@ -66,7 +66,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
             tipo_cliente: userTipo,
             menus_permitidos: [
               'dashboard', 'gateway-whatsapp', 'sophia-dispatcher', 'contatos', 'produtos', 'whatsapp', 'conectar-whatsapp', 'automacao-grupos',
-              'ia-conversas', 'ia-marketing', 'campanhas-prospeccao', 'buscar-cnpj', 'leads-funil',
+              'ia-conversas', 'ia-marketing', 'redes-sociais', 'campanhas-prospeccao', 'buscar-cnpj', 'leads-funil',
               'configurar-icp', 'vendedores', 'biblioteca', 'analytics',
               'google-ads', 'shopee', 'marketplace', 'lomadee', 'redes-sociais'
             ],
