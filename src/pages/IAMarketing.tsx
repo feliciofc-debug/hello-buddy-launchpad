@@ -800,7 +800,7 @@ const IAMarketing = () => {
           </TabsContent>
 
           <TabsContent value="video">
-            <div className="max-w-4xl mx-auto">
+            <div className="max-w-4xl mx-auto space-y-6">
               <Button
                 onClick={() => navigate('/dashboard')}
                 variant="ghost"
@@ -810,6 +810,22 @@ const IAMarketing = () => {
                 Voltar
               </Button>
               
+              {/* Slideshow gratuito */}
+              <VideoSlideshowGenerator />
+
+              {/* Separador */}
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator className="w-full" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">
+                    ou gere com IA (usa créditos)
+                  </span>
+                </div>
+              </div>
+
+              {/* Gerador com IA existente */}
               <VideoGenerator />
             </div>
           </TabsContent>
