@@ -103,32 +103,76 @@ export const VideoSlideshowGenerator = () => {
     ctx.closePath();
   };
 
-  const drawSlide = (ctx: CanvasRenderingContext2D, img: HTMLImageElement, width: number, height: number, alpha: number = 1) => {
+  const drawSlide = (
+    ctx: CanvasRenderingContext2D,
+    img: HTMLImageElement,
+    width: number,
+    height: number,
+    alpha: number = 1,
+    progress: number = 0,
+    slideIndex: number = 0
+  ) => {
     ctx.save();
     ctx.globalAlpha = alpha;
+
+    // Ken Burns: zoom lento + pan suave
+    const startScale = 1.0;
+    const endScale = 1.2;
+    const scale = startScale + (endScale - startScale) * progress;
+
+    const direction = slideIndex % 4;
+    let panX = 0;
+    let panY = 0;
+    const panAmount = 40;
+
+    switch (direction) {
+      case 0:
+        panX = -panAmount + (panAmount * 2 * progress);
+        panY = -panAmount / 2 + (panAmount * progress);
+        break;
+      case 1:
+        panX = panAmount - (panAmount * 2 * progress);
+        panY = panAmount / 2 - (panAmount * progress);
+        break;
+      case 2:
+        panX = 0;
+        panY = -panAmount / 2 + (panAmount * progress);
+        break;
+      case 3:
+        panX = panAmount / 2 - (panAmount * progress);
+        panY = 0;
+        break;
+    }
 
     const imgRatio = img.width / img.height;
     const canvasRatio = width / height;
     let drawWidth: number, drawHeight: number, drawX: number, drawY: number;
 
     if (imgRatio > canvasRatio) {
-      drawHeight = height;
-      drawWidth = height * imgRatio;
-      drawX = (width - drawWidth) / 2;
-      drawY = 0;
+      drawHeight = height * scale;
+      drawWidth = drawHeight * imgRatio;
     } else {
-      drawWidth = width;
-      drawHeight = width / imgRatio;
-      drawX = 0;
-      drawY = (height - drawHeight) / 2;
+      drawWidth = width * scale;
+      drawHeight = drawWidth / imgRatio;
     }
+
+    drawX = (width - drawWidth) / 2 + panX;
+    drawY = (height - drawHeight) / 2 + panY;
 
     ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
 
+    // Overlay gradient (bottom)
     const gradient = ctx.createLinearGradient(0, height * 0.5, 0, height);
     gradient.addColorStop(0, "rgba(0,0,0,0)");
     gradient.addColorStop(1, "rgba(0,0,0,0.8)");
     ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    // Overlay gradient (top) for CTA
+    const gradientTop = ctx.createLinearGradient(0, 0, 0, height * 0.15);
+    gradientTop.addColorStop(0, "rgba(0,0,0,0.4)");
+    gradientTop.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gradientTop;
     ctx.fillRect(0, 0, width, height);
 
     if (config.showCta && config.ctaText) {
@@ -202,30 +246,43 @@ export const VideoSlideshowGenerator = () => {
 
       mediaRecorder.start();
 
+      // Build slideshow images — single image gets 4 virtual slides
+      let slideshowImages = [...images];
+      if (images.length === 1) {
+        slideshowImages = [images[0], images[0], images[0], images[0]];
+      }
+
+      // Ensure minimum 15 seconds
+      const minDurationSec = 15;
+      while (slideshowImages.length * config.duration < minDurationSec) {
+        slideshowImages = [...slideshowImages, ...images];
+      }
+
       const fps = 30;
       const slideDurationMs = config.duration * 1000;
       const transitionMs = 800;
-      const totalFrames = (images.length * slideDurationMs * fps) / 1000;
+      const totalFrames = (slideshowImages.length * slideDurationMs * fps) / 1000;
 
       for (let frame = 0; frame < totalFrames; frame++) {
         const timeMs = (frame / fps) * 1000;
         const slideIndex = Math.floor(timeMs / slideDurationMs);
         const slideTimeMs = timeMs % slideDurationMs;
+        const slideProgress = slideTimeMs / slideDurationMs;
 
-        if (slideIndex >= images.length) break;
+        if (slideIndex >= slideshowImages.length) break;
 
         ctx.fillStyle = "#000000";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        const currentImg = images[slideIndex];
+        const currentImg = slideshowImages[slideIndex];
 
         if (slideTimeMs < transitionMs && slideIndex > 0) {
-          const prevImg = images[slideIndex - 1];
-          const progress = slideTimeMs / transitionMs;
-          drawSlide(ctx, prevImg, canvas.width, canvas.height, 1 - progress);
-          drawSlide(ctx, currentImg, canvas.width, canvas.height, progress);
+          const prevImg = slideshowImages[slideIndex - 1];
+          const transitionProgress = slideTimeMs / transitionMs;
+          drawSlide(ctx, prevImg, canvas.width, canvas.height, 1 - transitionProgress, 1.0, slideIndex - 1);
+          drawSlide(ctx, currentImg, canvas.width, canvas.height, transitionProgress, slideProgress, slideIndex);
         } else {
-          drawSlide(ctx, currentImg, canvas.width, canvas.height, 1);
+          drawSlide(ctx, currentImg, canvas.width, canvas.height, 1, slideProgress, slideIndex);
         }
 
         await new Promise((r) => setTimeout(r, 1000 / fps));
@@ -295,6 +352,9 @@ export const VideoSlideshowGenerator = () => {
     }
   };
 
+  const validCount = imageUrls.filter(u => u.trim()).length;
+  const estimatedDuration = Math.max(15, (validCount || 4) * config.duration);
+
   return (
     <div className="space-y-6">
       <Card className="shadow-xl border-2">
@@ -304,11 +364,10 @@ export const VideoSlideshowGenerator = () => {
             🎬 Gerador de Vídeo Slideshow (Gratuito)
           </CardTitle>
           <p className="text-purple-100 text-sm mt-1">
-            Crie vídeos no formato Reels (9:16) usando as imagens do seu produto. Sem custo, sem IA externa.
+            Crie vídeos no formato Reels (9:16) com efeito Ken Burns. Sem custo, sem IA externa.
           </p>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
-          {/* URLs das imagens */}
           <div className="space-y-3">
             <Label className="text-base font-semibold">Imagens do produto (URLs)</Label>
             {imageUrls.map((url, i) => (
@@ -330,7 +389,6 @@ export const VideoSlideshowGenerator = () => {
             </Button>
           </div>
 
-          {/* Dados do produto */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label>Nome do produto</Label>
@@ -350,7 +408,6 @@ export const VideoSlideshowGenerator = () => {
             </div>
           </div>
 
-          {/* CTA e configurações */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label>Texto de chamada (CTA)</Label>
@@ -370,22 +427,24 @@ export const VideoSlideshowGenerator = () => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="3">3 segundos</SelectItem>
-                  <SelectItem value="4">4 segundos</SelectItem>
-                  <SelectItem value="5">5 segundos</SelectItem>
-                  <SelectItem value="6">6 segundos</SelectItem>
+                  <SelectItem value="3">3s por slide (vídeo curto)</SelectItem>
+                  <SelectItem value="4">4s por slide (recomendado)</SelectItem>
+                  <SelectItem value="5">5s por slide (mais detalhado)</SelectItem>
+                  <SelectItem value="6">6s por slide (contemplativo)</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Duração estimada: {estimatedDuration} segundos
+                {validCount <= 1 && " (1 imagem = 4 slides com movimentos diferentes)"}
+              </p>
             </div>
           </div>
 
-          {/* Canvas hidden */}
           <canvas ref={canvasRef} className="hidden" />
 
-          {/* Botão gerar */}
           <Button
             onClick={generateVideo}
-            disabled={generating || imageUrls.filter(u => u.trim()).length === 0}
+            disabled={generating || validCount === 0}
             className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
             size="lg"
           >
@@ -396,7 +455,6 @@ export const VideoSlideshowGenerator = () => {
             )}
           </Button>
 
-          {/* Preview e ações */}
           {videoUrl && (
             <div className="space-y-4">
               <p className="font-semibold text-center">Preview do vídeo:</p>
