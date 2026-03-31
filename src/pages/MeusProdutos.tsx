@@ -1706,6 +1706,10 @@ export default function MeusProdutos() {
           produto={instagramProduct}
         />
       )}
+      <AutopilotModal
+        open={isAutopilotOpen}
+        onOpenChange={setIsAutopilotOpen}
+      />
     </div>
   );
 }
