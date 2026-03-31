@@ -269,10 +269,10 @@ export const AutopilotConfig = () => {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Quais produtos postar?</Label>
-              <Select value={config.produto_fonte} onValueChange={(v) => setConfig(prev => ({ ...prev, produto_fonte: v }))}>
+              <Select value={config.produto_fonte} onValueChange={(v) => setConfig(prev => ({ ...prev, produto_fonte: v, categoria_filtro: v === "categoria" ? prev.categoria_filtro : "" }))}>
                 <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-background">
-                  <SelectItem value="todos">Todos os produtos ativos ({totalProdutos})</SelectItem>
+                  <SelectItem value="todos">Todos os meus produtos ativos ({totalProdutos})</SelectItem>
                   <SelectItem value="categoria">Por categoria</SelectItem>
                 </SelectContent>
               </Select>
