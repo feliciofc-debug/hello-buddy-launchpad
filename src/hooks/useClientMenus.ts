@@ -11,27 +11,28 @@ interface MenuConfig {
 const routeToMenuId: Record<string, string> = {
   '/dashboard': 'dashboard',
   '/meus-produtos': 'produtos',
-
-  // PJ
-  '/pj/listas-contatos': 'contatos',
-  '/pj/whatsapp-automacao': 'gateway-whatsapp',
-
-  '/whatsapp': 'whatsapp',
-  '/configuracoes-whatsapp': 'conectar-whatsapp',
-  '/ia-conversas': 'ia-conversas',
   '/ia-marketing': 'ia-marketing',
-  '/campanhas-prospeccao': 'campanhas-prospeccao',
-  '/prospects': 'buscar-cnpj',
-  '/leads-funil': 'leads-funil',
-  '/configuracoes-icp': 'configurar-icp',
-  '/vendedores': 'vendedores',
-  '/biblioteca': 'biblioteca',
-  '/analytics': 'analytics',
-  '/google-ads': 'google-ads',
-  '/lomadee': 'lomadee',
-  '/marketplace': 'marketplace',
+  '/redes-sociais': 'redes-sociais',
+  '/whatsapp-painel': 'whatsapp',
+  '/configuracoes': 'configuracoes',
+
+  // Rotas legadas (continuam funcionando)
+  '/pj/listas-contatos': 'whatsapp',
+  '/pj/whatsapp-automacao': 'whatsapp',
+  '/whatsapp': 'whatsapp',
+  '/configuracoes-whatsapp': 'whatsapp',
   '/configuracoes/redes-sociais': 'redes-sociais',
-  '/produtos': 'shopee',
+  '/ia-conversas': 'ia-marketing',
+  '/campanhas-prospeccao': 'whatsapp',
+  '/prospects': 'whatsapp',
+  '/leads-funil': 'whatsapp',
+  '/vendedores': 'configuracoes',
+  '/biblioteca': 'ia-marketing',
+  '/analytics': 'dashboard',
+  '/google-ads': 'configuracoes',
+  '/lomadee': 'produtos',
+  '/marketplace': 'produtos',
+  '/produtos': 'produtos',
 };
 
 export function useClientMenus(userTipo: string | null | undefined, userNomeFantasia?: string | null) {
@@ -65,10 +66,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
           setMenuConfig({
             tipo_cliente: userTipo,
             menus_permitidos: [
-              'dashboard', 'gateway-whatsapp', 'sophia-dispatcher', 'contatos', 'produtos', 'whatsapp', 'conectar-whatsapp', 'automacao-grupos',
-              'ia-conversas', 'ia-marketing', 'redes-sociais', 'campanhas-prospeccao', 'buscar-cnpj', 'leads-funil',
-              'configurar-icp', 'vendedores', 'biblioteca', 'analytics',
-              'google-ads', 'shopee', 'marketplace', 'lomadee', 'redes-sociais'
+              'dashboard', 'produtos', 'ia-marketing', 'redes-sociais', 'whatsapp', 'configuracoes'
             ],
             empresa_nome: 'AMZ Ofertas'
           });

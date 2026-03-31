@@ -268,17 +268,10 @@ export default function DashboardMetricas() {
 
   const menuItemsAll = [
     { id: 'dashboard', icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
-    { id: 'gateway-whatsapp', icon: Smartphone, label: '📱 Gateway WhatsApp', path: '/gateway-whatsapp' },
-    { id: 'sophia-dispatcher', icon: Send, label: '🚀 Sophia Dispatcher', path: '/sophia-dispatcher' },
-    { id: 'contatos', icon: BookOpen, label: '📋 Listas e Contatos', path: '/pj/listas-contatos' },
     { id: 'produtos', icon: Package, label: 'Produtos', path: '/meus-produtos' },
     { id: 'ia-marketing', icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
-    { id: 'redes-sociais', icon: Share2, label: '📲 Redes Sociais', path: '/configuracoes/redes-sociais' },
-    { id: 'vendedores', icon: Users, label: 'Vendedores', path: '/vendedores' },
-    { id: 'analytics', icon: Activity, label: 'Analytics', path: '/analytics' },
-    { id: 'google-ads', icon: BarChart3, label: 'Google Ads', path: '/google-ads' },
-    { id: 'amz-imoveis', icon: Building2, label: 'AMZ Imóveis', path: '/imoveis/leads-enriquecidos' },
-    { id: 'pietro-dashboard', icon: Sparkles, label: 'Pietro Dashboard', path: '/pietro-dashboard' },
+    { id: 'redes-sociais', icon: Share2, label: 'Redes Sociais', path: '/redes-sociais' },
+    { id: 'whatsapp', icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp-painel' },
     { id: 'configuracoes', icon: Settings, label: 'Configurações', path: '/configuracoes' },
   ];
 
