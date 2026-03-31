@@ -849,6 +849,87 @@ export type Database = {
         }
         Relationships: []
       }
+      autopilot_config: {
+        Row: {
+          ativo: boolean | null
+          categoria_filtro: string | null
+          created_at: string | null
+          dias_semana: number[]
+          estilo_texto: string | null
+          gerar_texto_ia: boolean | null
+          horario_fim: string
+          horario_inicio: string
+          id: string
+          incluir_imagem: boolean | null
+          incluir_link: boolean | null
+          nome: string
+          postar_facebook: boolean | null
+          postar_instagram: boolean | null
+          posts_por_dia: number
+          produto_fonte: string
+          produto_ids: string[] | null
+          proxima_execucao: string | null
+          repetir_ciclo: boolean | null
+          total_publicados: number | null
+          ultima_execucao: string | null
+          ultimo_produto_index: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          categoria_filtro?: string | null
+          created_at?: string | null
+          dias_semana?: number[]
+          estilo_texto?: string | null
+          gerar_texto_ia?: boolean | null
+          horario_fim?: string
+          horario_inicio?: string
+          id?: string
+          incluir_imagem?: boolean | null
+          incluir_link?: boolean | null
+          nome?: string
+          postar_facebook?: boolean | null
+          postar_instagram?: boolean | null
+          posts_por_dia?: number
+          produto_fonte?: string
+          produto_ids?: string[] | null
+          proxima_execucao?: string | null
+          repetir_ciclo?: boolean | null
+          total_publicados?: number | null
+          ultima_execucao?: string | null
+          ultimo_produto_index?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          categoria_filtro?: string | null
+          created_at?: string | null
+          dias_semana?: number[]
+          estilo_texto?: string | null
+          gerar_texto_ia?: boolean | null
+          horario_fim?: string
+          horario_inicio?: string
+          id?: string
+          incluir_imagem?: boolean | null
+          incluir_link?: boolean | null
+          nome?: string
+          postar_facebook?: boolean | null
+          postar_instagram?: boolean | null
+          posts_por_dia?: number
+          produto_fonte?: string
+          produto_ids?: string[] | null
+          proxima_execucao?: string | null
+          repetir_ciclo?: boolean | null
+          total_publicados?: number | null
+          ultima_execucao?: string | null
+          ultimo_produto_index?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       backup_logs: {
         Row: {
           arquivo_path: string | null
