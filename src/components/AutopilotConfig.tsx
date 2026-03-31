@@ -37,19 +37,32 @@ export const AutopilotConfig = () => {
   const [categorias, setCategorias] = useState<string[]>([]);
 
   useEffect(() => {
-    loadConfig();
-    loadProdutos();
+    void initialize();
   }, []);
 
-  const loadConfig = async () => {
+  const initialize = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
+      await Promise.all([
+        loadConfig(user.id),
+        loadProdutos(user.id),
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadConfig = async (userId: string) => {
+    try {
       const { data } = await supabase
         .from("autopilot_config" as any)
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_id", userId)
         .maybeSingle();
 
       if (data) {
@@ -57,22 +70,33 @@ export const AutopilotConfig = () => {
       }
     } catch (err) {
       console.error("Erro ao carregar config:", err);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const loadProdutos = async () => {
-    const { count } = await supabase
+  const loadProdutos = async (userId: string) => {
+    const { count, error: countError } = await supabase
       .from("produtos")
       .select("*", { count: "exact", head: true })
-      .eq("ativo", true);
+      .eq("ativo", true)
+      .eq("user_id", userId);
+
+    if (countError) {
+      console.error("Erro ao contar produtos:", countError);
+    }
+
     setTotalProdutos(count || 0);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("produtos")
       .select("categoria")
-      .eq("ativo", true);
+      .eq("ativo", true)
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Erro ao carregar categorias:", error);
+      return;
+    }
+
     if (data) {
       const cats = [...new Set(data.map((p: any) => p.categoria).filter(Boolean))] as string[];
       setCategorias(cats);
@@ -89,7 +113,7 @@ export const AutopilotConfig = () => {
         user_id: user.id,
         nome: config.nome,
         produto_fonte: config.produto_fonte,
-        categoria_filtro: config.categoria_filtro || null,
+        categoria_filtro: config.produto_fonte === "categoria" ? (config.categoria_filtro || null) : null,
         postar_facebook: config.postar_facebook,
         postar_instagram: config.postar_instagram,
         posts_por_dia: config.posts_por_dia,
@@ -136,7 +160,17 @@ export const AutopilotConfig = () => {
       const updateData: any = { ativo: novoEstado, updated_at: new Date().toISOString() };
       if (novoEstado) updateData.proxima_execucao = new Date().toISOString();
 
-      await supabase.from("autopilot_config" as any).update(updateData).eq("id", config.id);
+      const { error } = await supabase
+        .from("autopilot_config" as any)
+        .update(updateData)
+        .eq("id", config.id);
+
+      if (error) {
+        setConfig(prev => ({ ...prev, ativo: !novoEstado }));
+        toast.error(error.message || "Erro ao alterar status do Autopilot");
+        return;
+      }
+
       toast.success(novoEstado ? "🚀 Autopilot ATIVADO!" : "⏸️ Autopilot pausado");
     } else {
       toast.error("Salve a configuração primeiro");
@@ -164,7 +198,7 @@ export const AutopilotConfig = () => {
 
   const diasAtivos = config.dias_semana.length;
   const postsMensais = diasAtivos * config.posts_por_dia * 4;
-  const diasParaCobrir = totalProdutos > 0 ? Math.ceil(totalProdutos / config.posts_por_dia) : 0;
+  const diasParaCobrir = totalProdutos > 0 ? Math.ceil(totalProdutos / Math.max(config.posts_por_dia, 1)) : 0;
 
   if (loading) {
     return (
@@ -235,10 +269,10 @@ export const AutopilotConfig = () => {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Quais produtos postar?</Label>
-              <Select value={config.produto_fonte} onValueChange={(v) => setConfig(prev => ({ ...prev, produto_fonte: v }))}>
+              <Select value={config.produto_fonte} onValueChange={(v) => setConfig(prev => ({ ...prev, produto_fonte: v, categoria_filtro: v === "categoria" ? prev.categoria_filtro : "" }))}>
                 <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                 <SelectContent className="bg-background">
-                  <SelectItem value="todos">Todos os produtos ativos ({totalProdutos})</SelectItem>
+                  <SelectItem value="todos">Todos os meus produtos ativos ({totalProdutos})</SelectItem>
                   <SelectItem value="categoria">Por categoria</SelectItem>
                 </SelectContent>
               </Select>

@@ -57,7 +57,28 @@ serve(async (req) => {
 
       for (const post of pendingPosts) {
         try {
-          // Marcar como publicando
+          if (post.produto_id && post.produto_source === 'produtos') {
+            const { data: produto, error: produtoError } = await supabase
+              .from('produtos')
+              .select('id, user_id, nome')
+              .eq('id', post.produto_id)
+              .maybeSingle()
+
+            if (produtoError) {
+              throw new Error(`Erro ao validar produto ${post.produto_id}: ${produtoError.message}`)
+            }
+
+            if (!produto) {
+              throw new Error(`Produto ${post.produto_id} não encontrado para validar publicação`)
+            }
+
+            if (produto.user_id !== post.user_id) {
+              throw new Error(`Produto ${post.produto_id} pertence a outro usuário e foi bloqueado`)
+            }
+
+            console.log(`🔐 Produto validado para post ${post.id}: ${produto.nome}`)
+          }
+
           await supabase.from('social_posts_queue')
             .update({ status: 'publicando', updated_at: now.toISOString() })
             .eq('id', post.id)
