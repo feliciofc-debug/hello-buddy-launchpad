@@ -20,6 +20,25 @@ serve(async (req) => {
     const results: any[] = []
 
     // ============================
+    // PARTE 0: Executar Autopilot (agenda posts novos)
+    // ============================
+    try {
+      console.log('🤖 Executando autopilot...')
+      const autopilotResponse = await fetch(`${SUPABASE_URL}/functions/v1/autopilot-social`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ source: 'cron' })
+      })
+      const autopilotResult = await autopilotResponse.json()
+      console.log('🤖 Autopilot resultado:', autopilotResult.processed, 'configs processadas')
+    } catch (autopilotError) {
+      console.error('⚠️ Erro no autopilot (não bloqueia publicação):', autopilotError)
+    }
+
+    // ============================
     // PARTE 1: Publicar posts pendentes da social_posts_queue
     // ============================
     const { data: pendingPosts, error: fetchError } = await supabase

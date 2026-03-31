@@ -718,6 +718,7 @@ export default function MeusProdutos() {
   const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
   const [instagramProduct, setInstagramProduct] = useState<Product | null>(null);
+  const [isAutopilotOpen, setIsAutopilotOpen] = useState(false);
   
 
   // Form states
