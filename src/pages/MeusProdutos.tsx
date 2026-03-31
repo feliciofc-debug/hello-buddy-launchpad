@@ -1214,7 +1214,14 @@ export default function MeusProdutos() {
                 <p className="text-muted-foreground mt-1">Gerencie seus produtos e campanhas</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                onClick={() => setIsAutopilotOpen(true)}
+                className="gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white"
+              >
+                <Rocket className="w-4 h-4" />
+                🤖 Autopilot Social
+              </Button>
               <Button onClick={openAddModal} className="gap-2">
                 <Plus className="w-4 h-4" />
                 Adicionar Produto
