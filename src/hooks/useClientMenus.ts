@@ -66,10 +66,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
           setMenuConfig({
             tipo_cliente: userTipo,
             menus_permitidos: [
-              'dashboard', 'gateway-whatsapp', 'sophia-dispatcher', 'contatos', 'produtos', 'whatsapp', 'conectar-whatsapp', 'automacao-grupos',
-              'ia-conversas', 'ia-marketing', 'redes-sociais', 'campanhas-prospeccao', 'buscar-cnpj', 'leads-funil',
-              'configurar-icp', 'vendedores', 'biblioteca', 'analytics',
-              'google-ads', 'shopee', 'marketplace', 'lomadee', 'redes-sociais'
+              'dashboard', 'produtos', 'ia-marketing', 'redes-sociais', 'whatsapp', 'configuracoes'
             ],
             empresa_nome: 'AMZ Ofertas'
           });
