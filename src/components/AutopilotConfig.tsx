@@ -198,7 +198,7 @@ export const AutopilotConfig = () => {
 
   const diasAtivos = config.dias_semana.length;
   const postsMensais = diasAtivos * config.posts_por_dia * 4;
-  const diasParaCobrir = totalProdutos > 0 ? Math.ceil(totalProdutos / config.posts_por_dia) : 0;
+  const diasParaCobrir = totalProdutos > 0 ? Math.ceil(totalProdutos / Math.max(config.posts_por_dia, 1)) : 0;
 
   if (loading) {
     return (
