@@ -17,6 +17,9 @@ serve(async (req) => {
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const requestBody = req.method === 'POST' ? await req.json().catch(() => ({})) : {}
+    const forceRun = requestBody?.force === true
+    const configId = typeof requestBody?.config_id === 'string' ? requestBody.config_id : null
 
     const now = new Date()
     const nowSaoPaulo = new Date(now.toLocaleString('en-US', { timeZone: SAO_PAULO_TIMEZONE }))
@@ -25,13 +28,24 @@ serve(async (req) => {
     console.log('🤖 [AUTOPILOT] Iniciando execução', {
       now_utc: now.toISOString(),
       now_sp: formatSaoPauloIso(nowSaoPaulo),
+      force_run: forceRun,
+      config_id: configId,
     })
 
-    const { data: configs, error: configError } = await supabase
+    let configQuery = supabase
       .from('autopilot_config')
       .select('*')
       .eq('ativo', true)
-      .or(`proxima_execucao.is.null,proxima_execucao.lte.${now.toISOString()}`)
+
+    if (configId) {
+      configQuery = configQuery.eq('id', configId)
+    }
+
+    if (!forceRun) {
+      configQuery = configQuery.or(`proxima_execucao.is.null,proxima_execucao.lte.${now.toISOString()}`)
+    }
+
+    const { data: configs, error: configError } = await configQuery
 
     if (configError) {
       console.error('❌ [AUTOPILOT] Erro buscando configs:', configError)
@@ -47,6 +61,7 @@ serve(async (req) => {
         processed: 0,
         now_utc: now.toISOString(),
         now_sp: formatSaoPauloIso(nowSaoPaulo),
+        force_run: forceRun,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
