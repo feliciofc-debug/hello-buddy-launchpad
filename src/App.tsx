@@ -69,6 +69,8 @@ import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import SophiaDispatcher from "./pages/SophiaDispatcher";
 import GatewayWhatsApp from "./pages/GatewayWhatsApp";
+import RedesSociaisPainel from "./pages/RedesSociaisPainel";
+import WhatsAppPainel from "./pages/WhatsAppPainel";
 
 // Páginas Afiliados
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
