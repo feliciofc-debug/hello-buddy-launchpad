@@ -24,6 +24,7 @@ import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
+import { AutopilotModal } from '@/components/AutopilotModal';
 
 
 interface Campanha {
