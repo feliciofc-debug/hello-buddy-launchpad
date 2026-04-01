@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram, Video } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -25,6 +25,7 @@ import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
 import { AutopilotModal } from '@/components/AutopilotModal';
+import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 
 
 interface Campanha {
@@ -719,6 +720,8 @@ export default function MeusProdutos() {
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
   const [instagramProduct, setInstagramProduct] = useState<Product | null>(null);
   const [isAutopilotOpen, setIsAutopilotOpen] = useState(false);
+  const [isReelsModalOpen, setIsReelsModalOpen] = useState(false);
+  const [reelsProduct, setReelsProduct] = useState<Product | null>(null);
   
 
   // Form states
@@ -1454,6 +1457,15 @@ export default function MeusProdutos() {
                           <Instagram className="w-4 h-4" />
                           📸 Postar no Instagram
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
+                          onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
+                        >
+                          <Video className="w-4 h-4" />
+                          📹 Publicar Reels
+                        </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
@@ -1510,6 +1522,15 @@ export default function MeusProdutos() {
                         >
                           <Instagram className="w-4 h-4" />
                           📸 Postar no Instagram
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
+                          onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
+                        >
+                          <Video className="w-4 h-4" />
+                          📹 Publicar Reels
                         </Button>
                         <Button 
                           variant="outline"
@@ -1710,6 +1731,16 @@ export default function MeusProdutos() {
         open={isAutopilotOpen}
         onOpenChange={setIsAutopilotOpen}
       />
+      {reelsProduct && (
+        <PublicarReelsModal
+          open={isReelsModalOpen}
+          onOpenChange={(open) => {
+            setIsReelsModalOpen(open);
+            if (!open) setReelsProduct(null);
+          }}
+          produto={reelsProduct}
+        />
+      )}
     </div>
   );
 }

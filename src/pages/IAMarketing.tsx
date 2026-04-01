@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { VideoGenerator } from "@/components/VideoGenerator";
 import { VideoSlideshowGenerator } from "@/components/VideoSlideshowGenerator";
 import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
+import { PublicarReelsModal } from "@/components/PublicarReelsModal";
 import { Separator } from "@/components/ui/separator";
 
 interface PostVariations {
@@ -49,6 +50,7 @@ const IAMarketing = () => {
   const [publicandoFacebook, setPublicandoFacebook] = useState(false);
   const [publicandoInstagram, setPublicandoInstagram] = useState(false);
   const [publicandoTodas, setPublicandoTodas] = useState(false);
+  const [showReelsModal, setShowReelsModal] = useState(false);
   const [selectedVariations, setSelectedVariations] = useState({
     instagram: 'opcaoA' as keyof PostVariations,
     facebook: 'opcaoA' as keyof PostVariations,
@@ -813,6 +815,25 @@ const IAMarketing = () => {
               {/* Slideshow gratuito */}
               <VideoSlideshowGenerator />
 
+              {/* Botão Upload de Reels */}
+              <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30">
+                <CardContent className="p-6 text-center">
+                  <Video className="h-10 w-10 mx-auto mb-3 text-purple-600" />
+                  <h3 className="text-lg font-bold mb-1">📹 Publicar Reels do Celular</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Grave um vídeo no celular e publique como Reels no Facebook e Instagram
+                  </p>
+                  <Button
+                    onClick={() => setShowReelsModal(true)}
+                    className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
+                    size="lg"
+                  >
+                    <Upload className="mr-2 h-5 w-5" />
+                    Upload de Vídeo MP4
+                  </Button>
+                </CardContent>
+              </Card>
+
               {/* Separador */}
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
@@ -867,6 +888,16 @@ const IAMarketing = () => {
           userType={userType}
         />
       )}
+      <PublicarReelsModal
+        open={showReelsModal}
+        onOpenChange={setShowReelsModal}
+        produto={resultado ? {
+          nome: resultado.produto.titulo,
+          preco: resultado.produto.preco ? parseFloat(resultado.produto.preco.replace(/[^\d.,]/g, '').replace(',', '.')) : null,
+          link: resultado.produto.url || resultado.produto.originalUrl,
+          imagem_url: resultado.produto.imagem,
+        } : null}
+      />
     </div>
   );
 };
