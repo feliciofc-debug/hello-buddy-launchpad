@@ -1457,6 +1457,15 @@ export default function MeusProdutos() {
                           <Instagram className="w-4 h-4" />
                           📸 Postar no Instagram
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
+                          onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
+                        >
+                          <Video className="w-4 h-4" />
+                          📹 Publicar Reels
+                        </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
