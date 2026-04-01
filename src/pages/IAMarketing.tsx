@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { VideoGenerator } from "@/components/VideoGenerator";
 import { VideoSlideshowGenerator } from "@/components/VideoSlideshowGenerator";
 import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
+import { PublicarReelsModal } from "@/components/PublicarReelsModal";
 import { Separator } from "@/components/ui/separator";
 
 interface PostVariations {
