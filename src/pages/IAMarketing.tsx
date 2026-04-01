@@ -50,6 +50,7 @@ const IAMarketing = () => {
   const [publicandoFacebook, setPublicandoFacebook] = useState(false);
   const [publicandoInstagram, setPublicandoInstagram] = useState(false);
   const [publicandoTodas, setPublicandoTodas] = useState(false);
+  const [showReelsModal, setShowReelsModal] = useState(false);
   const [selectedVariations, setSelectedVariations] = useState({
     instagram: 'opcaoA' as keyof PostVariations,
     facebook: 'opcaoA' as keyof PostVariations,
