@@ -888,6 +888,16 @@ const IAMarketing = () => {
           userType={userType}
         />
       )}
+      <PublicarReelsModal
+        open={showReelsModal}
+        onOpenChange={setShowReelsModal}
+        produto={resultado ? {
+          nome: resultado.produto.titulo,
+          preco: resultado.produto.preco ? parseFloat(resultado.produto.preco.replace(/[^\d.,]/g, '').replace(',', '.')) : null,
+          link: resultado.produto.url || resultado.produto.originalUrl,
+          imagem_url: resultado.produto.imagem,
+        } : null}
+      />
     </div>
   );
 };
