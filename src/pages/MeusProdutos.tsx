@@ -1731,6 +1731,16 @@ export default function MeusProdutos() {
         open={isAutopilotOpen}
         onOpenChange={setIsAutopilotOpen}
       />
+      {reelsProduct && (
+        <PublicarReelsModal
+          open={isReelsModalOpen}
+          onOpenChange={(open) => {
+            setIsReelsModalOpen(open);
+            if (!open) setReelsProduct(null);
+          }}
+          produto={reelsProduct}
+        />
+      )}
     </div>
   );
 }
