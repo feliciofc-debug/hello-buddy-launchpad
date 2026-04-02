@@ -63,6 +63,19 @@ export default function Login() {
         return;
       }
 
+      // Verificar se é conta trial ativa
+      const { data: trialCheck } = await supabase
+        .from('trial_configs' as any)
+        .select('*')
+        .eq('user_id', data.user.id)
+        .eq('status', 'ativo')
+        .single();
+
+      if (trialCheck) {
+        navigate('/dashboard');
+        return;
+      }
+
       // Outros usuários precisam verificar assinatura
       const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
 
