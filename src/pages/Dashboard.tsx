@@ -224,7 +224,7 @@ const Dashboard = () => {
 
         console.log('Trial check dashboard:', trialCheck, 'Error:', trialError);
 
-        if (trialCheck && new Date((trialCheck as any).data_fim) > new Date()) {
+        if (trialCheck && (trialCheck as any).status === 'ativo' && new Date((trialCheck as any).data_fim) > new Date()) {
           console.log('✅ Conta trial ativa - acesso liberado');
         } else {
           // Todos os outros usuários precisam de assinatura ativa
