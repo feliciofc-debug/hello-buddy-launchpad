@@ -215,15 +215,27 @@ const Dashboard = () => {
       
       // Acesso direto APENAS para expo@atombrasildigital.com (dono)
       if (session.user.email !== 'expo@atombrasildigital.com') {
-        // Todos os outros usuários precisam de assinatura ativa
-        const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
-        
-        console.log('Verificação de assinatura:', subscriptionCheck);
-        
-        if (!subscriptionCheck?.hasActiveSubscription) {
-          toast.error('Você precisa de uma assinatura ativa para acessar o dashboard');
-          navigate('/planos');
-          return;
+        // Verificar se é conta trial ativa
+        const { data: trialCheck } = await supabase
+          .from('trial_configs' as any)
+          .select('status, data_fim')
+          .eq('user_id', session.user.id)
+          .eq('status', 'ativo')
+          .single();
+
+        if (trialCheck && new Date((trialCheck as any).data_fim) > new Date()) {
+          console.log('✅ Conta trial ativa - acesso liberado');
+        } else {
+          // Todos os outros usuários precisam de assinatura ativa
+          const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
+          
+          console.log('Verificação de assinatura:', subscriptionCheck);
+          
+          if (!subscriptionCheck?.hasActiveSubscription) {
+            toast.error('Você precisa de uma assinatura ativa para acessar o dashboard');
+            navigate('/planos');
+            return;
+          }
         }
       } else {
         console.log('✅ Dono da plataforma - acesso liberado');
