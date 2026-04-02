@@ -333,6 +333,7 @@ const IAMarketing = () => {
       if (pubError) throw pubError;
       if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
 
+      if (isTrial) await incrementPostUsage();
       toast.success(`✅ Publicado no Instagram! Post ID: ${pubData?.post_id || "OK"}`);
     } catch (err: any) {
       console.error("Erro ao publicar no Instagram:", err);
