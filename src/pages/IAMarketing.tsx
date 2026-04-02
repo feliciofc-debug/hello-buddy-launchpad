@@ -41,6 +41,7 @@ interface ProductAnalysis {
 
 const IAMarketing = () => {
   const navigate = useNavigate();
+  const { isTrial, trial, canUseIAMarketing, canPostToday, isTrialExpired, incrementImageUsage, incrementPostUsage, trialDaysRemaining } = useTrialConfig();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
