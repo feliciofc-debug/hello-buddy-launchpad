@@ -93,6 +93,12 @@ const IAMarketing = () => {
       return;
     }
 
+    // Trial guard - check IA Marketing limit
+    if (isTrial && !canUseIAMarketing()) {
+      toast.error("🔒 Limite de IA Marketing atingido! Contrate o plano completo para continuar.");
+      return;
+    }
+
     setLoading(true);
     setResultado(null);
     
