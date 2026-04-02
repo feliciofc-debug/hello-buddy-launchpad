@@ -5961,6 +5961,57 @@ export type Database = {
         }
         Relationships: []
       }
+      trial_configs: {
+        Row: {
+          created_at: string
+          data_fim: string
+          data_inicio: string
+          data_ultimo_post: string | null
+          email: string
+          ia_marketing_bloqueada: boolean
+          id: string
+          imagens_ia_usadas: number
+          limite_imagens_ia: number
+          limite_posts_dia: number
+          posts_hoje: number
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          data_fim: string
+          data_inicio?: string
+          data_ultimo_post?: string | null
+          email: string
+          ia_marketing_bloqueada?: boolean
+          id?: string
+          imagens_ia_usadas?: number
+          limite_imagens_ia?: number
+          limite_posts_dia?: number
+          posts_hoje?: number
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          data_fim?: string
+          data_inicio?: string
+          data_ultimo_post?: string | null
+          email?: string
+          ia_marketing_bloqueada?: boolean
+          id?: string
+          imagens_ia_usadas?: number
+          limite_imagens_ia?: number
+          limite_posts_dia?: number
+          posts_hoje?: number
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_market_config: {
         Row: {
           base_prompt: string | null
