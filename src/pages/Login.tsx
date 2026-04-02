@@ -64,14 +64,16 @@ export default function Login() {
       }
 
       // Verificar se é conta trial ativa
-      const { data: trialCheck } = await supabase
+      const { data: trialCheck, error: trialError } = await supabase
         .from('trial_configs' as any)
-        .select('*')
+        .select('status, data_fim')
         .eq('user_id', data.user.id)
-        .eq('status', 'ativo')
-        .single();
+        .maybeSingle();
 
-      if (trialCheck) {
+      console.log('Trial check:', trialCheck, 'Error:', trialError);
+
+      if (trialCheck && (trialCheck as any).status === 'ativo' && new Date((trialCheck as any).data_fim) > new Date()) {
+        console.log('✅ Conta trial ativa - acesso liberado');
         navigate('/dashboard');
         return;
       }

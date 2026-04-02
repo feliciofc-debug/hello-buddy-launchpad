@@ -216,14 +216,15 @@ const Dashboard = () => {
       // Acesso direto APENAS para expo@atombrasildigital.com (dono)
       if (session.user.email !== 'expo@atombrasildigital.com') {
         // Verificar se é conta trial ativa
-        const { data: trialCheck } = await supabase
+        const { data: trialCheck, error: trialError } = await supabase
           .from('trial_configs' as any)
           .select('status, data_fim')
           .eq('user_id', session.user.id)
-          .eq('status', 'ativo')
-          .single();
+          .maybeSingle();
 
-        if (trialCheck && new Date((trialCheck as any).data_fim) > new Date()) {
+        console.log('Trial check dashboard:', trialCheck, 'Error:', trialError);
+
+        if (trialCheck && (trialCheck as any).status === 'ativo' && new Date((trialCheck as any).data_fim) > new Date()) {
           console.log('✅ Conta trial ativa - acesso liberado');
         } else {
           // Todos os outros usuários precisam de assinatura ativa
