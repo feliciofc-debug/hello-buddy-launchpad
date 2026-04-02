@@ -270,6 +270,8 @@ const IAMarketing = () => {
   };
 
   const handlePublicarFacebook = async () => {
+    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
+    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
     const texto = editableTexts.facebook[selectedVariations.facebook];
     if (!texto.trim()) { toast.error("Selecione um texto primeiro"); return; }
 
