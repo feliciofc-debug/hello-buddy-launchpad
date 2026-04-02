@@ -186,6 +186,9 @@ const IAMarketing = () => {
       }
 
 
+      // Increment trial usage
+      if (isTrial) await incrementImageUsage();
+
       toast.success("✅ Posts gerados e salvos!");
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao analisar produto';
