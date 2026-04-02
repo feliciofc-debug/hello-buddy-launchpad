@@ -345,6 +345,8 @@ const IAMarketing = () => {
 
   const handlePublicarTodas = async () => {
     if (!resultado) return;
+    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
+    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
 
     const textoFb = editableTexts.facebook[selectedVariations.facebook];
     const textoIg = editableTexts.instagram[selectedVariations.instagram];
