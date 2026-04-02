@@ -404,6 +404,22 @@ const IAMarketing = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
+        {/* Trial Banner */}
+        {isTrial && trial && (
+          <div className={`mb-4 p-4 rounded-lg border ${isTrialExpired() ? 'bg-destructive/10 border-destructive' : 'bg-amber-500/10 border-amber-500'}`}>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <span className="font-bold">{isTrialExpired() ? '🔒 Teste encerrado' : `⏳ Período de teste: ${trialDaysRemaining()} dias restantes`}</span>
+                <span className="ml-4 text-sm">
+                  IA: {trial.imagens_ia_usadas}/{trial.limite_imagens_ia} imagens | Posts hoje: {trial.posts_hoje}/{trial.limite_posts_dia}
+                </span>
+              </div>
+              {isTrialExpired() && (
+                <span className="text-sm font-medium text-destructive">Contrate o plano completo para continuar usando!</span>
+              )}
+            </div>
+          </div>
+        )}
         <Tabs defaultValue="gerar" className="w-full">
           <TabsList className="grid w-full max-w-lg mx-auto grid-cols-3 mb-8">
             <TabsTrigger value="gerar">Gerar Posts</TabsTrigger>
