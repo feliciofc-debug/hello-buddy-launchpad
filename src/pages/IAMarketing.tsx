@@ -295,6 +295,7 @@ const IAMarketing = () => {
       if (pubError) throw pubError;
 
       const postId = pubData?.post_id || pubData?.id || "OK";
+      if (isTrial) await incrementPostUsage();
       toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
     } catch (err: any) {
       console.error("Erro ao publicar no Facebook:", err);
