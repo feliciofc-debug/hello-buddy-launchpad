@@ -233,7 +233,6 @@ export const AreaVideos = () => {
         open={showReelsModal}
         onOpenChange={setShowReelsModal}
         produto={null}
-        preSelectedVideoUrl={selectedVideoUrl}
       />
     </div>
   );
