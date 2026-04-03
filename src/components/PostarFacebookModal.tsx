@@ -56,8 +56,9 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         .select('page_id, page_name')
         .eq('user_id', user.id)
         .maybeSingle();
-      if (data?.page_id) {
-        setPageId(data.page_id);
+      const connData = data as any;
+      if (connData?.page_id) {
+        setPageId(connData.page_id);
         setMetaConnected(true);
       }
     };

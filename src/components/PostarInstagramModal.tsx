@@ -58,10 +58,11 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         .select('page_id, ig_account_id, ig_username')
         .eq('user_id', user.id)
         .maybeSingle();
-      if (data?.ig_account_id) {
-        setPageId(data.page_id || "");
+      const connData = data as any;
+      if (connData?.ig_account_id) {
+        setPageId(connData.page_id || "");
         setIgConnected(true);
-        setIgUsername(data.ig_username || "");
+        setIgUsername(connData.ig_username || "");
       }
     };
     if (open) loadIgData();
