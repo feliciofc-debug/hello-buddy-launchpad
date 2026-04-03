@@ -59,7 +59,7 @@ export default function PayIpad() {
           <form onSubmit={(e) => handleSubmit(e, 'pix')}>
             <Label label="Nome completo *">
               <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="input-field" autoComplete="name" />
+                className="w-full mt-1 px-3 py-2.5 border border-slate-300 rounded-lg text-base" autoComplete="name" />
             </Label>
             <Label label="E-mail *">
               <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
