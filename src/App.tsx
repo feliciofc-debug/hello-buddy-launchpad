@@ -87,6 +87,7 @@ import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 import CookieBanner from "./components/CookieBanner";
 
 // Páginas Billing/Pay
+import PayLogin from "./pages/pay/PayLogin";
 import PayIpad from "./pages/pay/PayIpad";
 import PayAdmin from "./pages/pay/PayAdmin";
 import PayAdminNovo from "./pages/pay/PayAdminNovo";
@@ -192,8 +193,9 @@ const App = () => (
             <Route path="/afiliado/campanhas" element={<AfiliadoCampanhas />} />
             <Route path="/afiliado/redes-sociais" element={<RedesSociais />} />
             
-            {/* Rotas Billing / Pay */}
-            <Route path="/pay" element={<PayIpad />} />
+{/* Rotas Billing / Pay */}
+            <Route path="/pay" element={<PayLogin />} />
+            <Route path="/pay/ipad" element={<PayIpad />} />
             <Route path="/pay/admin" element={<PayAdmin />} />
             <Route path="/pay/admin/novo" element={<PayAdminNovo />} />
             <Route path="/pay/admin/cliente/:id" element={<PayAdminCliente />} />
