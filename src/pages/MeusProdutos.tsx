@@ -1635,6 +1635,13 @@ export default function MeusProdutos() {
         </div>
       </div>
 
+          </TabsContent>
+
+          <TabsContent value="videos">
+            <AreaVideos />
+          </TabsContent>
+        </Tabs>
+
       {/* Modals */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
