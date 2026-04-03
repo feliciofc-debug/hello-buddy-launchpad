@@ -1248,6 +1248,15 @@ export default function MeusProdutos() {
           </div>
         </div>
 
+        {/* Tabs: Produtos e Vídeos */}
+        <Tabs defaultValue="produtos" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="produtos">📦 Produtos</TabsTrigger>
+            <TabsTrigger value="videos">🎬 Vídeos</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="produtos">
+
         {/* Filtros */}
         <Card>
           <CardHeader>
