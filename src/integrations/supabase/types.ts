@@ -4047,6 +4047,69 @@ export type Database = {
         }
         Relationships: []
       }
+      meta_connections: {
+        Row: {
+          connection_error: string | null
+          created_at: string | null
+          id: string
+          ig_account_id: string | null
+          ig_username: string | null
+          is_active: boolean | null
+          last_verified_at: string | null
+          meta_user_email: string | null
+          meta_user_id: string | null
+          meta_user_name: string | null
+          page_access_token: string | null
+          page_id: string | null
+          page_name: string | null
+          permissions: string[] | null
+          token_expires_at: string | null
+          updated_at: string | null
+          user_access_token: string | null
+          user_id: string
+        }
+        Insert: {
+          connection_error?: string | null
+          created_at?: string | null
+          id?: string
+          ig_account_id?: string | null
+          ig_username?: string | null
+          is_active?: boolean | null
+          last_verified_at?: string | null
+          meta_user_email?: string | null
+          meta_user_id?: string | null
+          meta_user_name?: string | null
+          page_access_token?: string | null
+          page_id?: string | null
+          page_name?: string | null
+          permissions?: string[] | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_access_token?: string | null
+          user_id: string
+        }
+        Update: {
+          connection_error?: string | null
+          created_at?: string | null
+          id?: string
+          ig_account_id?: string | null
+          ig_username?: string | null
+          is_active?: boolean | null
+          last_verified_at?: string | null
+          meta_user_email?: string | null
+          meta_user_id?: string | null
+          meta_user_name?: string | null
+          page_access_token?: string | null
+          page_id?: string | null
+          page_name?: string | null
+          permissions?: string[] | null
+          token_expires_at?: string | null
+          updated_at?: string | null
+          user_access_token?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       opt_ins: {
         Row: {
           created_at: string | null
