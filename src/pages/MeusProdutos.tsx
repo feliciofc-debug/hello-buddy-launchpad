@@ -26,7 +26,7 @@ import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
 import { AutopilotModal } from '@/components/AutopilotModal';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
-
+import { AreaVideos } from '@/components/AreaVideos';
 
 interface Campanha {
   id: string;
@@ -1248,6 +1248,15 @@ export default function MeusProdutos() {
           </div>
         </div>
 
+        {/* Tabs: Produtos e Vídeos */}
+        <Tabs defaultValue="produtos" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="produtos">📦 Produtos</TabsTrigger>
+            <TabsTrigger value="videos">🎬 Vídeos</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="produtos">
+
         {/* Filtros */}
         <Card>
           <CardHeader>
@@ -1624,6 +1633,13 @@ export default function MeusProdutos() {
           <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
           Verificador Ativo
         </div>
+
+          </TabsContent>
+
+          <TabsContent value="videos">
+            <AreaVideos />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Modals */}

@@ -6422,6 +6422,68 @@ export type Database = {
         }
         Relationships: []
       }
+      videos_produtos: {
+        Row: {
+          created_at: string | null
+          descricao: string | null
+          duracao_segundos: number | null
+          id: string
+          produto_id: string | null
+          publicado_facebook: boolean | null
+          publicado_instagram: boolean | null
+          status: string | null
+          tamanho_mb: number | null
+          thumbnail_url: string | null
+          tipo: string | null
+          titulo: string | null
+          updated_at: string | null
+          user_id: string
+          video_url: string
+        }
+        Insert: {
+          created_at?: string | null
+          descricao?: string | null
+          duracao_segundos?: number | null
+          id?: string
+          produto_id?: string | null
+          publicado_facebook?: boolean | null
+          publicado_instagram?: boolean | null
+          status?: string | null
+          tamanho_mb?: number | null
+          thumbnail_url?: string | null
+          tipo?: string | null
+          titulo?: string | null
+          updated_at?: string | null
+          user_id: string
+          video_url: string
+        }
+        Update: {
+          created_at?: string | null
+          descricao?: string | null
+          duracao_segundos?: number | null
+          id?: string
+          produto_id?: string | null
+          publicado_facebook?: boolean | null
+          publicado_instagram?: boolean | null
+          status?: string | null
+          tamanho_mb?: number | null
+          thumbnail_url?: string | null
+          tipo?: string | null
+          titulo?: string | null
+          updated_at?: string | null
+          user_id?: string
+          video_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "videos_produtos_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voice_calls: {
         Row: {
           ai_analysis: Json | null

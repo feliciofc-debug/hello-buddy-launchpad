@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
-import { VideoGenerator } from "@/components/VideoGenerator";
+
 import { VideoSlideshowGenerator } from "@/components/VideoSlideshowGenerator";
 import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
 import { PublicarReelsModal } from "@/components/PublicarReelsModal";
@@ -869,20 +869,16 @@ const IAMarketing = () => {
                 </CardContent>
               </Card>
 
-              {/* Separador */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <Separator className="w-full" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">
-                    ou gere com IA (usa créditos)
-                  </span>
-                </div>
-              </div>
-
-              {/* Gerador com IA existente */}
-              <VideoGenerator />
+              {/* Dica informativa */}
+              <Card className="border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800">
+                <CardContent className="p-4">
+                  <p className="text-sm text-muted-foreground">
+                    ℹ️ <strong>Reels</strong> = alcance e marca (não tem link clicável no vídeo, mas pode colocar link na legenda)<br />
+                    ℹ️ <strong>Feed com imagem</strong> = conversão (link direto no post)<br /><br />
+                    💡 <strong>Dica:</strong> Use Reels para atrair novos seguidores e posts de imagem com link para vender.
+                  </p>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
