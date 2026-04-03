@@ -1068,6 +1068,155 @@ export type Database = {
           },
         ]
       }
+      billing_customers: {
+        Row: {
+          billing_address: Json | null
+          cnpj: string | null
+          cpf: string | null
+          created_at: string | null
+          email: string
+          id: string
+          name: string
+          phone: string | null
+          platform_login: string | null
+          responsible_cpf: string | null
+          responsible_name: string | null
+          trade_name: string | null
+        }
+        Insert: {
+          billing_address?: Json | null
+          cnpj?: string | null
+          cpf?: string | null
+          created_at?: string | null
+          email: string
+          id?: string
+          name: string
+          phone?: string | null
+          platform_login?: string | null
+          responsible_cpf?: string | null
+          responsible_name?: string | null
+          trade_name?: string | null
+        }
+        Update: {
+          billing_address?: Json | null
+          cnpj?: string | null
+          cpf?: string | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          name?: string
+          phone?: string | null
+          platform_login?: string | null
+          responsible_cpf?: string | null
+          responsible_name?: string | null
+          trade_name?: string | null
+        }
+        Relationships: []
+      }
+      billing_subscriptions: {
+        Row: {
+          created_at: string | null
+          current_period_end: string | null
+          current_period_start: string | null
+          customer_id: string
+          id: string
+          last_payment_date: string | null
+          last_reminder_for_date: string | null
+          mp_preapproval_id: string | null
+          next_billing_date: string | null
+          payment_fail_count: number
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          customer_id: string
+          id?: string
+          last_payment_date?: string | null
+          last_reminder_for_date?: string | null
+          mp_preapproval_id?: string | null
+          next_billing_date?: string | null
+          payment_fail_count?: number
+          status?: string
+        }
+        Update: {
+          created_at?: string | null
+          current_period_end?: string | null
+          current_period_start?: string | null
+          customer_id?: string
+          id?: string
+          last_payment_date?: string | null
+          last_reminder_for_date?: string | null
+          mp_preapproval_id?: string | null
+          next_billing_date?: string | null
+          payment_fail_count?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_subscriptions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "billing_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      billing_transactions: {
+        Row: {
+          amount: number | null
+          created_at: string | null
+          customer_id: string | null
+          id: string
+          mp_payment_id: string | null
+          payment_date: string | null
+          raw: Json | null
+          status: string | null
+          subscription_id: string | null
+          webhook_received: boolean | null
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string | null
+          customer_id?: string | null
+          id?: string
+          mp_payment_id?: string | null
+          payment_date?: string | null
+          raw?: Json | null
+          status?: string | null
+          subscription_id?: string | null
+          webhook_received?: boolean | null
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string | null
+          customer_id?: string | null
+          id?: string
+          mp_payment_id?: string | null
+          payment_date?: string | null
+          raw?: Json | null
+          status?: string | null
+          subscription_id?: string | null
+          webhook_received?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "billing_transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "billing_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "billing_transactions_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "billing_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cadastros: {
         Row: {
           bloqueou: boolean | null

@@ -86,6 +86,12 @@ import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 
 import CookieBanner from "./components/CookieBanner";
 
+// Páginas Billing/Pay
+import PayIpad from "./pages/pay/PayIpad";
+import PayAdmin from "./pages/pay/PayAdmin";
+import PayAdminNovo from "./pages/pay/PayAdminNovo";
+import PayAdminCliente from "./pages/pay/PayAdminCliente";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -185,6 +191,12 @@ const App = () => (
             <Route path="/afiliado/contatos" element={<AfiliadoContatos />} />
             <Route path="/afiliado/campanhas" element={<AfiliadoCampanhas />} />
             <Route path="/afiliado/redes-sociais" element={<RedesSociais />} />
+            
+            {/* Rotas Billing / Pay */}
+            <Route path="/pay" element={<PayIpad />} />
+            <Route path="/pay/admin" element={<PayAdmin />} />
+            <Route path="/pay/admin/novo" element={<PayAdminNovo />} />
+            <Route path="/pay/admin/cliente/:id" element={<PayAdminCliente />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
