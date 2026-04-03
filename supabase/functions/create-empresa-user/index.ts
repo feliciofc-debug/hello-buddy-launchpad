@@ -7,13 +7,13 @@ Deno.serve(async (req) => {
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Criar usuário empresa
+    // Criar usuária Renata
     const { data: user, error: signUpError } = await supabaseAdmin.auth.admin.createUser({
-      email: 'expo@atombrasildigital.com',
+      email: 'renatascarega@gmail.com',
       password: 'Dcd318798$',
       email_confirm: true,
       user_metadata: {
-        nome: 'Atom Brasil Digital',
+        nome: 'Renata Santos Silva Carega',
         tipo: 'empresa'
       }
     });
@@ -26,19 +26,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('✅ Usuário empresa criado com sucesso:', user.user?.id);
+    console.log('✅ Usuária criada com sucesso:', user.user?.id);
 
-    // Atualizar perfil com dados completos
+    // Atualizar perfil - acesso COMPLETO permanente, sem trial, sem limites
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .update({
-        nome: 'Atom Brasil Digital',
+        nome: 'Renata Santos Silva Carega',
         tipo: 'empresa',
-        plano: 'empresas',
-        razao_social: 'Atom Brasil Digital',
-        cpf_cnpj: '22.003.550/0001-05',
-        nome_fantasia: 'Atom Brasil',
-        valor_plano: 447.00
+        plano: 'empresarial_personalizado',
       })
       .eq('id', user.user?.id);
 
@@ -51,9 +47,8 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Usuário empresa criado com sucesso!',
-        email: 'expo@atombrasildigital.com',
-        password: 'Dcd318798$',
+        message: 'Usuária Renata criada com sucesso! Acesso completo permanente.',
+        email: 'renatascarega@gmail.com',
         userId: user.user?.id
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
