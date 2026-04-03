@@ -192,6 +192,12 @@ const App = () => (
             <Route path="/afiliado/campanhas" element={<AfiliadoCampanhas />} />
             <Route path="/afiliado/redes-sociais" element={<RedesSociais />} />
             
+            {/* Rotas Billing / Pay */}
+            <Route path="/pay" element={<PayIpad />} />
+            <Route path="/pay/admin" element={<PayAdmin />} />
+            <Route path="/pay/admin/novo" element={<PayAdminNovo />} />
+            <Route path="/pay/admin/cliente/:id" element={<PayAdminCliente />} />
+            
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
