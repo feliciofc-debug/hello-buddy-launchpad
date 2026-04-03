@@ -86,6 +86,12 @@ import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 
 import CookieBanner from "./components/CookieBanner";
 
+// Páginas Billing/Pay
+import PayIpad from "./pages/pay/PayIpad";
+import PayAdmin from "./pages/pay/PayAdmin";
+import PayAdminNovo from "./pages/pay/PayAdminNovo";
+import PayAdminCliente from "./pages/pay/PayAdminCliente";
+
 const queryClient = new QueryClient();
 
 const App = () => (
