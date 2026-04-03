@@ -6690,6 +6690,51 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_config: {
+        Row: {
+          access_token: string | null
+          business_name: string | null
+          created_at: string | null
+          display_phone: string | null
+          id: string
+          is_active: boolean | null
+          is_verified: boolean | null
+          last_verified_at: string | null
+          phone_number_id: string | null
+          updated_at: string | null
+          user_id: string
+          waba_id: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          business_name?: string | null
+          created_at?: string | null
+          display_phone?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_verified?: boolean | null
+          last_verified_at?: string | null
+          phone_number_id?: string | null
+          updated_at?: string | null
+          user_id: string
+          waba_id?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          business_name?: string | null
+          created_at?: string | null
+          display_phone?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_verified?: boolean | null
+          last_verified_at?: string | null
+          phone_number_id?: string | null
+          updated_at?: string | null
+          user_id?: string
+          waba_id?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_contacts: {
         Row: {
           aceita_lancamentos: boolean | null
