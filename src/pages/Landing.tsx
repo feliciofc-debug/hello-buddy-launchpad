@@ -253,12 +253,12 @@ function Landing() {
       <section id="planos" className="py-20 px-6 bg-slate-900">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-4xl md:text-5xl font-bold mb-4">Plano Principal</h2>
-            <p className="text-xl text-purple-300">Mensalidade simples, sem pegadinhas</p>
+            <h2 className="text-4xl md:text-5xl font-bold mb-4">Plano Único — Sem Complicação</h2>
+            <p className="text-xl text-purple-300">Tudo que você precisa por um preço justo</p>
           </div>
 
           <div className="max-w-2xl mx-auto space-y-6">
-            {/* Plano principal */}
+            {/* Plano único R$ 597 */}
             <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-orange-500 rounded-3xl p-10 shadow-2xl relative">
               <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-500 px-6 py-2 rounded-full text-sm font-bold">
                 MAIS VENDIDO
@@ -266,32 +266,22 @@ function Landing() {
 
               <div className="text-center mb-8">
                 <div className="text-6xl mb-4">🚀</div>
-                <h3 className="text-3xl font-bold mb-4">PLANO AFILIADO</h3>
+                <h3 className="text-3xl font-bold mb-4">AMZ OFERTAS PRO</h3>
 
-                <div className="grid sm:grid-cols-2 gap-4 mb-2">
-                  <div className="bg-slate-800/40 border border-slate-700 rounded-2xl p-4">
-                    <p className="text-slate-400 text-sm mb-1">Mensal</p>
-                    <div className="text-5xl font-bold text-green-400">
-                      R$ 297<span className="text-xl text-gray-400">/mês</span>
-                    </div>
-                  </div>
-                  <div className="bg-orange-500/10 border border-orange-500/40 rounded-2xl p-4">
-                    <p className="text-orange-200 text-sm mb-1">Anual</p>
-                    <div className="text-3xl font-bold text-white">12x R$ 237</div>
-                    <p className="text-slate-400 text-xs mt-1">(total R$ 2.844)</p>
-                  </div>
+                <div className="text-5xl font-bold text-green-400 mb-2">
+                  R$ 597<span className="text-xl text-gray-400">/mês</span>
                 </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4 mb-8">
                 {[
-                  "Produtos baixados automaticamente",
-                  "Amazon, Magalu, Mercado Livre, Boticário",
-                  "Mensagens ilimitadas no WhatsApp",
-                  "IA gera textos e vídeos promocionais",
-                  "Campanhas agendadas automáticas",
-                  "Listas segmentadas de clientes",
-                  "Variação de mensagens anti-bloqueio",
+                  "Publicação automática no Facebook e Instagram",
+                  "IA que gera textos e imagens profissionais",
+                  "Autopilot Social — posts no piloto automático",
+                  "Upload de Reels e vídeos do celular",
+                  "WhatsApp Marketing com campanhas",
+                  "Dashboard com métricas em tempo real",
+                  "Gerador de vídeo slideshow com IA",
                   "Suporte via WhatsApp",
                   "Atualizações gratuitas",
                   "Cancele quando quiser"
@@ -304,14 +294,14 @@ function Landing() {
               </div>
 
               <button
-                onClick={() => navigate('/cadastro-afiliado')}
+                onClick={() => navigate('/cadastro')}
                 className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
               >
-                🚀 Ver planos e contratar
+                🚀 Começar Agora — 7 Dias Grátis
               </button>
 
               <p className="text-center mt-6 text-sm text-slate-400">
-                💳 Pagamento seguro. Acesso imediato após confirmação.
+                💳 Sem cartão de crédito nos 7 primeiros dias. Pagamento via Pix ou cartão.
               </p>
             </div>
 
@@ -335,10 +325,6 @@ function Landing() {
                 </a>
               </div>
             </div>
-
-            <p className="text-center text-lg text-purple-300">
-              ✨ Quer o plano certo para o seu caso? A gente te orienta.
-            </p>
           </div>
         </div>
       </section>
