@@ -87,6 +87,7 @@ import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 import CookieBanner from "./components/CookieBanner";
 
 // Páginas Billing/Pay
+import PayLogin from "./pages/pay/PayLogin";
 import PayIpad from "./pages/pay/PayIpad";
 import PayAdmin from "./pages/pay/PayAdmin";
 import PayAdminNovo from "./pages/pay/PayAdminNovo";
