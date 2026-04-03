@@ -213,8 +213,9 @@ const Dashboard = () => {
         }
       }
       
-      // Acesso direto APENAS para expo@atombrasildigital.com (dono)
-      if (session.user.email !== 'expo@atombrasildigital.com') {
+      // Acesso direto para contas permanentes (donos/parceiros)
+      const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com'];
+      if (!contasPermanentes.includes(session.user.email || '')) {
         // Verificar se é conta trial ativa
         const { data: trialCheck, error: trialError } = await supabase
           .from('trial_configs' as any)
