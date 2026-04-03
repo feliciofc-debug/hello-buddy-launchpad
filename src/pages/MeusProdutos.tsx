@@ -26,7 +26,7 @@ import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
 import { AutopilotModal } from '@/components/AutopilotModal';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
-
+import { AreaVideos } from '@/components/AreaVideos';
 
 interface Campanha {
   id: string;
