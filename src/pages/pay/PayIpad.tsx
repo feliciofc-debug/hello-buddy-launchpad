@@ -67,19 +67,19 @@ export default function PayIpad() {
             </Label>
             <Label label="CPF *">
               <input required value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })}
-                className="input-field" inputMode="numeric" />
+                className="w-full mt-1 px-3 py-2.5 border border-slate-300 rounded-lg text-base" inputMode="numeric" />
             </Label>
             <Label label="Telefone">
               <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                className="input-field" type="tel" autoComplete="tel" />
+                className="w-full mt-1 px-3 py-2.5 border border-slate-300 rounded-lg text-base" type="tel" autoComplete="tel" />
             </Label>
             <Label label="Login na plataforma (opcional)">
               <input value={form.platform_login} onChange={(e) => setForm({ ...form, platform_login: e.target.value })}
-                className="input-field" />
+                className="w-full mt-1 px-3 py-2.5 border border-slate-300 rounded-lg text-base" />
             </Label>
             <Label label="Endereço / observações">
               <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })}
-                className="input-field" />
+                className="w-full mt-1 px-3 py-2.5 border border-slate-300 rounded-lg text-base" />
             </Label>
 
             <button type="submit" disabled={loading}
