@@ -63,7 +63,7 @@ export default function PayIpad() {
             </Label>
             <Label label="E-mail *">
               <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="input-field" autoComplete="email" />
+                className="w-full mt-1 px-3 py-2.5 border border-slate-300 rounded-lg text-base" autoComplete="email" />
             </Label>
             <Label label="CPF *">
               <input required value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })}
