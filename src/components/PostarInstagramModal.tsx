@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -43,9 +43,29 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   const [incluirLink, setIncluirLink] = useState(temLink);
   const [dataAgendamento, setDataAgendamento] = useState<Date | undefined>();
   const [horaAgendamento, setHoraAgendamento] = useState("10:00");
+  const [pageId, setPageId] = useState<string>("");
+  const [igConnected, setIgConnected] = useState(false);
+  const [igUsername, setIgUsername] = useState<string>("");
 
-  const PAGE_ID = "855785300949909";
   const temImagem = !!produto.imagem_url;
+
+  useEffect(() => {
+    const loadIgData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('meta_connections' as any)
+        .select('page_id, ig_account_id, ig_username')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (data?.ig_account_id) {
+        setPageId(data.page_id || "");
+        setIgConnected(true);
+        setIgUsername(data.ig_username || "");
+      }
+    };
+    if (open) loadIgData();
+  }, [open]);
 
   const handleGerarTexto = async () => {
     setGerando(true);
@@ -120,7 +140,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         produto_id: produto.id,
         produto_source: "produtos",
         platform: "instagram",
-        page_id: PAGE_ID,
+        page_id: pageId || "",
         post_text: captionFinal,
         image_url: produto.imagem_url,
         link_url: incluirLink ? linkProduto : null,
@@ -177,8 +197,22 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
             <Instagram className="h-5 w-5 text-pink-600" />
             Postar no Instagram
           </DialogTitle>
-          <DialogDescription>Publique este produto no seu Instagram @amzofertas</DialogDescription>
+          <DialogDescription>
+            {igConnected
+              ? `Publique este produto no seu Instagram @${igUsername || "conectado"}`
+              : "Publique este produto no Instagram"}
+          </DialogDescription>
         </DialogHeader>
+
+        {/* Aviso se não conectado */}
+        {!igConnected && (
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-300">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Conecte sua conta do Instagram em <strong>Configurações → Redes Sociais</strong> para postar no seu perfil.
+            </p>
+          </div>
+        )}
 
         {/* Aviso se não tem imagem */}
         {!temImagem && (

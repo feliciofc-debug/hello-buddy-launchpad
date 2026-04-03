@@ -254,6 +254,22 @@ serve(async (req) => {
             ia_status: iaStatus,
           })
 
+          // Buscar dados Meta do cliente
+          let clientPageId = '855785300949909' // fallback admin
+          const { data: metaConn } = await supabase
+            .from('meta_connections')
+            .select('page_id, ig_account_id')
+            .eq('user_id', config.user_id)
+            .eq('is_active', true)
+            .single()
+
+          if (metaConn?.page_id) {
+            clientPageId = metaConn.page_id
+            console.log(`✅ [AUTOPILOT] Usando page_id do cliente: ${clientPageId}`)
+          } else {
+            console.log(`⚠️ [AUTOPILOT] Cliente ${config.user_id} sem Meta conectado, usando admin fallback`)
+          }
+
           if (config.postar_facebook) {
             const facebookInsert = await supabase
               .from('social_posts_queue')
@@ -262,7 +278,7 @@ serve(async (req) => {
                 produto_id: produto.id,
                 produto_source: 'produtos',
                 platform: 'facebook',
-                page_id: '855785300949909',
+                page_id: clientPageId,
                 post_text: textoFacebook,
                 image_url: imagemUrl,
                 link_url: linkProduto,
@@ -294,7 +310,7 @@ serve(async (req) => {
                 produto_id: produto.id,
                 produto_source: 'produtos',
                 platform: 'instagram',
-                page_id: '855785300949909',
+                page_id: clientPageId,
                 post_text: textoInstagram,
                 image_url: imagemUrl,
                 link_url: linkProduto,
