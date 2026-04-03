@@ -79,7 +79,8 @@ serve(async (req) => {
     }
 
     const url = new URL(req.url);
-    const path = url.pathname.split('/billing-dashboard-api')[1] || '/';
+    const routeHeader = req.headers.get('x-route') || '';
+    const path = routeHeader || url.pathname.split('/billing-dashboard-api')[1] || '/';
 
     // GET /stats
     if (req.method === 'GET' && (path === '/stats' || path === '/' || path === '')) {
