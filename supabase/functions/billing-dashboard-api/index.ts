@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-route, x-billing-token',
 };
 
 const MONTHLY_AMOUNT = 597;
@@ -34,41 +34,45 @@ function pickLatest(subs: any[]) {
   return [...subs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 }
 
+async function verifyBillingToken(token: string): Promise<boolean> {
+  const adminPassword = Deno.env.get('BILLING_ADMIN_PASSWORD');
+  if (!adminPassword) return false;
+  const encoder = new TextEncoder();
+  const data = encoder.encode(adminPassword + ':' + Math.floor(Date.now() / (1000 * 60 * 60 * 24)));
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const expected = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return token === expected;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Simple admin auth via header
-    const authHeader = req.headers.get('x-admin-key') || '';
-    const adminKey = Deno.env.get('ADMIN_API_KEY') || Deno.env.get('CRON_SECRET') || '';
-    
-    // Also accept authorization from logged-in platform admin
-    const authBearer = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
-    
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify admin: either admin key or authenticated admin user
+    // Auth: billing token OR admin user JWT
     let isAdmin = false;
-    if (adminKey && (authHeader === adminKey || authBearer === adminKey)) {
-      isAdmin = true;
-    }
     
-    if (!isAdmin && authBearer) {
-      // Check if it's a valid supabase JWT for an admin user
-      const anonClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!);
-      const { data: { user } } = await anonClient.auth.getUser(authBearer);
-      if (user) {
-        const { data: role } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .eq('role', 'admin')
-          .maybeSingle();
-        if (role) isAdmin = true;
+    const billingToken = req.headers.get('x-billing-token') || '';
+    if (billingToken) {
+      isAdmin = await verifyBillingToken(billingToken);
+    }
+
+    if (!isAdmin) {
+      const authBearer = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
+      if (authBearer) {
+        const anonClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!);
+        const { data: { user } } = await anonClient.auth.getUser(authBearer);
+        if (user) {
+          const { data: role } = await supabase
+            .from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle();
+          if (role) isAdmin = true;
+        }
       }
     }
 
@@ -78,8 +82,8 @@ serve(async (req) => {
       });
     }
 
-    const url = new URL(req.url);
     const routeHeader = req.headers.get('x-route') || '';
+    const url = new URL(req.url);
     const path = routeHeader || url.pathname.split('/billing-dashboard-api')[1] || '/';
 
     // GET /stats
@@ -113,7 +117,8 @@ serve(async (req) => {
       const { data: rows } = await supabase
         .from('billing_customers')
         .select(`
-          id, name, trade_name, email, phone, cnpj, responsible_name, responsible_cpf, billing_address, platform_login, created_at,
+          id, name, trade_name, email, phone, cnpj, cpf, tipo_pessoa, responsible_name, responsible_cpf, billing_address, platform_login, created_at,
+          inscricao_estadual, inscricao_municipal, regime_tributario,
           billing_subscriptions ( id, status, next_billing_date, last_payment_date, created_at )
         `)
         .order('created_at', { ascending: false });
@@ -123,7 +128,8 @@ serve(async (req) => {
         const sit = clienteSituacao(sub);
         return {
           id: c.id, razao_social: c.name, trade_name: c.trade_name, email: c.email,
-          phone: c.phone, cnpj: c.cnpj, responsible_name: c.responsible_name,
+          phone: c.phone, cnpj: c.cnpj, cpf: c.cpf, tipo_pessoa: c.tipo_pessoa,
+          responsible_name: c.responsible_name,
           next_billing_date: sub?.next_billing_date, last_payment_date: sub?.last_payment_date,
           situacao: sit.key, situacao_label: sit.label, inadimplente: sit.inadimplente,
           created_at: c.created_at,
@@ -161,12 +167,12 @@ serve(async (req) => {
       });
     }
 
-    // POST /clients (create PJ)
+    // POST /clients (create)
     if (req.method === 'POST' && path === '/clients') {
       const b = await req.json();
       const em = String(b.email || '').trim().toLowerCase();
       if (!b.razao_social?.trim() || !em) {
-        return new Response(JSON.stringify({ error: 'Razão social e e-mail obrigatórios' }), {
+        return new Response(JSON.stringify({ error: 'Razão social/Nome e e-mail obrigatórios' }), {
           status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
       }
@@ -178,18 +184,25 @@ serve(async (req) => {
         });
       }
 
+      const digitsOnly = (s: string) => String(s || '').replace(/\D/g, '');
+
       const { data: customer, error: cErr } = await supabase
         .from('billing_customers')
         .insert({
           name: b.razao_social.trim(),
           trade_name: b.trade_name?.trim() || null,
-          cnpj: b.cnpj ? String(b.cnpj).replace(/\D/g, '') : null,
+          cnpj: b.cnpj ? digitsOnly(b.cnpj) : null,
+          cpf: b.cpf ? digitsOnly(b.cpf) : null,
           email: em,
           phone: b.phone?.trim() || null,
           billing_address: b.billing_address || {},
           responsible_name: b.responsible_name?.trim() || null,
-          responsible_cpf: b.responsible_cpf ? String(b.responsible_cpf).replace(/\D/g, '') : null,
+          responsible_cpf: b.responsible_cpf ? digitsOnly(b.responsible_cpf) : null,
           platform_login: b.platform_login?.trim() || null,
+          tipo_pessoa: b.tipo_pessoa || (b.cnpj ? 'pj' : 'pf'),
+          inscricao_estadual: b.inscricao_estadual?.trim() || null,
+          inscricao_municipal: b.inscricao_municipal?.trim() || null,
+          regime_tributario: b.regime_tributario?.trim() || null,
         })
         .select().single();
 
