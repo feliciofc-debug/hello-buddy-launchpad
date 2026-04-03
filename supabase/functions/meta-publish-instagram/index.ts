@@ -6,8 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-const IG_ACCOUNT_ID = '17841477660295647'
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -45,8 +43,8 @@ serve(async (req) => {
       if (error || !data) throw new Error('Post não encontrado')
       posts = [data]
     } else if (body.caption && body.image_url) {
-      const pageToken = await getPageToken(supabase, body.user_id)
-      const result = await publishToInstagram(pageToken, body.caption, body.image_url)
+      const { igId, token } = await getIgAccountId(supabase, body.user_id)
+      const result = await publishToInstagram(token, igId, body.caption, body.image_url)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -67,8 +65,8 @@ serve(async (req) => {
           .update({ status: 'publicando', updated_at: new Date().toISOString() })
           .eq('id', post.id)
 
-        const pageToken = await getPageToken(supabase, post.user_id)
-        const result = await publishToInstagram(pageToken, post.post_text, post.image_url)
+        const { igId, token } = await getIgAccountId(supabase, post.user_id)
+        const result = await publishToInstagram(token, igId, post.post_text, post.image_url)
 
         await supabase.from('social_posts_queue')
           .update({
@@ -118,9 +116,23 @@ serve(async (req) => {
   }
 })
 
-async function getPageToken(supabase: any, userId: string): Promise<string> {
+async function getIgAccountId(supabase: any, userId: string): Promise<{ igId: string, token: string }> {
+  // 1. Buscar da meta_connections (multi-cliente)
+  const { data: metaConn } = await supabase
+    .from('meta_connections')
+    .select('ig_account_id, page_access_token')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .single()
+
+  if (metaConn?.ig_account_id && metaConn?.page_access_token) {
+    console.log('✅ IG Account do cliente encontrado via meta_connections:', metaConn.ig_account_id)
+    return { igId: metaConn.ig_account_id, token: metaConn.page_access_token }
+  }
+
+  // 2. Fallback: buscar token da integrations e usar IG fixo (admin)
   if (userId) {
-    const { data } = await supabase
+    const { data: integration } = await supabase
       .from('integrations')
       .select('access_token')
       .eq('user_id', userId)
@@ -128,27 +140,35 @@ async function getPageToken(supabase: any, userId: string): Promise<string> {
       .eq('is_active', true)
       .single()
 
-    if (data?.access_token) return data.access_token
+    if (integration?.access_token) {
+      console.log('⚠️ Usando token integrations com IG admin (legado)')
+      return { igId: '17841477660295647', token: integration.access_token }
+    }
   }
 
-  const fallback = Deno.env.get('META_PAGE_ACCESS_TOKEN')
-  if (fallback) return fallback
+  // 3. Último fallback: secret fixo (admin)
+  const fallbackToken = Deno.env.get('META_PAGE_ACCESS_TOKEN')
+  if (fallbackToken) {
+    console.log('⚠️ Usando fallback META_PAGE_ACCESS_TOKEN com IG admin')
+    return { igId: '17841477660295647', token: fallbackToken }
+  }
 
-  throw new Error('Page token não encontrado. Configure META_PAGE_ACCESS_TOKEN.')
+  throw new Error('Instagram não conectado. Vá em Configurações → Redes Sociais e conecte sua conta.')
 }
 
 async function publishToInstagram(
   pageToken: string,
+  igAccountId: string,
   caption: string,
   imageUrl: string
 ): Promise<{ post_id: string }> {
 
-  console.log('📸 Passo 1: Criando container no Instagram...')
+  console.log('📸 Passo 1: Criando container no Instagram...', { igAccountId })
   console.log('Image URL:', imageUrl)
 
   // Passo 1: Criar container de mídia
   const containerResponse = await fetch(
-    `https://graph.facebook.com/v25.0/${IG_ACCOUNT_ID}/media`,
+    `https://graph.facebook.com/v25.0/${igAccountId}/media`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -203,7 +223,7 @@ async function publishToInstagram(
   console.log('📸 Passo 2: Publicando no Instagram...')
 
   const publishResponse = await fetch(
-    `https://graph.facebook.com/v25.0/${IG_ACCOUNT_ID}/media_publish`,
+    `https://graph.facebook.com/v25.0/${igAccountId}/media_publish`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
