@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { CalendarIcon, Sparkles, Loader2, Facebook, Send, Clock } from "lucide-react";
+import { CalendarIcon, Sparkles, Loader2, Facebook, Send, Clock, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Produto {
@@ -44,8 +44,26 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
   const [incluirLink, setIncluirLink] = useState(temLink);
   const [dataAgendamento, setDataAgendamento] = useState<Date | undefined>();
   const [horaAgendamento, setHoraAgendamento] = useState("10:00");
+  const [pageId, setPageId] = useState<string>("");
+  const [metaConnected, setMetaConnected] = useState(false);
 
-  const PAGE_ID = "855785300949909";
+  useEffect(() => {
+    const loadPageId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('meta_connections' as any)
+        .select('page_id, page_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      const connData = data as any;
+      if (connData?.page_id) {
+        setPageId(connData.page_id);
+        setMetaConnected(true);
+      }
+    };
+    if (open) loadPageId();
+  }, [open]);
 
   const handleGerarTexto = async () => {
     setGerando(true);
@@ -112,13 +130,13 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         scheduledAt = dt.toISOString();
       }
 
-      // Insert into social_posts_queue
+      // Insert into social_posts_queue - usa page_id do cliente ou vazio (edge function resolve)
       const { error: insertError } = await supabase.from("social_posts_queue" as any).insert({
         user_id: user.id,
         produto_id: produto.id,
         produto_source: "produtos",
         platform: "facebook",
-        page_id: PAGE_ID,
+        page_id: pageId || "",
         post_text: mensagemFinal,
         image_url: incluirImagem ? imagemProduto : null,
         link_url: incluirLink ? linkProduto : null,
@@ -129,11 +147,10 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
       if (insertError) throw insertError;
 
       if (modoEnvio === "agora") {
-        // Call edge function to publish immediately
         const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
           body: {
             message: mensagemFinal,
-            page_id: PAGE_ID,
+            page_id: pageId || "",
             user_id: user.id,
             image_url: incluirImagem ? imagemProduto : undefined,
           },
@@ -147,7 +164,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaAgendamento}`);
       }
 
-      // Reset and close
       setTextoPost("");
       setOpcoes(null);
       setModoEnvio("agora");
@@ -176,6 +192,16 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           </DialogTitle>
           <DialogDescription>Publique este produto na sua página do Facebook</DialogDescription>
         </DialogHeader>
+
+        {/* Aviso se não conectado */}
+        {!metaConnected && (
+          <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-300">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
+            <p className="text-sm text-amber-800 dark:text-amber-300">
+              Conecte sua conta do Facebook em <strong>Configurações → Redes Sociais</strong> para postar na sua página.
+            </p>
+          </div>
+        )}
 
         {/* Produto Info */}
         <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">

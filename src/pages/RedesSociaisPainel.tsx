@@ -6,17 +6,19 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Facebook, Instagram, ArrowLeft, CheckCircle, XCircle, Clock,
-  RefreshCw, Loader2
+  RefreshCw, Loader2, LinkIcon
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { toast } from "sonner";
 
 export default function RedesSociaisPainel() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, publicados: 0, pendentes: 0, erros: 0 });
+  const [metaConn, setMetaConn] = useState<any>(null);
 
   useEffect(() => {
     loadData();
@@ -26,6 +28,15 @@ export default function RedesSociaisPainel() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+
+      // Carregar conexão Meta do cliente
+      const { data: connData } = await supabase
+        .from("meta_connections" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      setMetaConn(connData);
 
       const { data: postsData } = await supabase
         .from("social_posts_queue" as any)
@@ -50,8 +61,18 @@ export default function RedesSociaisPainel() {
     }
   };
 
-  const facebookConnected = true;
-  const instagramConnected = true;
+  const handleConnectMeta = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error("Você precisa estar logado para conectar.");
+      return;
+    }
+    const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=1254152493364240&redirect_uri=${encodeURIComponent('https://www.amzofertas.com.br/auth/callback/meta')}&scope=pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish&response_type=code&state=${user.id}`;
+    window.location.href = authUrl;
+  };
+
+  const facebookConnected = !!metaConn?.page_id;
+  const instagramConnected = !!metaConn?.ig_account_id;
 
   if (loading) {
     return (
@@ -80,11 +101,19 @@ export default function RedesSociaisPainel() {
             </div>
             <div className="flex-1">
               <p className="font-medium text-foreground">Facebook</p>
-              <p className="text-sm text-muted-foreground">Página AMZ Ofertas</p>
+              <p className="text-sm text-muted-foreground">
+                {facebookConnected ? metaConn?.page_name || "Página conectada" : "Não conectado"}
+              </p>
             </div>
-            <Badge variant={facebookConnected ? "default" : "destructive"}>
-              {facebookConnected ? <><CheckCircle className="h-3 w-3 mr-1" /> Conectado</> : <><XCircle className="h-3 w-3 mr-1" /> Desconectado</>}
-            </Badge>
+            {facebookConnected ? (
+              <Badge variant="default">
+                <CheckCircle className="h-3 w-3 mr-1" /> Conectado
+              </Badge>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleConnectMeta}>
+                <LinkIcon className="h-3 w-3 mr-1" /> Conectar
+              </Button>
+            )}
           </CardContent>
         </Card>
 
@@ -95,18 +124,26 @@ export default function RedesSociaisPainel() {
             </div>
             <div className="flex-1">
               <p className="font-medium text-foreground">Instagram</p>
-              <p className="text-sm text-muted-foreground">@amzofertas</p>
+              <p className="text-sm text-muted-foreground">
+                {instagramConnected ? `@${metaConn?.ig_username || "conectado"}` : "Não conectado"}
+              </p>
             </div>
-            <Badge variant={instagramConnected ? "default" : "destructive"}>
-              {instagramConnected ? <><CheckCircle className="h-3 w-3 mr-1" /> Conectado</> : <><XCircle className="h-3 w-3 mr-1" /> Desconectado</>}
-            </Badge>
+            {instagramConnected ? (
+              <Badge variant="default">
+                <CheckCircle className="h-3 w-3 mr-1" /> Conectado
+              </Badge>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleConnectMeta}>
+                <LinkIcon className="h-3 w-3 mr-1" /> Conectar
+              </Button>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
-            <div className="p-3 rounded-full bg-gray-100 dark:bg-gray-900/30">
-              <svg className="h-6 w-6 text-gray-500" viewBox="0 0 24 24" fill="currentColor">
+            <div className="p-3 rounded-full bg-muted">
+              <svg className="h-6 w-6 text-muted-foreground" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.88-2.88 2.89 2.89 0 012.88-2.88c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.3a6.34 6.34 0 0010.86 4.46 6.34 6.34 0 001.83-4.46V8.76a8.26 8.26 0 004.79 1.52V6.84a4.85 4.85 0 01-1.04-.15z"/>
               </svg>
             </div>
@@ -120,6 +157,23 @@ export default function RedesSociaisPainel() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Aviso se não conectado */}
+      {!facebookConnected && !instagramConnected && (
+        <Card className="border-amber-300 bg-amber-50 dark:bg-amber-900/10 dark:border-amber-700">
+          <CardContent className="p-4 text-center space-y-3">
+            <p className="text-sm font-medium text-foreground">
+              ⚠️ Você ainda não conectou sua conta do Facebook/Instagram
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Conecte sua conta para publicar posts diretamente na sua página.
+            </p>
+            <Button onClick={handleConnectMeta} className="bg-blue-600 hover:bg-blue-700 text-white">
+              <Facebook className="h-4 w-4 mr-2" /> Conectar Facebook & Instagram
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Métricas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

@@ -89,7 +89,7 @@ serve(async (req) => {
     const expiresAt = new Date()
     expiresAt.setSeconds(expiresAt.getSeconds() + (longLivedData.expires_in || 5184000))
 
-    // Salvar user token
+    // Salvar user token na tabela integrations (legado - manter compatibilidade)
     const { error: upsertError } = await supabase.from('integrations').upsert({
       user_id: state,
       platform: 'meta',
@@ -104,7 +104,7 @@ serve(async (req) => {
 
     if (upsertError) console.error('❌ Erro salvando user token:', upsertError)
 
-    // Salvar cada Page Token
+    // Salvar cada Page Token na tabela integrations (legado)
     for (const page of pages) {
       const { error: pageError } = await supabase.from('integrations').upsert({
         user_id: state,
@@ -118,6 +118,69 @@ serve(async (req) => {
 
       if (pageError) console.error('❌ Erro salvando page token:', page.name, pageError)
       else console.log('✅ Page token salvo:', page.name)
+    }
+
+    // ===== NOVO: Salvar dados estruturados na meta_connections =====
+    if (pages.length > 0) {
+      const mainPage = pages[0] // Usar a primeira página como principal
+      
+      // Buscar Instagram Business Account vinculado à página
+      let igAccountId: string | null = null
+      let igUsername: string | null = null
+      
+      try {
+        const igResponse = await fetch(
+          `https://graph.facebook.com/v25.0/${mainPage.id}?fields=instagram_business_account&access_token=${mainPage.access_token}`
+        )
+        const igData = await igResponse.json()
+        
+        if (igData.instagram_business_account?.id) {
+          igAccountId = igData.instagram_business_account.id
+          
+          // Buscar username do Instagram
+          const igInfoResponse = await fetch(
+            `https://graph.facebook.com/v25.0/${igAccountId}?fields=username&access_token=${mainPage.access_token}`
+          )
+          const igInfo = await igInfoResponse.json()
+          igUsername = igInfo.username || null
+          console.log('✅ Instagram Business Account:', igAccountId, igUsername)
+        } else {
+          console.log('⚠️ Instagram Business Account não encontrado para página', mainPage.name)
+        }
+      } catch (igError) {
+        console.error('⚠️ Erro ao buscar Instagram Business Account:', igError)
+      }
+      
+      // Extrair permissões concedidas
+      const grantedPermissions = permissionsData?.data
+        ?.filter((p: any) => p.status === 'granted')
+        ?.map((p: any) => p.permission) || []
+      
+      // Upsert na meta_connections
+      const { error: metaConnError } = await supabase.from('meta_connections').upsert({
+        user_id: state,
+        meta_user_id: userData.id,
+        meta_user_name: userData.name,
+        meta_user_email: userData.email || null,
+        user_access_token: longLivedUserToken,
+        page_id: mainPage.id,
+        page_name: mainPage.name,
+        page_access_token: mainPage.access_token,
+        ig_account_id: igAccountId,
+        ig_username: igUsername,
+        permissions: grantedPermissions,
+        is_active: true,
+        token_expires_at: expiresAt.toISOString(),
+        last_verified_at: new Date().toISOString(),
+        connection_error: null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' })
+      
+      if (metaConnError) {
+        console.error('❌ Erro salvando meta_connections:', metaConnError)
+      } else {
+        console.log('✅ meta_connections salvo para', userData.name, '| Page:', mainPage.name, '| IG:', igUsername)
+      }
     }
 
     return new Response(null, {

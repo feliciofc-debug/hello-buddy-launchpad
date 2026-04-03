@@ -42,8 +42,8 @@ serve(async (req) => {
       if (error || !data) throw new Error('Post não encontrado')
       posts = [data]
     } else if (body.message) {
-      const pageToken = await getPageToken(supabase, body.user_id, body.page_id || '855785300949909')
-      const result = await publishToFacebook(pageToken, body.page_id || '855785300949909', body.message, body.image_url, body.link_url)
+      const { token: pageToken, actualPageId } = await getPageToken(supabase, body.user_id, body.page_id || '')
+      const result = await publishToFacebook(pageToken, actualPageId, body.message, body.image_url, body.link_url)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -58,9 +58,8 @@ serve(async (req) => {
           .update({ status: 'publicando', updated_at: new Date().toISOString() })
           .eq('id', post.id)
 
-        const pageToken = await getPageToken(supabase, post.user_id, post.page_id)
-
-        const result = await publishToFacebook(pageToken, post.page_id, post.post_text, post.image_url, post.link_url)
+        const { token: pageToken, actualPageId } = await getPageToken(supabase, post.user_id, post.page_id || '')
+        const result = await publishToFacebook(pageToken, actualPageId, post.post_text, post.image_url, post.link_url)
 
         await supabase.from('social_posts_queue')
           .update({
@@ -110,21 +109,44 @@ serve(async (req) => {
   }
 })
 
-async function getPageToken(supabase: any, userId: string, pageId: string): Promise<string> {
-  const { data } = await supabase
-    .from('integrations')
-    .select('access_token')
+async function getPageToken(supabase: any, userId: string, pageId: string): Promise<{ token: string, actualPageId: string }> {
+  // 1. Buscar da meta_connections (novo sistema multi-cliente)
+  const { data: metaConn } = await supabase
+    .from('meta_connections')
+    .select('page_access_token, page_id')
     .eq('user_id', userId)
-    .eq('platform', `meta_page_${pageId}`)
     .eq('is_active', true)
     .single()
 
-  if (data?.access_token) return data.access_token
+  if (metaConn?.page_access_token) {
+    console.log('✅ Token do cliente encontrado via meta_connections')
+    return { token: metaConn.page_access_token, actualPageId: metaConn.page_id }
+  }
 
+  // 2. Fallback: buscar da tabela integrations (compatibilidade)
+  if (pageId) {
+    const { data: integration } = await supabase
+      .from('integrations')
+      .select('access_token')
+      .eq('user_id', userId)
+      .eq('platform', `meta_page_${pageId}`)
+      .eq('is_active', true)
+      .single()
+
+    if (integration?.access_token) {
+      console.log('✅ Token encontrado via integrations (legado)')
+      return { token: integration.access_token, actualPageId: pageId }
+    }
+  }
+
+  // 3. Último fallback: secret fixo (apenas para admin/testes)
   const fallback = Deno.env.get('META_PAGE_ACCESS_TOKEN')
-  if (fallback) return fallback
+  if (fallback) {
+    console.log('⚠️ Usando fallback META_PAGE_ACCESS_TOKEN (admin)')
+    return { token: fallback, actualPageId: pageId || '855785300949909' }
+  }
 
-  throw new Error(`Page token não encontrado para page ${pageId}`)
+  throw new Error('Conta Meta não conectada. Vá em Configurações → Redes Sociais e conecte sua conta do Facebook.')
 }
 
 async function publishToFacebook(
