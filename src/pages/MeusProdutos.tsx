@@ -1633,7 +1633,6 @@ export default function MeusProdutos() {
           <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
           Verificador Ativo
         </div>
-      </div>
 
           </TabsContent>
 
@@ -1641,6 +1640,7 @@ export default function MeusProdutos() {
             <AreaVideos />
           </TabsContent>
         </Tabs>
+      </div>
 
       {/* Modals */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
