@@ -1076,11 +1076,15 @@ export type Database = {
           created_at: string | null
           email: string
           id: string
+          inscricao_estadual: string | null
+          inscricao_municipal: string | null
           name: string
           phone: string | null
           platform_login: string | null
+          regime_tributario: string | null
           responsible_cpf: string | null
           responsible_name: string | null
+          tipo_pessoa: string | null
           trade_name: string | null
         }
         Insert: {
@@ -1090,11 +1094,15 @@ export type Database = {
           created_at?: string | null
           email: string
           id?: string
+          inscricao_estadual?: string | null
+          inscricao_municipal?: string | null
           name: string
           phone?: string | null
           platform_login?: string | null
+          regime_tributario?: string | null
           responsible_cpf?: string | null
           responsible_name?: string | null
+          tipo_pessoa?: string | null
           trade_name?: string | null
         }
         Update: {
@@ -1104,11 +1112,15 @@ export type Database = {
           created_at?: string | null
           email?: string
           id?: string
+          inscricao_estadual?: string | null
+          inscricao_municipal?: string | null
           name?: string
           phone?: string | null
           platform_login?: string | null
+          regime_tributario?: string | null
           responsible_cpf?: string | null
           responsible_name?: string | null
+          tipo_pessoa?: string | null
           trade_name?: string | null
         }
         Relationships: []
