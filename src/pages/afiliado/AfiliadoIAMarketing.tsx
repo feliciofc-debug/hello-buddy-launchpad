@@ -327,6 +327,10 @@ const AfiliadoIAMarketing = () => {
               )}
             </TabsContent>
 
+            <TabsContent value="carrossel">
+              <CarouselGenerator />
+            </TabsContent>
+
             <TabsContent value="video">
               <div className="max-w-4xl mx-auto"><VideoGenerator /></div>
             </TabsContent>
