@@ -220,9 +220,10 @@ const AfiliadoIAMarketing = () => {
       <div className="p-4 md:p-6 lg:p-8">
         <div className="max-w-7xl mx-auto">
           <Tabs defaultValue="gerar" className="w-full">
-            <TabsList className="grid w-full max-w-lg mx-auto grid-cols-3 mb-8">
+            <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 mb-8">
               <TabsTrigger value="gerar">Gerar Posts</TabsTrigger>
-              <TabsTrigger value="video">🎬 Gerar Vídeo</TabsTrigger>
+              <TabsTrigger value="carrossel">🎨 Carrossel</TabsTrigger>
+              <TabsTrigger value="video">🎬 Vídeo</TabsTrigger>
               <TabsTrigger value="historico">Meus Posts</TabsTrigger>
             </TabsList>
 
