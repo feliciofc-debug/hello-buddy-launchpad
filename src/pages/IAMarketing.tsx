@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 import { VideoSlideshowGenerator } from "@/components/VideoSlideshowGenerator";
 import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
+import { CarouselGenerator } from "@/components/CarouselGenerator";
 import { PublicarReelsModal } from "@/components/PublicarReelsModal";
 import { Separator } from "@/components/ui/separator";
 
@@ -423,8 +424,9 @@ const IAMarketing = () => {
           </div>
         )}
         <Tabs defaultValue="gerar" className="w-full">
-          <TabsList className="grid w-full max-w-lg mx-auto grid-cols-3 mb-8">
+          <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 mb-8">
             <TabsTrigger value="gerar">Gerar Posts</TabsTrigger>
+            <TabsTrigger value="carrossel">🎨 Carrossel</TabsTrigger>
             <TabsTrigger value="video">🎬 Gerar Vídeo</TabsTrigger>
             <TabsTrigger value="historico">Meus Posts</TabsTrigger>
           </TabsList>
@@ -880,6 +882,10 @@ const IAMarketing = () => {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="carrossel">
+            <CarouselGenerator />
           </TabsContent>
 
           <TabsContent value="historico">
