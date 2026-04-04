@@ -29,8 +29,8 @@ export const STYLES: Record<string, CarouselStyle> = {
     name: 'Moderno',
     primaryColor: '#1E293B',
     secondaryColor: '#3B82F6',
-    bgColor: '#F0F4FF',
-    textColor: '#1E293B',
+    bgColor: '#0F172A',
+    textColor: '#FFFFFF',
     accentColor: '#3B82F6',
     fontTitle: 'bold 64px Arial, sans-serif',
     fontBody: '32px Arial, sans-serif',
@@ -39,10 +39,10 @@ export const STYLES: Record<string, CarouselStyle> = {
   minimal: {
     name: 'Minimalista',
     primaryColor: '#18181B',
-    secondaryColor: '#A1A1AA',
-    bgColor: '#FAFAFA',
-    textColor: '#18181B',
-    accentColor: '#18181B',
+    secondaryColor: '#6366F1',
+    bgColor: '#F8FAFC',
+    textColor: '#0F172A',
+    accentColor: '#6366F1',
     fontTitle: 'bold 58px Georgia, serif',
     fontBody: '30px Georgia, serif',
     layout: 'minimal',
@@ -62,8 +62,8 @@ export const STYLES: Record<string, CarouselStyle> = {
     name: 'Elegante',
     primaryColor: '#1F2937',
     secondaryColor: '#D4AF37',
-    bgColor: '#F9FAFB',
-    textColor: '#1F2937',
+    bgColor: '#111827',
+    textColor: '#FFFFFF',
     accentColor: '#D4AF37',
     fontTitle: 'bold 56px Georgia, serif',
     fontBody: '28px Georgia, serif',
@@ -74,7 +74,7 @@ export const STYLES: Record<string, CarouselStyle> = {
     primaryColor: '#EC4899',
     secondaryColor: '#8B5CF6',
     bgColor: '#FDF2F8',
-    textColor: '#831843',
+    textColor: '#1E1B4B',
     accentColor: '#EC4899',
     fontTitle: 'bold 64px Arial, sans-serif',
     fontBody: '32px Arial, sans-serif',
@@ -150,9 +150,20 @@ function hexToRgb(hex: string) {
   return { r, g, b };
 }
 
-function drawRoundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
+function lighten(hex: string, amount: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgb(${Math.min(255, r + amount)}, ${Math.min(255, g + amount)}, ${Math.min(255, b + amount)})`;
+}
+
+function darken(hex: string, amount: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgb(${Math.max(0, r - amount)}, ${Math.max(0, g - amount)}, ${Math.max(0, b - amount)})`;
+}
+
+// Decide if we should use light text on this bg
+function isColorDark(hex: string) {
+  const { r, g, b } = hexToRgb(hex);
+  return (r * 299 + g * 587 + b * 114) / 1000 < 140;
 }
 
 export async function renderSlide(
@@ -171,172 +182,211 @@ export async function renderSlide(
   const pRgb = hexToRgb(primary);
   const sRgb = hexToRgb(secondary);
 
-  // ============ BACKGROUND ============
-  if (style.layout === 'bold') {
-    // Dark gradient bg
-    const grad = ctx.createLinearGradient(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-    grad.addColorStop(0, primary);
-    grad.addColorStop(1, `rgb(${Math.max(0, pRgb.r - 40)}, ${Math.max(0, pRgb.g - 40)}, ${Math.max(0, pRgb.b - 40)})`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-  } else if (style.layout === 'colorful') {
-    // Vibrant gradient bg
-    const grad = ctx.createLinearGradient(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-    grad.addColorStop(0, `rgba(${pRgb.r}, ${pRgb.g}, ${pRgb.b}, 0.12)`);
-    grad.addColorStop(0.5, '#FFFFFF');
-    grad.addColorStop(1, `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.12)`);
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-  } else if (style.layout === 'modern') {
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-    // Subtle gradient overlay
-    const grad = ctx.createLinearGradient(0, 0, 0, CAROUSEL_HEIGHT);
-    grad.addColorStop(0, `rgba(${pRgb.r}, ${pRgb.g}, ${pRgb.b}, 0.06)`);
-    grad.addColorStop(1, `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.04)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-  } else if (style.layout === 'elegant') {
-    ctx.fillStyle = '#FAFAF8';
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-  } else {
-    ctx.fillStyle = style.bgColor;
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, CAROUSEL_HEIGHT);
-  }
+  // For most styles, use primary/secondary as BG with white text
+  // For minimal/colorful, use light bg with dark text
+  const useDarkBg = style.layout !== 'minimal' && style.layout !== 'colorful';
+  const textColor = useDarkBg ? '#FFFFFF' : '#1A1A2E';
+  const subtextColor = useDarkBg ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.6)';
 
-  const textColor = style.layout === 'bold' ? '#FFFFFF' : style.textColor;
-  const margin = 80;
+  const margin = 90;
+  const W = CAROUSEL_WIDTH;
+  const H = CAROUSEL_HEIGHT;
 
-  // ============ DECORATIONS ============
+  // ====== BACKGROUND ======
   if (style.layout === 'modern') {
-    // Top gradient bar
-    const barGrad = ctx.createLinearGradient(0, 0, CAROUSEL_WIDTH, 0);
+    // Deep gradient from primary to darker
+    const grad = ctx.createLinearGradient(0, 0, W * 0.3, H);
+    grad.addColorStop(0, primary);
+    grad.addColorStop(0.6, darken(primary, 30));
+    grad.addColorStop(1, darken(primary, 60));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Decorative blob top-right
+    ctx.globalAlpha = 0.15;
+    const blobGrad = ctx.createRadialGradient(W - 100, 150, 50, W - 100, 150, 450);
+    blobGrad.addColorStop(0, secondary);
+    blobGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = blobGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Decorative blob bottom-left
+    const blob2 = ctx.createRadialGradient(100, H - 200, 30, 100, H - 200, 350);
+    blob2.addColorStop(0, secondary);
+    blob2.addColorStop(1, 'transparent');
+    ctx.fillStyle = blob2;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    // Top accent line
+    const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
+    lineGrad.addColorStop(0, secondary);
+    lineGrad.addColorStop(0.5, lighten(secondary, 60));
+    lineGrad.addColorStop(1, secondary);
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(0, 0, W, 8);
+
+  } else if (style.layout === 'bold') {
+    // Vibrant gradient diagonal
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, primary);
+    grad.addColorStop(0.5, darken(primary, 20));
+    grad.addColorStop(1, darken(primary, 50));
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Large accent circles
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = secondary;
+    ctx.beginPath();
+    ctx.arc(W + 80, -80, 400, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-120, H + 80, 380, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.06;
+    ctx.fillStyle = '#FFFFFF';
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, 500, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Thick top bar
+    ctx.fillStyle = secondary;
+    ctx.fillRect(0, 0, W, 12);
+
+  } else if (style.layout === 'elegant') {
+    // Dark rich background
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, '#0C0C1D');
+    grad.addColorStop(0.5, primary);
+    grad.addColorStop(1, '#0C0C1D');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Gold frame
+    ctx.strokeStyle = secondary;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(35, 35, W - 70, H - 70);
+    ctx.strokeStyle = `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.3)`;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(50, 50, W - 100, H - 100);
+
+    // Corner accents
+    const cs = 50;
+    ctx.fillStyle = secondary;
+    [[35, 35], [W - 35 - cs, 35], [35, H - 35 - cs], [W - 35 - cs, H - 35 - cs]].forEach(([cx, cy]) => {
+      ctx.fillRect(cx, cy, cs, 2);
+      ctx.fillRect(cx, cy, 2, cs);
+    });
+
+    // Subtle pattern
+    ctx.globalAlpha = 0.03;
+    for (let i = 0; i < 20; i++) {
+      ctx.fillStyle = secondary;
+      ctx.beginPath();
+      ctx.arc(Math.random() * W, Math.random() * H, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+  } else if (style.layout === 'colorful') {
+    // Light vibrant gradient
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, W, H);
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0, `rgba(${pRgb.r}, ${pRgb.g}, ${pRgb.b}, 0.08)`);
+    grad.addColorStop(0.5, `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.06)`);
+    grad.addColorStop(1, `rgba(${pRgb.r}, ${pRgb.g}, ${pRgb.b}, 0.1)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // Top/bottom thick gradient bars
+    const barGrad = ctx.createLinearGradient(0, 0, W, 0);
     barGrad.addColorStop(0, primary);
     barGrad.addColorStop(1, secondary);
     ctx.fillStyle = barGrad;
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, 14);
-    // Bottom gradient bar
-    ctx.fillStyle = barGrad;
-    ctx.fillRect(0, CAROUSEL_HEIGHT - 14, CAROUSEL_WIDTH, 14);
-    // Decorative circles
-    ctx.globalAlpha = 0.06;
-    ctx.fillStyle = secondary;
-    ctx.beginPath();
-    ctx.arc(CAROUSEL_WIDTH - 150, 250, 200, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(150, CAROUSEL_HEIGHT - 200, 150, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  } else if (style.layout === 'bold') {
-    // Large decorative circles
-    ctx.globalAlpha = 0.1;
-    ctx.fillStyle = secondary;
-    ctx.beginPath();
-    ctx.arc(CAROUSEL_WIDTH + 50, -50, 400, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(-100, CAROUSEL_HEIGHT + 100, 350, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 0.05;
-    ctx.fillStyle = '#FFFFFF';
-    ctx.beginPath();
-    ctx.arc(CAROUSEL_WIDTH / 2, CAROUSEL_HEIGHT / 2, 500, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  } else if (style.layout === 'elegant') {
-    // Double border frame
-    ctx.strokeStyle = `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.4)`;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(30, 30, CAROUSEL_WIDTH - 60, CAROUSEL_HEIGHT - 60);
-    ctx.strokeStyle = `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.2)`;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(45, 45, CAROUSEL_WIDTH - 90, CAROUSEL_HEIGHT - 90);
-    // Corner ornaments
-    const ornSize = 40;
-    ctx.fillStyle = secondary;
-    ctx.fillRect(30, 30, ornSize, 3);
-    ctx.fillRect(30, 30, 3, ornSize);
-    ctx.fillRect(CAROUSEL_WIDTH - 30 - ornSize, 30, ornSize, 3);
-    ctx.fillRect(CAROUSEL_WIDTH - 33, 30, 3, ornSize);
-    ctx.fillRect(30, CAROUSEL_HEIGHT - 33, ornSize, 3);
-    ctx.fillRect(30, CAROUSEL_HEIGHT - 30 - ornSize, 3, ornSize);
-    ctx.fillRect(CAROUSEL_WIDTH - 30 - ornSize, CAROUSEL_HEIGHT - 33, ornSize, 3);
-    ctx.fillRect(CAROUSEL_WIDTH - 33, CAROUSEL_HEIGHT - 30 - ornSize, 3, ornSize);
-  } else if (style.layout === 'colorful') {
-    // Top thick gradient bar
-    const barGrad = ctx.createLinearGradient(0, 0, CAROUSEL_WIDTH, 0);
-    barGrad.addColorStop(0, primary);
-    barGrad.addColorStop(0.5, secondary);
-    barGrad.addColorStop(1, primary);
-    ctx.fillStyle = barGrad;
-    ctx.fillRect(0, 0, CAROUSEL_WIDTH, 18);
-    // Bottom bar
-    ctx.fillStyle = barGrad;
-    ctx.fillRect(0, CAROUSEL_HEIGHT - 18, CAROUSEL_WIDTH, 18);
+    ctx.fillRect(0, 0, W, 16);
+    ctx.fillRect(0, H - 16, W, 16);
+
     // Decorative shapes
-    ctx.globalAlpha = 0.08;
+    ctx.globalAlpha = 0.06;
     ctx.fillStyle = primary;
-    drawRoundedRect(ctx, CAROUSEL_WIDTH - 200, 100, 250, 250, 60);
+    ctx.beginPath();
+    ctx.roundRect(W - 250, 80, 300, 300, 80);
     ctx.fill();
     ctx.fillStyle = secondary;
-    drawRoundedRect(ctx, -50, CAROUSEL_HEIGHT - 300, 200, 200, 50);
+    ctx.beginPath();
+    ctx.roundRect(-50, H - 350, 250, 250, 60);
     ctx.fill();
     ctx.globalAlpha = 1;
+
+  } else if (style.layout === 'minimal') {
+    // Clean white/light gray
+    ctx.fillStyle = '#F8FAFC';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle left accent bar
+    const barGrad = ctx.createLinearGradient(0, 0, 0, H);
+    barGrad.addColorStop(0, primary);
+    barGrad.addColorStop(1, secondary);
+    ctx.fillStyle = barGrad;
+    ctx.fillRect(0, 0, 6, H);
   }
 
-  // ============ IMAGE ============
+  const maxTextWidth = slide.imageUrl && slide.type === 'content' ? W - 480 : W - margin * 2;
+
+  // ====== IMAGE ======
   if (slide.imageUrl && (slide.type === 'cover' || slide.type === 'content')) {
     try {
       const img = await loadImage(slide.imageUrl);
       if (slide.type === 'cover') {
-        const imgH = CAROUSEL_HEIGHT * 0.45;
-        ctx.drawImage(img, 0, 60, CAROUSEL_WIDTH, imgH);
-        const grad = ctx.createLinearGradient(0, imgH - 150, 0, imgH + 60);
-        grad.addColorStop(0, 'transparent');
-        grad.addColorStop(1, style.layout === 'bold' ? primary : '#FFFFFF');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, imgH - 150, CAROUSEL_WIDTH, 210);
-      } else {
-        const imgSize = 280;
-        const imgX = CAROUSEL_WIDTH - imgSize - 80;
-        const imgY = 200;
-        // Shadow
-        ctx.shadowColor = 'rgba(0,0,0,0.15)';
-        ctx.shadowBlur = 20;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 8;
+        const imgH = H * 0.42;
         ctx.save();
-        drawRoundedRect(ctx, imgX, imgY, imgSize, imgSize, 20);
+        ctx.beginPath();
+        ctx.roundRect(margin, 80, W - margin * 2, imgH, 24);
+        ctx.clip();
+        ctx.drawImage(img, margin, 80, W - margin * 2, imgH);
+        ctx.restore();
+        // Gradient overlay at bottom of image
+        const imgGrad = ctx.createLinearGradient(0, 80 + imgH - 120, 0, 80 + imgH);
+        imgGrad.addColorStop(0, 'transparent');
+        imgGrad.addColorStop(1, useDarkBg ? darken(primary, 30) : 'rgba(255,255,255,0.9)');
+        ctx.fillStyle = imgGrad;
+        ctx.fillRect(margin, 80 + imgH - 120, W - margin * 2, 120);
+      } else {
+        const imgSize = 300;
+        const imgX = W - imgSize - margin;
+        const imgY = 180;
+        ctx.shadowColor = 'rgba(0,0,0,0.3)';
+        ctx.shadowBlur = 30;
+        ctx.shadowOffsetY = 10;
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(imgX, imgY, imgSize, imgSize, 24);
         ctx.clip();
         ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
         ctx.restore();
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
         ctx.shadowOffsetY = 0;
-        ctx.strokeStyle = secondary;
-        ctx.lineWidth = 3;
-        drawRoundedRect(ctx, imgX, imgY, imgSize, imgSize, 20);
-        ctx.stroke();
       }
     } catch {
-      // skip image
+      // skip
     }
   }
 
-  // ============ LOGO ============
+  // ====== LOGO ======
   if (slide.logoUrl) {
     try {
       const logo = await loadImage(slide.logoUrl);
-      const logoSize = 90;
-      const lx = CAROUSEL_WIDTH - logoSize - 60;
-      const ly = CAROUSEL_HEIGHT - logoSize - 60;
-      // Logo bg circle
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      const logoSize = 80;
+      const lx = W - logoSize - margin;
+      const ly = H - logoSize - 80;
+      // Circle bg
+      ctx.fillStyle = useDarkBg ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.06)';
       ctx.beginPath();
-      ctx.arc(lx + logoSize / 2, ly + logoSize / 2, logoSize / 2 + 8, 0, Math.PI * 2);
+      ctx.arc(lx + logoSize / 2, ly + logoSize / 2, logoSize / 2 + 10, 0, Math.PI * 2);
       ctx.fill();
       ctx.save();
       ctx.beginPath();
@@ -345,156 +395,188 @@ export async function renderSlide(
       ctx.drawImage(logo, lx, ly, logoSize, logoSize);
       ctx.restore();
     } catch {
-      // skip logo
+      // skip
     }
   }
 
-  const maxTextWidth = slide.imageUrl && slide.type === 'content' ? CAROUSEL_WIDTH - 440 : CAROUSEL_WIDTH - margin * 2;
-
-  // ============ CONTENT ============
+  // ====== SLIDE CONTENT ======
   if (slide.type === 'cover') {
-    const titleY = slide.imageUrl ? CAROUSEL_HEIGHT * 0.55 : CAROUSEL_HEIGHT * 0.38;
+    const titleY = slide.imageUrl ? H * 0.56 : H * 0.35;
 
     // Title
     ctx.fillStyle = textColor;
     ctx.font = style.fontTitle;
-    const lastY = wrapText(ctx, slide.title, margin, titleY, CAROUSEL_WIDTH - margin * 2, 78);
+    const lastY = wrapText(ctx, slide.title, margin, titleY, W - margin * 2, 80);
 
-    // Accent bar under title
-    const barGrad = ctx.createLinearGradient(margin, 0, margin + 200, 0);
+    // Accent bar
+    const barGrad = ctx.createLinearGradient(margin, 0, margin + 250, 0);
     barGrad.addColorStop(0, secondary);
-    barGrad.addColorStop(1, primary);
+    barGrad.addColorStop(1, lighten(secondary, 40));
     ctx.fillStyle = barGrad;
-    drawRoundedRect(ctx, margin, lastY + 25, 200, 8, 4);
+    ctx.beginPath();
+    ctx.roundRect(margin, lastY + 30, 250, 8, 4);
     ctx.fill();
 
-    // Swipe hint
-    ctx.fillStyle = textColor;
-    ctx.globalAlpha = 0.5;
-    ctx.font = '28px Arial, sans-serif';
-    ctx.fillText('Deslize para ver →', margin, CAROUSEL_HEIGHT - 100);
-    ctx.globalAlpha = 1;
+    // Subtitle hint
+    ctx.fillStyle = subtextColor;
+    ctx.font = '30px Arial, sans-serif';
+    ctx.fillText('Deslize para ver →', margin, H - 100);
+
+    // Decorative slide count
+    ctx.fillStyle = subtextColor;
+    ctx.font = '24px Arial, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`1/${slide.totalSlides || '?'}`, W - margin, H - 100);
+    ctx.textAlign = 'left';
 
   } else if (slide.type === 'content') {
-    // Number badge
+    // ===== NUMBER BADGE =====
     if (slide.number) {
-      const badgeSize = 90;
-      const badgeGrad = ctx.createLinearGradient(margin, 90, margin + badgeSize, 90 + badgeSize);
+      const badgeX = margin;
+      const badgeY = 100;
+      const badgeSize = 100;
+
+      // Circle badge with gradient
+      const badgeGrad = ctx.createLinearGradient(badgeX, badgeY, badgeX + badgeSize, badgeY + badgeSize);
       badgeGrad.addColorStop(0, secondary);
-      badgeGrad.addColorStop(1, primary);
+      badgeGrad.addColorStop(1, lighten(secondary, 30));
       ctx.fillStyle = badgeGrad;
-      drawRoundedRect(ctx, margin, 90, badgeSize, badgeSize, 20);
+      ctx.shadowColor = `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.4)`;
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetY = 6;
+      ctx.beginPath();
+      ctx.arc(badgeX + badgeSize / 2, badgeY + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
       ctx.fill();
-      // Shadow for badge
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+
+      // Number text
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 50px Arial, sans-serif';
+      ctx.font = 'bold 56px Arial, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(String(slide.number), margin + badgeSize / 2, 148);
+      ctx.fillText(String(slide.number), badgeX + badgeSize / 2, badgeY + badgeSize / 2 + 20);
       ctx.textAlign = 'left';
     }
 
-    // Title
+    // ===== TITLE =====
+    const titleStartY = slide.number ? 280 : 160;
     ctx.fillStyle = textColor;
-    ctx.font = 'bold 50px Arial, sans-serif';
-    const titleStartY = slide.number ? 260 : 150;
-    const titleEndY = wrapText(ctx, slide.title, margin, titleStartY, maxTextWidth, 62);
+    ctx.font = 'bold 52px Arial, sans-serif';
+    const titleEndY = wrapText(ctx, slide.title, margin, titleStartY, maxTextWidth, 65);
 
-    // Separator line
+    // Separator
     ctx.fillStyle = secondary;
-    drawRoundedRect(ctx, margin, titleEndY + 25, 80, 5, 3);
+    ctx.beginPath();
+    ctx.roundRect(margin, titleEndY + 25, 80, 5, 3);
     ctx.fill();
 
-    // Body text
+    // ===== BODY =====
     if (slide.body) {
-      ctx.fillStyle = textColor;
-      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = subtextColor;
       ctx.font = style.fontBody;
-      wrapText(ctx, slide.body, margin, titleEndY + 65, maxTextWidth, 46);
+      wrapText(ctx, slide.body, margin, titleEndY + 70, maxTextWidth, 48);
+    }
+
+    // ===== CHECKMARK ICON (visual flair) =====
+    if (!slide.imageUrl) {
+      ctx.globalAlpha = 0.05;
+      ctx.fillStyle = secondary;
+      ctx.font = '350px Arial, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('✓', W - 30, H - 200);
+      ctx.textAlign = 'left';
       ctx.globalAlpha = 1;
     }
 
-    // Progress dots
+    // ===== PROGRESS DOTS =====
     if (slide.number && slide.totalSlides) {
-      const progY = CAROUSEL_HEIGHT - 70;
-      const dotGap = 28;
+      const progY = H - 80;
+      const dotGap = 32;
       const totalW = (slide.totalSlides - 1) * dotGap;
-      const startX = (CAROUSEL_WIDTH - totalW) / 2;
+      const startX = (W - totalW) / 2;
       for (let i = 0; i < slide.totalSlides; i++) {
         const isCurrent = i + 1 === slide.number;
-        ctx.beginPath();
         if (isCurrent) {
-          drawRoundedRect(ctx, startX + i * dotGap - 12, progY - 5, 24, 10, 5);
           ctx.fillStyle = secondary;
+          ctx.beginPath();
+          ctx.roundRect(startX + i * dotGap - 16, progY - 5, 32, 10, 5);
           ctx.fill();
         } else {
+          ctx.fillStyle = useDarkBg ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)';
+          ctx.beginPath();
           ctx.arc(startX + i * dotGap, progY, 5, 0, Math.PI * 2);
-          ctx.fillStyle = textColor;
-          ctx.globalAlpha = 0.2;
           ctx.fill();
-          ctx.globalAlpha = 1;
         }
       }
+
+      // Slide counter
+      ctx.fillStyle = subtextColor;
+      ctx.font = '22px Arial, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${slide.number}/${slide.totalSlides}`, W - margin, H - 70);
+      ctx.textAlign = 'left';
     }
 
   } else if (slide.type === 'cta') {
-    const centerX = CAROUSEL_WIDTH / 2;
+    const centerX = W / 2;
 
-    // Large decorative circle behind CTA
-    ctx.globalAlpha = 0.06;
+    // Large decorative circle
+    ctx.globalAlpha = 0.08;
     ctx.fillStyle = secondary;
     ctx.beginPath();
-    ctx.arc(centerX, CAROUSEL_HEIGHT * 0.4, 350, 0, Math.PI * 2);
+    ctx.arc(centerX, H * 0.38, 380, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
 
     // Title
-    const titleY = CAROUSEL_HEIGHT * 0.32;
+    const titleY = H * 0.30;
     ctx.fillStyle = textColor;
-    ctx.font = 'bold 54px Arial, sans-serif';
-    const lastY = wrapText(ctx, slide.title, centerX, titleY, CAROUSEL_WIDTH - margin * 2, 68, 'center');
+    ctx.font = 'bold 58px Arial, sans-serif';
+    const lastY = wrapText(ctx, slide.title, centerX, titleY, W - margin * 2, 72, 'center');
 
-    // CTA Button with gradient
+    // CTA Button with gradient + shadow
     const btnY = lastY + 80;
-    const btnW = 520;
-    const btnH = 90;
-    const btnX = (CAROUSEL_WIDTH - btnW) / 2;
-    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY);
-    btnGrad.addColorStop(0, primary);
-    btnGrad.addColorStop(1, secondary);
-    // Shadow
-    ctx.shadowColor = `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.35)`;
-    ctx.shadowBlur = 25;
-    ctx.shadowOffsetY = 10;
+    const btnW = 560;
+    const btnH = 100;
+    const btnX = (W - btnW) / 2;
+    const btnGrad = ctx.createLinearGradient(btnX, btnY, btnX + btnW, btnY + btnH);
+    btnGrad.addColorStop(0, secondary);
+    btnGrad.addColorStop(1, lighten(secondary, 30));
+
+    ctx.shadowColor = `rgba(${sRgb.r}, ${sRgb.g}, ${sRgb.b}, 0.5)`;
+    ctx.shadowBlur = 30;
+    ctx.shadowOffsetY = 12;
     ctx.fillStyle = btnGrad;
-    drawRoundedRect(ctx, btnX, btnY, btnW, btnH, 45);
+    ctx.beginPath();
+    ctx.roundRect(btnX, btnY, btnW, btnH, 50);
     ctx.fill();
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
+
     // Button text
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 34px Arial, sans-serif';
+    ctx.font = 'bold 36px Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Saiba Mais →', centerX, btnY + 58);
+    ctx.fillText('Saiba Mais →', centerX, btnY + 64);
     ctx.textAlign = 'left';
 
     // Profile handle
     if (slide.profileHandle) {
-      ctx.fillStyle = textColor;
-      ctx.globalAlpha = 0.5;
-      ctx.font = '32px Arial, sans-serif';
+      ctx.fillStyle = subtextColor;
+      ctx.font = '34px Arial, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(slide.profileHandle, centerX, CAROUSEL_HEIGHT - 120);
+      ctx.fillText(slide.profileHandle, centerX, H - 130);
       ctx.textAlign = 'left';
-      ctx.globalAlpha = 1;
     }
 
-    // Checkmark icon decorative
+    // Decorative large checkmark
+    ctx.globalAlpha = 0.04;
     ctx.fillStyle = secondary;
-    ctx.globalAlpha = 0.1;
-    ctx.font = '200px Arial, sans-serif';
+    ctx.font = '500px Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('✓', centerX, CAROUSEL_HEIGHT * 0.72);
+    ctx.fillText('★', centerX, H * 0.78);
     ctx.textAlign = 'left';
     ctx.globalAlpha = 1;
   }
