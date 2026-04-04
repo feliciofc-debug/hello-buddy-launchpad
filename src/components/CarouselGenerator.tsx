@@ -324,22 +324,27 @@ REGRAS CRÍTICAS:
           {/* Uploads */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label className="font-semibold flex items-center gap-1"><ImageIcon className="h-4 w-4" /> Imagem do produto</Label>
-              <input ref={productInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, setProductImage)} />
-              {productImage ? (
-                <div className="relative inline-block">
-                  <img src={productImage} alt="" className="h-20 w-20 object-cover rounded-lg border" />
-                  <button onClick={() => setProductImage(null)} className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-0.5"><X className="h-3 w-3" /></button>
+              <Label className="font-semibold flex items-center gap-1"><ImageIcon className="h-4 w-4" /> Fotos do produto (até 5)</Label>
+              <input ref={productInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleMultiImageUpload} />
+              {productImages.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  {productImages.map((img, i) => (
+                    <div key={i} className="relative inline-block">
+                      <img src={img} alt="" className="h-20 w-20 object-cover rounded-lg border" />
+                      <button onClick={() => removeProductImage(i)} className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full p-0.5"><X className="h-3 w-3" /></button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
+              )}
+              {productImages.length < 5 && (
                 <Button variant="outline" onClick={() => productInputRef.current?.click()} className="w-full">
-                  <Upload className="mr-2 h-4 w-4" /> Anexar imagem
+                  <Upload className="mr-2 h-4 w-4" /> {productImages.length === 0 ? 'Anexar fotos' : `Adicionar mais (${5 - productImages.length} restantes)`}
                 </Button>
               )}
             </div>
             <div className="space-y-2">
               <Label className="font-semibold flex items-center gap-1"><Sparkles className="h-4 w-4" /> Logo da marca</Label>
-              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={e => handleImageUpload(e, setLogoImage)} />
+              <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
               {logoImage ? (
                 <div className="relative inline-block">
                   <img src={logoImage} alt="" className="h-20 w-20 object-contain rounded-lg border" />
