@@ -482,6 +482,10 @@ REGRAS CRÍTICAS:
                 📱 Publicar no Instagram
               </Button>
             </div>
+            <Button onClick={saveAsProduct} disabled={savingProduct} size="lg" className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white">
+              {savingProduct ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <PackagePlus className="mr-2 h-5 w-5" />}
+              📦 Salvar como Produto (Autopilot Instagram)
+            </Button>
           </CardContent>
         </Card>
       )}
