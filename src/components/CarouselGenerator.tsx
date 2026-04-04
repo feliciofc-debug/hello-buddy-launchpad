@@ -13,9 +13,9 @@ import { renderSlide, STYLES, type SlideData } from "@/lib/carouselRenderer";
 export const CarouselGenerator = () => {
   const [tema, setTema] = useState("");
   const [numSlides, setNumSlides] = useState("5");
-  const [estilo, setEstilo] = useState("modern");
-  const [primaryColor, setPrimaryColor] = useState("#3B82F6");
-  const [secondaryColor, setSecondaryColor] = useState("#1E293B");
+  const [estilo, setEstilo] = useState("bold");
+  const [primaryColor, setPrimaryColor] = useState(STYLES.bold.primaryColor);
+  const [secondaryColor, setSecondaryColor] = useState(STYLES.bold.secondaryColor);
   const [productImage, setProductImage] = useState<string | null>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
   const [profileHandle, setProfileHandle] = useState("");
@@ -47,28 +47,57 @@ export const CarouselGenerator = () => {
       if (!userData.user) { toast.error("Você precisa estar logado"); setLoading(false); return; }
 
       const n = parseInt(numSlides);
-      const prompt = `Você é um especialista em marketing de redes sociais.
-O usuário quer criar um carrossel de Instagram sobre: "${tema}"
-Número de slides: ${n}
+      const prompt = `Você é um diretor criativo e copywriter sênior especialista em carrosséis premium para Instagram.
+Crie um carrossel de alto nível, com páginas completas, linguagem forte e benefícios reais — nada genérico, nada vazio.
 
-Gere o conteúdo de cada slide no seguinte formato JSON:
+TEMA BASE DO USUÁRIO:
+"""${tema}"""
+
+NÚMERO EXATO DE SLIDES: ${n}
+
+OBJETIVO DO CARROSSEL:
+- parecer conteúdo premium, estratégico e profissional
+- transformar funcionalidades em benefícios claros
+- mostrar valor percebido, resultado prático, ganho de tempo, automação, facilidade, escala ou economia quando fizer sentido
+- preencher bem cada página com informação útil e persuasiva
+- usar títulos grandes, impactantes e memoráveis
+
+FORMATO JSON OBRIGATÓRIO:
 {
   "slides": [
-    { "type": "cover", "title": "Título chamativo da capa (máximo 8 palavras)" },
-    { "type": "content", "number": 1, "title": "Título curto (máximo 6 palavras)", "body": "Explicação em 1-2 frases curtas (máximo 25 palavras)" },
-    ...mais slides de conteúdo numerados...
-    { "type": "cta", "title": "Frase de chamada para ação" }
+    {
+      "type": "cover",
+      "title": "headline principal da capa",
+      "body": "subtítulo curto reforçando a promessa"
+    },
+    {
+      "type": "content",
+      "number": 1,
+      "title": "benefício principal em poucas palavras",
+      "body": "linha curta 1\\nlinha curta 2\\nlinha curta 3\\nlinha curta 4",
+      "highlight": "ganho principal do slide"
+    },
+    {
+      "type": "cta",
+      "title": "chamada final forte",
+      "body": "frase curta 1\\nfrase curta 2",
+      "ctaLabel": "texto do botão"
+    }
   ],
-  "caption": "Legenda completa para o post com hashtags relevantes (150-300 caracteres + 10-15 hashtags)"
+  "caption": "legenda persuasiva para o post"
 }
 
-Regras:
-- Títulos curtos e impactantes
-- Textos do body objetivos e diretos
-- Use emojis com moderação
-- A capa deve gerar curiosidade
-- O CTA deve incentivar interação
-- Responda APENAS o JSON válido, sem markdown`;
+REGRAS CRÍTICAS:
+- Use exatamente 1 slide cover, ${Math.max(n - 2, 1)} slides content e 1 slide cta.
+- Escreva em português do Brasil.
+- NÃO use frases genéricas, clichês, autoajuda ou conteúdo superficial.
+- Cada slide content deve vender ou explicar 1 benefício concreto.
+- O campo body dos slides content deve vir com 3 ou 4 linhas curtas, separadas por \\n, para caber com letras grandes.
+- Se o usuário colar uma lista de recursos, transforme isso em benefícios e diferenciais percebidos pelo cliente.
+- A capa deve parecer manchete de campanha premium.
+- O CTA final deve aumentar desejo e deixar a próxima ação óbvia.
+- A legenda deve ter 2 parágrafos curtos + 8 a 12 hashtags relevantes.
+- Responda APENAS JSON válido, sem markdown.`;
 
       const { data, error } = await supabase.functions.invoke("gerar-carousel-content", {
         body: { prompt, tema }
@@ -82,9 +111,18 @@ Regras:
         parsed = JSON.parse(cleaned);
       }
 
-      const slideData: SlideData[] = (parsed.slides || []).map((s: any, i: number) => ({
+      const parsedSlides = Array.isArray(parsed.slides) ? parsed.slides : [];
+      if (parsedSlides.length === 0) throw new Error("A IA não retornou slides válidos");
+
+      const totalContentSlides = parsedSlides.filter((slide: any) => slide.type === "content").length;
+
+      const slideData: SlideData[] = parsedSlides.map((s: any, i: number) => ({
         ...s,
-        totalSlides: parsed.slides.length,
+        number: s.type === "content"
+          ? (s.number ?? parsedSlides.slice(0, i + 1).filter((item: any) => item.type === "content").length)
+          : undefined,
+        totalSlides: parsedSlides.length,
+        contentTotal: totalContentSlides,
         imageUrl: s.type === "cover" ? productImage : (i % 2 === 0 ? productImage : undefined),
         logoUrl: logoImage || undefined,
         profileHandle: s.type === "cta" ? (profileHandle || "@seuperfil") : undefined,
@@ -227,7 +265,11 @@ Regras:
             {/* Estilo */}
             <div className="space-y-2">
               <Label className="font-semibold">Estilo visual</Label>
-              <Select value={estilo} onValueChange={setEstilo}>
+              <Select value={estilo} onValueChange={(value) => {
+                setEstilo(value);
+                setPrimaryColor(STYLES[value].primaryColor);
+                setSecondaryColor(STYLES[value].secondaryColor);
+              }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {Object.entries(STYLES).map(([key, s]) => (
