@@ -29,12 +29,29 @@ export const CarouselGenerator = () => {
   const productInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, setter: (v: string | null) => void) => {
+  const handleMultiImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const remaining = 5 - productImages.length;
+    if (remaining <= 0) { toast.error("Máximo de 5 fotos atingido"); return; }
+    const toProcess = Array.from(files).slice(0, remaining).filter(f => f.type.startsWith("image/"));
+    toProcess.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => setProductImages(prev => [...prev, reader.result as string].slice(0, 5));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !file.type.startsWith("image/")) return;
     const reader = new FileReader();
-    reader.onloadend = () => setter(reader.result as string);
+    reader.onloadend = () => setLogoImage(reader.result as string);
     reader.readAsDataURL(file);
+  };
+
+  const removeProductImage = (index: number) => {
+    setProductImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const generateContent = async () => {
