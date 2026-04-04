@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { VideoGenerator } from "@/components/VideoGenerator";
 import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
+import { CarouselGenerator } from "@/components/CarouselGenerator";
 import { AfiliadoLayout } from "@/components/afiliado/AfiliadoLayout";
 
 interface PostVariations {
