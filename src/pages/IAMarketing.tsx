@@ -884,6 +884,10 @@ const IAMarketing = () => {
             </div>
           </TabsContent>
 
+          <TabsContent value="carrossel">
+            <CarouselGenerator />
+          </TabsContent>
+
           <TabsContent value="historico">
             <div className="max-w-4xl mx-auto">
               <Card>
