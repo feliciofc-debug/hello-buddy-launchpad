@@ -1806,6 +1806,48 @@ export type Database = {
           },
         ]
       }
+      carrosseis_gerados: {
+        Row: {
+          caption: string | null
+          created_at: string | null
+          estilo: string | null
+          id: string
+          imagens_urls: string[] | null
+          num_slides: number | null
+          publicado_facebook: boolean | null
+          publicado_instagram: boolean | null
+          slides_data: Json | null
+          tema: string
+          user_id: string
+        }
+        Insert: {
+          caption?: string | null
+          created_at?: string | null
+          estilo?: string | null
+          id?: string
+          imagens_urls?: string[] | null
+          num_slides?: number | null
+          publicado_facebook?: boolean | null
+          publicado_instagram?: boolean | null
+          slides_data?: Json | null
+          tema: string
+          user_id: string
+        }
+        Update: {
+          caption?: string | null
+          created_at?: string | null
+          estilo?: string | null
+          id?: string
+          imagens_urls?: string[] | null
+          num_slides?: number | null
+          publicado_facebook?: boolean | null
+          publicado_instagram?: boolean | null
+          slides_data?: Json | null
+          tema?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       client_menu_config: {
         Row: {
           created_at: string | null
