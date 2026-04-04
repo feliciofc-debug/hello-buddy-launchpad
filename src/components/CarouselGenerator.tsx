@@ -5,17 +5,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Upload, Download, Instagram, Image as ImageIcon, Palette, Sparkles, X, ChevronLeft, ChevronRight, PackagePlus } from "lucide-react";
+import { Loader2, Upload, Download, Instagram, Image as ImageIcon, Palette, Sparkles, X, ChevronLeft, ChevronRight, PackagePlus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { renderSlide, STYLES, type SlideData } from "@/lib/carouselRenderer";
+import { toPng } from "html-to-image";
+import { SlideRenderer, TEMPLATE_OPTIONS, type SlideTemplateProps } from "@/lib/carouselTemplates";
+
+export interface SlideData {
+  type: 'cover' | 'content' | 'cta';
+  title: string;
+  body?: string;
+  number?: number;
+  totalSlides: number;
+  contentTotal?: number;
+  imageUrl?: string;
+  logoUrl?: string;
+  profileHandle?: string;
+  highlight?: string;
+  ctaLabel?: string;
+}
 
 export const CarouselGenerator = () => {
   const [tema, setTema] = useState("");
   const [numSlides, setNumSlides] = useState("5");
-  const [estilo, setEstilo] = useState("bold");
-  const [primaryColor, setPrimaryColor] = useState(STYLES.bold.primaryColor);
-  const [secondaryColor, setSecondaryColor] = useState(STYLES.bold.secondaryColor);
+  const [estilo, setEstilo] = useState("modern-dark");
+  const [primaryColor, setPrimaryColor] = useState(TEMPLATE_OPTIONS['modern-dark'].primaryColor);
+  const [secondaryColor, setSecondaryColor] = useState(TEMPLATE_OPTIONS['modern-dark'].secondaryColor);
   const [productImages, setProductImages] = useState<string[]>([]);
   const [logoImage, setLogoImage] = useState<string | null>(null);
   const [profileHandle, setProfileHandle] = useState("");
@@ -26,7 +41,8 @@ export const CarouselGenerator = () => {
   const [activeSlide, setActiveSlide] = useState(0);
   const [publishing, setPublishing] = useState(false);
   const [savingProduct, setSavingProduct] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [rendering, setRendering] = useState(false);
+  const slideContainerRef = useRef<HTMLDivElement>(null);
   const productInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,6 +70,54 @@ export const CarouselGenerator = () => {
   const removeProductImage = (index: number) => {
     setProductImages(prev => prev.filter((_, i) => i !== index));
   };
+
+  const renderSlidesToImages = useCallback(async (slideData: SlideData[]): Promise<string[]> => {
+    if (!slideContainerRef.current) return [];
+    setRendering(true);
+
+    // Wait for DOM to render
+    await new Promise(r => setTimeout(r, 500));
+
+    const images: string[] = [];
+    const slideElements = slideContainerRef.current.children;
+
+    for (let i = 0; i < slideElements.length; i++) {
+      const el = slideElements[i] as HTMLElement;
+      try {
+        const dataUrl = await toPng(el, {
+          width: 1080,
+          height: 1350,
+          pixelRatio: 1,
+          cacheBust: true,
+          skipAutoScale: true,
+          style: {
+            transform: 'scale(1)',
+            transformOrigin: 'top left',
+          },
+        });
+        images.push(dataUrl);
+      } catch (err) {
+        console.error(`Error rendering slide ${i + 1}:`, err);
+        // Create a fallback solid color image
+        const canvas = document.createElement('canvas');
+        canvas.width = 1080;
+        canvas.height = 1350;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#1E293B';
+          ctx.fillRect(0, 0, 1080, 1350);
+          ctx.fillStyle = '#FFF';
+          ctx.font = '40px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(`Slide ${i + 1}`, 540, 675);
+        }
+        images.push(canvas.toDataURL('image/png'));
+      }
+    }
+
+    setRendering(false);
+    return images;
+  }, []);
 
   const generateContent = async () => {
     if (!tema.trim()) { toast.error("Digite um tema para o carrossel"); return; }
@@ -132,7 +196,7 @@ REGRAS CRÍTICAS:
       const parsedSlides = Array.isArray(parsed.slides) ? parsed.slides : [];
       if (parsedSlides.length === 0) throw new Error("A IA não retornou slides válidos");
 
-      const totalContentSlides = parsedSlides.filter((slide: any) => slide.type === "content").length;
+      const totalContentSlides = parsedSlides.filter((s: any) => s.type === "content").length;
 
       const slideData: SlideData[] = parsedSlides.map((s: any, i: number) => ({
         ...s,
@@ -149,16 +213,13 @@ REGRAS CRÍTICAS:
       setSlides(slideData);
       setCaption(parsed.caption || "");
 
-      // Render all slides
-      if (!canvasRef.current) return;
-      const style = STYLES[estilo];
-      const images: string[] = [];
-      for (const slide of slideData) {
-        const img = await renderSlide(canvasRef.current, slide, style, primaryColor, secondaryColor);
-        images.push(img);
-      }
-      setRenderedImages(images);
-      setActiveSlide(0);
+      // Wait for React to render the slides, then capture
+      setTimeout(async () => {
+        const images = await renderSlidesToImages(slideData);
+        setRenderedImages(images);
+        setActiveSlide(0);
+        setLoading(false);
+      }, 800);
 
       // Save to DB
       await supabase.from("carrosseis_gerados").insert({
@@ -174,21 +235,16 @@ REGRAS CRÍTICAS:
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Erro ao gerar carrossel");
-    } finally {
       setLoading(false);
     }
   };
 
   const reRenderSlides = useCallback(async () => {
-    if (!canvasRef.current || slides.length === 0) return;
-    const style = STYLES[estilo];
-    const images: string[] = [];
-    for (const slide of slides) {
-      const img = await renderSlide(canvasRef.current, slide, style, primaryColor, secondaryColor);
-      images.push(img);
-    }
+    if (slides.length === 0) return;
+    const images = await renderSlidesToImages(slides);
     setRenderedImages(images);
-  }, [slides, estilo, primaryColor, secondaryColor]);
+    toast.success("✅ Slides re-renderizados!");
+  }, [slides, renderSlidesToImages]);
 
   const updateSlideText = (index: number, field: 'title' | 'body', value: string) => {
     setSlides(prev => {
@@ -216,7 +272,6 @@ REGRAS CRÍTICAS:
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Não autenticado");
 
-      // Upload images to storage first
       const uploadedUrls: string[] = [];
       for (let i = 0; i < renderedImages.length; i++) {
         const blob = await (await fetch(renderedImages[i])).blob();
@@ -228,11 +283,7 @@ REGRAS CRÍTICAS:
       }
 
       const { error } = await supabase.functions.invoke("meta-publish-carousel", {
-        body: {
-          user_id: userData.user.id,
-          image_urls: uploadedUrls,
-          caption,
-        },
+        body: { user_id: userData.user.id, image_urls: uploadedUrls, caption },
       });
       if (error) throw error;
       toast.success("🎉 Carrossel publicado no Instagram!");
@@ -249,7 +300,6 @@ REGRAS CRÍTICAS:
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Não autenticado");
 
-      // Upload first slide as product image
       const blob = await (await fetch(renderedImages[0])).blob();
       const filename = `carrosseis/${userData.user.id}/${Date.now()}-capa.png`;
       const { error: upErr } = await supabase.storage.from("produtos").upload(filename, blob, { contentType: "image/png" });
@@ -257,7 +307,6 @@ REGRAS CRÍTICAS:
       const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(filename);
       const imageUrl = urlData.publicUrl;
 
-      // Upload all slides and store URLs
       const allUrls: string[] = [imageUrl];
       for (let i = 1; i < renderedImages.length; i++) {
         const slideBlob = await (await fetch(renderedImages[i])).blob();
@@ -293,9 +342,9 @@ REGRAS CRÍTICAS:
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="text-center space-y-2">
         <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-          🎨 Gerador de Carrosséis com IA
+          🎨 Gerador de Carrosséis V2
         </h2>
-        <p className="text-muted-foreground text-sm">Crie carrosséis profissionais para Instagram em segundos — custo zero!</p>
+        <p className="text-muted-foreground text-sm">Templates profissionais — qualidade nível agência, custo zero!</p>
       </div>
 
       <Card className="shadow-xl border-2">
@@ -306,44 +355,44 @@ REGRAS CRÍTICAS:
             <Textarea
               value={tema}
               onChange={e => setTema(e.target.value)}
-              placeholder='Ex: "5 dicas para cuidar do pelo do seu pet"'
+              placeholder='Ex: "5 dicas para cuidar do pelo do seu pet" ou cole uma lista de funcionalidades'
               className="min-h-[80px]"
               disabled={loading}
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Num slides */}
             <div className="space-y-2">
               <Label className="font-semibold">Nº de slides</Label>
               <Select value={numSlides} onValueChange={setNumSlides}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[3,4,5,6,7,8,9,10].map(n => (
+                  {[3, 4, 5, 6, 7, 8, 9, 10].map(n => (
                     <SelectItem key={n} value={String(n)}>{n} slides</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Estilo */}
             <div className="space-y-2">
-              <Label className="font-semibold">Estilo visual</Label>
+              <Label className="font-semibold">Template visual</Label>
               <Select value={estilo} onValueChange={(value) => {
                 setEstilo(value);
-                setPrimaryColor(STYLES[value].primaryColor);
-                setSecondaryColor(STYLES[value].secondaryColor);
+                const tmpl = TEMPLATE_OPTIONS[value as keyof typeof TEMPLATE_OPTIONS];
+                if (tmpl) {
+                  setPrimaryColor(tmpl.primaryColor);
+                  setSecondaryColor(tmpl.secondaryColor);
+                }
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(STYLES).map(([key, s]) => (
-                    <SelectItem key={key} value={key}>{s.name}</SelectItem>
+                  {Object.entries(TEMPLATE_OPTIONS).map(([key, t]) => (
+                    <SelectItem key={key} value={key}>{t.emoji} {t.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* @ perfil */}
             <div className="space-y-2">
               <Label className="font-semibold">@ do perfil</Label>
               <Input value={profileHandle} onChange={e => setProfileHandle(e.target.value)} placeholder="@seuperfil" />
@@ -406,13 +455,37 @@ REGRAS CRÍTICAS:
           </div>
 
           <Button onClick={generateContent} disabled={loading || !tema.trim()} size="lg" className="w-full text-lg py-6 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700">
-            {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Gerando carrossel...</> : <>🚀 Gerar Carrossel</>}
+            {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Gerando carrossel profissional...</> : <>🚀 Gerar Carrossel Profissional</>}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Hidden canvas */}
-      <canvas ref={canvasRef} className="hidden" />
+      {/* Hidden render container - slides rendered offscreen for html-to-image capture */}
+      <div
+        ref={slideContainerRef}
+        style={{ position: 'absolute', left: '-9999px', top: 0 }}
+        aria-hidden="true"
+      >
+        {slides.map((slide, i) => (
+          <SlideRenderer
+            key={`${estilo}-${i}-${slide.title}`}
+            templateName={estilo}
+            type={slide.type}
+            title={slide.title}
+            body={slide.body}
+            number={slide.number}
+            totalSlides={slide.totalSlides}
+            contentTotal={slide.contentTotal}
+            imageUrl={slide.imageUrl}
+            logoUrl={slide.logoUrl}
+            profileHandle={slide.profileHandle}
+            primaryColor={primaryColor}
+            secondaryColor={secondaryColor}
+            highlight={slide.highlight}
+            ctaLabel={slide.ctaLabel}
+          />
+        ))}
+      </div>
 
       {/* Preview */}
       {renderedImages.length > 0 && (
@@ -461,8 +534,9 @@ REGRAS CRÍTICAS:
                   />
                 </div>
               )}
-              <Button variant="outline" size="sm" onClick={reRenderSlides}>
-                <Sparkles className="mr-1 h-3 w-3" /> Re-renderizar
+              <Button variant="outline" size="sm" onClick={reRenderSlides} disabled={rendering}>
+                {rendering ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <RefreshCw className="mr-1 h-3 w-3" />}
+                Re-renderizar
               </Button>
             </div>
 
@@ -488,6 +562,14 @@ REGRAS CRÍTICAS:
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Rendering indicator */}
+      {rendering && (
+        <div className="fixed bottom-4 right-4 bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">Renderizando slides...</span>
+        </div>
       )}
     </div>
   );
