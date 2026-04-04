@@ -5,8 +5,11 @@ export interface SlideData {
   type: 'cover' | 'content' | 'cta';
   title: string;
   body?: string;
+  highlight?: string;
+  ctaLabel?: string;
   number?: number;
   totalSlides?: number;
+  contentTotal?: number;
   imageUrl?: string;
   logoUrl?: string;
   profileHandle?: string;
@@ -150,6 +153,11 @@ function hexToRgb(hex: string) {
   return { r, g, b };
 }
 
+function withAlpha(hex: string, alpha: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function lighten(hex: string, amount: number) {
   const { r, g, b } = hexToRgb(hex);
   return `rgb(${Math.min(255, r + amount)}, ${Math.min(255, g + amount)}, ${Math.min(255, b + amount)})`;
@@ -164,6 +172,107 @@ function darken(hex: string, amount: number) {
 function isColorDark(hex: string) {
   const { r, g, b } = hexToRgb(hex);
   return (r * 299 + g * 587 + b * 114) / 1000 < 140;
+}
+
+function getBodyLines(body?: string): string[] {
+  if (!body) return [];
+
+  const normalized = body
+    .replace(/\r\n/g, '\n')
+    .replace(/[•▪‣·]/g, '\n')
+    .replace(/\s*\|\s*/g, '\n')
+    .replace(/\.\s+/g, '.\n');
+
+  let lines = normalized
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 1) {
+    lines = body
+      .split(/(?<=[.!?])\s+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  if (lines.length === 1) {
+    const words = lines[0].split(/\s+/).filter(Boolean);
+    if (words.length > 8) {
+      const chunkSize = Math.ceil(words.length / 3);
+      lines = [];
+      for (let i = 0; i < words.length; i += chunkSize) {
+        lines.push(words.slice(i, i + chunkSize).join(' '));
+      }
+    }
+  }
+
+  return lines
+    .map((line) => line.replace(/^[-–—]\s*/, '').replace(/[.!?]+$/, '').trim())
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function getTitleFontSize(text: string, type: SlideData['type']) {
+  const length = text.trim().length;
+  const base = type === 'cover' ? 76 : type === 'cta' ? 70 : 62;
+
+  if (length <= 26) return base;
+  if (length <= 42) return base - 6;
+  if (length <= 60) return base - 12;
+  if (length <= 82) return base - 18;
+  return Math.max(type === 'content' ? 44 : 50, base - 24);
+}
+
+function drawRoundedPanel(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  fillStyle: string,
+  strokeStyle?: string,
+  radius = 28
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, radius);
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawImageCover(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+) {
+  const imageRatio = image.width / image.height;
+  const frameRatio = width / height;
+
+  let drawWidth = width;
+  let drawHeight = height;
+  let drawX = x;
+  let drawY = y;
+
+  if (imageRatio > frameRatio) {
+    drawHeight = height;
+    drawWidth = height * imageRatio;
+    drawX = x - (drawWidth - width) / 2;
+  } else {
+    drawWidth = width;
+    drawHeight = width / imageRatio;
+    drawY = y - (drawHeight - height) / 2;
+  }
+
+  ctx.drawImage(image, drawX, drawY, drawWidth, drawHeight);
 }
 
 export async function renderSlide(
@@ -292,7 +401,7 @@ export async function renderSlide(
 
   } else if (style.layout === 'colorful') {
     // Light vibrant gradient
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = '#FFF8FC';
     ctx.fillRect(0, 0, W, H);
     const grad = ctx.createLinearGradient(0, 0, W, H);
     grad.addColorStop(0, `rgba(${pRgb.r}, ${pRgb.g}, ${pRgb.b}, 0.08)`);
@@ -323,7 +432,7 @@ export async function renderSlide(
 
   } else if (style.layout === 'minimal') {
     // Clean white/light gray
-    ctx.fillStyle = '#F8FAFC';
+    ctx.fillStyle = '#F5F1EA';
     ctx.fillRect(0, 0, W, H);
 
     // Subtle left accent bar
@@ -332,6 +441,13 @@ export async function renderSlide(
     barGrad.addColorStop(1, secondary);
     ctx.fillStyle = barGrad;
     ctx.fillRect(0, 0, 6, H);
+
+    ctx.globalAlpha = 0.05;
+    ctx.fillStyle = primary;
+    ctx.beginPath();
+    ctx.roundRect(W - 300, 80, 260, 220, 60);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   const maxTextWidth = slide.imageUrl && slide.type === 'content' ? W - 480 : W - margin * 2;
@@ -341,35 +457,64 @@ export async function renderSlide(
     try {
       const img = await loadImage(slide.imageUrl);
       if (slide.type === 'cover') {
-        const imgH = H * 0.42;
+        const imgH = H * 0.38;
+        const imgY = 140;
+        ctx.shadowColor = 'rgba(0,0,0,0.22)';
+        ctx.shadowBlur = 34;
+        ctx.shadowOffsetY = 18;
         ctx.save();
         ctx.beginPath();
-        ctx.roundRect(margin, 80, W - margin * 2, imgH, 24);
+        ctx.roundRect(margin, imgY, W - margin * 2, imgH, 32);
         ctx.clip();
-        ctx.drawImage(img, margin, 80, W - margin * 2, imgH);
-        ctx.restore();
-        // Gradient overlay at bottom of image
-        const imgGrad = ctx.createLinearGradient(0, 80 + imgH - 120, 0, 80 + imgH);
-        imgGrad.addColorStop(0, 'transparent');
-        imgGrad.addColorStop(1, useDarkBg ? darken(primary, 30) : 'rgba(255,255,255,0.9)');
-        ctx.fillStyle = imgGrad;
-        ctx.fillRect(margin, 80 + imgH - 120, W - margin * 2, 120);
-      } else {
-        const imgSize = 300;
-        const imgX = W - imgSize - margin;
-        const imgY = 180;
-        ctx.shadowColor = 'rgba(0,0,0,0.3)';
-        ctx.shadowBlur = 30;
-        ctx.shadowOffsetY = 10;
-        ctx.save();
-        ctx.beginPath();
-        ctx.roundRect(imgX, imgY, imgSize, imgSize, 24);
-        ctx.clip();
-        ctx.drawImage(img, imgX, imgY, imgSize, imgSize);
+        drawImageCover(ctx, img, margin, imgY, W - margin * 2, imgH);
         ctx.restore();
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
         ctx.shadowOffsetY = 0;
+
+        ctx.strokeStyle = useDarkBg ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.48)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(margin, imgY, W - margin * 2, imgH, 32);
+        ctx.stroke();
+
+        // Gradient overlay at bottom of image
+        const imgGrad = ctx.createLinearGradient(0, imgY + imgH - 150, 0, imgY + imgH);
+        imgGrad.addColorStop(0, 'transparent');
+        imgGrad.addColorStop(1, useDarkBg ? darken(primary, 34) : 'rgba(255,255,255,0.92)');
+        ctx.fillStyle = imgGrad;
+        ctx.fillRect(margin, imgY + imgH - 150, W - margin * 2, 150);
+      } else {
+        const imgWidth = 320;
+        const imgHeight = 400;
+        const imgX = W - imgWidth - margin;
+        const imgY = 170;
+
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = secondary;
+        ctx.beginPath();
+        ctx.roundRect(imgX - 16, imgY + 22, imgWidth, imgHeight, 30);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        ctx.shadowColor = 'rgba(0,0,0,0.3)';
+        ctx.shadowBlur = 32;
+        ctx.shadowOffsetY = 14;
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(imgX, imgY, imgWidth, imgHeight, 28);
+        ctx.clip();
+        drawImageCover(ctx, img, imgX, imgY, imgWidth, imgHeight);
+        ctx.restore();
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+
+        ctx.strokeStyle = useDarkBg ? 'rgba(255,255,255,0.16)' : 'rgba(255,255,255,0.55)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(imgX, imgY, imgWidth, imgHeight, 28);
+        ctx.stroke();
       }
     } catch {
       // skip
@@ -401,12 +546,44 @@ export async function renderSlide(
 
   // ====== SLIDE CONTENT ======
   if (slide.type === 'cover') {
-    const titleY = slide.imageUrl ? H * 0.56 : H * 0.35;
+    const coverLines = getBodyLines(slide.body);
+    const titleY = slide.imageUrl ? H * 0.57 : 300;
+    const titleSize = getTitleFontSize(slide.title, 'cover');
+    const topChipY = slide.imageUrl ? 88 : 72;
 
-    // Title
+    drawRoundedPanel(
+      ctx,
+      margin,
+      topChipY,
+      320,
+      62,
+      useDarkBg ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.82)',
+      useDarkBg ? 'rgba(255,255,255,0.14)' : withAlpha(primary, 0.10),
+      32
+    );
+    ctx.fillStyle = useDarkBg ? '#FFFFFF' : primary;
+    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.fillText('CARROSSEL PREMIUM', margin + 26, topChipY + 40);
+
+    drawRoundedPanel(
+      ctx,
+      W - margin - 170,
+      topChipY,
+      170,
+      62,
+      withAlpha(secondary, useDarkBg ? 0.24 : 0.14),
+      withAlpha(secondary, useDarkBg ? 0.32 : 0.18),
+      32
+    );
+    ctx.fillStyle = useDarkBg ? '#FFFFFF' : primary;
+    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${slide.totalSlides || '?'} SLIDES`, W - margin - 85, topChipY + 40);
+    ctx.textAlign = 'left';
+
     ctx.fillStyle = textColor;
-    ctx.font = style.fontTitle;
-    const lastY = wrapText(ctx, slide.title, margin, titleY, W - margin * 2, 80);
+    ctx.font = `bold ${titleSize}px Arial, sans-serif`;
+    const lastY = wrapText(ctx, slide.title, margin, titleY, W - margin * 2, titleSize + 12);
 
     // Accent bar
     const barGrad = ctx.createLinearGradient(margin, 0, margin + 250, 0);
@@ -417,10 +594,42 @@ export async function renderSlide(
     ctx.roundRect(margin, lastY + 30, 250, 8, 4);
     ctx.fill();
 
+    if (coverLines.length > 0) {
+      const subtitleY = lastY + 70;
+      const panelHeight = 52 + coverLines.slice(0, 2).length * 40;
+      drawRoundedPanel(
+        ctx,
+        margin,
+        subtitleY - 34,
+        Math.min(W - margin * 2, 760),
+        panelHeight,
+        useDarkBg ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.90)',
+        useDarkBg ? 'rgba(255,255,255,0.10)' : withAlpha(primary, 0.10),
+        30
+      );
+
+      ctx.fillStyle = subtextColor;
+      ctx.font = '30px Arial, sans-serif';
+      coverLines.slice(0, 2).forEach((line, index) => {
+        ctx.fillText(line, margin + 30, subtitleY + index * 40);
+      });
+    }
+
+    drawRoundedPanel(
+      ctx,
+      margin,
+      H - 172,
+      420,
+      72,
+      useDarkBg ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.92)',
+      useDarkBg ? 'rgba(255,255,255,0.10)' : withAlpha(primary, 0.10),
+      30
+    );
+
     // Subtitle hint
     ctx.fillStyle = subtextColor;
     ctx.font = '30px Arial, sans-serif';
-    ctx.fillText('Deslize para ver →', margin, H - 100);
+    ctx.fillText('Deslize para ver os benefícios →', margin + 28, H - 124);
 
     // Decorative slide count
     ctx.fillStyle = subtextColor;
@@ -430,7 +639,12 @@ export async function renderSlide(
     ctx.textAlign = 'left';
 
   } else if (slide.type === 'content') {
-    // ===== NUMBER BADGE =====
+    const detailLinesRaw = getBodyLines(slide.body);
+    const highlightText = slide.highlight || detailLinesRaw[0] || '';
+    const detailLines = (highlightText && detailLinesRaw.length > 1 ? detailLinesRaw.slice(1) : detailLinesRaw).slice(0, 4);
+    const titleWidth = slide.imageUrl ? W - 520 : W - margin * 2;
+    const titleSize = getTitleFontSize(slide.title, 'content');
+
     if (slide.number) {
       const badgeX = margin;
       const badgeY = 100;
@@ -459,43 +673,116 @@ export async function renderSlide(
       ctx.textAlign = 'left';
     }
 
-    // ===== TITLE =====
+    drawRoundedPanel(
+      ctx,
+      margin + 126,
+      112,
+      220,
+      52,
+      useDarkBg ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.88)',
+      useDarkBg ? 'rgba(255,255,255,0.10)' : withAlpha(primary, 0.10),
+      26
+    );
+    ctx.fillStyle = secondary;
+    ctx.font = 'bold 24px Arial, sans-serif';
+    ctx.fillText(`BENEFÍCIO ${slide.number || 1}`, margin + 154, 146);
+
     const titleStartY = slide.number ? 280 : 160;
     ctx.fillStyle = textColor;
-    ctx.font = 'bold 52px Arial, sans-serif';
-    const titleEndY = wrapText(ctx, slide.title, margin, titleStartY, maxTextWidth, 65);
+    ctx.font = `bold ${titleSize}px Arial, sans-serif`;
+    const titleEndY = wrapText(ctx, slide.title, margin, titleStartY, titleWidth, titleSize + 10);
 
     // Separator
     ctx.fillStyle = secondary;
     ctx.beginPath();
-    ctx.roundRect(margin, titleEndY + 25, 80, 5, 3);
+    ctx.roundRect(margin, titleEndY + 28, 110, 6, 3);
     ctx.fill();
 
-    // ===== BODY =====
-    if (slide.body) {
-      ctx.fillStyle = subtextColor;
-      ctx.font = style.fontBody;
-      wrapText(ctx, slide.body, margin, titleEndY + 70, maxTextWidth, 48);
+    let currentY = titleEndY + 54;
+
+    if (highlightText) {
+      drawRoundedPanel(
+        ctx,
+        margin,
+        currentY,
+        titleWidth,
+        104,
+        useDarkBg ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.90)',
+        useDarkBg ? withAlpha(secondary, 0.24) : withAlpha(primary, 0.10),
+        28
+      );
+      ctx.fillStyle = secondary;
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.fillText('IMPACTO DIRETO', margin + 30, currentY + 36);
+      ctx.fillStyle = textColor;
+      ctx.font = 'bold 34px Arial, sans-serif';
+      wrapText(ctx, highlightText, margin + 30, currentY + 76, titleWidth - 60, 38);
+      currentY += 128;
     }
 
-    // ===== CHECKMARK ICON (visual flair) =====
-    if (!slide.imageUrl) {
-      ctx.globalAlpha = 0.05;
-      ctx.fillStyle = secondary;
-      ctx.font = '350px Arial, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText('✓', W - 30, H - 200);
+    const availableSlots = Math.max(1, Math.min(detailLines.length || 1, Math.floor((H - 230 - currentY) / 108)));
+    const visibleLines = (detailLines.length > 0 ? detailLines : detailLinesRaw).slice(0, availableSlots);
+
+    visibleLines.forEach((line, index) => {
+      const blockY = currentY + index * 108;
+      drawRoundedPanel(
+        ctx,
+        margin,
+        blockY,
+        titleWidth,
+        88,
+        useDarkBg ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.92)',
+        useDarkBg ? 'rgba(255,255,255,0.08)' : withAlpha(primary, 0.10),
+        26
+      );
+
+      const bulletGrad = ctx.createLinearGradient(margin + 22, blockY + 18, margin + 66, blockY + 66);
+      bulletGrad.addColorStop(0, secondary);
+      bulletGrad.addColorStop(1, lighten(secondary, 36));
+      ctx.fillStyle = bulletGrad;
+      ctx.beginPath();
+      ctx.arc(margin + 44, blockY + 44, 20, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(index + 1), margin + 44, blockY + 52);
       ctx.textAlign = 'left';
-      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = textColor;
+      ctx.font = 'bold 32px Arial, sans-serif';
+      wrapText(ctx, line, margin + 84, blockY + 52, titleWidth - 116, 36);
+    });
+
+    if (!slide.imageUrl) {
+      const valueBarY = H - 186;
+      drawRoundedPanel(
+        ctx,
+        margin,
+        valueBarY,
+        W - margin * 2,
+        92,
+        useDarkBg ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.92)',
+        useDarkBg ? withAlpha(secondary, 0.20) : withAlpha(primary, 0.10),
+        26
+      );
+      ctx.fillStyle = secondary;
+      ctx.font = 'bold 22px Arial, sans-serif';
+      ctx.fillText('POR QUE ISSO IMPORTA', margin + 28, valueBarY + 34);
+      ctx.fillStyle = textColor;
+      ctx.font = 'bold 28px Arial, sans-serif';
+      wrapText(ctx, highlightText || 'Benefício percebido de forma clara e direta', margin + 28, valueBarY + 72, W - margin * 2 - 56, 32);
     }
 
     // ===== PROGRESS DOTS =====
-    if (slide.number && slide.totalSlides) {
+    if (slide.number && (slide.contentTotal || slide.totalSlides)) {
       const progY = H - 80;
       const dotGap = 32;
-      const totalW = (slide.totalSlides - 1) * dotGap;
+      const totalItems = slide.contentTotal || slide.totalSlides || 0;
+      const totalW = (Math.max(totalItems, 1) - 1) * dotGap;
       const startX = (W - totalW) / 2;
-      for (let i = 0; i < slide.totalSlides; i++) {
+      for (let i = 0; i < totalItems; i++) {
         const isCurrent = i + 1 === slide.number;
         if (isCurrent) {
           ctx.fillStyle = secondary;
@@ -514,12 +801,14 @@ export async function renderSlide(
       ctx.fillStyle = subtextColor;
       ctx.font = '22px Arial, sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(`${slide.number}/${slide.totalSlides}`, W - margin, H - 70);
+      ctx.fillText(`${slide.number}/${totalItems}`, W - margin, H - 70);
       ctx.textAlign = 'left';
     }
 
   } else if (slide.type === 'cta') {
     const centerX = W / 2;
+    const ctaLines = getBodyLines(slide.body);
+    const titleSize = getTitleFontSize(slide.title, 'cta');
 
     // Large decorative circle
     ctx.globalAlpha = 0.08;
@@ -532,11 +821,30 @@ export async function renderSlide(
     // Title
     const titleY = H * 0.30;
     ctx.fillStyle = textColor;
-    ctx.font = 'bold 58px Arial, sans-serif';
-    const lastY = wrapText(ctx, slide.title, centerX, titleY, W - margin * 2, 72, 'center');
+    ctx.font = `bold ${titleSize}px Arial, sans-serif`;
+    const lastY = wrapText(ctx, slide.title, centerX, titleY, W - margin * 2, titleSize + 10, 'center');
+
+    let chipsBottomY = lastY + 34;
+    ctaLines.slice(0, 3).forEach((line, index) => {
+      const chipWidth = Math.min(W - margin * 2, Math.max(320, ctx.measureText(line).width + 70));
+      drawRoundedPanel(
+        ctx,
+        centerX - chipWidth / 2,
+        chipsBottomY + index * 84,
+        chipWidth,
+        58,
+        useDarkBg ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)',
+        useDarkBg ? 'rgba(255,255,255,0.10)' : withAlpha(primary, 0.10),
+        29
+      );
+      ctx.fillStyle = textColor;
+      ctx.font = 'bold 28px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(line, centerX, chipsBottomY + index * 84 + 38);
+    });
 
     // CTA Button with gradient + shadow
-    const btnY = lastY + 80;
+    const btnY = chipsBottomY + ctaLines.slice(0, 3).length * 84 + 34;
     const btnW = 560;
     const btnH = 100;
     const btnX = (W - btnW) / 2;
@@ -557,9 +865,9 @@ export async function renderSlide(
 
     // Button text
     ctx.fillStyle = '#FFFFFF';
-    ctx.font = 'bold 36px Arial, sans-serif';
+    ctx.font = 'bold 34px Arial, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Saiba Mais →', centerX, btnY + 64);
+    ctx.fillText(slide.ctaLabel || 'Quero conhecer agora →', centerX, btnY + 64);
     ctx.textAlign = 'left';
 
     // Profile handle
@@ -571,13 +879,15 @@ export async function renderSlide(
       ctx.textAlign = 'left';
     }
 
-    // Decorative large checkmark
-    ctx.globalAlpha = 0.04;
-    ctx.fillStyle = secondary;
-    ctx.font = '500px Arial, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('★', centerX, H * 0.78);
-    ctx.textAlign = 'left';
+    // Decorative rings
+    ctx.strokeStyle = withAlpha(secondary, 0.16);
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(centerX, H * 0.78, 150, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(centerX, H * 0.78, 220, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.globalAlpha = 1;
   }
 
