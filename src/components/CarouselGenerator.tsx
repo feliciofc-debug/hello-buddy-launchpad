@@ -243,6 +243,52 @@ REGRAS CRÍTICAS:
     }
   };
 
+  const saveAsProduct = async () => {
+    setSavingProduct(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error("Não autenticado");
+
+      // Upload first slide as product image
+      const blob = await (await fetch(renderedImages[0])).blob();
+      const filename = `carrosseis/${userData.user.id}/${Date.now()}-capa.png`;
+      const { error: upErr } = await supabase.storage.from("produtos").upload(filename, blob, { contentType: "image/png" });
+      if (upErr) throw upErr;
+      const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(filename);
+      const imageUrl = urlData.publicUrl;
+
+      // Upload all slides and store URLs
+      const allUrls: string[] = [imageUrl];
+      for (let i = 1; i < renderedImages.length; i++) {
+        const slideBlob = await (await fetch(renderedImages[i])).blob();
+        const slideName = `carrosseis/${userData.user.id}/${Date.now()}-slide-${i + 1}.png`;
+        const { error: slideErr } = await supabase.storage.from("produtos").upload(slideName, slideBlob, { contentType: "image/png" });
+        if (slideErr) throw slideErr;
+        const { data: slideUrl } = supabase.storage.from("produtos").getPublicUrl(slideName);
+        allUrls.push(slideUrl.publicUrl);
+      }
+
+      const titulo = slides[0]?.title || tema.slice(0, 80) || "Carrossel IA";
+
+      await supabase.from("afiliado_produtos").insert({
+        user_id: userData.user.id,
+        titulo,
+        marketplace: "Instagram",
+        link_afiliado: allUrls[0],
+        imagem_url: imageUrl,
+        descricao: caption || `Carrossel: ${titulo}`,
+        categoria: "Marketing",
+        status: "ativo",
+      });
+
+      toast.success("✅ Salvo como produto! Disponível no Autopilot para Instagram.");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao salvar produto");
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div className="text-center space-y-2">
