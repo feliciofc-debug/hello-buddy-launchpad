@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 import { VideoSlideshowGenerator } from "@/components/VideoSlideshowGenerator";
 import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
+import { CarouselGenerator } from "@/components/CarouselGenerator";
 import { PublicarReelsModal } from "@/components/PublicarReelsModal";
 import { Separator } from "@/components/ui/separator";
 
