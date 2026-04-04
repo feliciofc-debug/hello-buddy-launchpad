@@ -140,7 +140,7 @@ REGRAS CRÍTICAS:
           : undefined,
         totalSlides: parsedSlides.length,
         contentTotal: totalContentSlides,
-        imageUrl: s.type === "cover" ? productImage : (i % 2 === 0 ? productImage : undefined),
+        imageUrl: s.type === "cover" ? productImages[0] : (productImages[Math.min(i, productImages.length - 1)] || undefined),
         logoUrl: logoImage || undefined,
         profileHandle: s.type === "cta" ? (profileHandle || "@seuperfil") : undefined,
       }));
