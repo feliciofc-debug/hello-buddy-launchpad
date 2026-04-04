@@ -25,6 +25,7 @@ export const CarouselGenerator = () => {
   const [caption, setCaption] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
   const [publishing, setPublishing] = useState(false);
+  const [savingProduct, setSavingProduct] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const productInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
