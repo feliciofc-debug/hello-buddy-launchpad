@@ -16,7 +16,7 @@ export const CarouselGenerator = () => {
   const [estilo, setEstilo] = useState("bold");
   const [primaryColor, setPrimaryColor] = useState(STYLES.bold.primaryColor);
   const [secondaryColor, setSecondaryColor] = useState(STYLES.bold.secondaryColor);
-  const [productImage, setProductImage] = useState<string | null>(null);
+  const [productImages, setProductImages] = useState<string[]>([]);
   const [logoImage, setLogoImage] = useState<string | null>(null);
   const [profileHandle, setProfileHandle] = useState("");
   const [loading, setLoading] = useState(false);
