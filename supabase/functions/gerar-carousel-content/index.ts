@@ -26,24 +26,66 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
-          { role: 'system', content: 'Você gera conteúdo JSON para carrosséis de Instagram. Responda APENAS JSON válido, sem markdown.' },
+          { role: 'system', content: 'Você gera conteúdo JSON para carrosséis de Instagram. Responda APENAS JSON válido, sem markdown, sem ```.' },
           { role: 'user', content: prompt }
         ],
         temperature: 0.7,
+        max_tokens: 4096,
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "generate_carousel",
+              description: "Generate carousel slide content for Instagram",
+              parameters: {
+                type: "object",
+                properties: {
+                  slides: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        type: { type: "string", enum: ["cover", "content", "cta"] },
+                        title: { type: "string", description: "Título curto e impactante" },
+                        body: { type: "string", description: "Texto explicativo (apenas para slides content)" },
+                        number: { type: "number", description: "Número do slide (apenas para content)" }
+                      },
+                      required: ["type", "title"]
+                    }
+                  },
+                  caption: { type: "string", description: "Legenda do post com hashtags" }
+                },
+                required: ["slides", "caption"]
+              }
+            }
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "generate_carousel" } }
       }),
     })
 
     if (!response.ok) {
       const errText = await response.text()
-      throw new Error(`AI API error: ${response.status} - ${errText}`)
+      console.error('AI error:', response.status, errText)
+      throw new Error(`AI API error: ${response.status}`)
     }
 
     const result = await response.json()
+    
+    // Extract from tool call
+    const toolCall = result.choices?.[0]?.message?.tool_calls?.[0]
+    if (toolCall?.function?.arguments) {
+      const parsed = typeof toolCall.function.arguments === 'string' 
+        ? JSON.parse(toolCall.function.arguments) 
+        : toolCall.function.arguments
+      return new Response(JSON.stringify(parsed), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Fallback: try content
     let content = result.choices?.[0]?.message?.content || ''
-    
-    // Clean markdown if present
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
     const parsed = JSON.parse(content)
 
     return new Response(JSON.stringify(parsed), {
