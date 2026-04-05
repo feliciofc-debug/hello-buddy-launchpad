@@ -121,6 +121,9 @@ REGRAS:
 - Cada slide content deve ter 3-4 linhas curtas no body, separadas por \\n.
 - A capa deve parecer manchete de campanha premium.
 - Legenda com 2 parágrafos + 8-12 hashtags.
+- EMOJIS OBRIGATÓRIOS: Coloque um emoji relevante no INÍCIO de cada título (cover, content e cta). Ex: "🚀 5 Motivos para...", "✅ Automatize suas vendas", "🎯 Comece agora".
+- Nos bullets do body dos slides content, comece CADA linha com um emoji diferente e relevante ao contexto. Ex: "✅ Publicação automática\\n📊 Relatórios em tempo real\\n🎯 Segmentação inteligente\\n💰 Economia de tempo".
+- Use emojis variados e contextuais — evite repetir o mesmo emoji.
 - Responda APENAS JSON válido.`;
 
       const { data, error } = await supabase.functions.invoke("gerar-carousel-content", { body: { prompt, tema } });
