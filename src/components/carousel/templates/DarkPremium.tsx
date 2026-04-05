@@ -105,7 +105,7 @@ export const DarkPremiumContent: React.FC<SlideTemplateProps> = ({ title, body, 
               borderRadius: 20, padding: '24px 32px',
             }}>
               <div style={{
-                width: 16, height: 16, borderRadius: '50%',
+                width: 18, height: 18, borderRadius: '50%',
                 background: primaryColor, flexShrink: 0,
                 boxShadow: `0 0 12px ${primaryColor}60`,
               }} />
