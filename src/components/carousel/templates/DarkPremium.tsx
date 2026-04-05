@@ -18,8 +18,12 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
     {/* Top accent line */}
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg, ${primaryColor}, ${secondaryColor}, ${primaryColor})` }} />
 
-    {/* Logo */}
-    <LogoBadge logoUrl={logoUrl} />
+    {/* Logo GRANDE centralizada */}
+    {logoUrl && (
+      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.2)', boxShadow: `0 8px 32px rgba(0,0,0,0.3)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+      </div>
+    )}
 
     {/* Badge */}
     <div style={{
