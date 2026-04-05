@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SlideTemplateProps } from './types';
-import { ProgressDots, LogoBadge } from './shared';
+import { ProgressDots } from './shared';
 
 const gold = '#D4AF37';
 
