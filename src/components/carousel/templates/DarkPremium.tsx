@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SlideTemplateProps } from './types';
-import { ProgressDots, LogoBadge } from './shared';
+import { ProgressDots } from './shared';
 
 export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, secondaryColor, logoUrl, totalSlides, profileHandle }) => (
   <div style={{
@@ -20,9 +20,7 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
 
     {/* Logo GRANDE centralizada */}
     {logoUrl && (
-      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.2)', boxShadow: `0 8px 32px rgba(0,0,0,0.3)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
-      </div>
+      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
     )}
 
     {/* Badge */}
@@ -139,7 +137,7 @@ export const DarkPremiumContent: React.FC<SlideTemplateProps> = ({ title, body, 
       <ProgressDots current={number || 0} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.15)" />
     </div>
 
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
 
@@ -191,6 +189,6 @@ export const DarkPremiumCTA: React.FC<SlideTemplateProps> = ({ title, body, prim
       <ProgressDots current={totalSlides - 1} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.15)" />
     </div>
 
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );

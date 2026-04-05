@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SlideTemplateProps } from './types';
-import { ProgressDots, LogoBadge } from './shared';
+import { ProgressDots } from './shared';
 
 const gold = '#D4AF37';
 
@@ -24,9 +24,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
 
     {/* Logo GRANDE centralizada */}
     {logoUrl && (
-      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: '#FAF8F5', border: `2px solid ${primaryColor || gold}40`, boxShadow: '0 8px 32px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
-      </div>
+      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
     )}
 
     {/* Ornamental separator */}
@@ -136,7 +134,7 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={number || 0} total={totalSlides} activeColor={primaryColor || gold} inactiveColor="#D4D0C8" />
     </div>
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
 
@@ -173,6 +171,6 @@ export const ElegantSerifCTA: React.FC<SlideTemplateProps> = ({ title, body, pri
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={totalSlides - 1} total={totalSlides} activeColor={primaryColor || gold} inactiveColor="#D4D0C8" />
     </div>
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );

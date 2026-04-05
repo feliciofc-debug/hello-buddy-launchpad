@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SlideTemplateProps } from './types';
-import { ProgressDots, LogoBadge } from './shared';
+import { ProgressDots } from './shared';
 
 export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, logoUrl, totalSlides }) => (
   <div style={{
@@ -19,9 +19,7 @@ export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, pr
 
     {/* Logo GRANDE centralizada */}
     {logoUrl && (
-      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: 'rgba(0,0,0,0.03)', border: '2px solid rgba(0,0,0,0.06)', boxShadow: '0 8px 32px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
-      </div>
+      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
     )}
 
     {/* Badge */}
@@ -127,7 +125,7 @@ export const CleanBrightContent: React.FC<SlideTemplateProps> = ({ title, body, 
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={number || 0} total={totalSlides} activeColor={primaryColor} inactiveColor="#E2E8F0" />
     </div>
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
 
@@ -157,6 +155,6 @@ export const CleanBrightCTA: React.FC<SlideTemplateProps> = ({ title, body, prim
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={totalSlides - 1} total={totalSlides} activeColor={primaryColor} inactiveColor="#E2E8F0" />
     </div>
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );

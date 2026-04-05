@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SlideTemplateProps } from './types';
-import { ProgressDots, LogoBadge } from './shared';
+import { ProgressDots } from './shared';
 
 export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, secondaryColor, logoUrl, totalSlides }) => (
   <div style={{
@@ -25,9 +25,7 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
 
     {/* Logo GRANDE centralizada */}
     {logoUrl && (
-      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: `${primaryColor}10`, border: `2px solid ${primaryColor}40`, boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 20px ${primaryColor}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
-      </div>
+      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
     )}
 
     {/* Badge */}
@@ -138,7 +136,7 @@ export const NeonTechContent: React.FC<SlideTemplateProps> = ({ title, body, num
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={number || 0} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.1)" />
     </div>
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
 
@@ -175,6 +173,6 @@ export const NeonTechCTA: React.FC<SlideTemplateProps> = ({ title, body, primary
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={totalSlides - 1} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.1)" />
     </div>
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
