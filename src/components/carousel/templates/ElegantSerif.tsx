@@ -24,9 +24,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
 
     {/* Logo GRANDE centralizada */}
     {logoUrl && (
-      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: '#FAF8F5', border: `2px solid ${primaryColor || gold}40`, boxShadow: '0 8px 32px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
-      </div>
+      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
     )}
 
     {/* Ornamental separator */}

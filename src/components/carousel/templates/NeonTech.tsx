@@ -25,9 +25,7 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
 
     {/* Logo GRANDE centralizada */}
     {logoUrl && (
-      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: `${primaryColor}10`, border: `2px solid ${primaryColor}40`, boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 20px ${primaryColor}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
-      </div>
+      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
     )}
 
     {/* Badge */}
