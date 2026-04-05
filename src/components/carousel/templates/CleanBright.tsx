@@ -125,7 +125,7 @@ export const CleanBrightContent: React.FC<SlideTemplateProps> = ({ title, body, 
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={number || 0} total={totalSlides} activeColor={primaryColor} inactiveColor="#E2E8F0" />
     </div>
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
 
