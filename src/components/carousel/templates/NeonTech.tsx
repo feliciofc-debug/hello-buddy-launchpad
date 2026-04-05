@@ -115,7 +115,7 @@ export const NeonTechContent: React.FC<SlideTemplateProps> = ({ title, body, num
                 boxShadow: `0 0 12px ${primaryColor}60`,
               }} />
               <p style={{
-                color: 'rgba(255,255,255,0.85)', fontSize: 32,
+                color: 'rgba(255,255,255,0.85)', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
               }}>{line}</p>
             </div>
