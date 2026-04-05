@@ -36,7 +36,7 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
 
     {/* Title */}
     <h1 style={{
-      color: '#FFFFFF', fontSize: 64, fontWeight: 900, textAlign: 'center',
+      color: '#FFFFFF', fontSize: 72, fontWeight: 900, textAlign: 'center',
       lineHeight: 1.1, margin: 0, marginBottom: 30,
       textShadow: `0 0 40px ${primaryColor}30`,
     }}>
