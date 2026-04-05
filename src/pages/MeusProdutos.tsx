@@ -1454,6 +1454,13 @@ export default function MeusProdutos() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full gap-2 bg-gradient-to-r from-blue-600 to-pink-600 text-white hover:from-blue-700 hover:to-pink-700 border-0"
+                          onClick={() => { setSimultaneoProduct(product); setIsSimultaneoModalOpen(true); }}
+                        >
+                          🚀 Publicar agora
+                        </Button>
+                          variant="outline"
+                          size="sm"
                           className="w-full gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
                           onClick={() => { setFacebookProduct(product); setIsFacebookModalOpen(true); }}
                         >
