@@ -35,7 +35,7 @@ export async function exportAllSlides(container: HTMLElement): Promise<string[]>
         ctx.fillStyle = '#1E293B';
         ctx.fillRect(0, 0, 1080, 1350);
         ctx.fillStyle = '#FFF';
-        ctx.font = 'bold 40px Inter, sans-serif';
+        ctx.font = 'bold 40px system-ui, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(`Slide ${i + 1}`, 540, 675);
       }
