@@ -94,7 +94,7 @@ export const GradientVibrantContent: React.FC<SlideTemplateProps> = ({ title, bo
               borderRadius: 20, padding: '22px 30px',
             }}>
               <div style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 18, height: 18, borderRadius: '50%',
                 background: '#FFFFFF', flexShrink: 0,
               }} />
               <p style={{
