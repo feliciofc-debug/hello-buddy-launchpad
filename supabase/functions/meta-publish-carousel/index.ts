@@ -28,26 +28,47 @@ Deno.serve(async (req) => {
 
     console.log(`📸 Criando carrossel com ${image_urls.length} imagens para IG ${igId}`)
 
-    // Step 1: Create carousel item containers
+    // Step 1: Create carousel item containers (with retry for transient errors)
     const childrenIds: string[] = []
-    for (const imageUrl of image_urls) {
-      console.log(`📸 Criando container para: ${imageUrl.substring(0, 80)}...`)
-      const res = await fetch(`${graphUrl}/${igId}/media`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          is_carousel_item: true,
-          access_token: token,
-        }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        console.error('❌ Erro ao criar item:', JSON.stringify(data.error))
-        throw new Error(`Erro ao criar item: ${data.error.message}`)
+    for (let i = 0; i < image_urls.length; i++) {
+      const imageUrl = image_urls[i]
+      console.log(`📸 [${i+1}/${image_urls.length}] Criando container para: ${imageUrl.substring(0, 100)}`)
+      
+      let data: any = null
+      for (let retry = 0; retry < 3; retry++) {
+        if (retry > 0) {
+          console.log(`🔄 Retry ${retry}/2 para imagem ${i+1}...`)
+          await new Promise(r => setTimeout(r, 3000 * retry))
+        }
+        const res = await fetch(`${graphUrl}/${igId}/media`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_url: imageUrl,
+            is_carousel_item: true,
+            access_token: token,
+          }),
+        })
+        data = await res.json()
+        if (!data.error) break
+        if (data.error.is_transient) {
+          console.warn(`⚠️ Erro transiente (tentativa ${retry+1}):`, data.error.message)
+          continue
+        }
+        break // non-transient error, don't retry
       }
-      console.log(`✅ Container criado: ${data.id}`)
+      
+      if (data.error) {
+        console.error(`❌ Erro ao criar item ${i+1}:`, JSON.stringify(data.error))
+        throw new Error(`Erro ao criar item ${i+1}: ${data.error.message}`)
+      }
+      console.log(`✅ Container ${i+1} criado: ${data.id}`)
       childrenIds.push(data.id)
+      
+      // Small delay between items to avoid rate limiting
+      if (i < image_urls.length - 1) {
+        await new Promise(r => setTimeout(r, 1500))
+      }
     }
 
     // Step 2: Create carousel container
