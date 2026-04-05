@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, Upload, Download, Instagram, Image as ImageIcon, Palette, Sparkles, X, ChevronLeft, ChevronRight, PackagePlus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { toPng } from "html-to-image";
-import { SlideRenderer, TEMPLATE_OPTIONS, type SlideTemplateProps } from "@/lib/carouselTemplates";
+import { SlideRenderer } from "@/components/carousel/SlideRenderer";
+import { TEMPLATE_OPTIONS, type TemplateKey } from "@/components/carousel/templates/types";
+import { exportAllSlides } from "@/lib/carouselExporter";
 
 export interface SlideData {
   type: 'cover' | 'content' | 'cta';
@@ -28,9 +29,9 @@ export interface SlideData {
 export const CarouselGenerator = () => {
   const [tema, setTema] = useState("");
   const [numSlides, setNumSlides] = useState("5");
-  const [estilo, setEstilo] = useState("modern-dark");
-  const [primaryColor, setPrimaryColor] = useState(TEMPLATE_OPTIONS['modern-dark'].primaryColor);
-  const [secondaryColor, setSecondaryColor] = useState(TEMPLATE_OPTIONS['modern-dark'].secondaryColor);
+  const [estilo, setEstilo] = useState<string>("dark-premium");
+  const [primaryColor, setPrimaryColor] = useState(TEMPLATE_OPTIONS['dark-premium'].primaryColor);
+  const [secondaryColor, setSecondaryColor] = useState(TEMPLATE_OPTIONS['dark-premium'].secondaryColor);
   const [productImages, setProductImages] = useState<string[]>([]);
   const [logoImage, setLogoImage] = useState<string | null>(null);
   const [profileHandle, setProfileHandle] = useState("");
@@ -51,8 +52,7 @@ export const CarouselGenerator = () => {
     if (!files) return;
     const remaining = 5 - productImages.length;
     if (remaining <= 0) { toast.error("Máximo de 5 fotos atingido"); return; }
-    const toProcess = Array.from(files).slice(0, remaining).filter(f => f.type.startsWith("image/"));
-    toProcess.forEach(file => {
+    Array.from(files).slice(0, remaining).filter(f => f.type.startsWith("image/")).forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => setProductImages(prev => [...prev, reader.result as string].slice(0, 5));
       reader.readAsDataURL(file);
@@ -67,54 +67,13 @@ export const CarouselGenerator = () => {
     reader.readAsDataURL(file);
   };
 
-  const removeProductImage = (index: number) => {
-    setProductImages(prev => prev.filter((_, i) => i !== index));
-  };
+  const removeProductImage = (index: number) => setProductImages(prev => prev.filter((_, i) => i !== index));
 
-  const renderSlidesToImages = useCallback(async (slideData: SlideData[]): Promise<string[]> => {
+  const renderSlidesToImages = useCallback(async (): Promise<string[]> => {
     if (!slideContainerRef.current) return [];
     setRendering(true);
-
-    // Wait for DOM to render
-    await new Promise(r => setTimeout(r, 500));
-
-    const images: string[] = [];
-    const slideElements = slideContainerRef.current.children;
-
-    for (let i = 0; i < slideElements.length; i++) {
-      const el = slideElements[i] as HTMLElement;
-      try {
-        const dataUrl = await toPng(el, {
-          width: 1080,
-          height: 1350,
-          pixelRatio: 1,
-          cacheBust: true,
-          skipAutoScale: true,
-          style: {
-            transform: 'scale(1)',
-            transformOrigin: 'top left',
-          },
-        });
-        images.push(dataUrl);
-      } catch (err) {
-        console.error(`Error rendering slide ${i + 1}:`, err);
-        // Create a fallback solid color image
-        const canvas = document.createElement('canvas');
-        canvas.width = 1080;
-        canvas.height = 1350;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#1E293B';
-          ctx.fillRect(0, 0, 1080, 1350);
-          ctx.fillStyle = '#FFF';
-          ctx.font = '40px Inter, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(`Slide ${i + 1}`, 540, 675);
-        }
-        images.push(canvas.toDataURL('image/png'));
-      }
-    }
-
+    await new Promise(r => setTimeout(r, 600));
+    const images = await exportAllSlides(slideContainerRef.current);
     setRendering(false);
     return images;
   }, []);
@@ -140,69 +99,41 @@ NÚMERO EXATO DE SLIDES: ${n}
 OBJETIVO DO CARROSSEL:
 - parecer conteúdo premium, estratégico e profissional
 - transformar funcionalidades em benefícios claros
-- mostrar valor percebido, resultado prático, ganho de tempo, automação, facilidade, escala ou economia quando fizer sentido
+- mostrar valor percebido, resultado prático, ganho de tempo, automação, facilidade, escala ou economia
 - preencher bem cada página com informação útil e persuasiva
 - usar títulos grandes, impactantes e memoráveis
 
 FORMATO JSON OBRIGATÓRIO:
 {
   "slides": [
-    {
-      "type": "cover",
-      "title": "headline principal da capa",
-      "body": "subtítulo curto reforçando a promessa"
-    },
-    {
-      "type": "content",
-      "number": 1,
-      "title": "benefício principal em poucas palavras",
-      "body": "linha curta 1\\nlinha curta 2\\nlinha curta 3\\nlinha curta 4",
-      "highlight": "ganho principal do slide"
-    },
-    {
-      "type": "cta",
-      "title": "chamada final forte",
-      "body": "frase curta 1\\nfrase curta 2",
-      "ctaLabel": "texto do botão"
-    }
+    { "type": "cover", "title": "headline principal", "body": "subtítulo curto" },
+    { "type": "content", "number": 1, "title": "benefício principal", "body": "linha 1\\nlinha 2\\nlinha 3\\nlinha 4", "highlight": "ganho principal" },
+    { "type": "cta", "title": "chamada final forte", "body": "frase curta 1\\nfrase curta 2", "ctaLabel": "texto do botão" }
   ],
   "caption": "legenda persuasiva para o post"
 }
 
-REGRAS CRÍTICAS:
-- Use exatamente 1 slide cover, ${Math.max(n - 2, 1)} slides content e 1 slide cta.
-- Escreva em português do Brasil.
-- NÃO use frases genéricas, clichês, autoajuda ou conteúdo superficial.
-- Cada slide content deve vender ou explicar 1 benefício concreto.
-- O campo body dos slides content deve vir com 3 ou 4 linhas curtas, separadas por \\n, para caber com letras grandes.
-- Se o usuário colar uma lista de recursos, transforme isso em benefícios e diferenciais percebidos pelo cliente.
+REGRAS:
+- Exatamente 1 cover, ${Math.max(n - 2, 1)} content e 1 cta.
+- Português do Brasil.
+- Cada slide content deve ter 3-4 linhas curtas no body, separadas por \\n.
 - A capa deve parecer manchete de campanha premium.
-- O CTA final deve aumentar desejo e deixar a próxima ação óbvia.
-- A legenda deve ter 2 parágrafos curtos + 8 a 12 hashtags relevantes.
-- Responda APENAS JSON válido, sem markdown.`;
+- Legenda com 2 parágrafos + 8-12 hashtags.
+- Responda APENAS JSON válido.`;
 
-      const { data, error } = await supabase.functions.invoke("gerar-carousel-content", {
-        body: { prompt, tema }
-      });
-
+      const { data, error } = await supabase.functions.invoke("gerar-carousel-content", { body: { prompt, tema } });
       if (error) throw error;
 
       let parsed = data;
-      if (typeof data === "string") {
-        const cleaned = data.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
-        parsed = JSON.parse(cleaned);
-      }
+      if (typeof data === "string") parsed = JSON.parse(data.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim());
 
       const parsedSlides = Array.isArray(parsed.slides) ? parsed.slides : [];
       if (parsedSlides.length === 0) throw new Error("A IA não retornou slides válidos");
 
       const totalContentSlides = parsedSlides.filter((s: any) => s.type === "content").length;
-
       const slideData: SlideData[] = parsedSlides.map((s: any, i: number) => ({
         ...s,
-        number: s.type === "content"
-          ? (s.number ?? parsedSlides.slice(0, i + 1).filter((item: any) => item.type === "content").length)
-          : undefined,
+        number: s.type === "content" ? (s.number ?? parsedSlides.slice(0, i + 1).filter((x: any) => x.type === "content").length) : undefined,
         totalSlides: parsedSlides.length,
         contentTotal: totalContentSlides,
         imageUrl: s.type === "cover" ? productImages[0] : (productImages[Math.min(i, productImages.length - 1)] || undefined),
@@ -213,25 +144,19 @@ REGRAS CRÍTICAS:
       setSlides(slideData);
       setCaption(parsed.caption || "");
 
-      // Wait for React to render the slides, then capture
       setTimeout(async () => {
-        const images = await renderSlidesToImages(slideData);
+        const images = await renderSlidesToImages();
         setRenderedImages(images);
         setActiveSlide(0);
         setLoading(false);
-      }, 800);
+      }, 900);
 
-      // Save to DB
       await supabase.from("carrosseis_gerados").insert({
-        user_id: userData.user.id,
-        tema: tema.trim(),
-        estilo,
-        num_slides: slideData.length,
-        slides_data: slideData as any,
-        caption: parsed.caption,
+        user_id: userData.user.id, tema: tema.trim(), estilo,
+        num_slides: slideData.length, slides_data: slideData as any, caption: parsed.caption,
       });
 
-      toast.success(`🎨 Carrossel com ${slideData.length} slides gerado!`);
+      toast.success(`🎨 Carrossel V3 com ${slideData.length} slides gerado!`);
     } catch (err: any) {
       console.error(err);
       toast.error(err.message || "Erro ao gerar carrossel");
@@ -241,27 +166,20 @@ REGRAS CRÍTICAS:
 
   const reRenderSlides = useCallback(async () => {
     if (slides.length === 0) return;
-    const images = await renderSlidesToImages(slides);
+    const images = await renderSlidesToImages();
     setRenderedImages(images);
     toast.success("✅ Slides re-renderizados!");
   }, [slides, renderSlidesToImages]);
 
   const updateSlideText = (index: number, field: 'title' | 'body', value: string) => {
-    setSlides(prev => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
+    setSlides(prev => { const u = [...prev]; u[index] = { ...u[index], [field]: value }; return u; });
   };
 
   const downloadAll = () => {
     renderedImages.forEach((img, i) => {
       const link = document.createElement("a");
-      link.href = img;
-      link.download = `carrossel-slide-${i + 1}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      link.href = img; link.download = `carrossel-slide-${i + 1}.png`;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
     });
     toast.success(`📥 ${renderedImages.length} imagens baixadas!`);
   };
@@ -271,7 +189,6 @@ REGRAS CRÍTICAS:
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Não autenticado");
-
       const uploadedUrls: string[] = [];
       for (let i = 0; i < renderedImages.length; i++) {
         const blob = await (await fetch(renderedImages[i])).blob();
@@ -281,17 +198,13 @@ REGRAS CRÍTICAS:
         const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(filename);
         uploadedUrls.push(urlData.publicUrl);
       }
-
       const { error } = await supabase.functions.invoke("meta-publish-carousel", {
         body: { user_id: userData.user.id, image_urls: uploadedUrls, caption },
       });
       if (error) throw error;
       toast.success("🎉 Carrossel publicado no Instagram!");
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao publicar");
-    } finally {
-      setPublishing(false);
-    }
+    } catch (err: any) { toast.error(err.message || "Erro ao publicar"); }
+    finally { setPublishing(false); }
   };
 
   const saveAsProduct = async () => {
@@ -299,66 +212,44 @@ REGRAS CRÍTICAS:
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Não autenticado");
-
-      const blob = await (await fetch(renderedImages[0])).blob();
-      const filename = `carrosseis/${userData.user.id}/${Date.now()}-capa.png`;
-      const { error: upErr } = await supabase.storage.from("produtos").upload(filename, blob, { contentType: "image/png" });
-      if (upErr) throw upErr;
-      const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(filename);
-      const imageUrl = urlData.publicUrl;
-
-      const allUrls: string[] = [imageUrl];
-      for (let i = 1; i < renderedImages.length; i++) {
-        const slideBlob = await (await fetch(renderedImages[i])).blob();
-        const slideName = `carrosseis/${userData.user.id}/${Date.now()}-slide-${i + 1}.png`;
-        const { error: slideErr } = await supabase.storage.from("produtos").upload(slideName, slideBlob, { contentType: "image/png" });
-        if (slideErr) throw slideErr;
-        const { data: slideUrl } = supabase.storage.from("produtos").getPublicUrl(slideName);
-        allUrls.push(slideUrl.publicUrl);
+      const allUrls: string[] = [];
+      for (let i = 0; i < renderedImages.length; i++) {
+        const blob = await (await fetch(renderedImages[i])).blob();
+        const fname = `carrosseis/${userData.user.id}/${Date.now()}-slide-${i + 1}.png`;
+        const { error: upErr } = await supabase.storage.from("produtos").upload(fname, blob, { contentType: "image/png" });
+        if (upErr) throw upErr;
+        const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(fname);
+        allUrls.push(urlData.publicUrl);
       }
-
       const titulo = slides[0]?.title || tema.slice(0, 80) || "Carrossel IA";
-
       await supabase.from("afiliado_produtos").insert({
-        user_id: userData.user.id,
-        titulo,
-        marketplace: "Instagram",
-        link_afiliado: allUrls[0],
-        imagem_url: imageUrl,
-        descricao: caption || `Carrossel: ${titulo}`,
-        categoria: "Marketing",
-        status: "ativo",
+        user_id: userData.user.id, titulo, marketplace: "Instagram",
+        link_afiliado: allUrls[0], imagem_url: allUrls[0],
+        descricao: caption || `Carrossel: ${titulo}`, categoria: "Marketing", status: "ativo",
       });
-
-      toast.success("✅ Salvo como produto! Disponível no Autopilot para Instagram.");
-    } catch (err: any) {
-      toast.error(err.message || "Erro ao salvar produto");
-    } finally {
-      setSavingProduct(false);
-    }
+      toast.success("✅ Salvo como produto! Disponível no Autopilot.");
+    } catch (err: any) { toast.error(err.message || "Erro ao salvar produto"); }
+    finally { setSavingProduct(false); }
   };
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
+      {/* Header */}
       <div className="text-center space-y-2">
         <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-pink-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-          🎨 Gerador de Carrosséis V2
+          🎨 Gerador de Carrosséis V3
         </h2>
-        <p className="text-muted-foreground text-sm">Templates profissionais — qualidade nível agência, custo zero!</p>
+        <p className="text-muted-foreground text-sm">Design profissional nível agência — 5 templates premium, custo zero!</p>
       </div>
 
+      {/* Form */}
       <Card className="shadow-xl border-2">
         <CardContent className="pt-6 space-y-5">
-          {/* Tema */}
           <div className="space-y-2">
-            <Label className="font-semibold">Tema ou conteúdo</Label>
-            <Textarea
-              value={tema}
-              onChange={e => setTema(e.target.value)}
-              placeholder='Ex: "5 dicas para cuidar do pelo do seu pet" ou cole uma lista de funcionalidades'
-              className="min-h-[80px]"
-              disabled={loading}
-            />
+            <Label className="font-semibold">📝 Tema ou conteúdo</Label>
+            <Textarea value={tema} onChange={e => setTema(e.target.value)}
+              placeholder='Ex: "5 dicas para cuidar do pelo do seu pet" ou cole uma lista de funcionalidades do seu produto'
+              className="min-h-[90px]" disabled={loading} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -367,22 +258,17 @@ REGRAS CRÍTICAS:
               <Select value={numSlides} onValueChange={setNumSlides}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {[3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                    <SelectItem key={n} value={String(n)}>{n} slides</SelectItem>
-                  ))}
+                  {[3,4,5,6,7,8,9,10].map(n => <SelectItem key={n} value={String(n)}>{n} slides</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
-              <Label className="font-semibold">Template visual</Label>
-              <Select value={estilo} onValueChange={(value) => {
-                setEstilo(value);
-                const tmpl = TEMPLATE_OPTIONS[value as keyof typeof TEMPLATE_OPTIONS];
-                if (tmpl) {
-                  setPrimaryColor(tmpl.primaryColor);
-                  setSecondaryColor(tmpl.secondaryColor);
-                }
+              <Label className="font-semibold">🎨 Template</Label>
+              <Select value={estilo} onValueChange={(v) => {
+                setEstilo(v);
+                const t = TEMPLATE_OPTIONS[v as TemplateKey];
+                if (t) { setPrimaryColor(t.primaryColor); setSecondaryColor(t.secondaryColor); }
               }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -394,12 +280,12 @@ REGRAS CRÍTICAS:
             </div>
 
             <div className="space-y-2">
-              <Label className="font-semibold">@ do perfil</Label>
+              <Label className="font-semibold">@ perfil</Label>
               <Input value={profileHandle} onChange={e => setProfileHandle(e.target.value)} placeholder="@seuperfil" />
             </div>
           </div>
 
-          {/* Cores */}
+          {/* Colors */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="font-semibold flex items-center gap-1"><Palette className="h-4 w-4" /> Cor principal</Label>
@@ -434,7 +320,7 @@ REGRAS CRÍTICAS:
               )}
               {productImages.length < 5 && (
                 <Button variant="outline" onClick={() => productInputRef.current?.click()} className="w-full">
-                  <Upload className="mr-2 h-4 w-4" /> {productImages.length === 0 ? 'Anexar fotos' : `Adicionar mais (${5 - productImages.length} restantes)`}
+                  <Upload className="mr-2 h-4 w-4" /> {productImages.length === 0 ? 'Anexar fotos' : `Mais (${5 - productImages.length} restantes)`}
                 </Button>
               )}
             </div>
@@ -454,21 +340,18 @@ REGRAS CRÍTICAS:
             </div>
           </div>
 
-          <Button onClick={generateContent} disabled={loading || !tema.trim()} size="lg" className="w-full text-lg py-6 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700">
-            {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Gerando carrossel profissional...</> : <>🚀 Gerar Carrossel Profissional</>}
+          <Button onClick={generateContent} disabled={loading || !tema.trim()} size="lg"
+            className="w-full text-lg py-6 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700">
+            {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Gerando carrossel profissional...</> : <>🚀 Gerar Carrossel V3 Profissional</>}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Hidden render container - slides rendered offscreen for html-to-image capture */}
-      <div
-        ref={slideContainerRef}
-        style={{ position: 'absolute', left: '-9999px', top: 0 }}
-        aria-hidden="true"
-      >
+      {/* Hidden render container */}
+      <div ref={slideContainerRef} style={{ position: 'absolute', left: '-9999px', top: 0 }} aria-hidden="true">
         {slides.map((slide, i) => (
           <SlideRenderer
-            key={`${estilo}-${i}-${slide.title}`}
+            key={`${estilo}-${i}-${slide.title}-${primaryColor}`}
             templateName={estilo}
             type={slide.type}
             title={slide.title}
@@ -499,39 +382,39 @@ REGRAS CRÍTICAS:
               <Button variant="ghost" size="icon" onClick={() => setActiveSlide(Math.max(0, activeSlide - 1))} disabled={activeSlide === 0} className="absolute left-0 z-10">
                 <ChevronLeft className="h-6 w-6" />
               </Button>
-              <img src={renderedImages[activeSlide]} alt={`Slide ${activeSlide + 1}`} className="max-h-[500px] rounded-lg shadow-lg border" />
+              <img src={renderedImages[activeSlide]} alt={`Slide ${activeSlide + 1}`}
+                className="max-h-[500px] rounded-lg shadow-lg border" />
               <Button variant="ghost" size="icon" onClick={() => setActiveSlide(Math.min(renderedImages.length - 1, activeSlide + 1))} disabled={activeSlide === renderedImages.length - 1} className="absolute right-0 z-10">
                 <ChevronRight className="h-6 w-6" />
               </Button>
             </div>
 
+            {/* Slide indicator */}
+            <p className="text-center text-sm font-medium text-muted-foreground">
+              Slide {activeSlide + 1} de {renderedImages.length}
+            </p>
+
             {/* Thumbnails */}
             <div className="flex gap-2 overflow-x-auto pb-2 justify-center">
               {renderedImages.map((img, i) => (
-                <button key={i} onClick={() => setActiveSlide(i)} className={`flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${i === activeSlide ? 'border-purple-500 scale-105' : 'border-transparent opacity-70 hover:opacity-100'}`}>
+                <button key={i} onClick={() => setActiveSlide(i)}
+                  className={`flex-shrink-0 rounded-lg overflow-hidden border-2 transition-all ${i === activeSlide ? 'border-purple-500 scale-105 shadow-md' : 'border-transparent opacity-70 hover:opacity-100'}`}>
                   <img src={img} alt={`Slide ${i + 1}`} className="h-20 w-16 object-cover" />
                 </button>
               ))}
             </div>
 
-            {/* Edit active slide */}
+            {/* Edit */}
             <div className="bg-muted/30 rounded-lg p-4 space-y-3">
               <p className="text-sm font-semibold text-muted-foreground">✏️ Editar Slide {activeSlide + 1}</p>
               <div className="space-y-2">
                 <Label className="text-xs">Título</Label>
-                <Input
-                  value={slides[activeSlide]?.title || ""}
-                  onChange={e => updateSlideText(activeSlide, 'title', e.target.value)}
-                />
+                <Input value={slides[activeSlide]?.title || ""} onChange={e => updateSlideText(activeSlide, 'title', e.target.value)} />
               </div>
               {slides[activeSlide]?.body !== undefined && (
                 <div className="space-y-2">
                   <Label className="text-xs">Corpo</Label>
-                  <Textarea
-                    value={slides[activeSlide]?.body || ""}
-                    onChange={e => updateSlideText(activeSlide, 'body', e.target.value)}
-                    className="min-h-[60px]"
-                  />
+                  <Textarea value={slides[activeSlide]?.body || ""} onChange={e => updateSlideText(activeSlide, 'body', e.target.value)} className="min-h-[60px]" />
                 </div>
               )}
               <Button variant="outline" size="sm" onClick={reRenderSlides} disabled={rendering}>
@@ -549,22 +432,21 @@ REGRAS CRÍTICAS:
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3">
               <Button onClick={downloadAll} size="lg" className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
-                <Download className="mr-2 h-5 w-5" /> 📥 Baixar Todas ({renderedImages.length} PNGs)
+                <Download className="mr-2 h-5 w-5" /> 📥 Baixar ({renderedImages.length} PNGs)
               </Button>
               <Button onClick={publishInstagram} disabled={publishing} size="lg" className="flex-1 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600">
                 {publishing ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Instagram className="mr-2 h-5 w-5" />}
-                📱 Publicar no Instagram
+                📱 Instagram
               </Button>
             </div>
             <Button onClick={saveAsProduct} disabled={savingProduct} size="lg" className="w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white">
               {savingProduct ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <PackagePlus className="mr-2 h-5 w-5" />}
-              📦 Salvar como Produto (Autopilot Instagram)
+              📦 Salvar como Produto (Autopilot)
             </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Rendering indicator */}
       {rendering && (
         <div className="fixed bottom-4 right-4 bg-primary text-primary-foreground px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50">
           <Loader2 className="h-4 w-4 animate-spin" />
