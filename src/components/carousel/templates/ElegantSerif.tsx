@@ -37,7 +37,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     </div>
 
     <h1 style={{
-      color: '#1A1A1A', fontSize: 60, fontWeight: 700, textAlign: 'center',
+      color: '#1A1A1A', fontSize: 72, fontWeight: 700, textAlign: 'center',
       lineHeight: 1.15, margin: 0, marginBottom: 30,
       fontFamily: "'Playfair Display', Georgia, serif",
     }}>
