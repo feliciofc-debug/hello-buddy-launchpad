@@ -15,7 +15,12 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
     <div style={{ position: 'absolute', bottom: -80, left: -80, width: 350, height: 350, borderRadius: '50%', background: 'rgba(255,255,255,0.06)' }} />
     <div style={{ position: 'absolute', top: '40%', left: -50, width: 200, height: 200, borderRadius: '50%', background: 'rgba(255,255,255,0.05)' }} />
 
-    <LogoBadge logoUrl={logoUrl} />
+    {/* Logo GRANDE centralizada */}
+    {logoUrl && (
+      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+      </div>
+    )}
 
     {/* Glass badge */}
     <div style={{
@@ -27,7 +32,7 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
     </div>
 
     <h1 style={{
-      color: '#FFFFFF', fontSize: 66, fontWeight: 900, textAlign: 'center',
+      color: '#FFFFFF', fontSize: 72, fontWeight: 900, textAlign: 'center',
       lineHeight: 1.08, margin: 0, marginBottom: 30,
       textShadow: '0 2px 15px rgba(0,0,0,0.15)',
     }}>
@@ -35,7 +40,7 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
     </h1>
 
     {body && (
-      <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 26, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800, textShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
+      <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 30, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800, textShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
         {body}
       </p>
     )}
@@ -89,11 +94,11 @@ export const GradientVibrantContent: React.FC<SlideTemplateProps> = ({ title, bo
               borderRadius: 20, padding: '22px 30px',
             }}>
               <div style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 18, height: 18, borderRadius: '50%',
                 background: '#FFFFFF', flexShrink: 0,
               }} />
               <p style={{
-                color: 'rgba(255,255,255,0.95)', fontSize: 32,
+                color: 'rgba(255,255,255,0.95)', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
               }}>{line}</p>
             </div>
@@ -139,7 +144,7 @@ export const GradientVibrantCTA: React.FC<SlideTemplateProps> = ({ title, body, 
       {title}
     </h2>
 
-    {body && <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 24, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50 }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50 }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{
       background: '#FFFFFF', borderRadius: 60, padding: '22px 60px',

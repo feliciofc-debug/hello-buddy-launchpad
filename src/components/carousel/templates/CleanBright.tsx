@@ -17,7 +17,12 @@ export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, pr
     <div style={{ position: 'absolute', bottom: -200, right: -200, width: 500, height: 500, borderRadius: '50%', background: `${primaryColor}06` }} />
     <div style={{ position: 'absolute', top: -100, left: -100, width: 300, height: 300, borderRadius: '50%', background: `${primaryColor}04` }} />
 
-    <LogoBadge logoUrl={logoUrl} />
+    {/* Logo GRANDE centralizada */}
+    {logoUrl && (
+      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: 'rgba(0,0,0,0.03)', border: '2px solid rgba(0,0,0,0.06)', boxShadow: '0 8px 32px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+      </div>
+    )}
 
     {/* Badge */}
     <div style={{
@@ -28,14 +33,14 @@ export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, pr
 
     {/* Title */}
     <h1 style={{
-      color: '#0F172A', fontSize: 62, fontWeight: 900, textAlign: 'center',
+      color: '#0F172A', fontSize: 72, fontWeight: 900, textAlign: 'center',
       lineHeight: 1.1, margin: 0, marginBottom: 30,
     }}>
       {title}
     </h1>
 
     {body && (
-      <p style={{ color: '#64748B', fontSize: 26, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800 }}>
+      <p style={{ color: '#64748B', fontSize: 30, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800 }}>
         {body}
       </p>
     )}
@@ -90,11 +95,11 @@ export const CleanBrightContent: React.FC<SlideTemplateProps> = ({ title, body, 
               boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
             }}>
               <div style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 18, height: 18, borderRadius: '50%',
                 background: primaryColor, flexShrink: 0,
               }} />
               <p style={{
-                color: '#1E293B', fontSize: 32,
+                color: '#1E293B', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
               }}>{line}</p>
             </div>
@@ -141,7 +146,7 @@ export const CleanBrightCTA: React.FC<SlideTemplateProps> = ({ title, body, prim
       {title}
     </h2>
 
-    {body && <p style={{ color: '#64748B', fontSize: 24, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, maxWidth: 800 }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: '#64748B', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, maxWidth: 800 }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{ background: primaryColor, borderRadius: 60, padding: '22px 60px', boxShadow: `0 8px 30px ${primaryColor}40` }}>
       <span style={{ color: '#FFF', fontSize: 26, fontWeight: 700 }}>{ctaLabel || 'COMECE AGORA'}</span>

@@ -22,7 +22,12 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     <div style={{ position: 'absolute', bottom: 45, left: 45, width: 40, height: 40, borderBottom: `3px solid ${primaryColor || gold}`, borderLeft: `3px solid ${primaryColor || gold}` }} />
     <div style={{ position: 'absolute', bottom: 45, right: 45, width: 40, height: 40, borderBottom: `3px solid ${primaryColor || gold}`, borderRight: `3px solid ${primaryColor || gold}` }} />
 
-    <LogoBadge logoUrl={logoUrl} />
+    {/* Logo GRANDE centralizada */}
+    {logoUrl && (
+      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: '#FAF8F5', border: `2px solid ${primaryColor || gold}40`, boxShadow: '0 8px 32px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+      </div>
+    )}
 
     {/* Ornamental separator */}
     <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 40 }}>
@@ -32,7 +37,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     </div>
 
     <h1 style={{
-      color: '#1A1A1A', fontSize: 60, fontWeight: 700, textAlign: 'center',
+      color: '#1A1A1A', fontSize: 72, fontWeight: 700, textAlign: 'center',
       lineHeight: 1.15, margin: 0, marginBottom: 30,
       fontFamily: "'Playfair Display', Georgia, serif",
     }}>
@@ -43,7 +48,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     <div style={{ width: 100, height: 3, background: `linear-gradient(90deg, transparent, ${primaryColor || gold}, transparent)`, marginBottom: 30 }} />
 
     {body && (
-      <p style={{ color: '#666', fontSize: 24, textAlign: 'center', lineHeight: 1.6, margin: 0, maxWidth: 750, fontFamily: "'Inter', sans-serif", fontWeight: 400 }}>
+      <p style={{ color: '#666', fontSize: 30, textAlign: 'center', lineHeight: 1.6, margin: 0, maxWidth: 750, fontFamily: "'Inter', sans-serif", fontWeight: 400 }}>
         {body}
       </p>
     )}
@@ -101,7 +106,7 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
             }}>
               <span style={{ color: primaryColor || gold, fontSize: 22, flexShrink: 0 }}>◆</span>
               <p style={{
-                color: '#333', fontSize: 32,
+                color: '#333', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
                 fontFamily: "'Inter', sans-serif",
               }}>{line}</p>
@@ -157,7 +162,7 @@ export const ElegantSerifCTA: React.FC<SlideTemplateProps> = ({ title, body, pri
 
     <div style={{ width: 100, height: 3, background: `linear-gradient(90deg, transparent, ${primaryColor || gold}, transparent)`, marginBottom: 30 }} />
 
-    {body && <p style={{ color: '#666', fontSize: 22, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, fontFamily: "'Inter', sans-serif" }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: '#666', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, fontFamily: "'Inter', sans-serif" }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{ border: `2px solid ${primaryColor || gold}`, borderRadius: 4, padding: '20px 56px' }}>
       <span style={{ color: primaryColor || gold, fontSize: 24, fontWeight: 600, letterSpacing: 3, textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>{ctaLabel || 'SAIBA MAIS'}</span>

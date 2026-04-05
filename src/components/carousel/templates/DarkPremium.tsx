@@ -18,8 +18,12 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
     {/* Top accent line */}
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg, ${primaryColor}, ${secondaryColor}, ${primaryColor})` }} />
 
-    {/* Logo */}
-    <LogoBadge logoUrl={logoUrl} />
+    {/* Logo GRANDE centralizada */}
+    {logoUrl && (
+      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: 'rgba(255,255,255,0.1)', border: '2px solid rgba(255,255,255,0.2)', boxShadow: `0 8px 32px rgba(0,0,0,0.3)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+      </div>
+    )}
 
     {/* Badge */}
     <div style={{
@@ -32,7 +36,7 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
 
     {/* Title */}
     <h1 style={{
-      color: '#FFFFFF', fontSize: 64, fontWeight: 900, textAlign: 'center',
+      color: '#FFFFFF', fontSize: 72, fontWeight: 900, textAlign: 'center',
       lineHeight: 1.1, margin: 0, marginBottom: 30,
       textShadow: `0 0 40px ${primaryColor}30`,
     }}>
@@ -42,7 +46,7 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
     {/* Subtitle */}
     {body && (
       <p style={{
-        color: 'rgba(255,255,255,0.65)', fontSize: 26, fontWeight: 400,
+        color: 'rgba(255,255,255,0.65)', fontSize: 30, fontWeight: 400,
         textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800,
       }}>
         {body}
@@ -101,12 +105,12 @@ export const DarkPremiumContent: React.FC<SlideTemplateProps> = ({ title, body, 
               borderRadius: 20, padding: '24px 32px',
             }}>
               <div style={{
-                width: 16, height: 16, borderRadius: '50%',
+                width: 18, height: 18, borderRadius: '50%',
                 background: primaryColor, flexShrink: 0,
                 boxShadow: `0 0 12px ${primaryColor}60`,
               }} />
               <p style={{
-                color: 'rgba(255,255,255,0.9)', fontSize: 32,
+                color: 'rgba(255,255,255,0.9)', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
               }}>{line}</p>
             </div>
@@ -163,7 +167,7 @@ export const DarkPremiumCTA: React.FC<SlideTemplateProps> = ({ title, body, prim
 
     {/* Body */}
     {body && (
-      <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 26, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, maxWidth: 800 }}>
+      <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, maxWidth: 800 }}>
         {body.replace(/\\n/g, '\n')}
       </p>
     )}

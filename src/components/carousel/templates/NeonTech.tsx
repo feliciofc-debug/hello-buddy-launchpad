@@ -23,7 +23,12 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
     {/* Top neon line */}
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: primaryColor, boxShadow: `0 0 20px ${primaryColor}60, 0 0 40px ${primaryColor}30` }} />
 
-    <LogoBadge logoUrl={logoUrl} />
+    {/* Logo GRANDE centralizada */}
+    {logoUrl && (
+      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: `${primaryColor}10`, border: `2px solid ${primaryColor}40`, boxShadow: `0 8px 32px rgba(0,0,0,0.4), 0 0 20px ${primaryColor}20`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+      </div>
+    )}
 
     {/* Badge */}
     <div style={{
@@ -34,7 +39,7 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
     </div>
 
     <h1 style={{
-      color: '#FFFFFF', fontSize: 64, fontWeight: 700, textAlign: 'center',
+      color: '#FFFFFF', fontSize: 72, fontWeight: 900, textAlign: 'center',
       lineHeight: 1.1, margin: 0, marginBottom: 30,
       textShadow: `0 0 30px ${primaryColor}35`,
     }}>
@@ -42,7 +47,7 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
     </h1>
 
     {body && (
-      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 24, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800 }}>
+      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 30, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800 }}>
         {body}
       </p>
     )}
@@ -105,12 +110,12 @@ export const NeonTechContent: React.FC<SlideTemplateProps> = ({ title, body, num
               boxShadow: `0 0 20px ${primaryColor}10`,
             }}>
               <div style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 18, height: 18, borderRadius: '50%',
                 background: primaryColor, flexShrink: 0,
                 boxShadow: `0 0 12px ${primaryColor}60`,
               }} />
               <p style={{
-                color: 'rgba(255,255,255,0.85)', fontSize: 32,
+                color: 'rgba(255,255,255,0.85)', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
               }}>{line}</p>
             </div>
@@ -156,7 +161,7 @@ export const NeonTechCTA: React.FC<SlideTemplateProps> = ({ title, body, primary
       {title}
     </h2>
 
-    {body && <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 22, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50 }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50 }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{
       border: `2px solid ${primaryColor}`, borderRadius: 8, padding: '22px 56px',

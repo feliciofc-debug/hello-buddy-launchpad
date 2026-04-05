@@ -34,7 +34,7 @@ export const CarouselGenerator = () => {
   const [secondaryColor, setSecondaryColor] = useState(TEMPLATE_OPTIONS['dark-premium'].secondaryColor);
   const [productImages, setProductImages] = useState<string[]>([]);
   const [logoImage, setLogoImage] = useState<string | null>(null);
-  const [profileHandle, setProfileHandle] = useState("");
+  const [profileHandle, setProfileHandle] = useState("@amzofertas");
   const [loading, setLoading] = useState(false);
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [renderedImages, setRenderedImages] = useState<string[]>([]);
@@ -138,7 +138,7 @@ REGRAS:
         contentTotal: totalContentSlides,
         imageUrl: s.type === "cover" ? productImages[0] : (productImages[Math.min(i, productImages.length - 1)] || undefined),
         logoUrl: logoImage || undefined,
-        profileHandle: s.type === "cta" ? (profileHandle || "@seuperfil") : undefined,
+        profileHandle: s.type === "cta" ? (profileHandle || "@amzofertas") : undefined,
       }));
 
       setSlides(slideData);
