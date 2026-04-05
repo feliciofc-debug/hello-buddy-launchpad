@@ -36,6 +36,7 @@ export const CarouselGenerator = () => {
   const [productImages, setProductImages] = useState<string[]>([]);
   const [logoImage, setLogoImage] = useState<string | null>(null);
   const [profileHandle, setProfileHandle] = useState("@amzofertas");
+  const [businessName, setBusinessName] = useState("");
   const [loading, setLoading] = useState(false);
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [renderedImages, setRenderedImages] = useState<string[]>([]);
