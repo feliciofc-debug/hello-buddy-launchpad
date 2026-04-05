@@ -46,7 +46,7 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
     {/* Subtitle */}
     {body && (
       <p style={{
-        color: 'rgba(255,255,255,0.65)', fontSize: 26, fontWeight: 400,
+        color: 'rgba(255,255,255,0.65)', fontSize: 30, fontWeight: 400,
         textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800,
       }}>
         {body}
