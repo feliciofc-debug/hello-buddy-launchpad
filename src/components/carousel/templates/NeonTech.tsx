@@ -110,7 +110,7 @@ export const NeonTechContent: React.FC<SlideTemplateProps> = ({ title, body, num
               boxShadow: `0 0 20px ${primaryColor}10`,
             }}>
               <div style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 18, height: 18, borderRadius: '50%',
                 background: primaryColor, flexShrink: 0,
                 boxShadow: `0 0 12px ${primaryColor}60`,
               }} />
