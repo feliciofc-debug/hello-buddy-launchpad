@@ -140,6 +140,7 @@ REGRAS:
         contentTotal: totalContentSlides,
         imageUrl: s.type === "cover" ? productImages[0] : (productImages[Math.min(i, productImages.length - 1)] || undefined),
         logoUrl: logoImage || undefined,
+        businessName: businessName || undefined,
         profileHandle: s.type === "cta" ? (profileHandle || "@amzofertas") : undefined,
       }));
 
