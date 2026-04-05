@@ -26,6 +26,7 @@ import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
 import { AutopilotModal } from '@/components/AutopilotModal';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
+import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
 
 interface Campanha {
@@ -722,6 +723,8 @@ export default function MeusProdutos() {
   const [isAutopilotOpen, setIsAutopilotOpen] = useState(false);
   const [isReelsModalOpen, setIsReelsModalOpen] = useState(false);
   const [reelsProduct, setReelsProduct] = useState<Product | null>(null);
+  const [isSimultaneoModalOpen, setIsSimultaneoModalOpen] = useState(false);
+  const [simultaneoProduct, setSimultaneoProduct] = useState<Product | null>(null);
   
 
   // Form states
@@ -1451,6 +1454,14 @@ export default function MeusProdutos() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full gap-2 bg-gradient-to-r from-blue-600 to-pink-600 text-white hover:from-blue-700 hover:to-pink-700 border-0"
+                          onClick={() => { setSimultaneoProduct(product); setIsSimultaneoModalOpen(true); }}
+                        >
+                          🚀 Publicar agora
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
                           onClick={() => { setFacebookProduct(product); setIsFacebookModalOpen(true); }}
                         >
@@ -1513,6 +1524,14 @@ export default function MeusProdutos() {
                         >
                           <Rocket className="w-4 h-4" />
                           Criar Campanha
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 bg-gradient-to-r from-blue-600 to-pink-600 text-white hover:from-blue-700 hover:to-pink-700 border-0"
+                          onClick={() => { setSimultaneoProduct(product); setIsSimultaneoModalOpen(true); }}
+                        >
+                          🚀 Publicar agora
                         </Button>
                         <Button
                           variant="outline"
@@ -1755,6 +1774,16 @@ export default function MeusProdutos() {
             if (!open) setReelsProduct(null);
           }}
           produto={reelsProduct}
+        />
+      )}
+      {simultaneoProduct && (
+        <PublicarSimultaneoModal
+          open={isSimultaneoModalOpen}
+          onOpenChange={(open) => {
+            setIsSimultaneoModalOpen(open);
+            if (!open) setSimultaneoProduct(null);
+          }}
+          produto={simultaneoProduct}
         />
       )}
     </div>
