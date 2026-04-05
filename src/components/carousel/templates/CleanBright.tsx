@@ -17,9 +17,13 @@ export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, pr
     <div style={{ position: 'absolute', bottom: -200, right: -200, width: 500, height: 500, borderRadius: '50%', background: `${primaryColor}06` }} />
     <div style={{ position: 'absolute', top: -100, left: -100, width: 300, height: 300, borderRadius: '50%', background: `${primaryColor}04` }} />
 
-    {/* Logo GRANDE centralizada */}
-    {logoUrl && (
-      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
+    {/* Nome da empresa no topo */}
+    {businessName && (
+      <span style={{
+        color: '#0F172A', fontSize: businessName.length > 20 ? 52 : 64, fontWeight: 900,
+        letterSpacing: 3, textTransform: 'uppercase' as const, textAlign: 'center' as const,
+        marginBottom: 30,
+      }}>{businessName}</span>
     )}
 
     {/* Badge */}

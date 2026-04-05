@@ -23,9 +23,14 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
     {/* Top neon line */}
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: primaryColor, boxShadow: `0 0 20px ${primaryColor}60, 0 0 40px ${primaryColor}30` }} />
 
-    {/* Logo GRANDE centralizada */}
-    {logoUrl && (
-      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
+    {/* Nome da empresa no topo */}
+    {businessName && (
+      <span style={{
+        color: '#FFFFFF', fontSize: businessName.length > 20 ? 52 : 64, fontWeight: 900,
+        letterSpacing: 3, textTransform: 'uppercase' as const, textAlign: 'center' as const,
+        textShadow: `0 0 30px ${primaryColor}50, 0 0 60px ${primaryColor}25`,
+        marginBottom: 30,
+      }}>{businessName}</span>
     )}
 
     {/* Badge */}

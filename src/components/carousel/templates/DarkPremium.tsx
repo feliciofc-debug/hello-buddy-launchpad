@@ -18,9 +18,14 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
     {/* Top accent line */}
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 4, background: `linear-gradient(90deg, ${primaryColor}, ${secondaryColor}, ${primaryColor})` }} />
 
-    {/* Logo GRANDE centralizada */}
-    {logoUrl && (
-      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
+    {/* Nome da empresa no topo */}
+    {businessName && (
+      <span style={{
+        color: '#FFFFFF', fontSize: businessName.length > 20 ? 52 : 64, fontWeight: 900,
+        letterSpacing: 3, textTransform: 'uppercase' as const, textAlign: 'center' as const,
+        textShadow: `0 2px 20px rgba(0,0,0,0.3), 0 0 40px ${primaryColor}30`,
+        marginBottom: 30,
+      }}>{businessName}</span>
     )}
 
     {/* Badge */}

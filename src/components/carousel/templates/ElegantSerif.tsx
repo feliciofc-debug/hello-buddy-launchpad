@@ -22,9 +22,14 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     <div style={{ position: 'absolute', bottom: 45, left: 45, width: 40, height: 40, borderBottom: `3px solid ${primaryColor || gold}`, borderLeft: `3px solid ${primaryColor || gold}` }} />
     <div style={{ position: 'absolute', bottom: 45, right: 45, width: 40, height: 40, borderBottom: `3px solid ${primaryColor || gold}`, borderRight: `3px solid ${primaryColor || gold}` }} />
 
-    {/* Logo GRANDE centralizada */}
-    {logoUrl && (
-      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
+    {/* Nome da empresa no topo */}
+    {businessName && (
+      <span style={{
+        color: '#1A1A1A', fontSize: businessName.length > 20 ? 52 : 64, fontWeight: 800,
+        letterSpacing: 4, textTransform: 'uppercase' as const, textAlign: 'center' as const,
+        fontFamily: "'Playfair Display', Georgia, serif",
+        marginBottom: 30,
+      }}>{businessName}</span>
     )}
 
     {/* Ornamental separator */}
