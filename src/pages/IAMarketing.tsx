@@ -570,6 +570,22 @@ const IAMarketing = () => {
                 )}
                 
                 {/* Grid de Cards - 4 colunas (Instagram, Facebook, Story, WhatsApp) */}
+                {/* Botão combinado FB + IG */}
+                <div className="flex justify-center">
+                  <Button
+                    onClick={handlePublicarTodas}
+                    disabled={publicandoTodas || !resultado}
+                    size="lg"
+                    className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white text-lg px-10 py-5"
+                  >
+                    {publicandoTodas ? (
+                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Publicando nos dois...</>
+                    ) : (
+                      <>🚀 Publicar no Facebook + Instagram</>
+                    )}
+                  </Button>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                   {/* Card Instagram */}
                   <Card className="shadow-xl border-2 hover:border-pink-500 transition-colors">
