@@ -76,19 +76,39 @@ export const GradientVibrantContent: React.FC<SlideTemplateProps> = ({ title, bo
       {title}
     </h2>
 
-    {/* Glass card with body */}
+    {/* Body */}
     {body && (
-      <div style={{
-        background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.2)', borderRadius: 24,
-        padding: '36px 40px', flex: 1,
-      }}>
-        {body.split('\n').filter(Boolean).map((line, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
-            <span style={{ color: '#FFF', fontSize: 22, fontWeight: 700, marginTop: 2 }}>▸</span>
-            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: 26, lineHeight: 1.5, margin: 0 }}>{line}</p>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14, marginTop: 16 }}>
+        {body.includes('\n') ? (
+          body.split('\n').filter(Boolean).map((line, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 20,
+              background: 'rgba(255,255,255,0.1)',
+              backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 20, padding: '22px 30px',
+            }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%',
+                background: '#FFFFFF', flexShrink: 0,
+              }} />
+              <p style={{
+                color: 'rgba(255,255,255,0.95)', fontSize: 32,
+                fontWeight: 500, lineHeight: 1.4, margin: 0,
+              }}>{line}</p>
+            </div>
+          ))
+        ) : (
+          <div style={{
+            background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+            border: '1px solid rgba(255,255,255,0.2)', borderRadius: 24, padding: '36px 40px',
+          }}>
+            <p style={{
+              color: 'rgba(255,255,255,0.9)', fontSize: 34,
+              fontWeight: 400, lineHeight: 1.7, margin: 0,
+            }}>{body}</p>
           </div>
-        ))}
+        )}
       </div>
     )}
 

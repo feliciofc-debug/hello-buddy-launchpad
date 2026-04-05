@@ -91,13 +91,32 @@ export const DarkPremiumContent: React.FC<SlideTemplateProps> = ({ title, body, 
 
     {/* Body */}
     {body && (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {body.split('\n').filter(Boolean).map((line, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: primaryColor, marginTop: 10, flexShrink: 0, boxShadow: `0 0 8px ${primaryColor}60` }} />
-            <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 26, fontWeight: 400, lineHeight: 1.5, margin: 0 }}>{line}</p>
-          </div>
-        ))}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 16, marginTop: 20 }}>
+        {body.includes('\n') ? (
+          body.split('\n').filter(Boolean).map((line, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 20,
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 20, padding: '24px 32px',
+            }}>
+              <div style={{
+                width: 16, height: 16, borderRadius: '50%',
+                background: primaryColor, flexShrink: 0,
+                boxShadow: `0 0 12px ${primaryColor}60`,
+              }} />
+              <p style={{
+                color: 'rgba(255,255,255,0.9)', fontSize: 32,
+                fontWeight: 500, lineHeight: 1.4, margin: 0,
+              }}>{line}</p>
+            </div>
+          ))
+        ) : (
+          <p style={{
+            color: 'rgba(255,255,255,0.8)', fontSize: 34,
+            fontWeight: 400, lineHeight: 1.7, margin: 0,
+          }}>{body}</p>
+        )}
       </div>
     )}
 

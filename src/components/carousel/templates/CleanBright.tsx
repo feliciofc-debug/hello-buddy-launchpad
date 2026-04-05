@@ -79,17 +79,37 @@ export const CleanBrightContent: React.FC<SlideTemplateProps> = ({ title, body, 
 
     {/* Body */}
     {body && (
-      <div style={{
-        background: '#F8FAFC', borderRadius: 24, padding: '36px 40px',
-        border: '1px solid #F1F5F9', flex: 1,
-        boxShadow: '0 2px 16px rgba(0,0,0,0.03)',
-      }}>
-        {body.split('\n').filter(Boolean).map((line, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: primaryColor, marginTop: 9, flexShrink: 0 }} />
-            <p style={{ color: '#334155', fontSize: 26, lineHeight: 1.5, margin: 0 }}>{line}</p>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14, marginTop: 16 }}>
+        {body.includes('\n') ? (
+          body.split('\n').filter(Boolean).map((line, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 20,
+              background: '#F8FAFC', borderRadius: 20,
+              padding: '22px 30px',
+              border: '1px solid #F1F5F9',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
+            }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%',
+                background: primaryColor, flexShrink: 0,
+              }} />
+              <p style={{
+                color: '#1E293B', fontSize: 32,
+                fontWeight: 500, lineHeight: 1.4, margin: 0,
+              }}>{line}</p>
+            </div>
+          ))
+        ) : (
+          <div style={{
+            background: '#F8FAFC', borderRadius: 24,
+            padding: '36px 40px', border: '1px solid #F1F5F9',
+          }}>
+            <p style={{
+              color: '#334155', fontSize: 34,
+              fontWeight: 400, lineHeight: 1.7, margin: 0,
+            }}>{body}</p>
           </div>
-        ))}
+        )}
       </div>
     )}
 
