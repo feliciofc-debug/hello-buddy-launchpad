@@ -98,7 +98,7 @@ export const GradientVibrantContent: React.FC<SlideTemplateProps> = ({ title, bo
                 background: '#FFFFFF', flexShrink: 0,
               }} />
               <p style={{
-                color: 'rgba(255,255,255,0.95)', fontSize: 32,
+                color: 'rgba(255,255,255,0.95)', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
               }}>{line}</p>
             </div>
