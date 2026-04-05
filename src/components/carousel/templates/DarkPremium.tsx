@@ -137,7 +137,7 @@ export const DarkPremiumContent: React.FC<SlideTemplateProps> = ({ title, body, 
       <ProgressDots current={number || 0} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.15)" />
     </div>
 
-    <LogoBadge logoUrl={logoUrl} />
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
 
