@@ -6,7 +6,7 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '80px',
   }}>
@@ -59,7 +59,7 @@ export const GradientVibrantContent: React.FC<SlideTemplateProps> = ({ title, bo
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: `linear-gradient(150deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', padding: '70px',
   }}>
     <div style={{ position: 'absolute', top: -80, right: -80, width: 300, height: 300, borderRadius: '50%', background: 'rgba(255,255,255,0.07)' }} />
@@ -137,7 +137,7 @@ export const GradientVibrantCTA: React.FC<SlideTemplateProps> = ({ title, body, 
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`,
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '80px',
   }}>

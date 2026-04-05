@@ -6,7 +6,7 @@ export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, pr
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#FFFFFF',
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '80px',
   }}>
@@ -58,7 +58,7 @@ export const CleanBrightContent: React.FC<SlideTemplateProps> = ({ title, body, 
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#FFFFFF',
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', padding: '80px',
   }}>
     {/* Top accent */}
@@ -137,7 +137,7 @@ export const CleanBrightCTA: React.FC<SlideTemplateProps> = ({ title, body, prim
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#FFFFFF',
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '80px',
   }}>

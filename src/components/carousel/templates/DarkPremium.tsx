@@ -6,7 +6,7 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: `linear-gradient(145deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)`,
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '80px',
   }}>
@@ -68,7 +68,7 @@ export const DarkPremiumContent: React.FC<SlideTemplateProps> = ({ title, body, 
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: `linear-gradient(165deg, #0F172A 0%, #1E293B 100%)`,
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', padding: '80px',
   }}>
     {/* Decorative accent */}
@@ -150,7 +150,7 @@ export const DarkPremiumCTA: React.FC<SlideTemplateProps> = ({ title, body, prim
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: `linear-gradient(145deg, #0F172A 0%, #1E293B 100%)`,
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '80px',
   }}>
