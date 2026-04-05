@@ -226,11 +226,16 @@ REGRAS:
       if (!userData.user) throw new Error("Não autenticado");
       const allUrls: string[] = [];
       for (let i = 0; i < renderedImages.length; i++) {
-        const blob = await (await fetch(renderedImages[i])).blob();
-        const fname = `carrosseis/${userData.user.id}/${Date.now()}-slide-${i + 1}.png`;
-        const { error: upErr } = await supabase.storage.from("produtos").upload(fname, blob, { contentType: "image/png" });
+        const dataUrl = renderedImages[i];
+        const arr = dataUrl.split(',');
+        const bstr = atob(arr[1]);
+        const u8arr = new Uint8Array(bstr.length);
+        for (let j = 0; j < bstr.length; j++) u8arr[j] = bstr.charCodeAt(j);
+        const blob = new Blob([u8arr], { type: 'image/png' });
+        const fname = `${userData.user.id}/${Date.now()}-slide-${i + 1}.png`;
+        const { error: upErr } = await supabase.storage.from("carousels").upload(fname, blob, { contentType: "image/png", upsert: true });
         if (upErr) throw upErr;
-        const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(fname);
+        const { data: urlData } = supabase.storage.from("carousels").getPublicUrl(fname);
         allUrls.push(urlData.publicUrl);
       }
       const titulo = slides[0]?.title || tema.slice(0, 80) || "Carrossel IA";
