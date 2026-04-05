@@ -32,7 +32,7 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
     </div>
 
     <h1 style={{
-      color: '#FFFFFF', fontSize: 66, fontWeight: 900, textAlign: 'center',
+      color: '#FFFFFF', fontSize: 72, fontWeight: 900, textAlign: 'center',
       lineHeight: 1.08, margin: 0, marginBottom: 30,
       textShadow: '0 2px 15px rgba(0,0,0,0.15)',
     }}>
