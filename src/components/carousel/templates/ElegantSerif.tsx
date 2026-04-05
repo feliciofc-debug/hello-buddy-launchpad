@@ -22,7 +22,12 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     <div style={{ position: 'absolute', bottom: 45, left: 45, width: 40, height: 40, borderBottom: `3px solid ${primaryColor || gold}`, borderLeft: `3px solid ${primaryColor || gold}` }} />
     <div style={{ position: 'absolute', bottom: 45, right: 45, width: 40, height: 40, borderBottom: `3px solid ${primaryColor || gold}`, borderRight: `3px solid ${primaryColor || gold}` }} />
 
-    <LogoBadge logoUrl={logoUrl} />
+    {/* Logo GRANDE centralizada */}
+    {logoUrl && (
+      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: '#FAF8F5', border: `2px solid ${primaryColor || gold}40`, boxShadow: '0 8px 32px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
+      </div>
+    )}
 
     {/* Ornamental separator */}
     <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 40 }}>
