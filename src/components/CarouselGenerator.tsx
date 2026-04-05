@@ -368,6 +368,7 @@ REGRAS:
             contentTotal={slide.contentTotal}
             imageUrl={slide.imageUrl}
             logoUrl={slide.logoUrl}
+            businessName={slide.businessName}
             profileHandle={slide.profileHandle}
             primaryColor={primaryColor}
             secondaryColor={secondaryColor}
