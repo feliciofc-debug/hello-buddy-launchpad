@@ -1,6 +1,6 @@
 import React from 'react';
 import type { SlideTemplateProps } from './types';
-import { ProgressDots, LogoBadge } from './shared';
+import { ProgressDots } from './shared';
 
 export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, logoUrl, totalSlides }) => (
   <div style={{
