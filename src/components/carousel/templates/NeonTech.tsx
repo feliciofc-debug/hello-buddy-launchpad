@@ -39,7 +39,7 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
     </div>
 
     <h1 style={{
-      color: '#FFFFFF', fontSize: 64, fontWeight: 700, textAlign: 'center',
+      color: '#FFFFFF', fontSize: 72, fontWeight: 900, textAlign: 'center',
       lineHeight: 1.1, margin: 0, marginBottom: 30,
       textShadow: `0 0 30px ${primaryColor}35`,
     }}>
