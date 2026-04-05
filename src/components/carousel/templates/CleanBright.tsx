@@ -33,7 +33,7 @@ export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, pr
 
     {/* Title */}
     <h1 style={{
-      color: '#0F172A', fontSize: 62, fontWeight: 900, textAlign: 'center',
+      color: '#0F172A', fontSize: 72, fontWeight: 900, textAlign: 'center',
       lineHeight: 1.1, margin: 0, marginBottom: 30,
     }}>
       {title}
