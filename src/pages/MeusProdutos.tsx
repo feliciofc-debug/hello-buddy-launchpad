@@ -1459,6 +1459,7 @@ export default function MeusProdutos() {
                         >
                           🚀 Publicar agora
                         </Button>
+                        <Button
                           variant="outline"
                           size="sm"
                           className="w-full gap-2 text-blue-600 border-blue-300 hover:bg-blue-50"
