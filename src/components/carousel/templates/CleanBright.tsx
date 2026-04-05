@@ -40,7 +40,7 @@ export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, pr
     </h1>
 
     {body && (
-      <p style={{ color: '#64748B', fontSize: 26, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800 }}>
+      <p style={{ color: '#64748B', fontSize: 30, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800 }}>
         {body}
       </p>
     )}
