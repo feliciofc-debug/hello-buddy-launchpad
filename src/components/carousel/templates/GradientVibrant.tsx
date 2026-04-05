@@ -40,7 +40,7 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
     </h1>
 
     {body && (
-      <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 26, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800, textShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
+      <p style={{ color: 'rgba(255,255,255,0.85)', fontSize: 30, textAlign: 'center', lineHeight: 1.5, margin: 0, maxWidth: 800, textShadow: '0 1px 4px rgba(0,0,0,0.1)' }}>
         {body}
       </p>
     )}
