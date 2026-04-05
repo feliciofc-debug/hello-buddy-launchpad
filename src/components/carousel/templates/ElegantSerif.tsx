@@ -90,13 +90,35 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
 
     {/* Body */}
     {body && (
-      <div style={{ flex: 1 }}>
-        {body.split('\n').filter(Boolean).map((line, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 16 }}>
-            <span style={{ color: primaryColor || gold, fontSize: 18, marginTop: 4 }}>◆</span>
-            <p style={{ color: '#444', fontSize: 24, lineHeight: 1.6, margin: 0, fontWeight: 400 }}>{line}</p>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14, marginTop: 16 }}>
+        {body.includes('\n') ? (
+          body.split('\n').filter(Boolean).map((line, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 20,
+              background: '#FAF8F5', borderRadius: 16,
+              padding: '22px 30px',
+              border: `1px solid ${primaryColor || gold}20`,
+            }}>
+              <span style={{ color: primaryColor || gold, fontSize: 22, flexShrink: 0 }}>◆</span>
+              <p style={{
+                color: '#333', fontSize: 32,
+                fontWeight: 500, lineHeight: 1.4, margin: 0,
+                fontFamily: "'Inter', sans-serif",
+              }}>{line}</p>
+            </div>
+          ))
+        ) : (
+          <div style={{
+            background: '#FAF8F5', borderRadius: 20,
+            padding: '36px 40px', border: `1px solid ${primaryColor || gold}30`,
+          }}>
+            <p style={{
+              color: '#444', fontSize: 34,
+              fontWeight: 400, lineHeight: 1.7, margin: 0,
+              fontFamily: "'Inter', sans-serif",
+            }}>{body}</p>
           </div>
-        ))}
+        )}
       </div>
     )}
 

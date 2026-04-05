@@ -94,16 +94,33 @@ export const NeonTechContent: React.FC<SlideTemplateProps> = ({ title, body, num
 
     {/* Body */}
     {body && (
-      <div style={{
-        border: `1px solid ${primaryColor}20`, borderRadius: 12, padding: '32px 36px',
-        background: `${primaryColor}05`, flex: 1,
-      }}>
-        {body.split('\n').filter(Boolean).map((line, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginBottom: 14 }}>
-            <span style={{ color: primaryColor, fontSize: 20, marginTop: 2, textShadow: `0 0 8px ${primaryColor}60` }}>▹</span>
-            <p style={{ color: 'rgba(255,255,255,0.75)', fontSize: 24, lineHeight: 1.5, margin: 0 }}>{line}</p>
-          </div>
-        ))}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 14, marginTop: 16 }}>
+        {body.includes('\n') ? (
+          body.split('\n').filter(Boolean).map((line, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 20,
+              background: 'rgba(255,255,255,0.03)',
+              border: `1px solid ${primaryColor}30`,
+              borderRadius: 16, padding: '22px 30px',
+              boxShadow: `0 0 20px ${primaryColor}10`,
+            }}>
+              <div style={{
+                width: 14, height: 14, borderRadius: '50%',
+                background: primaryColor, flexShrink: 0,
+                boxShadow: `0 0 12px ${primaryColor}60`,
+              }} />
+              <p style={{
+                color: 'rgba(255,255,255,0.85)', fontSize: 32,
+                fontWeight: 500, lineHeight: 1.4, margin: 0,
+              }}>{line}</p>
+            </div>
+          ))
+        ) : (
+          <p style={{
+            color: 'rgba(255,255,255,0.75)', fontSize: 34,
+            fontWeight: 400, lineHeight: 1.7, margin: 0,
+          }}>{body}</p>
+        )}
       </div>
     )}
 
