@@ -1776,6 +1776,16 @@ export default function MeusProdutos() {
           produto={reelsProduct}
         />
       )}
+      {simultaneoProduct && (
+        <PublicarSimultaneoModal
+          open={isSimultaneoModalOpen}
+          onOpenChange={(open) => {
+            setIsSimultaneoModalOpen(open);
+            if (!open) setSimultaneoProduct(null);
+          }}
+          produto={simultaneoProduct}
+        />
+      )}
     </div>
   );
 }
