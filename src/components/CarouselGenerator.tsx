@@ -34,7 +34,7 @@ export const CarouselGenerator = () => {
   const [secondaryColor, setSecondaryColor] = useState(TEMPLATE_OPTIONS['dark-premium'].secondaryColor);
   const [productImages, setProductImages] = useState<string[]>([]);
   const [logoImage, setLogoImage] = useState<string | null>(null);
-  const [profileHandle, setProfileHandle] = useState("");
+  const [profileHandle, setProfileHandle] = useState("@amzofertas");
   const [loading, setLoading] = useState(false);
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [renderedImages, setRenderedImages] = useState<string[]>([]);
