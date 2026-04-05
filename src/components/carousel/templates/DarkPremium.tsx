@@ -2,7 +2,7 @@ import React from 'react';
 import type { SlideTemplateProps } from './types';
 import { ProgressDots } from './shared';
 
-export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, secondaryColor, logoUrl, totalSlides, profileHandle }) => (
+export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, secondaryColor, logoUrl, totalSlides, profileHandle, businessName }) => (
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: `linear-gradient(145deg, #0F172A 0%, #1E293B 50%, #0F172A 100%)`,
