@@ -723,6 +723,8 @@ export default function MeusProdutos() {
   const [isAutopilotOpen, setIsAutopilotOpen] = useState(false);
   const [isReelsModalOpen, setIsReelsModalOpen] = useState(false);
   const [reelsProduct, setReelsProduct] = useState<Product | null>(null);
+  const [isSimultaneoModalOpen, setIsSimultaneoModalOpen] = useState(false);
+  const [simultaneoProduct, setSimultaneoProduct] = useState<Product | null>(null);
   
 
   // Form states
