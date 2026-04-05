@@ -106,7 +106,7 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
             }}>
               <span style={{ color: primaryColor || gold, fontSize: 22, flexShrink: 0 }}>◆</span>
               <p style={{
-                color: '#333', fontSize: 32,
+                color: '#333', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
                 fontFamily: "'Inter', sans-serif",
               }}>{line}</p>
