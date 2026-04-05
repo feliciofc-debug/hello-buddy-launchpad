@@ -17,9 +17,7 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
 
     {/* Logo GRANDE centralizada */}
     {logoUrl && (
-      <div style={{ width: 140, height: 140, borderRadius: '50%', overflow: 'hidden', marginBottom: 36, background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.25)', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <img src={logoUrl} alt="Logo" style={{ width: '80%', height: '80%', objectFit: 'contain' }} />
-      </div>
+      <img src={logoUrl} alt="Logo" style={{ maxWidth: 280, maxHeight: 120, objectFit: 'contain', marginBottom: 30 }} />
     )}
 
     {/* Glass badge */}
