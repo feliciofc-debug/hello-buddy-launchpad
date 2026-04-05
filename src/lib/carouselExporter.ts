@@ -8,6 +8,7 @@ export async function exportSlideAsPng(element: HTMLElement): Promise<string> {
     pixelRatio: 1,
     cacheBust: true,
     skipAutoScale: true,
+    skipFonts: true,
     style: {
       transform: 'scale(1)',
       transformOrigin: 'top left',
