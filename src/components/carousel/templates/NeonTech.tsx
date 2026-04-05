@@ -2,7 +2,7 @@ import React from 'react';
 import type { SlideTemplateProps } from './types';
 import { ProgressDots } from './shared';
 
-export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, secondaryColor, logoUrl, totalSlides }) => (
+export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, secondaryColor, logoUrl, totalSlides, businessName }) => (
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#09090B',
