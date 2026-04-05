@@ -8,7 +8,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#FAF8F5',
-    fontFamily: "'Playfair Display', Georgia, serif",
+    fontFamily: "Georgia, 'Times New Roman', serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '100px',
   }}>
@@ -27,7 +27,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
       <span style={{
         color: '#1A1A1A', fontSize: businessName.length > 20 ? 52 : 64, fontWeight: 800,
         letterSpacing: 4, textTransform: 'uppercase' as const, textAlign: 'center' as const,
-        fontFamily: "'Playfair Display', Georgia, serif",
+        fontFamily: "Georgia, 'Times New Roman', serif",
         marginBottom: 30,
       }}>{businessName}</span>
     )}
@@ -42,7 +42,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     <h1 style={{
       color: '#1A1A1A', fontSize: 72, fontWeight: 700, textAlign: 'center',
       lineHeight: 1.15, margin: 0, marginBottom: 30,
-      fontFamily: "'Playfair Display', Georgia, serif",
+      fontFamily: "Georgia, 'Times New Roman', serif",
     }}>
       {title}
     </h1>
@@ -51,7 +51,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     <div style={{ width: 100, height: 3, background: `linear-gradient(90deg, transparent, ${primaryColor || gold}, transparent)`, marginBottom: 30 }} />
 
     {body && (
-      <p style={{ color: '#666', fontSize: 30, textAlign: 'center', lineHeight: 1.6, margin: 0, maxWidth: 750, fontFamily: "'Inter', sans-serif", fontWeight: 400 }}>
+      <p style={{ color: '#666', fontSize: 30, textAlign: 'center', lineHeight: 1.6, margin: 0, maxWidth: 750, fontFamily: "system-ui, -apple-system, sans-serif", fontWeight: 400 }}>
         {body}
       </p>
     )}
@@ -66,7 +66,7 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#FAF8F5',
-    fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', padding: '80px',
   }}>
     {/* Frame */}
@@ -74,7 +74,7 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
 
     {/* Number with ornamental underline */}
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', marginBottom: 36 }}>
-      <span style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 72, fontWeight: 700, color: primaryColor || gold, lineHeight: 1 }}>
+      <span style={{ fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 72, fontWeight: 700, color: primaryColor || gold, lineHeight: 1 }}>
         {String(number || 1).padStart(2, '0')}
       </span>
       <div style={{ width: 50, height: 3, background: primaryColor || gold, marginTop: 8 }} />
@@ -84,7 +84,7 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
     <h2 style={{
       color: '#1A1A1A', fontSize: 52, fontWeight: 700, lineHeight: 1.15,
       margin: 0, marginBottom: 28,
-      fontFamily: "'Playfair Display', Georgia, serif",
+      fontFamily: "Georgia, 'Times New Roman', serif",
     }}>
       {title}
     </h2>
@@ -111,7 +111,7 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
               <p style={{
                 color: '#333', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
-                fontFamily: "'Inter', sans-serif",
+                fontFamily: "system-ui, -apple-system, sans-serif",
               }}>{line}</p>
             </div>
           ))
@@ -123,7 +123,7 @@ export const ElegantSerifContent: React.FC<SlideTemplateProps> = ({ title, body,
             <p style={{
               color: '#444', fontSize: 34,
               fontWeight: 400, lineHeight: 1.7, margin: 0,
-              fontFamily: "'Inter', sans-serif",
+              fontFamily: "system-ui, -apple-system, sans-serif",
             }}>{body}</p>
           </div>
         )}
@@ -147,7 +147,7 @@ export const ElegantSerifCTA: React.FC<SlideTemplateProps> = ({ title, body, pri
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#FAF8F5',
-    fontFamily: "'Playfair Display', Georgia, serif",
+    fontFamily: "Georgia, 'Times New Roman', serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '100px',
   }}>
@@ -165,13 +165,13 @@ export const ElegantSerifCTA: React.FC<SlideTemplateProps> = ({ title, body, pri
 
     <div style={{ width: 100, height: 3, background: `linear-gradient(90deg, transparent, ${primaryColor || gold}, transparent)`, marginBottom: 30 }} />
 
-    {body && <p style={{ color: '#666', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, fontFamily: "'Inter', sans-serif" }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: '#666', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, fontFamily: "system-ui, -apple-system, sans-serif" }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{ border: `2px solid ${primaryColor || gold}`, borderRadius: 4, padding: '20px 56px' }}>
-      <span style={{ color: primaryColor || gold, fontSize: 24, fontWeight: 600, letterSpacing: 3, textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>{ctaLabel || 'SAIBA MAIS'}</span>
+      <span style={{ color: primaryColor || gold, fontSize: 24, fontWeight: 600, letterSpacing: 3, textTransform: 'uppercase', fontFamily: "system-ui, -apple-system, sans-serif" }}>{ctaLabel || 'SAIBA MAIS'}</span>
     </div>
 
-    {profileHandle && <p style={{ color: '#999', fontSize: 20, marginTop: 36, fontFamily: "'Inter', sans-serif" }}>{profileHandle}</p>}
+    {profileHandle && <p style={{ color: '#999', fontSize: 20, marginTop: 36, fontFamily: "system-ui, -apple-system, sans-serif" }}>{profileHandle}</p>}
 
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={totalSlides - 1} total={totalSlides} activeColor={primaryColor || gold} inactiveColor="#D4D0C8" />

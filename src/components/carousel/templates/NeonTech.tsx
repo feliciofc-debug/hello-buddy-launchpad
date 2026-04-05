@@ -6,7 +6,7 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#09090B',
-    fontFamily: "'Space Grotesk', 'Inter', sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '80px',
   }}>
@@ -56,7 +56,7 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
     )}
 
     <div style={{ position: 'absolute', bottom: 60, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-      <span style={{ color: `${primaryColor}80`, fontSize: 14, letterSpacing: 3, fontFamily: "'Space Grotesk', monospace" }}>[ SWIPE → ]</span>
+      <span style={{ color: `${primaryColor}80`, fontSize: 14, letterSpacing: 3, fontFamily: "system-ui, -apple-system, monospace" }}>[ SWIPE → ]</span>
       <ProgressDots current={0} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.1)" />
     </div>
   </div>
@@ -66,7 +66,7 @@ export const NeonTechContent: React.FC<SlideTemplateProps> = ({ title, body, num
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#09090B',
-    fontFamily: "'Space Grotesk', 'Inter', sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', padding: '80px',
   }}>
     {/* Scan lines */}
@@ -149,7 +149,7 @@ export const NeonTechCTA: React.FC<SlideTemplateProps> = ({ title, body, primary
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#09090B',
-    fontFamily: "'Space Grotesk', 'Inter', sans-serif",
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center',
     padding: '80px',
   }}>
@@ -173,7 +173,7 @@ export const NeonTechCTA: React.FC<SlideTemplateProps> = ({ title, body, primary
       <span style={{ color: primaryColor, fontSize: 24, fontWeight: 700, letterSpacing: 2, textShadow: `0 0 10px ${primaryColor}60` }}>{ctaLabel || 'ACESSAR AGORA'}</span>
     </div>
 
-    {profileHandle && <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 20, marginTop: 36, fontFamily: "'Space Grotesk', monospace" }}>{profileHandle}</p>}
+    {profileHandle && <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 20, marginTop: 36, fontFamily: "system-ui, -apple-system, monospace" }}>{profileHandle}</p>}
 
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={totalSlides - 1} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.1)" />
