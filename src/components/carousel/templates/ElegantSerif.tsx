@@ -4,7 +4,7 @@ import { ProgressDots } from './shared';
 
 const gold = '#D4AF37';
 
-export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, logoUrl, totalSlides }) => (
+export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, primaryColor, logoUrl, totalSlides, businessName }) => (
   <div style={{
     width: 1080, height: 1350, position: 'relative', overflow: 'hidden',
     background: '#FAF8F5',
