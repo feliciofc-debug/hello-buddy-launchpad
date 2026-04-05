@@ -1,6 +1,6 @@
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -21,71 +21,98 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseKey)
 
-    // Get user's meta connection
-    const { data: metaConn, error: metaErr } = await supabase
-      .from('meta_connections')
-      .select('*')
-      .eq('user_id', user_id)
-      .single()
-
-    if (metaErr || !metaConn) {
-      return new Response(JSON.stringify({ error: 'Conexão Meta não encontrada. Conecte seu Instagram primeiro.' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
-    const { page_access_token, ig_account_id } = metaConn
-    if (!page_access_token || !ig_account_id) {
-      return new Response(JSON.stringify({ error: 'Token ou conta Instagram não configurados' }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    // Resolve IG account credentials with fallback chain (same as meta-publish-instagram)
+    const { igId, token } = await getIgCredentials(supabase, user_id)
 
     const graphUrl = 'https://graph.facebook.com/v25.0'
+
+    console.log(`📸 Criando carrossel com ${image_urls.length} imagens para IG ${igId}`)
 
     // Step 1: Create carousel item containers
     const childrenIds: string[] = []
     for (const imageUrl of image_urls) {
-      const res = await fetch(`${graphUrl}/${ig_account_id}/media`, {
+      console.log(`📸 Criando container para: ${imageUrl.substring(0, 80)}...`)
+      const res = await fetch(`${graphUrl}/${igId}/media`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           image_url: imageUrl,
           is_carousel_item: true,
-          access_token: page_access_token,
+          access_token: token,
         }),
       })
       const data = await res.json()
-      if (data.error) throw new Error(`Erro ao criar item: ${data.error.message}`)
+      if (data.error) {
+        console.error('❌ Erro ao criar item:', JSON.stringify(data.error))
+        throw new Error(`Erro ao criar item: ${data.error.message}`)
+      }
+      console.log(`✅ Container criado: ${data.id}`)
       childrenIds.push(data.id)
     }
 
     // Step 2: Create carousel container
-    const carouselRes = await fetch(`${graphUrl}/${ig_account_id}/media`, {
+    console.log(`📸 Criando container do carrossel com ${childrenIds.length} filhos...`)
+    const carouselRes = await fetch(`${graphUrl}/${igId}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         media_type: 'CAROUSEL',
         children: childrenIds.join(','),
         caption: caption || '',
-        access_token: page_access_token,
+        access_token: token,
       }),
     })
     const carouselData = await carouselRes.json()
-    if (carouselData.error) throw new Error(`Erro ao criar carrossel: ${carouselData.error.message}`)
+    if (carouselData.error) {
+      console.error('❌ Erro ao criar carrossel:', JSON.stringify(carouselData.error))
+      throw new Error(`Erro ao criar carrossel: ${carouselData.error.message}`)
+    }
+    console.log(`✅ Carrossel container criado: ${carouselData.id}`)
+
+    // Wait for processing
+    await new Promise(resolve => setTimeout(resolve, 3000))
+
+    // Check status before publishing
+    let containerReady = false
+    let attempts = 0
+    while (!containerReady && attempts < 10) {
+      const statusRes = await fetch(
+        `${graphUrl}/${carouselData.id}?fields=status_code&access_token=${token}`
+      )
+      const statusData = await statusRes.json()
+      console.log(`📋 Status do carrossel (tentativa ${attempts + 1}): ${statusData.status_code}`)
+      
+      if (statusData.status_code === 'FINISHED') {
+        containerReady = true
+      } else if (statusData.status_code === 'ERROR') {
+        throw new Error('Instagram: Erro ao processar imagens do carrossel.')
+      } else {
+        attempts++
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    }
+
+    if (!containerReady) {
+      throw new Error('Instagram: Timeout ao processar carrossel.')
+    }
 
     // Step 3: Publish
-    const publishRes = await fetch(`${graphUrl}/${ig_account_id}/media_publish`, {
+    console.log('📸 Publicando carrossel...')
+    const publishRes = await fetch(`${graphUrl}/${igId}/media_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         creation_id: carouselData.id,
-        access_token: page_access_token,
+        access_token: token,
       }),
     })
     const publishData = await publishRes.json()
-    if (publishData.error) throw new Error(`Erro ao publicar: ${publishData.error.message}`)
+    if (publishData.error) {
+      console.error('❌ Erro ao publicar:', JSON.stringify(publishData.error))
+      throw new Error(`Erro ao publicar: ${publishData.error.message}`)
+    }
 
+    console.log('✅ Carrossel publicado! ID:', publishData.id)
     return new Response(JSON.stringify({ success: true, id: publishData.id }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
@@ -96,3 +123,43 @@ Deno.serve(async (req) => {
     })
   }
 })
+
+async function getIgCredentials(supabase: any, userId: string): Promise<{ igId: string, token: string }> {
+  // 1. meta_connections (multi-tenant)
+  const { data: metaConn } = await supabase
+    .from('meta_connections')
+    .select('ig_account_id, page_access_token')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .single()
+
+  if (metaConn?.ig_account_id && metaConn?.page_access_token) {
+    console.log('✅ IG Account via meta_connections:', metaConn.ig_account_id)
+    return { igId: metaConn.ig_account_id, token: metaConn.page_access_token }
+  }
+
+  // 2. Fallback: integrations table (legacy)
+  if (userId) {
+    const { data: integration } = await supabase
+      .from('integrations')
+      .select('access_token')
+      .eq('user_id', userId)
+      .eq('platform', 'meta_page_855785300949909')
+      .eq('is_active', true)
+      .single()
+
+    if (integration?.access_token) {
+      console.log('⚠️ Usando token integrations (legado)')
+      return { igId: '17841477660295647', token: integration.access_token }
+    }
+  }
+
+  // 3. Last fallback: admin secret
+  const fallbackToken = Deno.env.get('META_PAGE_ACCESS_TOKEN')
+  if (fallbackToken) {
+    console.log('⚠️ Usando fallback META_PAGE_ACCESS_TOKEN')
+    return { igId: '17841477660295647', token: fallbackToken }
+  }
+
+  throw new Error('Instagram não conectado. Vá em Configurações → Redes Sociais e conecte sua conta.')
+}
