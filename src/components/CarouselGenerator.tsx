@@ -283,6 +283,10 @@ REGRAS:
             </div>
 
             <div className="space-y-2">
+              <Label className="font-semibold">Nome da empresa</Label>
+              <Input value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Ex: AMZ Ofertas" />
+            </div>
+            <div className="space-y-2">
               <Label className="font-semibold">@ perfil</Label>
               <Input value={profileHandle} onChange={e => setProfileHandle(e.target.value)} placeholder="@seuperfil" />
             </div>
