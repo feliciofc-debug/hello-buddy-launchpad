@@ -48,7 +48,7 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     <div style={{ width: 100, height: 3, background: `linear-gradient(90deg, transparent, ${primaryColor || gold}, transparent)`, marginBottom: 30 }} />
 
     {body && (
-      <p style={{ color: '#666', fontSize: 24, textAlign: 'center', lineHeight: 1.6, margin: 0, maxWidth: 750, fontFamily: "'Inter', sans-serif", fontWeight: 400 }}>
+      <p style={{ color: '#666', fontSize: 30, textAlign: 'center', lineHeight: 1.6, margin: 0, maxWidth: 750, fontFamily: "'Inter', sans-serif", fontWeight: 400 }}>
         {body}
       </p>
     )}
