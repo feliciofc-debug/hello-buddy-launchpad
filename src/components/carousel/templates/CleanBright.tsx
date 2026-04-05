@@ -95,7 +95,7 @@ export const CleanBrightContent: React.FC<SlideTemplateProps> = ({ title, body, 
               boxShadow: '0 2px 8px rgba(0,0,0,0.02)',
             }}>
               <div style={{
-                width: 14, height: 14, borderRadius: '50%',
+                width: 18, height: 18, borderRadius: '50%',
                 background: primaryColor, flexShrink: 0,
               }} />
               <p style={{
