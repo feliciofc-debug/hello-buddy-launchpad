@@ -144,7 +144,7 @@ export const GradientVibrantCTA: React.FC<SlideTemplateProps> = ({ title, body, 
       {title}
     </h2>
 
-    {body && <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 24, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50 }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50 }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{
       background: '#FFFFFF', borderRadius: 60, padding: '22px 60px',

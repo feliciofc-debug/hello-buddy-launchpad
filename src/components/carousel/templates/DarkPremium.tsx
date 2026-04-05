@@ -167,7 +167,7 @@ export const DarkPremiumCTA: React.FC<SlideTemplateProps> = ({ title, body, prim
 
     {/* Body */}
     {body && (
-      <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 26, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, maxWidth: 800 }}>
+      <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, maxWidth: 800 }}>
         {body.replace(/\\n/g, '\n')}
       </p>
     )}

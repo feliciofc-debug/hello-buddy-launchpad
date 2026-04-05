@@ -138,7 +138,7 @@ REGRAS:
         contentTotal: totalContentSlides,
         imageUrl: s.type === "cover" ? productImages[0] : (productImages[Math.min(i, productImages.length - 1)] || undefined),
         logoUrl: logoImage || undefined,
-        profileHandle: s.type === "cta" ? (profileHandle || "@seuperfil") : undefined,
+        profileHandle: s.type === "cta" ? (profileHandle || "@amzofertas") : undefined,
       }));
 
       setSlides(slideData);

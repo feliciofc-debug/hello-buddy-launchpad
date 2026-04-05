@@ -162,7 +162,7 @@ export const ElegantSerifCTA: React.FC<SlideTemplateProps> = ({ title, body, pri
 
     <div style={{ width: 100, height: 3, background: `linear-gradient(90deg, transparent, ${primaryColor || gold}, transparent)`, marginBottom: 30 }} />
 
-    {body && <p style={{ color: '#666', fontSize: 22, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, fontFamily: "'Inter', sans-serif" }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: '#666', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, fontFamily: "'Inter', sans-serif" }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{ border: `2px solid ${primaryColor || gold}`, borderRadius: 4, padding: '20px 56px' }}>
       <span style={{ color: primaryColor || gold, fontSize: 24, fontWeight: 600, letterSpacing: 3, textTransform: 'uppercase', fontFamily: "'Inter', sans-serif" }}>{ctaLabel || 'SAIBA MAIS'}</span>

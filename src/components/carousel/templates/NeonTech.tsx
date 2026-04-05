@@ -161,7 +161,7 @@ export const NeonTechCTA: React.FC<SlideTemplateProps> = ({ title, body, primary
       {title}
     </h2>
 
-    {body && <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 22, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50 }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50 }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{
       border: `2px solid ${primaryColor}`, borderRadius: 8, padding: '22px 56px',

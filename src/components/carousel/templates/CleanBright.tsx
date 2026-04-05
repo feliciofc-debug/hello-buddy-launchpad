@@ -146,7 +146,7 @@ export const CleanBrightCTA: React.FC<SlideTemplateProps> = ({ title, body, prim
       {title}
     </h2>
 
-    {body && <p style={{ color: '#64748B', fontSize: 24, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, maxWidth: 800 }}>{body.replace(/\\n/g, '\n')}</p>}
+    {body && <p style={{ color: '#64748B', fontSize: 28, textAlign: 'center', lineHeight: 1.6, margin: 0, marginBottom: 50, maxWidth: 800 }}>{body.replace(/\\n/g, '\n')}</p>}
 
     <div style={{ background: primaryColor, borderRadius: 60, padding: '22px 60px', boxShadow: `0 8px 30px ${primaryColor}40` }}>
       <span style={{ color: '#FFF', fontSize: 26, fontWeight: 700 }}>{ctaLabel || 'COMECE AGORA'}</span>
