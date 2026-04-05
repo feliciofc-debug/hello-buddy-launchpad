@@ -21,6 +21,7 @@ export interface SlideData {
   contentTotal?: number;
   imageUrl?: string;
   logoUrl?: string;
+  businessName?: string;
   profileHandle?: string;
   highlight?: string;
   ctaLabel?: string;
@@ -35,6 +36,7 @@ export const CarouselGenerator = () => {
   const [productImages, setProductImages] = useState<string[]>([]);
   const [logoImage, setLogoImage] = useState<string | null>(null);
   const [profileHandle, setProfileHandle] = useState("@amzofertas");
+  const [businessName, setBusinessName] = useState("");
   const [loading, setLoading] = useState(false);
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [renderedImages, setRenderedImages] = useState<string[]>([]);
@@ -138,6 +140,7 @@ REGRAS:
         contentTotal: totalContentSlides,
         imageUrl: s.type === "cover" ? productImages[0] : (productImages[Math.min(i, productImages.length - 1)] || undefined),
         logoUrl: logoImage || undefined,
+        businessName: businessName || undefined,
         profileHandle: s.type === "cta" ? (profileHandle || "@amzofertas") : undefined,
       }));
 
@@ -280,6 +283,10 @@ REGRAS:
             </div>
 
             <div className="space-y-2">
+              <Label className="font-semibold">Nome da empresa</Label>
+              <Input value={businessName} onChange={e => setBusinessName(e.target.value)} placeholder="Ex: AMZ Ofertas" />
+            </div>
+            <div className="space-y-2">
               <Label className="font-semibold">@ perfil</Label>
               <Input value={profileHandle} onChange={e => setProfileHandle(e.target.value)} placeholder="@seuperfil" />
             </div>
@@ -361,6 +368,7 @@ REGRAS:
             contentTotal={slide.contentTotal}
             imageUrl={slide.imageUrl}
             logoUrl={slide.logoUrl}
+            businessName={slide.businessName}
             profileHandle={slide.profileHandle}
             primaryColor={primaryColor}
             secondaryColor={secondaryColor}

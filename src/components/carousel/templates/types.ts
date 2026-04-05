@@ -7,6 +7,7 @@ export interface SlideTemplateProps {
   contentTotal?: number;
   imageUrl?: string;
   logoUrl?: string;
+  businessName?: string;
   profileHandle?: string;
   primaryColor: string;
   secondaryColor: string;
