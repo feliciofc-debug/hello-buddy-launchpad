@@ -99,7 +99,7 @@ export const CleanBrightContent: React.FC<SlideTemplateProps> = ({ title, body, 
                 background: primaryColor, flexShrink: 0,
               }} />
               <p style={{
-                color: '#1E293B', fontSize: 32,
+                color: '#1E293B', fontSize: 36,
                 fontWeight: 500, lineHeight: 1.4, margin: 0,
               }}>{line}</p>
             </div>
