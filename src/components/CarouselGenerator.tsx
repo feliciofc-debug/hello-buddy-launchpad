@@ -21,6 +21,7 @@ export interface SlideData {
   contentTotal?: number;
   imageUrl?: string;
   logoUrl?: string;
+  businessName?: string;
   profileHandle?: string;
   highlight?: string;
   ctaLabel?: string;
