@@ -121,8 +121,13 @@ const ProductForm = ({
   imageFile,
   setImageFile,
   previewImage,
-  currentImageUrl
+  currentImageUrl,
+  extraImageFiles,
+  setExtraImageFiles,
+  existingExtraImages,
+  setExistingExtraImages
 }: ProductFormProps) => {
+  const extraPreviews = extraImageFiles.map(f => f ? URL.createObjectURL(f) : null);
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
