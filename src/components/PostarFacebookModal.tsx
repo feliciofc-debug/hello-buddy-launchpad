@@ -56,6 +56,31 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
   const [horaAgendamento, setHoraAgendamento] = useState("10:00");
   const [pageId, setPageId] = useState<string>("");
   const [metaConnected, setMetaConnected] = useState(false);
+  const [allImages, setAllImages] = useState<string[]>([]);
+
+  const loadAllImages = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('produtos')
+        .select('imagem_url, imagens')
+        .eq('id', produto.id)
+        .single();
+      if (data) {
+        const imgs = getAllProductImages((data as any).imagem_url, (data as any).imagens);
+        console.log('📸 Facebook modal - todas as fotos:', imgs);
+        setAllImages(imgs);
+      }
+    } catch (e) {
+      const fallback = getAllProductImages(produto.imagem_url || null, (produto as any).imagens);
+      setAllImages(fallback);
+    }
+  }, [produto.id, produto.imagem_url]);
+
+  useEffect(() => {
+    if (open) loadAllImages();
+  }, [open, loadAllImages]);
+
+  const isCarousel = allImages.length >= 2;
 
   useEffect(() => {
     const loadPageId = async () => {
