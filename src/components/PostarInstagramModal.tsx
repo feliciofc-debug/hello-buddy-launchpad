@@ -286,17 +286,33 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           </div>
         )}
 
-        {/* Produto Info */}
-        <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 overflow-hidden">
-          {produto.imagem_url && (
-            <img src={produto.imagem_url} alt={produto.nome} className="w-16 h-16 rounded-lg object-cover" />
-          )}
-          <div className="min-w-0 overflow-hidden">
-            <p className="font-medium text-sm break-words line-clamp-2">{produto.nome}</p>
-            {produto.preco && (
-              <p className="text-sm text-muted-foreground">R$ {produto.preco.toFixed(2)}</p>
+        {/* Produto Info + fotos */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 overflow-hidden">
+            {allImages[0] && (
+              <img src={allImages[0]} alt={produto.nome} className="w-16 h-16 rounded-lg object-cover" />
             )}
+            <div className="min-w-0 overflow-hidden">
+              <p className="font-medium text-sm break-words line-clamp-2">{produto.nome}</p>
+              {produto.preco && (
+                <p className="text-sm text-muted-foreground">R$ {produto.preco.toFixed(2)}</p>
+              )}
+            </div>
           </div>
+          {allImages.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">
+                {isCarousel
+                  ? `📸 ${allImages.length} fotos — será publicado como CARROSSEL`
+                  : '📸 1 foto — post simples'}
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                {allImages.map((url, i) => (
+                  <img key={i} src={url} alt={`Foto ${i+1}`} className="w-full aspect-square object-cover rounded border" />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Gerar texto com IA */}
