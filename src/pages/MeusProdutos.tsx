@@ -173,7 +173,7 @@ const ProductForm = ({
     {/* Upload de Imagem */}
     <div className="space-y-2">
       <Label>Imagem do Produto</Label>
-      <div className="border-2 border-dashed rounded-lg p-4">
+      <div className="space-y-4 border-2 border-dashed rounded-lg p-4">
         {(previewImage || currentImageUrl) && !imageFile && currentImageUrl ? (
           <div className="relative">
             <img 
@@ -230,7 +230,7 @@ const ProductForm = ({
           <div className="mt-3">
             <Label 
               htmlFor="image-upload-change" 
-              className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm"
+              className="cursor-pointer inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <Upload className="w-4 h-4" />
               Alterar Imagem
@@ -244,6 +244,81 @@ const ProductForm = ({
             />
           </div>
         )}
+
+        <div className="space-y-2 border-t border-border pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <Label>Fotos adicionais para post (até 5)</Label>
+              <p className="text-xs text-muted-foreground">
+                Anexe até 5 imagens para carrossel e publicações múltiplas.
+              </p>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {existingExtraImages.length + extraImageFiles.filter(Boolean).length}/5
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {existingExtraImages.map((url, idx) => (
+              <div key={`visible-existing-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
+                <img src={url} className="h-full w-full object-cover" alt={`Foto adicional ${idx + 1}`} />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="absolute right-1 top-1 h-6 w-6 p-0"
+                  onClick={() => setExistingExtraImages(existingExtraImages.filter((_, i) => i !== idx))}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+
+            {extraImageFiles.map((file, idx) =>
+              file ? (
+                <div key={`visible-new-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
+                  <img src={extraPreviews[idx]!} className="h-full w-full object-cover" alt={`Nova foto ${idx + 1}`} />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="absolute right-1 top-1 h-6 w-6 p-0"
+                    onClick={() => setExtraImageFiles(extraImageFiles.filter((_, i) => i !== idx))}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : null
+            )}
+
+            {existingExtraImages.length + extraImageFiles.filter(Boolean).length < 5 && (
+              <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed border-border bg-muted/20 transition-colors hover:bg-muted/50">
+                <ImageIcon className="mb-1 h-6 w-6 text-muted-foreground" />
+                <span className="text-center text-xs text-muted-foreground">Anexar foto</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (!file.type.startsWith('image/')) {
+                        toast.error('Apenas imagens são permitidas');
+                        return;
+                      }
+                      if (file.size > 5 * 1024 * 1024) {
+                        toast.error('Imagem muito grande. Máximo 5MB');
+                        return;
+                      }
+                      setExtraImageFiles([...extraImageFiles, file]);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+          </div>
+        </div>
       </div>
     </div>
 
