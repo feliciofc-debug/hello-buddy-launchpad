@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { CalendarIcon, Sparkles, Loader2, Instagram, Send, Clock, AlertTriangle } from "lucide-react";
+import { getAllProductImages } from "@/components/ProductImageCarousel";
 import { cn } from "@/lib/utils";
 import {
   clampTimeForToday,
