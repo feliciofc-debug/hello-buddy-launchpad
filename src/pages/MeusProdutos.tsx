@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram, Video } from 'lucide-react';
+import { ProductImageCarousel } from '@/components/ProductImageCarousel';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -1347,19 +1348,15 @@ export default function MeusProdutos() {
                 <CardHeader>
                   <div className="flex items-start justify-between mb-3">
                     <div className="relative">
-                      {product.imagem_url ? (
-                        <div className="relative">
-                          <img src={product.imagem_url} alt={product.nome} className="w-16 h-16 object-cover rounded" />
-                          
-                          {/* CONTADOR DE ENVIOS */}
-                          {product.campanha && product.campanha.total_enviados > 0 && (
-                            <div className="absolute -bottom-2 -left-2 bg-black/70 text-white px-2 py-0.5 rounded text-[10px]">
-                              📤 {product.campanha.total_enviados}
-                            </div>
-                          )}
+                      <ProductImageCarousel
+                        imagem_url={product.imagem_url}
+                        imagens={product.imagens}
+                        alt={product.nome}
+                      />
+                      {product.campanha && product.campanha.total_enviados > 0 && (
+                        <div className="absolute -bottom-2 -left-2 bg-black/70 text-white px-2 py-0.5 rounded text-[10px]">
+                          📤 {product.campanha.total_enviados}
                         </div>
-                       ) : (
-                        <ImageIcon className="w-16 h-16 text-muted-foreground" />
                       )}
                     </div>
                     
