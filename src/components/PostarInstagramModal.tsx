@@ -201,22 +201,32 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       if (insertError) throw insertError;
 
       if (modoEnvio === "agora") {
-        const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
-          body: {
-            caption: captionFinal,
-            image_url: produto.imagem_url,
-            user_id: user.id,
-          },
-        });
-
-        if (pubError) throw pubError;
-
-        if (!pubData?.success) {
-          throw new Error(pubData?.error || "Erro ao publicar no Instagram");
+        if (allImages.length >= 2) {
+          // Carrossel no Instagram
+          console.log(`📸 Publicando carrossel Instagram com ${allImages.length} fotos`);
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-carousel", {
+            body: {
+              caption: captionFinal,
+              image_urls: allImages,
+              user_id: user.id,
+            },
+          });
+          if (pubError) throw pubError;
+          if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar carrossel");
+          toast.success(`✅ Carrossel com ${allImages.length} fotos publicado no Instagram!`);
+        } else {
+          // Post simples
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
+            body: {
+              caption: captionFinal,
+              image_url: allImages[0],
+              user_id: user.id,
+            },
+          });
+          if (pubError) throw pubError;
+          if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
+          toast.success(`✅ Publicado no Instagram!`);
         }
-
-        const postId = pubData?.post_id || "OK";
-        toast.success(`✅ Publicado no Instagram! Post ID: ${postId}`);
       } else {
         const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
         toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaFinal}`);
