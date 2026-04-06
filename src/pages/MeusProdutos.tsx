@@ -170,154 +170,101 @@ const ProductForm = ({
       />
     </div>
 
-    {/* Upload de Imagem */}
+    {/* Upload de Fotos do Produto (até 5) */}
     <div className="space-y-2">
-      <Label>Imagem do Produto</Label>
-      <div className="space-y-4 border-2 border-dashed rounded-lg p-4">
-        {(previewImage || currentImageUrl) && !imageFile && currentImageUrl ? (
-          <div className="relative">
-            <img 
-              src={currentImageUrl} 
-              alt="Produto atual" 
-              className="w-full h-48 object-cover rounded"
-            />
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              Imagem atual do produto
-            </p>
-          </div>
-        ) : previewImage ? (
-          <div className="relative">
-            <img 
-              src={previewImage} 
-              alt="Preview" 
-              className="w-full h-48 object-cover rounded"
-            />
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              className="absolute top-2 right-2"
-              onClick={removeImage}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              Nova imagem selecionada
-            </p>
-          </div>
-        ) : (
-          <div className="text-center">
-            <Upload className="w-12 h-12 mx-auto text-muted-foreground mb-2" />
-            <Label 
-              htmlFor="image-upload" 
-              className="cursor-pointer text-primary hover:underline"
-            >
-              Clique para selecionar uma imagem
-            </Label>
-            <input
-              id="image-upload"
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="hidden"
-            />
-            <p className="text-xs text-muted-foreground mt-2">
-              PNG, JPG ou WEBP (máx. 5MB)
-            </p>
-          </div>
-        )}
-        {(previewImage || (currentImageUrl && !previewImage)) && (
-          <div className="mt-3">
-            <Label 
-              htmlFor="image-upload-change" 
-              className="cursor-pointer inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground transition-colors hover:bg-primary/90"
-            >
-              <Upload className="w-4 h-4" />
-              Alterar Imagem
-            </Label>
-            <input
-              id="image-upload-change"
-              type="file"
-              accept="image/*"
-              onChange={handleImageChange}
-              className="hidden"
-            />
-          </div>
-        )}
-
-        <div className="space-y-2 border-t border-border pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <Label>Fotos adicionais para post (até 5)</Label>
-              <p className="text-xs text-muted-foreground">
-                Anexe até 5 imagens para carrossel e publicações múltiplas.
-              </p>
+      <div className="flex items-center justify-between">
+        <Label>Fotos do produto (até 5)</Label>
+        <span className="text-xs text-muted-foreground">
+          {(currentImageUrl && !imageFile ? 1 : imageFile ? 1 : 0) + existingExtraImages.length + extraImageFiles.filter(Boolean).length}/5
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        A primeira foto será a principal do card. Com 2+ fotos, a publicação será feita como carrossel.
+      </p>
+      <div className="border-2 border-dashed rounded-lg p-4">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          {/* Foto principal */}
+          {(previewImage || (currentImageUrl && !imageFile)) && (
+            <div className="relative aspect-square overflow-hidden rounded border-2 border-primary bg-muted/20">
+              <img src={previewImage || currentImageUrl!} className="h-full w-full object-cover" alt="Foto principal" />
+              <span className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">Principal</span>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="absolute right-1 top-1 h-6 w-6 p-0"
+                onClick={removeImage}
+              >
+                <X className="h-3 w-3" />
+              </Button>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {existingExtraImages.length + extraImageFiles.filter(Boolean).length}/5
-            </span>
-          </div>
+          )}
 
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
-            {existingExtraImages.map((url, idx) => (
-              <div key={`visible-existing-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
-                <img src={url} className="h-full w-full object-cover" alt={`Foto adicional ${idx + 1}`} />
+          {/* Fotos extras já salvas */}
+          {existingExtraImages.map((url, idx) => (
+            <div key={`existing-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
+              <img src={url} className="h-full w-full object-cover" alt={`Foto ${idx + 2}`} />
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="absolute right-1 top-1 h-6 w-6 p-0"
+                onClick={() => setExistingExtraImages(existingExtraImages.filter((_, i) => i !== idx))}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+
+          {/* Fotos extras novas (upload) */}
+          {extraImageFiles.map((file, idx) =>
+            file ? (
+              <div key={`new-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
+                <img src={URL.createObjectURL(file)} className="h-full w-full object-cover" alt={`Nova foto ${idx + 1}`} />
                 <Button
                   type="button"
                   variant="destructive"
                   size="sm"
                   className="absolute right-1 top-1 h-6 w-6 p-0"
-                  onClick={() => setExistingExtraImages(existingExtraImages.filter((_, i) => i !== idx))}
+                  onClick={() => setExtraImageFiles(extraImageFiles.filter((_, i) => i !== idx))}
                 >
                   <X className="h-3 w-3" />
                 </Button>
               </div>
-            ))}
+            ) : null
+          )}
 
-            {extraImageFiles.map((file, idx) =>
-              file ? (
-                <div key={`visible-new-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
-                  <img src={extraPreviews[idx]!} className="h-full w-full object-cover" alt={`Nova foto ${idx + 1}`} />
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    className="absolute right-1 top-1 h-6 w-6 p-0"
-                    onClick={() => setExtraImageFiles(extraImageFiles.filter((_, i) => i !== idx))}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : null
-            )}
-
-            {existingExtraImages.length + extraImageFiles.filter(Boolean).length < 5 && (
-              <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed border-border bg-muted/20 transition-colors hover:bg-muted/50">
-                <ImageIcon className="mb-1 h-6 w-6 text-muted-foreground" />
-                <span className="text-center text-xs text-muted-foreground">Anexar foto</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      if (!file.type.startsWith('image/')) {
-                        toast.error('Apenas imagens são permitidas');
-                        return;
-                      }
-                      if (file.size > 5 * 1024 * 1024) {
-                        toast.error('Imagem muito grande. Máximo 5MB');
-                        return;
-                      }
-                      setExtraImageFiles([...extraImageFiles, file]);
-                    }
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-            )}
-          </div>
+          {/* Botão adicionar foto */}
+          {((currentImageUrl && !imageFile ? 1 : imageFile ? 1 : 0) + existingExtraImages.length + extraImageFiles.filter(Boolean).length) < 5 && (
+            <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed border-border bg-muted/20 transition-colors hover:bg-muted/50">
+              <ImageIcon className="mb-1 h-6 w-6 text-muted-foreground" />
+              <span className="text-center text-xs text-muted-foreground">Anexar foto</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (!file.type.startsWith('image/')) {
+                    toast.error('Apenas imagens JPG, PNG ou WEBP');
+                    return;
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    toast.error('Imagem muito grande. Máximo 5MB');
+                    return;
+                  }
+                  // Se não tem foto principal, seta como principal
+                  if (!imageFile && !currentImageUrl) {
+                    setImageFile(file);
+                  } else {
+                    setExtraImageFiles([...extraImageFiles, file]);
+                  }
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          )}
         </div>
       </div>
     </div>
