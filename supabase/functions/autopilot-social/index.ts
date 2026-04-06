@@ -397,23 +397,37 @@ function calcularHorarios(inicio: string, fim: string, quantidade: number, agora
   const [hFim, mFim] = fim.split(':').map(Number)
   const inicioMin = hInicio * 60 + mInicio
   const fimMin = hFim * 60 + mFim
-  const janelaMin = Math.max(fimMin - inicioMin, 30)
   const horarios: Date[] = []
 
   if (quantidade <= 0) return horarios
 
+  const agoraMin = agoraSaoPaulo.getHours() * 60 + agoraSaoPaulo.getMinutes()
+  const primeiroHorarioMin = Math.max(inicioMin, agoraMin + 5)
+
+  // Se a janela do dia praticamente acabou, mantém o disparo ainda hoje
+  // em cadência curta, em vez de empurrar tudo para amanhã.
+  if (primeiroHorarioMin >= fimMin) {
+    for (let i = 0; i < quantidade; i++) {
+      const minutos = primeiroHorarioMin + (i * 10)
+      const d = createUtcDateFromSaoPaulo(agoraSaoPaulo, Math.floor(minutos / 60), minutos % 60)
+      ajustarHorarioSePassou(d, agoraSaoPaulo)
+      horarios.push(d)
+    }
+    return horarios
+  }
+
   if (quantidade === 1) {
-    const meioMin = inicioMin + Math.floor(janelaMin / 2)
-    const d = createUtcDateFromSaoPaulo(agoraSaoPaulo, Math.floor(meioMin / 60), meioMin % 60)
+    const d = createUtcDateFromSaoPaulo(agoraSaoPaulo, Math.floor(primeiroHorarioMin / 60), primeiroHorarioMin % 60)
     ajustarHorarioSePassou(d, agoraSaoPaulo)
     horarios.push(d)
     return horarios
   }
 
-  const intervaloMin = Math.max(Math.floor(janelaMin / quantidade), 1)
+  const janelaRestanteMin = Math.max(fimMin - primeiroHorarioMin, 1)
+  const intervaloMin = Math.max(Math.floor(janelaRestanteMin / quantidade), 10)
 
   for (let i = 0; i < quantidade; i++) {
-    const minutos = inicioMin + (intervaloMin * i) + Math.floor(intervaloMin / 2)
+    const minutos = primeiroHorarioMin + (intervaloMin * i)
     const d = createUtcDateFromSaoPaulo(agoraSaoPaulo, Math.floor(minutos / 60), minutos % 60)
     ajustarHorarioSePassou(d, agoraSaoPaulo)
     horarios.push(d)
