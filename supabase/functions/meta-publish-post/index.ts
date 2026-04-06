@@ -139,12 +139,8 @@ async function getPageToken(supabase: any, userId: string, pageId: string): Prom
     }
   }
 
-  // 3. Último fallback: secret fixo (apenas para admin/testes)
-  const fallback = Deno.env.get('META_PAGE_ACCESS_TOKEN')
-  if (fallback) {
-    console.log('⚠️ Usando fallback META_PAGE_ACCESS_TOKEN (admin)')
-    return { token: fallback, actualPageId: pageId || '855785300949909' }
-  }
+  // 3. Sem fallback admin - cada cliente deve ter sua própria conexão
+  throw new Error('Conta Meta não conectada. Vá em Configurações → Redes Sociais e conecte sua conta do Facebook.')
 
   throw new Error('Conta Meta não conectada. Vá em Configurações → Redes Sociais e conecte sua conta do Facebook.')
 }

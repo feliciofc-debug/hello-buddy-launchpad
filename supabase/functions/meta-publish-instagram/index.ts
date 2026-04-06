@@ -162,12 +162,8 @@ async function getIgAccountId(supabase: any, userId: string): Promise<{ igId: st
     }
   }
 
-  // 3. Último fallback: secret fixo (admin)
-  const fallbackToken = Deno.env.get('META_PAGE_ACCESS_TOKEN')
-  if (fallbackToken) {
-    console.log('⚠️ Usando fallback META_PAGE_ACCESS_TOKEN com IG admin')
-    return { igId: '17841477660295647', token: fallbackToken }
-  }
+  // 3. Sem fallback admin - cada cliente deve ter sua própria conexão
+  throw new Error('Instagram não conectado. Vá em Configurações → Redes Sociais e conecte sua conta.')
 
   throw new Error('Instagram não conectado. Vá em Configurações → Redes Sociais e conecte sua conta.')
 }
