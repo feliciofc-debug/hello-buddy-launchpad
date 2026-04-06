@@ -1054,7 +1054,7 @@ export default function MeusProdutos() {
           especificacoes: formData.especificacoes || null,
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
-          imagens: formData.imagens || [],
+          imagens: existingExtraImages || [],
           tipo: formData.tipo || 'fisico',
           ficha_tecnica: formData.ficha_tecnica || null,
           informacao_nutricional: formData.informacao_nutricional || null,
