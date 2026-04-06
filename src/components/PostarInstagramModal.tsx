@@ -157,10 +157,10 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       return;
     }
 
-    if (!produto.imagem_url) {
-      toast.error("Instagram requer uma imagem. Este produto não tem imagem cadastrada.");
-      return;
-    }
+      if (allImages.length === 0) {
+        toast.error("Instagram requer uma imagem. Este produto não tem imagem cadastrada.");
+        return;
+      }
 
     const captionFinal = incluirLink && linkProduto
       ? `${textoPost.trim()}\n\n🔗 Link na bio ou acesse: ${linkProduto}`
