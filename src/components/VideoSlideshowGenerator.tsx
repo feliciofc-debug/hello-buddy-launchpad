@@ -336,8 +336,13 @@ export const VideoSlideshowGenerator = () => {
       const { data: publicUrl } = supabase.storage.from("videos").getPublicUrl(fileName);
       if (!publicUrl?.publicUrl) throw new Error("Não foi possível gerar URL pública");
 
-      const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-reels", {
-        body: { platform, video_url: publicUrl.publicUrl, caption, user_id: user.id },
+      const functionName = platform === "facebook" ? "meta-publish-post" : "meta-publish-instagram";
+      const body = platform === "facebook"
+        ? { message: caption, video_url: publicUrl.publicUrl, user_id: user.id }
+        : { caption, video_url: publicUrl.publicUrl, user_id: user.id };
+
+      const { data: pubData, error: pubError } = await supabase.functions.invoke(functionName, {
+        body,
       });
 
       if (pubError) throw pubError;
