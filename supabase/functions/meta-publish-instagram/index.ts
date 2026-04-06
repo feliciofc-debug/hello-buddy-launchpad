@@ -42,14 +42,21 @@ serve(async (req) => {
 
       if (error || !data) throw new Error('Post não encontrado')
       posts = [data]
-    } else if (body.caption && body.image_url) {
+    } else if (body.video_url && body.caption) {
+      // Publicação direta de vídeo (Reels)
       const { igId, token } = await getIgAccountId(supabase, body.user_id)
-      const result = await publishToInstagram(token, igId, body.caption, body.image_url)
+      const result = await publishReelsToInstagram(token, igId, body.caption, body.video_url, body.cover_url)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
-    } else if (!body.image_url && body.caption) {
-      throw new Error('Instagram requer uma imagem para publicação. Selecione uma imagem do produto.')
+    } else if (body.caption && body.image_url) {
+      const { igId, token } = await getIgAccountId(supabase, body.user_id)
+      const result = await publishImageToInstagram(token, igId, body.caption, body.image_url)
+      return new Response(JSON.stringify({ success: true, ...result }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    } else if (!body.image_url && !body.video_url && body.caption) {
+      throw new Error('Instagram requer uma imagem ou vídeo para publicação.')
     }
 
     console.log(`📸 Processando ${posts.length} posts para Instagram...`)
@@ -57,8 +64,8 @@ serve(async (req) => {
 
     for (const post of posts) {
       try {
-        if (!post.image_url) {
-          throw new Error('Instagram requer image_url para publicação')
+        if (!post.image_url && !post.video_url) {
+          throw new Error('Instagram requer image_url ou video_url para publicação')
         }
 
         await supabase.from('social_posts_queue')
@@ -66,7 +73,16 @@ serve(async (req) => {
           .eq('id', post.id)
 
         const { igId, token } = await getIgAccountId(supabase, post.user_id)
-        const result = await publishToInstagram(token, igId, post.post_text, post.image_url)
+        
+        let result: { post_id: string }
+        
+        if (post.video_url) {
+          // Publicar como Reels
+          result = await publishReelsToInstagram(token, igId, post.post_text, post.video_url)
+        } else {
+          // Publicar como imagem
+          result = await publishImageToInstagram(token, igId, post.post_text, post.image_url)
+        }
 
         await supabase.from('social_posts_queue')
           .update({
@@ -156,15 +172,15 @@ async function getIgAccountId(supabase: any, userId: string): Promise<{ igId: st
   throw new Error('Instagram não conectado. Vá em Configurações → Redes Sociais e conecte sua conta.')
 }
 
-async function publishToInstagram(
+// === PUBLICAR IMAGEM ===
+async function publishImageToInstagram(
   pageToken: string,
   igAccountId: string,
   caption: string,
   imageUrl: string
 ): Promise<{ post_id: string }> {
 
-  console.log('📸 Passo 1: Criando container no Instagram...', { igAccountId })
-  console.log('Image URL:', imageUrl)
+  console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
 
   // Passo 1: Criar container de mídia
   const containerResponse = await fetch(
@@ -181,46 +197,106 @@ async function publishToInstagram(
   )
 
   const containerResult = await containerResponse.json()
-
   if (containerResult.error) {
-    console.error('❌ Erro ao criar container:', containerResult.error)
     throw new Error(`Instagram API (container): ${containerResult.error.message}`)
   }
 
   const creationId = containerResult.id
   console.log('✅ Container criado:', creationId)
 
-  // Aguardar o Instagram processar a imagem
-  await new Promise(resolve => setTimeout(resolve, 3000))
+  // Aguardar processamento
+  await waitForContainer(creationId, pageToken)
 
-  // Verificar status do container antes de publicar
-  let containerReady = false
+  // Passo 2: Publicar
+  return await publishContainer(igAccountId, creationId, pageToken)
+}
+
+// === PUBLICAR VÍDEO (REELS) ===
+async function publishReelsToInstagram(
+  pageToken: string,
+  igAccountId: string,
+  caption: string,
+  videoUrl: string,
+  coverUrl?: string
+): Promise<{ post_id: string }> {
+
+  console.log('🎬 Publicando REELS no Instagram...', { igAccountId, videoUrl })
+
+  // Passo 1: Criar container de vídeo (Reels)
+  const containerBody: Record<string, string> = {
+    media_type: 'REELS',
+    video_url: videoUrl,
+    caption: caption || '',
+    access_token: pageToken
+  }
+  
+  if (coverUrl) {
+    containerBody.cover_url = coverUrl
+  }
+
+  const containerResponse = await fetch(
+    `https://graph.facebook.com/v25.0/${igAccountId}/media`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(containerBody)
+    }
+  )
+
+  const containerResult = await containerResponse.json()
+  if (containerResult.error) {
+    console.error('❌ Erro ao criar container Reels:', containerResult.error)
+    throw new Error(`Instagram Reels API (container): ${containerResult.error.message}`)
+  }
+
+  const creationId = containerResult.id
+  console.log('✅ Container Reels criado:', creationId)
+
+  // Aguardar processamento (vídeo demora mais)
+  await waitForContainer(creationId, pageToken, 30, 5000)
+
+  // Passo 2: Publicar
+  return await publishContainer(igAccountId, creationId, pageToken)
+}
+
+// === HELPERS ===
+async function waitForContainer(
+  creationId: string, 
+  pageToken: string, 
+  maxAttempts = 10, 
+  intervalMs = 3000
+): Promise<void> {
+  // Aguardar inicial
+  await new Promise(resolve => setTimeout(resolve, intervalMs))
+
   let attempts = 0
-  const maxAttempts = 10
-
-  while (!containerReady && attempts < maxAttempts) {
+  while (attempts < maxAttempts) {
     const statusResponse = await fetch(
-      `https://graph.facebook.com/v25.0/${creationId}?fields=status_code&access_token=${pageToken}`
+      `https://graph.facebook.com/v25.0/${creationId}?fields=status_code,status&access_token=${pageToken}`
     )
     const statusResult = await statusResponse.json()
     console.log(`📋 Status do container (tentativa ${attempts + 1}):`, statusResult.status_code)
 
     if (statusResult.status_code === 'FINISHED') {
-      containerReady = true
+      return
     } else if (statusResult.status_code === 'ERROR') {
-      throw new Error('Instagram: Erro ao processar imagem. Verifique se a URL da imagem é pública e acessível.')
+      const errorMsg = statusResult.status || 'Erro ao processar mídia'
+      throw new Error(`Instagram: ${errorMsg}. Verifique se a URL é pública e acessível.`)
     } else {
       attempts++
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise(resolve => setTimeout(resolve, intervalMs))
     }
   }
 
-  if (!containerReady) {
-    throw new Error('Instagram: Timeout ao processar imagem. Tente novamente.')
-  }
+  throw new Error('Instagram: Timeout ao processar mídia. Tente novamente.')
+}
 
-  // Passo 2: Publicar o container
-  console.log('📸 Passo 2: Publicando no Instagram...')
+async function publishContainer(
+  igAccountId: string,
+  creationId: string,
+  pageToken: string
+): Promise<{ post_id: string }> {
+  console.log('📤 Publicando container no Instagram...')
 
   const publishResponse = await fetch(
     `https://graph.facebook.com/v25.0/${igAccountId}/media_publish`,
@@ -235,7 +311,6 @@ async function publishToInstagram(
   )
 
   const publishResult = await publishResponse.json()
-
   if (publishResult.error) {
     console.error('❌ Erro ao publicar:', publishResult.error)
     throw new Error(`Instagram API (publish): ${publishResult.error.message}`)

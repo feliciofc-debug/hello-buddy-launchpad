@@ -41,9 +41,9 @@ serve(async (req) => {
 
       if (error || !data) throw new Error('Post não encontrado')
       posts = [data]
-    } else if (body.message) {
+    } else if (body.message || body.video_url) {
       const { token: pageToken, actualPageId } = await getPageToken(supabase, body.user_id, body.page_id || '')
-      const result = await publishToFacebook(pageToken, actualPageId, body.message, body.image_url, body.link_url)
+      const result = await publishToFacebook(pageToken, actualPageId, body.message, body.image_url, body.link_url, body.video_url)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -59,7 +59,7 @@ serve(async (req) => {
           .eq('id', post.id)
 
         const { token: pageToken, actualPageId } = await getPageToken(supabase, post.user_id, post.page_id || '')
-        const result = await publishToFacebook(pageToken, actualPageId, post.post_text, post.image_url, post.link_url)
+        const result = await publishToFacebook(pageToken, actualPageId, post.post_text, post.image_url, post.link_url, post.video_url)
 
         await supabase.from('social_posts_queue')
           .update({
@@ -154,9 +154,39 @@ async function publishToFacebook(
   pageId: string,
   message?: string,
   imageUrl?: string,
-  linkUrl?: string
+  linkUrl?: string,
+  videoUrl?: string
 ): Promise<{ post_id: string }> {
 
+  // === VÍDEO ===
+  if (videoUrl) {
+    console.log('🎬 Publicando VÍDEO no Facebook...', { pageId, videoUrl })
+    
+    const endpoint = `https://graph.facebook.com/v25.0/${pageId}/videos`
+    const postBody: Record<string, string> = {
+      file_url: videoUrl,
+      access_token: pageToken
+    }
+    if (message) postBody.description = message
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(postBody)
+    })
+
+    const result = await response.json()
+
+    if (result.error) {
+      console.error('❌ Facebook Video API Error:', result.error)
+      throw new Error(`Facebook Video API: ${result.error.message}`)
+    }
+
+    console.log('✅ Vídeo publicado no Facebook! ID:', result.id)
+    return { post_id: result.id }
+  }
+
+  // === IMAGEM ===
   let endpoint: string
   const postBody: Record<string, string> = {}
 

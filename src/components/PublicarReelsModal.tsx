@@ -148,13 +148,13 @@ export function PublicarReelsModal({ open, onOpenChange, produto }: PublicarReel
       for (const platform of platforms) {
         toast.info(`📹 Publicando Reels no ${platform === "facebook" ? "Facebook" : "Instagram"}...`);
 
-        const { data: result, error: pubError } = await supabase.functions.invoke("meta-publish-reels", {
-          body: {
-            platform,
-            video_url: videoUrl,
-            caption: caption,
-            user_id: user.id,
-          },
+        const functionName = platform === "facebook" ? "meta-publish-post" : "meta-publish-instagram";
+        const body = platform === "facebook"
+          ? { message: caption, video_url: videoUrl, user_id: user.id }
+          : { caption: caption, video_url: videoUrl, user_id: user.id };
+
+        const { data: result, error: pubError } = await supabase.functions.invoke(functionName, {
+          body,
         });
 
         if (pubError) {
