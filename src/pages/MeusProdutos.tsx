@@ -1229,6 +1229,8 @@ export default function MeusProdutos() {
     setSelectedProduct(null);
     setImageFile(null);
     setCurrentImageUrl(null);
+    setExtraImageFiles([]);
+    setExistingExtraImages([]);
   };
 
   const getFilteredProducts = () => {
