@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { CalendarIcon, Sparkles, Loader2, Instagram, Send, Clock, AlertTriangle } from "lucide-react";
+import { getAllProductImages } from "@/components/ProductImageCarousel";
 import { cn } from "@/lib/utils";
 import {
   clampTimeForToday,
@@ -55,8 +56,32 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   const [pageId, setPageId] = useState<string>("");
   const [igConnected, setIgConnected] = useState(false);
   const [igUsername, setIgUsername] = useState<string>("");
+  const [allImages, setAllImages] = useState<string[]>([]);
 
-  const temImagem = !!produto.imagem_url;
+  const loadAllImages = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('produtos')
+        .select('imagem_url, imagens')
+        .eq('id', produto.id)
+        .single();
+      if (data) {
+        const imgs = getAllProductImages((data as any).imagem_url, (data as any).imagens);
+        console.log('📸 Instagram modal - todas as fotos:', imgs);
+        setAllImages(imgs);
+      }
+    } catch (e) {
+      const fallback = getAllProductImages(produto.imagem_url || null, (produto as any).imagens);
+      setAllImages(fallback);
+    }
+  }, [produto.id, produto.imagem_url]);
+
+  useEffect(() => {
+    if (open) loadAllImages();
+  }, [open, loadAllImages]);
+
+  const isCarousel = allImages.length >= 2;
+  const temImagem = allImages.length > 0;
 
   useEffect(() => {
     const loadIgData = async () => {
@@ -132,10 +157,10 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       return;
     }
 
-    if (!produto.imagem_url) {
-      toast.error("Instagram requer uma imagem. Este produto não tem imagem cadastrada.");
-      return;
-    }
+      if (allImages.length === 0) {
+        toast.error("Instagram requer uma imagem. Este produto não tem imagem cadastrada.");
+        return;
+      }
 
     const captionFinal = incluirLink && linkProduto
       ? `${textoPost.trim()}\n\n🔗 Link na bio ou acesse: ${linkProduto}`
@@ -167,7 +192,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         platform: "instagram",
         page_id: pageId || "",
         post_text: captionFinal,
-        image_url: produto.imagem_url,
+        image_url: allImages[0] || null,
         link_url: incluirLink ? linkProduto : null,
         status: "pendente",
         scheduled_at: scheduledAt,
@@ -176,22 +201,32 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       if (insertError) throw insertError;
 
       if (modoEnvio === "agora") {
-        const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
-          body: {
-            caption: captionFinal,
-            image_url: produto.imagem_url,
-            user_id: user.id,
-          },
-        });
-
-        if (pubError) throw pubError;
-
-        if (!pubData?.success) {
-          throw new Error(pubData?.error || "Erro ao publicar no Instagram");
+        if (allImages.length >= 2) {
+          // Carrossel no Instagram
+          console.log(`📸 Publicando carrossel Instagram com ${allImages.length} fotos`);
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-carousel", {
+            body: {
+              caption: captionFinal,
+              image_urls: allImages,
+              user_id: user.id,
+            },
+          });
+          if (pubError) throw pubError;
+          if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar carrossel");
+          toast.success(`✅ Carrossel com ${allImages.length} fotos publicado no Instagram!`);
+        } else {
+          // Post simples
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
+            body: {
+              caption: captionFinal,
+              image_url: allImages[0],
+              user_id: user.id,
+            },
+          });
+          if (pubError) throw pubError;
+          if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
+          toast.success(`✅ Publicado no Instagram!`);
         }
-
-        const postId = pubData?.post_id || "OK";
-        toast.success(`✅ Publicado no Instagram! Post ID: ${postId}`);
       } else {
         const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
         toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaFinal}`);
@@ -251,17 +286,33 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           </div>
         )}
 
-        {/* Produto Info */}
-        <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 overflow-hidden">
-          {produto.imagem_url && (
-            <img src={produto.imagem_url} alt={produto.nome} className="w-16 h-16 rounded-lg object-cover" />
-          )}
-          <div className="min-w-0 overflow-hidden">
-            <p className="font-medium text-sm break-words line-clamp-2">{produto.nome}</p>
-            {produto.preco && (
-              <p className="text-sm text-muted-foreground">R$ {produto.preco.toFixed(2)}</p>
+        {/* Produto Info + fotos */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 overflow-hidden">
+            {allImages[0] && (
+              <img src={allImages[0]} alt={produto.nome} className="w-16 h-16 rounded-lg object-cover" />
             )}
+            <div className="min-w-0 overflow-hidden">
+              <p className="font-medium text-sm break-words line-clamp-2">{produto.nome}</p>
+              {produto.preco && (
+                <p className="text-sm text-muted-foreground">R$ {produto.preco.toFixed(2)}</p>
+              )}
+            </div>
           </div>
+          {allImages.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">
+                {isCarousel
+                  ? `📸 ${allImages.length} fotos — será publicado como CARROSSEL`
+                  : '📸 1 foto — post simples'}
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                {allImages.map((url, i) => (
+                  <img key={i} src={url} alt={`Foto ${i+1}`} className="w-full aspect-square object-cover rounded border" />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Gerar texto com IA */}
@@ -398,7 +449,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           {publicando
             ? "Publicando..."
             : modoEnvio === "agora"
-              ? "Publicar no Instagram"
+              ? isCarousel ? `Publicar carrossel (${allImages.length} fotos)` : "Publicar no Instagram"
               : "Agendar Publicação"}
         </Button>
       </DialogContent>

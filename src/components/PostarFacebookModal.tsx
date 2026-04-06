@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { CalendarIcon, Sparkles, Loader2, Facebook, Send, Clock, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getAllProductImages } from "@/components/ProductImageCarousel";
 import {
   clampTimeForToday,
   combineSaoPauloDateTimeToIso,
@@ -55,6 +56,31 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
   const [horaAgendamento, setHoraAgendamento] = useState("10:00");
   const [pageId, setPageId] = useState<string>("");
   const [metaConnected, setMetaConnected] = useState(false);
+  const [allImages, setAllImages] = useState<string[]>([]);
+
+  const loadAllImages = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('produtos')
+        .select('imagem_url, imagens')
+        .eq('id', produto.id)
+        .single();
+      if (data) {
+        const imgs = getAllProductImages((data as any).imagem_url, (data as any).imagens);
+        console.log('📸 Facebook modal - todas as fotos:', imgs);
+        setAllImages(imgs);
+      }
+    } catch (e) {
+      const fallback = getAllProductImages(produto.imagem_url || null, (produto as any).imagens);
+      setAllImages(fallback);
+    }
+  }, [produto.id, produto.imagem_url]);
+
+  useEffect(() => {
+    if (open) loadAllImages();
+  }, [open, loadAllImages]);
+
+  const isCarousel = allImages.length >= 2;
 
   useEffect(() => {
     const loadPageId = async () => {
@@ -146,7 +172,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         return;
       }
 
-      const imagemProduto = produto.imagem_url || null;
+      const imagesToPublish = incluirImagem ? allImages : [];
 
       let scheduledAt: string | null = null;
       if (modoEnvio === "agendar" && dataAgendamento) {
@@ -154,7 +180,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         scheduledAt = combineSaoPauloDateTimeToIso(dataAgendamento, horaFinal);
       }
 
-      // Insert into social_posts_queue - usa page_id do cliente ou vazio (edge function resolve)
+      // Insert into social_posts_queue
       const { error: insertError } = await supabase.from("social_posts_queue" as any).insert({
         user_id: user.id,
         produto_id: produto.id,
@@ -162,7 +188,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         platform: "facebook",
         page_id: pageId || "",
         post_text: mensagemFinal,
-        image_url: incluirImagem ? imagemProduto : null,
+        image_url: imagesToPublish[0] || null,
         link_url: incluirLink ? linkProduto : null,
         status: "pendente",
         scheduled_at: scheduledAt,
@@ -171,19 +197,32 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
       if (insertError) throw insertError;
 
       if (modoEnvio === "agora") {
-        const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
-          body: {
-            message: mensagemFinal,
-            page_id: pageId || "",
-            user_id: user.id,
-            image_url: incluirImagem ? imagemProduto : undefined,
-          },
-        });
-
-        if (pubError) throw pubError;
-
-        const postId = pubData?.post_id || pubData?.id || "OK";
-        toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
+        if (imagesToPublish.length >= 2) {
+          // Carrossel no Facebook
+          console.log(`📸 Publicando carrossel Facebook com ${imagesToPublish.length} fotos`);
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
+            body: {
+              message: mensagemFinal,
+              user_id: user.id,
+              image_urls: imagesToPublish,
+            },
+          });
+          if (pubError) throw pubError;
+          toast.success(`✅ Carrossel com ${imagesToPublish.length} fotos publicado no Facebook!`);
+        } else {
+          // Post simples
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
+            body: {
+              message: mensagemFinal,
+              page_id: pageId || "",
+              user_id: user.id,
+              image_url: imagesToPublish[0] || undefined,
+            },
+          });
+          if (pubError) throw pubError;
+          const postId = pubData?.post_id || pubData?.id || "OK";
+          toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
+        }
       } else {
         const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
         toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaFinal}`);
@@ -229,17 +268,33 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           </div>
         )}
 
-        {/* Produto Info */}
-        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg overflow-hidden">
-          {produto.imagem_url && (
-            <img src={produto.imagem_url} alt={produto.nome} className="w-16 h-16 object-cover rounded" />
-          )}
-          <div className="flex-1 min-w-0 overflow-hidden">
-            <p className="font-medium break-words line-clamp-2">{produto.nome}</p>
-            {produto.preco && (
-              <p className="text-primary font-bold">R$ {produto.preco.toFixed(2)}</p>
+        {/* Produto Info + fotos */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg overflow-hidden">
+            {allImages[0] && (
+              <img src={allImages[0]} alt={produto.nome} className="w-16 h-16 object-cover rounded" />
             )}
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <p className="font-medium break-words line-clamp-2">{produto.nome}</p>
+              {produto.preco && (
+                <p className="text-primary font-bold">R$ {produto.preco.toFixed(2)}</p>
+              )}
+            </div>
           </div>
+          {allImages.length > 0 && incluirImagem && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">
+                {isCarousel
+                  ? `📸 ${allImages.length} fotos — será publicado como CARROSSEL`
+                  : '📸 1 foto — post simples'}
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                {allImages.map((url, i) => (
+                  <img key={i} src={url} alt={`Foto ${i+1}`} className="w-full aspect-square object-cover rounded border" />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Gerar texto com IA */}
@@ -389,7 +444,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           {publicando
             ? "Publicando..."
             : modoEnvio === "agora"
-              ? "Publicar no Facebook"
+              ? isCarousel ? `Publicar carrossel (${allImages.length} fotos)` : "Publicar no Facebook"
               : "Agendar Publicação"}
         </Button>
       </DialogContent>
