@@ -1,0 +1,1 @@
+ALTER TABLE public.social_posts_queue ADD COLUMN IF NOT EXISTS video_url TEXT;
