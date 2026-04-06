@@ -105,6 +105,10 @@ interface ProductFormProps {
   setImageFile: (file: File | null) => void;
   previewImage: string | null;
   currentImageUrl?: string | null;
+  extraImageFiles: (File | null)[];
+  setExtraImageFiles: (files: (File | null)[]) => void;
+  existingExtraImages: string[];
+  setExistingExtraImages: (imgs: string[]) => void;
 }
 
 const ProductForm = ({ 
