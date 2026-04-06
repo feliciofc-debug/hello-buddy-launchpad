@@ -1073,6 +1073,20 @@ export default function MeusProdutos() {
 
       if (error) throw error;
 
+      // Upload extra images
+      if (extraImageFiles.filter(Boolean).length > 0) {
+        toast.loading('Enviando fotos adicionais...');
+        const extraUrls: string[] = [...existingExtraImages];
+        for (const file of extraImageFiles) {
+          if (file) {
+            const url = await uploadImage(file, selectedProduct.id);
+            if (url) extraUrls.push(url);
+          }
+        }
+        await supabase.from('produtos').update({ imagens: extraUrls }).eq('id', selectedProduct.id);
+        toast.dismiss();
+      }
+
       console.log('✅ Produto atualizado com sucesso');
       toast.success('Produto atualizado com sucesso!');
       setIsEditModalOpen(false);
