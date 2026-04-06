@@ -16,6 +16,7 @@ interface Produto {
   imagem_url: string | null;
   link?: string | null;
   link_marketplace?: string | null;
+  imagens?: any; // string[] from DB
 }
 
 interface Props {
@@ -24,9 +25,25 @@ interface Props {
   produto: Produto;
 }
 
+function getAllImageUrls(produto: Produto): string[] {
+  const urls: string[] = [];
+  if (produto.imagem_url) urls.push(produto.imagem_url);
+  if (produto.imagens) {
+    const extras = Array.isArray(produto.imagens) ? produto.imagens : [];
+    for (const url of extras) {
+      if (typeof url === 'string' && url && !urls.includes(url)) {
+        urls.push(url);
+      }
+    }
+  }
+  return urls;
+}
+
 export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) {
   const link = produto.link || produto.link_marketplace || '';
   const precoFormatado = produto.preco ? `R$ ${produto.preco.toFixed(2).replace('.', ',')}` : '';
+  const allImages = getAllImageUrls(produto);
+  const isCarousel = allImages.length >= 2;
   
   const textoInicial = [
     `🔥 ${produto.nome}`,
@@ -41,7 +58,6 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
   const [publicando, setPublicando] = useState(false);
   const [resultado, setResultado] = useState<string | null>(null);
 
-  // Reset on open
   const handleOpenChange = (v: boolean) => {
     if (v) {
       setTexto(textoInicial);
@@ -71,44 +87,74 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error('Você precisa estar logado'); setPublicando(false); return; }
 
-      const imagemUrl = produto.imagem_url || null;
       const promises: Promise<void>[] = [];
 
+      // === FACEBOOK ===
       if (facebook) {
         promises.push((async () => {
           try {
-            await supabase.from('social_posts_queue' as any).insert({
-              user_id: user.id, platform: 'facebook', page_id: '',
-              post_text: texto, image_url: imagemUrl, status: 'pendente',
-            } as any);
-            const { error } = await supabase.functions.invoke('meta-publish-post', {
-              body: { message: texto, user_id: user.id, image_url: imagemUrl || undefined },
-            });
-            if (error) throw error;
-            resultados.push('✅ Facebook OK');
-          } catch (err: any) {
+            if (isCarousel) {
+              // Carousel no Facebook: múltiplas fotos
+              const { error } = await supabase.functions.invoke('meta-publish-post', {
+                body: { 
+                  message: texto, 
+                  user_id: user.id, 
+                  image_urls: allImages,
+                },
+              });
+              if (error) throw error;
+              resultados.push('✅ Facebook (carrossel) OK');
+            } else {
+              // Post simples
+              const { error } = await supabase.functions.invoke('meta-publish-post', {
+                body: { 
+                  message: texto, 
+                  user_id: user.id, 
+                  image_url: allImages[0] || undefined,
+                },
+              });
+              if (error) throw error;
+              resultados.push('✅ Facebook OK');
+            }
+          } catch {
             resultados.push('❌ Facebook falhou');
           }
         })());
       }
 
+      // === INSTAGRAM ===
       if (instagram) {
-        if (!imagemUrl) {
+        if (allImages.length === 0) {
           resultados.push('⚠️ Instagram pulado (sem imagem)');
         } else {
           promises.push((async () => {
             try {
-              await supabase.from('social_posts_queue' as any).insert({
-                user_id: user.id, platform: 'instagram', page_id: '',
-                post_text: texto, image_url: imagemUrl, status: 'pendente',
-              } as any);
-              const { data: pubData, error } = await supabase.functions.invoke('meta-publish-instagram', {
-                body: { caption: texto, image_url: imagemUrl, user_id: user.id },
-              });
-              if (error) throw error;
-              if (!pubData?.success) throw new Error(pubData?.error);
-              resultados.push('✅ Instagram OK');
-            } catch (err: any) {
+              if (isCarousel) {
+                // Carousel no Instagram
+                const { data: pubData, error } = await supabase.functions.invoke('meta-publish-carousel', {
+                  body: { 
+                    caption: texto, 
+                    image_urls: allImages, 
+                    user_id: user.id,
+                  },
+                });
+                if (error) throw error;
+                if (!pubData?.success) throw new Error(pubData?.error);
+                resultados.push('✅ Instagram (carrossel) OK');
+              } else {
+                // Post simples
+                const { data: pubData, error } = await supabase.functions.invoke('meta-publish-instagram', {
+                  body: { 
+                    caption: texto, 
+                    image_url: allImages[0], 
+                    user_id: user.id,
+                  },
+                });
+                if (error) throw error;
+                if (!pubData?.success) throw new Error(pubData?.error);
+                resultados.push('✅ Instagram OK');
+              }
+            } catch {
               resultados.push('❌ Instagram falhou');
             }
           })());
@@ -123,7 +169,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
       } else {
         toast.warning(msg);
       }
-    } catch (err: any) {
+    } catch {
       toast.error('Erro ao publicar');
     } finally {
       setPublicando(false);
@@ -138,8 +184,25 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
         </DialogHeader>
 
         <div className="space-y-4">
-          {produto.imagem_url && (
-            <img src={produto.imagem_url} alt={produto.nome} className="w-full h-48 object-cover rounded-lg" />
+          {/* Preview de todas as fotos */}
+          {allImages.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-2">
+                {isCarousel 
+                  ? `📸 ${allImages.length} fotos — será publicado como CARROSSEL` 
+                  : '📸 1 foto — post simples'}
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                {allImages.map((url, i) => (
+                  <img 
+                    key={i} 
+                    src={url} 
+                    alt={`Foto ${i + 1}`} 
+                    className="w-full aspect-square object-cover rounded-lg border border-border" 
+                  />
+                ))}
+              </div>
+            </div>
           )}
 
           <div>
@@ -175,7 +238,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
                 {publicando ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
                 ) : (
-                  <>🚀 Publicar agora</>
+                  <>🚀 {isCarousel ? 'Publicar carrossel' : 'Publicar agora'}</>
                 )}
               </Button>
             )}
