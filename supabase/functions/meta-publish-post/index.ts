@@ -219,3 +219,58 @@ async function publishToFacebook(
 
   return { post_id: result.id || result.post_id }
 }
+
+async function publishMultiPhotoToFacebook(
+  pageToken: string,
+  pageId: string,
+  message: string,
+  imageUrls: string[]
+): Promise<{ post_id: string }> {
+  console.log(`📸 Publicando ${imageUrls.length} fotos no Facebook como multi-photo post...`)
+  
+  // Step 1: Upload each photo as unpublished
+  const photoIds: string[] = []
+  for (let i = 0; i < imageUrls.length; i++) {
+    const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/photos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: imageUrls[i],
+        published: false,
+        access_token: pageToken,
+      }),
+    })
+    const data = await res.json()
+    if (data.error) {
+      console.error(`❌ Erro ao upload foto ${i+1}:`, data.error.message)
+      throw new Error(`Erro ao upload foto ${i+1}: ${data.error.message}`)
+    }
+    console.log(`✅ Foto ${i+1} uploaded: ${data.id}`)
+    photoIds.push(data.id)
+  }
+
+  // Step 2: Create feed post with attached_media
+  const attachedMedia: Record<string, string> = {}
+  photoIds.forEach((id, i) => {
+    attachedMedia[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id })
+  })
+
+  const params = new URLSearchParams({
+    message: message || '',
+    access_token: pageToken,
+    ...attachedMedia,
+  })
+
+  const res = await fetch(`https://graph.facebook.com/v25.0/${pageId}/feed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  })
+  const result = await res.json()
+  if (result.error) {
+    throw new Error(`Facebook Multi-Photo API: ${result.error.message}`)
+  }
+
+  console.log('✅ Multi-photo post publicado! ID:', result.id)
+  return { post_id: result.id }
+}
