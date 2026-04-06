@@ -15,6 +15,15 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { CalendarIcon, Sparkles, Loader2, Instagram, Send, Clock, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  clampTimeForToday,
+  combineSaoPauloDateTimeToIso,
+  generateTimeOptions,
+  getNextFiveMinuteSlot,
+  isBeforeTodayInSaoPaulo,
+  isSameCalendarDay,
+  toTimeString,
+} from "@/lib/sao-paulo-time";
 
 interface Produto {
   id: string;
@@ -67,6 +76,23 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
     };
     if (open) loadIgData();
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const nextSlot = getNextFiveMinuteSlot();
+    setDataAgendamento(nextSlot);
+    setHoraAgendamento(toTimeString(nextSlot));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || modoEnvio !== "agendar" || !dataAgendamento) return;
+
+    const adjustedTime = clampTimeForToday(dataAgendamento, horaAgendamento);
+    if (adjustedTime !== horaAgendamento) {
+      setHoraAgendamento(adjustedTime);
+    }
+  }, [open, modoEnvio, dataAgendamento, horaAgendamento]);
 
   const handleGerarTexto = async () => {
     setGerando(true);
@@ -130,10 +156,8 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
 
       let scheduledAt: string | null = null;
       if (modoEnvio === "agendar" && dataAgendamento) {
-        const [h, m] = horaAgendamento.split(":").map(Number);
-        const dt = new Date(dataAgendamento);
-        dt.setHours(h, m, 0, 0);
-        scheduledAt = dt.toISOString();
+        const horaFinal = clampTimeForToday(dataAgendamento, horaAgendamento);
+        scheduledAt = combineSaoPauloDateTimeToIso(dataAgendamento, horaFinal);
       }
 
       const { error: insertError } = await supabase.from("social_posts_queue" as any).insert({
@@ -169,7 +193,8 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         const postId = pubData?.post_id || "OK";
         toast.success(`✅ Publicado no Instagram! Post ID: ${postId}`);
       } else {
-        toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaAgendamento}`);
+        const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
+        toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaFinal}`);
       }
 
       setTextoPost("");
@@ -185,10 +210,11 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
     }
   };
 
-  const horas = Array.from({ length: 24 }, (_, i) => {
-    const h = i.toString().padStart(2, "0");
-    return [`${h}:00`, `${h}:30`];
-  }).flat();
+  const proximoSlot = getNextFiveMinuteSlot();
+  const horas = generateTimeOptions(5);
+  const horasDisponiveis = dataAgendamento && isSameCalendarDay(dataAgendamento, proximoSlot)
+    ? horas.filter((hora) => hora >= toTimeString(proximoSlot))
+    : horas;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -332,8 +358,13 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
                   <Calendar
                     mode="single"
                     selected={dataAgendamento}
-                    onSelect={setDataAgendamento}
-                    disabled={(date) => date < new Date()}
+                    onSelect={(date) => {
+                      setDataAgendamento(date);
+                      if (date) {
+                        setHoraAgendamento(clampTimeForToday(date, horaAgendamento));
+                      }
+                    }}
+                    disabled={(date) => isBeforeTodayInSaoPaulo(date)}
                     className="p-3 pointer-events-auto"
                   />
                 </PopoverContent>
@@ -344,7 +375,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {horas.map((h) => (
+                    {horasDisponiveis.map((h) => (
                     <SelectItem key={h} value={h}>{h}</SelectItem>
                   ))}
                 </SelectContent>

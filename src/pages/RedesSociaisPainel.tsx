@@ -4,13 +4,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
+import { formatSaoPauloDateTime, toSaoPauloDateKey } from "@/lib/sao-paulo-time";
 import {
   Facebook, Instagram, ArrowLeft, CheckCircle, XCircle, Clock,
   RefreshCw, Loader2, AlertTriangle, CalendarDays
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 export default function RedesSociaisPainel() {
   const navigate = useNavigate();
@@ -43,11 +42,11 @@ export default function RedesSociaisPainel() {
       const allPosts = (postsData || []) as any[];
       setPosts(allPosts);
 
-      const today = new Date().toISOString().slice(0, 10);
+      const today = toSaoPauloDateKey();
       setStats({
         total: allPosts.length,
         publicados: allPosts.filter((p: any) => p.status === "publicado").length,
-        hoje: allPosts.filter((p: any) => p.status === "publicado" && p.published_at?.startsWith(today)).length,
+        hoje: allPosts.filter((p: any) => p.status === "publicado" && p.published_at && toSaoPauloDateKey(p.published_at) === today).length,
         pendentes: allPosts.filter((p: any) => p.status === "pendente").length,
         erros: allPosts.filter((p: any) => p.status === "erro").length,
       });
@@ -214,7 +213,7 @@ export default function RedesSociaisPainel() {
                         <p className="text-sm font-medium text-foreground truncate">{post.post_text?.substring(0, 80)}...</p>
                         <p className="text-xs text-muted-foreground">
                           {post.platform === "facebook" ? "📘 Facebook" : "📸 Instagram"}
-                          {post.published_at ? ` • ${format(new Date(post.published_at), "dd/MM HH:mm", { locale: ptBR })}` : ""}
+                          {post.published_at ? ` • ${formatSaoPauloDateTime(post.published_at, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}
                         </p>
                       </div>
                       <Badge variant="default">Publicado</Badge>
@@ -242,7 +241,7 @@ export default function RedesSociaisPainel() {
                         <p className="text-sm font-medium text-foreground truncate">{post.post_text?.substring(0, 80)}...</p>
                         <p className="text-xs text-muted-foreground">
                           {post.platform === "facebook" ? "📘 Facebook" : "📸 Instagram"}
-                          {post.scheduled_at ? ` • Agendado ${format(new Date(post.scheduled_at), "dd/MM HH:mm", { locale: ptBR })}` : " • Aguardando"}
+                          {post.scheduled_at ? ` • Agendado ${formatSaoPauloDateTime(post.scheduled_at, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : " • Aguardando"}
                         </p>
                       </div>
                       <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Agendado</Badge>
