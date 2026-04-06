@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,26 +25,70 @@ interface Props {
   produto: Produto;
 }
 
-function getAllImageUrls(produto: Produto): string[] {
-  const urls: string[] = [];
-  if (produto.imagem_url) urls.push(produto.imagem_url);
-  if (produto.imagens) {
-    const extras = Array.isArray(produto.imagens) ? produto.imagens : [];
-    for (const url of extras) {
-      if (typeof url === 'string' && url && !urls.includes(url)) {
-        urls.push(url);
+type ProdutoImageFields = Pick<Produto, 'imagem_url' | 'imagens'>;
+
+function isValidImageUrl(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function normalizeStoredImages(value: unknown): string[] {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeStoredImages(item));
+  }
+
+  if (isValidImageUrl(value)) {
+    const trimmed = value.trim();
+
+    if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+      try {
+        return normalizeStoredImages(JSON.parse(trimmed));
+      } catch {
+        return [trimmed];
       }
     }
+
+    return [trimmed];
   }
-  return urls;
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+
+    for (const key of ['imagens', 'image_urls', 'photos', 'urls']) {
+      if (key in record) {
+        return normalizeStoredImages(record[key]);
+      }
+    }
+
+    const values = Object.values(record);
+    if (values.every((item) => typeof item === 'string')) {
+      return values.filter(isValidImageUrl).map((item) => item.trim());
+    }
+  }
+
+  return [];
+}
+
+function getAllImageUrls(produto: ProdutoImageFields): string[] {
+  const urls = new Set<string>();
+
+  if (isValidImageUrl(produto.imagem_url)) {
+    urls.add(produto.imagem_url.trim());
+  }
+
+  normalizeStoredImages(produto.imagens).forEach((url) => {
+    if (isValidImageUrl(url)) {
+      urls.add(url.trim());
+    }
+  });
+
+  return Array.from(urls).slice(0, 5);
 }
 
 export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) {
   const link = produto.link || produto.link_marketplace || '';
   const precoFormatado = produto.preco ? `R$ ${produto.preco.toFixed(2).replace('.', ',')}` : '';
-  const allImages = getAllImageUrls(produto);
-  const isCarousel = allImages.length >= 2;
-  
   const textoInicial = [
     `🔥 ${produto.nome}`,
     produto.descricao ? `\n${produto.descricao}` : '',
@@ -52,18 +96,71 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
     link ? `\n\n🔗 Compre aqui: ${link}` : '',
   ].filter(Boolean).join('');
 
+  const initialImages = useMemo(
+    () => getAllImageUrls(produto),
+    [produto.id, produto.imagem_url, produto.imagens]
+  );
+
   const [texto, setTexto] = useState(textoInicial);
   const [facebook, setFacebook] = useState(true);
   const [instagram, setInstagram] = useState(true);
+  const [allImages, setAllImages] = useState<string[]>(initialImages);
+  const [carregandoFotos, setCarregandoFotos] = useState(false);
   const [publicando, setPublicando] = useState(false);
+  const [statusPublicacao, setStatusPublicacao] = useState<string | null>(null);
   const [resultado, setResultado] = useState<string | null>(null);
+  const isCarousel = allImages.length >= 2;
+
+  const loadLatestProductImages = useCallback(async (): Promise<string[]> => {
+    setCarregandoFotos(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('produtos')
+        .select('imagem_url, imagens')
+        .eq('id', produto.id)
+        .single();
+
+      if (error) throw error;
+
+      const latestImages = getAllImageUrls({
+        imagem_url: data?.imagem_url ?? null,
+        imagens: data?.imagens,
+      });
+
+      setAllImages(latestImages);
+      return latestImages;
+    } catch (error) {
+      console.error('Erro ao carregar fotos atualizadas do produto:', error);
+
+      const fallbackImages = getAllImageUrls(produto);
+      setAllImages(fallbackImages);
+      return fallbackImages;
+    } finally {
+      setCarregandoFotos(false);
+    }
+  }, [produto]);
+
+  useEffect(() => {
+    setAllImages(initialImages);
+  }, [initialImages]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    setTexto(textoInicial);
+    setFacebook(true);
+    setInstagram(true);
+    setPublicando(false);
+    setStatusPublicacao(null);
+    setResultado(null);
+
+    void loadLatestProductImages();
+  }, [open, textoInicial, loadLatestProductImages]);
 
   const handleOpenChange = (v: boolean) => {
-    if (v) {
-      setTexto(textoInicial);
-      setFacebook(true);
-      setInstagram(true);
-      setPublicando(false);
+    if (!v) {
+      setStatusPublicacao(null);
       setResultado(null);
     }
     onOpenChange(v);
@@ -80,10 +177,22 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
     }
 
     setPublicando(true);
+    setStatusPublicacao(null);
     setResultado(null);
     const resultados: string[] = [];
 
     try {
+      const imagesToPublish = await loadLatestProductImages();
+      const shouldPublishCarousel = imagesToPublish.length >= 2;
+
+      setStatusPublicacao(
+        shouldPublishCarousel
+          ? `Publicando carrossel com ${imagesToPublish.length} fotos...`
+          : imagesToPublish.length === 1
+            ? 'Publicando post com 1 foto...'
+            : 'Publicando post sem imagem...'
+      );
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error('Você precisa estar logado'); setPublicando(false); return; }
 
@@ -93,24 +202,24 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
       if (facebook) {
         promises.push((async () => {
           try {
-            if (isCarousel) {
+            if (shouldPublishCarousel) {
               // Carousel no Facebook: múltiplas fotos
               const { error } = await supabase.functions.invoke('meta-publish-post', {
                 body: { 
                   message: texto, 
                   user_id: user.id, 
-                  image_urls: allImages,
+                  image_urls: imagesToPublish,
                 },
               });
               if (error) throw error;
-              resultados.push('✅ Facebook (carrossel) OK');
+              resultados.push(`✅ Facebook (carrossel ${imagesToPublish.length} fotos) OK`);
             } else {
               // Post simples
               const { error } = await supabase.functions.invoke('meta-publish-post', {
                 body: { 
                   message: texto, 
                   user_id: user.id, 
-                  image_url: allImages[0] || undefined,
+                  image_url: imagesToPublish[0] || undefined,
                 },
               });
               if (error) throw error;
@@ -124,29 +233,29 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
 
       // === INSTAGRAM ===
       if (instagram) {
-        if (allImages.length === 0) {
+        if (imagesToPublish.length === 0) {
           resultados.push('⚠️ Instagram pulado (sem imagem)');
         } else {
           promises.push((async () => {
             try {
-              if (isCarousel) {
+              if (shouldPublishCarousel) {
                 // Carousel no Instagram
                 const { data: pubData, error } = await supabase.functions.invoke('meta-publish-carousel', {
                   body: { 
                     caption: texto, 
-                    image_urls: allImages, 
+                    image_urls: imagesToPublish, 
                     user_id: user.id,
                   },
                 });
                 if (error) throw error;
                 if (!pubData?.success) throw new Error(pubData?.error);
-                resultados.push('✅ Instagram (carrossel) OK');
+                resultados.push(`✅ Instagram (carrossel ${imagesToPublish.length} fotos) OK`);
               } else {
                 // Post simples
                 const { data: pubData, error } = await supabase.functions.invoke('meta-publish-instagram', {
                   body: { 
                     caption: texto, 
-                    image_url: allImages[0], 
+                    image_url: imagesToPublish[0], 
                     user_id: user.id,
                   },
                 });
@@ -172,6 +281,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
     } catch {
       toast.error('Erro ao publicar');
     } finally {
+      setStatusPublicacao(null);
       setPublicando(false);
     }
   };
@@ -205,23 +315,29 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
             </div>
           )}
 
+          {(carregandoFotos || statusPublicacao) && (
+            <div className="rounded-lg border border-border bg-muted p-3 text-sm font-medium">
+              {carregandoFotos ? 'Verificando todas as fotos salvas do produto...' : statusPublicacao}
+            </div>
+          )}
+
           <div>
             <Label className="mb-1 block text-sm font-medium">Texto do post</Label>
             <Textarea
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
               rows={6}
-              disabled={publicando}
+              disabled={publicando || carregandoFotos}
             />
           </div>
 
           <div className="flex gap-6">
             <div className="flex items-center gap-2">
-              <Checkbox id="fb" checked={facebook} onCheckedChange={(v) => setFacebook(!!v)} disabled={publicando} />
+              <Checkbox id="fb" checked={facebook} onCheckedChange={(v) => setFacebook(!!v)} disabled={publicando || carregandoFotos} />
               <Label htmlFor="fb">Facebook</Label>
             </div>
             <div className="flex items-center gap-2">
-              <Checkbox id="ig" checked={instagram} onCheckedChange={(v) => setInstagram(!!v)} disabled={publicando} />
+              <Checkbox id="ig" checked={instagram} onCheckedChange={(v) => setInstagram(!!v)} disabled={publicando || carregandoFotos} />
               <Label htmlFor="ig">Instagram</Label>
             </div>
           </div>
@@ -234,8 +350,8 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
             {resultado ? (
               <Button onClick={() => handleOpenChange(false)}>Fechar</Button>
             ) : (
-              <Button onClick={handlePublicar} disabled={publicando} className="bg-gradient-to-r from-blue-600 to-pink-600 hover:from-blue-700 hover:to-pink-700 text-white">
-                {publicando ? (
+              <Button onClick={handlePublicar} disabled={publicando || carregandoFotos} className="bg-gradient-to-r from-blue-600 to-pink-600 hover:from-blue-700 hover:to-pink-700 text-white">
+                {publicando || carregandoFotos ? (
                   <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
                 ) : (
                   <>🚀 {isCarousel ? 'Publicar carrossel' : 'Publicar agora'}</>
