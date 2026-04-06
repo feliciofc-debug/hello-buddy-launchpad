@@ -172,7 +172,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         return;
       }
 
-      const imagemProduto = produto.imagem_url || null;
+      const imagesToPublish = incluirImagem ? allImages : [];
 
       let scheduledAt: string | null = null;
       if (modoEnvio === "agendar" && dataAgendamento) {
@@ -180,7 +180,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         scheduledAt = combineSaoPauloDateTimeToIso(dataAgendamento, horaFinal);
       }
 
-      // Insert into social_posts_queue - usa page_id do cliente ou vazio (edge function resolve)
+      // Insert into social_posts_queue
       const { error: insertError } = await supabase.from("social_posts_queue" as any).insert({
         user_id: user.id,
         produto_id: produto.id,
@@ -188,7 +188,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         platform: "facebook",
         page_id: pageId || "",
         post_text: mensagemFinal,
-        image_url: incluirImagem ? imagemProduto : null,
+        image_url: imagesToPublish[0] || null,
         link_url: incluirLink ? linkProduto : null,
         status: "pendente",
         scheduled_at: scheduledAt,
@@ -197,19 +197,32 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
       if (insertError) throw insertError;
 
       if (modoEnvio === "agora") {
-        const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
-          body: {
-            message: mensagemFinal,
-            page_id: pageId || "",
-            user_id: user.id,
-            image_url: incluirImagem ? imagemProduto : undefined,
-          },
-        });
-
-        if (pubError) throw pubError;
-
-        const postId = pubData?.post_id || pubData?.id || "OK";
-        toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
+        if (imagesToPublish.length >= 2) {
+          // Carrossel no Facebook
+          console.log(`📸 Publicando carrossel Facebook com ${imagesToPublish.length} fotos`);
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
+            body: {
+              message: mensagemFinal,
+              user_id: user.id,
+              image_urls: imagesToPublish,
+            },
+          });
+          if (pubError) throw pubError;
+          toast.success(`✅ Carrossel com ${imagesToPublish.length} fotos publicado no Facebook!`);
+        } else {
+          // Post simples
+          const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
+            body: {
+              message: mensagemFinal,
+              page_id: pageId || "",
+              user_id: user.id,
+              image_url: imagesToPublish[0] || undefined,
+            },
+          });
+          if (pubError) throw pubError;
+          const postId = pubData?.post_id || pubData?.id || "OK";
+          toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
+        }
       } else {
         const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
         toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaFinal}`);
