@@ -1192,6 +1192,8 @@ export default function MeusProdutos() {
     });
     setCurrentImageUrl(product.imagem_url);
     setImageFile(null);
+    setExtraImageFiles([]);
+    setExistingExtraImages(Array.isArray(product.imagens) ? product.imagens.filter(Boolean) : []);
     setIsEditModalOpen(true);
   };
 
