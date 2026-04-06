@@ -24,7 +24,7 @@ export const AreaVideos = () => {
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showReelsModal, setShowReelsModal] = useState(false);
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -104,8 +104,8 @@ export const AreaVideos = () => {
     loadVideos();
   };
 
-  const openReels = (videoUrl: string) => {
-    setSelectedVideoUrl(videoUrl);
+  const openReels = (video: VideoItem) => {
+    setSelectedVideo(video);
     setShowReelsModal(true);
   };
 
@@ -210,7 +210,7 @@ export const AreaVideos = () => {
                   <Button
                     size="sm"
                     className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs"
-                    onClick={() => openReels(video.video_url)}
+                    onClick={() => openReels(video)}
                   >
                     <Video className="mr-1 h-3 w-3" />
                     Publicar Reels
@@ -232,6 +232,8 @@ export const AreaVideos = () => {
       <PublicarReelsModal
         open={showReelsModal}
         onOpenChange={setShowReelsModal}
+        videoUrl={selectedVideo?.video_url || null}
+        videoNome={selectedVideo?.titulo || null}
         produto={null}
       />
     </div>
