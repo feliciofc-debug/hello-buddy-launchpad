@@ -793,6 +793,8 @@ export default function MeusProdutos() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [extraImageFiles, setExtraImageFiles] = useState<(File | null)[]>([]);
+  const [existingExtraImages, setExistingExtraImages] = useState<string[]>([]);
 
   // Preview da imagem quando selecionada
   useEffect(() => {
