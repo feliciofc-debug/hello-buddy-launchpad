@@ -22,12 +22,12 @@ serve(async (req) => {
     const configId = typeof requestBody?.config_id === 'string' ? requestBody.config_id : null
 
     const now = new Date()
-    const nowSaoPaulo = new Date(now.toLocaleString('en-US', { timeZone: SAO_PAULO_TIMEZONE }))
+    const nowSaoPaulo = getSaoPauloNow()
     const results: any[] = []
 
     console.log('🤖 [AUTOPILOT] Iniciando execução', {
       now_utc: now.toISOString(),
-      now_sp: formatSaoPauloIso(nowSaoPaulo),
+      now_sp: formatSaoPauloLocalIso(nowSaoPaulo),
       force_run: forceRun,
       config_id: configId,
     })
@@ -60,7 +60,7 @@ serve(async (req) => {
         message: 'Nenhum autopilot para executar',
         processed: 0,
         now_utc: now.toISOString(),
-        now_sp: formatSaoPauloIso(nowSaoPaulo),
+        now_sp: formatSaoPauloLocalIso(nowSaoPaulo),
         force_run: forceRun,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -468,6 +468,31 @@ function createUtcDateFromSaoPaulo(baseSaoPaulo: Date, hours: number, minutes: n
   return saoPauloLocalToUtc(localDate)
 }
 
+function getSaoPauloNow() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SAO_PAULO_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date())
+
+  const readPart = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0)
+
+  return new Date(
+    readPart('year'),
+    readPart('month') - 1,
+    readPart('day'),
+    readPart('hour'),
+    readPart('minute'),
+    readPart('second'),
+    0,
+  )
+}
+
 function saoPauloLocalToUtc(localDate: Date) {
   return new Date(Date.UTC(
     localDate.getFullYear(),
@@ -485,6 +510,16 @@ function formatSaoPauloIso(date: Date) {
     timeZone: SAO_PAULO_TIMEZONE,
     hour12: false,
   }).replace(' ', 'T')
+}
+
+function formatSaoPauloLocalIso(date: Date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`
 }
 
 function escolherVariacao(estilo: string, index: number): string {
