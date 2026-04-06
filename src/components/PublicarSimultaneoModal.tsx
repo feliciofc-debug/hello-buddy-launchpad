@@ -148,6 +148,11 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
   useEffect(() => {
     if (!open) return;
 
+    console.log('[PublicarSimultaneoModal] Produto completo:', produto);
+    console.log('[PublicarSimultaneoModal] imagem_url:', produto.imagem_url);
+    console.log('[PublicarSimultaneoModal] imagens:', produto.imagens);
+    console.log('[PublicarSimultaneoModal] Todas as fotos detectadas:', initialImages);
+
     setTexto(textoInicial);
     setFacebook(true);
     setInstagram(true);
