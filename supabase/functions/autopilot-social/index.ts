@@ -425,10 +425,10 @@ function calcularHorarios(inicio: string, fim: string, quantidade: number, agora
 function ajustarHorarioSePassou(dataUtc: Date, agoraSaoPaulo: Date) {
   const agoraUtc = saoPauloLocalToUtc(agoraSaoPaulo)
   if (dataUtc <= agoraUtc) {
-    dataUtc.setUTCMinutes(dataUtc.getUTCMinutes() + Math.floor(Math.random() * 10) + 1)
-    if (dataUtc <= agoraUtc) {
-      dataUtc.setUTCDate(dataUtc.getUTCDate() + 1)
-    }
+    // Se o horário já passou HOJE, agendar pra daqui 5-15 minutos
+    // NÃO pular pro dia seguinte
+    const novosMs = agoraUtc.getTime() + (Math.floor(Math.random() * 10) + 5) * 60 * 1000
+    dataUtc.setTime(novosMs)
   }
 }
 
