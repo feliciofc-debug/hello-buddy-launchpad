@@ -444,7 +444,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           {publicando
             ? "Publicando..."
             : modoEnvio === "agora"
-              ? "Publicar no Facebook"
+              ? isCarousel ? `Publicar carrossel (${allImages.length} fotos)` : "Publicar no Facebook"
               : "Agendar Publicação"}
         </Button>
       </DialogContent>
