@@ -449,7 +449,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           {publicando
             ? "Publicando..."
             : modoEnvio === "agora"
-              ? "Publicar no Instagram"
+              ? isCarousel ? `Publicar carrossel (${allImages.length} fotos)` : "Publicar no Instagram"
               : "Agendar Publicação"}
         </Button>
       </DialogContent>
