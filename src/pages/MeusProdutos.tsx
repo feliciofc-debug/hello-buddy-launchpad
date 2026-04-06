@@ -1714,6 +1714,10 @@ export default function MeusProdutos() {
             setImageFile={setImageFile}
             previewImage={previewImage}
             currentImageUrl={null}
+            extraImageFiles={extraImageFiles}
+            setExtraImageFiles={setExtraImageFiles}
+            existingExtraImages={existingExtraImages}
+            setExistingExtraImages={setExistingExtraImages}
           />
         </DialogContent>
       </Dialog>
