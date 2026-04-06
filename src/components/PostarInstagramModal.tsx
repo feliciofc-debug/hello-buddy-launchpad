@@ -192,7 +192,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         platform: "instagram",
         page_id: pageId || "",
         post_text: captionFinal,
-        image_url: produto.imagem_url,
+        image_url: allImages[0] || null,
         link_url: incluirLink ? linkProduto : null,
         status: "pendente",
         scheduled_at: scheduledAt,
