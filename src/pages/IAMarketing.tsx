@@ -286,45 +286,17 @@ const IAMarketing = () => {
       const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
 
       await supabase.from("social_posts_queue" as any).insert({
-        user_id: user.id, platform: "facebook", page_id: "855785300949909",
+        user_id: user.id, platform: "facebook", page_id: "",
         post_text: mensagemFinal, image_url: imagemUrl, status: "pendente",
       } as any);
 
       const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
-        body: { message: mensagemFinal, page_id: "855785300949909", user_id: user.id, image_url: imagemUrl || undefined },
+        body: { message: mensagemFinal, user_id: user.id, image_url: imagemUrl || undefined },
       });
       if (pubError) throw pubError;
-
-      const postId = pubData?.post_id || pubData?.id || "OK";
-      if (isTrial) await incrementPostUsage();
-      toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
-    } catch (err: any) {
-      console.error("Erro ao publicar no Facebook:", err);
-      toast.error(err.message || "Erro ao publicar no Facebook");
-    } finally {
-      setPublicandoFacebook(false);
-    }
-  };
-
-  const handlePublicarInstagram = async () => {
-    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
-    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
-    const texto = editableTexts.instagram[selectedVariations.instagram];
-    if (!texto.trim()) { toast.error("Selecione um texto primeiro"); return; }
-
-    const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
-    if (!imagemUrl) { toast.error("Instagram requer uma imagem. Gere uma imagem com IA ou use um produto com foto."); return; }
-
-    setPublicandoInstagram(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Você precisa estar logado"); return; }
-
-      const link = resultado?.produto?.originalUrl || resultado?.produto?.url || url;
-      const captionFinal = link ? `${texto.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : texto.trim();
-
+...
       await supabase.from("social_posts_queue" as any).insert({
-        user_id: user.id, platform: "instagram", page_id: "855785300949909",
+        user_id: user.id, platform: "instagram", page_id: "",
         post_text: captionFinal, image_url: imagemUrl, status: "pendente",
       } as any);
 
@@ -332,49 +304,13 @@ const IAMarketing = () => {
         body: { caption: captionFinal, image_url: imagemUrl, user_id: user.id },
       });
       if (pubError) throw pubError;
-      if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
-
-      if (isTrial) await incrementPostUsage();
-      toast.success(`✅ Publicado no Instagram! Post ID: ${pubData?.post_id || "OK"}`);
-    } catch (err: any) {
-      console.error("Erro ao publicar no Instagram:", err);
-      toast.error(err.message || "Erro ao publicar no Instagram");
-    } finally {
-      setPublicandoInstagram(false);
-    }
-  };
-
-  const handlePublicarTodas = async () => {
-    if (!resultado) return;
-    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
-    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
-
-    const textoFb = editableTexts.facebook[selectedVariations.facebook];
-    const textoIg = editableTexts.instagram[selectedVariations.instagram];
-    const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
-    const link = resultado?.produto?.originalUrl || resultado?.produto?.url || url;
-
-    if (!textoFb.trim() && !textoIg.trim()) { toast.error("Nenhum texto disponível para publicar"); return; }
-
-    setPublicandoTodas(true);
-    const resultados: string[] = [];
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Você precisa estar logado"); return; }
-
-      const promises: Promise<void>[] = [];
-
-      if (textoFb.trim()) {
-        promises.push((async () => {
-          try {
-            const mensagemFb = link ? `${textoFb.trim()}\n\n🔗 Compre aqui: ${link}` : textoFb.trim();
+...
             await supabase.from("social_posts_queue" as any).insert({
-              user_id: user.id, platform: "facebook", page_id: "855785300949909",
+              user_id: user.id, platform: "facebook", page_id: "",
               post_text: mensagemFb, image_url: imagemUrl, status: "pendente",
             } as any);
             const { error } = await supabase.functions.invoke("meta-publish-post", {
-              body: { message: mensagemFb, page_id: "855785300949909", user_id: user.id, image_url: imagemUrl || undefined },
+              body: { message: mensagemFb, user_id: user.id, image_url: imagemUrl || undefined },
             });
             if (error) throw error;
             resultados.push("✅ Facebook");
@@ -387,7 +323,7 @@ const IAMarketing = () => {
           try {
             const captionIg = link ? `${textoIg.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : textoIg.trim();
             await supabase.from("social_posts_queue" as any).insert({
-              user_id: user.id, platform: "instagram", page_id: "855785300949909",
+              user_id: user.id, platform: "instagram", page_id: "",
               post_text: captionIg, image_url: imagemUrl, status: "pendente",
             } as any);
             const { data: pubData, error } = await supabase.functions.invoke("meta-publish-instagram", {

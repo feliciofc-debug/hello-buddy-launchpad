@@ -146,25 +146,7 @@ async function getIgAccountId(supabase: any, userId: string): Promise<{ igId: st
     return { igId: metaConn.ig_account_id, token: metaConn.page_access_token }
   }
 
-  // 2. Fallback: buscar token da integrations e usar IG fixo (admin)
-  if (userId) {
-    const { data: integration } = await supabase
-      .from('integrations')
-      .select('access_token')
-      .eq('user_id', userId)
-      .eq('platform', 'meta_page_855785300949909')
-      .eq('is_active', true)
-      .single()
-
-    if (integration?.access_token) {
-      console.log('⚠️ Usando token integrations com IG admin (legado)')
-      return { igId: '17841477660295647', token: integration.access_token }
-    }
-  }
-
-  // 3. Sem fallback admin - cada cliente deve ter sua própria conexão
-  throw new Error('Instagram não conectado. Vá em Configurações → Redes Sociais e conecte sua conta.')
-
+  // 2. Sem fallback legado/admin - cada cliente publica só na própria conta conectada
   throw new Error('Instagram não conectado. Vá em Configurações → Redes Sociais e conecte sua conta.')
 }
 

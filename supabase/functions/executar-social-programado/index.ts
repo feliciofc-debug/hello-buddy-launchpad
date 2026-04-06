@@ -94,7 +94,7 @@ serve(async (req) => {
               },
               body: JSON.stringify({
                 message: post.post_text,
-                page_id: post.page_id || '855785300949909',
+                page_id: post.page_id || '',
                 user_id: post.user_id,
                 image_url: post.image_url || undefined,
               })

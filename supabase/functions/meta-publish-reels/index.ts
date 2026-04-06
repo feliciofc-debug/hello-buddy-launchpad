@@ -6,9 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-const PAGE_ID = '855785300949909'
-const IG_ACCOUNT_ID = '17841477660295647'
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -23,24 +20,20 @@ serve(async (req) => {
 
     if (!video_url) throw new Error('video_url é obrigatório')
     if (!caption) throw new Error('caption é obrigatório')
+    if (!user_id) throw new Error('user_id é obrigatório')
     if (!platform || !['facebook', 'instagram'].includes(platform)) {
       throw new Error('platform deve ser "facebook" ou "instagram"')
     }
 
-    const pageToken = await getPageToken(supabase, user_id)
+    const credentials = await getMetaCredentials(supabase, user_id, platform)
 
-    let result: any
-
-    if (platform === 'facebook') {
-      result = await publishFacebookReels(pageToken, video_url, caption)
-    } else {
-      result = await publishInstagramReels(pageToken, video_url, caption)
-    }
+    const result = platform === 'facebook'
+      ? await publishFacebookReels(credentials.token, credentials.pageId!, video_url, caption)
+      : await publishInstagramReels(credentials.token, credentials.igId!, video_url, caption)
 
     return new Response(JSON.stringify({ success: true, ...result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
-
   } catch (error) {
     console.error('❌ Erro Reels:', error)
     return new Response(JSON.stringify({
@@ -53,32 +46,47 @@ serve(async (req) => {
   }
 })
 
-async function getPageToken(supabase: any, userId: string): Promise<string> {
-  if (userId) {
-    const { data } = await supabase
-      .from('integrations')
-      .select('access_token')
-      .eq('user_id', userId)
-      .eq('platform', 'meta_page_855785300949909')
-      .eq('is_active', true)
-      .single()
-    if (data?.access_token) return data.access_token
+async function getMetaCredentials(
+  supabase: any,
+  userId: string,
+  platform: 'facebook' | 'instagram'
+): Promise<{ token: string, pageId?: string, igId?: string }> {
+  const { data: metaConn } = await supabase
+    .from('meta_connections')
+    .select('page_id, ig_account_id, page_access_token')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .single()
+
+  if (!metaConn?.page_access_token) {
+    throw new Error('Conta Meta não conectada. Vá em Configurações → Redes Sociais e conecte sua conta.')
   }
-  const fallback = Deno.env.get('META_PAGE_ACCESS_TOKEN')
-  if (fallback) return fallback
-  throw new Error('Page token não encontrado')
+
+  if (platform === 'facebook' && !metaConn?.page_id) {
+    throw new Error('Página do Facebook não conectada para este cliente.')
+  }
+
+  if (platform === 'instagram' && !metaConn?.ig_account_id) {
+    throw new Error('Instagram não conectado para este cliente.')
+  }
+
+  return {
+    token: metaConn.page_access_token,
+    pageId: metaConn.page_id,
+    igId: metaConn.ig_account_id,
+  }
 }
 
 async function publishFacebookReels(
   pageToken: string,
+  pageId: string,
   videoUrl: string,
   caption: string
 ): Promise<{ post_id: string }> {
-  console.log('📹 Publicando Facebook Reels...')
+  console.log('📹 Publicando Facebook Reels...', { pageId })
 
-  // Step 1: Init upload
   const initResponse = await fetch(
-    `https://graph.facebook.com/v25.0/${PAGE_ID}/video_reels`,
+    `https://graph.facebook.com/v25.0/${pageId}/video_reels`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -93,9 +101,7 @@ async function publishFacebookReels(
   if (initResult.error) throw new Error(`FB Reels init: ${initResult.error.message}`)
 
   const videoId = initResult.video_id
-  console.log('📹 Video ID:', videoId)
 
-  // Step 2: Upload video via URL
   const uploadResponse = await fetch(
     `https://rupload.facebook.com/video-upload/v25.0/${videoId}`,
     {
@@ -110,11 +116,8 @@ async function publishFacebookReels(
   const uploadResult = await uploadResponse.json()
   if (uploadResult.error) throw new Error(`FB Reels upload: ${uploadResult.error.message}`)
 
-  console.log('📹 Upload concluído:', uploadResult.success)
-
-  // Step 3: Publish
   const publishResponse = await fetch(
-    `https://graph.facebook.com/v25.0/${PAGE_ID}/video_reels`,
+    `https://graph.facebook.com/v25.0/${pageId}/video_reels`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -131,27 +134,26 @@ async function publishFacebookReels(
   const publishResult = await publishResponse.json()
   if (publishResult.error) throw new Error(`FB Reels publish: ${publishResult.error.message}`)
 
-  console.log('✅ Facebook Reels publicado:', publishResult)
   return { post_id: publishResult.video_id || videoId }
 }
 
 async function publishInstagramReels(
   pageToken: string,
+  igAccountId: string,
   videoUrl: string,
   caption: string
 ): Promise<{ post_id: string }> {
-  console.log('📹 Publicando Instagram Reels...')
+  console.log('📹 Publicando Instagram Reels...', { igAccountId })
 
-  // Step 1: Create Reels container
   const containerResponse = await fetch(
-    `https://graph.facebook.com/v25.0/${IG_ACCOUNT_ID}/media`,
+    `https://graph.facebook.com/v25.0/${igAccountId}/media`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         media_type: 'REELS',
         video_url: videoUrl,
-        caption: caption,
+        caption,
         access_token: pageToken
       })
     }
@@ -161,35 +163,30 @@ async function publishInstagramReels(
   if (containerResult.error) throw new Error(`IG Reels container: ${containerResult.error.message}`)
 
   const creationId = containerResult.id
-  console.log('📹 Container criado:', creationId)
-
-  // Step 2: Wait for processing
   let containerReady = false
   let attempts = 0
-  const maxAttempts = 30
 
-  while (!containerReady && attempts < maxAttempts) {
-    await new Promise(r => setTimeout(r, 3000))
+  while (!containerReady && attempts < 30) {
+    await new Promise((resolve) => setTimeout(resolve, 3000))
 
     const statusResponse = await fetch(
       `https://graph.facebook.com/v25.0/${creationId}?fields=status_code&access_token=${pageToken}`
     )
     const statusResult = await statusResponse.json()
-    console.log(`📋 Status Reels (tentativa ${attempts + 1}):`, statusResult.status_code)
 
     if (statusResult.status_code === 'FINISHED') {
       containerReady = true
     } else if (statusResult.status_code === 'ERROR') {
       throw new Error('IG Reels: Erro ao processar vídeo. Verifique formato e tamanho.')
     }
+
     attempts++
   }
 
   if (!containerReady) throw new Error('IG Reels: Timeout ao processar vídeo')
 
-  // Step 3: Publish
   const publishResponse = await fetch(
-    `https://graph.facebook.com/v25.0/${IG_ACCOUNT_ID}/media_publish`,
+    `https://graph.facebook.com/v25.0/${igAccountId}/media_publish`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -203,6 +200,5 @@ async function publishInstagramReels(
   const publishResult = await publishResponse.json()
   if (publishResult.error) throw new Error(`IG Reels publish: ${publishResult.error.message}`)
 
-  console.log('✅ Instagram Reels publicado:', publishResult.id)
   return { post_id: publishResult.id }
 }
