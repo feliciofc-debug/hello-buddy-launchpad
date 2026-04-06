@@ -218,7 +218,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-x-hidden overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Instagram className="h-5 w-5 text-pink-600" />
@@ -252,12 +252,12 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         )}
 
         {/* Produto Info */}
-        <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+        <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 overflow-hidden">
           {produto.imagem_url && (
             <img src={produto.imagem_url} alt={produto.nome} className="w-16 h-16 rounded-lg object-cover" />
           )}
-          <div>
-            <p className="font-medium text-sm">{produto.nome}</p>
+          <div className="min-w-0 overflow-hidden">
+            <p className="font-medium text-sm break-words line-clamp-2">{produto.nome}</p>
             {produto.preco && (
               <p className="text-sm text-muted-foreground">R$ {produto.preco.toFixed(2)}</p>
             )}

@@ -210,7 +210,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-x-hidden overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Facebook className="h-5 w-5 text-blue-600" />
@@ -230,12 +230,12 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         )}
 
         {/* Produto Info */}
-        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
+        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg overflow-hidden">
           {produto.imagem_url && (
             <img src={produto.imagem_url} alt={produto.nome} className="w-16 h-16 object-cover rounded" />
           )}
-          <div className="flex-1 min-w-0">
-            <p className="font-medium truncate">{produto.nome}</p>
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <p className="font-medium break-words line-clamp-2">{produto.nome}</p>
             {produto.preco && (
               <p className="text-primary font-bold">R$ {produto.preco.toFixed(2)}</p>
             )}
