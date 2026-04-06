@@ -598,51 +598,75 @@ const ProductForm = ({
       </p>
     </div>
 
-    {/* MÚLTIPLAS IMAGENS */}
+    {/* MÚLTIPLAS IMAGENS - UPLOAD */}
     <div className="space-y-2">
-      <Label>Fotos do Produto (até 5 URLs)</Label>
-      <div className="space-y-2">
-        {formData.imagens.map((img: string, idx: number) => (
-          <div key={idx} className="flex gap-2 items-center">
-            {img && (
-              <img src={img} className="w-16 h-16 object-cover rounded" alt={`Foto ${idx + 1}`} />
-            )}
-            <Input 
-              value={img} 
-              onChange={(e) => {
-                const novasImagens = [...formData.imagens];
-                novasImagens[idx] = e.target.value;
-                setFormData({ ...formData, imagens: novasImagens });
-              }} 
-              placeholder="URL da imagem"
-            />
-            <Button 
+      <Label>Fotos Adicionais do Produto (até 5)</Label>
+      <div className="grid grid-cols-5 gap-2">
+        {/* Existing uploaded images */}
+        {existingExtraImages.map((url, idx) => (
+          <div key={`existing-${idx}`} className="relative aspect-square border rounded overflow-hidden group">
+            <img src={url} className="w-full h-full object-cover" alt={`Foto ${idx + 1}`} />
+            <Button
               type="button"
-              variant="ghost" 
-              size="sm" 
+              variant="destructive"
+              size="sm"
+              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={() => {
-                const novasImagens = formData.imagens.filter((_: string, i: number) => i !== idx);
-                setFormData({ ...formData, imagens: novasImagens });
+                setExistingExtraImages(existingExtraImages.filter((_, i) => i !== idx));
               }}
             >
-              <X className="w-4 h-4" />
+              <X className="w-3 h-3" />
             </Button>
           </div>
         ))}
-        {formData.imagens.length < 5 && (
-          <Button 
-            type="button"
-            variant="outline" 
-            size="sm" 
-            onClick={() => setFormData({ ...formData, imagens: [...formData.imagens, ''] })}
-          >
-            <ImageIcon className="w-4 h-4 mr-2" />
-            Adicionar Foto
-          </Button>
+        {/* New file previews */}
+        {extraImageFiles.map((file, idx) => file ? (
+          <div key={`new-${idx}`} className="relative aspect-square border rounded overflow-hidden group">
+            <img src={extraPreviews[idx]!} className="w-full h-full object-cover" alt={`Nova foto ${idx + 1}`} />
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => {
+                const newFiles = extraImageFiles.filter((_, i) => i !== idx);
+                setExtraImageFiles(newFiles);
+              }}
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        ) : null)}
+        {/* Add button */}
+        {(existingExtraImages.length + extraImageFiles.filter(Boolean).length) < 5 && (
+          <label className="aspect-square border-2 border-dashed rounded flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+            <ImageIcon className="w-6 h-6 text-muted-foreground mb-1" />
+            <span className="text-xs text-muted-foreground">Adicionar</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  if (!file.type.startsWith('image/')) {
+                    toast.error('Apenas imagens são permitidas');
+                    return;
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    toast.error('Imagem muito grande. Máximo 5MB');
+                    return;
+                  }
+                  setExtraImageFiles([...extraImageFiles, file]);
+                }
+                e.target.value = '';
+              }}
+            />
+          </label>
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        💡 Dica: Use URLs de imagens do Google Drive, Imgur, etc.
+        📷 Clique para adicionar até 5 fotos do produto (máx. 5MB cada)
       </p>
     </div>
 
