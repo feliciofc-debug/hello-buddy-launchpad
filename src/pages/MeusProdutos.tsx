@@ -105,6 +105,10 @@ interface ProductFormProps {
   setImageFile: (file: File | null) => void;
   previewImage: string | null;
   currentImageUrl?: string | null;
+  extraImageFiles: (File | null)[];
+  setExtraImageFiles: (files: (File | null)[]) => void;
+  existingExtraImages: string[];
+  setExistingExtraImages: (imgs: string[]) => void;
 }
 
 const ProductForm = ({ 
@@ -117,8 +121,13 @@ const ProductForm = ({
   imageFile,
   setImageFile,
   previewImage,
-  currentImageUrl
+  currentImageUrl,
+  extraImageFiles,
+  setExtraImageFiles,
+  existingExtraImages,
+  setExistingExtraImages
 }: ProductFormProps) => {
+  const extraPreviews = extraImageFiles.map(f => f ? URL.createObjectURL(f) : null);
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -589,51 +598,75 @@ const ProductForm = ({
       </p>
     </div>
 
-    {/* MÚLTIPLAS IMAGENS */}
+    {/* MÚLTIPLAS IMAGENS - UPLOAD */}
     <div className="space-y-2">
-      <Label>Fotos do Produto (até 5 URLs)</Label>
-      <div className="space-y-2">
-        {formData.imagens.map((img: string, idx: number) => (
-          <div key={idx} className="flex gap-2 items-center">
-            {img && (
-              <img src={img} className="w-16 h-16 object-cover rounded" alt={`Foto ${idx + 1}`} />
-            )}
-            <Input 
-              value={img} 
-              onChange={(e) => {
-                const novasImagens = [...formData.imagens];
-                novasImagens[idx] = e.target.value;
-                setFormData({ ...formData, imagens: novasImagens });
-              }} 
-              placeholder="URL da imagem"
-            />
-            <Button 
+      <Label>Fotos Adicionais do Produto (até 5)</Label>
+      <div className="grid grid-cols-5 gap-2">
+        {/* Existing uploaded images */}
+        {existingExtraImages.map((url, idx) => (
+          <div key={`existing-${idx}`} className="relative aspect-square border rounded overflow-hidden group">
+            <img src={url} className="w-full h-full object-cover" alt={`Foto ${idx + 1}`} />
+            <Button
               type="button"
-              variant="ghost" 
-              size="sm" 
+              variant="destructive"
+              size="sm"
+              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={() => {
-                const novasImagens = formData.imagens.filter((_: string, i: number) => i !== idx);
-                setFormData({ ...formData, imagens: novasImagens });
+                setExistingExtraImages(existingExtraImages.filter((_, i) => i !== idx));
               }}
             >
-              <X className="w-4 h-4" />
+              <X className="w-3 h-3" />
             </Button>
           </div>
         ))}
-        {formData.imagens.length < 5 && (
-          <Button 
-            type="button"
-            variant="outline" 
-            size="sm" 
-            onClick={() => setFormData({ ...formData, imagens: [...formData.imagens, ''] })}
-          >
-            <ImageIcon className="w-4 h-4 mr-2" />
-            Adicionar Foto
-          </Button>
+        {/* New file previews */}
+        {extraImageFiles.map((file, idx) => file ? (
+          <div key={`new-${idx}`} className="relative aspect-square border rounded overflow-hidden group">
+            <img src={extraPreviews[idx]!} className="w-full h-full object-cover" alt={`Nova foto ${idx + 1}`} />
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => {
+                const newFiles = extraImageFiles.filter((_, i) => i !== idx);
+                setExtraImageFiles(newFiles);
+              }}
+            >
+              <X className="w-3 h-3" />
+            </Button>
+          </div>
+        ) : null)}
+        {/* Add button */}
+        {(existingExtraImages.length + extraImageFiles.filter(Boolean).length) < 5 && (
+          <label className="aspect-square border-2 border-dashed rounded flex flex-col items-center justify-center cursor-pointer hover:bg-muted/50 transition-colors">
+            <ImageIcon className="w-6 h-6 text-muted-foreground mb-1" />
+            <span className="text-xs text-muted-foreground">Adicionar</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  if (!file.type.startsWith('image/')) {
+                    toast.error('Apenas imagens são permitidas');
+                    return;
+                  }
+                  if (file.size > 5 * 1024 * 1024) {
+                    toast.error('Imagem muito grande. Máximo 5MB');
+                    return;
+                  }
+                  setExtraImageFiles([...extraImageFiles, file]);
+                }
+                e.target.value = '';
+              }}
+            />
+          </label>
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        💡 Dica: Use URLs de imagens do Google Drive, Imgur, etc.
+        📷 Clique para adicionar até 5 fotos do produto (máx. 5MB cada)
       </p>
     </div>
 
@@ -760,6 +793,8 @@ export default function MeusProdutos() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
+  const [extraImageFiles, setExtraImageFiles] = useState<(File | null)[]>([]);
+  const [existingExtraImages, setExistingExtraImages] = useState<string[]>([]);
 
   // Preview da imagem quando selecionada
   useEffect(() => {
@@ -951,7 +986,22 @@ export default function MeusProdutos() {
         }
       }
 
-      toast.success('Produto adicionado com sucesso!');
+      // Upload extra images
+      if (newProduct && extraImageFiles.filter(Boolean).length > 0) {
+        toast.loading('Enviando fotos adicionais...');
+        const extraUrls: string[] = [];
+        for (const file of extraImageFiles) {
+          if (file) {
+            const url = await uploadImage(file, newProduct.id);
+            if (url) extraUrls.push(url);
+          }
+        }
+        if (extraUrls.length > 0) {
+          await supabase.from('produtos').update({ imagens: extraUrls }).eq('id', newProduct.id);
+        }
+        toast.dismiss();
+      }
+
       setIsAddModalOpen(false);
       resetForm();
       fetchProducts();
@@ -1004,7 +1054,7 @@ export default function MeusProdutos() {
           especificacoes: formData.especificacoes || null,
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
-          imagens: formData.imagens || [],
+          imagens: existingExtraImages || [],
           tipo: formData.tipo || 'fisico',
           ficha_tecnica: formData.ficha_tecnica || null,
           informacao_nutricional: formData.informacao_nutricional || null,
@@ -1022,6 +1072,20 @@ export default function MeusProdutos() {
         .eq('id', selectedProduct.id);
 
       if (error) throw error;
+
+      // Upload extra images
+      if (extraImageFiles.filter(Boolean).length > 0) {
+        toast.loading('Enviando fotos adicionais...');
+        const extraUrls: string[] = [...existingExtraImages];
+        for (const file of extraImageFiles) {
+          if (file) {
+            const url = await uploadImage(file, selectedProduct.id);
+            if (url) extraUrls.push(url);
+          }
+        }
+        await supabase.from('produtos').update({ imagens: extraUrls }).eq('id', selectedProduct.id);
+        toast.dismiss();
+      }
 
       console.log('✅ Produto atualizado com sucesso');
       toast.success('Produto atualizado com sucesso!');
@@ -1157,6 +1221,8 @@ export default function MeusProdutos() {
     });
     setCurrentImageUrl(product.imagem_url);
     setImageFile(null);
+    setExtraImageFiles([]);
+    setExistingExtraImages(Array.isArray(product.imagens) ? product.imagens.filter(Boolean) : []);
     setIsEditModalOpen(true);
   };
 
@@ -1192,6 +1258,8 @@ export default function MeusProdutos() {
     setSelectedProduct(null);
     setImageFile(null);
     setCurrentImageUrl(null);
+    setExtraImageFiles([]);
+    setExistingExtraImages([]);
   };
 
   const getFilteredProducts = () => {
@@ -1679,6 +1747,10 @@ export default function MeusProdutos() {
             setImageFile={setImageFile}
             previewImage={previewImage}
             currentImageUrl={null}
+            extraImageFiles={extraImageFiles}
+            setExtraImageFiles={setExtraImageFiles}
+            existingExtraImages={existingExtraImages}
+            setExistingExtraImages={setExistingExtraImages}
           />
         </DialogContent>
       </Dialog>
@@ -1700,6 +1772,10 @@ export default function MeusProdutos() {
             setImageFile={setImageFile}
             previewImage={previewImage}
             currentImageUrl={currentImageUrl}
+            extraImageFiles={extraImageFiles}
+            setExtraImageFiles={setExtraImageFiles}
+            existingExtraImages={existingExtraImages}
+            setExistingExtraImages={setExistingExtraImages}
           />
         </DialogContent>
       </Dialog>
