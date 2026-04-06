@@ -1,8 +1,33 @@
 const SAO_PAULO_TIMEZONE = "America/Sao_Paulo";
 const SAO_PAULO_UTC_OFFSET_HOURS = 3;
 
+function getSaoPauloParts(input: string | Date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SAO_PAULO_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(input));
+
+  const read = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
+
+  return {
+    year: read("year"),
+    month: read("month"),
+    day: read("day"),
+    hour: read("hour"),
+    minute: read("minute"),
+    second: read("second"),
+  };
+}
+
 export function getSaoPauloNow() {
-  return new Date(new Date().toLocaleString("en-US", { timeZone: SAO_PAULO_TIMEZONE }));
+  const parts = getSaoPauloParts();
+  return new Date(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second, 0);
 }
 
 export function startOfDay(date: Date) {
