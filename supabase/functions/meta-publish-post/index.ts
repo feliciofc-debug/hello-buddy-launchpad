@@ -41,6 +41,13 @@ serve(async (req) => {
 
       if (error || !data) throw new Error('Post não encontrado')
       posts = [data]
+    } else if (body.image_urls && Array.isArray(body.image_urls) && body.image_urls.length > 1) {
+      // Multi-photo (carousel) post on Facebook
+      const { token: pageToken, actualPageId } = await getPageToken(supabase, body.user_id, body.page_id || '')
+      const result = await publishMultiPhotoToFacebook(pageToken, actualPageId, body.message, body.image_urls)
+      return new Response(JSON.stringify({ success: true, ...result }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     } else if (body.message || body.video_url) {
       const { token: pageToken, actualPageId } = await getPageToken(supabase, body.user_id, body.page_id || '')
       const result = await publishToFacebook(pageToken, actualPageId, body.message, body.image_url, body.link_url, body.video_url)
