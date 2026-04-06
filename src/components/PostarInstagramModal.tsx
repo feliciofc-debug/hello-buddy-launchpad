@@ -56,8 +56,32 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   const [pageId, setPageId] = useState<string>("");
   const [igConnected, setIgConnected] = useState(false);
   const [igUsername, setIgUsername] = useState<string>("");
+  const [allImages, setAllImages] = useState<string[]>([]);
 
-  const temImagem = !!produto.imagem_url;
+  const loadAllImages = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('produtos')
+        .select('imagem_url, imagens')
+        .eq('id', produto.id)
+        .single();
+      if (data) {
+        const imgs = getAllProductImages((data as any).imagem_url, (data as any).imagens);
+        console.log('📸 Instagram modal - todas as fotos:', imgs);
+        setAllImages(imgs);
+      }
+    } catch (e) {
+      const fallback = getAllProductImages(produto.imagem_url || null, (produto as any).imagens);
+      setAllImages(fallback);
+    }
+  }, [produto.id, produto.imagem_url]);
+
+  useEffect(() => {
+    if (open) loadAllImages();
+  }, [open, loadAllImages]);
+
+  const isCarousel = allImages.length >= 2;
+  const temImagem = allImages.length > 0;
 
   useEffect(() => {
     const loadIgData = async () => {
