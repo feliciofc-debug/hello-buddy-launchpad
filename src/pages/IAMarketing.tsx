@@ -286,12 +286,16 @@ const IAMarketing = () => {
       const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
 
       await supabase.from("social_posts_queue" as any).insert({
-        user_id: user.id, platform: "facebook", page_id: "855785300949909",
-        post_text: mensagemFinal, image_url: imagemUrl, status: "pendente",
+        user_id: user.id,
+        platform: "facebook",
+        page_id: "",
+        post_text: mensagemFinal,
+        image_url: imagemUrl,
+        status: "pendente",
       } as any);
 
       const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
-        body: { message: mensagemFinal, page_id: "855785300949909", user_id: user.id, image_url: imagemUrl || undefined },
+        body: { message: mensagemFinal, user_id: user.id, image_url: imagemUrl || undefined },
       });
       if (pubError) throw pubError;
 
@@ -324,8 +328,12 @@ const IAMarketing = () => {
       const captionFinal = link ? `${texto.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : texto.trim();
 
       await supabase.from("social_posts_queue" as any).insert({
-        user_id: user.id, platform: "instagram", page_id: "855785300949909",
-        post_text: captionFinal, image_url: imagemUrl, status: "pendente",
+        user_id: user.id,
+        platform: "instagram",
+        page_id: "",
+        post_text: captionFinal,
+        image_url: imagemUrl,
+        status: "pendente",
       } as any);
 
       const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
@@ -370,15 +378,21 @@ const IAMarketing = () => {
           try {
             const mensagemFb = link ? `${textoFb.trim()}\n\n🔗 Compre aqui: ${link}` : textoFb.trim();
             await supabase.from("social_posts_queue" as any).insert({
-              user_id: user.id, platform: "facebook", page_id: "855785300949909",
-              post_text: mensagemFb, image_url: imagemUrl, status: "pendente",
+              user_id: user.id,
+              platform: "facebook",
+              page_id: "",
+              post_text: mensagemFb,
+              image_url: imagemUrl,
+              status: "pendente",
             } as any);
             const { error } = await supabase.functions.invoke("meta-publish-post", {
-              body: { message: mensagemFb, page_id: "855785300949909", user_id: user.id, image_url: imagemUrl || undefined },
+              body: { message: mensagemFb, user_id: user.id, image_url: imagemUrl || undefined },
             });
             if (error) throw error;
             resultados.push("✅ Facebook");
-          } catch (err: any) { resultados.push("❌ Facebook: " + (err.message || "erro")); }
+          } catch (err: any) {
+            resultados.push("❌ Facebook: " + (err.message || "erro"));
+          }
         })());
       }
 
@@ -387,8 +401,12 @@ const IAMarketing = () => {
           try {
             const captionIg = link ? `${textoIg.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : textoIg.trim();
             await supabase.from("social_posts_queue" as any).insert({
-              user_id: user.id, platform: "instagram", page_id: "855785300949909",
-              post_text: captionIg, image_url: imagemUrl, status: "pendente",
+              user_id: user.id,
+              platform: "instagram",
+              page_id: "",
+              post_text: captionIg,
+              image_url: imagemUrl,
+              status: "pendente",
             } as any);
             const { data: pubData, error } = await supabase.functions.invoke("meta-publish-instagram", {
               body: { caption: captionIg, image_url: imagemUrl, user_id: user.id },
@@ -396,14 +414,15 @@ const IAMarketing = () => {
             if (error) throw error;
             if (!pubData?.success) throw new Error(pubData?.error);
             resultados.push("✅ Instagram");
-          } catch (err: any) { resultados.push("❌ Instagram: " + (err.message || "erro")); }
+          } catch (err: any) {
+            resultados.push("❌ Instagram: " + (err.message || "erro"));
+          }
         })());
       } else if (textoIg.trim() && !imagemUrl) {
         resultados.push("⚠️ Instagram pulado (sem imagem)");
       }
 
       await Promise.all(promises);
-
       toast.success(resultados.join(" | "));
     } catch (err: any) {
       toast.error(err.message || "Erro ao publicar");

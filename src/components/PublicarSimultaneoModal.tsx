@@ -78,11 +78,11 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
         promises.push((async () => {
           try {
             await supabase.from('social_posts_queue' as any).insert({
-              user_id: user.id, platform: 'facebook', page_id: '855785300949909',
+              user_id: user.id, platform: 'facebook', page_id: '',
               post_text: texto, image_url: imagemUrl, status: 'pendente',
             } as any);
             const { error } = await supabase.functions.invoke('meta-publish-post', {
-              body: { message: texto, page_id: '855785300949909', user_id: user.id, image_url: imagemUrl || undefined },
+              body: { message: texto, user_id: user.id, image_url: imagemUrl || undefined },
             });
             if (error) throw error;
             resultados.push('✅ Facebook OK');
@@ -99,7 +99,7 @@ export function PublicarSimultaneoModal({ open, onOpenChange, produto }: Props) 
           promises.push((async () => {
             try {
               await supabase.from('social_posts_queue' as any).insert({
-                user_id: user.id, platform: 'instagram', page_id: '855785300949909',
+                user_id: user.id, platform: 'instagram', page_id: '',
                 post_text: texto, image_url: imagemUrl, status: 'pendente',
               } as any);
               const { data: pubData, error } = await supabase.functions.invoke('meta-publish-instagram', {

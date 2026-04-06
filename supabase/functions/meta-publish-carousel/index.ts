@@ -159,28 +159,6 @@ async function getIgCredentials(supabase: any, userId: string): Promise<{ igId: 
     return { igId: metaConn.ig_account_id, token: metaConn.page_access_token }
   }
 
-  // 2. Fallback: integrations table (legacy)
-  if (userId) {
-    const { data: integration } = await supabase
-      .from('integrations')
-      .select('access_token')
-      .eq('user_id', userId)
-      .eq('platform', 'meta_page_855785300949909')
-      .eq('is_active', true)
-      .single()
-
-    if (integration?.access_token) {
-      console.log('⚠️ Usando token integrations (legado)')
-      return { igId: '17841477660295647', token: integration.access_token }
-    }
-  }
-
-  // 3. Last fallback: admin secret
-  const fallbackToken = Deno.env.get('META_PAGE_ACCESS_TOKEN')
-  if (fallbackToken) {
-    console.log('⚠️ Usando fallback META_PAGE_ACCESS_TOKEN')
-    return { igId: '17841477660295647', token: fallbackToken }
-  }
-
+  // 2. Sem fallback legado/admin - cada cliente publica só na própria conta conectada
   throw new Error('Instagram não conectado. Vá em Configurações → Redes Sociais e conecte sua conta.')
 }

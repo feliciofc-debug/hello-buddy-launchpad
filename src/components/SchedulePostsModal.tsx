@@ -276,7 +276,7 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
             socialPosts.push({
               user_id: userData.user.id,
               platform,
-              page_id: '855785300949909',
+              page_id: '',
               post_text: postText,
               image_url: null,
               status: 'pendente',
