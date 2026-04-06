@@ -15,6 +15,15 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { CalendarIcon, Sparkles, Loader2, Facebook, Send, Clock, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  clampTimeForToday,
+  combineSaoPauloDateTimeToIso,
+  generateTimeOptions,
+  getNextFiveMinuteSlot,
+  isBeforeTodayInSaoPaulo,
+  isSameCalendarDay,
+  toTimeString,
+} from "@/lib/sao-paulo-time";
 
 interface Produto {
   id: string;
@@ -64,6 +73,23 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
     };
     if (open) loadPageId();
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const nextSlot = getNextFiveMinuteSlot();
+    setDataAgendamento(nextSlot);
+    setHoraAgendamento(toTimeString(nextSlot));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || modoEnvio !== "agendar" || !dataAgendamento) return;
+
+    const adjustedTime = clampTimeForToday(dataAgendamento, horaAgendamento);
+    if (adjustedTime !== horaAgendamento) {
+      setHoraAgendamento(adjustedTime);
+    }
+  }, [open, modoEnvio, dataAgendamento, horaAgendamento]);
 
   const handleGerarTexto = async () => {
     setGerando(true);
@@ -124,10 +150,8 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
 
       let scheduledAt: string | null = null;
       if (modoEnvio === "agendar" && dataAgendamento) {
-        const [h, m] = horaAgendamento.split(":").map(Number);
-        const dt = new Date(dataAgendamento);
-        dt.setHours(h, m, 0, 0);
-        scheduledAt = dt.toISOString();
+        const horaFinal = clampTimeForToday(dataAgendamento, horaAgendamento);
+        scheduledAt = combineSaoPauloDateTimeToIso(dataAgendamento, horaFinal);
       }
 
       // Insert into social_posts_queue - usa page_id do cliente ou vazio (edge function resolve)
@@ -161,7 +185,8 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         const postId = pubData?.post_id || pubData?.id || "OK";
         toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
       } else {
-        toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaAgendamento}`);
+        const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
+        toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaFinal}`);
       }
 
       setTextoPost("");
@@ -177,10 +202,11 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
     }
   };
 
-  const horas = Array.from({ length: 24 }, (_, i) => {
-    const h = i.toString().padStart(2, "0");
-    return [`${h}:00`, `${h}:30`];
-  }).flat();
+  const proximoSlot = getNextFiveMinuteSlot();
+  const horas = generateTimeOptions(5);
+  const horasDisponiveis = dataAgendamento && isSameCalendarDay(dataAgendamento, proximoSlot)
+    ? horas.filter((hora) => hora >= toTimeString(proximoSlot))
+    : horas;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -323,8 +349,13 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
                   <Calendar
                     mode="single"
                     selected={dataAgendamento}
-                    onSelect={setDataAgendamento}
-                    disabled={(date) => date < new Date()}
+                    onSelect={(date) => {
+                      setDataAgendamento(date);
+                      if (date) {
+                        setHoraAgendamento(clampTimeForToday(date, horaAgendamento));
+                      }
+                    }}
+                    disabled={(date) => isBeforeTodayInSaoPaulo(date)}
                     className="p-3 pointer-events-auto"
                   />
                 </PopoverContent>
@@ -335,7 +366,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {horas.map((h) => (
+                    {horasDisponiveis.map((h) => (
                     <SelectItem key={h} value={h}>{h}</SelectItem>
                   ))}
                 </SelectContent>
