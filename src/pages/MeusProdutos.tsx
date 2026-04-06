@@ -986,7 +986,22 @@ export default function MeusProdutos() {
         }
       }
 
-      toast.success('Produto adicionado com sucesso!');
+      // Upload extra images
+      if (newProduct && extraImageFiles.filter(Boolean).length > 0) {
+        toast.loading('Enviando fotos adicionais...');
+        const extraUrls: string[] = [];
+        for (const file of extraImageFiles) {
+          if (file) {
+            const url = await uploadImage(file, newProduct.id);
+            if (url) extraUrls.push(url);
+          }
+        }
+        if (extraUrls.length > 0) {
+          await supabase.from('produtos').update({ imagens: extraUrls }).eq('id', newProduct.id);
+        }
+        toast.dismiss();
+      }
+
       setIsAddModalOpen(false);
       resetForm();
       fetchProducts();
