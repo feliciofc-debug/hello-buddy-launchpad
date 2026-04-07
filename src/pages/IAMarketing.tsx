@@ -96,6 +96,12 @@ const IAMarketing = () => {
       return;
     }
 
+    // PJ limit guard - check monthly IA image limit (all clients)
+    if (!canGenerate()) {
+      toast.error(`🔒 Limite de ${iaLimite} gerações de IA atingido este mês! Contrate mais gerações para continuar.`);
+      return;
+    }
+
     // Trial guard - check IA Marketing limit
     if (isTrial && !canUseIAMarketing()) {
       toast.error("🔒 Limite de IA Marketing atingido! Contrate o plano completo para continuar.");
