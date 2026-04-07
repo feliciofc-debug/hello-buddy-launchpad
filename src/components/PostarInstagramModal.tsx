@@ -266,7 +266,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
             body: {
               caption: captionFinal,
-              image_url: allImages[0],
+              image_url: finalImageUrls[0],
               user_id: user.id,
             },
           });
