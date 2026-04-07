@@ -13,9 +13,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { CalendarIcon, Sparkles, Loader2, Instagram, Send, Clock, AlertTriangle } from "lucide-react";
+import { CalendarIcon, Sparkles, Loader2, Instagram, Send, Clock, AlertTriangle, ImageIcon } from "lucide-react";
 import { getAllProductImages } from "@/components/ProductImageCarousel";
 import { cn } from "@/lib/utils";
+import { adjustImagesForInstagram, FORMAT_LABELS, type AdjustedImage } from "@/lib/adjustImageForInstagram";
 import {
   clampTimeForToday,
   combineSaoPauloDateTimeToIso,
@@ -57,6 +58,9 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   const [igConnected, setIgConnected] = useState(false);
   const [igUsername, setIgUsername] = useState<string>("");
   const [allImages, setAllImages] = useState<string[]>([]);
+  const [ajusteAuto, setAjusteAuto] = useState(true);
+  const [adjustedImages, setAdjustedImages] = useState<AdjustedImage[] | null>(null);
+  const [ajustando, setAjustando] = useState(false);
 
   const loadAllImages = useCallback(async () => {
     try {
@@ -79,6 +83,32 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   useEffect(() => {
     if (open) loadAllImages();
   }, [open, loadAllImages]);
+
+  // Auto-adjust images when they load or toggle changes
+  useEffect(() => {
+    if (!open || allImages.length === 0) {
+      setAdjustedImages(null);
+      return;
+    }
+    if (!ajusteAuto) {
+      setAdjustedImages(null);
+      return;
+    }
+    let cancelled = false;
+    setAjustando(true);
+    adjustImagesForInstagram(allImages)
+      .then((result) => {
+        if (!cancelled) setAdjustedImages(result);
+      })
+      .catch((err) => {
+        console.error('Erro ao ajustar imagens:', err);
+        if (!cancelled) setAdjustedImages(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAjustando(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, allImages, ajusteAuto]);
 
   const isCarousel = allImages.length >= 2;
   const temImagem = allImages.length > 0;
@@ -179,6 +209,24 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         return;
       }
 
+      // Se ajuste automático ativo, fazer upload das imagens ajustadas
+      let finalImageUrls = allImages;
+      if (ajusteAuto && adjustedImages && adjustedImages.length > 0) {
+        toast.info("📐 Ajustando imagens para Instagram...");
+        const uploadedUrls: string[] = [];
+        for (let i = 0; i < adjustedImages.length; i++) {
+          const adj = adjustedImages[i];
+          const fname = `${user.id}/ig-adjusted/${Date.now()}-${i}.jpg`;
+          const { error: upErr } = await supabase.storage
+            .from("produtos")
+            .upload(fname, adj.blob, { contentType: "image/jpeg" });
+          if (upErr) throw upErr;
+          const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(fname);
+          uploadedUrls.push(urlData.publicUrl);
+        }
+        finalImageUrls = uploadedUrls;
+      }
+
       let scheduledAt: string | null = null;
       if (modoEnvio === "agendar" && dataAgendamento) {
         const horaFinal = clampTimeForToday(dataAgendamento, horaAgendamento);
@@ -192,7 +240,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         platform: "instagram",
         page_id: pageId || "",
         post_text: captionFinal,
-        image_url: allImages[0] || null,
+        image_url: finalImageUrls[0] || null,
         link_url: incluirLink ? linkProduto : null,
         status: "pendente",
         scheduled_at: scheduledAt,
@@ -201,25 +249,24 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       if (insertError) throw insertError;
 
       if (modoEnvio === "agora") {
-        if (allImages.length >= 2) {
-          // Carrossel no Instagram
-          console.log(`📸 Publicando carrossel Instagram com ${allImages.length} fotos`);
+        if (finalImageUrls.length >= 2) {
+          console.log(`📸 Publicando carrossel Instagram com ${finalImageUrls.length} fotos`);
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-carousel", {
             body: {
               caption: captionFinal,
-              image_urls: allImages,
+              image_urls: finalImageUrls,
               user_id: user.id,
             },
           });
           if (pubError) throw pubError;
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar carrossel");
-          toast.success(`✅ Carrossel com ${allImages.length} fotos publicado no Instagram!`);
+          toast.success(`✅ Carrossel com ${finalImageUrls.length} fotos publicado no Instagram!`);
         } else {
           // Post simples
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
             body: {
               caption: captionFinal,
-              image_url: allImages[0],
+              image_url: finalImageUrls[0],
               user_id: user.id,
             },
           });
@@ -300,17 +347,57 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
             </div>
           </div>
           {allImages.length > 0 && (
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
                 {isCarousel
                   ? `📸 ${allImages.length} fotos — será publicado como CARROSSEL`
                   : '📸 1 foto — post simples'}
               </p>
-              <div className="grid grid-cols-5 gap-2">
-                {allImages.map((url, i) => (
-                  <img key={i} src={url} alt={`Foto ${i+1}`} className="w-full aspect-square object-cover rounded border" />
-                ))}
+
+              {/* Toggle ajuste automático */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="ajuste-auto-ig"
+                  checked={ajusteAuto}
+                  onCheckedChange={(c) => setAjusteAuto(!!c)}
+                />
+                <Label htmlFor="ajuste-auto-ig" className="text-xs cursor-pointer flex items-center gap-1">
+                  <ImageIcon className="h-3 w-3" />
+                  Ajustar automaticamente para Instagram (recomendado)
+                </Label>
               </div>
+
+              {/* Preview: ajustada ou original */}
+              {ajusteAuto && ajustando && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Ajustando imagens...
+                </div>
+              )}
+
+              {ajusteAuto && adjustedImages && adjustedImages.length > 0 ? (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    ✅ Preview ajustado — {FORMAT_LABELS[adjustedImages[0].format]}
+                  </p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {adjustedImages.map((adj, i) => (
+                      <img key={i} src={adj.dataUrl} alt={`Ajustada ${i+1}`} className="w-full aspect-square object-contain rounded border bg-black" />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {!ajusteAuto && (
+                    <p className="text-xs text-amber-600 mb-1">⚠️ Imagem original — pode ser cortada pelo Instagram</p>
+                  )}
+                  <div className="grid grid-cols-5 gap-2">
+                    {allImages.map((url, i) => (
+                      <img key={i} src={url} alt={`Foto ${i+1}`} className="w-full aspect-square object-cover rounded border" />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
