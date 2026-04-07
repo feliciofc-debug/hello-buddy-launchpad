@@ -195,6 +195,9 @@ const IAMarketing = () => {
       }
 
 
+      // Increment PJ usage (all clients)
+      await incrementIAUsage();
+
       // Increment trial usage
       if (isTrial) await incrementImageUsage();
 
