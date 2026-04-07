@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { SlideRenderer } from "@/components/carousel/SlideRenderer";
 import { TEMPLATE_OPTIONS, type TemplateKey } from "@/components/carousel/templates/types";
 import { exportAllSlides } from "@/lib/carouselExporter";
+import { useNavigate } from "react-router-dom";
 
 export interface SlideData {
   type: 'cover' | 'content' | 'cta';
@@ -28,6 +29,7 @@ export interface SlideData {
 }
 
 export const CarouselGenerator = () => {
+  const navigate = useNavigate();
   const [tema, setTema] = useState("");
   const [numSlides, setNumSlides] = useState("5");
   const [estilo, setEstilo] = useState<string>("dark-premium");
@@ -224,6 +226,8 @@ REGRAS:
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Não autenticado");
+      if (renderedImages.length === 0) throw new Error("Gere o carrossel antes de salvar como produto");
+
       const allUrls: string[] = [];
       for (let i = 0; i < renderedImages.length; i++) {
         const dataUrl = renderedImages[i];
@@ -238,20 +242,27 @@ REGRAS:
         const { data: urlData } = supabase.storage.from("carousels").getPublicUrl(fname);
         allUrls.push(urlData.publicUrl);
       }
+
       const titulo = slides[0]?.title || tema.slice(0, 80) || "Carrossel IA";
-      const { error: insertErr } = await supabase.from("produtos").insert({
+      const productPayload = {
         user_id: userData.user.id,
         nome: titulo,
         descricao: caption || `Carrossel: ${titulo}`,
-        imagem_url: allUrls[0],
-        imagens: allUrls,
+        preco: null,
         categoria: "Marketing",
+        imagem_url: allUrls[0] ?? null,
+        imagens: allUrls,
         ativo: true,
-        preco: 0,
         tipo: "carrossel",
-      });
+      };
+
+      const { error: insertErr } = await supabase.from("produtos").insert(productPayload);
       if (insertErr) throw insertErr;
-      toast.success("✅ Salvo como produto! Disponível no Autopilot.");
+
+      toast.success("✅ Carrossel salvo em Meus Produtos! Disponível no Autopilot.");
+      window.setTimeout(() => {
+        navigate("/meus-produtos");
+      }, 2000);
     } catch (err: any) { toast.error(err.message || "Erro ao salvar produto"); }
     finally { setSavingProduct(false); }
   };
