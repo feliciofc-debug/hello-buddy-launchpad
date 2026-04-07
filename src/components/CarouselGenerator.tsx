@@ -231,7 +231,7 @@ REGRAS:
       const allUrls: string[] = [];
       for (let i = 0; i < renderedImages.length; i++) {
         const blob = await (await fetch(renderedImages[i])).blob();
-        const fname = `carrosseis/${userData.user.id}/${Date.now()}-slide-${i + 1}.png`;
+        const fname = `${userData.user.id}/carrosseis/${Date.now()}-slide-${i + 1}.png`;
         const { error: upErr } = await supabase.storage
           .from("produtos")
           .upload(fname, blob, { contentType: "image/png" });
