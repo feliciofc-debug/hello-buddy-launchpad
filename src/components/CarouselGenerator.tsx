@@ -226,45 +226,49 @@ REGRAS:
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error("Não autenticado");
-      if (renderedImages.length === 0) throw new Error("Gere o carrossel antes de salvar como produto");
 
+      // 1. Upload de todas as imagens dos slides para o Storage
       const allUrls: string[] = [];
       for (let i = 0; i < renderedImages.length; i++) {
-        const dataUrl = renderedImages[i];
-        const arr = dataUrl.split(',');
-        const bstr = atob(arr[1]);
-        const u8arr = new Uint8Array(bstr.length);
-        for (let j = 0; j < bstr.length; j++) u8arr[j] = bstr.charCodeAt(j);
-        const blob = new Blob([u8arr], { type: 'image/png' });
-        const fname = `${userData.user.id}/${Date.now()}-slide-${i + 1}.png`;
-        const { error: upErr } = await supabase.storage.from("carousels").upload(fname, blob, { contentType: "image/png", upsert: true });
+        const blob = await (await fetch(renderedImages[i])).blob();
+        const fname = `carrosseis/${userData.user.id}/${Date.now()}-slide-${i + 1}.png`;
+        const { error: upErr } = await supabase.storage
+          .from("produtos")
+          .upload(fname, blob, { contentType: "image/png" });
         if (upErr) throw upErr;
-        const { data: urlData } = supabase.storage.from("carousels").getPublicUrl(fname);
+        const { data: urlData } = supabase.storage
+          .from("produtos")
+          .getPublicUrl(fname);
         allUrls.push(urlData.publicUrl);
       }
 
+      // 2. Salvar na tabela CORRETA: "produtos"
       const titulo = slides[0]?.title || tema.slice(0, 80) || "Carrossel IA";
-      const productPayload = {
+      const { error } = await supabase.from("produtos").insert({
         user_id: userData.user.id,
         nome: titulo,
-        descricao: caption || `Carrossel: ${titulo}`,
+        descricao: caption || `Carrossel gerado por IA: ${titulo}`,
         preco: null,
         categoria: "Marketing",
-        imagem_url: allUrls[0] ?? null,
-        imagens: allUrls,
-        ativo: true,
         tipo: "fisico",
-      };
+        status: "ativo",
+        ativo: true,
+        imagem_url: allUrls[0],
+        imagens: allUrls,
+        estoque: 0,
+        cliente_id: null,
+        tags: ["carrossel", "ia", "marketing"],
+        fonte: "carrossel_ia",
+      });
 
-      const { error: insertErr } = await supabase.from("produtos").insert(productPayload);
-      if (insertErr) throw insertErr;
+      if (error) throw error;
 
       toast.success("✅ Carrossel salvo em Meus Produtos! Disponível no Autopilot.");
-      window.setTimeout(() => {
-        navigate("/meus-produtos");
-      }, 2000);
-    } catch (err: any) { toast.error(err.message || "Erro ao salvar produto"); }
-    finally { setSavingProduct(false); }
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao salvar produto");
+    } finally {
+      setSavingProduct(false);
+    }
   };
 
   return (
