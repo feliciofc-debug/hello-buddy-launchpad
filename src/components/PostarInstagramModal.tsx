@@ -209,6 +209,24 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         return;
       }
 
+      // Se ajuste automático ativo, fazer upload das imagens ajustadas
+      let finalImageUrls = allImages;
+      if (ajusteAuto && adjustedImages && adjustedImages.length > 0) {
+        toast.info("📐 Ajustando imagens para Instagram...");
+        const uploadedUrls: string[] = [];
+        for (let i = 0; i < adjustedImages.length; i++) {
+          const adj = adjustedImages[i];
+          const fname = `${user.id}/ig-adjusted/${Date.now()}-${i}.jpg`;
+          const { error: upErr } = await supabase.storage
+            .from("produtos")
+            .upload(fname, adj.blob, { contentType: "image/jpeg" });
+          if (upErr) throw upErr;
+          const { data: urlData } = supabase.storage.from("produtos").getPublicUrl(fname);
+          uploadedUrls.push(urlData.publicUrl);
+        }
+        finalImageUrls = uploadedUrls;
+      }
+
       let scheduledAt: string | null = null;
       if (modoEnvio === "agendar" && dataAgendamento) {
         const horaFinal = clampTimeForToday(dataAgendamento, horaAgendamento);
@@ -222,7 +240,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         platform: "instagram",
         page_id: pageId || "",
         post_text: captionFinal,
-        image_url: allImages[0] || null,
+        image_url: finalImageUrls[0] || null,
         link_url: incluirLink ? linkProduto : null,
         status: "pendente",
         scheduled_at: scheduledAt,
@@ -231,19 +249,18 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       if (insertError) throw insertError;
 
       if (modoEnvio === "agora") {
-        if (allImages.length >= 2) {
-          // Carrossel no Instagram
-          console.log(`📸 Publicando carrossel Instagram com ${allImages.length} fotos`);
+        if (finalImageUrls.length >= 2) {
+          console.log(`📸 Publicando carrossel Instagram com ${finalImageUrls.length} fotos`);
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-carousel", {
             body: {
               caption: captionFinal,
-              image_urls: allImages,
+              image_urls: finalImageUrls,
               user_id: user.id,
             },
           });
           if (pubError) throw pubError;
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar carrossel");
-          toast.success(`✅ Carrossel com ${allImages.length} fotos publicado no Instagram!`);
+          toast.success(`✅ Carrossel com ${finalImageUrls.length} fotos publicado no Instagram!`);
         } else {
           // Post simples
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
