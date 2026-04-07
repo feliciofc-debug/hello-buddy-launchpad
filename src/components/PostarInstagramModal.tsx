@@ -347,17 +347,57 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
             </div>
           </div>
           {allImages.length > 0 && (
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
                 {isCarousel
                   ? `📸 ${allImages.length} fotos — será publicado como CARROSSEL`
                   : '📸 1 foto — post simples'}
               </p>
-              <div className="grid grid-cols-5 gap-2">
-                {allImages.map((url, i) => (
-                  <img key={i} src={url} alt={`Foto ${i+1}`} className="w-full aspect-square object-cover rounded border" />
-                ))}
+
+              {/* Toggle ajuste automático */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="ajuste-auto-ig"
+                  checked={ajusteAuto}
+                  onCheckedChange={(c) => setAjusteAuto(!!c)}
+                />
+                <Label htmlFor="ajuste-auto-ig" className="text-xs cursor-pointer flex items-center gap-1">
+                  <ImageIcon className="h-3 w-3" />
+                  Ajustar automaticamente para Instagram (recomendado)
+                </Label>
               </div>
+
+              {/* Preview: ajustada ou original */}
+              {ajusteAuto && ajustando && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Ajustando imagens...
+                </div>
+              )}
+
+              {ajusteAuto && adjustedImages && adjustedImages.length > 0 ? (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    ✅ Preview ajustado — {FORMAT_LABELS[adjustedImages[0].format]}
+                  </p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {adjustedImages.map((adj, i) => (
+                      <img key={i} src={adj.dataUrl} alt={`Ajustada ${i+1}`} className="w-full aspect-square object-contain rounded border bg-black" />
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {!ajusteAuto && (
+                    <p className="text-xs text-amber-600 mb-1">⚠️ Imagem original — pode ser cortada pelo Instagram</p>
+                  )}
+                  <div className="grid grid-cols-5 gap-2">
+                    {allImages.map((url, i) => (
+                      <img key={i} src={url} alt={`Foto ${i+1}`} className="w-full aspect-square object-cover rounded border" />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
