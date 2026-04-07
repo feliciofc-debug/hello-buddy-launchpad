@@ -253,7 +253,7 @@ REGRAS:
         imagem_url: allUrls[0] ?? null,
         imagens: allUrls,
         ativo: true,
-        tipo: "carrossel",
+        tipo: "fisico",
       };
 
       const { error: insertErr } = await supabase.from("produtos").insert(productPayload);
