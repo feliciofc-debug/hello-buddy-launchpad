@@ -4585,8 +4585,11 @@ export type Database = {
           envios_mes_atual: number | null
           envios_utilizados: number | null
           id: string
+          imagens_ia_mes_atual: number
           limite_envios: number | null
+          limite_imagens_ia_mes: number
           mes_referencia: string | null
+          mes_referencia_ia: string
           nome_assistente: string | null
           personalidade_assistente: string | null
           prompt_customizado: string | null
@@ -4606,8 +4609,11 @@ export type Database = {
           envios_mes_atual?: number | null
           envios_utilizados?: number | null
           id?: string
+          imagens_ia_mes_atual?: number
           limite_envios?: number | null
+          limite_imagens_ia_mes?: number
           mes_referencia?: string | null
+          mes_referencia_ia?: string
           nome_assistente?: string | null
           personalidade_assistente?: string | null
           prompt_customizado?: string | null
@@ -4627,8 +4633,11 @@ export type Database = {
           envios_mes_atual?: number | null
           envios_utilizados?: number | null
           id?: string
+          imagens_ia_mes_atual?: number
           limite_envios?: number | null
+          limite_imagens_ia_mes?: number
           mes_referencia?: string | null
+          mes_referencia_ia?: string
           nome_assistente?: string | null
           personalidade_assistente?: string | null
           prompt_customizado?: string | null

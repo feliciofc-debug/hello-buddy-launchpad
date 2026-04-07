@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTrialConfig } from "@/hooks/useTrialConfig";
+import { useIALimit } from "@/hooks/useIALimit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +44,7 @@ interface ProductAnalysis {
 const IAMarketing = () => {
   const navigate = useNavigate();
   const { isTrial, trial, canUseIAMarketing, canPostToday, isTrialExpired, incrementImageUsage, incrementPostUsage, trialDaysRemaining } = useTrialConfig();
+  const { iaUsado, iaLimite, canGenerate, remaining, incrementUsage: incrementIAUsage } = useIALimit();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
@@ -91,6 +93,12 @@ const IAMarketing = () => {
   const handleAnalyze = async () => {
     if (!url.trim()) {
       toast.error("Digite uma descrição ou cole um link");
+      return;
+    }
+
+    // PJ limit guard - check monthly IA image limit (all clients)
+    if (!canGenerate()) {
+      toast.error(`🔒 Limite de ${iaLimite} gerações de IA atingido este mês! Contrate mais gerações para continuar.`);
       return;
     }
 
@@ -186,6 +194,9 @@ const IAMarketing = () => {
         console.error("Erro ao salvar:", insertError);
       }
 
+
+      // Increment PJ usage (all clients)
+      await incrementIAUsage();
 
       // Increment trial usage
       if (isTrial) await incrementImageUsage();
@@ -434,7 +445,19 @@ const IAMarketing = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Trial Banner */}
+        {/* PJ IA Limit Banner */}
+        {!isTrial && iaLimite < 9999 && (
+          <div className={`mb-4 p-3 rounded-lg border ${remaining() === 0 ? 'bg-destructive/10 border-destructive' : 'bg-muted/50 border-border'}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">
+                🎨 Gerações IA: <strong>{iaUsado}/{iaLimite}</strong> este mês ({remaining()} restantes)
+              </span>
+              {remaining() === 0 && (
+                <span className="text-sm font-medium text-destructive">Limite atingido! Contrate mais gerações.</span>
+              )}
+            </div>
+          </div>
+        )}
         {isTrial && trial && (
           <div className={`mb-4 p-4 rounded-lg border ${isTrialExpired() ? 'bg-destructive/10 border-destructive' : 'bg-amber-500/10 border-amber-500'}`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
