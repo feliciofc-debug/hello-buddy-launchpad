@@ -239,10 +239,15 @@ REGRAS:
         allUrls.push(urlData.publicUrl);
       }
       const titulo = slides[0]?.title || tema.slice(0, 80) || "Carrossel IA";
-      await supabase.from("afiliado_produtos").insert({
-        user_id: userData.user.id, titulo, marketplace: "Instagram",
-        link_afiliado: allUrls[0], imagem_url: allUrls[0],
-        descricao: caption || `Carrossel: ${titulo}`, categoria: "Marketing", status: "ativo",
+      await supabase.from("produtos").insert({
+        user_id: userData.user.id,
+        nome: titulo,
+        descricao: caption || `Carrossel: ${titulo}`,
+        imagem_url: allUrls[0],
+        imagens: allUrls,
+        categoria: "Marketing",
+        ativo: true,
+        preco: 0,
       });
       toast.success("✅ Salvo como produto! Disponível no Autopilot.");
     } catch (err: any) { toast.error(err.message || "Erro ao salvar produto"); }
