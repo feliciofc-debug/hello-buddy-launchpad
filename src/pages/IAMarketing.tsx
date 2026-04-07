@@ -445,7 +445,19 @@ const IAMarketing = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-4 md:p-6 lg:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Trial Banner */}
+        {/* PJ IA Limit Banner */}
+        {!isTrial && iaLimite < 9999 && (
+          <div className={`mb-4 p-3 rounded-lg border ${remaining() === 0 ? 'bg-destructive/10 border-destructive' : 'bg-muted/50 border-border'}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-sm">
+                🎨 Gerações IA: <strong>{iaUsado}/{iaLimite}</strong> este mês ({remaining()} restantes)
+              </span>
+              {remaining() === 0 && (
+                <span className="text-sm font-medium text-destructive">Limite atingido! Contrate mais gerações.</span>
+              )}
+            </div>
+          </div>
+        )}
         {isTrial && trial && (
           <div className={`mb-4 p-4 rounded-lg border ${isTrialExpired() ? 'bg-destructive/10 border-destructive' : 'bg-amber-500/10 border-amber-500'}`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
