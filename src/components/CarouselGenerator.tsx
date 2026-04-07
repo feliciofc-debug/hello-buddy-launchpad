@@ -251,14 +251,12 @@ REGRAS:
         preco: null,
         categoria: "Marketing",
         tipo: "fisico",
-        status: "ativo",
         ativo: true,
-        imagem_url: allUrls[0],
+        imagem_url: allUrls[0] ?? null,
         imagens: allUrls,
         estoque: 0,
         cliente_id: null,
         tags: ["carrossel", "ia", "marketing"],
-        fonte: "carrossel_ia",
       });
 
       if (error) throw error;
