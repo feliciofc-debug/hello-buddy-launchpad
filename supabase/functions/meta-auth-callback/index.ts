@@ -81,11 +81,81 @@ serve(async (req) => {
     const pagesResponse = await fetch(pagesUrl)
     const pagesData = await pagesResponse.json()
     console.log('📡 Resposta /me/accounts completa:', JSON.stringify(pagesData))
-    const pages = pagesData.data || []
+    let pages = pagesData.data || []
     console.log('✅ Páginas encontradas:', pages.length)
 
+    // 4.1 FALLBACK: Se /me/accounts retornou vazio, tentar recuperar página anterior do banco
+    if (pages.length === 0) {
+      console.log('⚠️ Nenhuma página retornada. Tentando fallback com página anterior...')
+      
+      const supabaseTemp = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
+      
+      // Verificar se já existia uma conexão anterior com page_id
+      const { data: existingConn } = await supabaseTemp.from('meta_connections')
+        .select('page_id, page_name, ig_account_id, ig_username')
+        .eq('user_id', state)
+        .maybeSingle()
+      
+      // Verificar também na tabela integrations (legado)
+      const { data: existingIntegrations } = await supabaseTemp.from('integrations')
+        .select('platform, meta_user_id, meta_user_name')
+        .eq('user_id', state)
+        .like('platform', 'meta_page_%')
+      
+      let fallbackPageId: string | null = existingConn?.page_id || null
+      
+      if (!fallbackPageId && existingIntegrations && existingIntegrations.length > 0) {
+        fallbackPageId = existingIntegrations[0].meta_user_id
+        console.log('📋 Page ID encontrado na tabela integrations:', fallbackPageId)
+      }
+      
+      // Verificar na fila de posts anteriores
+      if (!fallbackPageId) {
+        const { data: lastPost } = await supabaseTemp.from('social_posts_queue')
+          .select('page_id')
+          .eq('user_id', state)
+          .not('page_id', 'is', null)
+          .neq('page_id', '')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        
+        if (lastPost?.page_id) {
+          fallbackPageId = lastPost.page_id
+          console.log('📋 Page ID encontrado na fila de posts:', fallbackPageId)
+        }
+      }
+      
+      if (fallbackPageId) {
+        console.log('🔄 Tentando buscar Page Token diretamente para page_id:', fallbackPageId)
+        
+        // Tentar obter o Page Access Token usando o User Token
+        try {
+          const pageDirectUrl = `https://graph.facebook.com/v25.0/${fallbackPageId}?fields=id,name,access_token,category&access_token=${longLivedUserToken}`
+          const pageDirectResponse = await fetch(pageDirectUrl)
+          const pageDirectData = await pageDirectResponse.json()
+          
+          if (pageDirectData.access_token) {
+            console.log('✅ FALLBACK FUNCIONOU! Page Token obtido para:', pageDirectData.name)
+            pages = [{
+              id: pageDirectData.id,
+              name: pageDirectData.name,
+              access_token: pageDirectData.access_token,
+              category: pageDirectData.category
+            }]
+          } else {
+            console.log('❌ Fallback falhou. Resposta:', JSON.stringify(pageDirectData))
+          }
+        } catch (fallbackError) {
+          console.error('❌ Erro no fallback:', fallbackError)
+        }
+      } else {
+        console.log('⚠️ Nenhum page_id anterior encontrado para fallback')
+      }
+    }
+
     // 5. Salvar tudo no banco
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
     const expiresAt = new Date()
     expiresAt.setSeconds(expiresAt.getSeconds() + (longLivedData.expires_in || 5184000))
 
@@ -120,9 +190,9 @@ serve(async (req) => {
       else console.log('✅ Page token salvo:', page.name)
     }
 
-    // ===== NOVO: Salvar dados estruturados na meta_connections =====
+    // ===== Salvar dados estruturados na meta_connections =====
     if (pages.length > 0) {
-      const mainPage = pages[0] // Usar a primeira página como principal
+      const mainPage = pages[0]
       
       // Buscar Instagram Business Account vinculado à página
       let igAccountId: string | null = null
@@ -137,7 +207,6 @@ serve(async (req) => {
         if (igData.instagram_business_account?.id) {
           igAccountId = igData.instagram_business_account.id
           
-          // Buscar username do Instagram
           const igInfoResponse = await fetch(
             `https://graph.facebook.com/v25.0/${igAccountId}?fields=username&access_token=${mainPage.access_token}`
           )
@@ -151,12 +220,10 @@ serve(async (req) => {
         console.error('⚠️ Erro ao buscar Instagram Business Account:', igError)
       }
       
-      // Extrair permissões concedidas
       const grantedPermissions = permissionsData?.data
         ?.filter((p: any) => p.status === 'granted')
         ?.map((p: any) => p.permission) || []
       
-      // Upsert na meta_connections
       const { error: metaConnError } = await supabase.from('meta_connections').upsert({
         user_id: state,
         meta_user_id: userData.id,
@@ -170,7 +237,7 @@ serve(async (req) => {
         ig_username: igUsername,
         permissions: grantedPermissions,
         is_active: true,
-        token_expires_at: expiresAt.toISOString(),
+        token_expires_at: null, // Page token permanente
         last_verified_at: new Date().toISOString(),
         connection_error: null,
         updated_at: new Date().toISOString(),
@@ -181,6 +248,8 @@ serve(async (req) => {
       } else {
         console.log('✅ meta_connections salvo para', userData.name, '| Page:', mainPage.name, '| IG:', igUsername)
       }
+    } else {
+      console.log('❌ NENHUMA PÁGINA ENCONTRADA - nem via /me/accounts nem via fallback')
     }
 
     return new Response(null, {
