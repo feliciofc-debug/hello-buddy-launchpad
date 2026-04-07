@@ -239,7 +239,7 @@ REGRAS:
         allUrls.push(urlData.publicUrl);
       }
       const titulo = slides[0]?.title || tema.slice(0, 80) || "Carrossel IA";
-      await supabase.from("produtos").insert({
+      const { error: insertErr } = await supabase.from("produtos").insert({
         user_id: userData.user.id,
         nome: titulo,
         descricao: caption || `Carrossel: ${titulo}`,
@@ -248,7 +248,9 @@ REGRAS:
         categoria: "Marketing",
         ativo: true,
         preco: 0,
+        tipo: "carrossel",
       });
+      if (insertErr) throw insertErr;
       toast.success("✅ Salvo como produto! Disponível no Autopilot.");
     } catch (err: any) { toast.error(err.message || "Erro ao salvar produto"); }
     finally { setSavingProduct(false); }
