@@ -13,9 +13,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { CalendarIcon, Sparkles, Loader2, Instagram, Send, Clock, AlertTriangle } from "lucide-react";
+import { CalendarIcon, Sparkles, Loader2, Instagram, Send, Clock, AlertTriangle, ImageIcon } from "lucide-react";
 import { getAllProductImages } from "@/components/ProductImageCarousel";
 import { cn } from "@/lib/utils";
+import { adjustImagesForInstagram, FORMAT_LABELS, type AdjustedImage } from "@/lib/adjustImageForInstagram";
 import {
   clampTimeForToday,
   combineSaoPauloDateTimeToIso,
@@ -57,6 +58,9 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
   const [igConnected, setIgConnected] = useState(false);
   const [igUsername, setIgUsername] = useState<string>("");
   const [allImages, setAllImages] = useState<string[]>([]);
+  const [ajusteAuto, setAjusteAuto] = useState(true);
+  const [adjustedImages, setAdjustedImages] = useState<AdjustedImage[] | null>(null);
+  const [ajustando, setAjustando] = useState(false);
 
   const loadAllImages = useCallback(async () => {
     try {
