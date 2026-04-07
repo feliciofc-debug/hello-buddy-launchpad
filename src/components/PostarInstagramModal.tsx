@@ -84,6 +84,32 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
     if (open) loadAllImages();
   }, [open, loadAllImages]);
 
+  // Auto-adjust images when they load or toggle changes
+  useEffect(() => {
+    if (!open || allImages.length === 0) {
+      setAdjustedImages(null);
+      return;
+    }
+    if (!ajusteAuto) {
+      setAdjustedImages(null);
+      return;
+    }
+    let cancelled = false;
+    setAjustando(true);
+    adjustImagesForInstagram(allImages)
+      .then((result) => {
+        if (!cancelled) setAdjustedImages(result);
+      })
+      .catch((err) => {
+        console.error('Erro ao ajustar imagens:', err);
+        if (!cancelled) setAdjustedImages(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAjustando(false);
+      });
+    return () => { cancelled = true; };
+  }, [open, allImages, ajusteAuto]);
+
   const isCarousel = allImages.length >= 2;
   const temImagem = allImages.length > 0;
 
