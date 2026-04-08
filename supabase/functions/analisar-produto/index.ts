@@ -67,27 +67,101 @@ function buildConceptKeywords(text: string): string {
   return compact.split(/\s+/).slice(0, 12).join(' ');
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function buildPromptFragments(sourceInput: string): string[] {
+  const compact = sourceInput.replace(/\s+/g, ' ').trim();
+  if (!compact) return [];
+
+  const fragments = compact
+    .split(/[\n,;|]+/)
+    .map((segment) =>
+      segment
+        .replace(/^[-–•\d.()\s]+/, '')
+        .replace(/\betc\.?$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter((segment) => segment.length >= 16);
+
+  return Array.from(new Set([compact, ...fragments])).sort((a, b) => b.length - a.length);
+}
+
+function isInstructionLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return true;
+
+  const patterns = [
+    /^(contexto|prompt|descrição|descricao|brief|objetivo|importante|atenção|atencao|observação|observacao|formato)\s*:?\s*$/i,
+    /^analise esta imagem\b/i,
+    /^crie posts?\b/i,
+    /^gere \d+\s+variações\b/i,
+    /^(instagram|facebook|story(?: instagram)?|whatsapp)\s*\(\d+\s+variações?\)\s*:?\s*$/i,
+    /^-?\s*opção\s*[abc]\b/i,
+    /^-?\s*opcao\s*[abc]\b/i,
+    /^retorne apenas\b/i,
+    /^responda somente\b/i,
+    /^nunca inclua\b/i,
+    /^todos os textos devem\b/i,
+    /^use emojis\b/i,
+    /^mantenha o tom\b/i,
+    /^sempre termine com\b/i,
+    /^sempre inclua\b/i,
+    /^json válido\b/i,
+    /^json valido\b/i,
+    /^max\s+\d+/i,
+  ];
+
+  const normalized = trimmed.toLowerCase();
+
+  return (
+    patterns.some((pattern) => pattern.test(trimmed)) ||
+    normalized.includes('contexto resumido') ||
+    normalized.includes('idioma obrigatório') ||
+    normalized.includes('idioma obrigatorio') ||
+    normalized.includes('schema json')
+  );
+}
+
 function sanitizePromptLeakage(text: string, sourceInput: string, removeSourceLiteral = false): string {
   let cleaned = text
     .replace(/^(Aqui está|Segue|Claro|Certo|Ok|Entendido|Com certeza)[^\n]*\n*/i, '')
     .replace(/```json\s*/gi, '')
     .replace(/```[a-z]*\n?/gi, '')
     .replace(/```\s*/g, '')
-    .replace(/^(Contexto|Prompt|Descrição|Brief)\s*:\s*/gim, '')
+    .replace(/(?:^|\n)\s*(?:Contexto|Prompt|Descrição|Descricao|Brief)\s*:\s*/gim, '\n')
+    .replace(/Analise esta imagem e crie posts? promocionais? basead[oa]s? neste contexto resumido:\s*["“”]?/gi, '')
     .replace(/Analise esta imagem[^\n]*contexto[^\n]*:?\s*/gi, '')
+    .replace(/Crie posts? promocionais? para o seguinte produto:\s*/gi, '')
     .replace(/basead[oa]s? neste contexto resumido\s*:?\s*/gi, '')
+    .replace(/IDIOMA OBRIGATÓRIO:[^\n]*/gi, '')
+    .replace(/IDIOMA OBRIGATORIO:[^\n]*/gi, '')
+    .replace(/Retorne APENAS[^\n]*/gi, '')
+    .replace(/Responda SOMENTE[^\n]*/gi, '')
+    .replace(/\bNUNCA inclua[^\n]*/gi, '')
+    .replace(/\bTODOS os textos devem[^\n]*/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
   if (removeSourceLiteral) {
-    const normalizedSource = sourceInput.replace(/\s+/g, ' ').trim();
-    if (normalizedSource.length >= 24) {
-      cleaned = cleaned
-        .replace(new RegExp(normalizedSource.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+    for (const fragment of buildPromptFragments(sourceInput)) {
+      cleaned = cleaned.replace(new RegExp(escapeRegExp(fragment), 'gi'), '');
     }
   }
+
+  cleaned = cleaned
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => !isInstructionLine(line))
+    .join('\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/^[\s,:;\-"“”]+/, '')
+    .replace(/[\s"“”]+$/, '')
+    .trim();
 
   return cleaned;
 }
@@ -349,6 +423,7 @@ IMPORTANTE:
 - TODOS os textos devem estar em ${detectedLanguage}
 - Use emojis apropriados
 - Mantenha o tom adequado para cada rede social
+- NUNCA copie literalmente o contexto resumido nem qualquer instrução do prompt
 
 Retorne APENAS um JSON válido no formato:
 {
@@ -377,7 +452,7 @@ Retorne APENAS um JSON válido no formato:
       const messages: any[] = [
         { 
           role: 'system', 
-          content: `Você é um especialista em marketing digital e branding. Analise imagens e crie posts promocionais criativos EXCLUSIVAMENTE em ${detectedLanguage}.` 
+          content: `Você é um especialista em marketing digital e branding. Analise imagens e crie posts promocionais criativos EXCLUSIVAMENTE em ${detectedLanguage}. Nunca repita o prompt, o contexto resumido, títulos de instrução, opções, schema JSON ou qualquer trecho literal enviado pelo usuário.` 
         },
         {
           role: 'user',
@@ -543,6 +618,7 @@ IMPORTANTE:
 - Mencione "Shopee" em pelo menos 1 variação de cada plataforma
 - Use emojis relacionados a compras online: 🛒 🛍️ 📦 ✨ 🔥 ⚡
 - Crie senso de urgência e prova social
+- NUNCA copie literalmente instruções internas nem qualquer trecho do prompt na resposta final
 
 Retorne APENAS um JSON válido no formato:
 {
@@ -580,7 +656,7 @@ Retorne APENAS um JSON válido no formato:
             body: JSON.stringify({
               model: 'google/gemini-2.5-flash',
               messages: [
-                { role: 'system', content: `Você é um especialista em marketing digital de e-commerce e afiliados. Gere posts promocionais criativos e persuasivos EXCLUSIVAMENTE em ${detectedLanguage}.` },
+                { role: 'system', content: `Você é um especialista em marketing digital de e-commerce e afiliados. Gere posts promocionais criativos e persuasivos EXCLUSIVAMENTE em ${detectedLanguage}. Nunca repita o prompt, rótulos de instrução, opções, schema JSON ou qualquer trecho literal enviado pelo usuário.` },
                 { role: 'user', content: promptEnriquecido }
               ]
             })
@@ -900,6 +976,7 @@ IMPORTANTE:
 - TODOS os textos devem estar em ${detectedLanguage}
 - Instagram e Story: NÃO incluir o link no texto (apenas mencionar "link na bio")
 - Facebook: SEMPRE incluir o link completo no final do texto
+- NUNCA copie literalmente instruções internas nem qualquer trecho do prompt na resposta final
 
 Retorne APENAS um JSON válido no formato:
 {
@@ -936,7 +1013,7 @@ Retorne APENAS um JSON válido no formato:
         body: JSON.stringify({
           model: 'google/gemini-2.5-flash',
           messages: [
-            { role: 'system', content: `Você é um especialista em marketing digital. Gere posts promocionais criativos EXCLUSIVAMENTE em ${detectedLanguage}.` },
+            { role: 'system', content: `Você é um especialista em marketing digital. Gere posts promocionais criativos EXCLUSIVAMENTE em ${detectedLanguage}. Nunca repita o prompt, rótulos de instrução, opções, schema JSON ou qualquer trecho literal enviado pelo usuário.` },
             { role: 'user', content: prompt }
           ]
         })

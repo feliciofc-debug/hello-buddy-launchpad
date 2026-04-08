@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { sanitizeGeneratedPostText } from "@/lib/social-post-sanitizer";
 
 interface ScheduledPost {
   id: string;
@@ -58,6 +59,13 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
 
   // Preview de postagens
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
+
+  const sanitizedPostContent = {
+    instagram: sanitizeGeneratedPostText(postContent.instagram),
+    facebook: sanitizeGeneratedPostText(postContent.facebook),
+    story: sanitizeGeneratedPostText(postContent.story),
+    whatsapp: postContent.whatsapp ? sanitizeGeneratedPostText(postContent.whatsapp) : undefined,
+  };
 
   const dayNames = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -117,7 +125,7 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
           data: format(new Date(), "dd/MM/yyyy"),
           hora: format(new Date(), "HH:mm"),
           redes: selectedNetworks,
-          conteudo: postContent.instagram.substring(0, 50) + "..."
+            conteudo: sanitizedPostContent.instagram.substring(0, 50) + "..."
         });
         break;
 
@@ -132,7 +140,7 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
             data: format(selectedDate, "dd/MM/yyyy"),
             hora: time,
             redes: selectedNetworks,
-            conteudo: postContent.instagram.substring(0, 50) + "..."
+            conteudo: sanitizedPostContent.instagram.substring(0, 50) + "..."
           });
         });
         break;
@@ -152,7 +160,7 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
                 data: format(d, "dd/MM/yyyy"),
                 hora: time,
                 redes: selectedNetworks,
-                conteudo: postContent.instagram.substring(0, 50) + "..."
+                conteudo: sanitizedPostContent.instagram.substring(0, 50) + "..."
               });
             });
           }
@@ -174,7 +182,7 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
                 data: format(d, "dd/MM/yyyy"),
                 hora: time,
                 redes: selectedNetworks,
-                conteudo: postContent.instagram.substring(0, 50) + "..."
+                conteudo: sanitizedPostContent.instagram.substring(0, 50) + "..."
               });
             });
           }
@@ -193,7 +201,7 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
               data: format(date, "dd/MM/yyyy"),
               hora: time,
               redes: selectedNetworks,
-              conteudo: postContent.instagram.substring(0, 50) + "..."
+              conteudo: sanitizedPostContent.instagram.substring(0, 50) + "..."
             });
           });
         });
@@ -226,10 +234,10 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
         .from('posts')
         .insert({
           user_id: userData.user.id,
-          titulo: postContent.instagram?.substring(0, 100) || "Post agendado",
-          texto_instagram: postContent.instagram,
-          texto_story: postContent.story,
-          texto_facebook: postContent.facebook,
+          titulo: sanitizedPostContent.instagram?.substring(0, 100) || "Post agendado",
+          texto_instagram: sanitizedPostContent.instagram,
+          texto_story: sanitizedPostContent.story,
+          texto_facebook: sanitizedPostContent.facebook,
           status: 'agendado'
         })
         .select()
@@ -266,10 +274,10 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
 
           if (rede === 'Facebook') {
             platform = 'facebook';
-            postText = postContent.facebook;
+            postText = sanitizedPostContent.facebook;
           } else if (rede === 'Instagram Feed') {
             platform = 'instagram';
-            postText = postContent.instagram;
+            postText = sanitizedPostContent.instagram;
           }
 
           if (platform) {

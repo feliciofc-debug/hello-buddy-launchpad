@@ -20,6 +20,7 @@ import { CarouselGenerator } from "@/components/CarouselGenerator";
 import { PublicarReelsModal } from "@/components/PublicarReelsModal";
 import { Separator } from "@/components/ui/separator";
 import { getSafeProductLink, getSanitizedProductLinks } from "@/lib/product-links";
+import { sanitizeGeneratedPostText, sanitizeGeneratedPostVariations } from "@/lib/social-post-sanitizer";
 
 interface PostVariations {
   opcaoA: string;
@@ -152,13 +153,20 @@ const IAMarketing = () => {
 
       console.log('✅ Dados recebidos:', data);
 
-      // Criar estrutura de análise com os dados corretos
-      const analysisResult: ProductAnalysis = {
-        produto: data.produto || { titulo: "Produto", preco: "0", url: url, originalUrl: url },
+      const sanitizedGeneratedPosts = sanitizeGeneratedPostVariations({
         instagram: data.instagram || { opcaoA: '', opcaoB: '', opcaoC: '' },
         facebook: data.facebook || { opcaoA: '', opcaoB: '', opcaoC: '' },
         story: data.story || { opcaoA: '', opcaoB: '', opcaoC: '' },
         whatsapp: data.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' },
+      }, url.trim());
+
+      // Criar estrutura de análise com os dados corretos
+      const analysisResult: ProductAnalysis = {
+        produto: data.produto || { titulo: "Produto", preco: "0", url: url, originalUrl: url },
+        instagram: sanitizedGeneratedPosts.instagram,
+        facebook: sanitizedGeneratedPosts.facebook,
+        story: sanitizedGeneratedPosts.story,
+        whatsapp: sanitizedGeneratedPosts.whatsapp,
         generatedImage: data.generatedImage || null
       };
 
@@ -236,7 +244,8 @@ const IAMarketing = () => {
   };
 
   const handleCopy = (text: string, type: string) => {
-    const fullText = safeProductLink ? `${text}\n\n🔗 ${safeProductLink}` : text;
+    const sanitizedText = sanitizeGeneratedPostText(text, url.trim());
+    const fullText = safeProductLink ? `${sanitizedText}\n\n🔗 ${safeProductLink}` : sanitizedText;
     navigator.clipboard.writeText(fullText);
     toast.success(safeProductLink ? `${type} copiado com link!` : `${type} copiado!`);
   };
@@ -272,7 +281,7 @@ const IAMarketing = () => {
 
   // 🚀 PILAR 2: Criar Campanha a partir do texto do WhatsApp
   const handleCreateCampaign = () => {
-    const textoSelecionado = editableTexts.whatsapp[selectedVariations.whatsapp];
+    const textoSelecionado = sanitizeGeneratedPostText(editableTexts.whatsapp[selectedVariations.whatsapp], url.trim());
     
     if (!textoSelecionado.trim()) {
       toast.error("Selecione uma variação de texto primeiro");
@@ -296,7 +305,8 @@ const IAMarketing = () => {
       if (!user) { toast.error("Você precisa estar logado"); return; }
 
       const link = getSafeProductLink(resultado?.produto);
-      const mensagemFinal = link ? `${texto.trim()}\n\n🔗 Compre aqui: ${link}` : texto.trim();
+      const textoLimpo = sanitizeGeneratedPostText(texto, url.trim());
+      const mensagemFinal = link ? `${textoLimpo}\n\n🔗 Compre aqui: ${link}` : textoLimpo;
       const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
 
       await supabase.from("social_posts_queue" as any).insert({
@@ -339,7 +349,8 @@ const IAMarketing = () => {
       if (!user) { toast.error("Você precisa estar logado"); return; }
 
       const link = getSafeProductLink(resultado?.produto);
-      const captionFinal = link ? `${texto.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : texto.trim();
+      const textoLimpo = sanitizeGeneratedPostText(texto, url.trim());
+      const captionFinal = link ? `${textoLimpo}\n\n🔗 Link na bio ou acesse: ${link}` : textoLimpo;
 
       await supabase.from("social_posts_queue" as any).insert({
         user_id: user.id,
@@ -390,7 +401,8 @@ const IAMarketing = () => {
       if (textoFb.trim()) {
         promises.push((async () => {
           try {
-            const mensagemFb = link ? `${textoFb.trim()}\n\n🔗 Compre aqui: ${link}` : textoFb.trim();
+            const textoFbLimpo = sanitizeGeneratedPostText(textoFb, url.trim());
+            const mensagemFb = link ? `${textoFbLimpo}\n\n🔗 Compre aqui: ${link}` : textoFbLimpo;
             await supabase.from("social_posts_queue" as any).insert({
               user_id: user.id,
               platform: "facebook",
@@ -413,7 +425,8 @@ const IAMarketing = () => {
       if (textoIg.trim() && imagemUrl) {
         promises.push((async () => {
           try {
-            const captionIg = link ? `${textoIg.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : textoIg.trim();
+            const textoIgLimpo = sanitizeGeneratedPostText(textoIg, url.trim());
+            const captionIg = link ? `${textoIgLimpo}\n\n🔗 Link na bio ou acesse: ${link}` : textoIgLimpo;
             await supabase.from("social_posts_queue" as any).insert({
               user_id: user.id,
               platform: "instagram",
