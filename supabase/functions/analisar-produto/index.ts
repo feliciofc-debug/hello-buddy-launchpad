@@ -7,6 +7,111 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function extractJsonFromResponse(responseText: string) {
+  let cleaned = responseText
+    .replace(/```json\s*/gi, '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+
+  const jsonStart = cleaned.search(/[\[{]/);
+  if (jsonStart === -1) {
+    throw new Error('Resposta da IA não contém JSON válido');
+  }
+
+  const openingChar = cleaned[jsonStart];
+  const closingChar = openingChar === '[' ? ']' : '}';
+  const jsonEnd = cleaned.lastIndexOf(closingChar);
+
+  if (jsonEnd === -1 || jsonEnd <= jsonStart) {
+    throw new Error('Resposta da IA não contém JSON completo');
+  }
+
+  cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const repaired = cleaned
+      .replace(/,(\s*[}\]])/g, '$1')
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    return JSON.parse(repaired);
+  }
+}
+
+function buildConceptKeywords(text: string): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (!compact) return 'marketing digital, automação, redes sociais';
+
+  const segments = compact
+    .split(/[\n,;|]+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) =>
+      segment
+        .replace(/^[-–•\d.()\s]+/, '')
+        .replace(/\betc\.?$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+    )
+    .filter(Boolean)
+    .map((segment) => segment.slice(0, 48));
+
+  if (segments.length > 0) {
+    return segments.slice(0, 6).join(', ');
+  }
+
+  return compact.split(/\s+/).slice(0, 12).join(' ');
+}
+
+function sanitizePromptLeakage(text: string, sourceInput: string, removeSourceLiteral = false): string {
+  let cleaned = text
+    .replace(/^(Aqui está|Segue|Claro|Certo|Ok|Entendido|Com certeza)[^\n]*\n*/i, '')
+    .replace(/```json\s*/gi, '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/```\s*/g, '')
+    .replace(/^(Contexto|Prompt|Descrição|Brief)\s*:\s*/gim, '')
+    .replace(/Analise esta imagem[^\n]*contexto[^\n]*:?\s*/gi, '')
+    .replace(/basead[oa]s? neste contexto resumido\s*:?\s*/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (removeSourceLiteral) {
+    const normalizedSource = sourceInput.replace(/\s+/g, ' ').trim();
+    if (normalizedSource.length >= 24) {
+      cleaned = cleaned
+        .replace(new RegExp(normalizedSource.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+    }
+  }
+
+  return cleaned;
+}
+
+function sanitizePostPayload(posts: Record<string, Record<string, string>>, sourceInput: string, removeSourceLiteral = false) {
+  const sanitized: Record<string, Record<string, string>> = {};
+
+  for (const [platform, options] of Object.entries(posts || {})) {
+    sanitized[platform] = {};
+
+    if (!options || typeof options !== 'object') {
+      continue;
+    }
+
+    for (const [key, value] of Object.entries(options)) {
+      sanitized[platform][key] = typeof value === 'string'
+        ? sanitizePromptLeakage(value, sourceInput, removeSourceLiteral)
+        : '';
+    }
+  }
+
+  return sanitized;
+}
+
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -63,38 +168,39 @@ serve(async (req) => {
 
       // SEMPRE gerar uma nova imagem (com ou sem logo)
       let imagePrompt = '';
+      const conceptKeywords = buildConceptKeywords(url);
       
       if (logoImage) {
         // Prompt quando TEM logo - instruções mais específicas
-        imagePrompt = `Create a professional, eye-catching social media marketing image based on this description: "${url}". 
+        imagePrompt = `Create a professional, eye-catching social media marketing image inspired by these concepts: ${conceptKeywords}. 
 
 CRITICAL INSTRUCTIONS:
 1. INCORPORATE the logo/brand from the reference image into the final generated image
 2. The logo should be VISIBLE and well-positioned (corner, center, or watermark style)
-3. Create a beautiful, attractive composition (product display, banner, etc.)
+ 3. Create a beautiful, attractive composition (product display, banner, abstract campaign visual, etc.)
 4. Use colors that complement the logo
 5. Make it suitable for Instagram, Facebook and social media
 6. Professional quality, modern design
-7. Any text/slogans on the image MUST be in ${detectedLanguage}
-8. DO NOT just return the logo - CREATE A NEW MARKETING IMAGE that includes the logo
-9. SPELLING IS CRITICAL: Double-check every single word for correct spelling before rendering. All Portuguese words must have correct accents (ã, ç, é, ê, ô, etc.). Common words: "imagens" (NOT "imagnes"), "inteligência" (NOT "inteligenta"), "automático" (NOT "automatico"), "postagens" (NOT "postasnes"), "conteúdo" (NOT "conteunto")
-10. MINIMIZE TEXT: Use SHORT phrases (max 3-5 words per line). Prefer icons and visual elements over text. Less text = fewer errors
-11. If you must include text, use ONLY simple, common words that are easy to render correctly`;
+ 7. DO NOT write the user's request, feature list, paragraphs, menus, bullet points, labels or UI copy anywhere in the artwork
+ 8. NO readable text, NO slogans, NO dashboard labels, NO small print, NO captions rendered inside the image
+ 9. Communicate through icons, product cards, charts, automation symbols, motion cues, gradients and composition instead of words
+ 10. If text starts to appear, remove it and replace it with simple visual elements
+ 11. DO NOT just return the logo - CREATE A NEW MARKETING IMAGE that includes the logo`;
 
       } else {
         // Prompt quando NÃO tem logo
-        imagePrompt = `Create a professional, eye-catching image for social media marketing based on this description: "${url}". 
+        imagePrompt = `Create a professional, eye-catching image for social media marketing inspired by these concepts: ${conceptKeywords}. 
 
 INSTRUCTIONS:
 1. Make it visually impactful and attractive
 2. Suitable for Instagram and Facebook posts
 3. Modern, clean design
 4. High quality, professional look
-5. Any text or slogans MUST be in ${detectedLanguage}
-6. Focus on the product/concept described
-7. SPELLING IS CRITICAL: Double-check every single word for correct spelling before rendering. All Portuguese words must have correct accents (ã, ç, é, ê, ô, etc.). Common words: "imagens" (NOT "imagnes"), "inteligência" (NOT "inteligenta"), "automático" (NOT "automatico"), "postagens" (NOT "postasnes"), "conteúdo" (NOT "conteunto")
-8. MINIMIZE TEXT: Use SHORT phrases (max 3-5 words per line). Prefer icons and visual elements over text. Less text = fewer errors
-9. If you must include text, use ONLY simple, common words that are easy to render correctly`;
+ 5. Focus on the concept described, but NEVER transcribe the user's prompt into the image
+ 6. NO readable text, NO feature lists, NO paragraphs, NO labels, NO UI menus, NO bullet points
+ 7. Use icons, shapes, lighting, product/brand symbolism and composition to communicate the idea
+ 8. If text starts to appear, remove it and replace it with visual elements only
+ 9. Keep the final image clean, premium and ready for social posting`;
       }
       
       const imageGenMessages: any[] = [
@@ -212,7 +318,8 @@ INSTRUCTIONS:
     if (!isUrl && finalImages.length > 0) {
       console.log('📸 Modo análise de imagem com prompt:', url);
       
-      const prompt = `Analise esta imagem e crie posts promocionais baseados neste contexto: "${url}"
+      const promptContext = buildConceptKeywords(url);
+      const prompt = `Analise esta imagem e crie posts promocionais baseados neste contexto resumido: "${promptContext}"
 
 IDIOMA OBRIGATÓRIO: Todos os textos devem ser em ${detectedLanguage}
 
@@ -323,20 +430,11 @@ Retorne APENAS um JSON válido no formato:
       
       console.log('Resposta da Lovable AI:', texto);
 
-      // Remover markdown code blocks se houver
-      let textoLimpo = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-      console.log('Texto após remover markdown:', textoLimpo);
-
-      // Extrair JSON da resposta
-      const jsonMatch = textoLimpo.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('Resposta da IA não contém JSON válido');
-      }
-
-      let jsonString = jsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
-      console.log('JSON limpo para parse:', jsonString);
-
-      const posts = JSON.parse(jsonString);
+      const posts = sanitizePostPayload(
+        extractJsonFromResponse(texto) as Record<string, Record<string, string>>,
+        url,
+        true
+      );
 
       console.log('✅ Posts gerados com sucesso via análise de imagem');
 
@@ -498,15 +596,11 @@ Retorne APENAS um JSON válido no formato:
         const data = await response.json();
         const texto = data.choices?.[0]?.message?.content || '';
         
-        let textoLimpo = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-        const jsonMatch = textoLimpo.match(/\{[\s\S]*\}/);
-        
-        if (!jsonMatch) {
-          throw new Error('Resposta da IA não contém JSON válido');
-        }
-
-        let jsonString = jsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
-        const posts = JSON.parse(jsonString);
+        const posts = sanitizePostPayload(
+          extractJsonFromResponse(texto) as Record<string, Record<string, string>>,
+          url,
+          false
+        );
 
         console.log('✅ Posts gerados com dados da Shopee API!');
 
@@ -868,21 +962,11 @@ Retorne APENAS um JSON válido no formato:
     
     console.log('Resposta da Lovable AI:', texto);
 
-    // Remover markdown code blocks se houver
-    let textoLimpo = texto.replace(/```json\s*/g, '').replace(/```\s*/g, '');
-    console.log('Texto após remover markdown:', textoLimpo);
-
-    // Extrair JSON da resposta
-    const jsonMatch = textoLimpo.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('Resposta da IA não contém JSON válido');
-    }
-
-    // Remover vírgulas antes de chaves de fechamento
-    let jsonString = jsonMatch[0].replace(/,(\s*[}\]])/g, '$1');
-    console.log('JSON limpo para parse:', jsonString);
-
-    const posts = JSON.parse(jsonString);
+    const posts = sanitizePostPayload(
+      extractJsonFromResponse(texto) as Record<string, Record<string, string>>,
+      url,
+      false
+    );
 
     console.log('✅ Posts gerados com sucesso');
 
