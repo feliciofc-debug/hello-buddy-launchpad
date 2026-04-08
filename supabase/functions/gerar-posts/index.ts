@@ -75,7 +75,7 @@ Retorne APENAS um JSON válido no formato:
         messages: [
           {
             role: 'system',
-            content: 'Você é um especialista em marketing digital. Retorne APENAS o JSON solicitado, sem texto adicional.'
+            content: 'Você é um especialista em marketing digital. Retorne APENAS o JSON solicitado, sem texto adicional, sem introduções, sem repetir o prompt ou instruções.'
           },
           {
             role: 'user',
