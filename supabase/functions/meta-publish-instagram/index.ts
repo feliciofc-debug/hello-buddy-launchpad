@@ -126,7 +126,7 @@ serve(async (req) => {
       success: false,
       error: error instanceof Error ? error.message : 'Erro desconhecido'
     }), {
-      status: 500,
+      status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
