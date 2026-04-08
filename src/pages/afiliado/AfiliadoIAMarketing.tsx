@@ -14,6 +14,7 @@ import { VideoGenerator } from "@/components/VideoGenerator";
 import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
 import { CarouselGenerator } from "@/components/CarouselGenerator";
 import { AfiliadoLayout } from "@/components/afiliado/AfiliadoLayout";
+import { getSafeProductLink, getSanitizedProductLinks } from "@/lib/product-links";
 
 interface PostVariations {
   opcaoA: string;
@@ -50,6 +51,7 @@ const AfiliadoIAMarketing = () => {
     story: { opcaoA: '', opcaoB: '', opcaoC: '' },
     whatsapp: { opcaoA: '', opcaoB: '', opcaoC: '' }
   });
+  const safeProductLink = getSafeProductLink(resultado?.produto);
 
   const handleAnalyze = async () => {
     if (!url.trim()) { toast.error("Digite uma descrição ou cole um link"); return; }
@@ -98,11 +100,13 @@ const AfiliadoIAMarketing = () => {
         whatsapp: analysisResult.whatsapp
       });
 
+      const { originalLink, affiliateLink } = getSanitizedProductLinks(analysisResult.produto);
+
       await supabase.from('posts').insert({
         user_id: userData.user.id,
         titulo: analysisResult.produto.titulo,
-        link_produto: analysisResult.produto.originalUrl,
-        link_afiliado: analysisResult.produto.url,
+        link_produto: originalLink,
+        link_afiliado: affiliateLink,
         texto_instagram: JSON.stringify(analysisResult.instagram),
         texto_story: JSON.stringify(analysisResult.story),
         texto_facebook: JSON.stringify(analysisResult.facebook),
@@ -134,8 +138,8 @@ const AfiliadoIAMarketing = () => {
 
   const removeFile = (index: number) => setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   const handleCopy = (text: string, type: string) => {
-    navigator.clipboard.writeText(`${text}\n\n🔗 ${resultado?.produto?.originalUrl || url}`);
-    toast.success(`${type} copiado com link!`);
+    navigator.clipboard.writeText(safeProductLink ? `${text}\n\n🔗 ${safeProductLink}` : text);
+    toast.success(safeProductLink ? `${type} copiado com link!` : `${type} copiado!`);
   };
   const handleDownloadImage = () => {
     if (!resultado?.generatedImage) return;

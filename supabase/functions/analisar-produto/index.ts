@@ -347,7 +347,7 @@ Retorne APENAS um JSON válido no formato:
             titulo: 'Análise de Imagem',
             preco: '',
             url: '',
-            originalUrl: url
+            originalUrl: ''
           },
           instagram: posts.instagram,
           facebook: posts.facebook,
