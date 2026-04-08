@@ -15,6 +15,7 @@ import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
 import { CarouselGenerator } from "@/components/CarouselGenerator";
 import { AfiliadoLayout } from "@/components/afiliado/AfiliadoLayout";
 import { getSafeProductLink, getSanitizedProductLinks } from "@/lib/product-links";
+import { sanitizeGeneratedPostText, sanitizeGeneratedPostVariations } from "@/lib/social-post-sanitizer";
 
 interface PostVariations {
   opcaoA: string;
@@ -81,12 +82,19 @@ const AfiliadoIAMarketing = () => {
       if (error) throw error;
       if (!data.success) throw new Error(data.error || 'Erro ao analisar produto');
 
-      const analysisResult: ProductAnalysis = {
-        produto: data.produto || { titulo: "Produto", preco: "0", url, originalUrl: url },
+      const sanitizedGeneratedPosts = sanitizeGeneratedPostVariations({
         instagram: data.instagram || { opcaoA: '', opcaoB: '', opcaoC: '' },
         facebook: data.facebook || { opcaoA: '', opcaoB: '', opcaoC: '' },
         story: data.story || { opcaoA: '', opcaoB: '', opcaoC: '' },
         whatsapp: data.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' },
+      }, url.trim());
+
+      const analysisResult: ProductAnalysis = {
+        produto: data.produto || { titulo: "Produto", preco: "0", url, originalUrl: url },
+        instagram: sanitizedGeneratedPosts.instagram,
+        facebook: sanitizedGeneratedPosts.facebook,
+        story: sanitizedGeneratedPosts.story,
+        whatsapp: sanitizedGeneratedPosts.whatsapp,
         generatedImage: data.generatedImage || null
       };
 
@@ -138,7 +146,8 @@ const AfiliadoIAMarketing = () => {
 
   const removeFile = (index: number) => setUploadedFiles(prev => prev.filter((_, i) => i !== index));
   const handleCopy = (text: string, type: string) => {
-    navigator.clipboard.writeText(safeProductLink ? `${text}\n\n🔗 ${safeProductLink}` : text);
+    const sanitizedText = sanitizeGeneratedPostText(text, url.trim());
+    navigator.clipboard.writeText(safeProductLink ? `${sanitizedText}\n\n🔗 ${safeProductLink}` : sanitizedText);
     toast.success(safeProductLink ? `${type} copiado com link!` : `${type} copiado!`);
   };
   const handleDownloadImage = () => {
@@ -155,7 +164,7 @@ const AfiliadoIAMarketing = () => {
     setEditableTexts(prev => ({ ...prev, [platform]: { ...prev[platform], [variation]: text } }));
   };
   const handleCreateCampaign = () => {
-    const textoSelecionado = editableTexts.whatsapp[selectedVariations.whatsapp];
+    const textoSelecionado = sanitizeGeneratedPostText(editableTexts.whatsapp[selectedVariations.whatsapp], url.trim());
     if (!textoSelecionado.trim()) { toast.error("Selecione uma variação primeiro"); return; }
     localStorage.setItem('campaignMessageTemplate', textoSelecionado);
     toast.success("Texto salvo! Redirecionando...");
