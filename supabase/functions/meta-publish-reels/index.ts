@@ -6,6 +6,65 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+function sanitizePublishText(text?: string | null) {
+  if (!text) return ''
+
+  const lines = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/```/g, '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+
+  const skipPatterns = [
+    /^(aqui está|aqui esta|segue|claro|certo|ok|entendido|com certeza)\b/i,
+    /^(contexto|prompt|descrição|descricao|brief|objetivo|importante|formato)\s*:?\s*$/i,
+    /^analise esta imagem\b/i,
+    /^crie posts?\b/i,
+    /^crie um post\b/i,
+    /^gere \d+\s+variações\b/i,
+    /^retorne apenas\b/i,
+    /^responda somente\b/i,
+    /^nunca inclua\b/i,
+    /^todos os textos devem\b/i,
+    /^você é um especialista\b/i,
+    /^voce é um especialista\b/i,
+    /^lead(?:\s*\(|\s*:|\b)/i,
+    /^(produto\/serviço|produto\/servico|rede social)\s*:?\s*$/i,
+    /^sem\s+["“”']?post:?/i,
+    /^-?\s*(nome|profissão|profissao|especialidade|cidade)\s*:/i,
+    /^-?\s*(o post será publicado|o post sera publicado|o lead verá|o lead vera|deve ser orgânico|deve ser organico|tom\s*:|máximo\s+\d+\s+caracteres|maximo\s+\d+\s+caracteres|foco no valor)\b/i,
+    /^\d+\.\s*(aborde|mencione|gere|termine|use|cite|ensine|inclua)\b/i,
+  ]
+
+  return lines
+    .filter((line) => {
+      if (!line) return false
+
+      const normalized = line.toLowerCase()
+      if (
+        normalized.includes('contexto resumido') ||
+        normalized.includes('idioma obrigatório') ||
+        normalized.includes('idioma obrigatorio') ||
+        normalized.includes('schema json') ||
+        normalized.includes('conteúdo final do post') ||
+        normalized.includes('conteudo final do post')
+      ) {
+        return false
+      }
+
+      return !skipPatterns.some((pattern) => pattern.test(line))
+    })
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/^[\s,:;\-"“”]+/, '')
+    .replace(/[\s"“”]+$/, '')
+    .trim()
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -17,6 +76,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const { platform, video_url, caption, user_id } = await req.json()
+    const sanitizedCaption = sanitizePublishText(caption)
 
     if (!video_url) throw new Error('video_url é obrigatório')
     if (!caption) throw new Error('caption é obrigatório')
@@ -28,8 +88,8 @@ serve(async (req) => {
     const credentials = await getMetaCredentials(supabase, user_id, platform)
 
     const result = platform === 'facebook'
-      ? await publishFacebookReels(credentials.token, credentials.pageId!, video_url, caption)
-      : await publishInstagramReels(credentials.token, credentials.igId!, video_url, caption)
+      ? await publishFacebookReels(credentials.token, credentials.pageId!, video_url, sanitizedCaption)
+      : await publishInstagramReels(credentials.token, credentials.igId!, video_url, sanitizedCaption)
 
     return new Response(JSON.stringify({ success: true, ...result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

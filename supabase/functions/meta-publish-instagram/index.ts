@@ -6,6 +6,65 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+function sanitizePublishText(text?: string | null) {
+  if (!text) return ''
+
+  const lines = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/```/g, '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+
+  const skipPatterns = [
+    /^(aqui está|aqui esta|segue|claro|certo|ok|entendido|com certeza)\b/i,
+    /^(contexto|prompt|descrição|descricao|brief|objetivo|importante|formato)\s*:?\s*$/i,
+    /^analise esta imagem\b/i,
+    /^crie posts?\b/i,
+    /^crie um post\b/i,
+    /^gere \d+\s+variações\b/i,
+    /^retorne apenas\b/i,
+    /^responda somente\b/i,
+    /^nunca inclua\b/i,
+    /^todos os textos devem\b/i,
+    /^você é um especialista\b/i,
+    /^voce é um especialista\b/i,
+    /^lead(?:\s*\(|\s*:|\b)/i,
+    /^(produto\/serviço|produto\/servico|rede social)\s*:?\s*$/i,
+    /^sem\s+["“”']?post:?/i,
+    /^-?\s*(nome|profissão|profissao|especialidade|cidade)\s*:/i,
+    /^-?\s*(o post será publicado|o post sera publicado|o lead verá|o lead vera|deve ser orgânico|deve ser organico|tom\s*:|máximo\s+\d+\s+caracteres|maximo\s+\d+\s+caracteres|foco no valor)\b/i,
+    /^\d+\.\s*(aborde|mencione|gere|termine|use|cite|ensine|inclua)\b/i,
+  ]
+
+  return lines
+    .filter((line) => {
+      if (!line) return false
+
+      const normalized = line.toLowerCase()
+      if (
+        normalized.includes('contexto resumido') ||
+        normalized.includes('idioma obrigatório') ||
+        normalized.includes('idioma obrigatorio') ||
+        normalized.includes('schema json') ||
+        normalized.includes('conteúdo final do post') ||
+        normalized.includes('conteudo final do post')
+      ) {
+        return false
+      }
+
+      return !skipPatterns.some((pattern) => pattern.test(line))
+    })
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/^[\s,:;\-"“”]+/, '')
+    .replace(/[\s"“”]+$/, '')
+    .trim()
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -18,6 +77,7 @@ serve(async (req) => {
 
     const body = await req.json()
     const isScheduler = body.source === 'scheduler'
+    const sanitizedCaption = sanitizePublishText(body.caption)
 
     let posts: any[] = []
 
@@ -45,13 +105,13 @@ serve(async (req) => {
     } else if (body.video_url && body.caption) {
       // Publicação direta de vídeo (Reels)
       const { igId, token } = await getIgAccountId(supabase, body.user_id)
-      const result = await publishReelsToInstagram(token, igId, body.caption, body.video_url, body.cover_url)
+      const result = await publishReelsToInstagram(token, igId, sanitizedCaption, body.video_url, body.cover_url)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } else if (body.caption && body.image_url) {
       const { igId, token } = await getIgAccountId(supabase, body.user_id)
-      const result = await publishImageToInstagram(token, igId, body.caption, body.image_url)
+      const result = await publishImageToInstagram(token, igId, sanitizedCaption, body.image_url)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
@@ -68,8 +128,10 @@ serve(async (req) => {
           throw new Error('Instagram requer image_url ou video_url para publicação')
         }
 
+        const sanitizedPostText = sanitizePublishText(post.post_text)
+
         await supabase.from('social_posts_queue')
-          .update({ status: 'publicando', updated_at: new Date().toISOString() })
+          .update({ status: 'publicando', post_text: sanitizedPostText, updated_at: new Date().toISOString() })
           .eq('id', post.id)
 
         const { igId, token } = await getIgAccountId(supabase, post.user_id)
@@ -78,10 +140,10 @@ serve(async (req) => {
         
         if (post.video_url) {
           // Publicar como Reels
-          result = await publishReelsToInstagram(token, igId, post.post_text, post.video_url)
+          result = await publishReelsToInstagram(token, igId, sanitizedPostText, post.video_url)
         } else {
           // Publicar como imagem
-          result = await publishImageToInstagram(token, igId, post.post_text, post.image_url)
+          result = await publishImageToInstagram(token, igId, sanitizedPostText, post.image_url)
         }
 
         await supabase.from('social_posts_queue')

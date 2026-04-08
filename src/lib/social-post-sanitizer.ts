@@ -32,6 +32,7 @@ function isInstructionLine(line: string) {
     /^(contexto|prompt|descrição|descricao|brief|objetivo|importante|atenção|atencao|observação|observacao|formato)\s*:?\s*$/i,
     /^analise esta imagem\b/i,
     /^crie posts?\b/i,
+    /^crie um post\b/i,
     /^gere \d+\s+variações\b/i,
     /^(instagram|facebook|story(?: instagram)?|whatsapp)\s*\(\d+\s+variações?\)\s*:?\s*$/i,
     /^-?\s*opção\s*[abc]\b/i,
@@ -47,6 +48,14 @@ function isInstructionLine(line: string) {
     /^json válido\b/i,
     /^json valido\b/i,
     /^max\s+\d+/i,
+    /^você é um especialista\b/i,
+    /^voce é um especialista\b/i,
+    /^lead(?:\s*\(|\s*:|\b)/i,
+    /^(produto\/serviço|produto\/servico|rede social)\s*:?\s*$/i,
+    /^sem\s+["“”']?post:?/i,
+    /^-?\s*(nome|profissão|profissao|especialidade|cidade)\s*:/i,
+    /^-?\s*(o post será publicado|o post sera publicado|o lead verá|o lead vera|deve ser orgânico|deve ser organico|tom\s*:|máximo\s+\d+\s+caracteres|maximo\s+\d+\s+caracteres|foco no valor)\b/i,
+    /^\d+\.\s*(aborde|mencione|gere|termine|use|cite|ensine|inclua)\b/i,
   ];
 
   const normalized = trimmed.toLowerCase();
@@ -56,7 +65,9 @@ function isInstructionLine(line: string) {
     normalized.includes("contexto resumido") ||
     normalized.includes("idioma obrigatório") ||
     normalized.includes("idioma obrigatorio") ||
-    normalized.includes("schema json")
+    normalized.includes("schema json") ||
+    normalized.includes("conteúdo final do post") ||
+    normalized.includes("conteudo final do post")
   );
 }
 
