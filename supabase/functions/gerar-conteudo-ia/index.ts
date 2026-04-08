@@ -122,7 +122,15 @@ O email deve incluir:
     }
 
     const data = await response.json();
-    const generatedContent = data.choices[0].message.content;
+    let generatedContent = data.choices[0].message.content;
+
+    // Limpar vazamento de prompt: remover introduções e instruções
+    generatedContent = generatedContent
+      .replace(/^(Aqui está|Segue|Claro|Certo|Ok|Entendido|Com certeza)[^\n]*\n*/i, '')
+      .replace(/```[a-z]*\n?/g, '')
+      .replace(/```$/gm, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
 
     console.log('Conteúdo gerado com sucesso via Lovable AI');
 
@@ -130,7 +138,7 @@ O email deve incluir:
       JSON.stringify({ 
         content: generatedContent,
         platform: platform
-      }), 
+      }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }

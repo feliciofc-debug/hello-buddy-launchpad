@@ -7,6 +7,45 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
 
+function limparPromptDaResposta(texto: string): string {
+  // Remove blocos de instruções do prompt que a IA pode ter incluído
+  const patterns = [
+    /^(Post:|Aqui está|Segue|Aqui vai|Claro|Certo|Ok|Entendido)[^\n]*\n*/i,
+    /LEAD \(PESSOA[^}]*\}/s,
+    /PRODUTO\/SERVIÇO:[\s\S]*?(?=\n\n|\n[A-Z])/,
+    /OBJETIVO:[\s\S]*?(?=\n\n|\n[A-Z])/,
+    /REDE SOCIAL:[\s\S]*?(?=\n\n|\n[A-Z])/,
+    /IMPORTANTE:[\s\S]*?(?=\n\n[^-]|\n[A-Z])/,
+    /CRIE UM POST[\s\S]*?(?=\n\n[^0-9])/,
+    /FORMATO:[\s\S]*$/,
+    /Você é um especialista[\s\S]*?(?=\n\n)/,
+    /^```[a-z]*\n?/gm,
+    /```$/gm,
+    /Retorne APENAS[\s\S]*/,
+    /Sem "Post:"[\s\S]*/,
+    /- Nome:.*\n/g,
+    /- Profissão:.*\n/g,
+    /- Especialidade:.*\n/g,
+    /- Cidade:.*\n/g,
+    /- O post será publicado.*\n/g,
+    /- O lead verá.*\n/g,
+    /- Deve ser ORGÂNICO.*\n/g,
+    /- Tom:.*\n/g,
+    /- Máximo \d+ caracteres\n/g,
+    /- Foco no VALOR.*\n/g,
+  ]
+  
+  let limpo = texto
+  for (const pattern of patterns) {
+    limpo = limpo.replace(pattern, '')
+  }
+  
+  // Remover linhas vazias extras
+  limpo = limpo.replace(/\n{3,}/g, '\n\n').trim()
+  
+  return limpo
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -94,11 +133,14 @@ Sem "Post:" ou qualquer introdução.`
     }
 
     const data = await response.json()
-    const postTexto = data.choices?.[0]?.message?.content?.trim() || ''
+    let postTexto = data.choices?.[0]?.message?.content?.trim() || ''
 
     if (!postTexto) {
       throw new Error('Nenhum conteúdo gerado')
     }
+
+    // Limpar qualquer vazamento de prompt da resposta da IA
+    postTexto = limparPromptDaResposta(postTexto)
 
     console.log('✅ [POST] Gerado com sucesso:', postTexto.length, 'caracteres')
 
