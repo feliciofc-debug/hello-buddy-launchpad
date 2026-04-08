@@ -19,6 +19,7 @@ import { EnviarWhatsAppModal } from "@/components/EnviarWhatsAppModal";
 import { CarouselGenerator } from "@/components/CarouselGenerator";
 import { PublicarReelsModal } from "@/components/PublicarReelsModal";
 import { Separator } from "@/components/ui/separator";
+import { getSafeProductLink, getSanitizedProductLinks } from "@/lib/product-links";
 
 interface PostVariations {
   opcaoA: string;
@@ -70,6 +71,7 @@ const IAMarketing = () => {
     story: { opcaoA: '', opcaoB: '', opcaoC: '' },
     whatsapp: { opcaoA: '', opcaoB: '', opcaoC: '' }
   });
+  const safeProductLink = getSafeProductLink(resultado?.produto);
 
   // Carregar tipo do usuário
   useState(() => {
@@ -176,13 +178,14 @@ const IAMarketing = () => {
       });
 
       // Salvar no banco
+      const { originalLink, affiliateLink } = getSanitizedProductLinks(analysisResult.produto);
       const { error: insertError } = await supabase
         .from('posts')
         .insert({
           user_id: userData.user.id,
           titulo: analysisResult.produto.titulo,
-          link_produto: analysisResult.produto.originalUrl,
-          link_afiliado: analysisResult.produto.url,
+          link_produto: originalLink,
+          link_afiliado: affiliateLink,
           texto_instagram: JSON.stringify(analysisResult.instagram),
           texto_story: JSON.stringify(analysisResult.story),
           texto_facebook: JSON.stringify(analysisResult.facebook),
@@ -233,9 +236,9 @@ const IAMarketing = () => {
   };
 
   const handleCopy = (text: string, type: string) => {
-    const fullText = `${text}\n\n🔗 ${resultado?.produto?.originalUrl || url}`;
+    const fullText = safeProductLink ? `${text}\n\n🔗 ${safeProductLink}` : text;
     navigator.clipboard.writeText(fullText);
-    toast.success(`${type} copiado com link!`);
+    toast.success(safeProductLink ? `${type} copiado com link!` : `${type} copiado!`);
   };
 
   const handleDownloadImage = () => {
@@ -292,7 +295,7 @@ const IAMarketing = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error("Você precisa estar logado"); return; }
 
-      const link = resultado?.produto?.originalUrl || resultado?.produto?.url || url;
+      const link = getSafeProductLink(resultado?.produto);
       const mensagemFinal = link ? `${texto.trim()}\n\n🔗 Compre aqui: ${link}` : texto.trim();
       const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
 
@@ -335,7 +338,7 @@ const IAMarketing = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error("Você precisa estar logado"); return; }
 
-      const link = resultado?.produto?.originalUrl || resultado?.produto?.url || url;
+      const link = getSafeProductLink(resultado?.produto);
       const captionFinal = link ? `${texto.trim()}\n\n🔗 Link na bio ou acesse: ${link}` : texto.trim();
 
       await supabase.from("social_posts_queue" as any).insert({
@@ -371,7 +374,7 @@ const IAMarketing = () => {
     const textoFb = editableTexts.facebook[selectedVariations.facebook];
     const textoIg = editableTexts.instagram[selectedVariations.instagram];
     const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
-    const link = resultado?.produto?.originalUrl || resultado?.produto?.url || url;
+    const link = getSafeProductLink(resultado?.produto);
 
     if (!textoFb.trim() && !textoIg.trim()) { toast.error("Nenhum texto disponível para publicar"); return; }
 
@@ -997,7 +1000,7 @@ const IAMarketing = () => {
         produto={resultado ? {
           nome: resultado.produto.titulo,
           preco: resultado.produto.preco ? parseFloat(resultado.produto.preco.replace(/[^\d.,]/g, '').replace(',', '.')) : null,
-          link: resultado.produto.url || resultado.produto.originalUrl,
+          link: safeProductLink,
           imagem_url: resultado.produto.imagem,
         } : null}
       />
