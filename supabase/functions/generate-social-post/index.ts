@@ -110,7 +110,9 @@ ${redeSocial === 'LinkedIn' ? '5. Cite dados/estatísticas se possível' : ''}
 
 FORMATO:
 Retorne APENAS o texto do post, pronto para copiar e colar.
-Sem "Post:" ou qualquer introdução.`
+Sem "Post:" ou qualquer introdução.
+NUNCA inclua instruções, contexto do lead, ou partes deste prompt na resposta.
+Responda SOMENTE com o conteúdo final do post.`
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
