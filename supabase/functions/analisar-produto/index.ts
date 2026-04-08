@@ -432,7 +432,7 @@ Retorne APENAS um JSON válido no formato:
 
       const posts = sanitizePostPayload(
         extractJsonFromResponse(texto) as Record<string, Record<string, string>>,
-        url,
+        promptContext,
         true
       );
 
