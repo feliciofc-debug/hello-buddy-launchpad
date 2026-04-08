@@ -128,8 +128,10 @@ serve(async (req) => {
           throw new Error('Instagram requer image_url ou video_url para publicação')
         }
 
+        const sanitizedPostText = sanitizePublishText(post.post_text)
+
         await supabase.from('social_posts_queue')
-          .update({ status: 'publicando', updated_at: new Date().toISOString() })
+          .update({ status: 'publicando', post_text: sanitizedPostText, updated_at: new Date().toISOString() })
           .eq('id', post.id)
 
         const { igId, token } = await getIgAccountId(supabase, post.user_id)
@@ -138,10 +140,10 @@ serve(async (req) => {
         
         if (post.video_url) {
           // Publicar como Reels
-          result = await publishReelsToInstagram(token, igId, sanitizePublishText(post.post_text), post.video_url)
+          result = await publishReelsToInstagram(token, igId, sanitizedPostText, post.video_url)
         } else {
           // Publicar como imagem
-          result = await publishImageToInstagram(token, igId, sanitizePublishText(post.post_text), post.image_url)
+          result = await publishImageToInstagram(token, igId, sanitizedPostText, post.image_url)
         }
 
         await supabase.from('social_posts_queue')

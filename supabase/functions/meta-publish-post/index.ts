@@ -121,12 +121,14 @@ serve(async (req) => {
 
     for (const post of posts) {
       try {
+        const sanitizedPostText = sanitizePublishText(post.post_text)
+
         await supabase.from('social_posts_queue')
-          .update({ status: 'publicando', updated_at: new Date().toISOString() })
+          .update({ status: 'publicando', post_text: sanitizedPostText, updated_at: new Date().toISOString() })
           .eq('id', post.id)
 
         const { token: pageToken, actualPageId } = await getPageToken(supabase, post.user_id, post.page_id || '')
-        const result = await publishToFacebook(pageToken, actualPageId, sanitizePublishText(post.post_text), post.image_url, post.link_url, post.video_url)
+        const result = await publishToFacebook(pageToken, actualPageId, sanitizedPostText, post.image_url, post.link_url, post.video_url)
 
         await supabase.from('social_posts_queue')
           .update({
