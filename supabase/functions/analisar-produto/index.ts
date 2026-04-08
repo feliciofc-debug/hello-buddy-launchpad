@@ -74,7 +74,10 @@ CRITICAL INSTRUCTIONS:
 5. Make it suitable for Instagram, Facebook and social media
 6. Professional quality, modern design
 7. Any text/slogans on the image MUST be in ${detectedLanguage}
-8. DO NOT just return the logo - CREATE A NEW MARKETING IMAGE that includes the logo`;
+8. DO NOT just return the logo - CREATE A NEW MARKETING IMAGE that includes the logo
+9. SPELLING IS CRITICAL: Double-check every single word for correct spelling before rendering. All Portuguese words must have correct accents (ã, ç, é, ê, ô, etc.). Common words: "imagens" (NOT "imagnes"), "inteligência" (NOT "inteligenta"), "automático" (NOT "automatico"), "postagens" (NOT "postasnes"), "conteúdo" (NOT "conteunto")
+10. MINIMIZE TEXT: Use SHORT phrases (max 3-5 words per line). Prefer icons and visual elements over text. Less text = fewer errors
+11. If you must include text, use ONLY simple, common words that are easy to render correctly`;
 
       } else {
         // Prompt quando NÃO tem logo
@@ -86,7 +89,10 @@ INSTRUCTIONS:
 3. Modern, clean design
 4. High quality, professional look
 5. Any text or slogans MUST be in ${detectedLanguage}
-6. Focus on the product/concept described`;
+6. Focus on the product/concept described
+7. SPELLING IS CRITICAL: Double-check every single word for correct spelling before rendering. All Portuguese words must have correct accents (ã, ç, é, ê, ô, etc.). Common words: "imagens" (NOT "imagnes"), "inteligência" (NOT "inteligenta"), "automático" (NOT "automatico"), "postagens" (NOT "postasnes"), "conteúdo" (NOT "conteunto")
+8. MINIMIZE TEXT: Use SHORT phrases (max 3-5 words per line). Prefer icons and visual elements over text. Less text = fewer errors
+9. If you must include text, use ONLY simple, common words that are easy to render correctly`;
       }
       
       const imageGenMessages: any[] = [
@@ -117,7 +123,7 @@ INSTRUCTIONS:
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash-image",
+          model: "google/gemini-3.1-flash-image-preview",
           messages: imageGenMessages,
           modalities: ["image", "text"]
         }),
