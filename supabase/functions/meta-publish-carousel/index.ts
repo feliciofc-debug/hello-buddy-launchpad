@@ -4,6 +4,65 @@ const corsHeaders = {
 }
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+function sanitizePublishText(text?: string | null) {
+  if (!text) return ''
+
+  const lines = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/```/g, '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+
+  const skipPatterns = [
+    /^(aqui está|aqui esta|segue|claro|certo|ok|entendido|com certeza)\b/i,
+    /^(contexto|prompt|descrição|descricao|brief|objetivo|importante|formato)\s*:?\s*$/i,
+    /^analise esta imagem\b/i,
+    /^crie posts?\b/i,
+    /^crie um post\b/i,
+    /^gere \d+\s+variações\b/i,
+    /^retorne apenas\b/i,
+    /^responda somente\b/i,
+    /^nunca inclua\b/i,
+    /^todos os textos devem\b/i,
+    /^você é um especialista\b/i,
+    /^voce é um especialista\b/i,
+    /^lead(?:\s*\(|\s*:|\b)/i,
+    /^(produto\/serviço|produto\/servico|rede social)\s*:?\s*$/i,
+    /^sem\s+["“”']?post:?/i,
+    /^-?\s*(nome|profissão|profissao|especialidade|cidade)\s*:/i,
+    /^-?\s*(o post será publicado|o post sera publicado|o lead verá|o lead vera|deve ser orgânico|deve ser organico|tom\s*:|máximo\s+\d+\s+caracteres|maximo\s+\d+\s+caracteres|foco no valor)\b/i,
+    /^\d+\.\s*(aborde|mencione|gere|termine|use|cite|ensine|inclua)\b/i,
+  ]
+
+  return lines
+    .filter((line) => {
+      if (!line) return false
+
+      const normalized = line.toLowerCase()
+      if (
+        normalized.includes('contexto resumido') ||
+        normalized.includes('idioma obrigatório') ||
+        normalized.includes('idioma obrigatorio') ||
+        normalized.includes('schema json') ||
+        normalized.includes('conteúdo final do post') ||
+        normalized.includes('conteudo final do post')
+      ) {
+        return false
+      }
+
+      return !skipPatterns.some((pattern) => pattern.test(line))
+    })
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/^[\s,:;\-"“”]+/, '')
+    .replace(/[\s"“”]+$/, '')
+    .trim()
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -11,6 +70,7 @@ Deno.serve(async (req) => {
 
   try {
     const { user_id, image_urls, caption } = await req.json()
+    const sanitizedCaption = sanitizePublishText(caption)
     if (!user_id || !image_urls?.length) {
       return new Response(JSON.stringify({ error: 'user_id e image_urls são obrigatórios' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -79,7 +139,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         media_type: 'CAROUSEL',
         children: childrenIds.join(','),
-        caption: caption || '',
+        caption: sanitizedCaption || '',
         access_token: token,
       }),
     })
