@@ -71,33 +71,6 @@ function isInstructionLine(line: string) {
   );
 }
 
-function stripPromptBlocks(text: string) {
-  return text
-    .replace(
-      /LEAD\s*\([^)]*\)\s*:[\s\S]*?(?=\n\s*(?:PRODUTO\/SERVIÇO|PRODUTO\/SERVICO|OBJETIVO|REDE SOCIAL|IMPORTANTE|CRIE UM POST|FORMATO)\b|$)/gi,
-      "\n"
-    )
-    .replace(
-      /PRODUTO\/SERVI[ÇC]O\s*:[\s\S]*?(?=\n\s*(?:OBJETIVO|REDE SOCIAL|IMPORTANTE|CRIE UM POST|FORMATO)\b|$)/gi,
-      "\n"
-    )
-    .replace(/OBJETIVO\s*:[\s\S]*?(?=\n\s*(?:REDE SOCIAL|IMPORTANTE|CRIE UM POST|FORMATO)\b|$)/gi, "\n")
-    .replace(/REDE SOCIAL\s*:[\s\S]*?(?=\n\s*(?:IMPORTANTE|CRIE UM POST|FORMATO)\b|$)/gi, "\n")
-    .replace(/IMPORTANTE\s*:[\s\S]*?(?=\n\s*(?:CRIE UM POST|FORMATO)\b|$)/gi, "\n")
-    .replace(/CRIE UM POST[^\n]*[\s\S]*?(?=\n\s*FORMATO\s*:|$)/gi, "\n")
-    .replace(/FORMATO\s*:[\s\S]*$/gi, "\n")
-    .replace(
-      /Crie posts? promocionais? para o seguinte produto:\s*[\s\S]*?(?=\n\s*Gere\s+\d+\s+variações\b|$)/gi,
-      "\n"
-    )
-    .replace(/Gere\s+\d+\s+variações[\s\S]*?(?=\n\s*Retorne APENAS\b|$)/gi, "\n")
-    .replace(
-      /Crie\s+(?:uma legenda de Instagram|uma mensagem de WhatsApp|um post de Facebook|um script de TikTok|um email marketing)\s+para promover este produto:\s*[\s\S]*?(?=\n\s*(?:A legenda deve|A mensagem deve|O post deve|O script deve|O email deve incluir)\s*:|$)/gi,
-      "\n"
-    )
-    .replace(/(?:A legenda deve|A mensagem deve|O post deve|O script deve|O email deve incluir)\s*:[\s\S]*$/gi, "\n");
-}
-
 export function sanitizeGeneratedPostText(text: string, sourceInput?: string) {
   if (!text) return "";
 
@@ -117,8 +90,6 @@ export function sanitizeGeneratedPostText(text: string, sourceInput?: string) {
     .replace(/\bTODOS os textos devem[^\n]*/gi, "")
     .replace(/\r/g, "")
     .trim();
-
-  cleaned = stripPromptBlocks(cleaned);
 
   for (const fragment of buildSourceFragments(sourceInput)) {
     cleaned = cleaned.replace(new RegExp(escapeRegExp(fragment), "gi"), "");
