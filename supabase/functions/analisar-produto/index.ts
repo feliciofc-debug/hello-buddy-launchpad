@@ -152,10 +152,56 @@ INSTRUCTIONS:
       // Extrair a imagem gerada (base64)
       const generatedImageUrl = imageGenData.choices?.[0]?.message?.images?.[0]?.image_url?.url;
       if (generatedImageUrl) {
-        finalImages = [generatedImageUrl];
-        generatedImage = generatedImageUrl;
+        // Upload base64 para Storage público para que Instagram/Facebook aceitem a URL
+        try {
+          const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+          const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+          const supabaseStorage = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+          
+          // Extrair dados base64 (remover prefixo data:image/...)
+          let base64Data = generatedImageUrl;
+          let mimeType = 'image/png';
+          if (base64Data.startsWith('data:')) {
+            const match = base64Data.match(/^data:(image\/\w+);base64,(.+)$/);
+            if (match) {
+              mimeType = match[1];
+              base64Data = match[2];
+            }
+          }
+          
+          const imageBytes = base64Decode(base64Data);
+          const fileName = `ia-marketing/${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+          
+          const { error: uploadError } = await supabaseStorage.storage
+            .from('produtos')
+            .upload(fileName, imageBytes, { contentType: mimeType, upsert: true });
+          
+          if (!uploadError) {
+            const { data: publicUrlData } = supabaseStorage.storage
+              .from('produtos')
+              .getPublicUrl(fileName);
+            
+            if (publicUrlData?.publicUrl) {
+              generatedImage = publicUrlData.publicUrl;
+              finalImages = [generatedImage];
+              console.log('✅ Imagem salva no Storage público:', generatedImage);
+            } else {
+              generatedImage = generatedImageUrl;
+              finalImages = [generatedImageUrl];
+              console.warn('⚠️ Upload OK mas sem URL pública, usando base64');
+            }
+          } else {
+            console.warn('⚠️ Erro no upload para Storage:', uploadError.message);
+            generatedImage = generatedImageUrl;
+            finalImages = [generatedImageUrl];
+          }
+        } catch (uploadErr) {
+          console.warn('⚠️ Falha ao fazer upload para Storage, usando base64:', uploadErr);
+          generatedImage = generatedImageUrl;
+          finalImages = [generatedImageUrl];
+        }
+        
         console.log('🖼️ Imagem gerada adicionada:', generatedImage ? 'SIM' : 'NÃO');
-        console.log('📏 Tamanho da imagem base64:', generatedImageUrl.substring(0, 50) + '...');
       } else {
         console.warn('⚠️ API retornou sucesso mas sem imagem no response');
         console.warn('⚠️ Estrutura do response:', JSON.stringify(imageGenData));
