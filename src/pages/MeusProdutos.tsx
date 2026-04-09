@@ -1249,23 +1249,23 @@ export default function MeusProdutos() {
                 className="gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white"
               >
                 <Rocket className="w-4 h-4" />
-                🤖 Autopilot Social
+                {t('products.autopilot')}
               </Button>
               <Button onClick={openAddModal} className="gap-2">
                 <Plus className="w-4 h-4" />
-                Adicionar Produto
+                {t('products.add_product')}
               </Button>
               <Button onClick={() => setIsImportCSVOpen(true)} variant="outline" className="gap-2">
                 <Upload className="w-4 h-4" />
-                Importar CSV
+                {t('products.import_csv')}
               </Button>
               <Button onClick={() => setIsIntegrationsOpen(true)} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
                 <Plug className="w-4 h-4" />
-                Integrações
+                {t('products.integrations')}
               </Button>
               <Button variant="outline" onClick={() => navigate('/dashboard')} className="gap-2">
                 <ArrowLeft className="w-4 h-4" />
-                Dashboard
+                {t('nav.dashboard')}
               </Button>
               <Button variant="outline" size="icon" onClick={toggleDarkMode}>
                 {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -1277,8 +1277,8 @@ export default function MeusProdutos() {
         {/* Tabs: Produtos e Vídeos */}
         <Tabs defaultValue="produtos" className="w-full">
           <TabsList className="mb-4">
-            <TabsTrigger value="produtos">📦 Produtos</TabsTrigger>
-            <TabsTrigger value="videos">🎬 Vídeos</TabsTrigger>
+            <TabsTrigger value="produtos">{t('products.product_tab')}</TabsTrigger>
+            <TabsTrigger value="videos">{t('products.video_tab')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="produtos">
@@ -1305,7 +1305,7 @@ export default function MeusProdutos() {
               
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Categoria" />
+                  <SelectValue placeholder={t('products.category')} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t('products.all_categories')} ({filteredProducts.length})</SelectItem>
@@ -1323,7 +1323,7 @@ export default function MeusProdutos() {
         {/* Products Grid */}
         {isLoading ? (
           <div className="text-center py-12">
-            <p className="text-muted-foreground">Carregando produtos...</p>
+            <p className="text-muted-foreground">{t('products.loading')}</p>
           </div>
         ) : filteredProducts.length === 0 ? (
           <Card>
@@ -1331,13 +1331,13 @@ export default function MeusProdutos() {
               <Package className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
               <p className="text-muted-foreground text-lg mb-4">
                 {searchTerm || categoryFilter !== 'all' 
-                  ? 'Nenhum produto encontrado com os filtros selecionados.'
-                  : 'Você ainda não tem produtos cadastrados.'}
+                  ? t('products.no_products_filtered')
+                  : t('products.no_products')}
               </p>
               {!searchTerm && categoryFilter === 'all' && (
                 <Button onClick={openAddModal} className="gap-2">
                   <Plus className="w-4 h-4" />
-                  Adicionar Primeiro Produto
+                  {t('products.add_first')}
                 </Button>
               )}
             </CardContent>
@@ -1368,7 +1368,7 @@ export default function MeusProdutos() {
                       {product.campanha && (
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
-                            {product.campanha.ativa ? '✅ Ativa' : '⏸️ Pausada'}
+                            {product.campanha.ativa ? t('products.campaign_active') : t('products.campaign_paused')}
                           </span>
                           <Switch
                             checked={product.campanha.ativa}
@@ -1384,10 +1384,10 @@ export default function MeusProdutos() {
                                   .from('campanhas_recorrentes')
                                   .update(updates)
                                   .eq('id', product.campanha?.id);
-                                toast.success(checked ? '▶️ Campanha ativada!' : '⏸️ Campanha pausada!');
+                                toast.success(checked ? t('products.campaign_activated') : t('products.campaign_paused_msg'));
                                 fetchProducts();
                               } catch (error) {
-                                toast.error('Erro ao alterar campanha');
+                                toast.error(t('products.error_campaign'));
                               }
                             }}
                           />
@@ -1411,7 +1411,7 @@ export default function MeusProdutos() {
                 <CardContent className="space-y-4">
                   {product.preco && (
                     <div className="flex items-center justify-between p-3 bg-primary/10 rounded-lg">
-                      <span className="text-sm font-medium">Preço:</span>
+                      <span className="text-sm font-medium">{t('products.price_label')}</span>
                       <span className="text-2xl font-bold text-primary">
                         R$ {product.preco.toFixed(2)}
                       </span>
@@ -1420,7 +1420,7 @@ export default function MeusProdutos() {
                   
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Categoria:</span>
+                      <span className="text-muted-foreground">{t('products.category_label')}</span>
                       <Badge variant="outline">{product.categoria}</Badge>
                     </div>
                     {product.sku && (
@@ -1441,7 +1441,7 @@ export default function MeusProdutos() {
                             variant="outline"
                             onClick={() => handleEditCampaign(product)}
                           >
-                            ✏️ Editar Campanha
+                            {t('products.edit_campaign')}
                           </Button>
                           {product.campanha.ativa ? (
                             <Button 
@@ -1449,7 +1449,7 @@ export default function MeusProdutos() {
                               variant="outline"
                               onClick={() => handlePausarCampanha(product)}
                             >
-                              ⏸️ Pausar
+                              {t('products.pause_campaign')}
                             </Button>
                           ) : (
                             <Button 
@@ -1457,7 +1457,7 @@ export default function MeusProdutos() {
                               variant="default"
                               onClick={() => handleRenovarCampanha(product)}
                             >
-                              🔄 Renovar
+                              {t('products.renew_campaign')}
                             </Button>
                           )}
                         </div>
@@ -1468,7 +1468,7 @@ export default function MeusProdutos() {
                           onClick={() => setDuplicateCards(prev => [...prev, { id: crypto.randomUUID(), product }])}
                         >
                           <Copy className="w-4 h-4" />
-                          Duplicar Campanha
+                          {t('products.duplicate_campaign')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1476,7 +1476,7 @@ export default function MeusProdutos() {
                           className="w-full gap-2 bg-gradient-to-r from-blue-600 to-pink-600 text-white hover:from-blue-700 hover:to-pink-700 border-0"
                           onClick={() => { setSimultaneoProduct(product); setIsSimultaneoModalOpen(true); }}
                         >
-                          🚀 Publicar agora
+                          {t('products.publish_now')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1485,7 +1485,7 @@ export default function MeusProdutos() {
                           onClick={() => { setFacebookProduct(product); setIsFacebookModalOpen(true); }}
                         >
                           <Facebook className="w-4 h-4" />
-                           📱 Postar no Facebook
+                           {t('products.post_facebook')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1494,7 +1494,7 @@ export default function MeusProdutos() {
                           onClick={() => { setInstagramProduct(product); setIsInstagramModalOpen(true); }}
                         >
                           <Instagram className="w-4 h-4" />
-                          📸 Postar no Instagram
+                          {t('products.post_instagram')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1503,7 +1503,7 @@ export default function MeusProdutos() {
                           onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
                         >
                           <Video className="w-4 h-4" />
-                          📹 Publicar Reels
+                          {t('products.publish_reels')}
                         </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
@@ -1512,7 +1512,7 @@ export default function MeusProdutos() {
                             onClick={() => openEditModal(product)}
                           >
                             <Pencil className="w-4 h-4 mr-1" />
-                            Editar Produto
+                            {t('products.edit_product')}
                           </Button>
                           <Button 
                             variant="outline" 
@@ -1520,12 +1520,12 @@ export default function MeusProdutos() {
                             onClick={() => handleDeleteProduct(product.id)}
                           >
                             <Trash2 className="w-4 h-4 text-destructive mr-1" />
-                            Excluir
+                            {t('products.delete')}
                           </Button>
                         </div>
                         {product.campanha.proxima_execucao && (
                           <p className="text-[10px] text-muted-foreground text-center">
-                            Próximo envio: {new Date(product.campanha.proxima_execucao).toLocaleString('pt-BR', { 
+                            {t('products.next_send')} {new Date(product.campanha.proxima_execucao).toLocaleString('pt-BR', { 
                               day: '2-digit', 
                               month: '2-digit', 
                               hour: '2-digit', 
@@ -1542,7 +1542,7 @@ export default function MeusProdutos() {
                           onClick={() => handleCreateCampaign(product)}
                         >
                           <Rocket className="w-4 h-4" />
-                          Criar Campanha
+                          {t('products.create_campaign')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1550,7 +1550,7 @@ export default function MeusProdutos() {
                           className="w-full gap-2 bg-gradient-to-r from-blue-600 to-pink-600 text-white hover:from-blue-700 hover:to-pink-700 border-0"
                           onClick={() => { setSimultaneoProduct(product); setIsSimultaneoModalOpen(true); }}
                         >
-                          🚀 Publicar agora
+                          {t('products.publish_now')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1559,7 +1559,7 @@ export default function MeusProdutos() {
                           onClick={() => { setFacebookProduct(product); setIsFacebookModalOpen(true); }}
                         >
                           <Facebook className="w-4 h-4" />
-                           📱 Postar no Facebook
+                           {t('products.post_facebook')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1568,7 +1568,7 @@ export default function MeusProdutos() {
                           onClick={() => { setInstagramProduct(product); setIsInstagramModalOpen(true); }}
                         >
                           <Instagram className="w-4 h-4" />
-                          📸 Postar no Instagram
+                          {t('products.post_instagram')}
                         </Button>
                         <Button
                           variant="outline"
@@ -1577,7 +1577,7 @@ export default function MeusProdutos() {
                           onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
                         >
                           <Video className="w-4 h-4" />
-                          📹 Publicar Reels
+                          {t('products.publish_reels')}
                         </Button>
                         <Button 
                           variant="outline"
@@ -1586,7 +1586,7 @@ export default function MeusProdutos() {
                           onClick={() => setDuplicateCards(prev => [...prev, { id: crypto.randomUUID(), product }])}
                         >
                           <Copy className="w-4 h-4" />
-                          Duplicar Campanha
+                          {t('products.duplicate_campaign')}
                         </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
@@ -1595,7 +1595,7 @@ export default function MeusProdutos() {
                             onClick={() => openEditModal(product)}
                           >
                             <Pencil className="w-4 h-4 mr-1" />
-                            Editar
+                            {t('products.edit')}
                           </Button>
                           <Button 
                             variant="outline" 
@@ -1603,7 +1603,7 @@ export default function MeusProdutos() {
                             onClick={() => handleDeleteProduct(product.id)}
                           >
                             <Trash2 className="w-4 h-4 text-destructive mr-1" />
-                            Excluir
+                            {t('products.delete')}
                           </Button>
                         </div>
                       </>
@@ -1620,7 +1620,7 @@ export default function MeusProdutos() {
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-base flex items-center gap-2">
                         <Copy className="h-4 w-4 text-primary" />
-                        Nova Campanha
+                        {t('products.new_campaign')}
                       </CardTitle>
                       <Button variant="ghost" size="sm" onClick={() => setDuplicateCards(prev => prev.filter(c => c.id !== dc.id))}>
                         <X className="h-4 w-4" />
@@ -1641,7 +1641,7 @@ export default function MeusProdutos() {
                     </div>
 
                     <p className="text-xs text-muted-foreground">
-                      Crie uma nova campanha para este produto com horários e datas diferentes.
+                      {t('products.new_campaign_desc')}
                     </p>
 
                     <div className="flex-1" />
@@ -1651,7 +1651,7 @@ export default function MeusProdutos() {
                       onClick={() => handleCreateCampaign(product)}
                     >
                       <Rocket className="w-4 h-4" />
-                      Criar Campanha
+                      {t('products.create_campaign')}
                     </Button>
                   </CardContent>
                 </Card>
@@ -1684,14 +1684,14 @@ export default function MeusProdutos() {
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Adicionar Produto</DialogTitle>
-            <DialogDescription>Preencha os dados do novo produto</DialogDescription>
+            <DialogTitle>{t('products.add_modal_title')}</DialogTitle>
+            <DialogDescription>{t('products.add_modal_desc')}</DialogDescription>
           </DialogHeader>
           <ProductForm 
             formData={formData}
             setFormData={setFormData}
             onSubmit={handleAddProduct}
-            submitLabel="Adicionar Produto"
+            submitLabel={t('products.add_product')}
             setIsAddModalOpen={setIsAddModalOpen}
             setIsEditModalOpen={setIsEditModalOpen}
             imageFile={imageFile}
@@ -1709,14 +1709,14 @@ export default function MeusProdutos() {
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar Produto</DialogTitle>
-            <DialogDescription>Atualize as informações do produto</DialogDescription>
+            <DialogTitle>{t('products.edit_modal_title')}</DialogTitle>
+            <DialogDescription>{t('products.edit_modal_desc')}</DialogDescription>
           </DialogHeader>
           <ProductForm 
             formData={formData}
             setFormData={setFormData}
             onSubmit={handleEditProduct}
-            submitLabel="Salvar Alterações"
+            submitLabel={t('products.save_changes')}
             setIsAddModalOpen={setIsAddModalOpen}
             setIsEditModalOpen={setIsEditModalOpen}
             imageFile={imageFile}
