@@ -1288,7 +1288,7 @@ export default function MeusProdutos() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Search className="w-5 h-5" />
-              Filtros
+              {t('products.filters')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1296,7 +1296,7 @@ export default function MeusProdutos() {
               <div className="relative">
                 <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar produtos..."
+                  placeholder={t('products.search_placeholder')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9"
@@ -1308,7 +1308,7 @@ export default function MeusProdutos() {
                   <SelectValue placeholder="Categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas Categorias ({filteredProducts.length})</SelectItem>
+                  <SelectItem value="all">{t('products.all_categories')} ({filteredProducts.length})</SelectItem>
                   {categories.map((cat) => (
                     <SelectItem key={cat} value={cat}>
                       {cat} ({filteredProducts.filter(p => p.categoria === cat).length})
@@ -1395,17 +1395,17 @@ export default function MeusProdutos() {
                       )}
                       {product.campanha && product.campanha.ativa && (
                         <Badge className="bg-green-500 text-white text-xs animate-pulse">
-                          🚀 Em Campanha
+                          {t('products.in_campaign')}
                         </Badge>
                       )}
                       <Badge variant={product.ativo ? 'default' : 'secondary'}>
-                        {product.ativo ? 'Ativo' : 'Pausado'}
+                        {product.ativo ? t('products.active') : t('products.paused')}
                       </Badge>
                     </div>
                   </div>
                   <CardTitle className="text-xl">{product.nome}</CardTitle>
                   <CardDescription className="line-clamp-2">
-                    {product.descricao || 'Sem descrição'}
+                    {product.descricao || t('products.no_description')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1669,7 +1669,7 @@ export default function MeusProdutos() {
         {/* Indicador Visual de Verificador Ativo */}
         <div className="fixed bottom-4 right-4 bg-green-500 text-white px-3 py-2 rounded-full text-xs flex items-center gap-2 shadow-lg z-50">
           <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-          Verificador Ativo
+           {t('products.checker_active')}
         </div>
 
           </TabsContent>
