@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, ArrowLeft, Eye, EyeOff, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -32,7 +34,7 @@ export default function Login() {
 
       if (error) throw error;
 
-      toast.success('Login realizado com sucesso!');
+      toast.success(t('login.success'));
 
       // Verificar perfil do usuário
       const { data: profile } = await supabase
@@ -46,7 +48,7 @@ export default function Login() {
         const validade = new Date(profile.validade_acesso);
         if (validade < new Date()) {
           await supabase.auth.signOut();
-          toast.error('Seu acesso expirou. Entre em contato para renovar.');
+          toast.error(t('login.access_expired'));
           return;
         }
       }
@@ -90,7 +92,7 @@ export default function Login() {
     } catch (error: any) {
       const msg = String(error?.message || 'Erro ao fazer login');
       if (msg.toLowerCase().includes('invalid login credentials')) {
-        toast.error('Email ou senha incorretos. Se precisar, redefina sua senha.');
+        toast.error(t('login.invalid_credentials'));
       } else {
         toast.error(msg);
       }
@@ -102,7 +104,7 @@ export default function Login() {
   const handleSendReset = async () => {
     const email = forgotEmail.trim().toLowerCase();
     if (!email) {
-      toast.error('Informe seu email.');
+      toast.error(t('login.email'));
       return;
     }
 
@@ -112,10 +114,10 @@ export default function Login() {
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
 
-      toast.success('Enviamos um link de redefinição para seu email.');
+      toast.success(t('login.reset_success'));
       setShowForgot(false);
     } catch (err: any) {
-      toast.error(err?.message || 'Erro ao enviar link de redefinição');
+      toast.error(err?.message || t('login.reset_error'));
     } finally {
       setSendingReset(false);
     }
@@ -130,7 +132,7 @@ export default function Login() {
           className="flex items-center gap-2 text-purple-300 hover:text-white mb-4 sm:mb-8 transition text-sm sm:text-base"
         >
           <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-          Voltar para início
+          {t('login.back_home')}
         </button>
 
         {/* Card Login */}
@@ -142,8 +144,8 @@ export default function Login() {
                 <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
               </svg>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">Bem-vindo de Volta!</h1>
-            <p className="text-purple-300 text-sm sm:text-base">Entre para acessar sua conta</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-1 sm:mb-2">{t('login.title')}</h1>
+            <p className="text-purple-300 text-sm sm:text-base">{t('login.subtitle')}</p>
           </div>
 
           {/* Form */}
@@ -151,7 +153,7 @@ export default function Login() {
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-purple-300 mb-1.5 sm:mb-2">
-                Email
+                {t('login.email')}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
@@ -163,7 +165,7 @@ export default function Login() {
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
                   className="w-full bg-slate-700/50 text-white text-base pl-10 sm:pl-12 pr-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                  placeholder="seu@email.com"
+                  placeholder={t('login.email_placeholder')}
                 />
               </div>
             </div>
@@ -171,7 +173,7 @@ export default function Login() {
             {/* Senha */}
             <div>
               <label className="block text-sm font-medium text-purple-300 mb-1.5 sm:mb-2">
-                Senha
+                {t('login.password')}
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-purple-400" />
@@ -182,7 +184,7 @@ export default function Login() {
                   value={formData.password}
                   onChange={(e) => setFormData({...formData, password: e.target.value})}
                   className="w-full bg-slate-700/50 text-white text-base pl-10 sm:pl-12 pr-12 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                  placeholder="••••••••"
+                  placeholder={t('login.password_placeholder')}
                 />
                 <button
                   type="button"
@@ -204,7 +206,7 @@ export default function Login() {
                 }}
                 className="text-sm text-purple-400 hover:text-purple-300 transition"
               >
-                Esqueci minha senha
+                {t('login.forgot_password')}
               </button>
             </div>
 
@@ -215,7 +217,7 @@ export default function Login() {
                 disabled={isLoading}
                 className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 text-base"
               >
-                {isLoading ? 'Entrando...' : 'Entrar'}
+                {isLoading ? t('login.submitting') : t('login.submit')}
               </button>
               
               <button
@@ -223,7 +225,7 @@ export default function Login() {
                 onClick={() => navigate('/cadastro')}
                 className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition text-base"
               >
-                Criar Conta
+                {t('login.register')}
               </button>
             </div>
           </form>
@@ -234,18 +236,18 @@ export default function Login() {
               <div className="w-full border-t border-slate-600"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-4 bg-slate-800 text-slate-400">ou</span>
+              <span className="px-4 bg-slate-800 text-slate-400">{t('login.or')}</span>
             </div>
           </div>
 
           {/* Criar Conta */}
           <div className="text-center">
-            <p className="text-slate-400 mb-3 sm:mb-4 text-sm sm:text-base">Ainda não tem conta?</p>
+            <p className="text-slate-400 mb-3 sm:mb-4 text-sm sm:text-base">{t('login.no_account')}</p>
             <button
               onClick={() => navigate('/cadastro')}
               className="w-full border-2 border-purple-500/50 text-purple-300 py-3 rounded-lg font-semibold hover:bg-purple-500/10 transition text-base"
             >
-              Criar Conta Grátis
+              {t('login.register_free')}
             </button>
           </div>
         </div>
@@ -260,9 +262,9 @@ export default function Login() {
             <div className="relative w-full max-w-md bg-slate-900 border border-purple-500/30 rounded-2xl p-6 shadow-2xl">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-bold text-white">Redefinir senha</h2>
+                  <h2 className="text-xl font-bold text-white">{t('login.reset_title')}</h2>
                   <p className="text-purple-300 text-sm mt-1">
-                    Vamos enviar um link para você criar uma nova senha.
+                    {t('login.reset_description')}
                   </p>
                 </div>
                 <button
@@ -277,13 +279,13 @@ export default function Login() {
               </div>
 
               <div className="mt-5">
-                <label className="block text-sm font-medium text-purple-300 mb-2">Email</label>
+                <label className="block text-sm font-medium text-purple-300 mb-2">{t('login.email')}</label>
                 <input
                   type="email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
                   className="w-full bg-slate-700/50 text-white px-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500"
-                  placeholder="seu@email.com"
+                  placeholder={t('login.email_placeholder')}
                 />
               </div>
 
@@ -294,7 +296,7 @@ export default function Login() {
                   disabled={sendingReset}
                   className="w-full border-2 border-purple-500/50 text-purple-300 py-3 rounded-lg font-semibold hover:bg-purple-500/10 transition disabled:opacity-50"
                 >
-                  Cancelar
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -302,7 +304,7 @@ export default function Login() {
                   disabled={sendingReset}
                   className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50"
                 >
-                  {sendingReset ? 'Enviando...' : 'Enviar link'}
+                  {sendingReset ? t('login.reset_sending') : t('login.reset_send')}
                 </button>
               </div>
             </div>
