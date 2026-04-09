@@ -85,6 +85,7 @@ interface DadosGraficos {
 
 export default function DashboardMetricas() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [metricas, setMetricas] = useState<Metricas>({
     totalMensagens: 0,
