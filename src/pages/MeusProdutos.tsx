@@ -663,8 +663,8 @@ const ProductForm = ({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="true">Ativo</SelectItem>
-          <SelectItem value="false">Pausado</SelectItem>
+          <SelectItem value="true">{t('products.active')}</SelectItem>
+          <SelectItem value="false">{t('products.paused')}</SelectItem>
         </SelectContent>
       </Select>
     </div>
