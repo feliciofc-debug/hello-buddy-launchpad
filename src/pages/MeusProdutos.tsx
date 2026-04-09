@@ -686,6 +686,7 @@ const ProductForm = ({
 
 export default function MeusProdutos() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -1238,8 +1239,8 @@ export default function MeusProdutos() {
                 <Package className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold">📦 Gestão de Produtos</h1>
-                <p className="text-muted-foreground mt-1">Gerencie seus produtos e campanhas</p>
+                <h1 className="text-4xl font-bold">{t('products.title')}</h1>
+                <p className="text-muted-foreground mt-1">{t('products.subtitle')}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 flex-wrap">

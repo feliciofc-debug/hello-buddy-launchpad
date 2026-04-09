@@ -3,10 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { User, Mail, Phone, Lock, ArrowLeft, Building2, Loader2, BadgeCheck } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 
 
 export default function Cadastro() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingCNPJ, setIsLoadingCNPJ] = useState(false);
 
@@ -114,12 +116,12 @@ export default function Cadastro() {
     e.preventDefault();
     
     if (!formData.aceitoTermos) {
-      toast.error('Você precisa aceitar os termos de uso');
+      toast.error(t('register.terms_required'));
       return;
     }
 
     if (formData.senha.length < 6) {
-      toast.error('A senha deve ter no mínimo 6 caracteres');
+      toast.error(t('register.password_min'));
       return;
     }
 
@@ -165,10 +167,10 @@ export default function Cadastro() {
         }
       }
 
-      toast.success('Conta criada com sucesso!');
+      toast.success(t('register.success'));
       navigate('/dashboard');
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao criar conta');
+      toast.error(error.message || t('register.error'));
     } finally {
       setIsLoading(false);
     }
@@ -183,7 +185,7 @@ export default function Cadastro() {
           className="flex items-center gap-2 text-purple-300 hover:text-white mb-8 transition"
         >
           <ArrowLeft className="w-5 h-5" />
-          Voltar
+          {t('register.back')}
         </button>
 
         {/* Card Cadastro */}
@@ -195,8 +197,8 @@ export default function Cadastro() {
                 <path d="M20 7h-4V4c0-1.1-.9-2-2-2h-4c-1.1 0-2 .9-2 2v3H4c-1.1 0-2 .9-2 2v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2zM10 4h4v3h-4V4zm10 16H4V9h16v11z"/>
               </svg>
             </div>
-            <h1 className="text-3xl font-bold text-white mb-2">Criar Conta</h1>
-            <p className="text-purple-300">Cadastro para empresas em geral</p>
+            <h1 className="text-3xl font-bold text-white mb-2">{t('register.title')}</h1>
+            <p className="text-purple-300">{t('register.subtitle')}</p>
           </div>
 
           {/* Formulário Empresa */}
@@ -205,7 +207,7 @@ export default function Cadastro() {
                 {/* CNPJ */}
                 <div>
                   <label className="block text-sm font-medium text-purple-300 mb-2">
-                    CNPJ *
+                    {t('register.cnpj')} *
                   </label>
                   <div className="relative">
                     <Building2 className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
@@ -225,8 +227,8 @@ export default function Cadastro() {
                   </div>
                   {isLoadingCNPJ && (
                     <p className="text-xs text-purple-400 mt-1 flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      Consultando empresa...
+                       <Loader2 className="w-3 h-3 animate-spin" />
+                      {t('register.consulting')}
                     </p>
                   )}
                 </div>
@@ -234,7 +236,7 @@ export default function Cadastro() {
                 {/* Razão Social */}
                 <div>
                   <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Razão Social *
+                    {t('register.razao_social')} *
                   </label>
                   <input
                     type="text"
@@ -250,7 +252,7 @@ export default function Cadastro() {
                 {/* Nome Fantasia */}
                 <div>
                   <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Nome Fantasia *
+                    {t('register.nome_fantasia')} *
                   </label>
                   <input
                     type="text"
@@ -266,7 +268,7 @@ export default function Cadastro() {
                 {/* Email */}
                 <div>
                   <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Email *
+                    {t('register.email')} *
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
@@ -284,7 +286,7 @@ export default function Cadastro() {
                 {/* Senha */}
                 <div>
                   <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Senha *
+                    {t('register.password')} *
                   </label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
@@ -302,7 +304,7 @@ export default function Cadastro() {
                 {/* Telefone/WhatsApp */}
                 <div>
                   <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Telefone/WhatsApp *
+                    {t('register.phone')} *
                   </label>
                   <div className="relative">
                     <Phone className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-purple-400" />
@@ -320,7 +322,7 @@ export default function Cadastro() {
                 {/* Endereço */}
                 <div>
                   <label className="block text-sm font-medium text-purple-300 mb-2">
-                    Endereço Completo
+                    {t('register.address')}
                   </label>
                   <textarea
                     value={formData.endereco.logradouro ? 
@@ -329,15 +331,15 @@ export default function Cadastro() {
                     readOnly
                     className="w-full bg-slate-700/50 text-white px-4 py-3 rounded-lg border border-purple-500/30 focus:outline-none focus:border-purple-500 transition placeholder:text-slate-500 resize-none"
                     rows={2}
-                    placeholder="Preencha o CNPJ para buscar automaticamente"
+                    placeholder={t('register.address_auto')}
                   />
                 </div>
 
                 {/* CNAE */}
                 {formData.cnae && (
                   <div>
-                    <label className="block text-sm font-medium text-purple-300 mb-2">
-                      CNAE Principal
+                  <label className="block text-sm font-medium text-purple-300 mb-2">
+                    {t('register.cnae')}
                     </label>
                     <div className="bg-slate-700/50 text-white px-4 py-3 rounded-lg border border-purple-500/30">
                       <div className="font-semibold">{formData.cnae}</div>
@@ -355,18 +357,18 @@ export default function Cadastro() {
                       <div>
                         <div className="inline-flex items-center gap-2 bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-bold mb-2">
                           <BadgeCheck className="w-4 h-4" />
-                          Plano Empresarial
+                          {t('register.enterprise_plan')}
                         </div>
-                        <h3 className="text-2xl font-bold text-white">🏭 Distribuidoras e Fábricas</h3>
+                        <h3 className="text-2xl font-bold text-white">{t('register.enterprise_title')}</h3>
                       </div>
                       <div className="text-right">
-                        <div className="text-xl font-bold text-white">Personalizado</div>
-                        <div className="text-sm text-blue-300">sob consulta</div>
+                        <div className="text-xl font-bold text-white">{t('register.enterprise_price')}</div>
+                        <div className="text-sm text-blue-300">{t('register.enterprise_price_desc')}</div>
                       </div>
                     </div>
 
                     <p className="text-slate-300 mb-4">
-                      Após o cadastro, nossa equipe entrará em contato para entender suas necessidades e criar um plano personalizado para seu negócio.
+                      {t('register.enterprise_desc')}
                     </p>
 
                     <a 
@@ -376,7 +378,7 @@ export default function Cadastro() {
                       className="inline-flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg transition"
                     >
                       <Phone className="w-4 h-4" />
-                      Falar com consultor
+                      {t('register.talk_consultant')}
                     </a>
                   </div>
                 </div>
@@ -391,7 +393,7 @@ export default function Cadastro() {
                     className="mt-1 w-5 h-5 text-purple-500 bg-slate-700 border-purple-500/30 rounded focus:ring-purple-500"
                   />
                   <label className="text-sm text-slate-300">
-                    Li e aceito os termos de uso e política de privacidade
+                    {t('register.terms_accept')}
                   </label>
                 </div>
 
@@ -403,10 +405,10 @@ export default function Cadastro() {
                   {isLoading ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
-                      Criando conta...
+                      {t('register.creating')}
                     </>
                   ) : (
-                    'CRIAR CONTA EMPRESA'
+                    t('register.submit')
                   )}
                 </button>
               </form>
@@ -415,7 +417,7 @@ export default function Cadastro() {
           {/* Login Link */}
           <div className="text-center mt-6">
             <p className="text-slate-400">
-              Já tem conta? <button onClick={() => navigate('/login')} className="text-purple-400 hover:text-purple-300 font-semibold">Fazer login</button>
+              {t('register.already_account')} <button onClick={() => navigate('/login')} className="text-purple-400 hover:text-purple-300 font-semibold">{t('register.login')}</button>
             </p>
           </div>
         </div>
