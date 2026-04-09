@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from 'react-i18next';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,6 +9,7 @@ import { ArrowLeft, TrendingUp, Users, MousePointer, DollarSign, Eye, Clock, Sho
 
 export default function Analytics() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [period, setPeriod] = useState("7days");
 
   // Dados zerados
@@ -36,13 +38,13 @@ export default function Analytics() {
               className="mb-4"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Voltar
+              {t('common.back')}
             </Button>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-              📊 Analytics Dashboard
+              {t('analytics.title')}
             </h1>
             <p className="text-muted-foreground mt-2">
-              Métricas e insights do Google Analytics
+              {t('analytics.subtitle')}
             </p>
           </div>
 
