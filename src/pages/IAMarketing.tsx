@@ -697,7 +697,7 @@ const IAMarketing = () => {
                           {publicandoInstagram ? (
                             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
                           ) : (
-                            <><Instagram className="mr-2 h-4 w-4" /> 📸 Publicar no Instagram</>
+                            <><Instagram className="mr-2 h-4 w-4" /> ${t('publish.publish_instagram')}</>
                           )}
                         </Button>
                       </div>
@@ -754,7 +754,7 @@ const IAMarketing = () => {
                           {publicandoFacebook ? (
                             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
                           ) : (
-                            <><Facebook className="mr-2 h-4 w-4" /> 📱 Publicar no Facebook</>
+                            <><Facebook className="mr-2 h-4 w-4" /> {t('publish.publish_facebook')}</>
                           )}
                         </Button>
                       </div>
