@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useTrialConfig } from "@/hooks/useTrialConfig";
 import { useIALimit } from "@/hooks/useIALimit";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,7 @@ interface ProductAnalysis {
 
 const IAMarketing = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { isTrial, trial, canUseIAMarketing, canPostToday, isTrialExpired, incrementImageUsage, incrementPostUsage, trialDaysRemaining } = useTrialConfig();
   const { iaUsado, iaLimite, canGenerate, remaining, incrementUsage: incrementIAUsage } = useIALimit();
   const [url, setUrl] = useState("");
@@ -95,19 +97,19 @@ const IAMarketing = () => {
 
   const handleAnalyze = async () => {
     if (!url.trim()) {
-      toast.error("Digite uma descrição ou cole um link");
+      toast.error(t('ai_marketing.enter_desc'));
       return;
     }
 
     // PJ limit guard - check monthly IA image limit (all clients)
     if (!canGenerate()) {
-      toast.error(`🔒 Limite de ${iaLimite} gerações de IA atingido este mês! Contrate mais gerações para continuar.`);
+      toast.error(t('ai_marketing.ia_limit', { limit: iaLimite }));
       return;
     }
 
     // Trial guard - check IA Marketing limit
     if (isTrial && !canUseIAMarketing()) {
-      toast.error("🔒 Limite de IA Marketing atingido! Contrate o plano completo para continuar.");
+      toast.error(t('ai_marketing.ia_marketing_limit'));
       return;
     }
 
@@ -117,7 +119,7 @@ const IAMarketing = () => {
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) {
-        toast.error("Você precisa estar logado");
+        toast.error(t('common.need_login'));
         return;
       }
 
@@ -174,7 +176,7 @@ const IAMarketing = () => {
       
       // Se uma imagem foi gerada, mostrar para o usuário
       if (data.generatedImage) {
-        toast.success("🎨 Imagem gerada com IA!");
+        toast.success(t('ai_marketing.image_generated'));
       }
       
       // Inicializar textos editáveis
@@ -212,7 +214,7 @@ const IAMarketing = () => {
       // Increment trial usage
       if (isTrial) await incrementImageUsage();
 
-      toast.success("✅ Posts gerados e salvos!");
+      toast.success(t('publish.posts_generated'));
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao analisar produto';
       toast.error(errorMessage);
@@ -236,7 +238,7 @@ const IAMarketing = () => {
     });
 
     setUploadedFiles(prev => [...prev, ...newFiles]);
-    toast.success(`${newFiles.length} arquivo(s) adicionado(s)`);
+    toast.success(t('ai_marketing.files_added', { count: newFiles.length }));
   };
 
   const removeFile = (index: number) => {
@@ -261,7 +263,7 @@ const IAMarketing = () => {
     link.click();
     document.body.removeChild(link);
     
-    toast.success("Imagem baixada com sucesso!");
+    toast.success(t('publish.image_downloaded'));
   };
 
   const handleScheduleAll = () => {
@@ -284,25 +286,25 @@ const IAMarketing = () => {
     const textoSelecionado = sanitizeGeneratedPostText(editableTexts.whatsapp[selectedVariations.whatsapp], url.trim());
     
     if (!textoSelecionado.trim()) {
-      toast.error("Selecione uma variação de texto primeiro");
+      toast.error(t('publish.select_text_first'));
       return;
     }
 
     localStorage.setItem('campaignMessageTemplate', textoSelecionado);
-    toast.success("Texto salvo! Redirecionando para criar campanha...");
+    toast.success(t('ai_marketing.text_saved'));
     setTimeout(() => navigate('/campanhas-prospeccao'), 500);
   };
 
   const handlePublicarFacebook = async () => {
-    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
-    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
+    if (isTrial && !canPostToday()) { toast.error(t('ai_marketing.post_limit')); return; }
+    if (isTrial && isTrialExpired()) { toast.error(t('ai_marketing.trial_expired')); return; }
     const texto = editableTexts.facebook[selectedVariations.facebook];
-    if (!texto.trim()) { toast.error("Selecione um texto primeiro"); return; }
+    if (!texto.trim()) { toast.error(t('publish.select_text_first')); return; }
 
     setPublicandoFacebook(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Você precisa estar logado"); return; }
+      if (!user) { toast.error(t('common.need_login')); return; }
 
       const link = getSafeProductLink(resultado?.produto);
       const textoLimpo = sanitizeGeneratedPostText(texto, url.trim());
@@ -335,18 +337,18 @@ const IAMarketing = () => {
   };
 
   const handlePublicarInstagram = async () => {
-    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
-    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
+    if (isTrial && !canPostToday()) { toast.error(t('ai_marketing.post_limit')); return; }
+    if (isTrial && isTrialExpired()) { toast.error(t('ai_marketing.trial_expired')); return; }
     const texto = editableTexts.instagram[selectedVariations.instagram];
-    if (!texto.trim()) { toast.error("Selecione um texto primeiro"); return; }
+    if (!texto.trim()) { toast.error(t('publish.select_text_first')); return; }
 
     const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
-    if (!imagemUrl) { toast.error("Instagram requer uma imagem. Gere uma imagem com IA ou use um produto com foto."); return; }
+    if (!imagemUrl) { toast.error(t('publish.ig_requires_image_ai')); return; }
 
     setPublicandoInstagram(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Você precisa estar logado"); return; }
+      if (!user) { toast.error(t('common.need_login')); return; }
 
       const link = getSafeProductLink(resultado?.produto);
       const textoLimpo = sanitizeGeneratedPostText(texto, url.trim());
@@ -379,22 +381,22 @@ const IAMarketing = () => {
 
   const handlePublicarTodas = async () => {
     if (!resultado) return;
-    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
-    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
+    if (isTrial && !canPostToday()) { toast.error(t('ai_marketing.post_limit')); return; }
+    if (isTrial && isTrialExpired()) { toast.error(t('ai_marketing.trial_expired')); return; }
 
     const textoFb = editableTexts.facebook[selectedVariations.facebook];
     const textoIg = editableTexts.instagram[selectedVariations.instagram];
     const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
     const link = getSafeProductLink(resultado?.produto);
 
-    if (!textoFb.trim() && !textoIg.trim()) { toast.error("Nenhum texto disponível para publicar"); return; }
+    if (!textoFb.trim() && !textoIg.trim()) { toast.error(t('publish.no_text_available')); return; }
 
     setPublicandoTodas(true);
     const resultados: string[] = [];
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Você precisa estar logado"); return; }
+      if (!user) { toast.error(t('common.need_login')); return; }
 
       const promises: Promise<void>[] = [];
 
@@ -466,10 +468,10 @@ const IAMarketing = () => {
           <div className={`mb-4 p-3 rounded-lg border ${remaining() === 0 ? 'bg-destructive/10 border-destructive' : 'bg-muted/50 border-border'}`}>
             <div className="flex items-center justify-between">
               <span className="text-sm">
-                🎨 Gerações IA: <strong>{iaUsado}/{iaLimite}</strong> este mês ({remaining()} restantes)
+                {t('ai_marketing.ia_generations')} <strong>{iaUsado}/{iaLimite}</strong> {t('ai_marketing.this_month')} ({remaining()} {t('ai_marketing.remaining')})
               </span>
               {remaining() === 0 && (
-                <span className="text-sm font-medium text-destructive">Limite atingido! Contrate mais gerações.</span>
+                <span className="text-sm font-medium text-destructive">{t('ai_marketing.limit_reached')}</span>
               )}
             </div>
           </div>
@@ -478,23 +480,23 @@ const IAMarketing = () => {
           <div className={`mb-4 p-4 rounded-lg border ${isTrialExpired() ? 'bg-destructive/10 border-destructive' : 'bg-amber-500/10 border-amber-500'}`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <span className="font-bold">{isTrialExpired() ? '🔒 Teste encerrado' : `⏳ Período de teste: ${trialDaysRemaining()} dias restantes`}</span>
+                <span className="font-bold">{isTrialExpired() ? t('ai_marketing.trial_ended') : t('ai_marketing.trial_days', { days: trialDaysRemaining() })}</span>
                 <span className="ml-4 text-sm">
-                  IA: {trial.imagens_ia_usadas}/{trial.limite_imagens_ia} imagens | Posts hoje: {trial.posts_hoje}/{trial.limite_posts_dia}
+                  IA: {trial.imagens_ia_usadas}/{trial.limite_imagens_ia} {t('ai_marketing.images')} | {t('ai_marketing.posts_today')} {trial.posts_hoje}/{trial.limite_posts_dia}
                 </span>
               </div>
               {isTrialExpired() && (
-                <span className="text-sm font-medium text-destructive">Contrate o plano completo para continuar usando!</span>
+                <span className="text-sm font-medium text-destructive">{t('ai_marketing.buy_plan')}</span>
               )}
             </div>
           </div>
         )}
         <Tabs defaultValue="gerar" className="w-full">
           <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 mb-8">
-            <TabsTrigger value="gerar">Gerar Posts</TabsTrigger>
-            <TabsTrigger value="carrossel">🎨 Carrossel</TabsTrigger>
-            <TabsTrigger value="video">🎬 Gerar Vídeo</TabsTrigger>
-            <TabsTrigger value="historico">Meus Posts</TabsTrigger>
+            <TabsTrigger value="gerar">{t('ai_marketing.generate_posts')}</TabsTrigger>
+            <TabsTrigger value="carrossel">{t('ai_marketing.carousel')}</TabsTrigger>
+            <TabsTrigger value="video">{t('ai_marketing.generate_video')}</TabsTrigger>
+            <TabsTrigger value="historico">{t('ai_marketing.my_posts')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="gerar">
@@ -506,15 +508,15 @@ const IAMarketing = () => {
                 className="mb-4"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Voltar
+                {t('common.back')}
               </Button>
               
               <div className="text-center space-y-2">
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent">
-                  ✨ IA Marketing
+                  {t('ai_marketing.title')}
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground">
-                  Cole um link OU envie fotos + descrição para receber 3 variações de posts
+                  {t('ai_marketing.subtitle')}
                 </p>
               </div>
             </div>
@@ -526,7 +528,7 @@ const IAMarketing = () => {
                   <Textarea
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    placeholder="Cole um link OU escreva uma descrição (ex: 'crie posts para minha marca de lubrificantes automotivos')"
+                    placeholder={t('ai_marketing.input_placeholder')}
                     className="text-lg p-6 min-h-[100px]"
                     disabled={loading}
                   />
@@ -544,7 +546,7 @@ const IAMarketing = () => {
                         />
                         <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors">
                           <Upload className="h-5 w-5" />
-                          <span className="font-medium">Upload Fotos/Vídeos</span>
+                          <span className="font-medium">{t('publish.upload_photos')}</span>
                         </div>
                       </label>
                     </div>
@@ -586,11 +588,11 @@ const IAMarketing = () => {
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Analisando com IA...
+                        {t('publish.analyzing')}
                       </>
                     ) : (
                       <>
-                        ✨ ANALISAR COM IA
+                        {t('publish.analyze_ai')}
                       </>
                     )}
                   </Button>
@@ -607,7 +609,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Sparkles className="h-5 w-5" />
-                        🎨 Imagem Gerada com IA
+                        {t('ai_marketing.ai_image')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -621,7 +623,7 @@ const IAMarketing = () => {
                         className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                       >
                         <Download className="mr-2 h-5 w-5" />
-                        💾 Salvar Imagem no Computador
+                        {t('publish.save_image')}
                       </Button>
                     </CardContent>
                   </Card>
@@ -637,9 +639,9 @@ const IAMarketing = () => {
                     className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white text-lg px-10 py-5"
                   >
                     {publicandoTodas ? (
-                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Publicando nos dois...</>
+                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> {t('publish.publishing_both')}</>
                     ) : (
-                      <>🚀 Publicar no Facebook + Instagram</>
+                      <>{t('publish.publish_fb_ig')}</>
                     )}
                   </Button>
                 </div>
@@ -650,7 +652,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-pink-500 to-purple-500 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Instagram className="h-5 w-5" />
-                        📱 Post Instagram
+                        {t('ai_marketing.post_instagram')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -660,15 +662,15 @@ const IAMarketing = () => {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoA" id="inst-a" />
-                          <Label htmlFor="inst-a" className="cursor-pointer">Opção A: Direto/Urgente</Label>
+                          <Label htmlFor="inst-a" className="cursor-pointer">{t('ai_marketing.option_direct')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoB" id="inst-b" />
-                          <Label htmlFor="inst-b" className="cursor-pointer">Opção B: Storytelling</Label>
+                          <Label htmlFor="inst-b" className="cursor-pointer">{t('ai_marketing.option_storytelling')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoC" id="inst-c" />
-                          <Label htmlFor="inst-c" className="cursor-pointer">Opção C: Educativo</Label>
+                          <Label htmlFor="inst-c" className="cursor-pointer">{t('ai_marketing.option_educational')}</Label>
                         </div>
                       </RadioGroup>
 
@@ -685,7 +687,7 @@ const IAMarketing = () => {
                           className="w-full"
                         >
                           <Copy className="mr-2 h-4 w-4" />
-                          Copiar
+                          {t('publish.copy')}
                         </Button>
                         <Button
                           onClick={handlePublicarInstagram}
@@ -695,7 +697,7 @@ const IAMarketing = () => {
                           {publicandoInstagram ? (
                             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
                           ) : (
-                            <><Instagram className="mr-2 h-4 w-4" /> 📸 Publicar no Instagram</>
+                            <><Instagram className="mr-2 h-4 w-4" /> ${t('publish.publish_instagram')}</>
                           )}
                         </Button>
                       </div>
@@ -707,7 +709,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Facebook className="h-5 w-5" />
-                        📘 Post Facebook
+                        {t('ai_marketing.post_facebook')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -717,15 +719,15 @@ const IAMarketing = () => {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoA" id="fb-a" />
-                          <Label htmlFor="fb-a" className="cursor-pointer">Opção A: Casual/Amigável</Label>
+                          <Label htmlFor="fb-a" className="cursor-pointer">{t('ai_marketing.option_casual')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoB" id="fb-b" />
-                          <Label htmlFor="fb-b" className="cursor-pointer">Opção B: Profissional</Label>
+                          <Label htmlFor="fb-b" className="cursor-pointer">{t('ai_marketing.option_professional')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoC" id="fb-c" />
-                          <Label htmlFor="fb-c" className="cursor-pointer">Opção C: Promocional</Label>
+                          <Label htmlFor="fb-c" className="cursor-pointer">{t('ai_marketing.option_promotional')}</Label>
                         </div>
                       </RadioGroup>
 
@@ -742,7 +744,7 @@ const IAMarketing = () => {
                           className="w-full"
                         >
                           <Copy className="mr-2 h-4 w-4" />
-                          Copiar
+                          {t('publish.copy')}
                         </Button>
                         <Button
                           onClick={handlePublicarFacebook}
@@ -752,7 +754,7 @@ const IAMarketing = () => {
                           {publicandoFacebook ? (
                             <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
                           ) : (
-                            <><Facebook className="mr-2 h-4 w-4" /> 📱 Publicar no Facebook</>
+                            <><Facebook className="mr-2 h-4 w-4" /> {t('publish.publish_facebook')}</>
                           )}
                         </Button>
                       </div>
@@ -764,7 +766,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Sparkles className="h-5 w-5" />
-                        📖 Story Instagram
+                        {t('ai_marketing.story_instagram')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -774,15 +776,15 @@ const IAMarketing = () => {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoA" id="story-a" />
-                          <Label htmlFor="story-a" className="cursor-pointer">Opção A: Curto/Impactante</Label>
+                          <Label htmlFor="story-a" className="cursor-pointer">{t('ai_marketing.option_short')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoB" id="story-b" />
-                          <Label htmlFor="story-b" className="cursor-pointer">Opção B: Pergunta Interativa</Label>
+                          <Label htmlFor="story-b" className="cursor-pointer">{t('ai_marketing.option_interactive')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoC" id="story-c" />
-                          <Label htmlFor="story-c" className="cursor-pointer">Opção C: Contagem Regressiva</Label>
+                          <Label htmlFor="story-c" className="cursor-pointer">{t('ai_marketing.option_countdown')}</Label>
                         </div>
                       </RadioGroup>
 
@@ -793,7 +795,7 @@ const IAMarketing = () => {
                         maxLength={80}
                       />
                       <p className="text-xs text-muted-foreground text-right">
-                        {editableTexts.story[selectedVariations.story].length}/80 caracteres
+                        {editableTexts.story[selectedVariations.story].length}/80 {t('publish.character_count')}
                       </p>
 
                       <div className="flex gap-2">
@@ -803,7 +805,7 @@ const IAMarketing = () => {
                           className="flex-1"
                         >
                           <Copy className="mr-2 h-4 w-4" />
-                          Copiar
+                          {t('publish.copy')}
                         </Button>
                       </div>
                     </CardContent>
@@ -814,7 +816,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <MessageCircle className="h-5 w-5" />
-                        💬 Mensagem WhatsApp
+                        {t('ai_marketing.message_whatsapp')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -824,29 +826,29 @@ const IAMarketing = () => {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoA" id="wpp-a" />
-                          <Label htmlFor="wpp-a" className="cursor-pointer">Opção A: Curto e Direto</Label>
+                          <Label htmlFor="wpp-a" className="cursor-pointer">{t('ai_marketing.option_whatsapp_short')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoB" id="wpp-b" />
-                          <Label htmlFor="wpp-b" className="cursor-pointer">Opção B: Amigável</Label>
+                          <Label htmlFor="wpp-b" className="cursor-pointer">{t('ai_marketing.option_whatsapp_friendly')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoC" id="wpp-c" />
-                          <Label htmlFor="wpp-c" className="cursor-pointer">Opção C: Com Call-to-Action</Label>
+                          <Label htmlFor="wpp-c" className="cursor-pointer">{t('ai_marketing.option_whatsapp_cta')}</Label>
                         </div>
                       </RadioGroup>
 
                       {/* Exibir imagem do produto se disponível */}
                       {resultado?.produto?.imagem && (
                         <div className="border rounded-lg p-2 bg-muted/30">
-                          <p className="text-xs text-muted-foreground mb-2">📷 Imagem do produto:</p>
+                          <p className="text-xs text-muted-foreground mb-2">{t('ai_marketing.product_image')}</p>
                           <img 
                             src={resultado.produto.imagem} 
                             alt={resultado.produto.titulo}
                             className="w-full h-32 object-cover rounded-md"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            💡 Copie esta imagem e cole no WhatsApp junto com o texto
+                            {t('ai_marketing.copy_image_hint')}
                           </p>
                         </div>
                       )}
@@ -865,7 +867,7 @@ const IAMarketing = () => {
                             className="flex-1"
                           >
                             <Copy className="mr-2 h-4 w-4" />
-                            Copiar
+                            {t('publish.copy')}
                           </Button>
                         </div>
                         
@@ -873,11 +875,11 @@ const IAMarketing = () => {
                         <Button
                           onClick={() => setShowWhatsAppModal(true)}
                           disabled={!editableTexts.whatsapp[selectedVariations.whatsapp]?.trim()}
-                          title={!editableTexts.whatsapp[selectedVariations.whatsapp]?.trim() ? "Gere uma mensagem primeiro" : ""}
+                          title={!editableTexts.whatsapp[selectedVariations.whatsapp]?.trim() ? t('ai_marketing.generate_first') : ""}
                           className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                         >
                           <MessageCircle className="mr-2 h-4 w-4" />
-                          📲 Enviar via WhatsApp
+                          {t('publish.send_whatsapp')}
                         </Button>
                         
                         {/* 🚀 PILAR 2: Botão Criar Campanha de Prospecção */}
@@ -886,7 +888,7 @@ const IAMarketing = () => {
                           className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                         >
                           <Sparkles className="mr-2 h-4 w-4" />
-                          🚀 Criar Campanha de Prospecção
+                          {t('publish.create_prospection')}
                         </Button>
                       </div>
                     </CardContent>
@@ -902,9 +904,9 @@ const IAMarketing = () => {
                     className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-lg px-12 py-6 text-white"
                   >
                     {publicandoTodas ? (
-                      <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> Publicando...</>
+                      <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> {t('publish.publishing')}</>
                     ) : (
-                      <>🚀 PUBLICAR AGORA EM TODAS AS REDES</>
+                      <>{t('publish.publish_all_networks')}</>
                     )}
                   </Button>
                   <Button
@@ -913,7 +915,7 @@ const IAMarketing = () => {
                     className="bg-green-600 hover:bg-green-700 text-lg px-12 py-6"
                   >
                     <CalendarIcon className="mr-2 h-6 w-6" />
-                    📅 AGENDAR
+                    {t('ai_marketing.schedule')}
                   </Button>
                 </div>
               </div>
@@ -928,7 +930,7 @@ const IAMarketing = () => {
                 className="mb-4"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Voltar
+                {t('common.back')}
               </Button>
               
               {/* Slideshow gratuito */}
@@ -938,9 +940,9 @@ const IAMarketing = () => {
               <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30">
                 <CardContent className="p-6 text-center">
                   <Video className="h-10 w-10 mx-auto mb-3 text-purple-600" />
-                  <h3 className="text-lg font-bold mb-1">📹 Publicar Reels do Celular</h3>
+                  <h3 className="text-lg font-bold mb-1">{t('publish.publish_reels_phone')}</h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Grave um vídeo no celular e publique como Reels no Facebook e Instagram
+                    {t('publish.publish_reels_desc')}
                   </p>
                   <Button
                     onClick={() => setShowReelsModal(true)}
@@ -948,7 +950,7 @@ const IAMarketing = () => {
                     size="lg"
                   >
                     <Upload className="mr-2 h-5 w-5" />
-                    Upload de Vídeo MP4
+                    {t('publish.upload_video_mp4')}
                   </Button>
                 </CardContent>
               </Card>
@@ -974,10 +976,10 @@ const IAMarketing = () => {
             <div className="max-w-4xl mx-auto">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-center">📚 Histórico de Posts</CardTitle>
+                  <CardTitle className="text-center">{t('ai_marketing.post_history')}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-center py-20 text-muted-foreground">
-                  Em breve: veja todos os seus posts salvos e agendados
+                  {t('ai_marketing.coming_soon')}
                 </CardContent>
               </Card>
             </div>
