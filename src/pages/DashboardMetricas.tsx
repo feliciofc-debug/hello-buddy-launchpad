@@ -40,6 +40,7 @@ import {
   Share2
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
+
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
   AreaChart,
