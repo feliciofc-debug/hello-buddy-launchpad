@@ -1,9 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
 
 const LanguageSwitcher = () => {
   const { i18n } = useTranslation();
-  const location = useLocation();
 
   const toggle = () => {
     const next = i18n.language?.startsWith('pt') ? 'en' : 'pt-BR';
@@ -11,12 +9,6 @@ const LanguageSwitcher = () => {
   };
 
   const isPt = i18n.language?.startsWith('pt');
-
-  // Don't show on landing/public pages
-  const hiddenPaths = ['/', '/login', '/cadastro', '/terms', '/privacy', '/termos', '/privacidade', '/data-deletion', '/security', '/planos', '/pay'];
-  if (hiddenPaths.some(p => location.pathname === p || location.pathname.startsWith('/pay'))) {
-    return null;
-  }
 
   return (
     <button
