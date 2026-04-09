@@ -41,6 +41,7 @@ import {
   Share2
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
 
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
@@ -419,6 +420,7 @@ export default function DashboardMetricas() {
                 <Activity className="w-3 h-3 mr-1" />
                 {t('dashboard.online')}
               </Badge>
+              <LanguageSwitcher />
               <Button variant="outline" size="sm" onClick={carregarMetricas}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 {t('dashboard.refresh')}
