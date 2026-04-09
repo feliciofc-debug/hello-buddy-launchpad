@@ -709,7 +709,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Facebook className="h-5 w-5" />
-                        📘 Post Facebook
+                        {t('ai_marketing.post_facebook')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -719,15 +719,15 @@ const IAMarketing = () => {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoA" id="fb-a" />
-                          <Label htmlFor="fb-a" className="cursor-pointer">Opção A: Casual/Amigável</Label>
+                          <Label htmlFor="fb-a" className="cursor-pointer">{t('ai_marketing.option_casual')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoB" id="fb-b" />
-                          <Label htmlFor="fb-b" className="cursor-pointer">Opção B: Profissional</Label>
+                          <Label htmlFor="fb-b" className="cursor-pointer">{t('ai_marketing.option_professional')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoC" id="fb-c" />
-                          <Label htmlFor="fb-c" className="cursor-pointer">Opção C: Promocional</Label>
+                          <Label htmlFor="fb-c" className="cursor-pointer">{t('ai_marketing.option_promotional')}</Label>
                         </div>
                       </RadioGroup>
 
@@ -744,7 +744,7 @@ const IAMarketing = () => {
                           className="w-full"
                         >
                           <Copy className="mr-2 h-4 w-4" />
-                          Copiar
+                          {t('publish.copy')}
                         </Button>
                         <Button
                           onClick={handlePublicarFacebook}
@@ -766,7 +766,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Sparkles className="h-5 w-5" />
-                        📖 Story Instagram
+                        {t('ai_marketing.story_instagram')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -776,15 +776,15 @@ const IAMarketing = () => {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoA" id="story-a" />
-                          <Label htmlFor="story-a" className="cursor-pointer">Opção A: Curto/Impactante</Label>
+                          <Label htmlFor="story-a" className="cursor-pointer">{t('ai_marketing.option_short')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoB" id="story-b" />
-                          <Label htmlFor="story-b" className="cursor-pointer">Opção B: Pergunta Interativa</Label>
+                          <Label htmlFor="story-b" className="cursor-pointer">{t('ai_marketing.option_interactive')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoC" id="story-c" />
-                          <Label htmlFor="story-c" className="cursor-pointer">Opção C: Contagem Regressiva</Label>
+                          <Label htmlFor="story-c" className="cursor-pointer">{t('ai_marketing.option_countdown')}</Label>
                         </div>
                       </RadioGroup>
 
@@ -795,7 +795,7 @@ const IAMarketing = () => {
                         maxLength={80}
                       />
                       <p className="text-xs text-muted-foreground text-right">
-                        {editableTexts.story[selectedVariations.story].length}/80 caracteres
+                        {editableTexts.story[selectedVariations.story].length}/80 {t('publish.character_count')}
                       </p>
 
                       <div className="flex gap-2">
@@ -805,7 +805,7 @@ const IAMarketing = () => {
                           className="flex-1"
                         >
                           <Copy className="mr-2 h-4 w-4" />
-                          Copiar
+                          {t('publish.copy')}
                         </Button>
                       </div>
                     </CardContent>
@@ -816,7 +816,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-green-500 to-emerald-600 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <MessageCircle className="h-5 w-5" />
-                        💬 Mensagem WhatsApp
+                        {t('ai_marketing.message_whatsapp')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -826,29 +826,29 @@ const IAMarketing = () => {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoA" id="wpp-a" />
-                          <Label htmlFor="wpp-a" className="cursor-pointer">Opção A: Curto e Direto</Label>
+                          <Label htmlFor="wpp-a" className="cursor-pointer">{t('ai_marketing.option_whatsapp_short')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoB" id="wpp-b" />
-                          <Label htmlFor="wpp-b" className="cursor-pointer">Opção B: Amigável</Label>
+                          <Label htmlFor="wpp-b" className="cursor-pointer">{t('ai_marketing.option_whatsapp_friendly')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoC" id="wpp-c" />
-                          <Label htmlFor="wpp-c" className="cursor-pointer">Opção C: Com Call-to-Action</Label>
+                          <Label htmlFor="wpp-c" className="cursor-pointer">{t('ai_marketing.option_whatsapp_cta')}</Label>
                         </div>
                       </RadioGroup>
 
                       {/* Exibir imagem do produto se disponível */}
                       {resultado?.produto?.imagem && (
                         <div className="border rounded-lg p-2 bg-muted/30">
-                          <p className="text-xs text-muted-foreground mb-2">📷 Imagem do produto:</p>
+                          <p className="text-xs text-muted-foreground mb-2">{t('ai_marketing.product_image')}</p>
                           <img 
                             src={resultado.produto.imagem} 
                             alt={resultado.produto.titulo}
                             className="w-full h-32 object-cover rounded-md"
                           />
                           <p className="text-xs text-muted-foreground mt-1">
-                            💡 Copie esta imagem e cole no WhatsApp junto com o texto
+                            {t('ai_marketing.copy_image_hint')}
                           </p>
                         </div>
                       )}
@@ -867,7 +867,7 @@ const IAMarketing = () => {
                             className="flex-1"
                           >
                             <Copy className="mr-2 h-4 w-4" />
-                            Copiar
+                            {t('publish.copy')}
                           </Button>
                         </div>
                         
@@ -875,11 +875,11 @@ const IAMarketing = () => {
                         <Button
                           onClick={() => setShowWhatsAppModal(true)}
                           disabled={!editableTexts.whatsapp[selectedVariations.whatsapp]?.trim()}
-                          title={!editableTexts.whatsapp[selectedVariations.whatsapp]?.trim() ? "Gere uma mensagem primeiro" : ""}
+                          title={!editableTexts.whatsapp[selectedVariations.whatsapp]?.trim() ? t('ai_marketing.generate_first') : ""}
                           className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                         >
                           <MessageCircle className="mr-2 h-4 w-4" />
-                          📲 Enviar via WhatsApp
+                          {t('publish.send_whatsapp')}
                         </Button>
                         
                         {/* 🚀 PILAR 2: Botão Criar Campanha de Prospecção */}
@@ -888,7 +888,7 @@ const IAMarketing = () => {
                           className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                         >
                           <Sparkles className="mr-2 h-4 w-4" />
-                          🚀 Criar Campanha de Prospecção
+                          {t('publish.create_prospection')}
                         </Button>
                       </div>
                     </CardContent>
@@ -904,9 +904,9 @@ const IAMarketing = () => {
                     className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-lg px-12 py-6 text-white"
                   >
                     {publicandoTodas ? (
-                      <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> Publicando...</>
+                      <><Loader2 className="mr-2 h-6 w-6 animate-spin" /> {t('publish.publishing')}</>
                     ) : (
-                      <>🚀 PUBLICAR AGORA EM TODAS AS REDES</>
+                      <>{t('publish.publish_all_networks')}</>
                     )}
                   </Button>
                   <Button
@@ -915,7 +915,7 @@ const IAMarketing = () => {
                     className="bg-green-600 hover:bg-green-700 text-lg px-12 py-6"
                   >
                     <CalendarIcon className="mr-2 h-6 w-6" />
-                    📅 AGENDAR
+                    {t('ai_marketing.schedule')}
                   </Button>
                 </div>
               </div>
@@ -930,7 +930,7 @@ const IAMarketing = () => {
                 className="mb-4"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Voltar
+                {t('common.back')}
               </Button>
               
               {/* Slideshow gratuito */}
@@ -940,9 +940,9 @@ const IAMarketing = () => {
               <Card className="border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30">
                 <CardContent className="p-6 text-center">
                   <Video className="h-10 w-10 mx-auto mb-3 text-purple-600" />
-                  <h3 className="text-lg font-bold mb-1">📹 Publicar Reels do Celular</h3>
+                  <h3 className="text-lg font-bold mb-1">{t('publish.publish_reels_phone')}</h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Grave um vídeo no celular e publique como Reels no Facebook e Instagram
+                    {t('publish.publish_reels_desc')}
                   </p>
                   <Button
                     onClick={() => setShowReelsModal(true)}
@@ -950,7 +950,7 @@ const IAMarketing = () => {
                     size="lg"
                   >
                     <Upload className="mr-2 h-5 w-5" />
-                    Upload de Vídeo MP4
+                    {t('publish.upload_video_mp4')}
                   </Button>
                 </CardContent>
               </Card>
@@ -976,10 +976,10 @@ const IAMarketing = () => {
             <div className="max-w-4xl mx-auto">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-center">📚 Histórico de Posts</CardTitle>
+                  <CardTitle className="text-center">{t('ai_marketing.post_history')}</CardTitle>
                 </CardHeader>
                 <CardContent className="text-center py-20 text-muted-foreground">
-                  Em breve: veja todos os seus posts salvos e agendados
+                  {t('ai_marketing.coming_soon')}
                 </CardContent>
               </Card>
             </div>
