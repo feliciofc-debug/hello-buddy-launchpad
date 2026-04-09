@@ -34,7 +34,7 @@ export default function Login() {
 
       if (error) throw error;
 
-      toast.success('Login realizado com sucesso!');
+      toast.success(t('login.success'));
 
       // Verificar perfil do usuário
       const { data: profile } = await supabase
@@ -48,7 +48,7 @@ export default function Login() {
         const validade = new Date(profile.validade_acesso);
         if (validade < new Date()) {
           await supabase.auth.signOut();
-          toast.error('Seu acesso expirou. Entre em contato para renovar.');
+          toast.error(t('login.access_expired'));
           return;
         }
       }
@@ -92,7 +92,7 @@ export default function Login() {
     } catch (error: any) {
       const msg = String(error?.message || 'Erro ao fazer login');
       if (msg.toLowerCase().includes('invalid login credentials')) {
-        toast.error('Email ou senha incorretos. Se precisar, redefina sua senha.');
+        toast.error(t('login.invalid_credentials'));
       } else {
         toast.error(msg);
       }
@@ -104,7 +104,7 @@ export default function Login() {
   const handleSendReset = async () => {
     const email = forgotEmail.trim().toLowerCase();
     if (!email) {
-      toast.error('Informe seu email.');
+      toast.error(t('login.email'));
       return;
     }
 
@@ -114,10 +114,10 @@ export default function Login() {
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
       if (error) throw error;
 
-      toast.success('Enviamos um link de redefinição para seu email.');
+      toast.success(t('login.reset_success'));
       setShowForgot(false);
     } catch (err: any) {
-      toast.error(err?.message || 'Erro ao enviar link de redefinição');
+      toast.error(err?.message || t('login.reset_error'));
     } finally {
       setSendingReset(false);
     }
