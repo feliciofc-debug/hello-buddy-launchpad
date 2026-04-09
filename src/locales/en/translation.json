@@ -2,11 +2,20 @@
   "nav": {
     "dashboard": "Dashboard",
     "settings": "Settings",
-    "products": "My Products",
+    "products": "Products",
     "campaigns": "Campaigns",
     "whatsapp": "WhatsApp",
     "logout": "Logout",
-    "profile": "Profile"
+    "profile": "Profile",
+    "send_messages": "Send Messages",
+    "groups": "Groups",
+    "contacts": "Contacts",
+    "ia_marketing": "AI Marketing",
+    "sales": "Sales",
+    "connect_whatsapp": "Connect WhatsApp",
+    "section_main": "Main",
+    "section_whatsapp": "WhatsApp",
+    "section_marketing": "Marketing"
   },
   "settings": {
     "title": "Settings",

@@ -2,11 +2,20 @@
   "nav": {
     "dashboard": "Painel",
     "settings": "Configurações",
-    "products": "Meus Produtos",
+    "products": "Produtos",
     "campaigns": "Campanhas",
     "whatsapp": "WhatsApp",
     "logout": "Sair",
-    "profile": "Perfil"
+    "profile": "Perfil",
+    "send_messages": "Enviar Mensagens",
+    "groups": "Grupos",
+    "contacts": "Contatos",
+    "ia_marketing": "IA Marketing",
+    "sales": "Vendas",
+    "connect_whatsapp": "Conectar WhatsApp",
+    "section_main": "Principal",
+    "section_whatsapp": "WhatsApp",
+    "section_marketing": "Marketing"
   },
   "settings": {
     "title": "Configurações",
