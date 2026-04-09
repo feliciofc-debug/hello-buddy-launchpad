@@ -814,7 +814,7 @@ export default function MeusProdutos() {
       setProducts(produtosComCampanhas);
     } catch (error) {
       console.error('Erro ao buscar produtos:', error);
-      toast.error('Erro ao carregar produtos');
+      toast.error(t('products.error_load'));
     } finally {
       setIsLoading(false);
     }
@@ -825,7 +825,7 @@ export default function MeusProdutos() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        toast.error('Usuário não autenticado');
+        toast.error(t('products.user_not_auth'));
         return null;
       }
 
@@ -858,21 +858,21 @@ export default function MeusProdutos() {
       return publicUrl;
     } catch (error) {
       console.error('❌ Erro ao fazer upload da imagem:', error);
-      toast.error('Erro ao fazer upload da imagem');
+      toast.error(t('products.error_upload'));
       return null;
     }
   };
 
   const handleAddProduct = async () => {
     if (!formData.nome || !formData.categoria) {
-      toast.error('Nome e categoria são obrigatórios');
+      toast.error(t('products.name_category_required'));
       return;
     }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        toast.error('Usuário não autenticado');
+        toast.error(t('products.user_not_auth'));
         return;
       }
 
@@ -921,7 +921,7 @@ export default function MeusProdutos() {
 
       // Se tem imagem, faz upload e atualiza o produto
       if (imageFile && newProduct) {
-        toast.loading('Enviando imagem...');
+        toast.loading(t('products.sending_image'));
         const imageUrl = await uploadImage(imageFile, newProduct.id);
         
         if (imageUrl) {
@@ -933,7 +933,7 @@ export default function MeusProdutos() {
 
           if (updateError) {
             console.error('❌ Erro ao atualizar URL da imagem:', updateError);
-            toast.error('Erro ao salvar URL da imagem');
+            toast.error(t('products.error_save_url'));
           } else {
             console.log('✅ Produto atualizado com imagem');
             toast.dismiss();
@@ -943,7 +943,7 @@ export default function MeusProdutos() {
 
       // Upload extra images
       if (newProduct && extraImageFiles.filter(Boolean).length > 0) {
-        toast.loading('Enviando fotos adicionais...');
+        toast.loading(t('products.sending_extra'));
         const extraUrls: string[] = [];
         for (const file of extraImageFiles) {
           if (file) {
@@ -963,7 +963,7 @@ export default function MeusProdutos() {
     } catch (error) {
       console.error('❌ Erro ao adicionar produto:', error);
       toast.dismiss();
-      toast.error('Erro ao adicionar produto');
+      toast.error(t('products.error_add'));
     }
   };
 
@@ -978,12 +978,12 @@ export default function MeusProdutos() {
 
       // Se foi selecionada uma nova imagem, faz o upload
       if (imageFile) {
-        toast.loading('Enviando nova imagem...');
+        toast.loading(t('products.sending_new_image'));
         imagemUrl = await uploadImage(imageFile, selectedProduct.id);
         
         if (!imagemUrl) {
           toast.dismiss();
-          toast.error('Erro ao fazer upload da nova imagem');
+          toast.error(t('products.error_upload_new'));
           return;
         }
         
@@ -1030,7 +1030,7 @@ export default function MeusProdutos() {
 
       // Upload extra images
       if (extraImageFiles.filter(Boolean).length > 0) {
-        toast.loading('Enviando fotos adicionais...');
+        toast.loading(t('products.sending_extra'));
         const extraUrls: string[] = [...existingExtraImages];
         for (const file of extraImageFiles) {
           if (file) {
@@ -1043,19 +1043,19 @@ export default function MeusProdutos() {
       }
 
       console.log('✅ Produto atualizado com sucesso');
-      toast.success('Produto atualizado com sucesso!');
+      toast.success(t('products.updated_success'));
       setIsEditModalOpen(false);
       resetForm();
       fetchProducts();
     } catch (error) {
       console.error('❌ Erro ao atualizar produto:', error);
       toast.dismiss();
-      toast.error('Erro ao atualizar produto');
+      toast.error(t('products.error_update'));
     }
   };
 
   const handleDeleteProduct = async (productId: string) => {
-    if (!confirm('Tem certeza que deseja deletar este produto?')) return;
+    if (!confirm(t('products.confirm_delete'))) return;
 
     try {
       const { error } = await supabase
@@ -1065,11 +1065,11 @@ export default function MeusProdutos() {
 
       if (error) throw error;
 
-      toast.success('Produto deletado!');
+      toast.success(t('products.deleted'));
       fetchProducts();
     } catch (error) {
       console.error('Erro ao excluir produto:', error);
-      toast.error('Erro ao excluir produto');
+      toast.error(t('products.error_delete'));
     }
   };
 
@@ -1097,11 +1097,11 @@ export default function MeusProdutos() {
         .eq('id', product.campanha.id);
 
       if (error) throw error;
-      toast.success('✅ Campanha pausada');
+      toast.success(t('products.campaign_paused_success'));
       fetchProducts();
     } catch (error) {
       console.error('Erro ao pausar campanha:', error);
-      toast.error('Erro ao pausar campanha');
+      toast.error(t('products.error_pause'));
     }
   };
 
@@ -1122,11 +1122,11 @@ export default function MeusProdutos() {
         .eq('id', product.campanha.id);
 
       if (error) throw error;
-      toast.success('✅ Campanha renovada!');
+      toast.success(t('products.campaign_renewed'));
       fetchProducts();
     } catch (error) {
       console.error('Erro ao renovar campanha:', error);
-      toast.error('Erro ao renovar campanha');
+      toast.error(t('products.error_renew'));
     }
   };
 
@@ -1136,7 +1136,7 @@ export default function MeusProdutos() {
       return;
     }
 
-    toast.warning('Dispatcher interno desativado: esta campanha já foi apenas enfileirada.');
+    toast.warning(t('products.dispatcher_disabled'));
   };
 
   const openAddModal = () => {
