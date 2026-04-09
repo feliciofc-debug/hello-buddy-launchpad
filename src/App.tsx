@@ -85,6 +85,7 @@ import AfiliadoContatos from "./pages/afiliado/AfiliadoContatos";
 import AfiliadoCampanhas from "./pages/afiliado/AfiliadoCampanhas";
 
 import CookieBanner from "./components/CookieBanner";
+import LanguageSwitcher from "./components/LanguageSwitcher";
 
 // Páginas Billing/Pay
 import PayLogin from "./pages/pay/PayLogin";
