@@ -46,6 +46,7 @@ interface ProductAnalysis {
 
 const IAMarketing = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { isTrial, trial, canUseIAMarketing, canPostToday, isTrialExpired, incrementImageUsage, incrementPostUsage, trialDaysRemaining } = useTrialConfig();
   const { iaUsado, iaLimite, canGenerate, remaining, incrementUsage: incrementIAUsage } = useIALimit();
   const [url, setUrl] = useState("");
@@ -96,19 +97,19 @@ const IAMarketing = () => {
 
   const handleAnalyze = async () => {
     if (!url.trim()) {
-      toast.error("Digite uma descrição ou cole um link");
+      toast.error(t('ai_marketing.enter_desc'));
       return;
     }
 
     // PJ limit guard - check monthly IA image limit (all clients)
     if (!canGenerate()) {
-      toast.error(`🔒 Limite de ${iaLimite} gerações de IA atingido este mês! Contrate mais gerações para continuar.`);
+      toast.error(t('ai_marketing.ia_limit', { limit: iaLimite }));
       return;
     }
 
     // Trial guard - check IA Marketing limit
     if (isTrial && !canUseIAMarketing()) {
-      toast.error("🔒 Limite de IA Marketing atingido! Contrate o plano completo para continuar.");
+      toast.error(t('ai_marketing.ia_marketing_limit'));
       return;
     }
 
@@ -118,7 +119,7 @@ const IAMarketing = () => {
     try {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) {
-        toast.error("Você precisa estar logado");
+        toast.error(t('common.need_login'));
         return;
       }
 
@@ -175,7 +176,7 @@ const IAMarketing = () => {
       
       // Se uma imagem foi gerada, mostrar para o usuário
       if (data.generatedImage) {
-        toast.success("🎨 Imagem gerada com IA!");
+        toast.success(t('ai_marketing.image_generated'));
       }
       
       // Inicializar textos editáveis
@@ -213,7 +214,7 @@ const IAMarketing = () => {
       // Increment trial usage
       if (isTrial) await incrementImageUsage();
 
-      toast.success("✅ Posts gerados e salvos!");
+      toast.success(t('publish.posts_generated'));
     } catch (err: any) {
       const errorMessage = err.message || 'Erro ao analisar produto';
       toast.error(errorMessage);
@@ -237,7 +238,7 @@ const IAMarketing = () => {
     });
 
     setUploadedFiles(prev => [...prev, ...newFiles]);
-    toast.success(`${newFiles.length} arquivo(s) adicionado(s)`);
+    toast.success(t('ai_marketing.files_added', { count: newFiles.length }));
   };
 
   const removeFile = (index: number) => {
@@ -262,7 +263,7 @@ const IAMarketing = () => {
     link.click();
     document.body.removeChild(link);
     
-    toast.success("Imagem baixada com sucesso!");
+    toast.success(t('publish.image_downloaded'));
   };
 
   const handleScheduleAll = () => {
