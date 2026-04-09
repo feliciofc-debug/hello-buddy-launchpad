@@ -468,10 +468,10 @@ const IAMarketing = () => {
           <div className={`mb-4 p-3 rounded-lg border ${remaining() === 0 ? 'bg-destructive/10 border-destructive' : 'bg-muted/50 border-border'}`}>
             <div className="flex items-center justify-between">
               <span className="text-sm">
-                🎨 Gerações IA: <strong>{iaUsado}/{iaLimite}</strong> este mês ({remaining()} restantes)
+                {t('ai_marketing.ia_generations')} <strong>{iaUsado}/{iaLimite}</strong> {t('ai_marketing.this_month')} ({remaining()} {t('ai_marketing.remaining')})
               </span>
               {remaining() === 0 && (
-                <span className="text-sm font-medium text-destructive">Limite atingido! Contrate mais gerações.</span>
+                <span className="text-sm font-medium text-destructive">{t('ai_marketing.limit_reached')}</span>
               )}
             </div>
           </div>
@@ -480,23 +480,23 @@ const IAMarketing = () => {
           <div className={`mb-4 p-4 rounded-lg border ${isTrialExpired() ? 'bg-destructive/10 border-destructive' : 'bg-amber-500/10 border-amber-500'}`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div>
-                <span className="font-bold">{isTrialExpired() ? '🔒 Teste encerrado' : `⏳ Período de teste: ${trialDaysRemaining()} dias restantes`}</span>
+                <span className="font-bold">{isTrialExpired() ? t('ai_marketing.trial_ended') : t('ai_marketing.trial_days', { days: trialDaysRemaining() })}</span>
                 <span className="ml-4 text-sm">
-                  IA: {trial.imagens_ia_usadas}/{trial.limite_imagens_ia} imagens | Posts hoje: {trial.posts_hoje}/{trial.limite_posts_dia}
+                  IA: {trial.imagens_ia_usadas}/{trial.limite_imagens_ia} {t('ai_marketing.images')} | {t('ai_marketing.posts_today')} {trial.posts_hoje}/{trial.limite_posts_dia}
                 </span>
               </div>
               {isTrialExpired() && (
-                <span className="text-sm font-medium text-destructive">Contrate o plano completo para continuar usando!</span>
+                <span className="text-sm font-medium text-destructive">{t('ai_marketing.buy_plan')}</span>
               )}
             </div>
           </div>
         )}
         <Tabs defaultValue="gerar" className="w-full">
           <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4 mb-8">
-            <TabsTrigger value="gerar">Gerar Posts</TabsTrigger>
-            <TabsTrigger value="carrossel">🎨 Carrossel</TabsTrigger>
-            <TabsTrigger value="video">🎬 Gerar Vídeo</TabsTrigger>
-            <TabsTrigger value="historico">Meus Posts</TabsTrigger>
+            <TabsTrigger value="gerar">{t('ai_marketing.generate_posts')}</TabsTrigger>
+            <TabsTrigger value="carrossel">{t('ai_marketing.carousel')}</TabsTrigger>
+            <TabsTrigger value="video">{t('ai_marketing.generate_video')}</TabsTrigger>
+            <TabsTrigger value="historico">{t('ai_marketing.my_posts')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="gerar">
