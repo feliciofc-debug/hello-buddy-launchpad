@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 interface SidebarItem {
   title: string;
