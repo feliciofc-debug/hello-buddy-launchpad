@@ -94,6 +94,9 @@ import PayAdmin from "./pages/pay/PayAdmin";
 import PayAdminNovo from "./pages/pay/PayAdminNovo";
 import PayAdminCliente from "./pages/pay/PayAdminCliente";
 
+// Páginas Painel Suporte
+import PainelLogin from "./pages/painel/PainelLogin";
+import PainelDashboard from "./pages/painel/PainelDashboard";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -200,6 +203,10 @@ const App = () => (
             <Route path="/pay/admin" element={<PayAdmin />} />
             <Route path="/pay/admin/novo" element={<PayAdminNovo />} />
             <Route path="/pay/admin/cliente/:id" element={<PayAdminCliente />} />
+
+            {/* Painel Suporte Atom Brasil */}
+            <Route path="/painel" element={<PainelLogin />} />
+            <Route path="/painel/dashboard" element={<PainelDashboard />} />
             
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
