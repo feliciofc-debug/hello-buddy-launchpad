@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 export default function Login() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     email: '',
     password: ''
