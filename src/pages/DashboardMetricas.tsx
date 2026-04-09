@@ -341,7 +341,7 @@ export default function DashboardMetricas() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <RefreshCw className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Carregando métricas...</p>
+          <p className="text-muted-foreground">{t('dashboard.loading_metrics')}</p>
         </div>
       </div>
     );
@@ -387,7 +387,7 @@ export default function DashboardMetricas() {
           <div className="p-4 border-t">
             <Button variant="ghost" className="w-full justify-start text-muted-foreground" onClick={handleLogout}>
               <LogOut className="w-5 h-5 mr-3" />
-              Sair
+              {t('dashboard.logout')}
             </Button>
           </div>
         </div>
@@ -409,22 +409,22 @@ export default function DashboardMetricas() {
               </Button>
               <div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                  Dashboard
+                  {t('dashboard.title')}
                 </h1>
-                <p className="text-muted-foreground">Visão completa do seu negócio</p>
+                <p className="text-muted-foreground">{t('dashboard.subtitle')}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
                 <Activity className="w-3 h-3 mr-1" />
-                Online
+                {t('dashboard.online')}
               </Badge>
               <Button variant="outline" size="sm" onClick={carregarMetricas}>
                 <RefreshCw className="w-4 h-4 mr-2" />
-                Atualizar
+                {t('dashboard.refresh')}
               </Button>
               <NotificationCenter />
-              <Button variant="ghost" size="icon" onClick={handleLogout} title="Sair">
+              <Button variant="ghost" size="icon" onClick={handleLogout} title={t('dashboard.logout')}>
                 <LogOut className="w-5 h-5" />
               </Button>
             </div>
@@ -440,11 +440,11 @@ export default function DashboardMetricas() {
                 <Send className="w-5 h-5 text-blue-500" />
               </div>
               <Badge variant="secondary" className="text-xs">
-                +{metricas.mensagensHoje} hoje
+                +{metricas.mensagensHoje} {t('dashboard.today')}
               </Badge>
             </div>
             <p className="text-3xl font-bold">{metricas.totalMensagens.toLocaleString()}</p>
-            <p className="text-sm text-muted-foreground">Mensagens Enviadas</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard.messages_sent')}</p>
           </CardContent>
         </Card>
 
@@ -456,11 +456,11 @@ export default function DashboardMetricas() {
                 <Users className="w-5 h-5 text-purple-500" />
               </div>
               <Badge variant="secondary" className="text-xs">
-                {metricas.leadsQuentes} quentes
+                {metricas.leadsQuentes} {t('dashboard.hot')}
               </Badge>
             </div>
             <p className="text-3xl font-bold">{metricas.totalLeads.toLocaleString()}</p>
-            <p className="text-sm text-muted-foreground">Total de Leads</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard.total_leads')}</p>
           </CardContent>
         </Card>
 
@@ -472,11 +472,11 @@ export default function DashboardMetricas() {
                 <Target className="w-5 h-5 text-green-500" />
               </div>
               <Badge variant="secondary" className="text-xs">
-                {metricas.campanhasAtivas} ativas
+                {metricas.campanhasAtivas} {t('dashboard.active')}
               </Badge>
             </div>
             <p className="text-3xl font-bold">{metricas.totalCampanhas}</p>
-            <p className="text-sm text-muted-foreground">Campanhas</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard.campaigns')}</p>
           </CardContent>
         </Card>
 
@@ -488,11 +488,11 @@ export default function DashboardMetricas() {
                 <Bot className="w-5 h-5 text-orange-500" />
               </div>
               <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20">
-                IA Ativa
+                {t('dashboard.ia_active')}
               </Badge>
             </div>
             <p className="text-3xl font-bold">{metricas.taxaAutomacao}%</p>
-            <p className="text-sm text-muted-foreground">Automação</p>
+            <p className="text-sm text-muted-foreground">{t('dashboard.automation')}</p>
           </CardContent>
         </Card>
       </div>
@@ -504,7 +504,7 @@ export default function DashboardMetricas() {
             <MessageCircle className="w-8 h-8 text-blue-500" />
             <div>
               <p className="text-2xl font-bold">{metricas.mensagensHoje}</p>
-              <p className="text-xs text-muted-foreground">Mensagens Hoje</p>
+              <p className="text-xs text-muted-foreground">{t('dashboard.messages_today')}</p>
             </div>
           </CardContent>
         </Card>
@@ -514,7 +514,7 @@ export default function DashboardMetricas() {
             <Users className="w-8 h-8 text-purple-500" />
             <div>
               <p className="text-2xl font-bold">{metricas.conversasHoje}</p>
-              <p className="text-xs text-muted-foreground">Conversas Hoje</p>
+              <p className="text-xs text-muted-foreground">{t('dashboard.conversations_today')}</p>
             </div>
           </CardContent>
         </Card>
@@ -524,7 +524,7 @@ export default function DashboardMetricas() {
             <CheckCircle className="w-8 h-8 text-green-500" />
             <div>
               <p className="text-2xl font-bold">{metricas.mensagensIA}</p>
-              <p className="text-xs text-muted-foreground">Atendimentos IA</p>
+              <p className="text-xs text-muted-foreground">{t('dashboard.ia_attendances')}</p>
             </div>
           </CardContent>
         </Card>
@@ -534,7 +534,7 @@ export default function DashboardMetricas() {
             <Clock className="w-8 h-8 text-orange-500" />
             <div>
               <p className="text-2xl font-bold">{metricas.totalConversas}</p>
-              <p className="text-xs text-muted-foreground">Total Conversas</p>
+              <p className="text-xs text-muted-foreground">{t('dashboard.total_conversations')}</p>
             </div>
           </CardContent>
         </Card>
@@ -547,7 +547,7 @@ export default function DashboardMetricas() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-primary" />
-              Mensagens (Últimos 7 dias)
+              {t('dashboard.messages_last_7_days')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -580,7 +580,7 @@ export default function DashboardMetricas() {
                   stroke="hsl(var(--primary))"
                   fillOpacity={1}
                   fill="url(#colorEnviadas)"
-                  name="Enviadas"
+                  name={t('dashboard.sent')}
                 />
                 <Area
                   type="monotone"
@@ -588,7 +588,7 @@ export default function DashboardMetricas() {
                   stroke="#10b981"
                   fillOpacity={1}
                   fill="url(#colorRecebidas)"
-                  name="Recebidas"
+                  name={t('dashboard.received')}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -600,7 +600,7 @@ export default function DashboardMetricas() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Target className="w-5 h-5 text-primary" />
-              Funil de Vendas
+              {t('dashboard.sales_funnel')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -632,7 +632,7 @@ export default function DashboardMetricas() {
         {/* Status das Campanhas */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Status das Campanhas</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.campaign_status')}</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
@@ -666,7 +666,7 @@ export default function DashboardMetricas() {
         {/* Tipo de Atendimento */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Atendimento IA vs Humano</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.ia_vs_human')}</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
@@ -700,23 +700,23 @@ export default function DashboardMetricas() {
         {/* Card de Resumo */}
         <Card className="bg-gradient-to-br from-primary/5 to-purple-500/10">
           <CardHeader>
-            <CardTitle className="text-base">Resumo Geral</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.general_summary')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total Mensagens</span>
+              <span className="text-sm text-muted-foreground">{t('dashboard.total_messages')}</span>
               <span className="font-bold">{metricas.totalMensagens}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total Conversas</span>
+              <span className="text-sm text-muted-foreground">{t('dashboard.total_conversations')}</span>
               <span className="font-bold">{metricas.totalConversas}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Total Leads</span>
+              <span className="text-sm text-muted-foreground">{t('dashboard.total_leads')}</span>
               <span className="font-bold">{metricas.totalLeads}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Taxa Automação</span>
+              <span className="text-sm text-muted-foreground">{t('dashboard.automation_rate')}</span>
               <Badge className="bg-primary/10 text-primary">{metricas.taxaAutomacao}%</Badge>
             </div>
           </CardContent>
@@ -726,19 +726,19 @@ export default function DashboardMetricas() {
       {/* Ações Rápidas */}
       <Card className="bg-gradient-to-r from-primary/5 to-purple-500/10">
         <CardContent className="p-6">
-          <h3 className="font-semibold mb-4 text-center">⚡ Ações Rápidas</h3>
+          <h3 className="font-semibold mb-4 text-center">{t('dashboard.quick_actions')}</h3>
           <div className="flex flex-wrap gap-3 justify-center">
             <Button onClick={() => navigate('/meus-produtos')} className="gap-2">
               <Plus className="w-4 h-4" />
-              Novo Produto
+              {t('dashboard.new_product')}
             </Button>
             <Button variant="secondary" onClick={() => navigate('/campanhas')} className="gap-2">
               <Megaphone className="w-4 h-4" />
-              Criar Campanha
+              {t('dashboard.create_campaign')}
             </Button>
             <Button variant="outline" onClick={() => navigate('/whatsapp')} className="gap-2">
               <Calendar className="w-4 h-4" />
-              Agendar Envio
+              {t('dashboard.schedule_send')}
             </Button>
             <Button variant="outline" onClick={() => navigate('/google-ads')} className="gap-2">
               <Target className="w-4 h-4" />
@@ -746,7 +746,7 @@ export default function DashboardMetricas() {
             </Button>
             <Button variant="outline" onClick={() => navigate('/configurar-icp')} className="gap-2">
               <Users className="w-4 h-4" />
-              Configurar ICP
+              {t('dashboard.configure_icp')}
             </Button>
           </div>
         </CardContent>
@@ -759,7 +759,7 @@ export default function DashboardMetricas() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Megaphone className="w-5 h-5 text-red-500" />
-              📢 Campanhas em Andamento
+              {t('dashboard.campaigns_running')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -767,10 +767,10 @@ export default function DashboardMetricas() {
             <div className="flex gap-2 pt-2">
               <Button size="sm" onClick={() => navigate('/campanhas')} className="gap-1">
                 <Plus className="w-4 h-4" />
-                Nova Campanha
+                {t('dashboard.new_campaign')}
               </Button>
               <Button size="sm" variant="outline" onClick={() => navigate('/biblioteca')}>
-                Ver Histórico
+                {t('dashboard.view_history')}
               </Button>
             </div>
           </CardContent>
@@ -781,7 +781,7 @@ export default function DashboardMetricas() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Flame className="w-5 h-5 text-orange-500" />
-              🔥 Leads Quentes
+              {t('dashboard.hot_leads')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -797,17 +797,17 @@ export default function DashboardMetricas() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Target className="w-5 h-5 text-red-500" />
-              🎯 Google Ads
+              {t('dashboard.google_ads')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">Campanhas Ativas</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.active_campaigns')}</p>
                 <p className="text-xl font-bold">3</p>
               </div>
               <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">CPC Médio</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.avg_cpc')}</p>
                 <p className="text-xl font-bold">R$ 0.42</p>
               </div>
               <div className="bg-muted/50 p-3 rounded-lg">
@@ -822,11 +822,11 @@ export default function DashboardMetricas() {
             <div className="flex gap-2 pt-2">
               <Button size="sm" onClick={() => navigate('/google-ads')} className="flex-1 gap-1">
                 <Eye className="w-4 h-4" />
-                Ver Campanhas
+                {t('dashboard.view_campaigns')}
               </Button>
               <Button size="sm" variant="outline" onClick={() => navigate('/google-ads')} className="flex-1 gap-1">
                 <Plus className="w-4 h-4" />
-                Criar Nova
+                {t('dashboard.create_new')}
               </Button>
             </div>
           </CardContent>
@@ -837,30 +837,30 @@ export default function DashboardMetricas() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-blue-500" />
-              📊 Analytics
+              {t('dashboard.analytics')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">Visitas (mês)</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.visits_month')}</p>
                 <p className="text-xl font-bold">12.5K</p>
               </div>
               <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">Taxa Conversão</p>
+                <p className="text-xs text-muted-foreground">{t('dashboard.conversion_rate')}</p>
                 <p className="text-xl font-bold text-green-500">4.2%</p>
               </div>
               <div className="bg-muted/50 p-3 rounded-lg">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <MousePointer className="w-3 h-3" />
-                  Cliques Checkout
+                  {t('dashboard.checkout_clicks')}
                 </p>
                 <p className="text-xl font-bold text-orange-500">847</p>
               </div>
               <div className="bg-muted/50 p-3 rounded-lg">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <DollarSign className="w-3 h-3" />
-                  Vendas
+                  {t('dashboard.sales')}
                 </p>
                 <p className="text-xl font-bold text-green-500">R$ 15.8K</p>
               </div>
@@ -868,11 +868,11 @@ export default function DashboardMetricas() {
             <div className="flex gap-2 pt-2">
               <Button size="sm" onClick={() => navigate('/analytics')} className="flex-1 gap-1">
                 <BarChart3 className="w-4 h-4" />
-                Ver Relatório
+                {t('dashboard.view_report')}
               </Button>
               <Button size="sm" variant="outline" className="flex-1 gap-1">
                 <ExternalLink className="w-4 h-4" />
-                Exportar
+                {t('dashboard.export')}
               </Button>
             </div>
           </CardContent>
