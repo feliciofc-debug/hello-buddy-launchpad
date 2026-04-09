@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, Rocket, Play, Pause, Edit, Copy, Trash2, TrendingUp, ArrowLeft } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { toast } from 'sonner';
 
 const Campanhas = () => {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedPosts, setSelectedPosts] = useState<string[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
@@ -106,17 +108,17 @@ const Campanhas = () => {
             <div className="flex items-center gap-4">
               <Button variant="outline" onClick={() => navigate('/dashboard')}>
                 <ArrowLeft className="mr-2" size={18} />
-                Voltar
+                {t('common.back')}
               </Button>
               <div>
-                <h1 className="text-3xl font-bold">Campanhas</h1>
-                <p className="text-muted-foreground">Gerencie suas campanhas de marketing</p>
+                <h1 className="text-3xl font-bold">{t('campaigns.title')}</h1>
+                <p className="text-muted-foreground">{t('campaigns.subtitle')}</p>
               </div>
             </div>
             <Button 
               onClick={() => {
                 if (selectedPosts.length === 0) {
-                  toast.error("Selecione pelo menos um post para criar a campanha");
+                  toast.error(t('campaigns.select_one_post'));
                   return;
                 }
                 navigate('/google-ads', { state: { selectedPosts } });
@@ -124,7 +126,7 @@ const Campanhas = () => {
               size="lg"
             >
               <Rocket className="mr-2" />
-              Nova Campanha
+              {t('campaigns.new_campaign')}
             </Button>
           </div>
 
@@ -132,7 +134,7 @@ const Campanhas = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Campanhas Ativas</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t('campaigns.active_campaigns')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{campaigns.filter(c => c.status === 'Ativa').length}</p>
@@ -141,7 +143,7 @@ const Campanhas = () => {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Posts Disponíveis</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t('campaigns.available_posts')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{posts.length}</p>
@@ -150,7 +152,7 @@ const Campanhas = () => {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Posts Selecionados</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t('campaigns.selected_posts')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{selectedPosts.length}</p>
@@ -159,7 +161,7 @@ const Campanhas = () => {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Campanhas</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground">{t('campaigns.total_campaigns')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">{campaigns.length}</p>
@@ -170,7 +172,7 @@ const Campanhas = () => {
           {/* Seleção de Posts */}
           <Card>
             <CardHeader>
-              <CardTitle>Selecione os Posts para a Campanha</CardTitle>
+              <CardTitle>{t('campaigns.select_posts')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -198,7 +200,7 @@ const Campanhas = () => {
               </div>
               {posts.length === 0 && (
                 <p className="text-center text-muted-foreground py-8">
-                  Nenhum post encontrado. Crie posts usando a IA Marketing primeiro.
+                  {t('campaigns.no_posts')}
                 </p>
               )}
             </CardContent>
@@ -207,7 +209,7 @@ const Campanhas = () => {
           {/* Lista de Campanhas */}
           <Card>
             <CardHeader>
-              <CardTitle>Campanhas Criadas</CardTitle>
+              <CardTitle>{t('campaigns.created_campaigns')}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -231,28 +233,28 @@ const Campanhas = () => {
                     </div>
                     <div className="grid grid-cols-4 gap-4 text-sm">
                       <div>
-                        <p className="text-muted-foreground">Impressões</p>
+                        <p className="text-muted-foreground">{t('campaigns.impressions')}</p>
                         <p className="font-semibold">{campaign.impressions}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Cliques</p>
+                        <p className="text-muted-foreground">{t('campaigns.clicks')}</p>
                         <p className="font-semibold">{campaign.clicks}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">CTR</p>
+                        <p className="text-muted-foreground">{t('campaigns.ctr')}</p>
                         <p className="font-semibold">{campaign.ctr}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Gasto</p>
+                        <p className="text-muted-foreground">{t('campaigns.spent')}</p>
                         <p className="font-semibold">{campaign.spent}</p>
                       </div>
                     </div>
                   </div>
                 ))}
                 {campaigns.length === 0 && (
-                  <p className="text-center text-muted-foreground py-8">
-                    Nenhuma campanha criada ainda. Crie sua primeira campanha!
-                  </p>
+                <p className="text-center text-muted-foreground py-8">
+                  {t('campaigns.no_campaigns')}
+                </p>
                 )}
               </div>
             </CardContent>
