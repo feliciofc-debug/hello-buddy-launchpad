@@ -91,7 +91,7 @@ export default function PainelDashboard() {
 
     const { data: wuzapiConfigs } = await supabase
       .from("pj_clientes_config")
-      .select("user_id, wuzapi_connected");
+      .select("user_id, wuzapi_jid");
 
     const clientesList: ClienteInfo[] = profiles.map((p: any) => {
       const customer = customers?.find(
