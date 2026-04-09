@@ -94,6 +94,9 @@ import PayAdmin from "./pages/pay/PayAdmin";
 import PayAdminNovo from "./pages/pay/PayAdminNovo";
 import PayAdminCliente from "./pages/pay/PayAdminCliente";
 
+// Páginas Painel Suporte
+import PainelLogin from "./pages/painel/PainelLogin";
+import PainelDashboard from "./pages/painel/PainelDashboard";
 const queryClient = new QueryClient();
 
 const App = () => (
