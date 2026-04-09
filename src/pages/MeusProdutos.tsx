@@ -1058,18 +1058,29 @@ export default function MeusProdutos() {
     if (!confirm(t('products.confirm_delete'))) return;
 
     try {
+      // First delete related images from storage
+      const { data: product } = await supabase
+        .from('produtos')
+        .select('imagem_url, imagens')
+        .eq('id', productId)
+        .maybeSingle();
+
       const { error } = await supabase
         .from('produtos')
         .delete()
-        .eq('id', productId);
+        .eq('id', productId)
+        .eq('user_id', (await supabase.auth.getUser()).data.user?.id || '');
 
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error details:', JSON.stringify(error));
+        throw error;
+      }
 
       toast.success(t('products.deleted'));
       fetchProducts();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao excluir produto:', error);
-      toast.error(t('products.error_delete'));
+      toast.error(error?.message || t('products.error_delete'));
     }
   };
 
