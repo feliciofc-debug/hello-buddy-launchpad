@@ -61,7 +61,7 @@ export default function Login() {
 
       // Acesso direto para: dono da plataforma OU clientes B2B OU parceiros OU contas permanentes
       const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com'];
-      if (contasPermanentes.includes(data.user.email || '') || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro') {
+      if (contasPermanentes.includes(data.user.email || '') || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro' || profile?.tipo === 'empresa') {
         navigate('/dashboard');
         return;
       }
