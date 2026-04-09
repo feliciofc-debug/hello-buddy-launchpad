@@ -106,7 +106,7 @@ export default function PainelDashboard() {
         email: p.whatsapp || p.nome || "—",
         nome_fantasia: p.nome_fantasia || p.nome,
         tipo: p.tipo,
-        whatsapp_connected: wuzapi?.wuzapi_connected || false,
+        whatsapp_connected: !!wuzapi?.wuzapi_jid,
         subscription_status: sub?.status || "sem assinatura",
         last_sign_in: null,
       };
