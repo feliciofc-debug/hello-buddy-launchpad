@@ -421,6 +421,7 @@ export default function DashboardMetricas() {
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Atualizar
               </Button>
+              <LanguageSwitcher />
               <NotificationCenter />
               <Button variant="ghost" size="icon" onClick={handleLogout} title="Sair">
                 <LogOut className="w-5 h-5" />
