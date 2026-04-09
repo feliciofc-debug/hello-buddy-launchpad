@@ -270,12 +270,12 @@ export default function DashboardMetricas() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const menuItemsAll = [
-    { id: 'dashboard', icon: BarChart3, label: 'Dashboard', path: '/dashboard' },
-    { id: 'produtos', icon: Package, label: 'Produtos', path: '/meus-produtos' },
-    { id: 'ia-marketing', icon: Zap, label: 'IA Marketing', path: '/ia-marketing' },
-    { id: 'redes-sociais', icon: Share2, label: 'Redes Sociais', path: '/redes-sociais' },
-    { id: 'whatsapp', icon: MessageCircle, label: 'WhatsApp', path: '/whatsapp-painel' },
-    { id: 'configuracoes', icon: Settings, label: 'Configurações', path: '/configuracoes' },
+    { id: 'dashboard', icon: BarChart3, label: t('nav.dashboard'), path: '/dashboard' },
+    { id: 'produtos', icon: Package, label: t('nav.products'), path: '/meus-produtos' },
+    { id: 'ia-marketing', icon: Zap, label: t('nav.ia_marketing'), path: '/ia-marketing' },
+    { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
+    { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
+    { id: 'configuracoes', icon: Settings, label: t('nav.settings'), path: '/configuracoes' },
   ];
 
   const menuItems = menuItemsAll.filter((item) => isMenuAllowed(item.id));
