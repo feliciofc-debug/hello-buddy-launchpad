@@ -353,7 +353,6 @@ const ProductForm = ({
       <summary className="cursor-pointer font-semibold mb-2">
         {t('products.detailed_info')}
       </summary>
-      </summary>
       
       <div className="space-y-4 mt-4">
         
