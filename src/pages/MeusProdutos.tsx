@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from 'next-themes';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -128,16 +129,17 @@ const ProductForm = ({
   existingExtraImages,
   setExistingExtraImages
 }: ProductFormProps) => {
+  const { t } = useTranslation();
   const extraPreviews = extraImageFiles.map(f => f ? URL.createObjectURL(f) : null);
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (!file.type.startsWith('image/')) {
-        toast.error('Apenas imagens são permitidas');
+        toast.error(t('products.only_images'));
         return;
       }
       if (file.size > 5 * 1024 * 1024) {
-        toast.error('Imagem muito grande. Máximo 5MB');
+        toast.error(t('products.image_too_large'));
         return;
       }
       setImageFile(file);
@@ -151,7 +153,7 @@ const ProductForm = ({
   return (
   <div className="space-y-4">
     <div className="space-y-2">
-      <Label htmlFor="nome">Nome do Produto *</Label>
+      <Label htmlFor="nome">{t('products.product_name_required')}</Label>
       <Input
         id="nome"
         value={formData.nome}
@@ -161,7 +163,7 @@ const ProductForm = ({
     </div>
 
     <div className="space-y-2">
-      <Label htmlFor="descricao">Descrição</Label>
+      <Label htmlFor="descricao">{t('products.description')}</Label>
       <Textarea
         id="descricao"
         value={formData.descricao}
@@ -174,7 +176,7 @@ const ProductForm = ({
     {/* Upload de Fotos do Produto (até 5) */}
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <Label>Fotos do produto (até 5)</Label>
+        <Label>{t('products.photos_label')}</Label>
         <span className="text-xs text-muted-foreground">
           {(currentImageUrl && !imageFile ? 1 : imageFile ? 1 : 0) + existingExtraImages.length + extraImageFiles.filter(Boolean).length}/5
         </span>
