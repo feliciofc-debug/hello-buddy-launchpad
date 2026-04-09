@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { CalendarIcon, Sparkles, Loader2, Facebook, Send, Clock, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getAllProductImages } from "@/components/ProductImageCarousel";
+import { useTranslation } from "react-i18next";
 import {
   clampTimeForToday,
   combineSaoPauloDateTimeToIso,
@@ -43,6 +44,7 @@ interface PostarFacebookModalProps {
 }
 
 export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFacebookModalProps) {
+  const { t } = useTranslation();
   const [gerando, setGerando] = useState(false);
   const [publicando, setPublicando] = useState(false);
   const [opcoes, setOpcoes] = useState<{ opcaoA: string; opcaoB: string; opcaoC: string } | null>(null);
@@ -102,7 +104,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
 
   useEffect(() => {
     if (!open) return;
-
     const nextSlot = getNextFiveMinuteSlot();
     setDataAgendamento(nextSlot);
     setHoraAgendamento(toTimeString(nextSlot));
@@ -110,7 +111,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
 
   useEffect(() => {
     if (!open || modoEnvio !== "agendar" || !dataAgendamento) return;
-
     const adjustedTime = clampTimeForToday(dataAgendamento, horaAgendamento);
     if (adjustedTime !== horaAgendamento) {
       setHoraAgendamento(adjustedTime);
@@ -129,17 +129,14 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           },
         },
       });
-
       if (error) throw error;
-
       const fb = data?.posts?.facebook;
       if (!fb) throw new Error("Nenhum texto gerado para Facebook");
-
       setOpcoes({ opcaoA: fb.opcaoA, opcaoB: fb.opcaoB, opcaoC: fb.opcaoC });
-      toast.success("3 opções de texto geradas!");
+      toast.success(t('publish.generated_success'));
     } catch (err: any) {
       console.error("Erro ao gerar texto:", err);
-      toast.error(err.message || "Erro ao gerar texto com IA");
+      toast.error(err.message || t('publish.error_generate'));
     } finally {
       setGerando(false);
     }
@@ -151,7 +148,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
 
   const handlePublicar = async () => {
     if (!textoPost.trim()) {
-      toast.error("Escreva ou gere o texto do post primeiro");
+      toast.error(t('publish.write_text_first'));
       return;
     }
 
@@ -160,7 +157,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
       : textoPost.trim();
 
     if (modoEnvio === "agendar" && !dataAgendamento) {
-      toast.error("Selecione a data do agendamento");
+      toast.error(t('publish.select_schedule_date'));
       return;
     }
 
@@ -168,7 +165,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        toast.error("Você precisa estar logado");
+        toast.error(t('publish.need_login'));
         return;
       }
 
@@ -180,7 +177,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         scheduledAt = combineSaoPauloDateTimeToIso(dataAgendamento, horaFinal);
       }
 
-      // Insert into social_posts_queue
       const { error: insertError } = await supabase.from("social_posts_queue" as any).insert({
         user_id: user.id,
         produto_id: produto.id,
@@ -198,7 +194,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
 
       if (modoEnvio === "agora") {
         if (imagesToPublish.length >= 2) {
-          // Carrossel no Facebook
           console.log(`📸 Publicando carrossel Facebook com ${imagesToPublish.length} fotos`);
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
             body: {
@@ -208,9 +203,8 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
             },
           });
           if (pubError) throw pubError;
-          toast.success(`✅ Carrossel com ${imagesToPublish.length} fotos publicado no Facebook!`);
+          toast.success(t('publish.carousel_published_fb', { count: imagesToPublish.length }));
         } else {
-          // Post simples
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-post", {
             body: {
               message: mensagemFinal,
@@ -221,11 +215,11 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           });
           if (pubError) throw pubError;
           const postId = pubData?.post_id || pubData?.id || "OK";
-          toast.success(`✅ Publicado no Facebook! Post ID: ${postId}`);
+          toast.success(t('publish.published_fb', { id: postId }));
         }
       } else {
         const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
-        toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaFinal}`);
+        toast.success(t('publish.scheduled_success', { date: format(dataAgendamento!, "dd/MM/yyyy"), time: horaFinal }));
       }
 
       setTextoPost("");
@@ -235,7 +229,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
       onOpenChange(false);
     } catch (err: any) {
       console.error("Erro ao publicar:", err);
-      toast.error(err.message || "Erro ao publicar no Facebook");
+      toast.error(err.message || t('publish.error_fb'));
     } finally {
       setPublicando(false);
     }
@@ -253,22 +247,20 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Facebook className="h-5 w-5 text-blue-600" />
-            Postar no Facebook
+            {t('publish.post_to_facebook')}
           </DialogTitle>
-          <DialogDescription>Publique este produto na sua página do Facebook</DialogDescription>
+          <DialogDescription>{t('publish.post_to_facebook_desc')}</DialogDescription>
         </DialogHeader>
 
-        {/* Aviso se não conectado */}
         {!metaConnected && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-300">
             <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
             <p className="text-sm text-amber-800 dark:text-amber-300">
-              Conecte sua conta do Facebook em <strong>Configurações → Redes Sociais</strong> para postar na sua página.
+              {t('publish.connect_facebook_warning')}
             </p>
           </div>
         )}
 
-        {/* Produto Info + fotos */}
         <div className="space-y-2">
           <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg overflow-hidden">
             {allImages[0] && (
@@ -285,8 +277,8 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
             <div>
               <p className="text-xs text-muted-foreground mb-1">
                 {isCarousel
-                  ? `📸 ${allImages.length} fotos — será publicado como CARROSSEL`
-                  : '📸 1 foto — post simples'}
+                  ? t('publish.carousel_info', { count: allImages.length })
+                  : t('publish.single_photo_info')}
               </p>
               <div className="grid grid-cols-5 gap-2">
                 {allImages.map((url, i) => (
@@ -297,16 +289,14 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           )}
         </div>
 
-        {/* Gerar texto com IA */}
         <Button onClick={handleGerarTexto} disabled={gerando} variant="outline" className="w-full gap-2">
           {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {gerando ? "Gerando textos..." : "🤖 Gerar texto com IA"}
+          {gerando ? t('publish.generating') : t('publish.generate_ai')}
         </Button>
 
-        {/* Opções de texto */}
         {opcoes && (
           <div className="space-y-2">
-            <Label className="text-sm font-medium">Escolha uma opção:</Label>
+            <Label className="text-sm font-medium">{t('publish.choose_option')}</Label>
             <div className="grid gap-2">
               {(["opcaoA", "opcaoB", "opcaoC"] as const).map((key, i) => (
                 <Card
@@ -320,7 +310,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
                   <CardContent className="p-3">
                     <div className="flex items-start gap-2">
                       <Badge variant="outline" className="shrink-0 mt-0.5">
-                        {["Casual", "Informativo", "Urgente"][i]}
+                        {[t('publish.option_casual'), t('publish.option_informative'), t('publish.option_urgent')][i]}
                       </Badge>
                       <p className="text-sm line-clamp-3">{opcoes[key]}</p>
                     </div>
@@ -331,19 +321,17 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           </div>
         )}
 
-        {/* Textarea editável */}
         <div className="space-y-2">
-          <Label>Texto do post</Label>
+          <Label>{t('publish.post_text')}</Label>
           <Textarea
             value={textoPost}
             onChange={(e) => setTextoPost(e.target.value)}
-            placeholder="Escreva o texto do post ou gere com IA..."
+            placeholder={t('publish.post_text_placeholder')}
             rows={5}
           />
-          <p className="text-xs text-muted-foreground">{textoPost.length} caracteres</p>
+          <p className="text-xs text-muted-foreground">{textoPost.length} {t('publish.character_count')}</p>
         </div>
 
-        {/* Opções */}
         <div className="space-y-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
@@ -353,7 +341,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
                 onCheckedChange={(c) => setIncluirImagem(!!c)}
               />
               <Label htmlFor="incluir-imagem" className="text-sm cursor-pointer">
-                Incluir imagem do produto
+                {t('publish.include_product_image')}
               </Label>
             </div>
             <div className="flex items-center gap-2">
@@ -364,30 +352,28 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
                 disabled={!temLink}
               />
               <Label htmlFor="incluir-link" className={cn("text-sm cursor-pointer", !temLink && "text-muted-foreground")}>
-                {temLink ? "Incluir link do produto" : "Sem link disponível"}
+                {temLink ? t('publish.include_product_link') : t('publish.no_link_available')}
               </Label>
             </div>
           </div>
 
-          {/* Modo de envio */}
           <RadioGroup value={modoEnvio} onValueChange={(v) => setModoEnvio(v as "agora" | "agendar")}>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="agora" id="agora" />
                 <Label htmlFor="agora" className="cursor-pointer flex items-center gap-1">
-                  <Send className="h-3 w-3" /> Postar Agora
+                  <Send className="h-3 w-3" /> {t('publish.post_now_btn')}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="agendar" id="agendar" />
                 <Label htmlFor="agendar" className="cursor-pointer flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> Agendar
+                  <Clock className="h-3 w-3" /> {t('publish.schedule_btn')}
                 </Label>
               </div>
             </div>
           </RadioGroup>
 
-          {/* Date/Time picker para agendamento */}
           {modoEnvio === "agendar" && (
             <div className="flex items-center gap-3">
               <Popover>
@@ -397,7 +383,7 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
                     className={cn("w-[200px] justify-start text-left font-normal", !dataAgendamento && "text-muted-foreground")}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dataAgendamento ? format(dataAgendamento, "dd/MM/yyyy") : "Selecionar data"}
+                    {dataAgendamento ? format(dataAgendamento, "dd/MM/yyyy") : t('publish.select_date')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -430,7 +416,6 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
           )}
         </div>
 
-        {/* Botão publicar */}
         <Button
           onClick={handlePublicar}
           disabled={publicando || !textoPost.trim()}
@@ -442,10 +427,10 @@ export function PostarFacebookModal({ open, onOpenChange, produto }: PostarFaceb
             <Facebook className="h-4 w-4" />
           )}
           {publicando
-            ? "Publicando..."
+            ? t('publish.publishing')
             : modoEnvio === "agora"
-              ? isCarousel ? `Publicar carrossel (${allImages.length} fotos)` : "Publicar no Facebook"
-              : "Agendar Publicação"}
+              ? isCarousel ? t('publish.publish_carousel', { count: allImages.length }) : t('publish.publish_facebook')
+              : t('publish.schedule_publication')}
         </Button>
       </DialogContent>
     </Dialog>
