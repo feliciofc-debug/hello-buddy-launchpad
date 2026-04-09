@@ -508,15 +508,15 @@ const IAMarketing = () => {
                 className="mb-4"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Voltar
+                {t('common.back')}
               </Button>
               
               <div className="text-center space-y-2">
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 bg-clip-text text-transparent">
-                  ✨ IA Marketing
+                  {t('ai_marketing.title')}
                 </h1>
                 <p className="text-lg md:text-xl text-muted-foreground">
-                  Cole um link OU envie fotos + descrição para receber 3 variações de posts
+                  {t('ai_marketing.subtitle')}
                 </p>
               </div>
             </div>
@@ -528,7 +528,7 @@ const IAMarketing = () => {
                   <Textarea
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    placeholder="Cole um link OU escreva uma descrição (ex: 'crie posts para minha marca de lubrificantes automotivos')"
+                    placeholder={t('ai_marketing.input_placeholder')}
                     className="text-lg p-6 min-h-[100px]"
                     disabled={loading}
                   />
@@ -546,7 +546,7 @@ const IAMarketing = () => {
                         />
                         <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors">
                           <Upload className="h-5 w-5" />
-                          <span className="font-medium">Upload Fotos/Vídeos</span>
+                          <span className="font-medium">{t('publish.upload_photos')}</span>
                         </div>
                       </label>
                     </div>
@@ -588,11 +588,11 @@ const IAMarketing = () => {
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Analisando com IA...
+                        {t('publish.analyzing')}
                       </>
                     ) : (
                       <>
-                        ✨ ANALISAR COM IA
+                        {t('publish.analyze_ai')}
                       </>
                     )}
                   </Button>
