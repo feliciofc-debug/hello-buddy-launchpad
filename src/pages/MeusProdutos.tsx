@@ -1132,7 +1132,7 @@ export default function MeusProdutos() {
 
   const handleTestarCampanha = async (product: Product) => {
     if (!product.campanha?.id) {
-      toast.error('Campanha não encontrada');
+      toast.error(t('products.error_campaign'));
       return;
     }
 
