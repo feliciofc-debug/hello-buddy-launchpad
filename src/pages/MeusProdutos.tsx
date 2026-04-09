@@ -158,7 +158,7 @@ const ProductForm = ({
         id="nome"
         value={formData.nome}
         onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-        placeholder="Ex: Smartphone Galaxy S21"
+        placeholder={t('products.product_name')}
       />
     </div>
 
@@ -168,7 +168,7 @@ const ProductForm = ({
         id="descricao"
         value={formData.descricao}
         onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
-        placeholder="Descrição detalhada do produto..."
+        placeholder={t('products.description')}
         rows={3}
       />
     </div>
@@ -182,15 +182,15 @@ const ProductForm = ({
         </span>
       </div>
       <p className="text-xs text-muted-foreground">
-        A primeira foto será a principal do card. Com 2+ fotos, a publicação será feita como carrossel.
+        {t('products.photos_hint')}
       </p>
       <div className="border-2 border-dashed rounded-lg p-4">
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {/* Foto principal */}
           {(previewImage || (currentImageUrl && !imageFile)) && (
             <div className="relative aspect-square overflow-hidden rounded border-2 border-primary bg-muted/20">
-              <img src={previewImage || currentImageUrl!} className="h-full w-full object-cover" alt="Foto principal" />
-              <span className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">Principal</span>
+              <img src={previewImage || currentImageUrl!} className="h-full w-full object-cover" alt={t('products.main_photo')} />
+              <span className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{t('products.main_photo')}</span>
               <Button
                 type="button"
                 variant="destructive"
@@ -241,7 +241,7 @@ const ProductForm = ({
           {((currentImageUrl && !imageFile ? 1 : imageFile ? 1 : 0) + existingExtraImages.length + extraImageFiles.filter(Boolean).length) < 5 && (
             <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed border-border bg-muted/20 transition-colors hover:bg-muted/50">
               <ImageIcon className="mb-1 h-6 w-6 text-muted-foreground" />
-              <span className="text-center text-xs text-muted-foreground">Anexar foto</span>
+              <span className="text-center text-xs text-muted-foreground">{t('products.attach_photo')}</span>
               <input
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
@@ -250,11 +250,11 @@ const ProductForm = ({
                   const file = e.target.files?.[0];
                   if (!file) return;
                   if (!file.type.startsWith('image/')) {
-                    toast.error('Apenas imagens JPG, PNG ou WEBP');
+                    toast.error(t('products.only_images_format'));
                     return;
                   }
                   if (file.size > 5 * 1024 * 1024) {
-                    toast.error('Imagem muito grande. Máximo 5MB');
+                    toast.error(t('products.image_too_large'));
                     return;
                   }
                   // Se não tem foto principal, seta como principal
@@ -274,7 +274,7 @@ const ProductForm = ({
 
     <div className="grid grid-cols-2 gap-4">
       <div className="space-y-2">
-        <Label htmlFor="preco">Preço (R$)</Label>
+        <Label htmlFor="preco">{t('products.price')}</Label>
         <Input
           id="preco"
           type="number"
@@ -286,7 +286,7 @@ const ProductForm = ({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="sku">SKU/Código</Label>
+        <Label htmlFor="sku">{t('products.sku')}</Label>
         <Input
           id="sku"
           value={formData.sku}
@@ -297,7 +297,7 @@ const ProductForm = ({
     </div>
 
     <div className="space-y-2">
-      <Label htmlFor="link">Link do Produto</Label>
+      <Label htmlFor="link">{t('products.product_link')}</Label>
       <Input
         id="link"
         type="url"
@@ -308,7 +308,7 @@ const ProductForm = ({
     </div>
 
     <div className="space-y-2">
-      <Label htmlFor="tags">Tags (separadas por vírgula)</Label>
+      <Label htmlFor="tags">{t('products.tags')}</Label>
       <Input
         id="tags"
         value={formData.tags}
@@ -320,7 +320,7 @@ const ProductForm = ({
     {/* NOVOS CAMPOS */}
     <div className="grid grid-cols-2 gap-4">
       <div className="space-y-2">
-        <Label htmlFor="estoque">Estoque Disponível *</Label>
+        <Label htmlFor="estoque">{t('products.stock')}</Label>
         <Input
           id="estoque"
           type="number"
@@ -333,7 +333,7 @@ const ProductForm = ({
 
     {/* TIPO DE PRODUTO */}
     <div className="space-y-2">
-      <Label htmlFor="tipo">Tipo de Produto/Serviço *</Label>
+      <Label htmlFor="tipo">{t('products.product_type')}</Label>
       <Select
         value={formData.tipo}
         onValueChange={(v) => setFormData({...formData, tipo: v})}
@@ -342,8 +342,8 @@ const ProductForm = ({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="fisico">📦 Produto Físico</SelectItem>
-          <SelectItem value="servico">🛠️ Serviço</SelectItem>
+          <SelectItem value="fisico">{t('products.physical')}</SelectItem>
+          <SelectItem value="servico">{t('products.service')}</SelectItem>
         </SelectContent>
       </Select>
     </div>
@@ -351,14 +351,15 @@ const ProductForm = ({
     {/* CAMPOS DETALHADOS EXPANDIDOS */}
     <details className="border rounded-lg p-4 space-y-4">
       <summary className="cursor-pointer font-semibold mb-2">
-        📋 Informações Detalhadas (Opcional - IA usará para responder clientes)
+        {t('products.detailed_info')}
+      </summary>
       </summary>
       
       <div className="space-y-4 mt-4">
         
         {/* FICHA TÉCNICA */}
         <div className="space-y-2">
-          <Label htmlFor="ficha_tecnica">Ficha Técnica / Especificações</Label>
+          <Label htmlFor="ficha_tecnica">{t('products.tech_specs')}</Label>
           <Textarea
             id="ficha_tecnica"
             value={formData.ficha_tecnica}
@@ -367,14 +368,14 @@ const ProductForm = ({
             rows={4}
           />
           <p className="text-xs text-muted-foreground">
-            💡 IA usará isso para responder perguntas técnicas dos clientes
+            {t('products.tech_specs_hint')}
           </p>
         </div>
 
         {/* INFORMAÇÃO NUTRICIONAL */}
         {formData.tipo === 'fisico' && (
           <div className="space-y-2">
-            <Label htmlFor="informacao_nutricional">Informação Nutricional (Alimentos)</Label>
+            <Label htmlFor="informacao_nutricional">{t('products.nutritional')}</Label>
             <Textarea
               id="informacao_nutricional"
               value={formData.informacao_nutricional}
@@ -388,7 +389,7 @@ const ProductForm = ({
         {/* INGREDIENTES */}
         {formData.tipo === 'fisico' && (
           <div className="space-y-2">
-            <Label htmlFor="ingredientes">Ingredientes</Label>
+            <Label htmlFor="ingredientes">{t('products.ingredients')}</Label>
             <Textarea
               id="ingredientes"
               value={formData.ingredientes}
@@ -401,7 +402,7 @@ const ProductForm = ({
 
         {/* MODO DE USO */}
         <div className="space-y-2">
-          <Label htmlFor="modo_uso">Modo de Uso / Como Usar</Label>
+          <Label htmlFor="modo_uso">{t('products.how_to_use')}</Label>
           <Textarea
             id="modo_uso"
             value={formData.modo_uso}
@@ -413,7 +414,7 @@ const ProductForm = ({
 
         {/* BENEFÍCIOS */}
         <div className="space-y-2">
-          <Label htmlFor="beneficios">Benefícios / Diferenciais</Label>
+          <Label htmlFor="beneficios">{t('products.benefits')}</Label>
           <Textarea
             id="beneficios"
             value={formData.beneficios}
@@ -425,7 +426,7 @@ const ProductForm = ({
 
         {/* GARANTIA */}
         <div className="space-y-2">
-          <Label htmlFor="garantia">Garantia</Label>
+          <Label htmlFor="garantia">{t('products.warranty')}</Label>
           <Input
             id="garantia"
             value={formData.garantia}
@@ -438,7 +439,7 @@ const ProductForm = ({
         {formData.tipo === 'fisico' && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="dimensoes">Dimensões (cm)</Label>
+              <Label htmlFor="dimensoes">{t('products.dimensions')}</Label>
               <Input
                 id="dimensoes"
                 value={formData.dimensoes}
@@ -447,7 +448,7 @@ const ProductForm = ({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="peso">Peso (kg)</Label>
+              <Label htmlFor="peso">{t('products.weight')}</Label>
               <Input
                 id="peso"
                 value={formData.peso}
@@ -462,7 +463,7 @@ const ProductForm = ({
         {formData.tipo === 'fisico' && (
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="cor">Cores Disponíveis</Label>
+              <Label htmlFor="cor">{t('products.colors')}</Label>
               <Input
                 id="cor"
                 value={formData.cor}
@@ -471,7 +472,7 @@ const ProductForm = ({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="tamanhos">Tamanhos Disponíveis</Label>
+              <Label htmlFor="tamanhos">{t('products.sizes')}</Label>
               <Input
                 id="tamanhos"
                 value={formData.tamanhos}
@@ -484,7 +485,7 @@ const ProductForm = ({
 
         {/* MARCA */}
         <div className="space-y-2">
-          <Label htmlFor="brand">Marca</Label>
+          <Label htmlFor="brand">{t('products.brand')}</Label>
           <Input
             id="brand"
             value={formData.brand}
@@ -496,7 +497,7 @@ const ProductForm = ({
         {/* ATRIBUTOS POR CATEGORIA */}
         {formData.categoria === 'Alimentos e Bebidas' && (
           <div className="border p-4 rounded space-y-3">
-            <h4 className="font-semibold text-sm">🍽️ Atributos Alimentos</h4>
+            <h4 className="font-semibold text-sm">{t('products.food_attrs')}</h4>
             <div className="grid grid-cols-2 gap-3">
               <Input
                 placeholder="Peso (ex: 500g)"
@@ -518,14 +519,14 @@ const ProductForm = ({
                   checked={formData.attributes?.sem_gluten === 'true'}
                   onCheckedChange={(c) => setFormData({...formData, attributes: {...formData.attributes, sem_gluten: c ? 'true' : 'false'}})}
                 />
-                <span className="text-sm">Sem Glúten</span>
+                <span className="text-sm">{t('products.gluten_free')}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox 
                   checked={formData.attributes?.vegano === 'true'}
                   onCheckedChange={(c) => setFormData({...formData, attributes: {...formData.attributes, vegano: c ? 'true' : 'false'}})}
                 />
-                <span className="text-sm">Vegano</span>
+                <span className="text-sm">{t('products.vegan')}</span>
               </div>
             </div>
           </div>
@@ -533,7 +534,7 @@ const ProductForm = ({
 
         {(formData.categoria === 'Automotivo') && (
           <div className="border p-4 rounded space-y-3">
-            <h4 className="font-semibold text-sm">🚗 Atributos Veículo</h4>
+            <h4 className="font-semibold text-sm">{t('products.vehicle_attrs')}</h4>
             <div className="grid grid-cols-2 gap-3">
               <Input
                 placeholder="Ano"
@@ -571,7 +572,7 @@ const ProductForm = ({
 
         {formData.categoria === 'Eletrônicos' && (
           <div className="border p-4 rounded space-y-3">
-            <h4 className="font-semibold text-sm">📱 Atributos Eletrônicos</h4>
+            <h4 className="font-semibold text-sm">{t('products.electronics_attrs')}</h4>
             <div className="grid grid-cols-2 gap-3">
               <Input
                 placeholder="Voltagem"
@@ -596,7 +597,7 @@ const ProductForm = ({
     </details>
 
     <div className="space-y-2">
-      <Label htmlFor="especificacoes">Especificações Técnicas (Campo Legado)</Label>
+      <Label htmlFor="especificacoes">{t('products.specs_legacy')}</Label>
       <Textarea
         id="especificacoes"
         value={formData.especificacoes}
@@ -605,12 +606,12 @@ const ProductForm = ({
         placeholder="• Peso: 500g&#10;• Validade: 30 dias&#10;• Origem: Nacional"
       />
       <p className="text-xs text-muted-foreground">
-        ⚠️ Use o campo "Ficha Técnica" acima para detalhes completos
+        {t('products.specs_legacy_hint')}
       </p>
     </div>
 
     <div className="space-y-2">
-      <Label htmlFor="link_marketplace">Link do Marketplace (Pagamento) *</Label>
+      <Label htmlFor="link_marketplace">{t('products.marketplace_link')}</Label>
       <Input
         id="link_marketplace"
         type="url"
@@ -619,20 +620,20 @@ const ProductForm = ({
         placeholder="https://pay.mercadopago.com/..."
       />
       <p className="text-xs text-muted-foreground">
-        Cole aqui o link onde o cliente vai pagar (Mercado Pago, PagSeguro, etc)
+        {t('products.marketplace_link_hint')}
       </p>
     </div>
 
 
     {/* CATEGORIA COM SELECT */}
     <div className="space-y-2">
-      <Label htmlFor="categoria">Categoria *</Label>
+      <Label htmlFor="categoria">{t('products.category')} *</Label>
       <Select 
         value={formData.categoria}
         onValueChange={(value) => setFormData({ ...formData, categoria: value })}
       >
         <SelectTrigger>
-          <SelectValue placeholder="Selecione uma categoria" />
+          <SelectValue placeholder={t('products.select_category')} />
         </SelectTrigger>
         <SelectContent>
           {CATEGORIAS_MARKETPLACE.map(cat => (
@@ -650,11 +651,11 @@ const ProductForm = ({
         checked={formData.publicar_marketplace}
         onCheckedChange={(checked) => setFormData({ ...formData, publicar_marketplace: checked as boolean })}
       />
-      <Label className="cursor-pointer">🌍 Publicar no Marketplace Público AMZ Ofertas</Label>
+      <Label className="cursor-pointer">{t('products.publish_marketplace')}</Label>
     </div>
 
     <div className="flex items-center gap-3">
-      <Label htmlFor="ativo">Status:</Label>
+      <Label htmlFor="ativo">{t('products.status')}</Label>
       <Select 
         value={formData.ativo ? 'true' : 'false'} 
         onValueChange={(v) => setFormData({ ...formData, ativo: v === 'true' })}
@@ -674,7 +675,7 @@ const ProductForm = ({
         setIsAddModalOpen(false);
         setIsEditModalOpen(false);
       }}>
-        Cancelar
+        {t('common.cancel')}
       </Button>
       <Button onClick={onSubmit}>
         {submitLabel}
