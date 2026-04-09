@@ -107,6 +107,7 @@ interface ProductFormProps {
   setImageFile: (file: File | null) => void;
   previewImage: string | null;
   currentImageUrl?: string | null;
+  setCurrentImageUrl?: (url: string | null) => void;
   extraImageFiles: (File | null)[];
   setExtraImageFiles: (files: (File | null)[]) => void;
   existingExtraImages: string[];
@@ -124,6 +125,7 @@ const ProductForm = ({
   setImageFile,
   previewImage,
   currentImageUrl,
+  setCurrentImageUrl,
   extraImageFiles,
   setExtraImageFiles,
   existingExtraImages,
@@ -148,6 +150,9 @@ const ProductForm = ({
 
   const removeImage = () => {
     setImageFile(null);
+    if (setCurrentImageUrl) {
+      setCurrentImageUrl(null);
+    }
   };
 
   return (
@@ -1734,6 +1739,7 @@ export default function MeusProdutos() {
             setImageFile={setImageFile}
             previewImage={previewImage}
             currentImageUrl={currentImageUrl}
+            setCurrentImageUrl={setCurrentImageUrl}
             extraImageFiles={extraImageFiles}
             setExtraImageFiles={setExtraImageFiles}
             existingExtraImages={existingExtraImages}
