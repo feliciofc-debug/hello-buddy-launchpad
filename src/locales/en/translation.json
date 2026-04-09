@@ -385,7 +385,14 @@
     "electronics_attrs": "📱 Electronics Attributes",
     "gluten_free": "Gluten Free",
     "vegan": "Vegan",
-    "select_category": "Select a category"
+    "select_category": "Select a category",
+    "publish_now": "🚀 Publish now",
+    "publish_reels": "📹 Publish Reels",
+    "edit": "Edit",
+    "delete": "Delete",
+    "dispatcher_disabled": "Internal dispatcher disabled: this campaign has already been queued.",
+    "category_label": "Category:",
+    "price_label": "Price:"
   },
   "campaigns": {
     "title": "Campaigns",

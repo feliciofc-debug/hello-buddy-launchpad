@@ -385,7 +385,14 @@
     "electronics_attrs": "📱 Atributos Eletrônicos",
     "gluten_free": "Sem Glúten",
     "vegan": "Vegano",
-    "select_category": "Selecione uma categoria"
+    "select_category": "Selecione uma categoria",
+    "publish_now": "🚀 Publicar agora",
+    "publish_reels": "📹 Publicar Reels",
+    "edit": "Editar",
+    "delete": "Excluir",
+    "dispatcher_disabled": "Dispatcher interno desativado: esta campanha já foi apenas enfileirada.",
+    "category_label": "Categoria:",
+    "price_label": "Preço:"
   },
   "campaigns": {
     "title": "Campanhas",
