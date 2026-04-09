@@ -17,6 +17,7 @@ import { CalendarIcon, Sparkles, Loader2, Instagram, Send, Clock, AlertTriangle,
 import { getAllProductImages } from "@/components/ProductImageCarousel";
 import { cn } from "@/lib/utils";
 import { adjustImagesForInstagram, FORMAT_LABELS, type AdjustedImage } from "@/lib/adjustImageForInstagram";
+import { useTranslation } from "react-i18next";
 import {
   clampTimeForToday,
   combineSaoPauloDateTimeToIso,
@@ -44,6 +45,7 @@ interface PostarInstagramModalProps {
 }
 
 export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInstagramModalProps) {
+  const { t } = useTranslation();
   const [gerando, setGerando] = useState(false);
   const [publicando, setPublicando] = useState(false);
   const [opcoes, setOpcoes] = useState<{ opcaoA: string; opcaoB: string; opcaoC: string } | null>(null);
@@ -84,7 +86,6 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
     if (open) loadAllImages();
   }, [open, loadAllImages]);
 
-  // Auto-adjust images when they load or toggle changes
   useEffect(() => {
     if (!open || allImages.length === 0) {
       setAdjustedImages(null);
@@ -134,7 +135,6 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
 
   useEffect(() => {
     if (!open) return;
-
     const nextSlot = getNextFiveMinuteSlot();
     setDataAgendamento(nextSlot);
     setHoraAgendamento(toTimeString(nextSlot));
@@ -142,7 +142,6 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
 
   useEffect(() => {
     if (!open || modoEnvio !== "agendar" || !dataAgendamento) return;
-
     const adjustedTime = clampTimeForToday(dataAgendamento, horaAgendamento);
     if (adjustedTime !== horaAgendamento) {
       setHoraAgendamento(adjustedTime);
@@ -161,17 +160,14 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           },
         },
       });
-
       if (error) throw error;
-
       const ig = data?.posts?.instagram;
       if (!ig) throw new Error("Nenhum texto gerado para Instagram");
-
       setOpcoes({ opcaoA: ig.opcaoA, opcaoB: ig.opcaoB, opcaoC: ig.opcaoC });
-      toast.success("3 opções de texto geradas para Instagram!");
+      toast.success(t('publish.generated_ig_success'));
     } catch (err: any) {
       console.error("Erro ao gerar texto:", err);
-      toast.error(err.message || "Erro ao gerar texto com IA");
+      toast.error(err.message || t('publish.error_generate'));
     } finally {
       setGerando(false);
     }
@@ -183,21 +179,21 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
 
   const handlePublicar = async () => {
     if (!textoPost.trim()) {
-      toast.error("Escreva ou gere o texto do post primeiro");
+      toast.error(t('publish.write_text_first'));
       return;
     }
 
-      if (allImages.length === 0) {
-        toast.error("Instagram requer uma imagem. Este produto não tem imagem cadastrada.");
-        return;
-      }
+    if (allImages.length === 0) {
+      toast.error(t('publish.ig_requires_image'));
+      return;
+    }
 
     const captionFinal = incluirLink && linkProduto
       ? `${textoPost.trim()}\n\n🔗 Link na bio ou acesse: ${linkProduto}`
       : textoPost.trim();
 
     if (modoEnvio === "agendar" && !dataAgendamento) {
-      toast.error("Selecione a data do agendamento");
+      toast.error(t('publish.select_schedule_date'));
       return;
     }
 
@@ -205,14 +201,13 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        toast.error("Você precisa estar logado");
+        toast.error(t('publish.need_login'));
         return;
       }
 
-      // Se ajuste automático ativo, fazer upload das imagens ajustadas
       let finalImageUrls = allImages;
       if (ajusteAuto && adjustedImages && adjustedImages.length > 0) {
-        toast.info("📐 Ajustando imagens para Instagram...");
+        toast.info(t('publish.adjusting_images'));
         const uploadedUrls: string[] = [];
         for (let i = 0; i < adjustedImages.length; i++) {
           const adj = adjustedImages[i];
@@ -260,9 +255,8 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           });
           if (pubError) throw pubError;
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar carrossel");
-          toast.success(`✅ Carrossel com ${finalImageUrls.length} fotos publicado no Instagram!`);
+          toast.success(t('publish.carousel_published_ig', { count: finalImageUrls.length }));
         } else {
-          // Post simples
           const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
             body: {
               caption: captionFinal,
@@ -272,11 +266,11 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           });
           if (pubError) throw pubError;
           if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
-          toast.success(`✅ Publicado no Instagram!`);
+          toast.success(t('publish.published_ig'));
         }
       } else {
         const horaFinal = clampTimeForToday(dataAgendamento!, horaAgendamento);
-        toast.success(`⏰ Post agendado para ${format(dataAgendamento!, "dd/MM/yyyy")} às ${horaFinal}`);
+        toast.success(t('publish.scheduled_success', { date: format(dataAgendamento!, "dd/MM/yyyy"), time: horaFinal }));
       }
 
       setTextoPost("");
@@ -286,7 +280,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
       onOpenChange(false);
     } catch (err: any) {
       console.error("Erro ao publicar no Instagram:", err);
-      toast.error(err.message || "Erro ao publicar no Instagram");
+      toast.error(err.message || t('publish.error_ig'));
     } finally {
       setPublicando(false);
     }
@@ -304,36 +298,33 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Instagram className="h-5 w-5 text-pink-600" />
-            Postar no Instagram
+            {t('publish.post_to_instagram')}
           </DialogTitle>
           <DialogDescription>
             {igConnected
-              ? `Publique este produto no seu Instagram @${igUsername || "conectado"}`
-              : "Publique este produto no Instagram"}
+              ? t('publish.post_to_instagram_connected', { username: igUsername || "conectado" })
+              : t('publish.post_to_instagram_desc')}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Aviso se não conectado */}
         {!igConnected && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-300">
             <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5" />
             <p className="text-sm text-amber-800 dark:text-amber-300">
-              Conecte sua conta do Instagram em <strong>Configurações → Redes Sociais</strong> para postar no seu perfil.
+              {t('publish.connect_instagram_warning')}
             </p>
           </div>
         )}
 
-        {/* Aviso se não tem imagem */}
         {!temImagem && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-destructive/10 border border-destructive/30">
             <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
             <p className="text-sm text-destructive">
-              Este produto não tem imagem cadastrada. O Instagram exige uma imagem para publicação.
+              {t('publish.no_image_warning')}
             </p>
           </div>
         )}
 
-        {/* Produto Info + fotos */}
         <div className="space-y-2">
           <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/50 overflow-hidden">
             {allImages[0] && (
@@ -350,11 +341,10 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">
                 {isCarousel
-                  ? `📸 ${allImages.length} fotos — será publicado como CARROSSEL`
-                  : '📸 1 foto — post simples'}
+                  ? t('publish.carousel_info', { count: allImages.length })
+                  : t('publish.single_photo_info')}
               </p>
 
-              {/* Toggle ajuste automático */}
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="ajuste-auto-ig"
@@ -363,15 +353,14 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
                 />
                 <Label htmlFor="ajuste-auto-ig" className="text-xs cursor-pointer flex items-center gap-1">
                   <ImageIcon className="h-3 w-3" />
-                  Ajustar automaticamente para Instagram (recomendado)
+                  {t('publish.adjust_auto_label')}
                 </Label>
               </div>
 
-              {/* Preview: ajustada ou original */}
               {ajusteAuto && ajustando && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Ajustando imagens...
+                  {t('publish.adjusting')}
                 </div>
               )}
 
@@ -389,7 +378,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
               ) : (
                 <div>
                   {!ajusteAuto && (
-                    <p className="text-xs text-amber-600 mb-1">⚠️ Imagem original — pode ser cortada pelo Instagram</p>
+                    <p className="text-xs text-amber-600 mb-1">{t('publish.original_warning')}</p>
                   )}
                   <div className="grid grid-cols-5 gap-2">
                     {allImages.map((url, i) => (
@@ -402,16 +391,14 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           )}
         </div>
 
-        {/* Gerar texto com IA */}
         <Button onClick={handleGerarTexto} disabled={gerando} variant="outline" className="w-full gap-2">
           {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {gerando ? "Gerando textos..." : "🤖 Gerar texto com IA"}
+          {gerando ? t('publish.generating') : t('publish.generate_ai')}
         </Button>
 
-        {/* Opções de texto */}
         {opcoes && (
           <div className="space-y-2">
-            <p className="text-sm font-medium">Escolha uma opção:</p>
+            <p className="text-sm font-medium">{t('publish.choose_option')}</p>
             <div className="space-y-2">
               {(["opcaoA", "opcaoB", "opcaoC"] as const).map((key, i) => (
                 <Card
@@ -422,7 +409,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
                   <CardContent className="p-3">
                     <div className="space-y-1">
                       <Badge variant="outline" className="text-xs">
-                        {["Direto", "Storytelling", "Educativo"][i]}
+                        {[t('publish.option_direct'), t('publish.option_storytelling'), t('publish.option_educational')][i]}
                       </Badge>
                       <p className="text-sm">{opcoes[key]}</p>
                     </div>
@@ -433,19 +420,17 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           </div>
         )}
 
-        {/* Textarea editável */}
         <div className="space-y-2">
-          <Label>Caption do post</Label>
+          <Label>{t('publish.caption_label')}</Label>
           <Textarea
             value={textoPost}
             onChange={(e) => setTextoPost(e.target.value)}
-            placeholder="Escreva o caption do post ou gere com IA..."
+            placeholder={t('publish.caption_placeholder')}
             rows={5}
           />
-          <p className="text-xs text-muted-foreground">{textoPost.length} / 2.200 caracteres</p>
+          <p className="text-xs text-muted-foreground">{textoPost.length} / 2.200 {t('publish.character_count')}</p>
         </div>
 
-        {/* Opções */}
         <div className="space-y-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
@@ -456,30 +441,28 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
                 disabled={!temLink}
               />
               <Label htmlFor="incluir-link-ig" className={cn("text-sm cursor-pointer", !temLink && "text-muted-foreground")}>
-                {temLink ? "Incluir link no caption" : "Sem link disponível"}
+                {temLink ? t('publish.include_link_caption') : t('publish.no_link_available')}
               </Label>
             </div>
           </div>
 
-          {/* Modo de envio */}
           <RadioGroup value={modoEnvio} onValueChange={(v) => setModoEnvio(v as "agora" | "agendar")}>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="agora" id="agora-ig" />
                 <Label htmlFor="agora-ig" className="cursor-pointer flex items-center gap-1">
-                  <Send className="h-3 w-3" /> Postar Agora
+                  <Send className="h-3 w-3" /> {t('publish.post_now_btn')}
                 </Label>
               </div>
               <div className="flex items-center gap-2">
                 <RadioGroupItem value="agendar" id="agendar-ig" />
                 <Label htmlFor="agendar-ig" className="cursor-pointer flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> Agendar
+                  <Clock className="h-3 w-3" /> {t('publish.schedule_btn')}
                 </Label>
               </div>
             </div>
           </RadioGroup>
 
-          {/* Date/Time picker para agendamento */}
           {modoEnvio === "agendar" && (
             <div className="flex items-center gap-3">
               <Popover>
@@ -489,7 +472,7 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
                     className={cn("w-[200px] justify-start text-left font-normal", !dataAgendamento && "text-muted-foreground")}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {dataAgendamento ? format(dataAgendamento, "dd/MM/yyyy") : "Selecionar data"}
+                    {dataAgendamento ? format(dataAgendamento, "dd/MM/yyyy") : t('publish.select_date')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -522,7 +505,6 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
           )}
         </div>
 
-        {/* Botão publicar */}
         <Button
           onClick={handlePublicar}
           disabled={publicando || !textoPost.trim() || !temImagem}
@@ -534,10 +516,10 @@ export function PostarInstagramModal({ open, onOpenChange, produto }: PostarInst
             <Instagram className="h-4 w-4" />
           )}
           {publicando
-            ? "Publicando..."
+            ? t('publish.publishing')
             : modoEnvio === "agora"
-              ? isCarousel ? `Publicar carrossel (${allImages.length} fotos)` : "Publicar no Instagram"
-              : "Agendar Publicação"}
+              ? isCarousel ? t('publish.publish_carousel', { count: allImages.length }) : t('publish.publish_instagram')
+              : t('publish.schedule_publication')}
         </Button>
       </DialogContent>
     </Dialog>
