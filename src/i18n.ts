@@ -9,6 +9,9 @@ i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
+    react: {
+      useSuspense: false,
+    },
     resources: {
       'pt-BR': { translation: ptBR },
       en: { translation: en },
