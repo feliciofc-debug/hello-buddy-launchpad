@@ -609,7 +609,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Sparkles className="h-5 w-5" />
-                        🎨 Imagem Gerada com IA
+                        {t('ai_marketing.ai_image')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -623,7 +623,7 @@ const IAMarketing = () => {
                         className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
                       >
                         <Download className="mr-2 h-5 w-5" />
-                        💾 Salvar Imagem no Computador
+                        {t('publish.save_image')}
                       </Button>
                     </CardContent>
                   </Card>
@@ -639,9 +639,9 @@ const IAMarketing = () => {
                     className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 hover:from-blue-700 hover:via-purple-700 hover:to-pink-700 text-white text-lg px-10 py-5"
                   >
                     {publicandoTodas ? (
-                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Publicando nos dois...</>
+                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> {t('publish.publishing_both')}</>
                     ) : (
-                      <>🚀 Publicar no Facebook + Instagram</>
+                      <>{t('publish.publish_fb_ig')}</>
                     )}
                   </Button>
                 </div>
@@ -652,7 +652,7 @@ const IAMarketing = () => {
                     <CardHeader className="bg-gradient-to-r from-pink-500 to-purple-500 text-white">
                       <CardTitle className="flex items-center gap-2">
                         <Instagram className="h-5 w-5" />
-                        📱 Post Instagram
+                        {t('ai_marketing.post_instagram')}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-6 space-y-4">
@@ -662,15 +662,15 @@ const IAMarketing = () => {
                       >
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoA" id="inst-a" />
-                          <Label htmlFor="inst-a" className="cursor-pointer">Opção A: Direto/Urgente</Label>
+                          <Label htmlFor="inst-a" className="cursor-pointer">{t('ai_marketing.option_direct')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoB" id="inst-b" />
-                          <Label htmlFor="inst-b" className="cursor-pointer">Opção B: Storytelling</Label>
+                          <Label htmlFor="inst-b" className="cursor-pointer">{t('ai_marketing.option_storytelling')}</Label>
                         </div>
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="opcaoC" id="inst-c" />
-                          <Label htmlFor="inst-c" className="cursor-pointer">Opção C: Educativo</Label>
+                          <Label htmlFor="inst-c" className="cursor-pointer">{t('ai_marketing.option_educational')}</Label>
                         </div>
                       </RadioGroup>
 
@@ -687,7 +687,7 @@ const IAMarketing = () => {
                           className="w-full"
                         >
                           <Copy className="mr-2 h-4 w-4" />
-                          Copiar
+                          {t('publish.copy')}
                         </Button>
                         <Button
                           onClick={handlePublicarInstagram}
