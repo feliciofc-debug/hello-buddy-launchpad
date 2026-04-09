@@ -40,6 +40,7 @@ import {
   Share2
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
+import LanguageSwitcher from '@/components/LanguageSwitcher';
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
   AreaChart,
