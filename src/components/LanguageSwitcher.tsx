@@ -21,7 +21,7 @@ const LanguageSwitcher = () => {
   return (
     <button
       onClick={toggle}
-      className="fixed top-4 right-20 z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-background/80 backdrop-blur-sm hover:bg-accent text-foreground border border-border shadow-sm transition-colors"
+      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm font-medium hover:bg-accent text-foreground border border-border transition-colors"
       title={isPt ? 'Switch to English' : 'Mudar para Português'}
     >
       <span>{isPt ? '🇧🇷' : '🇺🇸'}</span>
