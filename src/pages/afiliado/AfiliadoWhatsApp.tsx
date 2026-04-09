@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { AfiliadoLayout } from "@/components/afiliado/AfiliadoLayout";
 
 export default function AfiliadoWhatsApp() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -45,13 +47,12 @@ export default function AfiliadoWhatsApp() {
 
   const handleSend = async () => {
     if (!telefone || !mensagem) {
-      toast.error('Preencha telefone e mensagem');
+      toast.error(t('whatsapp.fill_fields'));
       return;
     }
 
     setSending(true);
     try {
-      // Limpar telefone
       const cleanPhone = telefone.replace(/\D/g, '');
       
       const { data, error } = await supabase.functions.invoke('afiliado-enviar-mensagem', {
@@ -63,11 +64,11 @@ export default function AfiliadoWhatsApp() {
 
       if (error) throw error;
 
-      toast.success('Mensagem enviada!');
+      toast.success(t('whatsapp.message_sent'));
       setMensagem('');
     } catch (error: any) {
       console.error('Erro ao enviar:', error);
-      toast.error(error.message || 'Erro ao enviar mensagem');
+      toast.error(error.message || t('whatsapp.send_error'));
     } finally {
       setSending(false);
     }
@@ -87,14 +88,13 @@ export default function AfiliadoWhatsApp() {
     <AfiliadoLayout>
     <div className="p-4 md:p-8">
       <div className="max-w-2xl mx-auto">
-        {/* Header */}
         <div className="flex items-center gap-4 mb-6">
           <Button variant="ghost" size="icon" onClick={() => navigate('/afiliado/dashboard')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">WhatsApp</h1>
-            <p className="text-muted-foreground">Envie mensagens pelo WhatsApp</p>
+            <h1 className="text-2xl font-bold text-foreground">{t('whatsapp.title')}</h1>
+            <p className="text-muted-foreground">{t('whatsapp.subtitle')}</p>
           </div>
         </div>
 
@@ -102,12 +102,12 @@ export default function AfiliadoWhatsApp() {
           <Card>
             <CardContent className="p-8 text-center">
               <AlertCircle className="h-12 w-12 mx-auto text-yellow-500 mb-4" />
-              <h3 className="text-lg font-semibold mb-2">WhatsApp não conectado</h3>
+              <h3 className="text-lg font-semibold mb-2">{t('whatsapp.not_connected_title')}</h3>
               <p className="text-muted-foreground mb-4">
-                Conecte seu WhatsApp para enviar mensagens
+                {t('whatsapp.not_connected_desc')}
               </p>
               <Button onClick={() => navigate('/afiliado/conectar-celular')}>
-                Conectar WhatsApp
+                {t('whatsapp.connect_btn')}
               </Button>
             </CardContent>
           </Card>
@@ -116,12 +116,12 @@ export default function AfiliadoWhatsApp() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="h-5 w-5 text-green-500" />
-                Enviar Mensagem
+                {t('whatsapp.send_message')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Telefone</label>
+                <label className="text-sm font-medium mb-2 block">{t('whatsapp.phone_label')}</label>
                 <div className="flex gap-2">
                   <div className="flex items-center px-3 bg-muted rounded-l-md border-r">
                     <User className="h-4 w-4 text-muted-foreground" />
@@ -135,16 +135,16 @@ export default function AfiliadoWhatsApp() {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Formato: código do país + DDD + número (ex: 5511999999999)
+                  {t('whatsapp.phone_format')}
                 </p>
               </div>
 
               <div>
-                <label className="text-sm font-medium mb-2 block">Mensagem</label>
+                <label className="text-sm font-medium mb-2 block">{t('whatsapp.message_label')}</label>
                 <Textarea 
                   value={mensagem}
                   onChange={(e) => setMensagem(e.target.value)}
-                  placeholder="Digite sua mensagem..."
+                  placeholder={t('whatsapp.message_placeholder')}
                   rows={5}
                 />
               </div>
@@ -154,10 +154,10 @@ export default function AfiliadoWhatsApp() {
                 disabled={sending}
                 className="w-full"
               >
-                {sending ? 'Enviando...' : (
+                {sending ? t('whatsapp.sending') : (
                   <>
                     <Send className="h-4 w-4 mr-2" />
-                    Enviar Mensagem
+                    {t('whatsapp.send_message')}
                   </>
                 )}
               </Button>
