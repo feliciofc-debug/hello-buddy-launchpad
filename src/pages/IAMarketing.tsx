@@ -286,25 +286,25 @@ const IAMarketing = () => {
     const textoSelecionado = sanitizeGeneratedPostText(editableTexts.whatsapp[selectedVariations.whatsapp], url.trim());
     
     if (!textoSelecionado.trim()) {
-      toast.error("Selecione uma variação de texto primeiro");
+      toast.error(t('publish.select_text_first'));
       return;
     }
 
     localStorage.setItem('campaignMessageTemplate', textoSelecionado);
-    toast.success("Texto salvo! Redirecionando para criar campanha...");
+    toast.success(t('ai_marketing.text_saved'));
     setTimeout(() => navigate('/campanhas-prospeccao'), 500);
   };
 
   const handlePublicarFacebook = async () => {
-    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
-    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
+    if (isTrial && !canPostToday()) { toast.error(t('ai_marketing.post_limit')); return; }
+    if (isTrial && isTrialExpired()) { toast.error(t('ai_marketing.trial_expired')); return; }
     const texto = editableTexts.facebook[selectedVariations.facebook];
-    if (!texto.trim()) { toast.error("Selecione um texto primeiro"); return; }
+    if (!texto.trim()) { toast.error(t('publish.select_text_first')); return; }
 
     setPublicandoFacebook(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Você precisa estar logado"); return; }
+      if (!user) { toast.error(t('common.need_login')); return; }
 
       const link = getSafeProductLink(resultado?.produto);
       const textoLimpo = sanitizeGeneratedPostText(texto, url.trim());
@@ -337,18 +337,18 @@ const IAMarketing = () => {
   };
 
   const handlePublicarInstagram = async () => {
-    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
-    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
+    if (isTrial && !canPostToday()) { toast.error(t('ai_marketing.post_limit')); return; }
+    if (isTrial && isTrialExpired()) { toast.error(t('ai_marketing.trial_expired')); return; }
     const texto = editableTexts.instagram[selectedVariations.instagram];
-    if (!texto.trim()) { toast.error("Selecione um texto primeiro"); return; }
+    if (!texto.trim()) { toast.error(t('publish.select_text_first')); return; }
 
     const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
-    if (!imagemUrl) { toast.error("Instagram requer uma imagem. Gere uma imagem com IA ou use um produto com foto."); return; }
+    if (!imagemUrl) { toast.error(t('publish.ig_requires_image_ai')); return; }
 
     setPublicandoInstagram(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Você precisa estar logado"); return; }
+      if (!user) { toast.error(t('common.need_login')); return; }
 
       const link = getSafeProductLink(resultado?.produto);
       const textoLimpo = sanitizeGeneratedPostText(texto, url.trim());
@@ -381,22 +381,22 @@ const IAMarketing = () => {
 
   const handlePublicarTodas = async () => {
     if (!resultado) return;
-    if (isTrial && !canPostToday()) { toast.error("🔒 Limite de posts diários atingido (trial). Contrate para liberar!"); return; }
-    if (isTrial && isTrialExpired()) { toast.error("🔒 Período de teste encerrado. Contrate o plano completo!"); return; }
+    if (isTrial && !canPostToday()) { toast.error(t('ai_marketing.post_limit')); return; }
+    if (isTrial && isTrialExpired()) { toast.error(t('ai_marketing.trial_expired')); return; }
 
     const textoFb = editableTexts.facebook[selectedVariations.facebook];
     const textoIg = editableTexts.instagram[selectedVariations.instagram];
     const imagemUrl = resultado?.generatedImage || resultado?.produto?.imagem || null;
     const link = getSafeProductLink(resultado?.produto);
 
-    if (!textoFb.trim() && !textoIg.trim()) { toast.error("Nenhum texto disponível para publicar"); return; }
+    if (!textoFb.trim() && !textoIg.trim()) { toast.error(t('publish.no_text_available')); return; }
 
     setPublicandoTodas(true);
     const resultados: string[] = [];
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { toast.error("Você precisa estar logado"); return; }
+      if (!user) { toast.error(t('common.need_login')); return; }
 
       const promises: Promise<void>[] = [];
 
