@@ -37,6 +37,7 @@ export function AfiliadoSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -47,33 +48,33 @@ export function AfiliadoSidebar() {
 
   const sections: SidebarSection[] = [
     {
-      label: "Principal",
+      label: t('nav.section_main'),
       items: [
-        { title: "Dashboard", icon: LayoutDashboard, path: "/afiliado/dashboard" },
-        { title: "Produtos", icon: Package, path: "/afiliado/produtos" },
+        { title: t('nav.dashboard'), icon: LayoutDashboard, path: "/afiliado/dashboard" },
+        { title: t('nav.products'), icon: Package, path: "/afiliado/produtos" },
       ],
     },
     {
-      label: "WhatsApp",
+      label: t('nav.section_whatsapp'),
       items: [
-        { title: "Enviar Mensagens", icon: Send, path: "/afiliado/whatsapp" },
-        { title: "Grupos", icon: Users, path: "/afiliado/grupos" },
-        { title: "Campanhas", icon: Megaphone, path: "/afiliado/campanhas" },
-        { title: "Contatos", icon: Contact, path: "/afiliado/contatos" },
+        { title: t('nav.send_messages'), icon: Send, path: "/afiliado/whatsapp" },
+        { title: t('nav.groups'), icon: Users, path: "/afiliado/grupos" },
+        { title: t('nav.campaigns'), icon: Megaphone, path: "/afiliado/campanhas" },
+        { title: t('nav.contacts'), icon: Contact, path: "/afiliado/contatos" },
       ],
     },
     {
-      label: "Marketing",
+      label: t('nav.section_marketing'),
       items: [
-        { title: "IA Marketing", icon: Sparkles, path: "/afiliado/ia-marketing" },
-        { title: "Vendas", icon: DollarSign, path: "/afiliado/vendas" },
+        { title: t('nav.ia_marketing'), icon: Sparkles, path: "/afiliado/ia-marketing" },
+        { title: t('nav.sales'), icon: DollarSign, path: "/afiliado/vendas" },
       ],
     },
   ];
 
   const footerItems: SidebarItem[] = [
-    { title: "Conectar WhatsApp", icon: Smartphone, path: "/afiliado/conectar-celular" },
-    { title: "Sair", icon: LogOut, path: "", action: handleLogout },
+    { title: t('nav.connect_whatsapp'), icon: Smartphone, path: "/afiliado/conectar-celular" },
+    { title: t('nav.logout'), icon: LogOut, path: "", action: handleLogout },
   ];
 
   const isActive = (path: string) => location.pathname === path;
