@@ -300,32 +300,64 @@ const AfiliadoIAMarketing = () => {
                     className="text-lg p-6 min-h-[100px]"
                     disabled={loading}
                   />
-                  <div className="border-2 border-dashed rounded-lg p-6 space-y-4">
-                    <div className="flex items-center justify-center">
-                      <label className="cursor-pointer">
-                        <input type="file" multiple accept="image/*,video/*" onChange={handleFileUpload} className="hidden" />
-                        <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors">
-                          <Upload className="h-5 w-5" />
-                          <span className="font-medium">Upload Fotos/Vídeos</span>
-                        </div>
-                      </label>
-                    </div>
-                    {uploadedFiles.length > 0 && (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                        {uploadedFiles.map((file, index) => (
-                          <div key={index} className="relative group">
-                            <div className="aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                              {file.type.startsWith('image/') ? (
-                                <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
-                              ) : (
-                                <Video className="h-8 w-8 text-muted-foreground" />
-                              )}
-                            </div>
-                            <button onClick={() => removeFile(index)} className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs">✕</button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Upload de Logo */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Logo da empresa</Label>
+                      <p className="text-xs text-muted-foreground">A logo será aplicada sobre a imagem sem alteração</p>
+                      <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px] flex items-center justify-center">
+                        {logoFile ? (
+                          <div className="relative inline-block">
+                            <img src={URL.createObjectURL(logoFile)} className="h-16 w-16 object-contain rounded" alt="Logo" />
+                            <button type="button" onClick={() => setLogoFile(null)}
+                              className="absolute -right-2 -top-2 h-5 w-5 p-0 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs">
+                              <X className="h-3 w-3" />
+                            </button>
                           </div>
-                        ))}
+                        ) : (
+                          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                            <Upload className="h-4 w-4" />
+                            <span>Anexar logo</span>
+                            <input type="file" accept="image/png,image/webp,image/svg+xml" className="hidden"
+                              onChange={(e) => { const f = e.target.files?.[0]; if (f) setLogoFile(f); }} />
+                          </label>
+                        )}
                       </div>
-                    )}
+                    </div>
+
+                    {/* Upload de Imagens de Referência */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Fotos do produto / referência</Label>
+                      <p className="text-xs text-muted-foreground">A IA usará como inspiração (até 4)</p>
+                      <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px]">
+                        {referenceFiles.length < 4 && (
+                          <div className="flex items-center justify-center mb-2">
+                            <label className="cursor-pointer">
+                              <input type="file" multiple accept="image/*" onChange={handleReferenceFileUpload} className="hidden" />
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors text-sm">
+                                <Upload className="h-4 w-4" />
+                                <span>Upload Fotos</span>
+                              </div>
+                            </label>
+                          </div>
+                        )}
+                        {referenceFiles.length > 0 && (
+                          <div className="grid grid-cols-4 gap-2">
+                            {referenceFiles.map((file, index) => (
+                              <div key={index} className="relative group">
+                                <div className="aspect-square rounded-lg overflow-hidden bg-muted">
+                                  <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
+                                </div>
+                                <button onClick={() => removeReferenceFile(index)}
+                                  className="absolute top-0.5 right-0.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <Button onClick={handleAnalyze} disabled={loading || !url.trim()} size="lg" className="w-full text-lg py-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
                     {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Analisando com IA...</> : <>✨ ANALISAR COM IA</>}
