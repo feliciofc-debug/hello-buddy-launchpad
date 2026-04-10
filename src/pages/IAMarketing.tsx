@@ -42,6 +42,7 @@ interface ProductAnalysis {
   story: PostVariations;
   whatsapp: PostVariations;
   generatedImage?: string | null;
+  applyLogoOverlay?: boolean;
 }
 
 const IAMarketing = () => {
@@ -175,11 +176,12 @@ const IAMarketing = () => {
         facebook: sanitizedGeneratedPosts.facebook,
         story: sanitizedGeneratedPosts.story,
         whatsapp: sanitizedGeneratedPosts.whatsapp,
-        generatedImage: data.generatedImage || null
+        generatedImage: data.generatedImage || null,
+        applyLogoOverlay: data.applyLogoOverlay !== false
       };
 
       // Se tem imagem gerada E logo, compor a logo sobre a imagem no frontend
-      if (analysisResult.generatedImage && logoFile) {
+      if (analysisResult.generatedImage && logoFile && analysisResult.applyLogoOverlay !== false) {
         try {
           const logob64 = logoBase64 || await fileToBase64(logoFile);
           const composited = await compositeImageWithLogo(analysisResult.generatedImage, logob64);
@@ -611,8 +613,8 @@ const IAMarketing = () => {
 
                     {/* Upload de Imagens de Referência */}
                     <div className="space-y-2">
-                      <Label className="text-sm font-medium">Fotos do produto / referência</Label>
-                      <p className="text-xs text-muted-foreground">A IA usará como inspiração para criar a imagem (até 4)</p>
+                      <Label className="text-sm font-medium">Foto base / referências</Label>
+                      <p className="text-xs text-muted-foreground">A 1ª foto pode ser usada como base principal da edição; as demais servem de apoio visual (até 4)</p>
                       <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px]">
                         {referenceFiles.length < 4 && (
                           <div className="flex items-center justify-center mb-2">
