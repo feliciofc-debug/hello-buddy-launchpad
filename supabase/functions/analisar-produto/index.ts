@@ -67,6 +67,81 @@ function buildConceptKeywords(text: string): string {
   return compact.split(/\s+/).slice(0, 12).join(' ');
 }
 
+function hasMatch(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function isPortraitEditRequest(text: string, imageCount: number): boolean {
+  if (imageCount === 0) return false;
+
+  const normalized = text.toLowerCase();
+  const identityPatterns = [
+    /use minha própria foto/i,
+    /use minha propria foto/i,
+    /minha foto/i,
+    /meu rosto/i,
+    /minha identidade/i,
+    /meus traços/i,
+    /meus tracos/i,
+    /não crie outra pessoa/i,
+    /nao crie outra pessoa/i,
+    /preserve meu rosto/i,
+    /preserve minha identidade/i,
+    /sou eu/i,
+    /me coloque/i,
+    /me deixa/i,
+    /me deixe/i,
+    /retrato executivo/i,
+  ];
+
+  const appearancePatterns = [
+    /mais cabelo/i,
+    /cabelo/i,
+    /óculos/i,
+    /oculos/i,
+    /camisa/i,
+    /terno/i,
+    /escritório/i,
+    /escritorio/i,
+    /executivo/i,
+    /jovial/i,
+    /magro/i,
+    /magra/i,
+    /dentes/i,
+    /sorriso/i,
+    /ultrarrealista/i,
+    /fotográfico/i,
+    /fotografico/i,
+  ];
+
+  const firstPersonHints = [' meu ', ' minha ', ' comigo ', ' mim ', ' me '].some((token) =>
+    ` ${normalized} `.includes(token)
+  );
+
+  return hasMatch(text, identityPatterns) || (firstPersonHints && hasMatch(text, appearancePatterns));
+}
+
+function buildPortraitEditPrompt(userPrompt: string, hasLogoReference: boolean, supportImageCount: number): string {
+  return `Edite a PRIMEIRA imagem enviada usando-a como BASE PRINCIPAL da composição final.
+
+A pessoa da primeira foto deve continuar claramente sendo a MESMA pessoa na imagem final. Preserve rosto, identidade, traços naturais, expressão geral e reconhecibilidade.
+
+REGRAS INEGOCIÁVEIS:
+- NÃO crie outra pessoa
+- NÃO troque o rosto
+- NÃO altere traços faciais essenciais
+- NÃO rejuvenesça ou emagreça de forma exagerada
+- NÃO plastifique a pele
+- NÃO faça caricatura, ilustração, cartoon ou visual artificial
+- Ajustes em cabelo, dentes, óculos, roupa, postura, iluminação e cenário devem ser sutis, elegantes e realistas
+- Se o usuário pedir enquadramento mais aberto ou “mais ao longe”, mostre mais do ambiente e reduza o tamanho relativo da pessoa no quadro
+- Priorize fotografia corporativa premium, ultrarrealista, natural, 8K, iluminação profissional de estúdio, materiais e texturas reais
+- Mantenha proporções humanas corretas, mãos normais, olhos normais e apenas um rosto
+
+${supportImageCount > 0 ? `IMAGENS DE APOIO:\n- As ${supportImageCount} imagem(ns) adicional(is) servem apenas como referência secundária e NUNCA substituem a pessoa da primeira foto.\n\n` : ''}${hasLogoReference ? `LOGO / MARCA:\n- A última imagem enviada é uma referência da marca. Use-a apenas para integrar a identidade visual ao cenário de forma corporativa, elegante e coerente com o ambiente.\n\n` : `MARCA / IDENTIDADE VISUAL:\n- Se o usuário pedir logo ou identidade visual no ambiente, represente isso como branding corporativo premium no cenário.\n\n`}INSTRUÇÕES DO USUÁRIO — siga com máxima fidelidade:
+${userPrompt}`;
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -210,6 +285,8 @@ serve(async (req) => {
 
     // Verificar se é uma URL válida ou apenas um prompt de texto
     const isUrl = url.match(/^https?:\/\//i);
+    const portraitEditMode = !isUrl && isPortraitEditRequest(url, images.length);
+    let applyLogoOverlay = !portraitEditMode;
     
     // DETECTAR IDIOMA DO PROMPT DO USUÁRIO
     const detectLanguage = (text: string): string => {
@@ -230,22 +307,53 @@ serve(async (req) => {
 
     // SEMPRE gera imagem quando não é URL (com ou sem logo)
     if (!isUrl) {
-      let referenceImage: string | null = null;
-      
-      // Usar imagens de referência (produto), MAS NUNCA A LOGO
-      if (images.length > 0) {
-        console.log('🎨 Imagem de referência detectada! Gerando imagem usando como inspiração...');
-        referenceImage = images[0];
+      const referenceImage = images[0] || null;
+      const supportImages = referenceImage ? images.slice(1) : [];
+      const logoReferenceForAI = typeof logo === 'string' && !logo.startsWith('data:image/svg') ? logo : null;
+
+      if (referenceImage) {
+        console.log(
+          portraitEditMode
+            ? '🧑‍💼 Foto base detectada! Gerando edição fiel do retrato...'
+            : '🎨 Imagem de referência detectada! Gerando imagem usando como inspiração...'
+        );
       } else {
         console.log('🎨 Nenhuma referência, gerando imagem do zero...');
       }
 
-      // SEMPRE gerar uma nova imagem (com ou sem referência, SEM logo)
-      let imagePrompt = '';
-      const conceptKeywords = buildConceptKeywords(url);
-      
-      if (referenceImage) {
-        imagePrompt = `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
+      let imageGenMessages: any[] = [];
+
+      if (portraitEditMode && referenceImage) {
+        imageGenMessages = [
+          {
+            role: 'system',
+            content: 'Você é um editor fotográfico especializado em retratos executivos ultrarrealistas. Sua prioridade máxima é preservar a identidade real da pessoa da primeira foto. Nunca substitua a pessoa, nunca gere outro rosto e nunca entregue resultado artificial.'
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: buildPortraitEditPrompt(url, Boolean(logoReferenceForAI), supportImages.length)
+              },
+              {
+                type: 'image_url',
+                image_url: { url: referenceImage }
+              },
+              ...supportImages.map((image) => ({
+                type: 'image_url',
+                image_url: { url: image }
+              })),
+              ...(logoReferenceForAI
+                ? [{ type: 'image_url', image_url: { url: logoReferenceForAI } }]
+                : []),
+            ]
+          }
+        ];
+      } else {
+        const conceptKeywords = buildConceptKeywords(url);
+        const imagePrompt = referenceImage
+          ? `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
 
 Create a stunning, photorealistic social media marketing image for: ${conceptKeywords}.
 
@@ -262,9 +370,8 @@ CRITICAL RULES:
 - NO slogans, NO captions, NO labels, NO watermarks
 - If text starts appearing, replace with visual elements instead
 - The image must be 100% text-free
-- Use the reference image as inspiration for the product/concept style`;
-      } else {
-        imagePrompt = `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
+- Use the reference image as inspiration for the product/concept style`
+          : `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
 
 Create a stunning, photorealistic social media marketing image for: ${conceptKeywords}.
 
@@ -281,27 +388,31 @@ CRITICAL RULES:
 - If text starts appearing, replace with visual elements instead
 - The image must be 100% text-free
 - Communicate through colors, shapes, products and composition ONLY`;
+
+        imageGenMessages = [
+          {
+            role: 'user',
+            content: referenceImage
+              ? [
+                  {
+                    type: 'image_url',
+                    image_url: { url: referenceImage }
+                  },
+                  {
+                    type: 'text',
+                    text: imagePrompt
+                  }
+                ]
+              : imagePrompt
+          }
+        ];
       }
-      
-      const imageGenMessages: any[] = [
-        {
-          role: "user",
-          content: referenceImage 
-            ? [
-                {
-                  type: 'image_url',
-                  image_url: { url: referenceImage }
-                },
-                {
-                  type: 'text',
-                  text: imagePrompt
-                }
-              ]
-            : imagePrompt
-        }
-      ];
-      
-      console.log('🎨 Iniciando geração de imagem...', referenceImage ? 'COM referência' : 'SEM referência', '| Logo NÃO enviada para IA');
+
+      console.log(
+        '🎨 Iniciando geração de imagem...',
+        portraitEditMode ? 'MODO EDIÇÃO DE RETRATO' : referenceImage ? 'COM referência' : 'SEM referência',
+        '| Logo enviada para IA:', portraitEditMode && logoReferenceForAI ? 'SIM' : 'NÃO'
+      );
 
       // Chamar API de geração de imagem
       const imageGenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -532,7 +643,8 @@ Retorne APENAS um JSON válido no formato:
           facebook: posts.facebook,
           story: posts.story,
           whatsapp: posts.whatsapp || { opcaoA: '', opcaoB: '', opcaoC: '' },
-          generatedImage: generatedImage // Incluir imagem gerada se houver
+          generatedImage: generatedImage,
+          applyLogoOverlay
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
