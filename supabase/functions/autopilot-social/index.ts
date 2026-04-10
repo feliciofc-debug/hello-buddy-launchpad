@@ -164,6 +164,7 @@ serve(async (req) => {
         const postsHoje = Math.min(config.posts_por_dia, produtos.length - startIndex)
         const produtosHoje = produtos.slice(startIndex, startIndex + postsHoje)
         const horarios = calcularHorarios(config.horario_inicio, config.horario_fim, postsHoje, nowSaoPaulo)
+        let postsAgendadosComSucesso = 0
 
         console.log('⏰ [AUTOPILOT] Horários calculados', {
           config_id: config.id,
@@ -175,175 +176,191 @@ serve(async (req) => {
           const produto = produtosHoje[i]
           const horarioPost = horarios[i]
 
-          console.log('🧩 [AUTOPILOT] Processando produto', {
-            config_id: config.id,
-            user_id: config.user_id,
-            produto_id: produto.id,
-            produto_nome: produto.nome,
-            produto_user_id: produto.user_id,
-            horario_post_utc: horarioPost.toISOString(),
-            horario_post_sp: formatSaoPauloIso(horarioPost),
-          })
+          try {
+            console.log('🧩 [AUTOPILOT] Processando produto', {
+              config_id: config.id,
+              user_id: config.user_id,
+              produto_id: produto.id,
+              produto_nome: produto.nome,
+              produto_user_id: produto.user_id,
+              horario_post_utc: horarioPost.toISOString(),
+              horario_post_sp: formatSaoPauloIso(horarioPost),
+            })
 
-          let textoFacebook = ''
-          let textoInstagram = ''
-          let iaStatus = 'nao_usou'
+            let textoFacebook = ''
+            let textoInstagram = ''
+            let iaStatus = 'nao_usou'
 
-          if (config.gerar_texto_ia) {
-            try {
-              console.log(`✨ [AUTOPILOT] Chamando gerar-posts para ${produto.nome}`)
-              const response = await fetch(`${SUPABASE_URL}/functions/v1/gerar-posts`, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                  'Content-Type': 'application/json',
-                  'apikey': SUPABASE_SERVICE_ROLE_KEY,
-                },
-                body: JSON.stringify({
-                  produto: {
-                    nome: produto.nome,
-                    preco: produto.preco,
-                    descricao: produto.descricao || '',
-                  }
+            if (config.gerar_texto_ia) {
+              const controller = new AbortController()
+              const timeout = setTimeout(() => controller.abort(), 15000)
+
+              try {
+                console.log(`✨ [AUTOPILOT] Chamando gerar-posts para ${produto.nome}`)
+                const response = await fetch(`${SUPABASE_URL}/functions/v1/gerar-posts`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_SERVICE_ROLE_KEY,
+                  },
+                  signal: controller.signal,
+                  body: JSON.stringify({
+                    produto: {
+                      nome: produto.nome,
+                      preco: produto.preco,
+                      descricao: produto.descricao || '',
+                    }
+                  })
                 })
-              })
+                clearTimeout(timeout)
 
-              const iaData = await response.json()
-              console.log('📝 [AUTOPILOT] Resposta gerar-posts', {
-                produto_id: produto.id,
-                status: response.status,
-                ok: response.ok,
-                tem_posts: !!iaData?.posts,
-                erro: iaData?.error,
-              })
+                const iaData = await response.json()
+                console.log('📝 [AUTOPILOT] Resposta gerar-posts', {
+                  produto_id: produto.id,
+                  status: response.status,
+                  ok: response.ok,
+                  tem_posts: !!iaData?.posts,
+                  erro: iaData?.error,
+                })
 
-              if (!response.ok) {
-                throw new Error(iaData?.error || `Falha HTTP ${response.status} ao gerar texto`) 
+                if (!response.ok) {
+                  throw new Error(iaData?.error || `Falha HTTP ${response.status} ao gerar texto`)
+                }
+
+                if (iaData?.posts) {
+                  const variacaoKey = escolherVariacao(config.estilo_texto, (config.total_publicados || 0) + i)
+                  textoFacebook = iaData.posts.facebook?.[variacaoKey] || iaData.posts.facebook?.opcaoA || ''
+                  textoInstagram = iaData.posts.instagram?.[variacaoKey] || iaData.posts.instagram?.opcaoA || ''
+                  iaStatus = 'ok'
+                }
+              } catch (iaError) {
+                clearTimeout(timeout)
+                iaStatus = 'fallback'
+                console.error(`⚠️ [AUTOPILOT] Erro/timeout IA para ${produto.nome}, usando texto padrão:`, iaError instanceof Error ? iaError.message : iaError)
               }
-
-              if (iaData?.posts) {
-                const variacaoKey = escolherVariacao(config.estilo_texto, (config.total_publicados || 0) + i)
-                textoFacebook = iaData.posts.facebook?.[variacaoKey] || iaData.posts.facebook?.opcaoA || ''
-                textoInstagram = iaData.posts.instagram?.[variacaoKey] || iaData.posts.instagram?.opcaoA || ''
-                iaStatus = 'ok'
-              }
-            } catch (iaError) {
-              iaStatus = 'fallback'
-              console.error(`⚠️ [AUTOPILOT] Erro IA para ${produto.nome}:`, iaError)
             }
-          }
 
-          if (!textoFacebook) {
-            textoFacebook = `🔥 ${produto.nome}\n💰 R$ ${produto.preco?.toFixed(2) || '---'}\n\nConfira essa oferta incrível!\n\n#ofertas #promocao`
-          }
-          if (!textoInstagram) {
-            textoInstagram = textoFacebook
-          }
+            if (!textoFacebook) {
+              textoFacebook = `🔥 ${produto.nome}\n💰 R$ ${produto.preco?.toFixed(2) || '---'}\n\nConfira essa oferta incrível!\n\n#ofertas #promocao`
+            }
+            if (!textoInstagram) {
+              textoInstagram = textoFacebook
+            }
 
-          const linkProduto = produto.link || produto.link_marketplace || null
-          if (config.incluir_link && linkProduto) {
-            textoFacebook = `${textoFacebook}\n\n🔗 Compre aqui: ${linkProduto}`
-            textoInstagram = `${textoInstagram}\n\n🔗 Link na bio ou acesse: ${linkProduto}`
-          }
+            const linkProduto = produto.link || produto.link_marketplace || null
+            if (config.incluir_link && linkProduto) {
+              textoFacebook = `${textoFacebook}\n\n🔗 Compre aqui: ${linkProduto}`
+              textoInstagram = `${textoInstagram}\n\n🔗 Link na bio ou acesse: ${linkProduto}`
+            }
 
-          const imagemUrl = config.incluir_imagem ? (produto.imagem_url || null) : null
-          console.log('🖼️ [AUTOPILOT] Payload base do post', {
-            produto_id: produto.id,
-            has_image: !!imagemUrl,
-            has_link: !!linkProduto,
-            ia_status: iaStatus,
-          })
+            const imagemUrl = config.incluir_imagem ? (produto.imagem_url || null) : null
+            console.log('🖼️ [AUTOPILOT] Payload base do post', {
+              produto_id: produto.id,
+              has_image: !!imagemUrl,
+              has_link: !!linkProduto,
+              ia_status: iaStatus,
+            })
 
-          const { data: metaConn } = await supabase
-            .from('meta_connections')
-            .select('page_id, ig_account_id')
-            .eq('user_id', config.user_id)
-            .eq('is_active', true)
-            .single()
-
-          const clientPageId = metaConn?.page_id || ''
-          const canPostFacebook = Boolean(config.postar_facebook && metaConn?.page_id)
-          const canPostInstagram = Boolean(config.postar_instagram && metaConn?.ig_account_id)
-
-          console.log('🔐 [AUTOPILOT] Canais Meta do cliente', {
-            user_id: config.user_id,
-            facebook: canPostFacebook,
-            instagram: canPostInstagram,
-            page_id: clientPageId || null,
-            ig_account_id: metaConn?.ig_account_id || null,
-          })
-
-          if (!canPostFacebook && !canPostInstagram) {
-            throw new Error('Cliente sem conexão Meta ativa para os canais configurados')
-          }
-
-          if (canPostFacebook) {
-            const facebookInsert = await supabase
-              .from('social_posts_queue')
-              .insert({
-                user_id: config.user_id,
-                produto_id: produto.id,
-                produto_source: 'produtos',
-                platform: 'facebook',
-                page_id: clientPageId,
-                post_text: textoFacebook,
-                image_url: imagemUrl,
-                link_url: linkProduto,
-                status: 'pendente',
-                scheduled_at: horarioPost.toISOString(),
-              })
-              .select('id')
+            const { data: metaConn } = await supabase
+              .from('meta_connections')
+              .select('page_id, ig_account_id')
+              .eq('user_id', config.user_id)
+              .eq('is_active', true)
               .single()
 
-            if (facebookInsert.error) {
-              console.error('❌ [AUTOPILOT] Erro insert Facebook:', facebookInsert.error)
-              throw new Error(`Erro ao inserir Facebook na fila: ${facebookInsert.error.message}`)
+            const clientPageId = metaConn?.page_id || ''
+            const canPostFacebook = Boolean(config.postar_facebook && metaConn?.page_id)
+            const canPostInstagram = Boolean(config.postar_instagram && metaConn?.ig_account_id)
+
+            console.log('🔐 [AUTOPILOT] Canais Meta do cliente', {
+              user_id: config.user_id,
+              facebook: canPostFacebook,
+              instagram: canPostInstagram,
+              page_id: clientPageId || null,
+              ig_account_id: metaConn?.ig_account_id || null,
+            })
+
+            if (!canPostFacebook && !canPostInstagram) {
+              throw new Error('Cliente sem conexão Meta ativa para os canais configurados')
             }
 
-            console.log('📘 [AUTOPILOT] Facebook agendado com sucesso', {
-              queue_id: facebookInsert.data?.id,
-              produto_id: produto.id,
-              horario_utc: horarioPost.toISOString(),
-              horario_sp: formatSaoPauloIso(horarioPost),
-            })
-          } else if (config.postar_facebook) {
-            console.log(`⚠️ [AUTOPILOT] Facebook pulado para ${produto.nome}: cliente sem página conectada`)
-          }
+            if (canPostFacebook) {
+              const facebookInsert = await supabase
+                .from('social_posts_queue')
+                .insert({
+                  user_id: config.user_id,
+                  produto_id: produto.id,
+                  produto_source: 'produtos',
+                  platform: 'facebook',
+                  page_id: clientPageId,
+                  post_text: textoFacebook,
+                  image_url: imagemUrl,
+                  link_url: linkProduto,
+                  status: 'pendente',
+                  scheduled_at: horarioPost.toISOString(),
+                })
+                .select('id')
+                .single()
 
-          if (canPostInstagram && imagemUrl) {
-            const horarioIg = new Date(horarioPost.getTime() + 5 * 60 * 1000)
-            const instagramInsert = await supabase
-              .from('social_posts_queue')
-              .insert({
-                user_id: config.user_id,
+              if (facebookInsert.error) {
+                console.error('❌ [AUTOPILOT] Erro insert Facebook:', facebookInsert.error)
+                throw new Error(`Erro ao inserir Facebook na fila: ${facebookInsert.error.message}`)
+              }
+
+              postsAgendadosComSucesso++
+
+              console.log('📘 [AUTOPILOT] Facebook agendado com sucesso', {
+                queue_id: facebookInsert.data?.id,
                 produto_id: produto.id,
-                produto_source: 'produtos',
-                platform: 'instagram',
-                page_id: clientPageId,
-                post_text: textoInstagram,
-                image_url: imagemUrl,
-                link_url: linkProduto,
-                status: 'pendente',
-                scheduled_at: horarioIg.toISOString(),
+                horario_utc: horarioPost.toISOString(),
+                horario_sp: formatSaoPauloIso(horarioPost),
               })
-              .select('id')
-              .single()
-
-            if (instagramInsert.error) {
-              console.error('❌ [AUTOPILOT] Erro insert Instagram:', instagramInsert.error)
-              throw new Error(`Erro ao inserir Instagram na fila: ${instagramInsert.error.message}`)
+            } else if (config.postar_facebook) {
+              console.log(`⚠️ [AUTOPILOT] Facebook pulado para ${produto.nome}: cliente sem página conectada`)
             }
 
-            console.log('📸 [AUTOPILOT] Instagram agendado com sucesso', {
-              queue_id: instagramInsert.data?.id,
-              produto_id: produto.id,
-              horario_utc: horarioIg.toISOString(),
-              horario_sp: formatSaoPauloIso(horarioIg),
-            })
-          } else if (config.postar_instagram && !imagemUrl) {
-            console.log(`⚠️ [AUTOPILOT] Instagram pulado para ${produto.nome}: sem imagem`)
-          } else if (config.postar_instagram) {
-            console.log(`⚠️ [AUTOPILOT] Instagram pulado para ${produto.nome}: cliente sem Instagram conectado`)
+            if (canPostInstagram && imagemUrl) {
+              const horarioIg = new Date(horarioPost.getTime() + 5 * 60 * 1000)
+              const instagramInsert = await supabase
+                .from('social_posts_queue')
+                .insert({
+                  user_id: config.user_id,
+                  produto_id: produto.id,
+                  produto_source: 'produtos',
+                  platform: 'instagram',
+                  page_id: clientPageId,
+                  post_text: textoInstagram,
+                  image_url: imagemUrl,
+                  link_url: linkProduto,
+                  status: 'pendente',
+                  scheduled_at: horarioIg.toISOString(),
+                })
+                .select('id')
+                .single()
+
+              if (instagramInsert.error) {
+                console.error('❌ [AUTOPILOT] Erro insert Instagram:', instagramInsert.error)
+                throw new Error(`Erro ao inserir Instagram na fila: ${instagramInsert.error.message}`)
+              }
+
+              postsAgendadosComSucesso++
+
+              console.log('📸 [AUTOPILOT] Instagram agendado com sucesso', {
+                queue_id: instagramInsert.data?.id,
+                produto_id: produto.id,
+                horario_utc: horarioIg.toISOString(),
+                horario_sp: formatSaoPauloIso(horarioIg),
+              })
+            } else if (config.postar_instagram && !imagemUrl) {
+              console.log(`⚠️ [AUTOPILOT] Instagram pulado para ${produto.nome}: sem imagem`)
+            } else if (config.postar_instagram) {
+              console.log(`⚠️ [AUTOPILOT] Instagram pulado para ${produto.nome}: cliente sem Instagram conectado`)
+            }
+          } catch (produtoError) {
+            const errMsg = produtoError instanceof Error ? produtoError.message : 'Erro desconhecido'
+            console.error(`❌ [AUTOPILOT] Erro no produto ${produto.nome} (${produto.id}), CONTINUANDO com próximo produto:`, errMsg)
+            continue
           }
         }
 
@@ -375,7 +392,7 @@ serve(async (req) => {
           proxima_execucao_sp: formatSaoPauloIso(proximaExecucao),
         })
 
-        console.log(`✅ [AUTOPILOT] Config ${config.id} concluída com ${postsHoje} produtos agendados`)
+        console.log(`✅ [AUTOPILOT] Config ${config.id} concluída: ${postsAgendadosComSucesso} posts agendados de ${postsHoje} produtos`)
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Erro desconhecido'
         console.error(`❌ [AUTOPILOT] Erro na config ${config.id}:`, errorMsg)
