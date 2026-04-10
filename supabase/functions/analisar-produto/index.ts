@@ -245,29 +245,42 @@ serve(async (req) => {
       const conceptKeywords = buildConceptKeywords(url);
       
       if (referenceImage) {
-        imagePrompt = `Create a professional, eye-catching social media marketing image inspired by these concepts: ${conceptKeywords}. 
+        imagePrompt = `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
 
-CRITICAL INSTRUCTIONS:
-1. Use the reference image as VISUAL INSPIRATION for the product/style
-2. Create a beautiful, modern composition suitable for Instagram and Facebook
-3. Professional quality, vibrant colors, clean design
-4. ABSOLUTELY NO TEXT OF ANY KIND IN THE IMAGE — zero words, zero letters, zero numbers
-5. NO slogans, NO captions, NO labels, NO watermarks, NO written content
-6. If you feel the urge to add text, replace it with a decorative shape or gradient instead
-7. Communicate ONLY through visual elements: colors, shapes, products, lighting, composition
-8. The image must be 100% text-free — this is the most important rule`;
+Create a stunning, photorealistic social media marketing image for: ${conceptKeywords}.
+
+MANDATORY STYLE RULES:
+- Photorealistic style ONLY — absolutely NO cartoon, NO illustration, NO vector art, NO clip art, NO animated style
+- Must look like a real professional photograph or high-end product photography
+- Professional studio lighting, realistic textures, real materials
+- Modern, premium, magazine-quality aesthetic
+- Suitable for Instagram and Facebook marketing posts
+- Clean composition with space for branding
+
+CRITICAL RULES:
+- ABSOLUTELY NO TEXT of any kind — zero words, zero letters, zero numbers in the image
+- NO slogans, NO captions, NO labels, NO watermarks
+- If text starts appearing, replace with visual elements instead
+- The image must be 100% text-free
+- Use the reference image as inspiration for the product/concept style`;
       } else {
-        imagePrompt = `Create a professional, eye-catching image for social media marketing inspired by these concepts: ${conceptKeywords}. 
+        imagePrompt = `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
 
-INSTRUCTIONS:
-1. Visually impactful, modern, clean design
-2. Suitable for Instagram and Facebook posts
-3. High quality, professional look
-4. ABSOLUTELY NO TEXT OF ANY KIND IN THE IMAGE — zero words, zero letters, zero numbers
-5. NO slogans, NO captions, NO labels, NO watermarks, NO written content anywhere
-6. If you feel the urge to add text, replace it with a decorative shape or gradient instead
-7. Use icons, shapes, lighting, symbolism and composition ONLY
-8. The image must be 100% text-free — this is the most important rule`;
+Create a stunning, photorealistic social media marketing image for: ${conceptKeywords}.
+
+MANDATORY STYLE RULES:
+- Photorealistic style ONLY — absolutely NO cartoon, NO illustration, NO vector art, NO clip art, NO animated style
+- Must look like a real professional photograph or high-end product photography
+- Professional studio lighting, realistic textures, real materials
+- Modern, premium, magazine-quality aesthetic
+- Suitable for Instagram and Facebook marketing posts
+
+CRITICAL RULES:
+- ABSOLUTELY NO TEXT of any kind — zero words, zero letters, zero numbers in the image
+- NO slogans, NO captions, NO labels, NO watermarks
+- If text starts appearing, replace with visual elements instead
+- The image must be 100% text-free
+- Communicate through colors, shapes, products and composition ONLY`;
       }
       
       const imageGenMessages: any[] = [
