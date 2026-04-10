@@ -193,8 +193,8 @@ serve(async (req) => {
   }
 
   try {
-    const { url, images = [], source = 'generic' } = await req.json();
-    console.log('🔍 Analisando:', url, '| Imagens enviadas:', images.length, '| Source:', source);
+    const { url, images = [], logo = null, source = 'generic' } = await req.json();
+    console.log('🔍 Analisando:', url, '| Imagens referência:', images.length, '| Logo:', logo ? 'SIM' : 'NÃO', '| Source:', source);
 
     if (!url) {
       throw new Error('Texto ou URL não fornecido');
@@ -230,61 +230,54 @@ serve(async (req) => {
 
     // SEMPRE gera imagem quando não é URL (com ou sem logo)
     if (!isUrl) {
-      let logoImage: string | null = null;
+      let referenceImage: string | null = null;
       
-      // Verificar se tem imagens (logo) enviadas
+      // Usar imagens de referência (produto), MAS NUNCA A LOGO
       if (images.length > 0) {
-        console.log('🎨 Logo detectada! Gerando imagem COM a logo incorporada...');
-        logoImage = images[0]; // Primeira imagem é a logo
+        console.log('🎨 Imagem de referência detectada! Gerando imagem usando como inspiração...');
+        referenceImage = images[0];
       } else {
-        console.log('🎨 Nenhuma imagem fornecida, gerando imagem do zero...');
+        console.log('🎨 Nenhuma referência, gerando imagem do zero...');
       }
 
-      // SEMPRE gerar uma nova imagem (com ou sem logo)
+      // SEMPRE gerar uma nova imagem (com ou sem referência, SEM logo)
       let imagePrompt = '';
       const conceptKeywords = buildConceptKeywords(url);
       
-      if (logoImage) {
-        // Prompt quando TEM logo - instruções mais específicas
+      if (referenceImage) {
         imagePrompt = `Create a professional, eye-catching social media marketing image inspired by these concepts: ${conceptKeywords}. 
 
 CRITICAL INSTRUCTIONS:
-1. INCORPORATE the logo/brand from the reference image into the final generated image
-2. The logo should be VISIBLE and well-positioned (corner, center, or watermark style)
- 3. Create a beautiful, attractive composition (product display, banner, abstract campaign visual, etc.)
-4. Use colors that complement the logo
-5. Make it suitable for Instagram, Facebook and social media
-6. Professional quality, modern design
- 7. DO NOT write the user's request, feature list, paragraphs, menus, bullet points, labels or UI copy anywhere in the artwork
- 8. NO readable text, NO slogans, NO dashboard labels, NO small print, NO captions rendered inside the image
- 9. Communicate through icons, product cards, charts, automation symbols, motion cues, gradients and composition instead of words
- 10. If text starts to appear, remove it and replace it with simple visual elements
- 11. DO NOT just return the logo - CREATE A NEW MARKETING IMAGE that includes the logo`;
-
+1. Use the reference image as VISUAL INSPIRATION for the product/style
+2. Create a beautiful, modern composition suitable for Instagram and Facebook
+3. Professional quality, vibrant colors, clean design
+4. ABSOLUTELY NO TEXT OF ANY KIND IN THE IMAGE — zero words, zero letters, zero numbers
+5. NO slogans, NO captions, NO labels, NO watermarks, NO written content
+6. If you feel the urge to add text, replace it with a decorative shape or gradient instead
+7. Communicate ONLY through visual elements: colors, shapes, products, lighting, composition
+8. The image must be 100% text-free — this is the most important rule`;
       } else {
-        // Prompt quando NÃO tem logo
         imagePrompt = `Create a professional, eye-catching image for social media marketing inspired by these concepts: ${conceptKeywords}. 
 
 INSTRUCTIONS:
-1. Make it visually impactful and attractive
+1. Visually impactful, modern, clean design
 2. Suitable for Instagram and Facebook posts
-3. Modern, clean design
-4. High quality, professional look
- 5. Focus on the concept described, but NEVER transcribe the user's prompt into the image
- 6. NO readable text, NO feature lists, NO paragraphs, NO labels, NO UI menus, NO bullet points
- 7. Use icons, shapes, lighting, product/brand symbolism and composition to communicate the idea
- 8. If text starts to appear, remove it and replace it with visual elements only
- 9. Keep the final image clean, premium and ready for social posting`;
+3. High quality, professional look
+4. ABSOLUTELY NO TEXT OF ANY KIND IN THE IMAGE — zero words, zero letters, zero numbers
+5. NO slogans, NO captions, NO labels, NO watermarks, NO written content anywhere
+6. If you feel the urge to add text, replace it with a decorative shape or gradient instead
+7. Use icons, shapes, lighting, symbolism and composition ONLY
+8. The image must be 100% text-free — this is the most important rule`;
       }
       
       const imageGenMessages: any[] = [
         {
           role: "user",
-          content: logoImage 
+          content: referenceImage 
             ? [
                 {
                   type: 'image_url',
-                  image_url: { url: logoImage }
+                  image_url: { url: referenceImage }
                 },
                 {
                   type: 'text',
@@ -295,7 +288,7 @@ INSTRUCTIONS:
         }
       ];
       
-      console.log('🎨 Iniciando geração de imagem...', logoImage ? 'COM logo' : 'SEM logo');
+      console.log('🎨 Iniciando geração de imagem...', referenceImage ? 'COM referência' : 'SEM referência', '| Logo NÃO enviada para IA');
 
       // Chamar API de geração de imagem
       const imageGenResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {

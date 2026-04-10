@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Instagram, MessageCircle, Copy, Calendar as CalendarIcon, Upload, Video, Facebook, Sparkles, Download } from "lucide-react";
+import { Loader2, Instagram, MessageCircle, Copy, Calendar as CalendarIcon, Upload, Video, Facebook, Sparkles, Download, X } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -39,7 +39,8 @@ const AfiliadoIAMarketing = () => {
   const [resultado, setResultado] = useState<ProductAnalysis | null>(null);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [referenceFiles, setReferenceFiles] = useState<File[]>([]);
   const [selectedVariations, setSelectedVariations] = useState({
     instagram: 'opcaoA' as keyof PostVariations,
     facebook: 'opcaoA' as keyof PostVariations,
@@ -54,6 +55,42 @@ const AfiliadoIAMarketing = () => {
   });
   const safeProductLink = getSafeProductLink(resultado?.produto);
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const compositeImageWithLogo = async (baseImageUrl: string, logoBase64: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject('No canvas context'); return; }
+      const baseImg = new Image();
+      baseImg.crossOrigin = 'anonymous';
+      baseImg.onload = () => {
+        canvas.width = baseImg.width;
+        canvas.height = baseImg.height;
+        ctx.drawImage(baseImg, 0, 0);
+        const logoImg = new Image();
+        logoImg.onload = () => {
+          const logoMaxWidth = canvas.width * 0.2;
+          const logoScale = Math.min(logoMaxWidth / logoImg.width, 1);
+          const logoW = logoImg.width * logoScale;
+          const logoH = logoImg.height * logoScale;
+          ctx.drawImage(logoImg, canvas.width - logoW - 20, canvas.height - logoH - 20, logoW, logoH);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        logoImg.onerror = () => resolve(baseImageUrl);
+        logoImg.src = logoBase64;
+      };
+      baseImg.onerror = () => reject('Failed to load base image');
+      baseImg.src = baseImageUrl;
+    });
+  };
+
   const handleAnalyze = async () => {
     if (!url.trim()) { toast.error("Digite uma descrição ou cole um link"); return; }
     setLoading(true);
@@ -62,21 +99,14 @@ const AfiliadoIAMarketing = () => {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) { toast.error("Você precisa estar logado"); return; }
 
-      const imagesBase64: string[] = [];
-      for (const file of uploadedFiles) {
-        if (file.type.startsWith('image/')) {
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          });
-          imagesBase64.push(base64);
-        }
-      }
+      const imagesBase64 = await Promise.all(
+        referenceFiles.filter(f => f.type.startsWith('image/')).map(fileToBase64)
+      );
+      const logoBase64 = logoFile ? await fileToBase64(logoFile) : null;
 
       const isShopeeUrl = url.trim().toLowerCase().includes('shopee.com');
       const { data, error } = await supabase.functions.invoke('analisar-produto', {
-        body: { url: url.trim(), images: imagesBase64, source: isShopeeUrl ? 'shopee' : 'generic' }
+        body: { url: url.trim(), images: imagesBase64, logo: logoBase64, source: isShopeeUrl ? 'shopee' : 'generic' }
       });
 
       if (error) throw error;
@@ -97,6 +127,17 @@ const AfiliadoIAMarketing = () => {
         whatsapp: sanitizedGeneratedPosts.whatsapp,
         generatedImage: data.generatedImage || null
       };
+
+      // Se tem imagem gerada E logo, compor a logo sobre a imagem
+      if (analysisResult.generatedImage && logoFile) {
+        try {
+          const logob64 = logoBase64 || await fileToBase64(logoFile);
+          const composited = await compositeImageWithLogo(analysisResult.generatedImage, logob64);
+          analysisResult.generatedImage = composited;
+        } catch (e) {
+          console.error('Erro ao compor logo:', e);
+        }
+      }
 
       setResultado(analysisResult);
       if (data.generatedImage) toast.success("🎨 Imagem gerada com IA!");
@@ -130,21 +171,21 @@ const AfiliadoIAMarketing = () => {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReferenceFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     const newFiles = Array.from(files).filter(file => {
-      if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
+      if (!file.type.startsWith('image/')) {
         toast.error(`${file.name} não é válido`);
         return false;
       }
       return true;
-    });
-    setUploadedFiles(prev => [...prev, ...newFiles]);
+    }).slice(0, 4 - referenceFiles.length);
+    setReferenceFiles(prev => [...prev, ...newFiles]);
     toast.success(`${newFiles.length} arquivo(s) adicionado(s)`);
   };
 
-  const removeFile = (index: number) => setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  const removeReferenceFile = (index: number) => setReferenceFiles(prev => prev.filter((_, i) => i !== index));
   const handleCopy = (text: string, type: string) => {
     const sanitizedText = sanitizeGeneratedPostText(text, url.trim());
     navigator.clipboard.writeText(safeProductLink ? `${sanitizedText}\n\n🔗 ${safeProductLink}` : sanitizedText);
@@ -259,32 +300,64 @@ const AfiliadoIAMarketing = () => {
                     className="text-lg p-6 min-h-[100px]"
                     disabled={loading}
                   />
-                  <div className="border-2 border-dashed rounded-lg p-6 space-y-4">
-                    <div className="flex items-center justify-center">
-                      <label className="cursor-pointer">
-                        <input type="file" multiple accept="image/*,video/*" onChange={handleFileUpload} className="hidden" />
-                        <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors">
-                          <Upload className="h-5 w-5" />
-                          <span className="font-medium">Upload Fotos/Vídeos</span>
-                        </div>
-                      </label>
-                    </div>
-                    {uploadedFiles.length > 0 && (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                        {uploadedFiles.map((file, index) => (
-                          <div key={index} className="relative group">
-                            <div className="aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-                              {file.type.startsWith('image/') ? (
-                                <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
-                              ) : (
-                                <Video className="h-8 w-8 text-muted-foreground" />
-                              )}
-                            </div>
-                            <button onClick={() => removeFile(index)} className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs">✕</button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Upload de Logo */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Logo da empresa</Label>
+                      <p className="text-xs text-muted-foreground">A logo será aplicada sobre a imagem sem alteração</p>
+                      <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px] flex items-center justify-center">
+                        {logoFile ? (
+                          <div className="relative inline-block">
+                            <img src={URL.createObjectURL(logoFile)} className="h-16 w-16 object-contain rounded" alt="Logo" />
+                            <button type="button" onClick={() => setLogoFile(null)}
+                              className="absolute -right-2 -top-2 h-5 w-5 p-0 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs">
+                              <X className="h-3 w-3" />
+                            </button>
                           </div>
-                        ))}
+                        ) : (
+                          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                            <Upload className="h-4 w-4" />
+                            <span>Anexar logo</span>
+                            <input type="file" accept="image/png,image/webp,image/svg+xml" className="hidden"
+                              onChange={(e) => { const f = e.target.files?.[0]; if (f) setLogoFile(f); }} />
+                          </label>
+                        )}
                       </div>
-                    )}
+                    </div>
+
+                    {/* Upload de Imagens de Referência */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Fotos do produto / referência</Label>
+                      <p className="text-xs text-muted-foreground">A IA usará como inspiração (até 4)</p>
+                      <div className="border-2 border-dashed rounded-lg p-3 min-h-[80px]">
+                        {referenceFiles.length < 4 && (
+                          <div className="flex items-center justify-center mb-2">
+                            <label className="cursor-pointer">
+                              <input type="file" multiple accept="image/*" onChange={handleReferenceFileUpload} className="hidden" />
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 rounded-lg transition-colors text-sm">
+                                <Upload className="h-4 w-4" />
+                                <span>Upload Fotos</span>
+                              </div>
+                            </label>
+                          </div>
+                        )}
+                        {referenceFiles.length > 0 && (
+                          <div className="grid grid-cols-4 gap-2">
+                            {referenceFiles.map((file, index) => (
+                              <div key={index} className="relative group">
+                                <div className="aspect-square rounded-lg overflow-hidden bg-muted">
+                                  <img src={URL.createObjectURL(file)} alt={file.name} className="w-full h-full object-cover" />
+                                </div>
+                                <button onClick={() => removeReferenceFile(index)}
+                                  className="absolute top-0.5 right-0.5 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <Button onClick={handleAnalyze} disabled={loading || !url.trim()} size="lg" className="w-full text-lg py-6 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700">
                     {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Analisando com IA...</> : <>✨ ANALISAR COM IA</>}
