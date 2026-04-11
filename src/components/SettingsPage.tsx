@@ -95,12 +95,12 @@ const SettingsPage = () => {
               ) : metaConnection ? (
                 <div className="space-y-4">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                    ✅ Conectado
+                    ✅ {t('settings.connected')}
                   </span>
 
                   <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
                     {metaConnection.page_name && (
-                      <p><span className="font-medium">Página:</span> {metaConnection.page_name}</p>
+                      <p><span className="font-medium">{t('settings.page_label')}</span> {metaConnection.page_name}</p>
                     )}
                     {metaConnection.ig_username && (
                       <p><span className="font-medium">Instagram:</span> @{metaConnection.ig_username}</p>
@@ -109,7 +109,7 @@ const SettingsPage = () => {
                       <p><span className="font-medium">Facebook Page ID:</span> {metaConnection.page_id}</p>
                     )}
                     {metaConnection.last_verified_at && (
-                      <p><span className="font-medium">Conectado em:</span> {new Date(metaConnection.last_verified_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                      <p><span className="font-medium">{t('settings.connected_since')}</span> {new Date(metaConnection.last_verified_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                     )}
                   </div>
 
@@ -118,7 +118,7 @@ const SettingsPage = () => {
                       onClick={handleConnect}
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
                     >
-                      🔄 Reconectar
+                      🔄 {t('settings.reconnect')}
                     </button>
                     <button
                       onClick={handleDisconnect}
@@ -126,14 +126,14 @@ const SettingsPage = () => {
                       className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2"
                     >
                       {disconnecting && <Loader2 className="w-4 h-4 animate-spin" />}
-                      🔌 Desconectar
+                      🔌 {t('settings.disconnect')}
                     </button>
                   </div>
                 </div>
               ) : (
                 <div>
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 mb-4">
-                    Não conectado
+                    {t('settings.not_connected')}
                   </span>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 mt-3">
                     {t('settings.meta_business_description')}
