@@ -1,13 +1,41 @@
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { useEffect, useState } from 'react';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const [metaConnection, setMetaConnection] = useState<any>(null);
+  const [loadingMeta, setLoadingMeta] = useState(true);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  useEffect(() => {
+    const fetchMetaConnection = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoadingMeta(false); return; }
+      const { data } = await supabase
+        .from('meta_connections')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      setMetaConnection(data);
+      setLoadingMeta(false);
+    };
+    fetchMetaConnection();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true' && params.get('platform') === 'meta') {
+      toast.success('✅ Meta Business conectado com sucesso!');
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('error') === 'true') {
+      toast.error('❌ Erro ao conectar. Tente novamente.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const handleConnect = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -17,6 +45,23 @@ const SettingsPage = () => {
     }
     const authUrl = `https://www.facebook.com/v25.0/dialog/oauth?client_id=1254152493364240&redirect_uri=${encodeURIComponent('https://www.amzofertas.com.br/auth/callback/meta')}&scope=pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish&response_type=code&state=${user.id}`;
     window.location.href = authUrl;
+  };
+
+  const handleDisconnect = async () => {
+    if (!window.confirm('Tem certeza que deseja desconectar sua conta Meta? Isso não afetará outros usuários.')) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setDisconnecting(true);
+    try {
+      await supabase.from('meta_connections').delete().eq('user_id', user.id);
+      await supabase.from('integrations').delete().eq('user_id', user.id).like('platform', 'meta%');
+      setMetaConnection(null);
+      toast.success('Conta Meta desconectada com sucesso.');
+    } catch (err) {
+      toast.error('Erro ao desconectar. Tente novamente.');
+    } finally {
+      setDisconnecting(false);
+    }
   };
 
   return (
@@ -41,15 +86,66 @@ const SettingsPage = () => {
           <TabsContent value="meta">
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
               <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{t('settings.meta_business_title')}</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                {t('settings.meta_business_description')}
-              </p>
-              <button
-                onClick={handleConnect}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
-              >
-                {t('settings.connect_meta_business')}
-              </button>
+
+              {loadingMeta ? (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Carregando status da conexão...</span>
+                </div>
+              ) : metaConnection ? (
+                <div className="space-y-4">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                    ✅ Conectado
+                  </span>
+
+                  <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                    {metaConnection.page_name && (
+                      <p><span className="font-medium">Página:</span> {metaConnection.page_name}</p>
+                    )}
+                    {metaConnection.ig_username && (
+                      <p><span className="font-medium">Instagram:</span> @{metaConnection.ig_username}</p>
+                    )}
+                    {metaConnection.page_id && (
+                      <p><span className="font-medium">Facebook Page ID:</span> {metaConnection.page_id}</p>
+                    )}
+                    {metaConnection.last_verified_at && (
+                      <p><span className="font-medium">Conectado em:</span> {new Date(metaConnection.last_verified_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={handleConnect}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+                    >
+                      🔄 Reconectar
+                    </button>
+                    <button
+                      onClick={handleDisconnect}
+                      disabled={disconnecting}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2"
+                    >
+                      {disconnecting && <Loader2 className="w-4 h-4 animate-spin" />}
+                      🔌 Desconectar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 mb-4">
+                    Não conectado
+                  </span>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 mt-3">
+                    {t('settings.meta_business_description')}
+                  </p>
+                  <button
+                    onClick={handleConnect}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition-colors"
+                  >
+                    {t('settings.connect_meta_business')}
+                  </button>
+                </div>
+              )}
             </div>
           </TabsContent>
 
