@@ -73,7 +73,10 @@ export default function Admin() {
         .eq("role", "admin")
         .maybeSingle();
 
-      if (roleError || !roleData) {
+      // Fallback: aceitar admin por email
+      const isAdminByEmail = user.email === 'expo@atombrasildigital.com';
+
+      if ((roleError || !roleData) && !isAdminByEmail) {
         toast({
           title: "Acesso negado",
           description: "Você não tem permissão para acessar esta página.",
