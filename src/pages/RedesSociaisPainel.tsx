@@ -134,15 +134,25 @@ export default function RedesSociaisPainel() {
         <Card>
           <CardContent className="p-4 flex items-center gap-4">
             <div className="p-3 rounded-full bg-muted">
-              <svg className="h-6 w-6 text-muted-foreground" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.88-2.88 2.89 2.89 0 012.88-2.88c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 00-.79-.05A6.34 6.34 0 003.15 15.3a6.34 6.34 0 0010.86 4.46 6.34 6.34 0 001.83-4.46V8.76a8.26 8.26 0 004.79 1.52V6.84a4.85 4.85 0 01-1.04-.15z"/>
-              </svg>
+              <TikTokIcon className="h-6 w-6 text-muted-foreground" />
             </div>
             <div className="flex-1">
               <p className="font-medium text-foreground">TikTok</p>
-              <p className="text-sm text-muted-foreground">Em breve</p>
+              <p className="text-sm text-muted-foreground">
+                {showTikTok
+                  ? (tiktokConn ? "Conta conectada" : "Não conectado")
+                  : "Em breve"}
+              </p>
             </div>
-            <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Pendente</Badge>
+            {showTikTok ? (
+              tiktokConn ? (
+                <Badge variant="default"><CheckCircle className="h-3 w-3 mr-1" /> Conectado</Badge>
+              ) : (
+                <Badge variant="secondary"><XCircle className="h-3 w-3 mr-1" /> Desconectado</Badge>
+              )
+            ) : (
+              <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Pendente</Badge>
+            )}
           </CardContent>
         </Card>
       </div>
