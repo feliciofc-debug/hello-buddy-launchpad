@@ -36,6 +36,15 @@ export default function RedesSociaisPainel() {
         .maybeSingle();
       setMetaConn(connData);
 
+      // TikTok connection
+      const { data: tiktokData } = await supabase
+        .from("integrations" as any)
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("platform", "tiktok")
+        .maybeSingle();
+      setTiktokConn(tiktokData);
+
       const { data: postsData } = await supabase
         .from("social_posts_queue" as any)
         .select("*")
