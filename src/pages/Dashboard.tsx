@@ -512,6 +512,17 @@ const Dashboard = () => {
               Vendedores
             </a>
           )}
+          <a
+            href="/configuracoes"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+              window.location.pathname === '/configuracoes' 
+                ? 'bg-blue-500 text-white' 
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Settings size={20} />
+            Settings
+          </a>
           {user?.email === 'expo@atombrasildigital.com' && (
             <a
               href="/admin"
@@ -522,7 +533,7 @@ const Dashboard = () => {
               }`}
             >
               <Shield size={20} />
-              ⚙️ Admin
+              Admin
             </a>
           )}
         </nav>
