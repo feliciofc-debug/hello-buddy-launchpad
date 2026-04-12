@@ -6,6 +6,8 @@ import { Upload, Video, Trash2, Play, Facebook, Instagram } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 
 interface VideoItem {
   id: string;
@@ -21,6 +23,7 @@ interface VideoItem {
 }
 
 export const AreaVideos = () => {
+  const showTikTok = useFeatureFlag('tiktok_integration');
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showReelsModal, setShowReelsModal] = useState(false);
@@ -215,6 +218,16 @@ export const AreaVideos = () => {
                     <Video className="mr-1 h-3 w-3" />
                     Publicar Reels
                   </Button>
+                  {showTikTok && (
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-black text-white text-xs hover:bg-gray-800"
+                      onClick={() => toast.info('Publicação TikTok em breve')}
+                    >
+                      <TikTokIcon className="mr-1 h-3 w-3" />
+                      TikTok
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="destructive"
