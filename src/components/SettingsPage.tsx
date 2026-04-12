@@ -152,36 +152,38 @@ const SettingsPage = () => {
           </TabsContent>
 
           {showTikTok && (
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{t('settings.tiktok_business_title')}</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                {t('settings.tiktok_business_description')}
-              </p>
-              <button
-                onClick={async () => {
-                  const { data: { user } } = await supabase.auth.getUser();
-                  if (!user) {
-                    alert(t('settings.login_required_tiktok'));
-                    return;
-                  }
-                  
-                  const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
-                  const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
-                  const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
-                  const STATE = user.id;
+            <TabsContent value="tiktok">
+              <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{t('settings.tiktok_business_title')}</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  {t('settings.tiktok_business_description')}
+                </p>
+                <button
+                  onClick={async () => {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                      alert(t('settings.login_required_tiktok'));
+                      return;
+                    }
+                    
+                    const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
+                    const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
+                    const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
+                    const STATE = user.id;
 
-                  const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
-                  
-                  console.log("Redirecionando para a URL de login do TikTok:", authUrl);
-                  localStorage.setItem('tiktok_auth_origin', 'pj');
-                  window.location.href = authUrl;
-                }}
-                className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
-              >
-                {t('settings.connect_tiktok')}
-              </button>
-            </div>
-          </TabsContent>
+                    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
+                    
+                    console.log("Redirecionando para a URL de login do TikTok:", authUrl);
+                    localStorage.setItem('tiktok_auth_origin', 'pj');
+                    window.location.href = authUrl;
+                  }}
+                  className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
+                >
+                  {t('settings.connect_tiktok')}
+                </button>
+              </div>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>
