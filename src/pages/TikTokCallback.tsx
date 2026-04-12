@@ -72,7 +72,12 @@ const TikTokCallback = () => {
             description: "Sua conta TikTok foi conectada com sucesso",
           });
 
-          setTimeout(() => navigate('/afiliado/produtos?tiktok=connected'), 2000);
+          // Detect context: PJ or Afiliado based on localStorage or default
+          const origin = localStorage.getItem('tiktok_auth_origin') || 'pj';
+          const redirectUrl = origin === 'afiliado' 
+            ? '/afiliado/produtos?tiktok=connected' 
+            : '/meus-produtos?tab=videos&tiktok=connected';
+          setTimeout(() => navigate(redirectUrl), 2000);
         } else {
           throw new Error(data?.error || 'Erro ao obter token');
         }

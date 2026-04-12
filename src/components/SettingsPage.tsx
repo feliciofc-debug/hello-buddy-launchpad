@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ const SettingsPage = () => {
   const [metaConnection, setMetaConnection] = useState<any>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const showTikTok = useFeatureFlag('tiktok_integration');
 
   useEffect(() => {
     const fetchMetaConnection = async () => {
@@ -78,9 +80,9 @@ const SettingsPage = () => {
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
 
         <Tabs defaultValue="meta" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
+          <TabsList className={`grid w-full ${showTikTok ? 'grid-cols-2' : 'grid-cols-1'} mb-8`}>
             <TabsTrigger value="meta">{t('settings.meta_tab')}</TabsTrigger>
-            <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>
+            {showTikTok && <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="meta">
