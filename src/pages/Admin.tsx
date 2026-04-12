@@ -508,6 +508,11 @@ export default function Admin() {
               )}
             </div>
           </TabsContent>
+
+          {/* Feature Flags Tab */}
+          <TabsContent value="flags" className="mt-6">
+            <FeatureFlagsTab />
+          </TabsContent>
         </Tabs>
       </main>
     </div>
