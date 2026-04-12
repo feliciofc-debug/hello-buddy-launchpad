@@ -721,6 +721,7 @@ export default function MeusProdutos() {
   const [isSimultaneoModalOpen, setIsSimultaneoModalOpen] = useState(false);
   const [simultaneoProduct, setSimultaneoProduct] = useState<Product | null>(null);
   
+  const showTikTok = useFeatureFlag('tiktok_integration');
 
   // Form states
   const [formData, setFormData] = useState({
