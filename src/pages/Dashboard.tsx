@@ -515,14 +515,10 @@ const Dashboard = () => {
           {user?.email === 'expo@atombrasildigital.com' && (
             <a
               href="/admin"
-              className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
-                window.location.pathname === '/admin' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
+              className="w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 hover:bg-gray-200 dark:hover:bg-gray-700"
             >
               <Shield size={20} />
-              🛡️ Admin
+              Admin
             </a>
           )}
         </nav>
