@@ -38,7 +38,8 @@ import {
   Smartphone,
   Building2,
   Sparkles,
-  Share2
+  Share2,
+  Shield
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
@@ -110,12 +111,15 @@ export default function DashboardMetricas() {
     atendimentoPorTipo: []
   });
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo, userProfile?.nome_fantasia);
 
   const carregarPerfil = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+    setUserEmail(user.email ?? null);
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -277,6 +281,9 @@ export default function DashboardMetricas() {
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
     { id: 'configuracoes', icon: Settings, label: t('nav.settings'), path: '/configuracoes' },
+    ...(userEmail === 'expo@atombrasildigital.com'
+      ? [{ id: 'admin', icon: Shield, label: 'Admin', path: '/admin' }]
+      : []),
   ];
 
   const menuItems = menuItemsAll.filter((item) => isMenuAllowed(item.id));
