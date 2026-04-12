@@ -10,6 +10,8 @@ import {
   RefreshCw, Loader2, AlertTriangle, CalendarDays
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { TikTokIcon } from "@/components/tiktok/TikTokIcon";
 
 export default function RedesSociaisPainel() {
   const navigate = useNavigate();
@@ -17,6 +19,8 @@ export default function RedesSociaisPainel() {
   const [posts, setPosts] = useState<any[]>([]);
   const [stats, setStats] = useState({ total: 0, publicados: 0, hoje: 0, pendentes: 0, erros: 0 });
   const [metaConn, setMetaConn] = useState<any>(null);
+  const [tiktokConn, setTiktokConn] = useState<any>(null);
+  const showTikTok = useFeatureFlag('tiktok_integration');
 
   useEffect(() => { loadData(); }, []);
 
