@@ -30,6 +30,8 @@ import { AutopilotModal } from '@/components/AutopilotModal';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 
 interface Campanha {
   id: string;
