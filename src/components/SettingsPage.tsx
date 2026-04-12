@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ const SettingsPage = () => {
   const [metaConnection, setMetaConnection] = useState<any>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
+  const showTikTok = useFeatureFlag('tiktok_integration');
 
   useEffect(() => {
     const fetchMetaConnection = async () => {
@@ -78,9 +80,9 @@ const SettingsPage = () => {
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
 
         <Tabs defaultValue="meta" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
+          <TabsList className={`grid w-full ${showTikTok ? 'grid-cols-2' : 'grid-cols-1'} mb-8`}>
             <TabsTrigger value="meta">{t('settings.meta_tab')}</TabsTrigger>
-            <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>
+            {showTikTok && <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="meta">
@@ -149,36 +151,39 @@ const SettingsPage = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="tiktok">
-            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-              <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{t('settings.tiktok_business_title')}</h2>
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                {t('settings.tiktok_business_description')}
-              </p>
-              <button
-                onClick={async () => {
-                  const { data: { user } } = await supabase.auth.getUser();
-                  if (!user) {
-                    alert(t('settings.login_required_tiktok'));
-                    return;
-                  }
-                  
-                  const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
-                  const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
-                  const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
-                  const STATE = user.id;
+          {showTikTok && (
+            <TabsContent value="tiktok">
+              <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{t('settings.tiktok_business_title')}</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  {t('settings.tiktok_business_description')}
+                </p>
+                <button
+                  onClick={async () => {
+                    const { data: { user } } = await supabase.auth.getUser();
+                    if (!user) {
+                      alert(t('settings.login_required_tiktok'));
+                      return;
+                    }
+                    
+                    const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
+                    const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
+                    const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
+                    const STATE = user.id;
 
-                  const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
-                  
-                  console.log("Redirecionando para a URL de login do TikTok:", authUrl);
-                  window.location.href = authUrl;
-                }}
-                className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
-              >
-                {t('settings.connect_tiktok')}
-              </button>
-            </div>
-          </TabsContent>
+                    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
+                    
+                    console.log("Redirecionando para a URL de login do TikTok:", authUrl);
+                    localStorage.setItem('tiktok_auth_origin', 'pj');
+                    window.location.href = authUrl;
+                  }}
+                  className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
+                >
+                  {t('settings.connect_tiktok')}
+                </button>
+              </div>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </div>

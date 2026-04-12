@@ -2263,6 +2263,36 @@ export type Database = {
           },
         ]
       }
+      feature_flags: {
+        Row: {
+          allowed_emails: string[] | null
+          created_at: string | null
+          description: string | null
+          flag_key: string
+          id: string
+          is_enabled: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          allowed_emails?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          flag_key: string
+          id?: string
+          is_enabled?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          allowed_emails?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          flag_key?: string
+          id?: string
+          is_enabled?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       fila_atendimento_afiliado: {
         Row: {
           conversa_id: string | null

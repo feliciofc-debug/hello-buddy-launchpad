@@ -29,7 +29,9 @@ const TikTokCallback = () => {
           description: errorDescription || "O usuário negou a permissão",
           variant: "destructive",
         });
-        setTimeout(() => navigate('/afiliado/produtos'), 3000);
+        const origin = localStorage.getItem('tiktok_auth_origin') || 'pj';
+        const fallbackUrl = origin === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
+        setTimeout(() => navigate(fallbackUrl), 3000);
         return;
       }
 
@@ -42,7 +44,9 @@ const TikTokCallback = () => {
           description: "Parâmetros inválidos retornados pelo TikTok",
           variant: "destructive",
         });
-        setTimeout(() => navigate('/afiliado/produtos'), 3000);
+        const origin2 = localStorage.getItem('tiktok_auth_origin') || 'pj';
+        const fallbackUrl2 = origin2 === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
+        setTimeout(() => navigate(fallbackUrl2), 3000);
         return;
       }
 
@@ -72,7 +76,12 @@ const TikTokCallback = () => {
             description: "Sua conta TikTok foi conectada com sucesso",
           });
 
-          setTimeout(() => navigate('/afiliado/produtos?tiktok=connected'), 2000);
+          // Detect context: PJ or Afiliado based on localStorage or default
+          const origin = localStorage.getItem('tiktok_auth_origin') || 'pj';
+          const redirectUrl = origin === 'afiliado' 
+            ? '/afiliado/produtos?tiktok=connected' 
+            : '/meus-produtos?tab=videos&tiktok=connected';
+          setTimeout(() => navigate(redirectUrl), 2000);
         } else {
           throw new Error(data?.error || 'Erro ao obter token');
         }
@@ -87,7 +96,9 @@ const TikTokCallback = () => {
           variant: "destructive",
         });
 
-        setTimeout(() => navigate('/afiliado/produtos'), 3000);
+        const origin3 = localStorage.getItem('tiktok_auth_origin') || 'pj';
+        const fallbackUrl3 = origin3 === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
+        setTimeout(() => navigate(fallbackUrl3), 3000);
       }
     };
 

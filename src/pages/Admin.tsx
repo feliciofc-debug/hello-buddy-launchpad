@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send } from "lucide-react";
+import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag } from "lucide-react";
+import { FeatureFlagsTab } from "@/components/admin/FeatureFlagsTab";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
@@ -318,14 +319,18 @@ export default function Admin() {
         </div>
 
         <Tabs defaultValue="deletions" className="w-full">
-          <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsList className="grid w-full max-w-lg grid-cols-3">
             <TabsTrigger value="deletions" className="gap-2">
               <Trash2 className="h-4 w-4" />
-              Exclusão de Dados ({deletionRequests.length})
+              Exclusão ({deletionRequests.length})
             </TabsTrigger>
             <TabsTrigger value="security" className="gap-2">
               <AlertTriangle className="h-4 w-4" />
               Vulnerabilidades ({securityReports.length})
+            </TabsTrigger>
+            <TabsTrigger value="flags" className="gap-2">
+              <Flag className="h-4 w-4" />
+              Feature Flags
             </TabsTrigger>
           </TabsList>
 
@@ -502,6 +507,11 @@ export default function Admin() {
                 </Card>
               )}
             </div>
+          </TabsContent>
+
+          {/* Feature Flags Tab */}
+          <TabsContent value="flags" className="mt-6">
+            <FeatureFlagsTab />
           </TabsContent>
         </Tabs>
       </main>

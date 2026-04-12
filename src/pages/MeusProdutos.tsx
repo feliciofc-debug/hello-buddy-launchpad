@@ -30,6 +30,8 @@ import { AutopilotModal } from '@/components/AutopilotModal';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 
 interface Campanha {
   id: string;
@@ -719,6 +721,7 @@ export default function MeusProdutos() {
   const [isSimultaneoModalOpen, setIsSimultaneoModalOpen] = useState(false);
   const [simultaneoProduct, setSimultaneoProduct] = useState<Product | null>(null);
   
+  const showTikTok = useFeatureFlag('tiktok_integration');
 
   // Form states
   const [formData, setFormData] = useState({
@@ -1521,6 +1524,17 @@ export default function MeusProdutos() {
                           <Video className="w-4 h-4" />
                           {t('products.publish_reels')}
                         </Button>
+                        {showTikTok && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2 text-foreground border-border hover:bg-muted"
+                            onClick={() => toast.info('TikTok: Em breve disponível para produtos')}
+                          >
+                            <TikTokIcon className="w-4 h-4" />
+                            Post on TikTok
+                          </Button>
+                        )}
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
@@ -1595,6 +1609,17 @@ export default function MeusProdutos() {
                           <Video className="w-4 h-4" />
                           {t('products.publish_reels')}
                         </Button>
+                        {showTikTok && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2 text-foreground border-border hover:bg-muted"
+                            onClick={() => toast.info('TikTok: Em breve disponível para produtos')}
+                          >
+                            <TikTokIcon className="w-4 h-4" />
+                            Post on TikTok
+                          </Button>
+                        )}
                         <Button 
                           variant="outline"
                           size="sm" 
