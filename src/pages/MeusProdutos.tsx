@@ -1524,6 +1524,17 @@ export default function MeusProdutos() {
                           <Video className="w-4 h-4" />
                           {t('products.publish_reels')}
                         </Button>
+                        {showTikTok && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2 text-foreground border-border hover:bg-muted"
+                            onClick={() => toast.info('TikTok: Em breve disponível para produtos')}
+                          >
+                            <TikTokIcon className="w-4 h-4" />
+                            Post on TikTok
+                          </Button>
+                        )}
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
@@ -1598,6 +1609,17 @@ export default function MeusProdutos() {
                           <Video className="w-4 h-4" />
                           {t('products.publish_reels')}
                         </Button>
+                        {showTikTok && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full gap-2 text-foreground border-border hover:bg-muted"
+                            onClick={() => toast.info('TikTok: Em breve disponível para produtos')}
+                          >
+                            <TikTokIcon className="w-4 h-4" />
+                            Post on TikTok
+                          </Button>
+                        )}
                         <Button 
                           variant="outline"
                           size="sm" 
