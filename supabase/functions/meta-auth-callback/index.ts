@@ -37,6 +37,7 @@ serve(async (req) => {
     }
 
     if (!code) throw new Error('No authorization code provided')
+    if (!state) throw new Error('No user state provided')
 
     // 1. Trocar código por token curto
     const tokenUrl = new URL('https://graph.facebook.com/v25.0/oauth/access_token')
@@ -75,87 +76,31 @@ serve(async (req) => {
     const permissionsData = await permissionsResponse.json()
     console.log('🔑 Permissões do token:', JSON.stringify(permissionsData))
 
-    // 4. Buscar Pages + Page Tokens
+    // 4. Buscar Pages + Page Tokens (FRESH - sem fallback para dados antigos)
     const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}`
     console.log('📡 Buscando páginas...')
     const pagesResponse = await fetch(pagesUrl)
     const pagesData = await pagesResponse.json()
     console.log('📡 Resposta /me/accounts completa:', JSON.stringify(pagesData))
-    let pages = pagesData.data || []
+    const pages = pagesData.data || []
     console.log('✅ Páginas encontradas:', pages.length)
 
-    // 4.1 FALLBACK: Se /me/accounts retornou vazio, tentar recuperar página anterior do banco
-    if (pages.length === 0) {
-      console.log('⚠️ Nenhuma página retornada. Tentando fallback com página anterior...')
-      
-      const supabaseTemp = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
-      
-      // Verificar se já existia uma conexão anterior com page_id
-      const { data: existingConn } = await supabaseTemp.from('meta_connections')
-        .select('page_id, page_name, ig_account_id, ig_username')
-        .eq('user_id', state)
-        .maybeSingle()
-      
-      // Verificar também na tabela integrations (legado)
-      const { data: existingIntegrations } = await supabaseTemp.from('integrations')
-        .select('platform, meta_user_id, meta_user_name')
-        .eq('user_id', state)
-        .like('platform', 'meta_page_%')
-      
-      let fallbackPageId: string | null = existingConn?.page_id || null
-      
-      if (!fallbackPageId && existingIntegrations && existingIntegrations.length > 0) {
-        fallbackPageId = existingIntegrations[0].meta_user_id
-        console.log('📋 Page ID encontrado na tabela integrations:', fallbackPageId)
-      }
-      
-      // Verificar na fila de posts anteriores
-      if (!fallbackPageId) {
-        const { data: lastPost } = await supabaseTemp.from('social_posts_queue')
-          .select('page_id')
-          .eq('user_id', state)
-          .not('page_id', 'is', null)
-          .neq('page_id', '')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        
-        if (lastPost?.page_id) {
-          fallbackPageId = lastPost.page_id
-          console.log('📋 Page ID encontrado na fila de posts:', fallbackPageId)
-        }
-      }
-      
-      if (fallbackPageId) {
-        console.log('🔄 Tentando buscar Page Token diretamente para page_id:', fallbackPageId)
-        
-        // Tentar obter o Page Access Token usando o User Token
-        try {
-          const pageDirectUrl = `https://graph.facebook.com/v25.0/${fallbackPageId}?fields=id,name,access_token,category&access_token=${longLivedUserToken}`
-          const pageDirectResponse = await fetch(pageDirectUrl)
-          const pageDirectData = await pageDirectResponse.json()
-          
-          if (pageDirectData.access_token) {
-            console.log('✅ FALLBACK FUNCIONOU! Page Token obtido para:', pageDirectData.name)
-            pages = [{
-              id: pageDirectData.id,
-              name: pageDirectData.name,
-              access_token: pageDirectData.access_token,
-              category: pageDirectData.category
-            }]
-          } else {
-            console.log('❌ Fallback falhou. Resposta:', JSON.stringify(pageDirectData))
-          }
-        } catch (fallbackError) {
-          console.error('❌ Erro no fallback:', fallbackError)
-        }
-      } else {
-        console.log('⚠️ Nenhum page_id anterior encontrado para fallback')
-      }
-    }
-
-    // 5. Salvar tudo no banco
+    // 5. Salvar tudo no banco - LIMPAR DADOS ANTIGOS PRIMEIRO
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
+
+    // CRITICAL: Delete ALL old records for this user before saving new ones
+    console.log('🧹 Limpando dados antigos do usuário:', state)
+    
+    const { error: delMetaConn } = await supabase.from('meta_connections')
+      .delete().eq('user_id', state)
+    if (delMetaConn) console.error('⚠️ Erro limpando meta_connections:', delMetaConn)
+    
+    const { error: delIntegrations } = await supabase.from('integrations')
+      .delete().eq('user_id', state).like('platform', 'meta%')
+    if (delIntegrations) console.error('⚠️ Erro limpando integrations:', delIntegrations)
+    
+    console.log('✅ Dados antigos limpos')
+
     const expiresAt = new Date()
     expiresAt.setSeconds(expiresAt.getSeconds() + (longLivedData.expires_in || 5184000))
 
@@ -224,7 +169,7 @@ serve(async (req) => {
         ?.filter((p: any) => p.status === 'granted')
         ?.map((p: any) => p.permission) || []
       
-      const { error: metaConnError } = await supabase.from('meta_connections').upsert({
+      const { error: metaConnError } = await supabase.from('meta_connections').insert({
         user_id: state,
         meta_user_id: userData.id,
         meta_user_name: userData.name,
@@ -241,7 +186,7 @@ serve(async (req) => {
         last_verified_at: new Date().toISOString(),
         connection_error: null,
         updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
+      })
       
       if (metaConnError) {
         console.error('❌ Erro salvando meta_connections:', metaConnError)
@@ -249,7 +194,7 @@ serve(async (req) => {
         console.log('✅ meta_connections salvo para', userData.name, '| Page:', mainPage.name, '| IG:', igUsername)
       }
     } else {
-      console.log('❌ NENHUMA PÁGINA ENCONTRADA - nem via /me/accounts nem via fallback')
+      console.log('❌ NENHUMA PÁGINA ENCONTRADA via /me/accounts')
     }
 
     return new Response(null, {
