@@ -214,7 +214,7 @@ const Dashboard = () => {
       }
       
       // Acesso direto para contas permanentes (donos/parceiros)
-      const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com'];
+      const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'blindattablindados@gmail.com'];
       if (!contasPermanentes.includes(session.user.email || '')) {
         // Verificar se é conta trial ativa
         const { data: trialCheck, error: trialError } = await supabase
