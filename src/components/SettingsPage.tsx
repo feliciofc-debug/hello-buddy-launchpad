@@ -50,13 +50,16 @@ const SettingsPage = () => {
   };
 
   const handleDisconnect = async () => {
-    if (!window.confirm('Tem certeza que deseja desconectar sua conta Meta? Isso não afetará outros usuários.')) return;
+    if (!window.confirm('Tem certeza que deseja remover esta página? Isso não pode ser desfeito.')) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     setDisconnecting(true);
     try {
-      await supabase.from('meta_connections').delete().eq('user_id', user.id);
-      await supabase.from('integrations').delete().eq('user_id', user.id).like('platform', 'meta%');
+      // Delete ALL Meta records for this user only
+      const { error: e1 } = await supabase.from('meta_connections').delete().eq('user_id', user.id);
+      const { error: e2 } = await supabase.from('integrations').delete().eq('user_id', user.id).like('platform', 'meta%');
+      if (e1) console.error('Erro meta_connections:', e1);
+      if (e2) console.error('Erro integrations:', e2);
       setMetaConnection(null);
       toast.success('Conta Meta desconectada com sucesso.');
     } catch (err) {
