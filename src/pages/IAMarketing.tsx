@@ -692,6 +692,35 @@ const IAMarketing = () => {
                         <Download className="mr-2 h-5 w-5" />
                         {t('publish.save_image')}
                       </Button>
+                      <div className="flex gap-2 w-full">
+                        <Button
+                          variant="outline"
+                          className="gap-2 border-[#00C4CC] text-[#00C4CC] hover:bg-[#00C4CC]/10 flex-1"
+                          onClick={() => window.open('https://www.canva.com/create/design?type=TABqMN-bVr0', '_blank')}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                          Editar no Canva
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="gap-2 flex-1"
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(resultado.generatedImage!);
+                              const blob = await response.blob();
+                              await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+                              toast.success('Imagem copiada! Cole no Canva com Ctrl+V');
+                            } catch {
+                              toast.error('Use o botão de download e arraste para o Canva');
+                            }
+                          }}
+                        >
+                          Copiar imagem
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        💡 Dica: Clique em "Editar no Canva" para abrir o editor, depois cole a imagem (Ctrl+V) ou arraste o arquivo baixado. Adicione sua logo e texto perfeitos!
+                      </p>
                     </CardContent>
                   </Card>
                 )}
