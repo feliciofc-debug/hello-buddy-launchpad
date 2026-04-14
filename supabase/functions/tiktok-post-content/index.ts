@@ -113,9 +113,10 @@ serve(async (req) => {
     const initData = await initResponse.json();
     console.log("📦 Resposta init TikTok:", JSON.stringify(initData));
 
-    if (initData.error?.code) {
-      let errorMessage = "Erro ao iniciar upload no TikTok";
-      switch (initData.error.code) {
+    const initErrorCode = initData?.error?.code;
+    if (!initResponse.ok || (initErrorCode && initErrorCode !== "ok")) {
+      let errorMessage = `Erro ao iniciar upload no TikTok (status ${initResponse.status})`;
+      switch (initErrorCode) {
         case "access_token_invalid":
           errorMessage = "Token inválido. Reconecte sua conta TikTok.";
           break;
@@ -126,11 +127,11 @@ serve(async (req) => {
           errorMessage = "Muitas publicações recentes. Aguarde um pouco.";
           break;
         default:
-          errorMessage = initData.error.message || errorMessage;
+          errorMessage = initData?.error?.message || errorMessage;
       }
 
       return new Response(
-        JSON.stringify({ success: false, error: errorMessage, tiktok_error: initData.error }),
+        JSON.stringify({ success: false, error: errorMessage, tiktok_error: initData?.error ?? null }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
