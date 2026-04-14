@@ -39,7 +39,7 @@ serve(async (req) => {
       .select("*")
       .eq("user_id", user_id)
       .eq("platform", "tiktok")
-      .eq("active", true)
+      .eq("is_active", true)
       .single();
 
     if (integrationError || !integration) {
@@ -52,7 +52,7 @@ serve(async (req) => {
     const accessToken = integration.access_token;
 
     // Verificar se token expirou
-    if (integration.expires_at && new Date(integration.expires_at) < new Date()) {
+    if (integration.token_expires_at && new Date(integration.token_expires_at) < new Date()) {
       // TODO: Implementar refresh token
       return new Response(
         JSON.stringify({ success: false, error: "Token expirado. Por favor, reconecte sua conta TikTok." }),
