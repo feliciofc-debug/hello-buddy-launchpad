@@ -7,7 +7,14 @@ const corsHeaders = {
 }
 
 interface TikTokTokenResponse {
-  data: {
+  access_token?: string
+  expires_in?: number
+  open_id?: string
+  refresh_expires_in?: number
+  refresh_token?: string
+  scope?: string
+  token_type?: string
+  data?: {
     access_token: string
     expires_in: number
     open_id: string
