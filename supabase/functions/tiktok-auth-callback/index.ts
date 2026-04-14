@@ -7,7 +7,14 @@ const corsHeaders = {
 }
 
 interface TikTokTokenResponse {
-  data: {
+  access_token?: string
+  expires_in?: number
+  open_id?: string
+  refresh_expires_in?: number
+  refresh_token?: string
+  scope?: string
+  token_type?: string
+  data?: {
     access_token: string
     expires_in: number
     open_id: string
@@ -87,11 +94,15 @@ serve(async (req) => {
       throw new Error(tokenData.error.message || 'Failed to get TikTok token')
     }
 
-    if (!tokenData.data?.access_token) {
+    // TikTok API v2 pode retornar tokens no nível raiz OU dentro de data
+    const tokenInfo = tokenData.data || tokenData
+    
+    if (!tokenInfo.access_token) {
+      console.error('❌ No access_token found in response')
       throw new Error('No access token in response')
     }
 
-    const { access_token, refresh_token, expires_in, open_id, scope } = tokenData.data
+    const { access_token, refresh_token, expires_in, open_id, scope } = tokenInfo
 
     console.log('✅ Got TikTok access token!')
     console.log('📍 Open ID:', open_id)
