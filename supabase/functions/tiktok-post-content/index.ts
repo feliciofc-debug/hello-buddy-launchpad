@@ -53,42 +53,54 @@ serve(async (req) => {
 
     // Verificar se token expirou
     if (integration.token_expires_at && new Date(integration.token_expires_at) < new Date()) {
-      // TODO: Implementar refresh token
       return new Response(
         JSON.stringify({ success: false, error: "Token expirado. Por favor, reconecte sua conta TikTok." }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Determinar endpoint baseado no modo de postagem
+    // === PASSO 1: Baixar o vídeo do Supabase Storage ===
+    console.log("📥 Baixando vídeo do storage:", content_url);
+    const videoResponse = await fetch(content_url);
+    if (!videoResponse.ok) {
+      console.error("❌ Falha ao baixar vídeo:", videoResponse.status, videoResponse.statusText);
+      return new Response(
+        JSON.stringify({ success: false, error: "Falha ao baixar o vídeo do storage." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const videoBuffer = await videoResponse.arrayBuffer();
+    const videoBytes = new Uint8Array(videoBuffer);
+    const videoSize = videoBytes.length;
+    console.log("✅ Vídeo baixado:", videoSize, "bytes");
+
+    // === PASSO 2: Iniciar upload no TikTok (FILE_UPLOAD) ===
     const endpoint = post_mode === "draft"
       ? "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
       : "https://open.tiktokapis.com/v2/post/publish/video/init/";
 
-    // Preparar payload para TikTok API
+    const privacyLevel = post_mode === "direct" ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY";
+
     const tiktokPayload = {
       post_info: {
-        title: title.substring(0, 150), // Limite de caracteres do TikTok
-        privacy_level: "SELF_ONLY", // Para rascunhos
+        title: title.substring(0, 150),
+        privacy_level: privacyLevel,
         disable_duet: false,
         disable_comment: false,
         disable_stitch: false,
       },
       source_info: {
-        source: "PULL_FROM_URL",
-        video_url: content_url,
-      }
+        source: "FILE_UPLOAD",
+        video_size: videoSize,
+        chunk_size: videoSize,
+        total_chunk_count: 1,
+      },
     };
 
-    // Se for post direto, mudar privacy_level
-    if (post_mode === "direct") {
-      tiktokPayload.post_info.privacy_level = "PUBLIC_TO_EVERYONE";
-    }
+    console.log("📤 Iniciando upload no TikTok:", { endpoint, payload: tiktokPayload });
 
-    console.log("Enviando para TikTok:", { endpoint, payload: tiktokPayload });
-
-    // Chamar API do TikTok
-    const tiktokResponse = await fetch(endpoint, {
+    const initResponse = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${accessToken}`,
@@ -97,29 +109,65 @@ serve(async (req) => {
       body: JSON.stringify(tiktokPayload),
     });
 
-    const tiktokData = await tiktokResponse.json();
-    console.log("Resposta TikTok:", tiktokData);
+    const initData = await initResponse.json();
+    console.log("📦 Resposta init TikTok:", JSON.stringify(initData));
 
-    if (tiktokData.error?.code) {
-      // Tratar erros específicos da API TikTok
-      let errorMessage = "Erro ao postar no TikTok";
-      
-      switch (tiktokData.error.code) {
+    if (initData.error?.code) {
+      let errorMessage = "Erro ao iniciar upload no TikTok";
+      switch (initData.error.code) {
         case "access_token_invalid":
           errorMessage = "Token inválido. Reconecte sua conta TikTok.";
           break;
         case "rate_limit_exceeded":
           errorMessage = "Limite de requisições atingido. Tente novamente em alguns minutos.";
           break;
-        case "video_upload_failed":
-          errorMessage = "Falha no upload do vídeo. Verifique se o formato é suportado.";
+        case "spam_risk_too_many_posts":
+          errorMessage = "Muitas publicações recentes. Aguarde um pouco.";
           break;
         default:
-          errorMessage = tiktokData.error.message || errorMessage;
+          errorMessage = initData.error.message || errorMessage;
       }
 
       return new Response(
-        JSON.stringify({ success: false, error: errorMessage, tiktok_error: tiktokData.error }),
+        JSON.stringify({ success: false, error: errorMessage, tiktok_error: initData.error }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const uploadUrl = initData.data?.upload_url;
+    const publishId = initData.data?.publish_id;
+
+    if (!uploadUrl) {
+      console.error("❌ Sem upload_url na resposta:", initData);
+      return new Response(
+        JSON.stringify({ success: false, error: "TikTok não retornou URL de upload.", tiktok_response: initData }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("📤 Fazendo upload do vídeo para:", uploadUrl);
+
+    // === PASSO 3: Upload do vídeo via PUT ===
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
+        "Content-Type": "video/mp4",
+      },
+      body: videoBytes,
+    });
+
+    const uploadStatus = uploadResponse.status;
+    const uploadText = await uploadResponse.text();
+    console.log("📦 Resposta upload TikTok:", uploadStatus, uploadText);
+
+    if (uploadStatus < 200 || uploadStatus >= 300) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Falha no upload do vídeo (status ${uploadStatus})`,
+          upload_response: uploadText,
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -131,24 +179,24 @@ serve(async (req) => {
       content_url,
       title,
       post_mode,
-      tiktok_response: tiktokData,
+      tiktok_response: initData,
       status: post_mode === "draft" ? "draft" : "published",
-      publish_id: tiktokData.data?.publish_id || null,
+      publish_id: publishId || null,
     });
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: post_mode === "draft" 
-          ? "Vídeo enviado para rascunhos do TikTok!" 
+        message: post_mode === "draft"
+          ? "Vídeo enviado para rascunhos do TikTok!"
           : "Vídeo publicado no TikTok!",
-        publish_id: tiktokData.data?.publish_id,
+        publish_id: publishId,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error: any) {
-    console.error("Erro no tiktok-post-content:", error);
+    console.error("❌ Erro no tiktok-post-content:", error);
     return new Response(
       JSON.stringify({ success: false, error: error.message || "Erro interno" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
