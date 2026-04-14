@@ -169,7 +169,7 @@ const SettingsPage = () => {
                       return;
                     }
                     
-                    const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
+                    const CLIENT_KEY = 'sbawx08s3trep7gfvg';
                     const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
                     const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
                     const STATE = user.id;
