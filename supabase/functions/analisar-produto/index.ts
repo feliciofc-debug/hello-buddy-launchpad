@@ -437,7 +437,7 @@ ${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
       console.log(
         '🎨 Iniciando geração de imagem...',
         portraitEditMode ? 'MODO EDIÇÃO DE RETRATO' : referenceImage ? 'COM referência' : 'SEM referência',
-        '| Logo enviada para IA:', portraitEditMode && logoReferenceForAI ? 'SIM' : 'NÃO'
+        '| Logo enviada para IA:', logoReferenceForAI ? 'SIM' : 'NÃO'
       );
 
       // Chamar API de geração de imagem
