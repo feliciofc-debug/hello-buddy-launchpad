@@ -80,7 +80,9 @@ serve(async (req) => {
       ? "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
       : "https://open.tiktokapis.com/v2/post/publish/video/init/";
 
-    const privacyLevel = post_mode === "direct" ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY";
+    // App em modo sandbox: TikTok só permite SELF_ONLY até aprovação
+    // Após aprovação do app, trocar para: post_mode === "direct" ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY"
+    const privacyLevel = "SELF_ONLY";
 
     const tiktokPayload = {
       post_info: {
