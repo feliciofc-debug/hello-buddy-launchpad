@@ -107,6 +107,43 @@ export const AreaVideos = () => {
     loadVideos();
   };
 
+  const handlePostTikTok = async (video: any) => {
+    if (!video.video_url) {
+      toast.error('Vídeo não encontrado');
+      return;
+    }
+
+    try {
+      toast.loading('Publicando no TikTok...');
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.dismiss();
+        toast.error('Você precisa estar logado');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('tiktok-post-content', {
+        body: {
+          user_id: userData.user.id,
+          content_type: 'video',
+          content_url: video.video_url,
+          title: (video.titulo || 'Vídeo').substring(0, 150),
+          post_mode: 'direct'
+        }
+      });
+
+      toast.dismiss();
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao publicar no TikTok');
+
+      toast.success(data?.message || 'Publicado no TikTok com sucesso!');
+    } catch (err: any) {
+      toast.dismiss();
+      toast.error(err?.message || 'Erro ao publicar no TikTok');
+    }
+  };
+
   const openReels = (video: VideoItem) => {
     setSelectedVideo(video);
     setShowReelsModal(true);
@@ -222,7 +259,7 @@ export const AreaVideos = () => {
                     <Button
                       size="sm"
                       className="flex-1 bg-black text-white text-xs hover:bg-gray-800"
-                      onClick={() => toast.info('Publicação TikTok em breve')}
+                      onClick={() => handlePostTikTok(video)}
                     >
                       <TikTokIcon className="mr-1 h-3 w-3" />
                       TikTok
