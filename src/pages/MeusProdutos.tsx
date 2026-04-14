@@ -1149,6 +1149,43 @@ export default function MeusProdutos() {
     }
   };
 
+  const handlePostTikTok = async (produto: any) => {
+    if (!produto.imagem_url) {
+      toast.error('TikTok requer uma imagem ou vídeo do produto');
+      return;
+    }
+
+    try {
+      toast.loading('Publicando no TikTok...');
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        toast.dismiss();
+        toast.error('Você precisa estar logado');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('tiktok-post-content', {
+        body: {
+          user_id: userData.user.id,
+          content_type: 'image',
+          content_url: produto.imagem_url,
+          title: produto.nome?.substring(0, 150) || 'Produto',
+          post_mode: 'direct'
+        }
+      });
+
+      toast.dismiss();
+
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Erro ao publicar');
+
+      toast.success('Publicado no TikTok com sucesso!');
+    } catch (err: any) {
+      toast.dismiss();
+      toast.error(err?.message || 'Erro ao publicar no TikTok');
+    }
+  };
+
   const handleTestarCampanha = async (product: Product) => {
     if (!product.campanha?.id) {
       toast.error(t('products.error_campaign'));
@@ -1529,7 +1566,7 @@ export default function MeusProdutos() {
                             variant="outline"
                             size="sm"
                             className="w-full gap-2 text-foreground border-border hover:bg-muted"
-                            onClick={() => toast.info('TikTok: Em breve disponível para produtos')}
+                            onClick={() => handlePostTikTok(produto)}
                           >
                             <TikTokIcon className="w-4 h-4" />
                             Post on TikTok
@@ -1614,7 +1651,7 @@ export default function MeusProdutos() {
                             variant="outline"
                             size="sm"
                             className="w-full gap-2 text-foreground border-border hover:bg-muted"
-                            onClick={() => toast.info('TikTok: Em breve disponível para produtos')}
+                            onClick={() => handlePostTikTok(produto)}
                           >
                             <TikTokIcon className="w-4 h-4" />
                             Post on TikTok
