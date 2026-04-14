@@ -286,7 +286,9 @@ serve(async (req) => {
     // Verificar se é uma URL válida ou apenas um prompt de texto
     const isUrl = url.match(/^https?:\/\//i);
     const portraitEditMode = !isUrl && isPortraitEditRequest(url, images.length);
-    let applyLogoOverlay = !portraitEditMode;
+    // Se a logo vai ser enviada para a IA (não-SVG), não sobrepor no frontend
+    const logoWillBeSentToAI = typeof logo === 'string' && !logo.startsWith('data:image/svg');
+    let applyLogoOverlay = !portraitEditMode && !logoWillBeSentToAI;
     
     // DETECTAR IDIOMA DO PROMPT DO USUÁRIO
     const detectLanguage = (text: string): string => {
