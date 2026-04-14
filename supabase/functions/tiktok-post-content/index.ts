@@ -76,9 +76,8 @@ serve(async (req) => {
     console.log("✅ Vídeo baixado:", videoSize, "bytes");
 
     // === PASSO 2: Iniciar upload no TikTok (FILE_UPLOAD) ===
-    const endpoint = post_mode === "draft"
-      ? "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/"
-      : "https://open.tiktokapis.com/v2/post/publish/video/init/";
+    // SANDBOX: Forçar endpoint de inbox/rascunho — apps não auditados não podem usar /publish/video/init/
+    const endpoint = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
 
     // App em modo sandbox: TikTok só permite SELF_ONLY até aprovação
     // Após aprovação do app, trocar para: post_mode === "direct" ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY"
