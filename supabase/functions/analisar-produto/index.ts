@@ -352,6 +352,7 @@ serve(async (req) => {
         ];
       } else {
         const conceptKeywords = buildConceptKeywords(url);
+        const hasLogo = Boolean(logoReferenceForAI);
         const imagePrompt = referenceImage
           ? `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
 
@@ -365,12 +366,22 @@ MANDATORY STYLE RULES:
 - Suitable for Instagram and Facebook marketing posts
 - Clean composition with space for branding
 
-CRITICAL RULES:
-- ABSOLUTELY NO TEXT of any kind — zero words, zero letters, zero numbers in the image
-- NO slogans, NO captions, NO labels, NO watermarks
+REFERENCE IMAGE RULES:
+- The reference image provided shows the ACTUAL product/concept — reproduce it faithfully
+- Keep the same product, colors, shapes and identity from the reference
+- Only improve the context, lighting, angle and professional quality
+
+${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
+- The LAST image provided is the company LOGO
+- You MUST incorporate this logo EXACTLY as it appears — same colors, same font, same design
+- Place the logo in a natural, visible position (corner or integrated into the scene)
+- Do NOT modify, redraw or reinterpret the logo — use it IDENTICALLY
+- The logo must be clearly legible and recognizable in the final image
+` : ''}CRITICAL RULES:
+- ABSOLUTELY NO TEXT of any kind EXCEPT the logo if provided
+- NO slogans, NO captions, NO labels, NO watermarks besides the logo
 - If text starts appearing, replace with visual elements instead
-- The image must be 100% text-free
-- Use the reference image as inspiration for the product/concept style`
+- The image must be text-free except for the original logo`
           : `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
 
 Create a stunning, photorealistic social media marketing image for: ${conceptKeywords}.
@@ -382,28 +393,41 @@ MANDATORY STYLE RULES:
 - Modern, premium, magazine-quality aesthetic
 - Suitable for Instagram and Facebook marketing posts
 
-CRITICAL RULES:
-- ABSOLUTELY NO TEXT of any kind — zero words, zero letters, zero numbers in the image
-- NO slogans, NO captions, NO labels, NO watermarks
+${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
+- The image provided is the company LOGO
+- You MUST incorporate this logo EXACTLY as it appears — same colors, same font, same design
+- Place the logo in a natural, visible position (corner or integrated into the scene)
+- Do NOT modify, redraw or reinterpret the logo — use it IDENTICALLY
+- The logo must be clearly legible and recognizable in the final image
+` : ''}CRITICAL RULES:
+- ABSOLUTELY NO TEXT of any kind EXCEPT the logo if provided
+- NO slogans, NO captions, NO labels, NO watermarks besides the logo
 - If text starts appearing, replace with visual elements instead
-- The image must be 100% text-free
 - Communicate through colors, shapes, products and composition ONLY`;
+
+        // Build content array with images
+        const contentParts: any[] = [];
+        
+        if (referenceImage) {
+          contentParts.push({ type: 'image_url', image_url: { url: referenceImage } });
+        }
+        
+        // Add support images
+        supportImages.forEach((img) => {
+          contentParts.push({ type: 'image_url', image_url: { url: img } });
+        });
+        
+        // Add logo as last image so AI can reproduce it
+        if (logoReferenceForAI) {
+          contentParts.push({ type: 'image_url', image_url: { url: logoReferenceForAI } });
+        }
+        
+        contentParts.push({ type: 'text', text: imagePrompt });
 
         imageGenMessages = [
           {
             role: 'user',
-            content: referenceImage
-              ? [
-                  {
-                    type: 'image_url',
-                    image_url: { url: referenceImage }
-                  },
-                  {
-                    type: 'text',
-                    text: imagePrompt
-                  }
-                ]
-              : imagePrompt
+            content: contentParts.length > 1 ? contentParts : imagePrompt
           }
         ];
       }
