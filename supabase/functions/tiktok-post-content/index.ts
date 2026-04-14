@@ -146,23 +146,37 @@ serve(async (req) => {
       );
     }
 
-    console.log("📤 Fazendo upload do vídeo para:", uploadUrl);
+    console.log("📤 Fazendo upload do vídeo para:", uploadUrl, "tamanho:", videoSize);
 
     // === PASSO 3: Upload do vídeo via PUT ===
-    const uploadResponse = await fetch(uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
-        "Content-Type": "video/mp4",
-      },
-      body: videoBytes,
-    });
+    let uploadStatus: number;
+    let uploadText: string;
+    try {
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
+          "Content-Type": "video/mp4",
+        },
+        body: videoBytes,
+      });
 
-    const uploadStatus = uploadResponse.status;
-    const uploadText = await uploadResponse.text();
-    console.log("📦 Resposta upload TikTok:", uploadStatus, uploadText);
+      uploadStatus = uploadResponse.status;
+      uploadText = await uploadResponse.text();
+      console.log("📦 Resposta upload TikTok:", uploadStatus, uploadText);
+    } catch (uploadErr: any) {
+      console.error("❌ ERRO no PUT do upload:", uploadErr.message, uploadErr.stack);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Erro durante upload do vídeo: ${uploadErr.message}`,
+        }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (uploadStatus < 200 || uploadStatus >= 300) {
+      console.error("❌ Upload falhou:", uploadStatus, uploadText);
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -172,6 +186,8 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    
+    console.log("✅ Upload do vídeo concluído com sucesso");
 
     // Salvar histórico do post
     await supabase.from("tiktok_posts").insert({
