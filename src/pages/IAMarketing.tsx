@@ -180,16 +180,7 @@ const IAMarketing = () => {
         applyLogoOverlay: data.applyLogoOverlay !== false
       };
 
-      // Se tem imagem gerada E logo, compor a logo sobre a imagem no frontend
-      if (analysisResult.generatedImage && logoFile && analysisResult.applyLogoOverlay !== false) {
-        try {
-          const logob64 = logoBase64 || await fileToBase64(logoFile);
-          const composited = await compositeImageWithLogo(analysisResult.generatedImage, logob64);
-          analysisResult.generatedImage = composited;
-        } catch (e) {
-          console.error('Erro ao compor logo:', e);
-        }
-      }
+      // Logo é incorporada pela IA na geração — sem overlay no frontend
 
       setResultado(analysisResult);
       
