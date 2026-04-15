@@ -679,7 +679,7 @@ const IAMarketing = () => {
                       <div className="flex gap-2 mt-3">
                         <button
                           className="px-4 py-2 rounded-md border border-[#00C4CC] text-[#00C4CC] hover:bg-[#00C4CC]/10 text-sm flex items-center gap-2"
-                          onClick={() => window.open('https://www.canva.com/design/create', '_blank')}
+                          onClick={() => window.open('https://www.canva.com', '_blank')}
                         >
                           ✏️ Editar no Canva
                         </button>
