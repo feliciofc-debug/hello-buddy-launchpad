@@ -77,13 +77,82 @@ serve(async (req) => {
     console.log('🔑 Permissões do token:', JSON.stringify(permissionsData))
 
     // 4. Buscar Pages + Page Tokens (FRESH - sem fallback para dados antigos)
-    const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}`
-    console.log('📡 Buscando páginas...')
+    const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}&limit=100`
+    console.log('📡 Buscando páginas via /me/accounts...')
     const pagesResponse = await fetch(pagesUrl)
     const pagesData = await pagesResponse.json()
     console.log('📡 Resposta /me/accounts completa:', JSON.stringify(pagesData))
-    const pages = pagesData.data || []
-    console.log('✅ Páginas encontradas:', pages.length)
+    let pages: any[] = pagesData.data || []
+    console.log('✅ Páginas encontradas via /me/accounts:', pages.length)
+
+    // 4.1 FALLBACK: Se /me/accounts retornou vazio, buscar via Business Manager
+    // (cobre casos onde o usuário gerencia páginas SOMENTE pelo Business Manager,
+    // sem vínculo direto com o perfil pessoal)
+    if (pages.length === 0) {
+      console.log('🔄 Tentando fallback via Business Manager...')
+      try {
+        const bizResponse = await fetch(
+          `https://graph.facebook.com/v25.0/me/businesses?fields=id,name&access_token=${longLivedUserToken}&limit=50`
+        )
+        const bizData = await bizResponse.json()
+        console.log('📡 Businesses encontradas:', JSON.stringify(bizData))
+        const businesses = bizData.data || []
+
+        const collectedPages = new Map<string, any>()
+
+        for (const biz of businesses) {
+          // owned_pages
+          try {
+            const ownedRes = await fetch(
+              `https://graph.facebook.com/v25.0/${biz.id}/owned_pages?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}&limit=100`
+            )
+            const ownedData = await ownedRes.json()
+            console.log(`📡 owned_pages do business ${biz.name}:`, JSON.stringify(ownedData))
+            for (const p of (ownedData.data || [])) {
+              if (p.access_token) collectedPages.set(p.id, p)
+            }
+          } catch (e) {
+            console.error('⚠️ Erro owned_pages:', e)
+          }
+
+          // client_pages
+          try {
+            const clientRes = await fetch(
+              `https://graph.facebook.com/v25.0/${biz.id}/client_pages?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}&limit=100`
+            )
+            const clientData = await clientRes.json()
+            console.log(`📡 client_pages do business ${biz.name}:`, JSON.stringify(clientData))
+            for (const p of (clientData.data || [])) {
+              if (p.access_token) collectedPages.set(p.id, p)
+            }
+          } catch (e) {
+            console.error('⚠️ Erro client_pages:', e)
+          }
+        }
+
+        // Para páginas sem access_token, tentar gerar via /{page-id}?fields=access_token
+        for (const [pageId, page] of collectedPages.entries()) {
+          if (!page.access_token) {
+            try {
+              const ptRes = await fetch(
+                `https://graph.facebook.com/v25.0/${pageId}?fields=access_token,name,category&access_token=${longLivedUserToken}`
+              )
+              const ptData = await ptRes.json()
+              if (ptData.access_token) {
+                collectedPages.set(pageId, { ...page, ...ptData })
+              }
+            } catch (e) {
+              console.error('⚠️ Erro buscando page token individual:', e)
+            }
+          }
+        }
+
+        pages = Array.from(collectedPages.values()).filter(p => p.access_token)
+        console.log('✅ Páginas encontradas via Business Manager:', pages.length)
+      } catch (bizErr) {
+        console.error('⚠️ Erro no fallback Business Manager:', bizErr)
+      }
+    }
 
     // 5. Salvar tudo no banco - LIMPAR DADOS ANTIGOS PRIMEIRO
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
