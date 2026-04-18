@@ -30,11 +30,12 @@ const SettingsPage = () => {
     fetchMetaConnection();
 
     const params = new URLSearchParams(window.location.search);
+    const urlMessage = params.get('message');
     if (params.get('success') === 'true' && params.get('platform') === 'meta') {
       toast.success('✅ Meta Business conectado com sucesso!');
       window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('error') === 'true') {
-      toast.error('❌ Erro ao conectar. Tente novamente.');
+      toast.error(urlMessage ? `❌ ${decodeURIComponent(urlMessage)}` : '❌ Erro ao conectar. Tente novamente.');
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
