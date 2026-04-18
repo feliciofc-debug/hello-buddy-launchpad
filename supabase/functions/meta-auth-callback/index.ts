@@ -76,14 +76,39 @@ serve(async (req) => {
     const permissionsData = await permissionsResponse.json()
     console.log('🔑 Permissões do token:', JSON.stringify(permissionsData))
 
+    const hydratePageToken = async (page: any) => {
+      if (page?.access_token) return page
+
+      try {
+        const ptRes = await fetch(
+          `https://graph.facebook.com/v25.0/${page.id}?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}`
+        )
+        const ptData = await ptRes.json()
+        console.log(`📡 Hidratação de token da página ${page.id}:`, JSON.stringify(ptData))
+
+        if (ptData?.access_token) {
+          return { ...page, ...ptData }
+        }
+      } catch (e) {
+        console.error(`⚠️ Erro buscando page token individual para ${page?.id}:`, e)
+      }
+
+      return page
+    }
+
+    const hydratePages = async (rawPages: any[]) => {
+      const hydrated = await Promise.all((rawPages || []).map(hydratePageToken))
+      return hydrated.filter((page) => page?.id && page?.access_token)
+    }
+
     // 4. Buscar Pages + Page Tokens (FRESH - sem fallback para dados antigos)
     const pagesUrl = `https://graph.facebook.com/v25.0/me/accounts?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}&limit=100`
     console.log('📡 Buscando páginas via /me/accounts...')
     const pagesResponse = await fetch(pagesUrl)
     const pagesData = await pagesResponse.json()
     console.log('📡 Resposta /me/accounts completa:', JSON.stringify(pagesData))
-    let pages: any[] = pagesData.data || []
-    console.log('✅ Páginas encontradas via /me/accounts:', pages.length)
+    let pages: any[] = await hydratePages(pagesData.data || [])
+    console.log('✅ Páginas utilizáveis via /me/accounts:', pages.length)
 
     // 4.1 FALLBACK: Se /me/accounts retornou vazio, buscar via Business Manager
     // (cobre casos onde o usuário gerencia páginas SOMENTE pelo Business Manager,
@@ -101,7 +126,6 @@ serve(async (req) => {
         const collectedPages = new Map<string, any>()
 
         for (const biz of businesses) {
-          // owned_pages
           try {
             const ownedRes = await fetch(
               `https://graph.facebook.com/v25.0/${biz.id}/owned_pages?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}&limit=100`
@@ -109,13 +133,12 @@ serve(async (req) => {
             const ownedData = await ownedRes.json()
             console.log(`📡 owned_pages do business ${biz.name}:`, JSON.stringify(ownedData))
             for (const p of (ownedData.data || [])) {
-              if (p.access_token) collectedPages.set(p.id, p)
+              collectedPages.set(p.id, p)
             }
           } catch (e) {
             console.error('⚠️ Erro owned_pages:', e)
           }
 
-          // client_pages
           try {
             const clientRes = await fetch(
               `https://graph.facebook.com/v25.0/${biz.id}/client_pages?fields=id,name,access_token,category,tasks&access_token=${longLivedUserToken}&limit=100`
@@ -123,32 +146,15 @@ serve(async (req) => {
             const clientData = await clientRes.json()
             console.log(`📡 client_pages do business ${biz.name}:`, JSON.stringify(clientData))
             for (const p of (clientData.data || [])) {
-              if (p.access_token) collectedPages.set(p.id, p)
+              collectedPages.set(p.id, p)
             }
           } catch (e) {
             console.error('⚠️ Erro client_pages:', e)
           }
         }
 
-        // Para páginas sem access_token, tentar gerar via /{page-id}?fields=access_token
-        for (const [pageId, page] of collectedPages.entries()) {
-          if (!page.access_token) {
-            try {
-              const ptRes = await fetch(
-                `https://graph.facebook.com/v25.0/${pageId}?fields=access_token,name,category&access_token=${longLivedUserToken}`
-              )
-              const ptData = await ptRes.json()
-              if (ptData.access_token) {
-                collectedPages.set(pageId, { ...page, ...ptData })
-              }
-            } catch (e) {
-              console.error('⚠️ Erro buscando page token individual:', e)
-            }
-          }
-        }
-
-        pages = Array.from(collectedPages.values()).filter(p => p.access_token)
-        console.log('✅ Páginas encontradas via Business Manager:', pages.length)
+        pages = await hydratePages(Array.from(collectedPages.values()))
+        console.log('✅ Páginas utilizáveis via Business Manager:', pages.length)
       } catch (bizErr) {
         console.error('⚠️ Erro no fallback Business Manager:', bizErr)
       }
@@ -263,7 +269,15 @@ serve(async (req) => {
         console.log('✅ meta_connections salvo para', userData.name, '| Page:', mainPage.name, '| IG:', igUsername)
       }
     } else {
-      console.log('❌ NENHUMA PÁGINA ENCONTRADA via /me/accounts')
+      console.log('❌ NENHUMA PÁGINA CONECTÁVEL ENCONTRADA após /me/accounts + Business Manager')
+
+      return new Response(null, {
+        status: 302,
+        headers: {
+          ...corsHeaders,
+          'Location': `${SITE_URL}/configuracoes?error=true&platform=meta&message=${encodeURIComponent('A Meta autorizou o login, mas não retornou nenhuma página conectável para finalizar a integração.')}`
+        }
+      })
     }
 
     return new Response(null, {
