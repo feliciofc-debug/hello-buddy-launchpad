@@ -39,7 +39,8 @@ import {
   Building2,
   Sparkles,
   Share2,
-  Shield
+  Shield,
+  Plug
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
@@ -280,6 +281,7 @@ export default function DashboardMetricas() {
     { id: 'ia-marketing', icon: Zap, label: t('nav.ia_marketing'), path: '/ia-marketing' },
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
+    { id: 'integracoes', icon: Plug, label: t('nav.integrations', 'Integrações'), path: '/integracoes' },
     { id: 'configuracoes', icon: Settings, label: t('nav.settings'), path: '/configuracoes' },
     ...(userEmail === 'expo@atombrasildigital.com'
       ? [{ id: 'admin', icon: Shield, label: 'Admin', path: '/admin' }]
