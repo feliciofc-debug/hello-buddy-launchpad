@@ -12,12 +12,14 @@ const SHOPEE_IMG_BASE = 'https://down-bs-br.img.susercontent.com'
 const PAGE_LIMIT = 20
 const MAX_PAGES = 25 // teto de 500 produtos
 
-const GRAPHQL_QUERY = `query StorefrontProductListQuery($urlSuffix: String, $sortType: SortType, $page: LinktreelandingpagePaginationInput, $listType: MyCollectionListType, $cid: String, $language: String) {
+const GRAPHQL_QUERY = `query StorefrontProductListQuery($urlSuffix: String, $sortType: SortType, $page: LinktreelandingpagePaginationInput, $listType: MyCollectionListType, $uuId: String, $deviceId: String, $cid: String, $language: String) {
   storefrontProductList(
     urlSuffix: $urlSuffix
     sortType: $sortType
     page: $page
     listType: $listType
+    uuId: $uuId
+    deviceId: $deviceId
     cid: $cid
     language: $language
   ) {
@@ -87,8 +89,10 @@ async function fetchPage(urlSuffix: string, offset: number) {
       urlSuffix,
       cid: 'br',
       language: 'pt',
-      listType: 'ALL',
-      sortType: 'LATEST',
+      listType: null,
+      sortType: 'LATEST_DESC',
+      uuId: '00000000-0000-0000-0000-000000000000',
+      deviceId: 'lovable-vitrine-importer',
       page: { offset: String(offset), limit: String(PAGE_LIMIT) },
     },
   }
