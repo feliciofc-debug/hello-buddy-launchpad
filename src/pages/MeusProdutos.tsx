@@ -33,6 +33,9 @@ import { AreaVideos } from '@/components/AreaVideos';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 
+// Limite de fotos por produto (capa + extras). Atende sellers de imóveis/carros que precisam de muitas fotos.
+const MAX_PRODUCT_PHOTOS = 30;
+
 interface Campanha {
   id: string;
   nome: string;
@@ -180,19 +183,19 @@ const ProductForm = ({
       />
     </div>
 
-    {/* Upload de Fotos do Produto (até 5) */}
+    {/* Upload de Fotos do Produto (até MAX_PRODUCT_PHOTOS) */}
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label>{t('products.photos_label')}</Label>
         <span className="text-xs text-muted-foreground">
-          {(currentImageUrl && !imageFile ? 1 : imageFile ? 1 : 0) + existingExtraImages.length + extraImageFiles.filter(Boolean).length}/5
+          {(currentImageUrl && !imageFile ? 1 : imageFile ? 1 : 0) + existingExtraImages.length + extraImageFiles.filter(Boolean).length}/{MAX_PRODUCT_PHOTOS}
         </span>
       </div>
       <p className="text-xs text-muted-foreground">
         {t('products.photos_hint')}
       </p>
-      <div className="border-2 border-dashed rounded-lg p-4">
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+      <div className="border-2 border-dashed rounded-lg p-4 max-h-[480px] overflow-y-auto">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
           {/* Foto principal */}
           {(previewImage || (currentImageUrl && !imageFile)) && (
             <div className="relative aspect-square overflow-hidden rounded border-2 border-primary bg-muted/20">
@@ -245,7 +248,7 @@ const ProductForm = ({
           )}
 
           {/* Botão adicionar foto */}
-          {((currentImageUrl && !imageFile ? 1 : imageFile ? 1 : 0) + existingExtraImages.length + extraImageFiles.filter(Boolean).length) < 5 && (
+          {((currentImageUrl && !imageFile ? 1 : imageFile ? 1 : 0) + existingExtraImages.length + extraImageFiles.filter(Boolean).length) < MAX_PRODUCT_PHOTOS && (
             <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded border-2 border-dashed border-border bg-muted/20 transition-colors hover:bg-muted/50">
               <ImageIcon className="mb-1 h-6 w-6 text-muted-foreground" />
               <span className="text-center text-xs text-muted-foreground">{t('products.attach_photo')}</span>

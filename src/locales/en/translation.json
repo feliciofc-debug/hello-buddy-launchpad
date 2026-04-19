@@ -311,7 +311,7 @@
     "edit_modal_desc": "Update the product information",
     "save_changes": "Save Changes",
     "product_name_required": "Product Name *",
-    "photos_label": "Product photos (up to 5)",
+    "photos_label": "Product photos (up to 30)",
     "photos_hint": "The first photo will be the main card image. With 2+ photos, it will be published as a carousel.",
     "main_photo": "Main",
     "attach_photo": "Attach photo",

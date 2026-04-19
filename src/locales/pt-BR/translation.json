@@ -311,7 +311,7 @@
     "edit_modal_desc": "Atualize as informações do produto",
     "save_changes": "Salvar Alterações",
     "product_name_required": "Nome do Produto *",
-    "photos_label": "Fotos do produto (até 5)",
+    "photos_label": "Fotos do produto (até 30)",
     "photos_hint": "A primeira foto será a principal do card. Com 2+ fotos, a publicação será feita como carrossel.",
     "main_photo": "Principal",
     "attach_photo": "Anexar foto",
