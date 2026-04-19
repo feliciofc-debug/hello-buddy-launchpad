@@ -72,7 +72,7 @@ interface Product {
   link_marketplace: string | null;
   publicar_marketplace: boolean;
   imagens: any; // Json do banco pode ser string[] ou string
-  imagens_reel?: string[] | null;
+  imagens_reel?: any; // Json do banco — array de URLs selecionadas para Reel (até 5)
 }
 
 interface ProductFormProps {
