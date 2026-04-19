@@ -1,4 +1,67 @@
 {
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save",
+    "loading": "Loading..."
+  },
+  "integracoes": {
+    "title": "Integrations",
+    "subtitle": "Manage your API Keys and extensions",
+    "never_used": "Never used",
+    "shopee": {
+      "title": "Chrome Extension — Shopee",
+      "description": "Import products from Shopee directly into your platform. Extract entire showcases, individual products, searches and official stores in seconds.",
+      "download": "Download Extension",
+      "instructions": "View installation instructions",
+      "coming_soon": "Coming soon"
+    },
+    "keys": {
+      "title": "My API Keys",
+      "description": "Connect the Chrome extension to your account using an API Key.",
+      "new": "New API Key",
+      "empty_title": "You haven't generated any API Keys yet.",
+      "empty_subtitle": "An API Key is required to connect the Chrome extension to your account.",
+      "empty_cta": "Generate my first API Key",
+      "col_name": "Name",
+      "col_prefix": "Prefix",
+      "col_created": "Created at",
+      "col_last_used": "Last used",
+      "col_status": "Status",
+      "col_action": "Action",
+      "active": "Active",
+      "revoked": "Revoked",
+      "revoke": "Revoke"
+    },
+    "create": {
+      "title": "Generate new API Key",
+      "description": "Give it a name to identify where this key will be used.",
+      "name_label": "Key name",
+      "name_placeholder": "e.g.: Office laptop",
+      "submit": "Generate"
+    },
+    "reveal": {
+      "title": "Copy your API Key now!",
+      "description": "This is the only time it will be shown. After closing, you won't be able to recover it.",
+      "copy": "Copy",
+      "copied": "API Key copied!",
+      "confirm": "Got it, I copied"
+    },
+    "revoke": {
+      "title": "Are you sure?",
+      "description": "Revoking this API Key will immediately stop any extension using it from working.",
+      "confirm": "Revoke",
+      "success": "API Key revoked"
+    },
+    "others": {
+      "title": "Other integrations",
+      "description": "Coming soon: Mercado Livre, Amazon, AliExpress"
+    },
+    "errors": {
+      "load": "Error loading API Keys",
+      "create": "Error generating API Key",
+      "revoke": "Error revoking API Key"
+    }
+  },
   "nav": {
     "dashboard": "Dashboard",
     "settings": "Settings",
