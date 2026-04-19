@@ -928,6 +928,14 @@ export default function MeusProdutos() {
     }
   };
 
+  const handleGerarReel = (product: Product) => {
+    const reelImgs = Array.isArray(product.imagens_reel) ? product.imagens_reel.filter(Boolean) : [];
+    if (reelImgs.length === 0) {
+      toast.info('Escolha as fotos pro Reel primeiro. Clique em Editar e marque as fotos.');
+      return;
+    }
+    toast.info('Feature em construção');
+  };
 
   const uploadImage = async (file: File, productId: string): Promise<string | null> => {
     try {
@@ -1692,10 +1700,10 @@ export default function MeusProdutos() {
                           variant="outline"
                           size="sm"
                           className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
-                          onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
+                          onClick={() => handleGerarReel(product)}
                         >
                           <Video className="w-4 h-4" />
-                          {t('products.publish_reels')}
+                          🎬 Gerar Reel
                         </Button>
                         {showTikTok && (
                           <Button
@@ -1777,10 +1785,10 @@ export default function MeusProdutos() {
                           variant="outline"
                           size="sm"
                           className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
-                          onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
+                          onClick={() => handleGerarReel(product)}
                         >
                           <Video className="w-4 h-4" />
-                          {t('products.publish_reels')}
+                          🎬 Gerar Reel
                         </Button>
                         {showTikTok && (
                           <Button
@@ -1916,6 +1924,8 @@ export default function MeusProdutos() {
             setExtraImageFiles={setExtraImageFiles}
             existingExtraImages={existingExtraImages}
             setExistingExtraImages={setExistingExtraImages}
+            imagensReel={imagensReel}
+            setImagensReel={setImagensReel}
           />
         </DialogContent>
       </Dialog>
@@ -1942,6 +1952,8 @@ export default function MeusProdutos() {
             setExtraImageFiles={setExtraImageFiles}
             existingExtraImages={existingExtraImages}
             setExistingExtraImages={setExistingExtraImages}
+            imagensReel={imagensReel}
+            setImagensReel={setImagensReel}
           />
         </DialogContent>
       </Dialog>
