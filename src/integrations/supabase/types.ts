@@ -5181,6 +5181,7 @@ export type Database = {
           id: string
           imagem_url: string | null
           imagens: Json | null
+          imagens_reel: Json | null
           informacao_nutricional: string | null
           ingredientes: string | null
           link: string | null
@@ -5218,6 +5219,7 @@ export type Database = {
           id?: string
           imagem_url?: string | null
           imagens?: Json | null
+          imagens_reel?: Json | null
           informacao_nutricional?: string | null
           ingredientes?: string | null
           link?: string | null
@@ -5255,6 +5257,7 @@ export type Database = {
           id?: string
           imagem_url?: string | null
           imagens?: Json | null
+          imagens_reel?: Json | null
           informacao_nutricional?: string | null
           ingredientes?: string | null
           link?: string | null
