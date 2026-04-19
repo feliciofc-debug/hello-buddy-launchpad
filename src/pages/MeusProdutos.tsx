@@ -707,6 +707,8 @@ export default function MeusProdutos() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
+  const [vitrineUrl, setVitrineUrl] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   const [isIntegrationsOpen, setIsIntegrationsOpen] = useState(false);
   const [isCampanhaModalOpen, setIsCampanhaModalOpen] = useState(false);
   const [isCampanhaWhatsAppOpen, setIsCampanhaWhatsAppOpen] = useState(false);
