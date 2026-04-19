@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
+import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
 
 interface VideoItem {
   id: string;
@@ -151,6 +152,10 @@ export const AreaVideos = () => {
 
   return (
     <div className="space-y-6">
+      <ReelsGeradosGrid />
+
+      <h2 className="text-xl font-semibold pt-2">📹 Vídeos Enviados</h2>
+
       {/* Upload area */}
       <Card className="border-dashed border-2 border-muted-foreground/30">
         <CardContent className="p-8 text-center">

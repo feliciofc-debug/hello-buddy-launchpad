@@ -5162,6 +5162,71 @@ export type Database = {
         }
         Relationships: []
       }
+      produto_videos: {
+        Row: {
+          criado_em: string | null
+          duracao_segundos: number | null
+          facebook_post_id: string | null
+          id: string
+          instagram_post_id: string | null
+          legenda: string | null
+          produto_id: string | null
+          publicado_em: string | null
+          publicado_facebook: boolean | null
+          publicado_instagram: boolean | null
+          status: string | null
+          tamanho_bytes: number | null
+          thumbnail_url: string | null
+          titulo: string | null
+          user_id: string
+          video_url: string
+        }
+        Insert: {
+          criado_em?: string | null
+          duracao_segundos?: number | null
+          facebook_post_id?: string | null
+          id?: string
+          instagram_post_id?: string | null
+          legenda?: string | null
+          produto_id?: string | null
+          publicado_em?: string | null
+          publicado_facebook?: boolean | null
+          publicado_instagram?: boolean | null
+          status?: string | null
+          tamanho_bytes?: number | null
+          thumbnail_url?: string | null
+          titulo?: string | null
+          user_id: string
+          video_url: string
+        }
+        Update: {
+          criado_em?: string | null
+          duracao_segundos?: number | null
+          facebook_post_id?: string | null
+          id?: string
+          instagram_post_id?: string | null
+          legenda?: string | null
+          produto_id?: string | null
+          publicado_em?: string | null
+          publicado_facebook?: boolean | null
+          publicado_instagram?: boolean | null
+          status?: string | null
+          tamanho_bytes?: number | null
+          thumbnail_url?: string | null
+          titulo?: string | null
+          user_id?: string
+          video_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produto_videos_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       produtos: {
         Row: {
           ativo: boolean | null
