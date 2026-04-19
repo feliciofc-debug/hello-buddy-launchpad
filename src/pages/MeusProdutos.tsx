@@ -72,6 +72,7 @@ interface Product {
   link_marketplace: string | null;
   publicar_marketplace: boolean;
   imagens: any; // Json do banco pode ser string[] ou string
+  imagens_reel?: string[] | null;
 }
 
 interface ProductFormProps {
