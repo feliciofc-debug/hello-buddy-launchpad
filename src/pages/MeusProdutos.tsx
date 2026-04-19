@@ -118,6 +118,8 @@ interface ProductFormProps {
   setExtraImageFiles: (files: (File | null)[]) => void;
   existingExtraImages: string[];
   setExistingExtraImages: (imgs: string[]) => void;
+  imagensReel: string[];
+  setImagensReel: (urls: string[]) => void;
 }
 
 const ProductForm = ({ 
@@ -135,10 +137,28 @@ const ProductForm = ({
   extraImageFiles,
   setExtraImageFiles,
   existingExtraImages,
-  setExistingExtraImages
+  setExistingExtraImages,
+  imagensReel,
+  setImagensReel
 }: ProductFormProps) => {
   const { t } = useTranslation();
   const extraPreviews = extraImageFiles.map(f => f ? URL.createObjectURL(f) : null);
+
+  // Helper: alterna seleção de uma URL para o Reel (máx 5, ordem preservada)
+  const toggleReelImage = (url: string) => {
+    if (!url) return;
+    if (imagensReel.includes(url)) {
+      setImagensReel(imagensReel.filter(u => u !== url));
+    } else {
+      if (imagensReel.length >= 5) {
+        toast.error('Máximo 5 fotos pro Reel. Desmarque uma pra selecionar outra.');
+        return;
+      }
+      setImagensReel([...imagensReel, url]);
+    }
+  };
+  const reelIndex = (url: string | null | undefined) =>
+    url ? imagensReel.indexOf(url) : -1;
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
