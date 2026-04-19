@@ -476,6 +476,16 @@ function ajustarHorarioSePassou(dataUtc: Date, agoraSaoPaulo: Date) {
 
 function calcularProximoDiaValido(agoraSaoPaulo: Date, diasSemana: number[], horarioInicio: string): Date {
   const [h, m] = horarioInicio.split(':').map(Number)
+
+  // Tenta primeiro rodar HOJE no horário de início, se ainda não passou e hoje for dia válido
+  const hoje = new Date(agoraSaoPaulo)
+  hoje.setHours(h, m, 0, 0)
+  const aindaHaJanelaHoje = hoje > agoraSaoPaulo
+  if (aindaHaJanelaHoje && diasSemana.includes(hoje.getDay())) {
+    return saoPauloLocalToUtc(hoje)
+  }
+
+  // Caso contrário, procura o próximo dia válido (a partir de amanhã)
   const proximo = new Date(agoraSaoPaulo)
   proximo.setDate(proximo.getDate() + 1)
   proximo.setHours(h, m, 0, 0)
