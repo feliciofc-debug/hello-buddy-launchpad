@@ -336,6 +336,33 @@ export default function Integracoes() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Instructions dialog */}
+      <Dialog open={instructionsOpen} onOpenChange={setInstructionsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("integracoes.shopee.instructions_title")}</DialogTitle>
+            <DialogDescription>{t("integracoes.shopee.instructions_intro")}</DialogDescription>
+          </DialogHeader>
+          <ol className="space-y-3 list-decimal list-inside text-sm">
+            <li>{t("integracoes.shopee.instructions_step1")}</li>
+            <li>
+              {t("integracoes.shopee.instructions_step2_prefix")}
+              <code className="px-1 py-0.5 bg-muted rounded text-xs font-mono">chrome://extensions</code>
+              {t("integracoes.shopee.instructions_step2_suffix")}
+            </li>
+            <li>{t("integracoes.shopee.instructions_step3")}</li>
+          </ol>
+          <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">
+            {t("integracoes.shopee.instructions_api_warning")}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setInstructionsOpen(false)}>
+              {t("integracoes.shopee.instructions_close")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
