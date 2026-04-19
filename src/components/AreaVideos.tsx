@@ -154,10 +154,10 @@ export const AreaVideos = () => {
     <div className="space-y-6">
       <ReelsGeradosGrid />
 
+      <h2 className="text-xl font-semibold pt-2">📹 Vídeos Enviados</h2>
+
       {/* Upload area */}
       <Card className="border-dashed border-2 border-muted-foreground/30">
-
-      <h2 className="text-xl font-semibold pt-2">📹 Vídeos Enviados</h2>
         <CardContent className="p-8 text-center">
           <Video className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
           <h3 className="text-lg font-semibold mb-2">Upload de Vídeo</h3>
