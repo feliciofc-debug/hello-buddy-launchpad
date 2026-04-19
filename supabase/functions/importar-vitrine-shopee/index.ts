@@ -129,28 +129,63 @@ async function fetchPage(urlSuffix: string, offset: number) {
   }
 }
 
-function mapItem(item: ShopeeItem, userId: string) {
+function mapItem(item: any, userId: string) {
   const card = item.itemCard || {}
-  const nome = String(item.linkName || card.name || '').slice(0, 500)
-  if (!nome) return null
+  const nome = String(item.linkName || card.name || '').trim().slice(0, 500)
+  if (!nome || nome.length < 3) return null
 
-  const link = item.link || ''
-  if (!link) return null
+  const link = String(item.link || '').trim()
+  if (!link || !link.startsWith('http')) return null
 
   // preço em micro-reais → reais
   const rawPrice = Number(card?.displayPrice?.price ?? card?.price ?? 0)
   const preco = rawPrice > 0 ? Math.round((rawPrice / 100000) * 100) / 100 : null
 
-  // Imagens
-  const imageHashes: string[] = Array.isArray(card?.images) ? card.images : []
-  const imagensFull = imageHashes.map(imageHashToUrl).filter(Boolean)
+  // ===========================================================
+  // COLETA DE IMAGENS EM 3 FONTES DIFERENTES DO JSON DA SHOPEE
+  // Fonte 1: itemCard.images (array de hashes)
+  // Fonte 2: itemCardDisplayedAsset.images (a que estava faltando)
+  // Fonte 3: item.image (string única, fallback)
+  // ===========================================================
+  const hashesColetados: string[] = []
 
-  let imagem_url: string | null = null
-  if (imagensFull.length > 0) {
-    imagem_url = imagensFull[0]
-  } else if (item.image) {
-    imagem_url = imageHashToUrl(item.image)
+  if (Array.isArray(card?.images)) {
+    for (const h of card.images) {
+      if (typeof h === 'string' && h.trim()) hashesColetados.push(h)
+    }
   }
+
+  if (Array.isArray(item?.itemCardDisplayedAsset?.images)) {
+    for (const h of item.itemCardDisplayedAsset.images) {
+      if (typeof h === 'string' && h.trim()) hashesColetados.push(h)
+    }
+  }
+
+  if (typeof item.image === 'string' && item.image.trim()) {
+    hashesColetados.push(item.image)
+  }
+
+  // Dedup preservando ordem (primeira ocorrência vence)
+  const vistos = new Set<string>()
+  const hashesUnicos: string[] = []
+  for (const h of hashesColetados) {
+    if (!vistos.has(h)) {
+      vistos.add(h)
+      hashesUnicos.push(h)
+    }
+  }
+
+  // Converter hashes para URLs completas
+  const imagensFull: string[] = hashesUnicos
+    .map((h) => imageHashToUrl(h))
+    .filter((u): u is string => !!u)
+
+  const imagem_url: string | null = imagensFull[0] || null
+
+  // Log de validação por produto
+  console.log(
+    `[VITRINE][IMGS] produto="${nome.substring(0, 40)}..." imagens=${imagensFull.length}`,
+  )
 
   return {
     user_id: userId,
