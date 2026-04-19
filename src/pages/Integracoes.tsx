@@ -45,6 +45,28 @@ export default function Integracoes() {
   const [revokeId, setRevokeId] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
 
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
+
+  const handleDownload = async () => {
+    try {
+      const res = await fetch("/amz-importador-shopee-v3.zip");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "amz-importador-shopee-v3.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      toast.success(t("integracoes.shopee.download_started"));
+      setInstructionsOpen(true);
+    } catch (err) {
+      console.error(err);
+      toast.error(t("integracoes.shopee.download_error"));
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -144,10 +166,10 @@ export default function Integracoes() {
             </div>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={() => toast.info(t("integracoes.shopee.coming_soon"))}>
+            <Button variant="outline" onClick={handleDownload}>
               📥 {t("integracoes.shopee.download")}
             </Button>
-            <Button variant="ghost" onClick={() => toast.info(t("integracoes.shopee.coming_soon"))}>
+            <Button variant="ghost" onClick={() => setInstructionsOpen(true)}>
               📖 {t("integracoes.shopee.instructions")}
             </Button>
           </CardContent>
@@ -314,6 +336,33 @@ export default function Integracoes() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Instructions dialog */}
+      <Dialog open={instructionsOpen} onOpenChange={setInstructionsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("integracoes.shopee.instructions_title")}</DialogTitle>
+            <DialogDescription>{t("integracoes.shopee.instructions_intro")}</DialogDescription>
+          </DialogHeader>
+          <ol className="space-y-3 list-decimal list-inside text-sm">
+            <li>{t("integracoes.shopee.instructions_step1")}</li>
+            <li>
+              {t("integracoes.shopee.instructions_step2_prefix")}
+              <code className="px-1 py-0.5 bg-muted rounded text-xs font-mono">chrome://extensions</code>
+              {t("integracoes.shopee.instructions_step2_suffix")}
+            </li>
+            <li>{t("integracoes.shopee.instructions_step3")}</li>
+          </ol>
+          <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">
+            {t("integracoes.shopee.instructions_api_warning")}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setInstructionsOpen(false)}>
+              {t("integracoes.shopee.instructions_close")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
