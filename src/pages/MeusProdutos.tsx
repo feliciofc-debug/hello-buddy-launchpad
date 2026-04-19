@@ -72,6 +72,7 @@ interface Product {
   link_marketplace: string | null;
   publicar_marketplace: boolean;
   imagens: any; // Json do banco pode ser string[] ou string
+  imagens_reel?: any; // Json do banco — array de URLs selecionadas para Reel (até 5)
 }
 
 interface ProductFormProps {
@@ -117,6 +118,8 @@ interface ProductFormProps {
   setExtraImageFiles: (files: (File | null)[]) => void;
   existingExtraImages: string[];
   setExistingExtraImages: (imgs: string[]) => void;
+  imagensReel: string[];
+  setImagensReel: (urls: string[]) => void;
 }
 
 const ProductForm = ({ 
@@ -134,10 +137,28 @@ const ProductForm = ({
   extraImageFiles,
   setExtraImageFiles,
   existingExtraImages,
-  setExistingExtraImages
+  setExistingExtraImages,
+  imagensReel,
+  setImagensReel
 }: ProductFormProps) => {
   const { t } = useTranslation();
   const extraPreviews = extraImageFiles.map(f => f ? URL.createObjectURL(f) : null);
+
+  // Helper: alterna seleção de uma URL para o Reel (máx 5, ordem preservada)
+  const toggleReelImage = (url: string) => {
+    if (!url) return;
+    if (imagensReel.includes(url)) {
+      setImagensReel(imagensReel.filter(u => u !== url));
+    } else {
+      if (imagensReel.length >= 5) {
+        toast.error('Máximo 5 fotos pro Reel. Desmarque uma pra selecionar outra.');
+        return;
+      }
+      setImagensReel([...imagensReel, url]);
+    }
+  };
+  const reelIndex = (url: string | null | undefined) =>
+    url ? imagensReel.indexOf(url) : -1;
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -197,26 +218,61 @@ const ProductForm = ({
       <div className="border-2 border-dashed rounded-lg p-4 max-h-[480px] overflow-y-auto">
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
           {/* Foto principal */}
-          {(previewImage || (currentImageUrl && !imageFile)) && (
-            <div className="relative aspect-square overflow-hidden rounded border-2 border-primary bg-muted/20">
-              <img src={previewImage || currentImageUrl!} className="h-full w-full object-cover" alt={t('products.main_photo')} />
-              <span className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{t('products.main_photo')}</span>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="absolute right-1 top-1 h-6 w-6 p-0"
-                onClick={removeImage}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          )}
+          {(previewImage || (currentImageUrl && !imageFile)) && (() => {
+            const mainUrl = previewImage || currentImageUrl!;
+            const isLocalPreview = !!previewImage; // blob: URLs não persistem ainda no banco
+            const idxReel = isLocalPreview ? -1 : reelIndex(mainUrl);
+            return (
+              <div className="relative aspect-square overflow-hidden rounded border-2 border-primary bg-muted/20">
+                <img src={mainUrl} className="h-full w-full object-cover" alt={t('products.main_photo')} />
+                <span className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{t('products.main_photo')}</span>
+                {!isLocalPreview && (
+                  <label className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-background/90 px-1.5 py-0.5 cursor-pointer shadow">
+                    <Checkbox
+                      checked={idxReel >= 0}
+                      onCheckedChange={() => toggleReelImage(mainUrl)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className="text-[10px] font-medium">🎬 Reel</span>
+                  </label>
+                )}
+                {idxReel >= 0 && (
+                  <Badge variant="default" className="absolute bottom-1 right-1 px-1.5 py-0 text-[10px]">
+                    Reel #{idxReel + 1}
+                  </Badge>
+                )}
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="absolute right-1 top-1 h-6 w-6 p-0"
+                  onClick={removeImage}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            );
+          })()}
 
           {/* Fotos extras já salvas */}
-          {existingExtraImages.map((url, idx) => (
+          {existingExtraImages.map((url, idx) => {
+            const idxReel = reelIndex(url);
+            return (
             <div key={`existing-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
               <img src={url} className="h-full w-full object-cover" alt={`Foto ${idx + 2}`} />
+              <label className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-background/90 px-1.5 py-0.5 cursor-pointer shadow">
+                <Checkbox
+                  checked={idxReel >= 0}
+                  onCheckedChange={() => toggleReelImage(url)}
+                  className="h-3.5 w-3.5"
+                />
+                <span className="text-[10px] font-medium">🎬 Reel</span>
+              </label>
+              {idxReel >= 0 && (
+                <Badge variant="default" className="absolute bottom-1 right-1 px-1.5 py-0 text-[10px]">
+                  Reel #{idxReel + 1}
+                </Badge>
+              )}
               <Button
                 type="button"
                 variant="destructive"
@@ -227,7 +283,8 @@ const ProductForm = ({
                 <X className="h-3 w-3" />
               </Button>
             </div>
-          ))}
+            );
+          })}
 
           {/* Fotos extras novas (upload) */}
           {extraImageFiles.map((file, idx) =>
@@ -763,6 +820,7 @@ export default function MeusProdutos() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [extraImageFiles, setExtraImageFiles] = useState<(File | null)[]>([]);
   const [existingExtraImages, setExistingExtraImages] = useState<string[]>([]);
+  const [imagensReel, setImagensReel] = useState<string[]>([]);
 
   // Preview da imagem quando selecionada
   useEffect(() => {
@@ -870,6 +928,14 @@ export default function MeusProdutos() {
     }
   };
 
+  const handleGerarReel = (product: Product) => {
+    const reelImgs = Array.isArray(product.imagens_reel) ? product.imagens_reel.filter(Boolean) : [];
+    if (reelImgs.length === 0) {
+      toast.info('Escolha as fotos pro Reel primeiro. Clique em Editar e marque as fotos.');
+      return;
+    }
+    toast.info('Feature em construção');
+  };
 
   const uploadImage = async (file: File, productId: string): Promise<string | null> => {
     try {
@@ -949,6 +1015,7 @@ export default function MeusProdutos() {
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
           imagens: formData.imagens || [],
+          imagens_reel: imagensReel || [],
           tipo: formData.tipo || 'fisico',
           ficha_tecnica: formData.ficha_tecnica || null,
           informacao_nutricional: formData.informacao_nutricional || null,
@@ -1060,6 +1127,7 @@ export default function MeusProdutos() {
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
           imagens: existingExtraImages || [],
+          imagens_reel: imagensReel || [],
           tipo: formData.tipo || 'fisico',
           ficha_tecnica: formData.ficha_tecnica || null,
           informacao_nutricional: formData.informacao_nutricional || null,
@@ -1276,6 +1344,7 @@ export default function MeusProdutos() {
     setImageFile(null);
     setExtraImageFiles([]);
     setExistingExtraImages(Array.isArray(product.imagens) ? product.imagens.filter(Boolean) : []);
+    setImagensReel(Array.isArray(product.imagens_reel) ? product.imagens_reel.filter(Boolean).slice(0, 5) : []);
     setIsEditModalOpen(true);
   };
 
@@ -1313,6 +1382,7 @@ export default function MeusProdutos() {
     setCurrentImageUrl(null);
     setExtraImageFiles([]);
     setExistingExtraImages([]);
+    setImagensReel([]);
   };
 
   const getFilteredProducts = () => {
@@ -1630,10 +1700,10 @@ export default function MeusProdutos() {
                           variant="outline"
                           size="sm"
                           className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
-                          onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
+                          onClick={() => handleGerarReel(product)}
                         >
                           <Video className="w-4 h-4" />
-                          {t('products.publish_reels')}
+                          🎬 Gerar Reel
                         </Button>
                         {showTikTok && (
                           <Button
@@ -1715,10 +1785,10 @@ export default function MeusProdutos() {
                           variant="outline"
                           size="sm"
                           className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
-                          onClick={() => { setReelsProduct(product); setIsReelsModalOpen(true); }}
+                          onClick={() => handleGerarReel(product)}
                         >
                           <Video className="w-4 h-4" />
-                          {t('products.publish_reels')}
+                          🎬 Gerar Reel
                         </Button>
                         {showTikTok && (
                           <Button
@@ -1854,6 +1924,8 @@ export default function MeusProdutos() {
             setExtraImageFiles={setExtraImageFiles}
             existingExtraImages={existingExtraImages}
             setExistingExtraImages={setExistingExtraImages}
+            imagensReel={imagensReel}
+            setImagensReel={setImagensReel}
           />
         </DialogContent>
       </Dialog>
@@ -1880,6 +1952,8 @@ export default function MeusProdutos() {
             setExtraImageFiles={setExtraImageFiles}
             existingExtraImages={existingExtraImages}
             setExistingExtraImages={setExistingExtraImages}
+            imagensReel={imagensReel}
+            setImagensReel={setImagensReel}
           />
         </DialogContent>
       </Dialog>
