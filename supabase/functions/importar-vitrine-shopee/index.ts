@@ -130,37 +130,49 @@ async function fetchPage(urlSuffix: string, offset: number) {
 }
 
 function mapItem(item: any, userId: string) {
+  // Caminho real da Shopee/collshp:
+  //   item.itemCard.itemCardDisplayedAsset  → onde ficam as imagens, nome, preço
+  //   item.itemCard.itemData                → dados do produto (id, shop, etc)
+  // O `itemCard` no nível raiz NÃO tem .images nem .name diretamente.
   const card = item.itemCard || {}
-  const nome = String(item.linkName || card.name || '').trim().slice(0, 500)
+  const asset = card.itemCardDisplayedAsset || {}
+  const data = card.itemData || {}
+
+  const nome = String(item.linkName || asset.name || '').trim().slice(0, 500)
   if (!nome || nome.length < 3) return null
 
   const link = String(item.link || '').trim()
   if (!link || !link.startsWith('http')) return null
 
   // preço em micro-reais → reais
-  const rawPrice = Number(card?.displayPrice?.price ?? card?.price ?? 0)
+  // Fonte preferida: itemData.itemCardDisplayPrice.price (mais preciso)
+  // Fallback: asset.displayPrice.price
+  const rawPrice = Number(
+    data?.itemCardDisplayPrice?.price ?? asset?.displayPrice?.price ?? 0,
+  )
   const preco = rawPrice > 0 ? Math.round((rawPrice / 100000) * 100) / 100 : null
 
   // ===========================================================
-  // COLETA DE IMAGENS EM 3 FONTES DIFERENTES DO JSON DA SHOPEE
-  // Fonte 1: itemCard.images (array de hashes)
-  // Fonte 2: itemCardDisplayedAsset.images (a que estava faltando)
-  // Fonte 3: item.image (string única, fallback)
+  // COLETA DE IMAGENS — caminho correto na resposta da Shopee
+  // Fonte 1 (principal): itemCard.itemCardDisplayedAsset.images (array de 5-10 hashes)
+  // Fonte 2 (fallback):  itemCard.itemCardDisplayedAsset.image (URL completa)
+  // Fonte 3 (fallback):  item.image (URL completa no nível raiz)
   // ===========================================================
   const hashesColetados: string[] = []
 
-  if (Array.isArray(card?.images)) {
-    for (const h of card.images) {
+  // Fonte 1: array de hashes (a fonte rica — 5 a 10 imagens)
+  if (Array.isArray(asset?.images)) {
+    for (const h of asset.images) {
       if (typeof h === 'string' && h.trim()) hashesColetados.push(h)
     }
   }
 
-  if (Array.isArray(item?.itemCardDisplayedAsset?.images)) {
-    for (const h of item.itemCardDisplayedAsset.images) {
-      if (typeof h === 'string' && h.trim()) hashesColetados.push(h)
-    }
+  // Fonte 2: URL completa do asset (já vem com domínio)
+  if (typeof asset?.image === 'string' && asset.image.trim()) {
+    hashesColetados.push(asset.image)
   }
 
+  // Fonte 3: imagem no nível raiz (geralmente duplica a primeira do asset)
   if (typeof item.image === 'string' && item.image.trim()) {
     hashesColetados.push(item.image)
   }
@@ -175,7 +187,7 @@ function mapItem(item: any, userId: string) {
     }
   }
 
-  // Converter hashes para URLs completas
+  // Converter hashes para URLs completas (URLs já completas passam direto)
   const imagensFull: string[] = hashesUnicos
     .map((h) => imageHashToUrl(h))
     .filter((u): u is string => !!u)
