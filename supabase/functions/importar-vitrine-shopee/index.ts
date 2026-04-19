@@ -12,8 +12,15 @@ const SHOPEE_IMG_BASE = 'https://down-bs-br.img.susercontent.com'
 const PAGE_LIMIT = 20
 const MAX_PAGES = 25 // teto de 500 produtos
 
-const GRAPHQL_QUERY = `query StorefrontProductListQuery($urlSuffix: String!, $cid: String!, $language: String!, $listType: ListType!, $sortType: SortType!, $page: PaginationParam!) {
-  storefrontProductList(urlSuffix: $urlSuffix, cid: $cid, language: $language, listType: $listType, sortType: $sortType, page: $page) {
+const GRAPHQL_QUERY = `query StorefrontProductListQuery($urlSuffix: String, $sortType: SortType, $page: LinktreelandingpagePaginationInput, $listType: MyCollectionListType, $cid: String, $language: String) {
+  storefrontProductList(
+    urlSuffix: $urlSuffix
+    sortType: $sortType
+    page: $page
+    listType: $listType
+    cid: $cid
+    language: $language
+  ) {
     itemList {
       linkId
       link
