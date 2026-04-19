@@ -273,7 +273,7 @@ export default function Integracoes() {
       <Dialog open={revealOpen} onOpenChange={(open) => { if (!open) { setRevealOpen(false); setCreatedKey(null); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+            <DialogTitle className="flex items-center gap-2 text-warning">
               <AlertTriangle className="h-5 w-5" />
               {t("integracoes.reveal.title")}
             </DialogTitle>
