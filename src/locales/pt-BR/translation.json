@@ -1,4 +1,67 @@
 {
+  "common": {
+    "cancel": "Cancelar",
+    "save": "Salvar",
+    "loading": "Carregando..."
+  },
+  "integracoes": {
+    "title": "Integrações",
+    "subtitle": "Gerencie suas API Keys e extensões",
+    "never_used": "Nunca usada",
+    "shopee": {
+      "title": "Extensão Chrome — Shopee",
+      "description": "Importe produtos da Shopee direto para sua plataforma. Extrai vitrines inteiras, produtos individuais, buscas e lojas oficiais em segundos.",
+      "download": "Baixar Extensão",
+      "instructions": "Ver instruções de instalação",
+      "coming_soon": "Em breve"
+    },
+    "keys": {
+      "title": "Minhas API Keys",
+      "description": "Conecte a extensão Chrome à sua conta usando uma API Key.",
+      "new": "Nova API Key",
+      "empty_title": "Você ainda não gerou nenhuma API Key.",
+      "empty_subtitle": "A API Key é necessária para conectar a extensão Chrome à sua conta.",
+      "empty_cta": "Gerar minha primeira API Key",
+      "col_name": "Nome",
+      "col_prefix": "Prefixo",
+      "col_created": "Criada em",
+      "col_last_used": "Último uso",
+      "col_status": "Status",
+      "col_action": "Ação",
+      "active": "Ativa",
+      "revoked": "Revogada",
+      "revoke": "Revogar"
+    },
+    "create": {
+      "title": "Gerar nova API Key",
+      "description": "Dê um nome para identificar onde esta chave será usada.",
+      "name_label": "Nome da chave",
+      "name_placeholder": "Ex: Notebook do escritório",
+      "submit": "Gerar"
+    },
+    "reveal": {
+      "title": "Copie sua API Key agora!",
+      "description": "Esta é a única vez que ela aparece. Depois de fechar, você não terá como recuperá-la.",
+      "copy": "Copiar",
+      "copied": "API Key copiada!",
+      "confirm": "Entendi, já copiei"
+    },
+    "revoke": {
+      "title": "Tem certeza?",
+      "description": "Ao revogar esta API Key, a extensão que estiver usando ela vai parar de funcionar imediatamente.",
+      "confirm": "Revogar",
+      "success": "API Key revogada"
+    },
+    "others": {
+      "title": "Outras integrações",
+      "description": "Em breve: Mercado Livre, Amazon, AliExpress"
+    },
+    "errors": {
+      "load": "Erro ao carregar API Keys",
+      "create": "Erro ao gerar API Key",
+      "revoke": "Erro ao revogar API Key"
+    }
+  },
   "nav": {
     "dashboard": "Painel",
     "settings": "Configurações",

@@ -71,6 +71,7 @@ import SophiaDispatcher from "./pages/SophiaDispatcher";
 import GatewayWhatsApp from "./pages/GatewayWhatsApp";
 import RedesSociaisPainel from "./pages/RedesSociaisPainel";
 import WhatsAppPainel from "./pages/WhatsAppPainel";
+import Integracoes from "./pages/Integracoes";
 
 // Páginas Afiliados
 import AfiliadoDashboard from "./pages/afiliado/AfiliadoDashboard";
@@ -166,6 +167,7 @@ const App = () => (
             {/* Rotas PJ */}
             <Route path="/pj/whatsapp-automacao" element={<WhatsAppAutomacaoPJ />} />
             <Route path="/pj/listas-contatos" element={<ListasContatosPJ />} />
+            <Route path="/integracoes" element={<Integracoes />} />
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
             <Route path="/sophia-dispatcher" element={<SophiaDispatcher />} />
