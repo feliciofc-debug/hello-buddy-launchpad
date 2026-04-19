@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram, Video } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram, Video, Download } from 'lucide-react';
 import { ProductImageCarousel } from '@/components/ProductImageCarousel';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -707,6 +707,8 @@ export default function MeusProdutos() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isImportCSVOpen, setIsImportCSVOpen] = useState(false);
+  const [vitrineUrl, setVitrineUrl] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
   const [isIntegrationsOpen, setIsIntegrationsOpen] = useState(false);
   const [isCampanhaModalOpen, setIsCampanhaModalOpen] = useState(false);
   const [isCampanhaWhatsAppOpen, setIsCampanhaWhatsAppOpen] = useState(false);
@@ -794,6 +796,43 @@ export default function MeusProdutos() {
     const uniqueCategories = Array.from(new Set(products.map(p => p.categoria)));
     setCategories(uniqueCategories);
   }, [products]);
+
+  const handleImportarVitrine = async () => {
+    const url = vitrineUrl.trim();
+    const isValid = url.includes('collshp.com') || /^[A-Za-z0-9_.\-]+$/.test(url);
+    if (!isValid) {
+      toast.error('Link inválido. Use collshp.com/sualoja');
+      return;
+    }
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('Sessão expirada, faça login');
+      return;
+    }
+
+    setIsImporting(true);
+    const loadingId = toast.loading('Importando vitrine... aguarde');
+    try {
+      const { data, error } = await supabase.functions.invoke('importar-vitrine-shopee', {
+        body: { vitrine_url: url, user_id: user.id }
+      });
+
+      if (error || !data?.success) {
+        toast.error((data as any)?.error || error?.message || 'Erro ao importar vitrine');
+        return;
+      }
+
+      toast.success(`✅ ${data.total_importados} produtos importados! (${data.total_duplicados} já existiam)`);
+      setVitrineUrl('');
+      await fetchProducts();
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao importar vitrine');
+    } finally {
+      toast.dismiss(loadingId);
+      setIsImporting(false);
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -1332,6 +1371,38 @@ export default function MeusProdutos() {
             </div>
           </div>
         </div>
+
+        {/* Importar Vitrine Shopee */}
+        <Card className="mb-4 border-orange-500/30 bg-orange-50/40 dark:bg-orange-950/10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              🛒 Importar Vitrine Shopee
+            </CardTitle>
+            <CardDescription>
+              Cole o link da sua vitrine de afiliado (ex: collshp.com/sualoja) e importe todos os produtos de uma vez, já com seu link de afiliado
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                type="text"
+                placeholder="https://collshp.com/sualoja"
+                value={vitrineUrl}
+                onChange={(e) => setVitrineUrl(e.target.value)}
+                disabled={isImporting}
+                className="flex-1"
+              />
+              <Button
+                onClick={handleImportarVitrine}
+                disabled={!vitrineUrl.trim() || isImporting}
+                className="gap-2 bg-orange-600 hover:bg-orange-700 text-white"
+              >
+                <Download className="w-4 h-4" />
+                {isImporting ? 'Importando... (pode demorar 1 min)' : 'Importar Vitrine'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Tabs: Produtos e Vídeos */}
         <Tabs defaultValue="produtos" className="w-full">
