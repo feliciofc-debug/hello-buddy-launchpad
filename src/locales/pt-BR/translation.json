@@ -13,7 +13,17 @@
       "description": "Importe produtos da Shopee direto para sua plataforma. Extrai vitrines inteiras, produtos individuais, buscas e lojas oficiais em segundos.",
       "download": "Baixar Extensão",
       "instructions": "Ver instruções de instalação",
-      "coming_soon": "Em breve"
+      "coming_soon": "Em breve",
+      "download_started": "Download iniciado",
+      "download_error": "Falha ao baixar a extensão. Tente novamente.",
+      "instructions_title": "Como instalar a extensão",
+      "instructions_intro": "Siga os 3 passos abaixo para instalar:",
+      "instructions_step1": "Descompacte o arquivo ZIP baixado em uma pasta no seu computador.",
+      "instructions_step2_prefix": "Abra ",
+      "instructions_step2_suffix": ", ative o Modo do desenvolvedor (canto superior direito) e clique em Carregar sem compactação. Selecione a pasta descompactada.",
+      "instructions_step3": "Gere uma API key na seção abaixo e cole no popup da extensão (tela de Configuração inicial) para autenticar.",
+      "instructions_api_warning": "⚠️ Você precisa de uma API key ativa para a extensão funcionar.",
+      "instructions_close": "Entendi"
     },
     "keys": {
       "title": "Minhas API Keys",

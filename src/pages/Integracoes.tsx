@@ -45,6 +45,28 @@ export default function Integracoes() {
   const [revokeId, setRevokeId] = useState<string | null>(null);
   const [revoking, setRevoking] = useState(false);
 
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
+
+  const handleDownload = async () => {
+    try {
+      const res = await fetch("/amz-importador-shopee-v3.zip");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "amz-importador-shopee-v3.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+      toast.success(t("integracoes.shopee.download_started"));
+      setInstructionsOpen(true);
+    } catch (err) {
+      console.error(err);
+      toast.error(t("integracoes.shopee.download_error"));
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -144,10 +166,10 @@ export default function Integracoes() {
             </div>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={() => toast.info(t("integracoes.shopee.coming_soon"))}>
+            <Button variant="outline" onClick={handleDownload}>
               📥 {t("integracoes.shopee.download")}
             </Button>
-            <Button variant="ghost" onClick={() => toast.info(t("integracoes.shopee.coming_soon"))}>
+            <Button variant="ghost" onClick={() => setInstructionsOpen(true)}>
               📖 {t("integracoes.shopee.instructions")}
             </Button>
           </CardContent>

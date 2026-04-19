@@ -13,7 +13,17 @@
       "description": "Import products from Shopee directly into your platform. Extract entire showcases, individual products, searches and official stores in seconds.",
       "download": "Download Extension",
       "instructions": "View installation instructions",
-      "coming_soon": "Coming soon"
+      "coming_soon": "Coming soon",
+      "download_started": "Download started",
+      "download_error": "Failed to download extension. Please try again.",
+      "instructions_title": "How to install the extension",
+      "instructions_intro": "Follow the 3 steps below to install:",
+      "instructions_step1": "Unzip the downloaded file into a folder on your computer.",
+      "instructions_step2_prefix": "Open ",
+      "instructions_step2_suffix": ", enable Developer mode (top-right) and click Load unpacked. Select the unzipped folder.",
+      "instructions_step3": "Generate an API key in the section below and paste it into the extension popup (Initial Setup screen) to authenticate.",
+      "instructions_api_warning": "⚠️ You need an active API key for the extension to work.",
+      "instructions_close": "Got it"
     },
     "keys": {
       "title": "My API Keys",
