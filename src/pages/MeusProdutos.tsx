@@ -283,7 +283,8 @@ const ProductForm = ({
                 <X className="h-3 w-3" />
               </Button>
             </div>
-          ))}
+            );
+          })}
 
           {/* Fotos extras novas (upload) */}
           {extraImageFiles.map((file, idx) =>
