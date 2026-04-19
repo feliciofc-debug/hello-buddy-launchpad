@@ -512,6 +512,7 @@ const Dashboard = () => {
               Vendedores
             </a>
           )}
+          {/* Oculto - reativar removendo o comentário
           {isMenuAllowed('configuracoes') && (
             <a
               href="/integracoes"
@@ -525,6 +526,7 @@ const Dashboard = () => {
               Integrações
             </a>
           )}
+          */}
           {user?.email === 'expo@atombrasildigital.com' && (
             <a
               href="/admin"
