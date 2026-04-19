@@ -218,26 +218,61 @@ const ProductForm = ({
       <div className="border-2 border-dashed rounded-lg p-4 max-h-[480px] overflow-y-auto">
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
           {/* Foto principal */}
-          {(previewImage || (currentImageUrl && !imageFile)) && (
-            <div className="relative aspect-square overflow-hidden rounded border-2 border-primary bg-muted/20">
-              <img src={previewImage || currentImageUrl!} className="h-full w-full object-cover" alt={t('products.main_photo')} />
-              <span className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{t('products.main_photo')}</span>
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="absolute right-1 top-1 h-6 w-6 p-0"
-                onClick={removeImage}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          )}
+          {(previewImage || (currentImageUrl && !imageFile)) && (() => {
+            const mainUrl = previewImage || currentImageUrl!;
+            const isLocalPreview = !!previewImage; // blob: URLs não persistem ainda no banco
+            const idxReel = isLocalPreview ? -1 : reelIndex(mainUrl);
+            return (
+              <div className="relative aspect-square overflow-hidden rounded border-2 border-primary bg-muted/20">
+                <img src={mainUrl} className="h-full w-full object-cover" alt={t('products.main_photo')} />
+                <span className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">{t('products.main_photo')}</span>
+                {!isLocalPreview && (
+                  <label className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-background/90 px-1.5 py-0.5 cursor-pointer shadow">
+                    <Checkbox
+                      checked={idxReel >= 0}
+                      onCheckedChange={() => toggleReelImage(mainUrl)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className="text-[10px] font-medium">🎬 Reel</span>
+                  </label>
+                )}
+                {idxReel >= 0 && (
+                  <Badge variant="default" className="absolute bottom-1 right-1 px-1.5 py-0 text-[10px]">
+                    Reel #{idxReel + 1}
+                  </Badge>
+                )}
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="absolute right-1 top-1 h-6 w-6 p-0"
+                  onClick={removeImage}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            );
+          })()}
 
           {/* Fotos extras já salvas */}
-          {existingExtraImages.map((url, idx) => (
+          {existingExtraImages.map((url, idx) => {
+            const idxReel = reelIndex(url);
+            return (
             <div key={`existing-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
               <img src={url} className="h-full w-full object-cover" alt={`Foto ${idx + 2}`} />
+              <label className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-background/90 px-1.5 py-0.5 cursor-pointer shadow">
+                <Checkbox
+                  checked={idxReel >= 0}
+                  onCheckedChange={() => toggleReelImage(url)}
+                  className="h-3.5 w-3.5"
+                />
+                <span className="text-[10px] font-medium">🎬 Reel</span>
+              </label>
+              {idxReel >= 0 && (
+                <Badge variant="default" className="absolute bottom-1 right-1 px-1.5 py-0 text-[10px]">
+                  Reel #{idxReel + 1}
+                </Badge>
+              )}
               <Button
                 type="button"
                 variant="destructive"
@@ -784,6 +819,7 @@ export default function MeusProdutos() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | null>(null);
   const [extraImageFiles, setExtraImageFiles] = useState<(File | null)[]>([]);
   const [existingExtraImages, setExistingExtraImages] = useState<string[]>([]);
+  const [imagensReel, setImagensReel] = useState<string[]>([]);
 
   // Preview da imagem quando selecionada
   useEffect(() => {
@@ -970,6 +1006,7 @@ export default function MeusProdutos() {
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
           imagens: formData.imagens || [],
+          imagens_reel: imagensReel || [],
           tipo: formData.tipo || 'fisico',
           ficha_tecnica: formData.ficha_tecnica || null,
           informacao_nutricional: formData.informacao_nutricional || null,
@@ -1081,6 +1118,7 @@ export default function MeusProdutos() {
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
           imagens: existingExtraImages || [],
+          imagens_reel: imagensReel || [],
           tipo: formData.tipo || 'fisico',
           ficha_tecnica: formData.ficha_tecnica || null,
           informacao_nutricional: formData.informacao_nutricional || null,
@@ -1297,6 +1335,7 @@ export default function MeusProdutos() {
     setImageFile(null);
     setExtraImageFiles([]);
     setExistingExtraImages(Array.isArray(product.imagens) ? product.imagens.filter(Boolean) : []);
+    setImagensReel(Array.isArray(product.imagens_reel) ? product.imagens_reel.filter(Boolean).slice(0, 5) : []);
     setIsEditModalOpen(true);
   };
 
@@ -1334,6 +1373,7 @@ export default function MeusProdutos() {
     setCurrentImageUrl(null);
     setExtraImageFiles([]);
     setExistingExtraImages([]);
+    setImagensReel([]);
   };
 
   const getFilteredProducts = () => {
