@@ -25,7 +25,13 @@ const IMG_PRODUTO_SIZE = 900;
 const IMG_PRODUTO_Y = 540;
 const ZOOM_FINAL = 1.08;
 
-const URL_FFMPEG_CORE = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+// Versão do core DEVE ser compatível com @ffmpeg/ffmpeg 0.12.10
+// jsdelivr é mais estável que unpkg; mantemos unpkg como fallback
+const FFMPEG_CDNS = [
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd',
+  'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd',
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',
+];
 
 // ==============================================================
 // TIPOS
@@ -254,10 +260,31 @@ export function useGerarReel() {
             5,
             'Carregando gerador de vídeo (1ª vez leva ~30s)...'
           );
-          await ffmpeg.load({
-            coreURL: await toBlobURL(`${URL_FFMPEG_CORE}/ffmpeg-core.js`, 'text/javascript'),
-            wasmURL: await toBlobURL(`${URL_FFMPEG_CORE}/ffmpeg-core.wasm`, 'application/wasm'),
-          });
+          let ultimoErro: unknown = null;
+          let carregou = false;
+          for (const cdn of FFMPEG_CDNS) {
+            try {
+              console.log('[REEL] Tentando carregar FFmpeg core de:', cdn);
+              const coreURL = await toBlobURL(`${cdn}/ffmpeg-core.js`, 'text/javascript');
+              console.log('[REEL] ffmpeg-core.js baixado, blob:', coreURL.length);
+              const wasmURL = await toBlobURL(`${cdn}/ffmpeg-core.wasm`, 'application/wasm');
+              console.log('[REEL] ffmpeg-core.wasm baixado, blob:', wasmURL.length);
+              await ffmpeg.load({ coreURL, wasmURL });
+              console.log('[REEL] FFmpeg carregado com sucesso de:', cdn);
+              carregou = true;
+              break;
+            } catch (err) {
+              console.warn('[REEL] Falha em CDN', cdn, err);
+              ultimoErro = err;
+            }
+          }
+          if (!carregou) {
+            throw new Error(
+              `Falha ao carregar gerador de vídeo (todos os CDNs falharam): ${
+                ultimoErro instanceof Error ? ultimoErro.message : 'erro desconhecido'
+              }`
+            );
+          }
           carregadoRef.current = true;
         }
 
