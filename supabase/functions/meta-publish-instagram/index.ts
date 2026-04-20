@@ -6,6 +6,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+/**
+ * Instagram Graph API NÃO aceita AVIF. Se a URL termina em .avif (ex: Shopee),
+ * roteamos pela CDN wsrv.nl que aceita AVIF como input e devolve JPEG.
+ * - Mantém URL pública HTTPS (requisito da Meta)
+ * - Sem custo, sem infra adicional
+ * - Se a URL não for AVIF, retorna sem alteração
+ */
+function ensureInstagramCompatibleImageUrl(url: string): string {
+  if (!url) return url
+  try {
+    const lower = url.toLowerCase()
+    const isAvif = lower.endsWith('.avif') || lower.includes('.avif?') || lower.includes('format=avif')
+    if (!isAvif) return url
+    const proxied = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=90`
+    console.log('🔄 [AVIF→JPEG] Reroteando via wsrv.nl:', proxied.substring(0, 120))
+    return proxied
+  } catch (e) {
+    console.warn('⚠️ ensureInstagramCompatibleImageUrl falhou, usando URL original:', e)
+    return url
+  }
+}
+
 function sanitizePublishText(text?: string | null) {
   if (!text) return ''
 
@@ -222,6 +244,9 @@ async function publishImageToInstagram(
 
   console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
 
+  // CORREÇÃO: Instagram não aceita AVIF (Shopee usa AVIF). Reroteia via wsrv.nl.
+  const safeImageUrl = ensureInstagramCompatibleImageUrl(imageUrl)
+
   // Passo 1: Criar container de mídia
   const containerResponse = await fetch(
     `https://graph.facebook.com/v25.0/${igAccountId}/media`,
@@ -229,7 +254,7 @@ async function publishImageToInstagram(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        image_url: imageUrl,
+        image_url: safeImageUrl,
         caption: caption,
         access_token: pageToken
       })
@@ -262,6 +287,9 @@ async function publishReelsToInstagram(
 
   console.log('🎬 Publicando REELS no Instagram...', { igAccountId, videoUrl })
 
+  // CORREÇÃO: cover_url também não pode ser AVIF
+  const safeCoverUrl = coverUrl ? ensureInstagramCompatibleImageUrl(coverUrl) : undefined
+
   // Passo 1: Criar container de vídeo (Reels)
   const containerBody: Record<string, string> = {
     media_type: 'REELS',
@@ -270,8 +298,8 @@ async function publishReelsToInstagram(
     access_token: pageToken
   }
   
-  if (coverUrl) {
-    containerBody.cover_url = coverUrl
+  if (safeCoverUrl) {
+    containerBody.cover_url = safeCoverUrl
   }
 
   const containerResponse = await fetch(

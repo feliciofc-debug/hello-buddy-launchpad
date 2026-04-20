@@ -22,6 +22,7 @@ import { PublicarReelsModal } from "@/components/PublicarReelsModal";
 import { Separator } from "@/components/ui/separator";
 import { getSafeProductLink, getSanitizedProductLinks } from "@/lib/product-links";
 import { sanitizeGeneratedPostText, sanitizeGeneratedPostVariations } from "@/lib/social-post-sanitizer";
+import { prepareImageForInstagramPublish } from "@/lib/prepareImageForInstagramPublish";
 
 interface PostVariations {
   opcaoA: string;
@@ -394,17 +395,20 @@ const IAMarketing = () => {
       const textoLimpo = sanitizeGeneratedPostText(texto, url.trim());
       const captionFinal = link ? `${textoLimpo}\n\n🔗 Link na bio ou acesse: ${link}` : textoLimpo;
 
+      // CORREÇÃO: ajustar formato/proporção e converter AVIF→JPEG antes de publicar no IG
+      const imagemIgPronta = await prepareImageForInstagramPublish(imagemUrl, user.id);
+
       await supabase.from("social_posts_queue" as any).insert({
         user_id: user.id,
         platform: "instagram",
         page_id: "",
         post_text: captionFinal,
-        image_url: imagemUrl,
+        image_url: imagemIgPronta,
         status: "pendente",
       } as any);
 
       const { data: pubData, error: pubError } = await supabase.functions.invoke("meta-publish-instagram", {
-        body: { caption: captionFinal, image_url: imagemUrl, user_id: user.id },
+        body: { caption: captionFinal, image_url: imagemIgPronta, user_id: user.id },
       });
       if (pubError) throw pubError;
       if (!pubData?.success) throw new Error(pubData?.error || "Erro ao publicar no Instagram");
@@ -469,16 +473,18 @@ const IAMarketing = () => {
           try {
             const textoIgLimpo = sanitizeGeneratedPostText(textoIg, url.trim());
             const captionIg = link ? `${textoIgLimpo}\n\n🔗 Link na bio ou acesse: ${link}` : textoIgLimpo;
+            // CORREÇÃO: ajustar formato/proporção e converter AVIF→JPEG antes de publicar no IG
+            const imagemIgPronta = await prepareImageForInstagramPublish(imagemUrl, user.id);
             await supabase.from("social_posts_queue" as any).insert({
               user_id: user.id,
               platform: "instagram",
               page_id: "",
               post_text: captionIg,
-              image_url: imagemUrl,
+              image_url: imagemIgPronta,
               status: "pendente",
             } as any);
             const { data: pubData, error } = await supabase.functions.invoke("meta-publish-instagram", {
-              body: { caption: captionIg, image_url: imagemUrl, user_id: user.id },
+              body: { caption: captionIg, image_url: imagemIgPronta, user_id: user.id },
             });
             if (error) throw error;
             if (!pubData?.success) throw new Error(pubData?.error);

@@ -4,6 +4,25 @@ const corsHeaders = {
 }
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+/**
+ * Instagram Graph API NÃO aceita AVIF. Se a URL termina em .avif (ex: Shopee),
+ * roteamos pela CDN wsrv.nl que aceita AVIF como input e devolve JPEG.
+ */
+function ensureInstagramCompatibleImageUrl(url: string): string {
+  if (!url) return url
+  try {
+    const lower = url.toLowerCase()
+    const isAvif = lower.endsWith('.avif') || lower.includes('.avif?') || lower.includes('format=avif')
+    if (!isAvif) return url
+    const proxied = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=90`
+    console.log('🔄 [AVIF→JPEG] Reroteando via wsrv.nl:', proxied.substring(0, 120))
+    return proxied
+  } catch (e) {
+    console.warn('⚠️ ensureInstagramCompatibleImageUrl falhou, usando URL original:', e)
+    return url
+  }
+}
+
 function sanitizePublishText(text?: string | null) {
   if (!text) return ''
 
@@ -91,7 +110,8 @@ Deno.serve(async (req) => {
     // Step 1: Create carousel item containers (with retry for transient errors)
     const childrenIds: string[] = []
     for (let i = 0; i < image_urls.length; i++) {
-      const imageUrl = image_urls[i]
+      // CORREÇÃO: Instagram não aceita AVIF. Reroteia via wsrv.nl quando necessário.
+      const imageUrl = ensureInstagramCompatibleImageUrl(image_urls[i])
       console.log(`📸 [${i+1}/${image_urls.length}] Criando container para: ${imageUrl.substring(0, 100)}`)
       
       let data: any = null

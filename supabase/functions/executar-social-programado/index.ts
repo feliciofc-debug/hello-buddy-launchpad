@@ -68,8 +68,18 @@ serve(async (req) => {
               throw new Error(`Erro ao validar produto ${post.produto_id}: ${produtoError.message}`)
             }
 
+            // CORREÇÃO: produto deletado → cancelar post (não gera erro repetidamente)
             if (!produto) {
-              throw new Error(`Produto ${post.produto_id} não encontrado para validar publicação`)
+              console.log(`⚠️ Produto ${post.produto_id} deletado, cancelando post ${post.id}`)
+              await supabase.from('social_posts_queue')
+                .update({
+                  status: 'cancelado',
+                  error_message: 'produto_deletado',
+                  updated_at: now.toISOString()
+                })
+                .eq('id', post.id)
+              results.push({ id: post.id, platform: post.platform, success: false, cancelled: true, reason: 'produto_deletado' })
+              continue
             }
 
             if (produto.user_id !== post.user_id) {
