@@ -198,23 +198,46 @@ export const TextosPersonalizadosProdutoModal = ({ open, onOpenChange, produto, 
   };
 
   const toggleModoPersonalizado = async (novo: boolean) => {
+    console.log("[TextosPersonalizados] toggleModoPersonalizado chamado", { novo, produtoId: produto?.id });
     if (!produto) return;
-    const textosAtivos = textos.filter(t => t.id && t.ativo).length;
-    if (novo && textosAtivos === 0) {
-      toast.error("Adicione e salve pelo menos 1 texto antes de ativar o modo personalizado.");
-      return;
+
+    // Validação SÓ ao ativar — desativar sempre permitido
+    if (novo) {
+      const textosAtivos = textos.filter(t => t.id && t.ativo).length;
+      console.log("[TextosPersonalizados] textos ativos salvos:", textosAtivos);
+      if (textosAtivos === 0) {
+        toast.error("Adicione e ative pelo menos 1 texto antes de ativar o modo personalizado.");
+        return;
+      }
     }
+
     setTogglingModo(true);
     try {
-      const { error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Você precisa estar logado");
+        return;
+      }
+
+      const { data, error } = await supabase
         .from("produtos")
         .update({ usa_textos_personalizados: novo })
-        .eq("id", produto.id);
+        .eq("id", produto.id)
+        .eq("user_id", user.id)
+        .select("id, usa_textos_personalizados");
+
+      console.log("[TextosPersonalizados] resultado UPDATE:", { data, error });
+
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("Nenhum produto foi atualizado. Verifique permissões.");
+      }
+
       setUsaPersonalizado(novo);
       onModoChange?.(produto.id, novo);
       toast.success(novo ? "Modo personalizado ATIVADO" : "Modo personalizado desativado — voltou pra IA");
     } catch (err: any) {
+      console.error("[TextosPersonalizados] erro ao alternar modo:", err);
       toast.error(err.message || "Erro ao alterar modo");
     } finally {
       setTogglingModo(false);
