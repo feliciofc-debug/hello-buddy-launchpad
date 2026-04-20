@@ -6,6 +6,25 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+/**
+ * Instagram Graph API NÃO aceita AVIF (vale também para cover_url de Reels).
+ * Reroteia URLs .avif via wsrv.nl que devolve JPEG público.
+ */
+function ensureInstagramCompatibleImageUrl(url: string): string {
+  if (!url) return url
+  try {
+    const lower = url.toLowerCase()
+    const isAvif = lower.endsWith('.avif') || lower.includes('.avif?') || lower.includes('format=avif')
+    if (!isAvif) return url
+    const proxied = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=90`
+    console.log('🔄 [AVIF→JPEG] Reroteando via wsrv.nl:', proxied.substring(0, 120))
+    return proxied
+  } catch (e) {
+    console.warn('⚠️ ensureInstagramCompatibleImageUrl falhou, usando URL original:', e)
+    return url
+  }
+}
+
 function sanitizePublishText(text?: string | null) {
   if (!text) return ''
 
