@@ -348,6 +348,10 @@ export const AutopilotConfig = () => {
                   <SelectItem value="6">6 posts por dia</SelectItem>
                   <SelectItem value="8">8 posts por dia</SelectItem>
                   <SelectItem value="10">10 posts por dia</SelectItem>
+                  <SelectItem value="15">15 posts por dia</SelectItem>
+                  <SelectItem value="20">20 posts por dia</SelectItem>
+                  <SelectItem value="25">25 posts por dia</SelectItem>
+                  <SelectItem value="30">30 posts por dia</SelectItem>
                 </SelectContent>
               </Select>
             </div>
