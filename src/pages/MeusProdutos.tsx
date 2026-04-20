@@ -23,6 +23,7 @@ import { CriarCampanhaModal } from '@/components/CriarCampanhaModal';
 import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppModal';
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
+import { TextosPersonalizadosProdutoModal } from '@/components/produtos/TextosPersonalizadosProdutoModal';
 import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
@@ -792,6 +793,8 @@ export default function MeusProdutos() {
   const [reelsProduct, setReelsProduct] = useState<Product | null>(null);
   const [isSimultaneoModalOpen, setIsSimultaneoModalOpen] = useState(false);
   const [simultaneoProduct, setSimultaneoProduct] = useState<Product | null>(null);
+  const [isTextosModalOpen, setIsTextosModalOpen] = useState(false);
+  const [textosProduct, setTextosProduct] = useState<Product | null>(null);
   
   const showTikTok = useFeatureFlag('tiktok_integration');
 
