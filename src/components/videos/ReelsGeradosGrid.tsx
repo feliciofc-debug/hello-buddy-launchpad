@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram } from 'lucide-react';
+import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 
 interface ReelGerado {
   id: string;
@@ -15,9 +16,12 @@ interface ReelGerado {
   thumbnail_url: string | null;
   titulo: string | null;
   criado_em: string;
+  publicado_em: string | null;
   publicado_facebook: boolean;
   publicado_instagram: boolean;
-  produtos: { nome: string; imagem_url: string | null } | null;
+  facebook_post_id: string | null;
+  instagram_post_id: string | null;
+  produtos: { id?: string; nome: string; imagem_url: string | null; preco?: number | null; link_afiliado?: string | null } | null;
 }
 
 const extrairPath = (url: string): string | null => {
@@ -29,6 +33,7 @@ export const ReelsGeradosGrid = () => {
   const [reels, setReels] = useState<ReelGerado[]>([]);
   const [loading, setLoading] = useState(true);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
+  const [publishingReel, setPublishingReel] = useState<ReelGerado | null>(null);
 
   useEffect(() => {
     loadReels();
@@ -44,7 +49,7 @@ export const ReelsGeradosGrid = () => {
 
       const { data, error } = await supabase
         .from('produto_videos' as any)
-        .select('*, produtos(nome, imagem_url)')
+        .select('*, produtos(id, nome, imagem_url, preco, link_afiliado)')
         .eq('user_id', user.id)
         .order('criado_em', { ascending: false });
 
@@ -70,8 +75,44 @@ export const ReelsGeradosGrid = () => {
     document.body.removeChild(a);
   };
 
-  const handlePublicar = () => {
-    toast.info('Publicação em construção — Etapa 3C');
+  const handlePublicar = (reel: ReelGerado) => {
+    setPublishingReel(reel);
+  };
+
+  const handlePublished = async (result: {
+    facebook?: { ok: boolean; postId?: string; error?: string };
+    instagram?: { ok: boolean; postId?: string; error?: string };
+  }) => {
+    if (!publishingReel) return;
+
+    const updates: Record<string, any> = {
+      publicado_em: new Date().toISOString(),
+    };
+
+    if (result.facebook?.ok) {
+      updates.publicado_facebook = true;
+      if (result.facebook.postId) updates.facebook_post_id = result.facebook.postId;
+    }
+    if (result.instagram?.ok) {
+      updates.publicado_instagram = true;
+      if (result.instagram.postId) updates.instagram_post_id = result.instagram.postId;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('produto_videos' as any)
+        .update(updates)
+        .eq('id', publishingReel.id);
+
+      if (error) {
+        console.error('[REELS] Erro ao atualizar status no banco:', error);
+        toast.error('Publicado, mas erro ao atualizar status. Recarregando...');
+      }
+    } catch (err) {
+      console.error('[REELS] Exceção ao atualizar status:', err);
+    } finally {
+      loadReels();
+    }
   };
 
   const handleExcluir = async (reel: ReelGerado) => {
@@ -180,6 +221,16 @@ export const ReelsGeradosGrid = () => {
                       </Badge>
                     )}
                   </div>
+                  {reel.publicado_em && (reel.publicado_facebook || reel.publicado_instagram) && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3 text-green-600" />
+                      Publicado{' '}
+                      {formatDistanceToNow(new Date(reel.publicado_em), {
+                        addSuffix: true,
+                        locale: ptBR,
+                      })}
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       size="sm"
@@ -199,10 +250,17 @@ export const ReelsGeradosGrid = () => {
                     </Button>
                     <Button
                       size="sm"
-                      className="text-xs bg-gradient-to-r from-purple-600 to-pink-600 text-white"
-                      onClick={handlePublicar}
+                      className="text-xs bg-gradient-to-r from-purple-600 to-pink-600 text-white disabled:opacity-50"
+                      onClick={() => handlePublicar(reel)}
+                      disabled={reel.publicado_facebook && reel.publicado_instagram}
+                      title={
+                        reel.publicado_facebook && reel.publicado_instagram
+                          ? 'Já publicado em ambas as redes'
+                          : 'Publicar no Facebook e/ou Instagram'
+                      }
                     >
-                      <Rocket className="mr-1 h-3 w-3" /> Publicar
+                      <Rocket className="mr-1 h-3 w-3" />
+                      {reel.publicado_facebook && reel.publicado_instagram ? 'Publicado' : 'Publicar'}
                     </Button>
                     <Button
                       size="sm"
@@ -245,6 +303,29 @@ export const ReelsGeradosGrid = () => {
             </Button>
           </div>
         </div>
+      )}
+
+      {publishingReel && (
+        <PublicarReelsModal
+          open={!!publishingReel}
+          onOpenChange={(open) => !open && setPublishingReel(null)}
+          videoUrl={publishingReel.video_url}
+          videoNome={publishingReel.titulo || publishingReel.produtos?.nome || null}
+          produto={
+            publishingReel.produtos
+              ? {
+                  id: publishingReel.produto_id || undefined,
+                  nome: publishingReel.produtos.nome,
+                  preco: publishingReel.produtos.preco ?? null,
+                  link_marketplace: publishingReel.produtos.link_afiliado ?? null,
+                  imagem_url: publishingReel.produtos.imagem_url,
+                }
+              : null
+          }
+          publicadoFacebook={publishingReel.publicado_facebook}
+          publicadoInstagram={publishingReel.publicado_instagram}
+          onPublished={handlePublished}
+        />
       )}
     </div>
   );
