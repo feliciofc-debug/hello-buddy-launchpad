@@ -304,6 +304,29 @@ export const ReelsGeradosGrid = () => {
           </div>
         </div>
       )}
+
+      {publishingReel && (
+        <PublicarReelsModal
+          open={!!publishingReel}
+          onOpenChange={(open) => !open && setPublishingReel(null)}
+          videoUrl={publishingReel.video_url}
+          videoNome={publishingReel.titulo || publishingReel.produtos?.nome || null}
+          produto={
+            publishingReel.produtos
+              ? {
+                  id: publishingReel.produto_id || undefined,
+                  nome: publishingReel.produtos.nome,
+                  preco: publishingReel.produtos.preco ?? null,
+                  link_marketplace: publishingReel.produtos.link_afiliado ?? null,
+                  imagem_url: publishingReel.produtos.imagem_url,
+                }
+              : null
+          }
+          publicadoFacebook={publishingReel.publicado_facebook}
+          publicadoInstagram={publishingReel.publicado_instagram}
+          onPublished={handlePublished}
+        />
+      )}
     </div>
   );
 };
