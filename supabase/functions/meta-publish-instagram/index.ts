@@ -328,13 +328,14 @@ async function publishReelsToInstagram(
   igAccountId: string,
   caption: string,
   videoUrl: string,
-  coverUrl?: string
+  userId: string,
+  coverUrl?: string,
 ): Promise<{ post_id: string }> {
 
   console.log('🎬 Publicando REELS no Instagram...', { igAccountId, videoUrl })
 
   // CORREÇÃO: cover_url também não pode ser AVIF
-  const safeCoverUrl = coverUrl ? ensureInstagramCompatibleImageUrl(coverUrl) : undefined
+  const safeCoverUrl = coverUrl ? await ensureInstagramCompatibleImageUrl(coverUrl, userId) : undefined
 
   // Passo 1: Criar container de vídeo (Reels)
   const containerBody: Record<string, string> = {
