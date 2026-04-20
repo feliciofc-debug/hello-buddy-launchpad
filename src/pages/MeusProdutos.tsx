@@ -2052,6 +2052,13 @@ export default function MeusProdutos() {
           produto={simultaneoProduct}
         />
       )}
+
+      {/* Modal de geração de Reel */}
+      <ModalProgressoReel
+        progresso={progresso}
+        aberto={modalReelAberto}
+        onFechar={() => setModalReelAberto(false)}
+      />
     </div>
   );
 }
