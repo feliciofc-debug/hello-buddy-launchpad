@@ -10,6 +10,11 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check } from "lucide-react";
 
+interface PublishResult {
+  facebook?: { ok: boolean; postId?: string; error?: string };
+  instagram?: { ok: boolean; postId?: string; error?: string };
+}
+
 interface PublicarReelsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -26,15 +31,27 @@ interface PublicarReelsModalProps {
     link_marketplace?: string | null;
     imagem_url?: string | null;
   } | null;
+  publicadoFacebook?: boolean;
+  publicadoInstagram?: boolean;
+  onPublished?: (result: PublishResult) => void | Promise<void>;
 }
 
-export function PublicarReelsModal({ open, onOpenChange, videoUrl, videoNome, produto }: PublicarReelsModalProps) {
+export function PublicarReelsModal({
+  open,
+  onOpenChange,
+  videoUrl,
+  videoNome,
+  produto,
+  publicadoFacebook = false,
+  publicadoInstagram = false,
+  onPublished,
+}: PublicarReelsModalProps) {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [descricaoVideo, setDescricaoVideo] = useState("");
-  const [postFacebook, setPostFacebook] = useState(true);
-  const [postInstagram, setPostInstagram] = useState(true);
+  const [postFacebook, setPostFacebook] = useState(!publicadoFacebook);
+  const [postInstagram, setPostInstagram] = useState(!publicadoInstagram);
   const [uploading, setUploading] = useState(false);
   const [generatingCaption, setGeneratingCaption] = useState(false);
   const [captionOptions, setCaptionOptions] = useState<string[]>([]);
@@ -46,7 +63,11 @@ export function PublicarReelsModal({ open, onOpenChange, videoUrl, videoNome, pr
   const productLink = produto?.link || produto?.link_afiliado || produto?.link_marketplace || "";
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      // Reset checkboxes baseado no estado atual de publicação ao abrir
+      setPostFacebook(!publicadoFacebook);
+      setPostInstagram(!publicadoInstagram);
+    } else {
       setCaptionOptions([]);
       setSelectedOption(null);
       setDescricaoVideo("");
@@ -55,7 +76,41 @@ export function PublicarReelsModal({ open, onOpenChange, videoUrl, videoNome, pr
         handleRemoveVideo();
       }
     }
-  }, [open]);
+  }, [open, publicadoFacebook, publicadoInstagram]);
+
+  // Validação client-side da duração do vídeo (Instagram: 3-90s, Facebook: até 900s)
+  const validarDuracao = (): Promise<{ ok: boolean; error?: string }> => {
+    return new Promise((resolve) => {
+      if (!hasPreloadedVideo) {
+        resolve({ ok: true }); // upload manual: confia no FFmpeg
+        return;
+      }
+      const v = document.createElement("video");
+      v.preload = "metadata";
+      v.onloadedmetadata = () => {
+        const dur = v.duration;
+        if (!isFinite(dur) || dur <= 0) {
+          resolve({ ok: true }); // não conseguiu ler, deixa API validar
+          return;
+        }
+        if (dur < 3) {
+          resolve({ ok: false, error: `Vídeo muito curto (${dur.toFixed(1)}s). Mínimo: 3 segundos.` });
+          return;
+        }
+        if (postInstagram && dur > 90) {
+          resolve({ ok: false, error: `Vídeo muito longo para Instagram (${dur.toFixed(1)}s). Máximo: 90s. Desmarque IG ou regenere o reel.` });
+          return;
+        }
+        if (postFacebook && dur > 900) {
+          resolve({ ok: false, error: `Vídeo muito longo para Facebook Reels (${dur.toFixed(1)}s). Máximo: 15 minutos.` });
+          return;
+        }
+        resolve({ ok: true });
+      };
+      v.onerror = () => resolve({ ok: true }); // erro de leitura: deixa API validar
+      v.src = videoUrl!;
+    });
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -150,7 +205,15 @@ export function PublicarReelsModal({ open, onOpenChange, videoUrl, videoNome, pr
       return;
     }
 
+    // Validação de duração ANTES de iniciar
+    const validacao = await validarDuracao();
+    if (!validacao.ok) {
+      toast.error(validacao.error || "Vídeo inválido");
+      return;
+    }
+
     setUploading(true);
+    const publishResult: PublishResult = {};
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -179,7 +242,7 @@ export function PublicarReelsModal({ open, onOpenChange, videoUrl, videoNome, pr
 
       console.log("📹 Vídeo para publicar:", publishVideoUrl);
 
-      const platforms = [];
+      const platforms: ("facebook" | "instagram")[] = [];
       if (postFacebook) platforms.push("facebook");
       if (postInstagram) platforms.push("instagram");
 
@@ -200,12 +263,14 @@ export function PublicarReelsModal({ open, onOpenChange, videoUrl, videoNome, pr
         if (pubError) {
           console.error(`Erro ${platform}:`, pubError);
           toast.error(`❌ Erro ao publicar no ${platform}: ${pubError.message}`);
+          publishResult[platform] = { ok: false, error: pubError.message };
           continue;
         }
 
         if (result?.success) {
           successCount++;
           toast.success(`✅ Reels publicado no ${platform === "facebook" ? "Facebook" : "Instagram"}!`);
+          publishResult[platform] = { ok: true, postId: result.post_id };
 
           await supabase.from("social_posts_queue" as any).insert({
             user_id: user.id,
@@ -219,7 +284,13 @@ export function PublicarReelsModal({ open, onOpenChange, videoUrl, videoNome, pr
           });
         } else {
           toast.error(`❌ ${platform}: ${result?.error || "Erro desconhecido"}`);
+          publishResult[platform] = { ok: false, error: result?.error || "Erro desconhecido" };
         }
+      }
+
+      // Notifica componente pai com resultado de cada plataforma
+      if (onPublished && (publishResult.facebook?.ok || publishResult.instagram?.ok)) {
+        await onPublished(publishResult);
       }
 
       if (successCount > 0) {
@@ -410,27 +481,45 @@ export function PublicarReelsModal({ open, onOpenChange, videoUrl, videoNome, pr
           {/* Plataformas */}
           <div>
             <Label className="text-sm font-medium mb-2 block">Publicar em:</Label>
-            <div className="flex gap-4">
+            <div className="flex gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="reels-fb"
                   checked={postFacebook}
+                  disabled={publicadoFacebook}
                   onCheckedChange={(v) => setPostFacebook(!!v)}
                 />
-                <label htmlFor="reels-fb" className="text-sm flex items-center gap-1 cursor-pointer">
+                <label
+                  htmlFor="reels-fb"
+                  className={`text-sm flex items-center gap-1 ${publicadoFacebook ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+                >
                   <Facebook className="h-4 w-4 text-blue-600" />
                   Facebook Reels
+                  {publicadoFacebook && (
+                    <Badge variant="secondary" className="ml-1 text-[10px] gap-1">
+                      <Check className="h-3 w-3" /> Já publicado
+                    </Badge>
+                  )}
                 </label>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="reels-ig"
                   checked={postInstagram}
+                  disabled={publicadoInstagram}
                   onCheckedChange={(v) => setPostInstagram(!!v)}
                 />
-                <label htmlFor="reels-ig" className="text-sm flex items-center gap-1 cursor-pointer">
+                <label
+                  htmlFor="reels-ig"
+                  className={`text-sm flex items-center gap-1 ${publicadoInstagram ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+                >
                   <Instagram className="h-4 w-4 text-pink-600" />
                   Instagram Reels
+                  {publicadoInstagram && (
+                    <Badge variant="secondary" className="ml-1 text-[10px] gap-1">
+                      <Check className="h-3 w-3" /> Já publicado
+                    </Badge>
+                  )}
                 </label>
               </div>
             </div>
