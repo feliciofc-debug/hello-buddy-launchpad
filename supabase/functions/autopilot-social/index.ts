@@ -191,7 +191,33 @@ serve(async (req) => {
             let textoInstagram = ''
             let iaStatus = 'nao_usou'
 
-            if (config.gerar_texto_ia) {
+            // === TEXTOS PERSONALIZADOS (quando IA desligada) ===
+            if (!config.gerar_texto_ia) {
+              const { data: textosPersonalizados } = await supabase
+                .from('autopilot_textos_personalizados')
+                .select('texto')
+                .eq('user_id', config.user_id)
+                .eq('ativo', true)
+
+              if (textosPersonalizados && textosPersonalizados.length > 0) {
+                const escolhido = textosPersonalizados[Math.floor(Math.random() * textosPersonalizados.length)]
+                textoFacebook = escolhido.texto || ''
+                textoInstagram = escolhido.texto || ''
+                iaStatus = 'texto_personalizado'
+                console.log('📝 [AUTOPILOT] Usando texto personalizado', {
+                  user_id: config.user_id,
+                  total_textos: textosPersonalizados.length,
+                })
+              } else {
+                console.warn('⚠️ [AUTOPILOT] IA desligada mas sem textos personalizados. Fallback para IA.', {
+                  user_id: config.user_id,
+                })
+                iaStatus = 'fallback_ia_sem_textos'
+              }
+            }
+
+            // === IA (quando ligada OU fallback de texto personalizado vazio) ===
+            if (!textoFacebook && (config.gerar_texto_ia || iaStatus === 'fallback_ia_sem_textos')) {
               const controller = new AbortController()
               const timeout = setTimeout(() => controller.abort(), 15000)
 

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Rocket, Facebook, Instagram, Calendar, Clock, Package, Sparkles, Play, Pause } from "lucide-react";
+import { AutopilotTextosPersonalizados } from "@/components/AutopilotTextosPersonalizados";
 
 export const AutopilotConfig = () => {
   const [loading, setLoading] = useState(true);
@@ -154,6 +155,23 @@ export const AutopilotConfig = () => {
 
   const toggleAtivo = async () => {
     const novoEstado = !config.ativo;
+
+    // Se está ativando E IA está desligada, garantir que tem ao menos 1 texto personalizado
+    if (novoEstado && !config.gerar_texto_ia) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { count } = await supabase
+          .from("autopilot_textos_personalizados" as any)
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id)
+          .eq("ativo", true);
+        if (!count || count === 0) {
+          toast.error("Adicione pelo menos 1 texto personalizado ou ligue a IA");
+          return;
+        }
+      }
+    }
+
     setConfig(prev => ({ ...prev, ativo: novoEstado }));
 
     if (config.id) {
@@ -404,6 +422,9 @@ export const AutopilotConfig = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Textos personalizados (visível só quando IA desligada) */}
+      {!config.gerar_texto_ia && <AutopilotTextosPersonalizados />}
 
       {/* Botão salvar */}
       <Button className="w-full" onClick={handleSave} disabled={saving}>
