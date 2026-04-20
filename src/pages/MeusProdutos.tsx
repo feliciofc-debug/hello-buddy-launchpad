@@ -32,6 +32,8 @@ import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
+import { useGerarReel } from '@/hooks/useGerarReel';
+import { ModalProgressoReel } from '@/components/videos/ModalProgressoReel';
 
 // Limite de fotos por produto (capa + extras). Atende sellers de imóveis/carros que precisam de muitas fotos.
 const MAX_PRODUCT_PHOTOS = 30;
@@ -928,13 +930,23 @@ export default function MeusProdutos() {
     }
   };
 
-  const handleGerarReel = (product: Product) => {
+  const { gerarReel, progresso } = useGerarReel();
+  const [modalReelAberto, setModalReelAberto] = useState(false);
+
+  const handleGerarReel = async (product: Product) => {
     const reelImgs = Array.isArray(product.imagens_reel) ? product.imagens_reel.filter(Boolean) : [];
-    if (reelImgs.length === 0) {
-      toast.info('Escolha as fotos pro Reel primeiro. Clique em Editar e marque as fotos.');
+    if (reelImgs.length < 3) {
+      toast.error('Selecione pelo menos 3 fotos pra gerar o Reel. Clique em Editar e marque as fotos.');
       return;
     }
-    toast.info('Feature em construção');
+    setModalReelAberto(true);
+    await gerarReel({
+      produtoId: product.id,
+      nomeProduto: product.nome,
+      imagensUrls: reelImgs as string[],
+      preco: product.preco || 0,
+      precoOriginal: undefined,
+    });
   };
 
   const uploadImage = async (file: File, productId: string): Promise<string | null> => {
