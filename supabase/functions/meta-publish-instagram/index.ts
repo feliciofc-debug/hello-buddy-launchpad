@@ -244,6 +244,9 @@ async function publishImageToInstagram(
 
   console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
 
+  // CORREÇÃO: Instagram não aceita AVIF (Shopee usa AVIF). Reroteia via wsrv.nl.
+  const safeImageUrl = ensureInstagramCompatibleImageUrl(imageUrl)
+
   // Passo 1: Criar container de mídia
   const containerResponse = await fetch(
     `https://graph.facebook.com/v25.0/${igAccountId}/media`,
@@ -251,7 +254,7 @@ async function publishImageToInstagram(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        image_url: imageUrl,
+        image_url: safeImageUrl,
         caption: caption,
         access_token: pageToken
       })
@@ -284,6 +287,9 @@ async function publishReelsToInstagram(
 
   console.log('🎬 Publicando REELS no Instagram...', { igAccountId, videoUrl })
 
+  // CORREÇÃO: cover_url também não pode ser AVIF
+  const safeCoverUrl = coverUrl ? ensureInstagramCompatibleImageUrl(coverUrl) : undefined
+
   // Passo 1: Criar container de vídeo (Reels)
   const containerBody: Record<string, string> = {
     media_type: 'REELS',
@@ -292,8 +298,8 @@ async function publishReelsToInstagram(
     access_token: pageToken
   }
   
-  if (coverUrl) {
-    containerBody.cover_url = coverUrl
+  if (safeCoverUrl) {
+    containerBody.cover_url = safeCoverUrl
   }
 
   const containerResponse = await fetch(

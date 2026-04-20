@@ -110,7 +110,8 @@ Deno.serve(async (req) => {
     // Step 1: Create carousel item containers (with retry for transient errors)
     const childrenIds: string[] = []
     for (let i = 0; i < image_urls.length; i++) {
-      const imageUrl = image_urls[i]
+      // CORREÇÃO: Instagram não aceita AVIF. Reroteia via wsrv.nl quando necessário.
+      const imageUrl = ensureInstagramCompatibleImageUrl(image_urls[i])
       console.log(`📸 [${i+1}/${image_urls.length}] Criando container para: ${imageUrl.substring(0, 100)}`)
       
       let data: any = null
