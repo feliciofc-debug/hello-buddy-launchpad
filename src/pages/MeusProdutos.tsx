@@ -1856,6 +1856,17 @@ export default function MeusProdutos() {
                           <Copy className="w-4 h-4" />
                           {t('products.duplicate_campaign')}
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-purple-700 dark:text-purple-300 border-purple-500/40 hover:bg-purple-500/10"
+                          onClick={() => { setTextosProduct(product); setIsTextosModalOpen(true); }}
+                        >
+                          📝 Textos Personalizados
+                          {(product as any).usa_textos_personalizados && (
+                            <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded bg-purple-500/20">ON</span>
+                          )}
+                        </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
