@@ -966,6 +966,33 @@ export type Database = {
         }
         Relationships: []
       }
+      autopilot_textos_personalizados: {
+        Row: {
+          ativo: boolean | null
+          criado_em: string | null
+          id: string
+          ordem: number | null
+          texto: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          criado_em?: string | null
+          id?: string
+          ordem?: number | null
+          texto: string
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean | null
+          criado_em?: string | null
+          id?: string
+          ordem?: number | null
+          texto?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       backup_logs: {
         Row: {
           arquivo_path: string | null
