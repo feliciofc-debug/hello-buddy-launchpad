@@ -76,6 +76,7 @@ interface Product {
   publicar_marketplace: boolean;
   imagens: any; // Json do banco pode ser string[] ou string
   imagens_reel?: any; // Json do banco — array de URLs selecionadas para Reel (até 5)
+  usa_textos_personalizados?: boolean;
 }
 
 interface ProductFormProps {
@@ -1630,7 +1631,14 @@ export default function MeusProdutos() {
                       </Badge>
                     </div>
                   </div>
-                  <CardTitle className="text-xl">{product.nome}</CardTitle>
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-xl">{product.nome}</CardTitle>
+                    {(product as any).usa_textos_personalizados && (
+                      <Badge className="bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 hover:bg-purple-500/20 shrink-0">
+                        📝 Personal
+                      </Badge>
+                    )}
+                  </div>
                   <CardDescription className="line-clamp-2">
                     {product.descricao || t('products.no_description')}
                   </CardDescription>
@@ -1743,6 +1751,17 @@ export default function MeusProdutos() {
                             Post on TikTok
                           </Button>
                         )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-purple-700 dark:text-purple-300 border-purple-500/40 hover:bg-purple-500/10"
+                          onClick={() => { setTextosProduct(product); setIsTextosModalOpen(true); }}
+                        >
+                          📝 Textos Personalizados
+                          {(product as any).usa_textos_personalizados && (
+                            <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded bg-purple-500/20">ON</span>
+                          )}
+                        </Button>
                         <div className="grid grid-cols-2 gap-2">
                           <Button 
                             variant="outline" 
