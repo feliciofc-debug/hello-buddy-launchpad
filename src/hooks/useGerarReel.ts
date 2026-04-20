@@ -85,10 +85,40 @@ async function carregarImagem(url: string, indice: number): Promise<HTMLImageEle
 }
 
 // ==============================================================
-// HELPER: quebra texto em no máximo 2 linhas
+// HELPER: quebra texto em até 3 linhas com fonte adaptativa
 // ==============================================================
-function quebrarTexto(ctx: CanvasRenderingContext2D, texto: string, maxWidth: number): string[] {
-  const palavras = texto.split(' ');
+function quebrarTexto(
+  ctx: CanvasRenderingContext2D,
+  texto: string,
+  maxWidth: number
+): { linhas: string[]; fontSize: number } {
+  const tamanhos = [58, 50, 44];
+
+  for (const fontSize of tamanhos) {
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    const palavras = texto.trim().split(/\s+/);
+    const linhas: string[] = [];
+    let linhaAtual: string[] = [];
+
+    for (const palavra of palavras) {
+      const teste = [...linhaAtual, palavra].join(' ');
+      if (ctx.measureText(teste).width <= maxWidth) {
+        linhaAtual.push(palavra);
+      } else {
+        if (linhaAtual.length) linhas.push(linhaAtual.join(' '));
+        linhaAtual = [palavra];
+      }
+    }
+    if (linhaAtual.length) linhas.push(linhaAtual.join(' '));
+
+    if (linhas.length <= 3) {
+      return { linhas, fontSize };
+    }
+  }
+
+  // Fallback: 3 linhas na fonte menor, sem "..."
+  ctx.font = 'bold 44px sans-serif';
+  const palavras = texto.trim().split(/\s+/);
   const linhas: string[] = [];
   let linhaAtual: string[] = [];
 
@@ -99,14 +129,12 @@ function quebrarTexto(ctx: CanvasRenderingContext2D, texto: string, maxWidth: nu
     } else {
       if (linhaAtual.length) linhas.push(linhaAtual.join(' '));
       linhaAtual = [palavra];
+      if (linhas.length >= 3) break;
     }
   }
-  if (linhaAtual.length) linhas.push(linhaAtual.join(' '));
+  if (linhaAtual.length && linhas.length < 3) linhas.push(linhaAtual.join(' '));
 
-  if (linhas.length > 2) {
-    return [linhas[0], (linhas[1] + ' ' + linhas.slice(2).join(' ')).substring(0, 40) + '...'];
-  }
-  return linhas;
+  return { linhas: linhas.slice(0, 3), fontSize: 44 };
 }
 
 // ==============================================================
@@ -131,6 +159,7 @@ function desenharFrame(
   imgProduto: HTMLImageElement,
   logoAmz: HTMLImageElement,
   linhasTitulo: string[],
+  fontSizeTitulo: number,
   precoOriginal: number | undefined,
   precoAtual: number,
   desconto: string | null,
@@ -172,15 +201,16 @@ function desenharFrame(
     ctx.fillText(desconto, W - 150, 260);
   }
 
-  // Título (2 linhas)
+  // Título (até 3 linhas, fonte adaptativa)
   ctx.fillStyle = 'white';
-  ctx.font = 'bold 58px sans-serif';
+  ctx.font = `bold ${fontSizeTitulo}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  const lineHeight = fontSizeTitulo * 1.25;
   let yTit = 380;
   for (const linha of linhasTitulo) {
     ctx.fillText(linha, W / 2, yTit);
-    yTit += 72;
+    yTit += lineHeight;
   }
 
   // Inferior
@@ -304,8 +334,8 @@ export function useGerarReel() {
         canvas.width = W;
         canvas.height = H;
         const ctx = canvas.getContext('2d')!;
-        ctx.font = 'bold 58px sans-serif';
-        const linhasTitulo = quebrarTexto(ctx, params.nomeProduto, W - 80);
+        const { linhas: linhasTitulo, fontSize: fontSizeTitulo } =
+          quebrarTexto(ctx, params.nomeProduto, W - 80);
         const desconto = params.precoOriginal
           ? calcularDesconto(params.precoOriginal, params.preco)
           : null;
@@ -323,6 +353,7 @@ export function useGerarReel() {
               img,
               logoAmz,
               linhasTitulo,
+              fontSizeTitulo,
               params.precoOriginal,
               params.preco,
               desconto,
