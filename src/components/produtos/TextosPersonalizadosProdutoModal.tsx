@@ -223,18 +223,18 @@ export const TextosPersonalizadosProdutoModal = ({ open, onOpenChange, produto, 
         .from("produtos")
         .update({ usa_textos_personalizados: novo })
         .eq("id", produto.id)
-        .eq("user_id", user.id)
-        .select("id, usa_textos_personalizados");
+        .select("id, usa_textos_personalizados")
+        .single();
 
       console.log("[TextosPersonalizados] resultado UPDATE:", { data, error });
 
       if (error) throw error;
-      if (!data || data.length === 0) {
+      if (!data) {
         throw new Error("Nenhum produto foi atualizado. Verifique permissões.");
       }
 
-      setUsaPersonalizado(novo);
-      onModoChange?.(produto.id, novo);
+      setUsaPersonalizado(Boolean(data.usa_textos_personalizados));
+      onModoChange?.(produto.id, Boolean(data.usa_textos_personalizados));
       toast.success(novo ? "Modo personalizado ATIVADO" : "Modo personalizado desativado — voltou pra IA");
     } catch (err: any) {
       console.error("[TextosPersonalizados] erro ao alternar modo:", err);
