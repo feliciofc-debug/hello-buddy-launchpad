@@ -331,12 +331,14 @@ export function useGerarReel() {
         ]);
 
         const dataMp4 = await ffmpeg.readFile('output.mp4');
-        const blobMp4 = new Blob([dataMp4 as Uint8Array], { type: 'video/mp4' });
+        const bufMp4 = new Uint8Array(dataMp4 as Uint8Array);
+        const blobMp4 = new Blob([bufMp4.buffer as ArrayBuffer], { type: 'video/mp4' });
 
         // ==== 5. Thumbnail ====
         atualizarProgresso('upload', 80, 'Enviando pra nuvem...');
         const dataThumb = await ffmpeg.readFile('frame_0000.jpg');
-        const blobThumb = new Blob([dataThumb as Uint8Array], { type: 'image/jpeg' });
+        const bufThumb = new Uint8Array(dataThumb as Uint8Array);
+        const blobThumb = new Blob([bufThumb.buffer as ArrayBuffer], { type: 'image/jpeg' });
 
         // ==== 6. Upload Storage ====
         const { data: { user } } = await supabase.auth.getUser();
