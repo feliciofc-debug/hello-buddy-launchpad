@@ -21,7 +21,7 @@ interface ReelGerado {
   publicado_instagram: boolean;
   facebook_post_id: string | null;
   instagram_post_id: string | null;
-  produtos: { id?: string; nome: string; imagem_url: string | null; preco?: number | null; link_afiliado?: string | null } | null;
+  produtos: { id?: string; nome: string; imagem_url: string | null; preco?: number | null; link_marketplace?: string | null } | null;
 }
 
 const extrairPath = (url: string): string | null => {
@@ -49,7 +49,7 @@ export const ReelsGeradosGrid = () => {
 
       const { data, error } = await supabase
         .from('produto_videos' as any)
-        .select('*, produtos(id, nome, imagem_url, preco, link_afiliado)')
+        .select('*, produtos(id, nome, imagem_url, preco, link_marketplace)')
         .eq('user_id', user.id)
         .order('criado_em', { ascending: false });
 
@@ -317,7 +317,7 @@ export const ReelsGeradosGrid = () => {
                   id: publishingReel.produto_id || undefined,
                   nome: publishingReel.produtos.nome,
                   preco: publishingReel.produtos.preco ?? null,
-                  link_marketplace: publishingReel.produtos.link_afiliado ?? null,
+                  link_marketplace: publishingReel.produtos.link_marketplace ?? null,
                   imagem_url: publishingReel.produtos.imagem_url,
                 }
               : null
