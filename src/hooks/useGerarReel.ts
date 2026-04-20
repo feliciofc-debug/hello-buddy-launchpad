@@ -25,12 +25,13 @@ const IMG_PRODUTO_SIZE = 900;
 const IMG_PRODUTO_Y = 540;
 const ZOOM_FINAL = 1.08;
 
-// Versão do core DEVE ser compatível com @ffmpeg/ffmpeg 0.12.10
-// jsdelivr é mais estável que unpkg; mantemos unpkg como fallback
+// @ffmpeg/ffmpeg@0.12.15 instalado → core compatível 0.12.10
+// IMPORTANTE: usar /dist/esm (não /umd), pois o Vite só carrega ES Modules em runtime
+// jsdelivr é mais estável que unpkg; mantemos fallbacks
 const FFMPEG_CDNS = [
-  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd',
-  'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd',
-  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd',
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm',
+  'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm',
+  'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
 ];
 
 // ==============================================================
@@ -419,10 +420,14 @@ export function useGerarReel() {
         toast.success('Reel gerado com sucesso! Veja na aba Vídeos.');
         return videoUrl;
       } catch (err: any) {
-        console.error('[REEL] Erro:', err);
-        const msg = err?.message || 'Erro ao gerar Reel';
-        atualizarProgresso('erro', 0, msg);
-        toast.error(`Erro ao gerar Reel: ${msg}`);
+        const msgErro = err?.message || err?.toString() || 'Erro desconhecido';
+        console.error('[REEL] ==== ERRO COMPLETO ====');
+        console.error('[REEL] Mensagem:', msgErro);
+        console.error('[REEL] Stack:', err?.stack);
+        console.error('[REEL] Objeto erro completo:', err);
+        console.error('[REEL] ======================');
+        atualizarProgresso('erro', 0, msgErro);
+        toast.error(`Erro ao gerar Reel: ${msgErro}`);
         return null;
       }
     },
