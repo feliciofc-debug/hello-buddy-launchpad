@@ -972,6 +972,7 @@ export type Database = {
           criado_em: string | null
           id: string
           ordem: number | null
+          produto_id: string
           texto: string
           user_id: string
         }
@@ -980,6 +981,7 @@ export type Database = {
           criado_em?: string | null
           id?: string
           ordem?: number | null
+          produto_id: string
           texto: string
           user_id: string
         }
@@ -988,10 +990,19 @@ export type Database = {
           criado_em?: string | null
           id?: string
           ordem?: number | null
+          produto_id?: string
           texto?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "autopilot_textos_personalizados_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       backup_logs: {
         Row: {
@@ -4406,6 +4417,50 @@ export type Database = {
         }
         Relationships: []
       }
+      notificacoes_usuario: {
+        Row: {
+          created_at: string
+          id: string
+          lida: boolean
+          mensagem: string
+          metadata: Json | null
+          produto_id: string | null
+          tipo: string
+          titulo: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lida?: boolean
+          mensagem: string
+          metadata?: Json | null
+          produto_id?: string | null
+          tipo: string
+          titulo: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lida?: boolean
+          mensagem?: string
+          metadata?: Json | null
+          produto_id?: string | null
+          tipo?: string
+          titulo?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notificacoes_usuario_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       opt_ins: {
         Row: {
           created_at: string | null
@@ -5289,6 +5344,7 @@ export type Database = {
           tamanhos: string | null
           tipo: string | null
           updated_at: string
+          usa_textos_personalizados: boolean
           user_id: string
           vendedor_id: string | null
           warranty: string | null
@@ -5327,6 +5383,7 @@ export type Database = {
           tamanhos?: string | null
           tipo?: string | null
           updated_at?: string
+          usa_textos_personalizados?: boolean
           user_id: string
           vendedor_id?: string | null
           warranty?: string | null
@@ -5365,6 +5422,7 @@ export type Database = {
           tamanhos?: string | null
           tipo?: string | null
           updated_at?: string
+          usa_textos_personalizados?: boolean
           user_id?: string
           vendedor_id?: string | null
           warranty?: string | null
