@@ -2102,7 +2102,10 @@ export default function MeusProdutos() {
         open={isTextosModalOpen}
         onOpenChange={(open) => {
           setIsTextosModalOpen(open);
-          if (!open) setTextosProduct(null);
+          if (!open) {
+            setTextosProduct(null);
+            void fetchProducts();
+          }
         }}
         produto={textosProduct ? {
           id: textosProduct.id,
@@ -2113,6 +2116,7 @@ export default function MeusProdutos() {
         } : null}
         onModoChange={(produtoId, ativado) => {
           setProducts(prev => prev.map(p => p.id === produtoId ? { ...p, usa_textos_personalizados: ativado } as any : p));
+          setTextosProduct(prev => prev && prev.id === produtoId ? { ...prev, usa_textos_personalizados: ativado } as any : prev);
         }}
       />
 
