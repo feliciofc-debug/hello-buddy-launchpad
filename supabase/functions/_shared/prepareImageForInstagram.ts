@@ -139,23 +139,26 @@ export async function prepareImageForInstagram(
 }
 
 /**
- * Versão "soft": só converte se necessário (AVIF ou aspect ratio fora).
- * Se a URL já é HTTP JPEG/PNG/WebP num CDN nosso, retorna original sem baixar.
- * Use isso no Autopilot para evitar reprocessamento desnecessário.
+ * Wrapper resiliente: tenta preparar a imagem, se falhar retorna a URL original
+ * com flag `converted=false` pra que o caller decida (no Autopilot deixamos passar
+ * a URL original — o pior caso é o post falhar igual ao comportamento anterior).
  */
-export async function prepareImageForInstagramIfNeeded(
+export async function prepareImageForInstagramSafe(
   imageUrl: string,
   userId: string,
   supabaseUrl: string,
   serviceRoleKey: string,
 ): Promise<PrepareResult> {
-  // Rota rápida: se NÃO é AVIF, deixa passar — a checagem real de aspect ratio
-  // só é viável após decodificar (que custa fetch+decode). Como o Meta API só
-  // rejeita aspect ratio em IG, e rejeita AVIF pré-checagem, focamos em AVIF aqui.
-  // Para aspect ratio, deixamos a Meta API responder e o caller pode reprocessar.
-  if (!isAvifUrl(imageUrl)) {
-    return { url: imageUrl, converted: false, reason: "skip_no_avif" };
+  try {
+    return await prepareImageForInstagram(imageUrl, userId, supabaseUrl, serviceRoleKey);
+  } catch (err) {
+    console.warn(
+      `[prepareImageForInstagramSafe] Falha (mantendo URL original): ${err instanceof Error ? err.message : err}`,
+    );
+    return {
+      url: imageUrl,
+      converted: false,
+      reason: `error:${err instanceof Error ? err.message : "unknown"}`,
+    };
   }
-
-  return await prepareImageForInstagram(imageUrl, userId, supabaseUrl, serviceRoleKey);
 }
