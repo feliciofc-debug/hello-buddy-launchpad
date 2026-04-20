@@ -256,37 +256,45 @@ const ProductForm = ({
             );
           })()}
 
-          {/* Fotos extras já salvas */}
-          {existingExtraImages.map((url, idx) => {
-            const idxReel = reelIndex(url);
-            return (
-            <div key={`existing-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
-              <img src={url} className="h-full w-full object-cover" alt={`Foto ${idx + 2}`} />
-              <label className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-background/90 px-1.5 py-0.5 cursor-pointer shadow">
-                <Checkbox
-                  checked={idxReel >= 0}
-                  onCheckedChange={() => toggleReelImage(url)}
-                  className="h-3.5 w-3.5"
-                />
-                <span className="text-[10px] font-medium">🎬 Reel</span>
-              </label>
-              {idxReel >= 0 && (
-                <Badge variant="default" className="absolute bottom-1 right-1 px-1.5 py-0 text-[10px]">
-                  Reel #{idxReel + 1}
-                </Badge>
-              )}
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                className="absolute right-1 top-1 h-6 w-6 p-0"
-                onClick={() => setExistingExtraImages(existingExtraImages.filter((_, i) => i !== idx))}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
+          {/* Fotos extras já salvas (deduplicadas: remove URL que já é a principal) */}
+          {(() => {
+            const principal = previewImage || currentImageUrl;
+            const existingExtraImagesDedupeadas = existingExtraImages.filter(
+              (url) => url && url !== principal
             );
-          })}
+            return existingExtraImagesDedupeadas.map((url, idx) => {
+              const idxReel = reelIndex(url);
+              // Índice real no array original para o botão de remoção
+              const realIdx = existingExtraImages.indexOf(url);
+              return (
+                <div key={`existing-${idx}`} className="relative aspect-square overflow-hidden rounded border border-border bg-muted/20">
+                  <img src={url} className="h-full w-full object-cover" alt={`Foto ${idx + 2}`} />
+                  <label className="absolute bottom-1 left-1 flex items-center gap-1 rounded bg-background/90 px-1.5 py-0.5 cursor-pointer shadow">
+                    <Checkbox
+                      checked={idxReel >= 0}
+                      onCheckedChange={() => toggleReelImage(url)}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className="text-[10px] font-medium">🎬 Reel</span>
+                  </label>
+                  {idxReel >= 0 && (
+                    <Badge variant="default" className="absolute bottom-1 right-1 px-1.5 py-0 text-[10px]">
+                      Reel #{idxReel + 1}
+                    </Badge>
+                  )}
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    className="absolute right-1 top-1 h-6 w-6 p-0"
+                    onClick={() => setExistingExtraImages(existingExtraImages.filter((_, i) => i !== realIdx))}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              );
+            });
+          })()}
 
           {/* Fotos extras novas (upload) */}
           {extraImageFiles.map((file, idx) =>
