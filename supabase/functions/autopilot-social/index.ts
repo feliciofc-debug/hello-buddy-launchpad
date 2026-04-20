@@ -111,7 +111,7 @@ serve(async (req) => {
 
         let query = supabase
           .from('produtos')
-          .select('id, user_id, nome, descricao, preco, imagem_url, link, link_marketplace, categoria, ativo')
+          .select('id, user_id, nome, descricao, preco, imagem_url, link, link_marketplace, categoria, ativo, usa_textos_personalizados')
           .eq('ativo', true)
           .eq('user_id', config.user_id)
           .order('created_at', { ascending: true })
@@ -191,33 +191,52 @@ serve(async (req) => {
             let textoInstagram = ''
             let iaStatus = 'nao_usou'
 
-            // === TEXTOS PERSONALIZADOS (quando IA desligada) ===
-            if (!config.gerar_texto_ia) {
+            // === TEXTOS PERSONALIZADOS POR PRODUTO ===
+            // Se o PRODUTO está em modo personalizado, usa APENAS textos próprios (sem fallback IA)
+            if (produto.usa_textos_personalizados === true) {
               const { data: textosPersonalizados } = await supabase
                 .from('autopilot_textos_personalizados')
                 .select('texto')
-                .eq('user_id', config.user_id)
+                .eq('produto_id', produto.id)
                 .eq('ativo', true)
 
-              if (textosPersonalizados && textosPersonalizados.length > 0) {
-                const escolhido = textosPersonalizados[Math.floor(Math.random() * textosPersonalizados.length)]
-                textoFacebook = escolhido.texto || ''
-                textoInstagram = escolhido.texto || ''
-                iaStatus = 'texto_personalizado'
-                console.log('📝 [AUTOPILOT] Usando texto personalizado', {
-                  user_id: config.user_id,
-                  total_textos: textosPersonalizados.length,
-                })
-              } else {
-                console.warn('⚠️ [AUTOPILOT] IA desligada mas sem textos personalizados. Fallback para IA.', {
+              if (!textosPersonalizados || textosPersonalizados.length === 0) {
+                // Sem textos: PULA + NOTIFICA cliente (zero fallback pra IA)
+                console.warn('⚠️ [AUTOPILOT] Produto em modo personalizado SEM textos. Pulando.', {
+                  produto_id: produto.id,
+                  produto_nome: produto.nome,
                   user_id: config.user_id,
                 })
-                iaStatus = 'fallback_ia_sem_textos'
+
+                await supabase.from('notificacoes_usuario').insert({
+                  user_id: config.user_id,
+                  tipo: 'autopilot_sem_textos',
+                  titulo: '⚠️ Produto sem textos personalizados',
+                  mensagem: `O produto "${produto.nome}" está em modo personalizado mas não tem textos cadastrados. Adicione pelo menos 1 texto ou desative o modo personalizado.`,
+                  produto_id: produto.id,
+                })
+
+                results.push({
+                  config_id: config.id,
+                  produto_id: produto.id,
+                  skipped: true,
+                  reason: 'modo_personalizado_sem_textos',
+                })
+                continue
               }
+
+              const escolhido = textosPersonalizados[Math.floor(Math.random() * textosPersonalizados.length)]
+              textoFacebook = escolhido.texto || ''
+              textoInstagram = escolhido.texto || ''
+              iaStatus = 'texto_personalizado_produto'
+              console.log('📝 [AUTOPILOT] Usando texto personalizado do produto', {
+                produto_id: produto.id,
+                total_textos: textosPersonalizados.length,
+              })
             }
 
-            // === IA (quando ligada OU fallback de texto personalizado vazio) ===
-            if (!textoFacebook && (config.gerar_texto_ia || iaStatus === 'fallback_ia_sem_textos')) {
+            // === IA (quando produto NÃO está em modo personalizado E IA está ligada) ===
+            if (!textoFacebook && config.gerar_texto_ia) {
               const controller = new AbortController()
               const timeout = setTimeout(() => controller.abort(), 15000)
 

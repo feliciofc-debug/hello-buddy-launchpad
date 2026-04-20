@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Rocket, Facebook, Instagram, Calendar, Clock, Package, Sparkles, Play, Pause } from "lucide-react";
-import { AutopilotTextosPersonalizados } from "@/components/AutopilotTextosPersonalizados";
 
 export const AutopilotConfig = () => {
   const [loading, setLoading] = useState(true);
@@ -416,15 +415,19 @@ export const AutopilotConfig = () => {
             </div>
 
             <div className="flex items-center justify-between">
-              <Label className="text-sm flex items-center gap-1"><Sparkles className="h-3 w-3" /> Gerar texto com IA</Label>
+              <div className="space-y-0.5">
+                <Label className="text-sm flex items-center gap-1"><Sparkles className="h-3 w-3" /> Gerar texto com IA (padrão)</Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Produtos com "📝 Textos Personalizados" ativado ignoram esta opção
+                </p>
+              </div>
               <Switch checked={config.gerar_texto_ia} onCheckedChange={(v) => setConfig(prev => ({ ...prev, gerar_texto_ia: v }))} />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Textos personalizados (visível só quando IA desligada) */}
-      {!config.gerar_texto_ia && <AutopilotTextosPersonalizados />}
+
 
       {/* Botão salvar */}
       <Button className="w-full" onClick={handleSave} disabled={saving}>
