@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2, Rocket, Facebook, Instagram, Calendar, Clock, Package, Sparkles, Play, Pause } from "lucide-react";
-import { AutopilotTextosPersonalizados } from "@/components/AutopilotTextosPersonalizados";
 
 export const AutopilotConfig = () => {
   const [loading, setLoading] = useState(true);
