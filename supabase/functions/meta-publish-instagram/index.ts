@@ -207,10 +207,10 @@ serve(async (req) => {
         
         if (post.video_url) {
           // Publicar como Reels
-          result = await publishReelsToInstagram(token, igId, sanitizedPostText, post.video_url)
+          result = await publishReelsToInstagram(token, igId, sanitizedPostText, post.video_url, post.user_id)
         } else {
           // Publicar como imagem
-          result = await publishImageToInstagram(token, igId, sanitizedPostText, post.image_url)
+          result = await publishImageToInstagram(token, igId, sanitizedPostText, post.image_url, post.user_id)
         }
 
         await supabase.from('social_posts_queue')
