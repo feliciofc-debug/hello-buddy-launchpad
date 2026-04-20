@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { prepareImageForInstagramSafe } from "../_shared/prepareImageForInstagram.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -366,6 +367,28 @@ serve(async (req) => {
             }
 
             if (canPostInstagram && imagemUrl) {
+              // 🛡️ Pré-processa imagem pro Instagram (AVIF→JPEG + aspect ratio)
+              // Roda 1x ao agendar — evita "aspect ratio not supported" e
+              // "Only photo or video can be accepted as media type" na publicação.
+              let imagemUrlIg = imagemUrl
+              try {
+                const prep = await prepareImageForInstagramSafe(
+                  imagemUrl,
+                  config.user_id,
+                  SUPABASE_URL,
+                  SUPABASE_SERVICE_ROLE_KEY,
+                )
+                imagemUrlIg = prep.url
+                console.log('🖼️ [AUTOPILOT] Imagem IG processada', {
+                  produto_id: produto.id,
+                  converted: prep.converted,
+                  reason: prep.reason,
+                  original_avif: imagemUrl.toLowerCase().includes('.avif'),
+                })
+              } catch (prepErr) {
+                console.warn('⚠️ [AUTOPILOT] Falha pré-processar imagem IG, usando original:', prepErr)
+              }
+
               const horarioIg = new Date(horarioPost.getTime() + 5 * 60 * 1000)
               const instagramInsert = await supabase
                 .from('social_posts_queue')
@@ -376,7 +399,7 @@ serve(async (req) => {
                   platform: 'instagram',
                   page_id: clientPageId,
                   post_text: textoInstagram,
-                  image_url: imagemUrl,
+                  image_url: imagemUrlIg,
                   link_url: linkProduto,
                   status: 'pendente',
                   scheduled_at: horarioIg.toISOString(),
