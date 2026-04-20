@@ -943,6 +943,10 @@ export default function MeusProdutos() {
 
   const handleGerarReel = async (product: Product) => {
     const reelImgs = Array.isArray(product.imagens_reel) ? product.imagens_reel.filter(Boolean) : [];
+    console.log('[GERAR-REEL] Produto:', product.nome);
+    console.log('[GERAR-REEL] imagens_reel bruto:', product.imagens_reel);
+    console.log('[GERAR-REEL] reelImgs filtradas:', reelImgs);
+    console.log('[GERAR-REEL] Quantidade:', reelImgs.length);
     if (reelImgs.length < 3) {
       toast.error('Selecione pelo menos 3 fotos pra gerar o Reel. Clique em Editar e marque as fotos.');
       return;
@@ -1035,7 +1039,7 @@ export default function MeusProdutos() {
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
           imagens: formData.imagens || [],
-          imagens_reel: imagensReel || [],
+          imagens_reel: Array.from(new Set((imagensReel || []).filter(Boolean))),
           tipo: formData.tipo || 'fisico',
           ficha_tecnica: formData.ficha_tecnica || null,
           informacao_nutricional: formData.informacao_nutricional || null,
@@ -1147,7 +1151,7 @@ export default function MeusProdutos() {
           link_marketplace: formData.link_marketplace || null,
           publicar_marketplace: formData.publicar_marketplace,
           imagens: existingExtraImages || [],
-          imagens_reel: imagensReel || [],
+          imagens_reel: Array.from(new Set((imagensReel || []).filter(Boolean))),
           tipo: formData.tipo || 'fisico',
           ficha_tecnica: formData.ficha_tecnica || null,
           informacao_nutricional: formData.informacao_nutricional || null,
