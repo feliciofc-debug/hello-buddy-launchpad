@@ -2068,6 +2068,25 @@ export default function MeusProdutos() {
         />
       )}
 
+      <TextosPersonalizadosProdutoModal
+        open={isTextosModalOpen}
+        onOpenChange={(open) => {
+          setIsTextosModalOpen(open);
+          if (!open) setTextosProduct(null);
+        }}
+        produto={textosProduct ? {
+          id: textosProduct.id,
+          nome: textosProduct.nome,
+          descricao: (textosProduct as any).descricao,
+          preco: textosProduct.preco,
+          usa_textos_personalizados: (textosProduct as any).usa_textos_personalizados,
+        } : null}
+        onModoChange={(produtoId, ativado) => {
+          setProducts(prev => prev.map(p => p.id === produtoId ? { ...p, usa_textos_personalizados: ativado } as any : p));
+        }}
+      />
+
+
       {/* Modal de geração de Reel */}
       <ModalProgressoReel
         progresso={progresso}
