@@ -1,27 +1,72 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { prepareImageForInstagramSafe } from "../_shared/prepareImageForInstagram.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+const SUPABASE_URL_ENV = Deno.env.get('SUPABASE_URL')!
+const SUPABASE_SERVICE_ROLE_KEY_ENV = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
 /**
- * Instagram Graph API NÃO aceita AVIF. Se a URL termina em .avif (ex: Shopee),
- * roteamos pela CDN wsrv.nl que aceita AVIF como input e devolve JPEG.
- * - Mantém URL pública HTTPS (requisito da Meta)
- * - Sem custo, sem infra adicional
- * - Se a URL não for AVIF, retorna sem alteração
+ * Garante URL compatível com Instagram (não-AVIF, hospedada em CDN confiável).
+ * Estratégia em camadas:
+ *  1) Se URL já é uma URL do nosso Storage (produtos bucket) → retorna direto
+ *  2) Se NÃO é AVIF → retorna sem alteração (Meta aceita)
+ *  3) Se é AVIF (Shopee) ou já wrapped em wsrv.nl:
+ *     a) Tenta `prepareImageForInstagramSafe` (baixa + decode + reencode JPEG + upload Storage)
+ *     b) Se falhar, usa wsrv.nl como último recurso
  */
-function ensureInstagramCompatibleImageUrl(url: string): string {
+async function ensureInstagramCompatibleImageUrl(url: string, userId: string): Promise<string> {
   if (!url) return url
   try {
     const lower = url.toLowerCase()
-    const isAvif = lower.endsWith('.avif') || lower.includes('.avif?') || lower.includes('format=avif')
+    // Se já é do nosso Storage, OK
+    if (lower.includes('/storage/v1/object/public/produtos/')) {
+      return url
+    }
+
+    // Detecta AVIF (direto ou já dentro de wrapper wsrv.nl)
+    const isAvif =
+      lower.endsWith('.avif') ||
+      lower.includes('.avif?') ||
+      lower.includes('format=avif') ||
+      lower.includes('.avif&') ||
+      lower.includes('%2eavif') ||
+      (lower.includes('wsrv.nl') && lower.includes('.avif'))
+
     if (!isAvif) return url
-    const proxied = `https://wsrv.nl/?url=${encodeURIComponent(url)}&output=jpg&q=90`
-    console.log('🔄 [AVIF→JPEG] Reroteando via wsrv.nl:', proxied.substring(0, 120))
-    return proxied
+
+    // Se é wsrv.nl wrapped, extrair URL original AVIF
+    let originalUrl = url
+    if (lower.includes('wsrv.nl/?url=')) {
+      try {
+        const urlObj = new URL(url)
+        const inner = urlObj.searchParams.get('url')
+        if (inner) originalUrl = decodeURIComponent(inner)
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    console.log('🔄 [AVIF] Convertendo via Storage helper:', originalUrl.substring(0, 100))
+    const result = await prepareImageForInstagramSafe(
+      originalUrl,
+      userId,
+      SUPABASE_URL_ENV,
+      SUPABASE_SERVICE_ROLE_KEY_ENV,
+    )
+
+    if (result.converted) {
+      console.log('✅ [AVIF] Convertida e armazenada:', result.url.substring(0, 100))
+      return result.url
+    }
+
+    // Helper falhou → fallback wsrv.nl
+    console.warn('⚠️ [AVIF] Helper não converteu, usando wsrv.nl como fallback')
+    return `https://wsrv.nl/?url=${encodeURIComponent(originalUrl)}&output=jpg&q=90`
   } catch (e) {
     console.warn('⚠️ ensureInstagramCompatibleImageUrl falhou, usando URL original:', e)
     return url
