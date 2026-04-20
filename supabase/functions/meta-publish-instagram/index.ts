@@ -172,13 +172,13 @@ serve(async (req) => {
     } else if (body.video_url && body.caption) {
       // Publicação direta de vídeo (Reels)
       const { igId, token } = await getIgAccountId(supabase, body.user_id)
-      const result = await publishReelsToInstagram(token, igId, sanitizedCaption, body.video_url, body.cover_url)
+      const result = await publishReelsToInstagram(token, igId, sanitizedCaption, body.video_url, body.user_id, body.cover_url)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } else if (body.caption && body.image_url) {
       const { igId, token } = await getIgAccountId(supabase, body.user_id)
-      const result = await publishImageToInstagram(token, igId, sanitizedCaption, body.image_url)
+      const result = await publishImageToInstagram(token, igId, sanitizedCaption, body.image_url, body.user_id)
       return new Response(JSON.stringify({ success: true, ...result }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
