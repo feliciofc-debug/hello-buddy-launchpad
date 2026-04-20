@@ -284,13 +284,14 @@ async function publishImageToInstagram(
   pageToken: string,
   igAccountId: string,
   caption: string,
-  imageUrl: string
+  imageUrl: string,
+  userId: string,
 ): Promise<{ post_id: string }> {
 
   console.log('📸 Publicando IMAGEM no Instagram...', { igAccountId })
 
-  // CORREÇÃO: Instagram não aceita AVIF (Shopee usa AVIF). Reroteia via wsrv.nl.
-  const safeImageUrl = ensureInstagramCompatibleImageUrl(imageUrl)
+  // Camada de segurança: AVIF → conversão real via Storage helper
+  const safeImageUrl = await ensureInstagramCompatibleImageUrl(imageUrl, userId)
 
   // Passo 1: Criar container de mídia
   const containerResponse = await fetch(
