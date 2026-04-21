@@ -49,6 +49,8 @@ export interface ParametrosReel {
   imagensUrls: string[];
   preco: number;
   precoOriginal?: number;
+  /** URL da logo personalizada do usuário. Se ausente ou se falhar ao carregar, usa /logo-amz-reel.png */
+  logoUrl?: string | null;
 }
 
 // ==============================================================
@@ -324,9 +326,23 @@ export function useGerarReel() {
         const imagens = await Promise.all(
           imagensUrls.map((url, i) => carregarImagem(url, i))
         );
-        const logoAmz = await carregarImagem('/logo-amz-reel.png', -1).catch(() => {
-          throw new Error('Logo AMZ não encontrada em /logo-amz-reel.png');
-        });
+        // Logo: tenta primeiro a customizada do usuário, com fallback resiliente para a padrão
+        let logoAmz: HTMLImageElement;
+        if (params.logoUrl) {
+          try {
+            logoAmz = await carregarImagem(params.logoUrl, -1);
+            console.log('[REEL] Logo personalizada carregada:', params.logoUrl);
+          } catch (err) {
+            console.warn('[REEL] Falha ao carregar logo personalizada, usando padrão. Erro:', err);
+            logoAmz = await carregarImagem('/logo-amz-reel.png', -1).catch(() => {
+              throw new Error('Logo padrão também não encontrada em /logo-amz-reel.png');
+            });
+          }
+        } else {
+          logoAmz = await carregarImagem('/logo-amz-reel.png', -1).catch(() => {
+            throw new Error('Logo AMZ não encontrada em /logo-amz-reel.png');
+          });
+        }
 
         // ==== 3. Renderizar frames ====
         atualizarProgresso('renderizando', 25, 'Renderizando frames...');

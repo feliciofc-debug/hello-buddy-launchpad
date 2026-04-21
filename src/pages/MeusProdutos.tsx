@@ -955,6 +955,23 @@ export default function MeusProdutos() {
       toast.error('Selecione pelo menos 3 fotos pra gerar o Reel. Clique em Editar e marque as fotos.');
       return;
     }
+
+    // Buscar logo personalizada do usuário (fallback resiliente: se faltar, hook usa logo padrão)
+    let logoUrl: string | null = null;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('logo_reel_url')
+          .eq('id', user.id)
+          .maybeSingle();
+        logoUrl = (profile as any)?.logo_reel_url ?? null;
+      }
+    } catch (err) {
+      console.warn('[GERAR-REEL] Falha ao buscar logo personalizada, usando padrão:', err);
+    }
+
     setModalReelAberto(true);
     await gerarReel({
       produtoId: product.id,
@@ -962,6 +979,7 @@ export default function MeusProdutos() {
       imagensUrls: reelImgs as string[],
       preco: product.preco || 0,
       precoOriginal: undefined,
+      logoUrl,
     });
   };
 

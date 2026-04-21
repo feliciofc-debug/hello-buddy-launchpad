@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { MarcaPersonalizacao } from './MarcaPersonalizacao';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -84,9 +85,10 @@ const SettingsPage = () => {
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
 
         <Tabs defaultValue="meta" className="w-full">
-          <TabsList className={`grid w-full ${showTikTok ? 'grid-cols-2' : 'grid-cols-1'} mb-8`}>
+          <TabsList className={`grid w-full ${showTikTok ? 'grid-cols-3' : 'grid-cols-2'} mb-8`}>
             <TabsTrigger value="meta">{t('settings.meta_tab')}</TabsTrigger>
             {showTikTok && <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>}
+            <TabsTrigger value="marca">🎨 Marca</TabsTrigger>
           </TabsList>
 
           <TabsContent value="meta">
@@ -188,6 +190,10 @@ const SettingsPage = () => {
               </div>
             </TabsContent>
           )}
+
+          <TabsContent value="marca">
+            <MarcaPersonalizacao />
+          </TabsContent>
         </Tabs>
       </div>
     </div>
