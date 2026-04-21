@@ -327,6 +327,19 @@ export const AreaVideos = () => {
         videoNome={selectedVideo?.titulo || null}
         produto={null}
       />
+
+      {storyVideo && (
+        <PublicarStoryModal
+          open={!!storyVideo}
+          onOpenChange={(open) => !open && setStoryVideo(null)}
+          videoUrl={storyVideo.video_url}
+          videoNome={storyVideo.titulo}
+          jaPostadoFacebook={!!storyVideo.postado_story_facebook}
+          jaPostadoInstagram={!!storyVideo.postado_story_instagram}
+          postadoStoryEm={storyVideo.postado_story_em || null}
+          onPublished={(result) => handleStoryPublished(storyVideo.id, result)}
+        />
+      )}
     </div>
   );
 };
