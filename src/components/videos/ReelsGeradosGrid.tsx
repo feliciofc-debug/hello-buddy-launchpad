@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2 } from 'lucide-react';
+import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
+import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 
 interface ReelGerado {
   id: string;
@@ -21,6 +22,9 @@ interface ReelGerado {
   publicado_instagram: boolean;
   facebook_post_id: string | null;
   instagram_post_id: string | null;
+  postado_story_facebook?: boolean;
+  postado_story_instagram?: boolean;
+  postado_story_em?: string | null;
   produtos: { id?: string; nome: string; imagem_url: string | null; preco?: number | null; link_marketplace?: string | null } | null;
 }
 
@@ -34,6 +38,29 @@ export const ReelsGeradosGrid = () => {
   const [loading, setLoading] = useState(true);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const [publishingReel, setPublishingReel] = useState<ReelGerado | null>(null);
+  const [storyReel, setStoryReel] = useState<ReelGerado | null>(null);
+
+  const handleStoryPublished = async (
+    reelId: string,
+    result: {
+      facebook?: { ok: boolean; story_id?: string; error?: string };
+      instagram?: { ok: boolean; story_id?: string; error?: string };
+    }
+  ) => {
+    const updates: Record<string, any> = { postado_story_em: new Date().toISOString() };
+    if (result.facebook?.ok) {
+      updates.postado_story_facebook = true;
+      if (result.facebook.story_id) updates.story_facebook_id = result.facebook.story_id;
+    }
+    if (result.instagram?.ok) {
+      updates.postado_story_instagram = true;
+      if (result.instagram.story_id) updates.story_instagram_id = result.instagram.story_id;
+    }
+    if (result.facebook?.ok || result.instagram?.ok) {
+      await supabase.from('produto_videos' as any).update(updates).eq('id', reelId);
+      loadReels();
+    }
+  };
 
   useEffect(() => {
     loadReels();
