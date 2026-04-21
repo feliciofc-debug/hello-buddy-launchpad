@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Upload, Video, Trash2, Play, Facebook, Instagram } from 'lucide-react';
+import { Upload, Video, Trash2, Play, Facebook, Instagram, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
+import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
@@ -20,6 +21,9 @@ interface VideoItem {
   status: string;
   publicado_facebook: boolean;
   publicado_instagram: boolean;
+  postado_story_facebook?: boolean;
+  postado_story_instagram?: boolean;
+  postado_story_em?: string | null;
   created_at: string;
 }
 
@@ -29,8 +33,31 @@ export const AreaVideos = () => {
   const [uploading, setUploading] = useState(false);
   const [showReelsModal, setShowReelsModal] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
+  const [storyVideo, setStoryVideo] = useState<VideoItem | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStoryPublished = async (
+    videoId: string,
+    result: {
+      facebook?: { ok: boolean; story_id?: string; error?: string };
+      instagram?: { ok: boolean; story_id?: string; error?: string };
+    }
+  ) => {
+    const updates: Record<string, any> = { postado_story_em: new Date().toISOString() };
+    if (result.facebook?.ok) {
+      updates.postado_story_facebook = true;
+      if (result.facebook.story_id) updates.story_facebook_id = result.facebook.story_id;
+    }
+    if (result.instagram?.ok) {
+      updates.postado_story_instagram = true;
+      if (result.instagram.story_id) updates.story_instagram_id = result.instagram.story_id;
+    }
+    if (result.facebook?.ok || result.instagram?.ok) {
+      await supabase.from('videos_produtos' as any).update(updates).eq('id', videoId);
+      loadVideos();
+    }
+  };
 
   useEffect(() => {
     loadVideos();
@@ -251,7 +278,7 @@ export const AreaVideos = () => {
                     <Badge variant="secondary" className="text-xs">Disponível</Badge>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Button
                     size="sm"
                     className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs"
@@ -259,6 +286,15 @@ export const AreaVideos = () => {
                   >
                     <Video className="mr-1 h-3 w-3" />
                     Publicar Reels
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-gradient-to-r from-orange-500 to-pink-500 text-white text-xs disabled:opacity-50"
+                    onClick={() => setStoryVideo(video)}
+                    disabled={!!video.postado_story_facebook && !!video.postado_story_instagram}
+                  >
+                    <BookOpen className="mr-1 h-3 w-3" />
+                    Story
                   </Button>
                   {showTikTok && (
                     <Button
@@ -291,6 +327,19 @@ export const AreaVideos = () => {
         videoNome={selectedVideo?.titulo || null}
         produto={null}
       />
+
+      {storyVideo && (
+        <PublicarStoryModal
+          open={!!storyVideo}
+          onOpenChange={(open) => !open && setStoryVideo(null)}
+          videoUrl={storyVideo.video_url}
+          videoNome={storyVideo.titulo}
+          jaPostadoFacebook={!!storyVideo.postado_story_facebook}
+          jaPostadoInstagram={!!storyVideo.postado_story_instagram}
+          postadoStoryEm={storyVideo.postado_story_em || null}
+          onPublished={(result) => handleStoryPublished(storyVideo.id, result)}
+        />
+      )}
     </div>
   );
 };

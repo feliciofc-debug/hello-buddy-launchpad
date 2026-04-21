@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2 } from 'lucide-react';
+import { Play, Download, Rocket, Trash2, Film, Facebook, Instagram, CheckCircle2, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
+import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 
 interface ReelGerado {
   id: string;
@@ -21,6 +22,9 @@ interface ReelGerado {
   publicado_instagram: boolean;
   facebook_post_id: string | null;
   instagram_post_id: string | null;
+  postado_story_facebook?: boolean;
+  postado_story_instagram?: boolean;
+  postado_story_em?: string | null;
   produtos: { id?: string; nome: string; imagem_url: string | null; preco?: number | null; link_marketplace?: string | null } | null;
 }
 
@@ -34,6 +38,29 @@ export const ReelsGeradosGrid = () => {
   const [loading, setLoading] = useState(true);
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const [publishingReel, setPublishingReel] = useState<ReelGerado | null>(null);
+  const [storyReel, setStoryReel] = useState<ReelGerado | null>(null);
+
+  const handleStoryPublished = async (
+    reelId: string,
+    result: {
+      facebook?: { ok: boolean; story_id?: string; error?: string };
+      instagram?: { ok: boolean; story_id?: string; error?: string };
+    }
+  ) => {
+    const updates: Record<string, any> = { postado_story_em: new Date().toISOString() };
+    if (result.facebook?.ok) {
+      updates.postado_story_facebook = true;
+      if (result.facebook.story_id) updates.story_facebook_id = result.facebook.story_id;
+    }
+    if (result.instagram?.ok) {
+      updates.postado_story_instagram = true;
+      if (result.instagram.story_id) updates.story_instagram_id = result.instagram.story_id;
+    }
+    if (result.facebook?.ok || result.instagram?.ok) {
+      await supabase.from('produto_videos' as any).update(updates).eq('id', reelId);
+      loadReels();
+    }
+  };
 
   useEffect(() => {
     loadReels();
@@ -264,8 +291,18 @@ export const ReelsGeradosGrid = () => {
                     </Button>
                     <Button
                       size="sm"
+                      className="text-xs bg-gradient-to-r from-orange-500 to-pink-500 text-white disabled:opacity-50"
+                      onClick={() => setStoryReel(reel)}
+                      disabled={!!reel.postado_story_facebook && !!reel.postado_story_instagram}
+                      title="Postar como Story"
+                    >
+                      <BookOpen className="mr-1 h-3 w-3" />
+                      Story
+                    </Button>
+                    <Button
+                      size="sm"
                       variant="destructive"
-                      className="text-xs"
+                      className="text-xs col-span-2"
                       onClick={() => handleExcluir(reel)}
                     >
                       <Trash2 className="mr-1 h-3 w-3" /> Excluir
@@ -325,6 +362,19 @@ export const ReelsGeradosGrid = () => {
           publicadoFacebook={publishingReel.publicado_facebook}
           publicadoInstagram={publishingReel.publicado_instagram}
           onPublished={handlePublished}
+        />
+      )}
+
+      {storyReel && (
+        <PublicarStoryModal
+          open={!!storyReel}
+          onOpenChange={(open) => !open && setStoryReel(null)}
+          videoUrl={storyReel.video_url}
+          videoNome={storyReel.titulo || storyReel.produtos?.nome || null}
+          jaPostadoFacebook={!!storyReel.postado_story_facebook}
+          jaPostadoInstagram={!!storyReel.postado_story_instagram}
+          postadoStoryEm={storyReel.postado_story_em || null}
+          onPublished={(result) => handleStoryPublished(storyReel.id, result)}
         />
       )}
     </div>
