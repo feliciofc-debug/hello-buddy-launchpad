@@ -291,8 +291,18 @@ export const ReelsGeradosGrid = () => {
                     </Button>
                     <Button
                       size="sm"
+                      className="text-xs bg-gradient-to-r from-orange-500 to-pink-500 text-white disabled:opacity-50"
+                      onClick={() => setStoryReel(reel)}
+                      disabled={!!reel.postado_story_facebook && !!reel.postado_story_instagram}
+                      title="Postar como Story"
+                    >
+                      <BookOpen className="mr-1 h-3 w-3" />
+                      Story
+                    </Button>
+                    <Button
+                      size="sm"
                       variant="destructive"
-                      className="text-xs"
+                      className="text-xs col-span-2"
                       onClick={() => handleExcluir(reel)}
                     >
                       <Trash2 className="mr-1 h-3 w-3" /> Excluir
@@ -352,6 +362,19 @@ export const ReelsGeradosGrid = () => {
           publicadoFacebook={publishingReel.publicado_facebook}
           publicadoInstagram={publishingReel.publicado_instagram}
           onPublished={handlePublished}
+        />
+      )}
+
+      {storyReel && (
+        <PublicarStoryModal
+          open={!!storyReel}
+          onOpenChange={(open) => !open && setStoryReel(null)}
+          videoUrl={storyReel.video_url}
+          videoNome={storyReel.titulo || storyReel.produtos?.nome || null}
+          jaPostadoFacebook={!!storyReel.postado_story_facebook}
+          jaPostadoInstagram={!!storyReel.postado_story_instagram}
+          postadoStoryEm={storyReel.postado_story_em || null}
+          onPublished={(result) => handleStoryPublished(storyReel.id, result)}
         />
       )}
     </div>
