@@ -5562,6 +5562,7 @@ export type Database = {
           endereco: Json | null
           hotmart_email: string | null
           id: string
+          logo_reel_url: string | null
           lomadee_id: string | null
           mercado_livre_id: string | null
           nome: string
@@ -5585,6 +5586,7 @@ export type Database = {
           endereco?: Json | null
           hotmart_email?: string | null
           id: string
+          logo_reel_url?: string | null
           lomadee_id?: string | null
           mercado_livre_id?: string | null
           nome: string
@@ -5608,6 +5610,7 @@ export type Database = {
           endereco?: Json | null
           hotmart_email?: string | null
           id?: string
+          logo_reel_url?: string | null
           lomadee_id?: string | null
           mercado_livre_id?: string | null
           nome?: string
