@@ -116,6 +116,7 @@ serve(async (req) => {
           .eq('ativo', true)
           .eq('user_id', config.user_id)
           .order('created_at', { ascending: true })
+          .order('id', { ascending: true }) // 🛡️ ordem determinística (evita slice instável quando vários produtos têm o mesmo created_at)
 
         if (config.produto_fonte === 'categoria' && config.categoria_filtro) {
           query = query.eq('categoria', config.categoria_filtro)
@@ -329,6 +330,25 @@ serve(async (req) => {
 
             if (!canPostFacebook && !canPostInstagram) {
               throw new Error('Cliente sem conexão Meta ativa para os canais configurados')
+            }
+
+            // 🛡️ ANTI-DUPLICAÇÃO: Não agendar se o produto já tem post recente (pendente/publicado nas últimas 12h)
+            // Evita o caso em que o autopilot reagenda o mesmo produto múltiplas vezes por instabilidade de ordem ou re-execução.
+            const { data: postsRecentes } = await supabase
+              .from('social_posts_queue')
+              .select('id, platform, status, scheduled_at')
+              .eq('user_id', config.user_id)
+              .eq('produto_id', produto.id)
+              .in('status', ['pendente', 'publicando', 'publicado'])
+              .gte('scheduled_at', new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString())
+
+            if (postsRecentes && postsRecentes.length > 0) {
+              console.log('⏭️ [AUTOPILOT] Produto já tem post recente na fila/publicado, pulando para evitar duplicação', {
+                produto_id: produto.id,
+                produto_nome: produto.nome,
+                posts_existentes: postsRecentes.map((p) => ({ id: p.id, platform: p.platform, status: p.status, scheduled_at: p.scheduled_at })),
+              })
+              continue
             }
 
             if (canPostFacebook) {
