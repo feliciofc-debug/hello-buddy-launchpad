@@ -5252,11 +5252,16 @@ export type Database = {
           id: string
           instagram_post_id: string | null
           legenda: string | null
+          postado_story_em: string | null
+          postado_story_facebook: boolean | null
+          postado_story_instagram: boolean | null
           produto_id: string | null
           publicado_em: string | null
           publicado_facebook: boolean | null
           publicado_instagram: boolean | null
           status: string | null
+          story_facebook_id: string | null
+          story_instagram_id: string | null
           tamanho_bytes: number | null
           thumbnail_url: string | null
           titulo: string | null
@@ -5270,11 +5275,16 @@ export type Database = {
           id?: string
           instagram_post_id?: string | null
           legenda?: string | null
+          postado_story_em?: string | null
+          postado_story_facebook?: boolean | null
+          postado_story_instagram?: boolean | null
           produto_id?: string | null
           publicado_em?: string | null
           publicado_facebook?: boolean | null
           publicado_instagram?: boolean | null
           status?: string | null
+          story_facebook_id?: string | null
+          story_instagram_id?: string | null
           tamanho_bytes?: number | null
           thumbnail_url?: string | null
           titulo?: string | null
@@ -5288,11 +5298,16 @@ export type Database = {
           id?: string
           instagram_post_id?: string | null
           legenda?: string | null
+          postado_story_em?: string | null
+          postado_story_facebook?: boolean | null
+          postado_story_instagram?: boolean | null
           produto_id?: string | null
           publicado_em?: string | null
           publicado_facebook?: boolean | null
           publicado_instagram?: boolean | null
           status?: string | null
+          story_facebook_id?: string | null
+          story_instagram_id?: string | null
           tamanho_bytes?: number | null
           thumbnail_url?: string | null
           titulo?: string | null
@@ -6951,10 +6966,15 @@ export type Database = {
           descricao: string | null
           duracao_segundos: number | null
           id: string
+          postado_story_em: string | null
+          postado_story_facebook: boolean | null
+          postado_story_instagram: boolean | null
           produto_id: string | null
           publicado_facebook: boolean | null
           publicado_instagram: boolean | null
           status: string | null
+          story_facebook_id: string | null
+          story_instagram_id: string | null
           tamanho_mb: number | null
           thumbnail_url: string | null
           tipo: string | null
@@ -6968,10 +6988,15 @@ export type Database = {
           descricao?: string | null
           duracao_segundos?: number | null
           id?: string
+          postado_story_em?: string | null
+          postado_story_facebook?: boolean | null
+          postado_story_instagram?: boolean | null
           produto_id?: string | null
           publicado_facebook?: boolean | null
           publicado_instagram?: boolean | null
           status?: string | null
+          story_facebook_id?: string | null
+          story_instagram_id?: string | null
           tamanho_mb?: number | null
           thumbnail_url?: string | null
           tipo?: string | null
@@ -6985,10 +7010,15 @@ export type Database = {
           descricao?: string | null
           duracao_segundos?: number | null
           id?: string
+          postado_story_em?: string | null
+          postado_story_facebook?: boolean | null
+          postado_story_instagram?: boolean | null
           produto_id?: string | null
           publicado_facebook?: boolean | null
           publicado_instagram?: boolean | null
           status?: string | null
+          story_facebook_id?: string | null
+          story_instagram_id?: string | null
           tamanho_mb?: number | null
           thumbnail_url?: string | null
           tipo?: string | null
