@@ -116,6 +116,7 @@ serve(async (req) => {
           .eq('ativo', true)
           .eq('user_id', config.user_id)
           .order('created_at', { ascending: true })
+          .order('id', { ascending: true }) // 🛡️ ordem determinística (evita slice instável quando vários produtos têm o mesmo created_at)
 
         if (config.produto_fonte === 'categoria' && config.categoria_filtro) {
           query = query.eq('categoria', config.categoria_filtro)
