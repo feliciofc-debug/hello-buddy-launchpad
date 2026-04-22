@@ -209,6 +209,29 @@ export function PublicarReelsModal({
       return;
     }
 
+    // Validar agendamento
+    let scheduledFor: Date | null = null;
+    if (agendar) {
+      if (!scheduledDate || !scheduledTime) {
+        toast.error("Escolha data e horário do agendamento");
+        return;
+      }
+      scheduledFor = new Date(`${scheduledDate}T${scheduledTime}:00`);
+      if (isNaN(scheduledFor.getTime())) {
+        toast.error("Data ou horário inválido");
+        return;
+      }
+      if (scheduledFor.getTime() < Date.now() + 60_000) {
+        toast.error("O agendamento precisa ser pelo menos 1 minuto no futuro");
+        return;
+      }
+      // Agendamento exige vídeo já pré-carregado (não dá pra subir on-demand depois)
+      if (!hasPreloadedVideo) {
+        toast.error("Para agendar, use um vídeo da Área de Vídeos (já salvo).");
+        return;
+      }
+    }
+
     // Validação de duração ANTES de iniciar
     const validacao = await validarDuracao();
     if (!validacao.ok) {
