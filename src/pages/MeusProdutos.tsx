@@ -1496,7 +1496,7 @@ export default function MeusProdutos() {
                 <Package className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                {produtos.length === 0 ? (
+                {products.length === 0 ? (
                   <p className="text-base sm:text-lg font-semibold text-foreground">
                     {t('products.counter_empty')}
                   </p>
@@ -1504,15 +1504,15 @@ export default function MeusProdutos() {
                   <>
                     <div className="flex items-baseline gap-2 flex-wrap">
                       <span className="text-3xl sm:text-4xl font-bold text-foreground">
-                        {produtos.length}
+                        {products.length}
                       </span>
                       <span className="text-sm sm:text-base text-muted-foreground font-medium">
-                        {produtos.length === 1
+                        {products.length === 1
                           ? t('products.counter_label_singular')
                           : t('products.counter_label')}
                       </span>
                     </div>
-                    {produtos.length < 10 && (
+                    {products.length < 10 && (
                       <p className="text-xs sm:text-sm text-muted-foreground mt-1">
                         💡 {t('products.counter_low_hint')}
                       </p>
