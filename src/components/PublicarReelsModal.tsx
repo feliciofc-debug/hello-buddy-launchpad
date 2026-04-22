@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check } from "lucide-react";
+import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock } from "lucide-react";
 
 interface PublishResult {
   facebook?: { ok: boolean; postId?: string; error?: string };
@@ -56,6 +57,9 @@ export function PublicarReelsModal({
   const [generatingCaption, setGeneratingCaption] = useState(false);
   const [captionOptions, setCaptionOptions] = useState<string[]>([]);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [agendar, setAgendar] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<string>("");
+  const [scheduledTime, setScheduledTime] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasPreloadedVideo = !!videoUrl;
