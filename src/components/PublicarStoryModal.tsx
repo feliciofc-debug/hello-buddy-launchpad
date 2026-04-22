@@ -239,6 +239,43 @@ export const PublicarStoryModal = ({
             </label>
           </div>
 
+          {/* Agendamento */}
+          <div className="space-y-2 border-t pt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                checked={agendar}
+                onCheckedChange={(c) => setAgendar(!!c)}
+                disabled={loading}
+              />
+              <CalendarClock className="h-4 w-4" />
+              <span className="text-sm font-medium">Agendar para depois</span>
+            </label>
+
+            {agendar && (
+              <div className="grid grid-cols-2 gap-2 pl-6">
+                <div>
+                  <Label className="text-xs">Data</Label>
+                  <Input
+                    type="date"
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Horário</Label>
+                  <Input
+                    type="time"
+                    value={scheduledTime}
+                    onChange={(e) => setScheduledTime(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <p className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
             💡 <strong>Música:</strong> adicione direto no Instagram/Facebook após publicar pra maximizar alcance.
           </p>
@@ -254,7 +291,9 @@ export const PublicarStoryModal = ({
             className="bg-gradient-to-r from-purple-600 to-pink-600 text-white"
           >
             {loading ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {agendar ? 'Agendando...' : 'Publicando...'}</>
+            ) : agendar ? (
+              <><Clock className="mr-2 h-4 w-4" /> Agendar Story</>
             ) : (
               <><BookOpen className="mr-2 h-4 w-4" /> Postar Agora</>
             )}
