@@ -619,7 +619,7 @@ export function PublicarReelsModal({
           {/* Botão publicar */}
           <Button
             onClick={handlePublish}
-            disabled={!hasVideo || !caption.trim() || uploading}
+            disabled={!hasVideo || uploading}
             className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
             size="lg"
           >
