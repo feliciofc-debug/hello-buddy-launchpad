@@ -6963,6 +6963,63 @@ export type Database = {
         }
         Relationships: []
       }
+      videos_agendados: {
+        Row: {
+          canais: string[]
+          caption: string | null
+          created_at: string
+          erro: string | null
+          id: string
+          produto_id: string | null
+          published_at: string | null
+          resultado: Json | null
+          scheduled_for: string
+          status: string
+          tentativas: number
+          tipo: string
+          updated_at: string
+          user_id: string
+          video_nome: string | null
+          video_url: string
+        }
+        Insert: {
+          canais?: string[]
+          caption?: string | null
+          created_at?: string
+          erro?: string | null
+          id?: string
+          produto_id?: string | null
+          published_at?: string | null
+          resultado?: Json | null
+          scheduled_for: string
+          status?: string
+          tentativas?: number
+          tipo: string
+          updated_at?: string
+          user_id: string
+          video_nome?: string | null
+          video_url: string
+        }
+        Update: {
+          canais?: string[]
+          caption?: string | null
+          created_at?: string
+          erro?: string | null
+          id?: string
+          produto_id?: string | null
+          published_at?: string | null
+          resultado?: Json | null
+          scheduled_for?: string
+          status?: string
+          tentativas?: number
+          tipo?: string
+          updated_at?: string
+          user_id?: string
+          video_nome?: string | null
+          video_url?: string
+        }
+        Relationships: []
+      }
       videos_produtos: {
         Row: {
           created_at: string | null
