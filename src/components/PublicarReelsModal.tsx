@@ -273,6 +273,28 @@ export function PublicarReelsModal({
       if (postFacebook) platforms.push("facebook");
       if (postInstagram) platforms.push("instagram");
 
+      // Se for agendamento, salvar no banco e sair
+      if (agendar && scheduledFor) {
+        const { error: agErr } = await supabase.from("videos_agendados").insert({
+          user_id: user.id,
+          tipo: "reels",
+          video_url: publishVideoUrl!,
+          video_nome: videoNome || null,
+          caption,
+          canais: platforms,
+          produto_id: produto?.id || null,
+          scheduled_for: scheduledFor.toISOString(),
+          status: "pendente",
+        });
+        if (agErr) throw agErr;
+        toast.success(`📅 Reels agendado para ${scheduledFor.toLocaleString("pt-BR")}`);
+        setCaption("");
+        setCaptionOptions([]);
+        setSelectedOption(null);
+        onOpenChange(false);
+        return;
+      }
+
       let successCount = 0;
 
       for (const platform of platforms) {
