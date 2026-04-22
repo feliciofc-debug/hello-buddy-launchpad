@@ -574,6 +574,45 @@ export function PublicarReelsModal({
             </div>
           </div>
 
+          {/* Agendamento (apenas vídeos pré-carregados) */}
+          {hasPreloadedVideo && (
+            <div className="space-y-2 border-t pt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={agendar}
+                  onCheckedChange={(c) => setAgendar(!!c)}
+                  disabled={uploading}
+                />
+                <CalendarClock className="h-4 w-4" />
+                <span className="text-sm font-medium">Agendar para depois</span>
+              </label>
+
+              {agendar && (
+                <div className="grid grid-cols-2 gap-2 pl-6">
+                  <div>
+                    <Label className="text-xs">Data</Label>
+                    <Input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      disabled={uploading}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Horário</Label>
+                    <Input
+                      type="time"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                      disabled={uploading}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Botão publicar */}
           <Button
             onClick={handlePublish}
@@ -584,7 +623,12 @@ export function PublicarReelsModal({
             {uploading ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Publicando...
+                {agendar ? "Agendando..." : "Publicando..."}
+              </>
+            ) : agendar ? (
+              <>
+                <Clock className="mr-2 h-5 w-5" />
+                📅 Agendar Reels
               </>
             ) : (
               <>
