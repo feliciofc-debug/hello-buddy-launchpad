@@ -73,6 +73,24 @@ export const PublicarStoryModal = ({
       return;
     }
 
+    // Validar agendamento
+    let scheduledFor: Date | null = null;
+    if (agendar) {
+      if (!scheduledDate || !scheduledTime) {
+        toast.error('Escolha data e horário do agendamento');
+        return;
+      }
+      scheduledFor = new Date(`${scheduledDate}T${scheduledTime}:00`);
+      if (isNaN(scheduledFor.getTime())) {
+        toast.error('Data ou horário inválido');
+        return;
+      }
+      if (scheduledFor.getTime() < Date.now() + 60_000) {
+        toast.error('O agendamento precisa ser pelo menos 1 minuto no futuro');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       // 1) Validação client-side
@@ -102,6 +120,23 @@ export const PublicarStoryModal = ({
       // 2) Auth
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Você precisa estar logado');
+
+      // 3) Se for agendamento, salva no banco e sai
+      if (agendar && scheduledFor) {
+        const { error: agErr } = await supabase.from('videos_agendados').insert({
+          user_id: user.id,
+          tipo: 'story',
+          video_url: videoUrl,
+          video_nome: videoNome || null,
+          canais,
+          scheduled_for: scheduledFor.toISOString(),
+          status: 'pendente',
+        });
+        if (agErr) throw agErr;
+        toast.success(`📅 Story agendado para ${scheduledFor.toLocaleString('pt-BR')}`);
+        onOpenChange(false);
+        return;
+      }
 
       toast.loading('Publicando Story...', { id: 'story-publish' });
 
