@@ -1488,6 +1488,42 @@ export default function MeusProdutos() {
           </div>
         </div>
 
+        {/* Contador de Produtos */}
+        <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-purple-500/5">
+          <CardContent className="p-4 sm:p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center flex-shrink-0">
+                <Package className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                {produtos.length === 0 ? (
+                  <p className="text-base sm:text-lg font-semibold text-foreground">
+                    {t('products.counter_empty')}
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-3xl sm:text-4xl font-bold text-foreground">
+                        {produtos.length}
+                      </span>
+                      <span className="text-sm sm:text-base text-muted-foreground font-medium">
+                        {produtos.length === 1
+                          ? t('products.counter_label_singular')
+                          : t('products.counter_label')}
+                      </span>
+                    </div>
+                    {produtos.length < 10 && (
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                        💡 {t('products.counter_low_hint')}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Importar Vitrine Shopee */}
         <Card className="mb-4 border-orange-500/30 bg-orange-50/40 dark:bg-orange-950/10">
           <CardHeader>
