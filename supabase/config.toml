@@ -299,3 +299,6 @@ verify_jwt = false
 [functions.extensao-importar-produtos]
 verify_jwt = false
 
+[functions.processar-videos-agendados]
+verify_jwt = false
+

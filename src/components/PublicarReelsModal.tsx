@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check } from "lucide-react";
+import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock } from "lucide-react";
 
 interface PublishResult {
   facebook?: { ok: boolean; postId?: string; error?: string };
@@ -56,6 +57,9 @@ export function PublicarReelsModal({
   const [generatingCaption, setGeneratingCaption] = useState(false);
   const [captionOptions, setCaptionOptions] = useState<string[]>([]);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [agendar, setAgendar] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<string>("");
+  const [scheduledTime, setScheduledTime] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasPreloadedVideo = !!videoUrl;
@@ -67,6 +71,9 @@ export function PublicarReelsModal({
       // Reset checkboxes baseado no estado atual de publicação ao abrir
       setPostFacebook(!publicadoFacebook);
       setPostInstagram(!publicadoInstagram);
+      setAgendar(false);
+      setScheduledDate("");
+      setScheduledTime("");
     } else {
       setCaptionOptions([]);
       setSelectedOption(null);
@@ -205,6 +212,29 @@ export function PublicarReelsModal({
       return;
     }
 
+    // Validar agendamento
+    let scheduledFor: Date | null = null;
+    if (agendar) {
+      if (!scheduledDate || !scheduledTime) {
+        toast.error("Escolha data e horário do agendamento");
+        return;
+      }
+      scheduledFor = new Date(`${scheduledDate}T${scheduledTime}:00`);
+      if (isNaN(scheduledFor.getTime())) {
+        toast.error("Data ou horário inválido");
+        return;
+      }
+      if (scheduledFor.getTime() < Date.now() + 60_000) {
+        toast.error("O agendamento precisa ser pelo menos 1 minuto no futuro");
+        return;
+      }
+      // Agendamento exige vídeo já pré-carregado (não dá pra subir on-demand depois)
+      if (!hasPreloadedVideo) {
+        toast.error("Para agendar, use um vídeo da Área de Vídeos (já salvo).");
+        return;
+      }
+    }
+
     // Validação de duração ANTES de iniciar
     const validacao = await validarDuracao();
     if (!validacao.ok) {
@@ -245,6 +275,28 @@ export function PublicarReelsModal({
       const platforms: ("facebook" | "instagram")[] = [];
       if (postFacebook) platforms.push("facebook");
       if (postInstagram) platforms.push("instagram");
+
+      // Se for agendamento, salvar no banco e sair
+      if (agendar && scheduledFor) {
+        const { error: agErr } = await supabase.from("videos_agendados").insert({
+          user_id: user.id,
+          tipo: "reels",
+          video_url: publishVideoUrl!,
+          video_nome: videoNome || null,
+          caption,
+          canais: platforms,
+          produto_id: produto?.id || null,
+          scheduled_for: scheduledFor.toISOString(),
+          status: "pendente",
+        });
+        if (agErr) throw agErr;
+        toast.success(`📅 Reels agendado para ${scheduledFor.toLocaleString("pt-BR")}`);
+        setCaption("");
+        setCaptionOptions([]);
+        setSelectedOption(null);
+        onOpenChange(false);
+        return;
+      }
 
       let successCount = 0;
 
@@ -525,6 +577,45 @@ export function PublicarReelsModal({
             </div>
           </div>
 
+          {/* Agendamento (apenas vídeos pré-carregados) */}
+          {hasPreloadedVideo && (
+            <div className="space-y-2 border-t pt-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={agendar}
+                  onCheckedChange={(c) => setAgendar(!!c)}
+                  disabled={uploading}
+                />
+                <CalendarClock className="h-4 w-4" />
+                <span className="text-sm font-medium">Agendar para depois</span>
+              </label>
+
+              {agendar && (
+                <div className="grid grid-cols-2 gap-2 pl-6">
+                  <div>
+                    <Label className="text-xs">Data</Label>
+                    <Input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      disabled={uploading}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Horário</Label>
+                    <Input
+                      type="time"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                      disabled={uploading}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Botão publicar */}
           <Button
             onClick={handlePublish}
@@ -535,7 +626,12 @@ export function PublicarReelsModal({
             {uploading ? (
               <>
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Publicando...
+                {agendar ? "Agendando..." : "Publicando..."}
+              </>
+            ) : agendar ? (
+              <>
+                <Clock className="mr-2 h-5 w-5" />
+                📅 Agendar Reels
               </>
             ) : (
               <>

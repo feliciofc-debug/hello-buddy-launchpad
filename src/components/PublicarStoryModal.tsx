@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { Facebook, Instagram, Loader2, BookOpen, AlertTriangle } from 'lucide-react';
+import { Facebook, Instagram, Loader2, BookOpen, AlertTriangle, Clock, CalendarClock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -49,11 +51,17 @@ export const PublicarStoryModal = ({
   const [postFacebook, setPostFacebook] = useState(false);
   const [postInstagram, setPostInstagram] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [agendar, setAgendar] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<string>('');
+  const [scheduledTime, setScheduledTime] = useState<string>('');
 
   useEffect(() => {
     if (open) {
       setPostFacebook(!jaPostadoFacebook);
       setPostInstagram(!jaPostadoInstagram);
+      setAgendar(false);
+      setScheduledDate('');
+      setScheduledTime('');
     }
   }, [open, jaPostadoFacebook, jaPostadoInstagram]);
 
@@ -69,6 +77,24 @@ export const PublicarStoryModal = ({
     if (canais.length === 0) {
       toast.error('Selecione pelo menos uma rede');
       return;
+    }
+
+    // Validar agendamento
+    let scheduledFor: Date | null = null;
+    if (agendar) {
+      if (!scheduledDate || !scheduledTime) {
+        toast.error('Escolha data e horário do agendamento');
+        return;
+      }
+      scheduledFor = new Date(`${scheduledDate}T${scheduledTime}:00`);
+      if (isNaN(scheduledFor.getTime())) {
+        toast.error('Data ou horário inválido');
+        return;
+      }
+      if (scheduledFor.getTime() < Date.now() + 60_000) {
+        toast.error('O agendamento precisa ser pelo menos 1 minuto no futuro');
+        return;
+      }
     }
 
     setLoading(true);
@@ -100,6 +126,23 @@ export const PublicarStoryModal = ({
       // 2) Auth
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Você precisa estar logado');
+
+      // 3) Se for agendamento, salva no banco e sai
+      if (agendar && scheduledFor) {
+        const { error: agErr } = await supabase.from('videos_agendados').insert({
+          user_id: user.id,
+          tipo: 'story',
+          video_url: videoUrl,
+          video_nome: videoNome || null,
+          canais,
+          scheduled_for: scheduledFor.toISOString(),
+          status: 'pendente',
+        });
+        if (agErr) throw agErr;
+        toast.success(`📅 Story agendado para ${scheduledFor.toLocaleString('pt-BR')}`);
+        onOpenChange(false);
+        return;
+      }
 
       toast.loading('Publicando Story...', { id: 'story-publish' });
 
@@ -196,6 +239,43 @@ export const PublicarStoryModal = ({
             </label>
           </div>
 
+          {/* Agendamento */}
+          <div className="space-y-2 border-t pt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                checked={agendar}
+                onCheckedChange={(c) => setAgendar(!!c)}
+                disabled={loading}
+              />
+              <CalendarClock className="h-4 w-4" />
+              <span className="text-sm font-medium">Agendar para depois</span>
+            </label>
+
+            {agendar && (
+              <div className="grid grid-cols-2 gap-2 pl-6">
+                <div>
+                  <Label className="text-xs">Data</Label>
+                  <Input
+                    type="date"
+                    value={scheduledDate}
+                    onChange={(e) => setScheduledDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    disabled={loading}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Horário</Label>
+                  <Input
+                    type="time"
+                    value={scheduledTime}
+                    onChange={(e) => setScheduledTime(e.target.value)}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <p className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
             💡 <strong>Música:</strong> adicione direto no Instagram/Facebook após publicar pra maximizar alcance.
           </p>
@@ -211,7 +291,9 @@ export const PublicarStoryModal = ({
             className="bg-gradient-to-r from-purple-600 to-pink-600 text-white"
           >
             {loading ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publicando...</>
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {agendar ? 'Agendando...' : 'Publicando...'}</>
+            ) : agendar ? (
+              <><Clock className="mr-2 h-4 w-4" /> Agendar Story</>
             ) : (
               <><BookOpen className="mr-2 h-4 w-4" /> Postar Agora</>
             )}
