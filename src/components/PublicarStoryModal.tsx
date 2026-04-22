@@ -51,11 +51,17 @@ export const PublicarStoryModal = ({
   const [postFacebook, setPostFacebook] = useState(false);
   const [postInstagram, setPostInstagram] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [agendar, setAgendar] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<string>('');
+  const [scheduledTime, setScheduledTime] = useState<string>('');
 
   useEffect(() => {
     if (open) {
       setPostFacebook(!jaPostadoFacebook);
       setPostInstagram(!jaPostadoInstagram);
+      setAgendar(false);
+      setScheduledDate('');
+      setScheduledTime('');
     }
   }, [open, jaPostadoFacebook, jaPostadoInstagram]);
 
