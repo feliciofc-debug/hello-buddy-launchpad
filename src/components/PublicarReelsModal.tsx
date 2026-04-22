@@ -71,6 +71,9 @@ export function PublicarReelsModal({
       // Reset checkboxes baseado no estado atual de publicação ao abrir
       setPostFacebook(!publicadoFacebook);
       setPostInstagram(!publicadoInstagram);
+      setAgendar(false);
+      setScheduledDate("");
+      setScheduledTime("");
     } else {
       setCaptionOptions([]);
       setSelectedOption(null);
