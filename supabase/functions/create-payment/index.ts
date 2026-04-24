@@ -34,6 +34,14 @@ serve(async (req) => {
       price = 1764.00; // R$1764 total (R$147/mês x 12)
       title = 'AMZ Ofertas - Plano Completo Anual';
       description = 'Acesso completo à plataforma - Pagamento anual parcelado';
+    } else if (planType === 'pro') {
+      price = 597.00; // R$597/mês (primeira mensalidade)
+      title = 'AMZ Ofertas PRO - Mensal';
+      description = 'Plano AMZ Ofertas PRO - Acesso completo à plataforma';
+    } else if (planType === 'pro_test') {
+      price = 1.00; // R$1 - modo teste do webhook
+      title = 'AMZ Ofertas PRO - TESTE WEBHOOK';
+      description = 'Pagamento de teste para validar webhook (R$ 1)';
     } else {
       throw new Error('Tipo de plano inválido');
     }
@@ -70,7 +78,7 @@ serve(async (req) => {
       notification_url: `https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/payment-webhook`,
       metadata: {
         plan_type: planType,
-        plan_name: planType === 'teste' ? 'Teste' : 'Pro',
+        plan_name: planType === 'teste' ? 'Teste' : (planType === 'pro' || planType === 'pro_test') ? 'Pro' : 'Completo',
         user_id: userId
       }
     };
