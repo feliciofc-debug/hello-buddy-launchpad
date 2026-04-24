@@ -293,17 +293,26 @@ function Landing() {
                 ))}
               </div>
 
-              <a
-                href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
+              <button
+                onClick={() => navigate('/cadastro')}
+                className="w-full bg-gradient-to-r from-orange-500 to-pink-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
               >
-                💬 Solicitar Demonstração
-              </a>
+                🚀 Contratar Agora
+              </button>
 
-              <p className="text-center mt-6 text-sm text-slate-400">
-                ✅ Nossa equipe configura tudo pra você. Em 48h sua automação está rodando.
+              <p className="text-center mt-4 text-sm text-slate-400">
+                Prefere conversar antes?{' '}
+                <a
+                  href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-green-400 hover:text-green-300 font-semibold underline"
+                >
+                  Fale no WhatsApp
+                </a>
+              </p>
+              <p className="text-center mt-2 text-sm text-slate-400">
+                ✅ Pagamento via PIX, cartão ou boleto · Cancele quando quiser
               </p>
             </div>
           </div>
