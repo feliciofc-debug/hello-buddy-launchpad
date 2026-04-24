@@ -95,13 +95,14 @@ function Landing() {
                 Plataforma completa de marketing digital para pequenas e médias empresas. Crie, agende e publique conteúdo profissional em minutos.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 mb-8">
-                <Button 
-                  size="lg" 
-                  onClick={() => navigate('/cadastro')} 
-                  className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-lg px-8 py-6 h-auto"
+                <a
+                  href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white text-lg px-8 py-6 rounded-lg font-semibold transition"
                 >
-                  Começar Agora - 7 Dias Grátis
-                </Button>
+                  💬 Solicitar Demonstração
+                </a>
                 <Button 
                   size="lg" 
                   onClick={() => scrollToSection('como-funciona')} 
@@ -113,11 +114,11 @@ function Landing() {
               <div className="flex items-center gap-8 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">✅</span>
-                  <span>Sem cartão de crédito</span>
+                  <span>Atendimento personalizado</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">✅</span>
-                  <span>Cancele quando quiser</span>
+                  <span>Configuração em 48h</span>
                 </div>
               </div>
             </div>
@@ -293,37 +294,18 @@ function Landing() {
                 ))}
               </div>
 
-              <button
-                onClick={() => navigate('/cadastro')}
+              <a
+                href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white py-5 rounded-xl font-bold text-2xl hover:shadow-2xl transition transform hover:scale-105 flex items-center justify-center gap-2"
               >
-                🚀 Começar Agora — 7 Dias Grátis
-              </button>
+                💬 Solicitar Demonstração
+              </a>
 
               <p className="text-center mt-6 text-sm text-slate-400">
-                💳 Sem cartão de crédito nos 7 primeiros dias. Pagamento via Pix ou cartão.
+                ✅ Nossa equipe configura tudo pra você. Em 48h sua automação está rodando.
               </p>
-            </div>
-
-            {/* Card Plano Empresarial */}
-            <div className="bg-gradient-to-br from-purple-900/50 to-slate-800/50 border border-purple-500/40 rounded-2xl p-8">
-              <div className="flex flex-col md:flex-row items-center gap-6">
-                <div className="text-5xl">🏭</div>
-                <div className="flex-1 text-center md:text-left">
-                  <h3 className="text-2xl font-bold mb-2">Plano Empresarial (Distribuidoras e Fábricas)</h3>
-                  <p className="text-slate-300">
-                    Solução personalizada para operações maiores: automações avançadas, múltiplos usuários e integrações.
-                  </p>
-                </div>
-                <a
-                  href="https://wa.me/5521995379550?text=Olá! Tenho interesse no Plano Empresarial AMZ Ofertas para minha empresa (distribuidora/fábrica)."
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:shadow-2xl transition transform hover:scale-105"
-                >
-                  Falar no WhatsApp
-                </a>
-              </div>
             </div>
           </div>
         </div>
@@ -456,15 +438,16 @@ function Landing() {
           <p className="text-xl text-purple-300 mb-8">
             Junte-se a centenas de empresas que já estão crescendo com a AMZ Ofertas
           </p>
-          <Button 
-            size="lg" 
-            onClick={() => navigate('/cadastro')}
-            className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-xl px-12 py-8 h-auto font-bold"
+          <a
+            href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-xl px-12 py-8 rounded-lg font-bold transition"
           >
-            Começar Teste Grátis
-          </Button>
+            💬 Falar com Nossa Equipe
+          </a>
           <p className="mt-6 text-slate-400">
-            7 dias grátis • Sem cartão de crédito • Cancele quando quiser
+            Atendimento personalizado • Configuração em 48h • A partir de R$ 597/mês
           </p>
         </div>
       </section>
