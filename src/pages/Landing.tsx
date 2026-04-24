@@ -446,16 +446,24 @@ function Landing() {
           <p className="text-xl text-purple-300 mb-8">
             Junte-se a centenas de empresas que já estão crescendo com a AMZ Ofertas
           </p>
-          <a
-            href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-xl px-12 py-8 rounded-lg font-bold transition"
-          >
-            💬 Falar com Nossa Equipe
-          </a>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <button
+              onClick={() => navigate('/cadastro')}
+              className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-pink-500 hover:shadow-2xl text-white text-xl px-12 py-8 rounded-lg font-bold transition transform hover:scale-105"
+            >
+              🚀 Contratar Agora
+            </button>
+            <a
+              href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 bg-transparent border-2 border-green-500 text-green-400 hover:bg-green-500 hover:text-white text-xl px-12 py-8 rounded-lg font-bold transition"
+            >
+              💬 Falar com Consultor
+            </a>
+          </div>
           <p className="mt-6 text-slate-400">
-            Atendimento personalizado • Configuração em 48h • A partir de R$ 597/mês
+            R$ 597/mês · Cancele quando quiser · Configuração em 48h
           </p>
         </div>
       </section>
