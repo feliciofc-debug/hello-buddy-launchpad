@@ -374,10 +374,10 @@ function Landing() {
           <Accordion type="single" collapsible className="space-y-4">
             <AccordionItem value="item-1" className="bg-slate-800/50 border border-purple-500/30 rounded-xl px-6">
               <AccordionTrigger className="text-lg font-semibold hover:text-purple-300">
-                Como funciona o teste grátis?
+                Como começo a usar a plataforma?
               </AccordionTrigger>
               <AccordionContent className="text-slate-300">
-                Você tem 7 dias completos para testar todas as funcionalidades da plataforma sem precisar cadastrar cartão de crédito. Se gostar, basta escolher um plano para continuar usando.
+                O atendimento é consultivo: nossa equipe conversa com você no WhatsApp, entende sua operação e configura tudo pra você. Em até 48h sua automação já está rodando.
               </AccordionContent>
             </AccordionItem>
 
@@ -478,7 +478,7 @@ function Landing() {
               <ul className="space-y-2 text-sm text-slate-400">
                 <li><button onClick={() => scrollToSection('como-funciona')} className="hover:text-white transition">Como Funciona</button></li>
                 <li><button onClick={() => scrollToSection('planos')} className="hover:text-white transition">Planos</button></li>
-                <li><button onClick={() => navigate('/cadastro')} className="hover:text-white transition">Teste Grátis</button></li>
+                <li><button onClick={() => navigate('/cadastro')} className="hover:text-white transition">Solicitar Demonstração</button></li>
               </ul>
             </div>
 
