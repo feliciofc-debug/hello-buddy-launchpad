@@ -78,7 +78,7 @@ serve(async (req) => {
       notification_url: `https://jibpvpqgplmahjhswiza.supabase.co/functions/v1/payment-webhook`,
       metadata: {
         plan_type: planType,
-        plan_name: planType === 'teste' ? 'Teste' : 'Pro',
+        plan_name: planType === 'teste' ? 'Teste' : (planType === 'pro' || planType === 'pro_test') ? 'Pro' : 'Completo',
         user_id: userId
       }
     };
