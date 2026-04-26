@@ -440,10 +440,10 @@ export function EngagementModeSelector({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="border-t border-border pt-4 mt-2 bg-background">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={salvando}
           >
