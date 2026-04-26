@@ -284,7 +284,7 @@ export function EngagementModeSelector({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto bg-background">
         <DialogHeader>
           <DialogTitle>Modo de postagem no Facebook</DialogTitle>
           <DialogDescription className="truncate">
@@ -440,10 +440,10 @@ export function EngagementModeSelector({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="border-t border-border pt-4 mt-2 bg-background">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={salvando}
           >
