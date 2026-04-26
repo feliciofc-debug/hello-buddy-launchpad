@@ -342,7 +342,7 @@ serve(async (req) => {
                 type: 'image_url',
                 image_url: { url: referenceImage }
               },
-              ...supportImages.map((image) => ({
+              ...supportImages.map((image: string) => ({
                 type: 'image_url',
                 image_url: { url: image }
               })),
@@ -415,7 +415,7 @@ ${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
         }
         
         // Add support images
-        supportImages.forEach((img) => {
+        supportImages.forEach((img: string) => {
           contentParts.push({ type: 'image_url', image_url: { url: img } });
         });
         
