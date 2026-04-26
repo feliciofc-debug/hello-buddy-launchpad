@@ -198,16 +198,17 @@ interface ValidacaoResultado {
   ok: boolean
   motivo?: string
   termo_violado?: string
-  camada?: 1 | 2
+  camada?: 1 | 2 | 3 | 4 | 5
 }
 
 function validarCaption(
   caption: string,
   blacklist: BlacklistTermo[],
+  estilo: Estilo,
 ): ValidacaoResultado {
   const captionLower = caption.toLowerCase()
 
-  // CAMADA 1: string match contra termo_simples
+  // CAMADA 1: string match contra termo_simples (blacklist)
   for (const item of blacklist) {
     if (!item.termo_simples) continue
     const termo = item.termo_simples.toLowerCase().trim()
@@ -222,7 +223,7 @@ function validarCaption(
     }
   }
 
-  // CAMADA 2: regex_pattern contextual
+  // CAMADA 2: regex_pattern contextual (blacklist)
   for (const item of blacklist) {
     if (!item.regex_pattern) continue
     try {
@@ -237,6 +238,56 @@ function validarCaption(
       }
     } catch (e) {
       console.warn('⚠️ Regex inválida na blacklist:', item.regex_pattern, e)
+    }
+  }
+
+  // CAMADA 3: PROIBIDO hashtags
+  const hashtagMatch = caption.match(/#\w+/g)
+  if (hashtagMatch && hashtagMatch.length > 0) {
+    return {
+      ok: false,
+      camada: 3,
+      motivo: 'hashtag_proibida',
+      termo_violado: hashtagMatch.join(', '),
+    }
+  }
+
+  // CAMADA 4: CTA exato (última linha) e único
+  const linhasNaoVazias = caption
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+  const ultimaLinha = linhasNaoVazias[linhasNaoVazias.length - 1] || ''
+  if (ultimaLinha !== CTA_EXATO) {
+    return {
+      ok: false,
+      camada: 4,
+      motivo: 'cta_invalido',
+      termo_violado: ultimaLinha.slice(0, 80),
+    }
+  }
+  const ocorrenciasCTA = caption.split(CTA_EXATO).length - 1
+  if (ocorrenciasCTA !== 1) {
+    return {
+      ok: false,
+      camada: 4,
+      motivo: `cta_duplicado:${ocorrenciasCTA}x`,
+      termo_violado: CTA_EXATO,
+    }
+  }
+
+  // CAMADA 5: estilo "dado" exige número/percentual no script
+  if (estilo === 'dado') {
+    const corpoSemLink = linhasNaoVazias.slice(1).join(' ')
+    const temNumero = /\b\d+(?:[.,]\d+)?\s*%|\b\d+\s*(em|de)\s*cada\s*\d+\b|\b(mais de|cerca de|quase)\s*\d+/i
+      .test(corpoSemLink)
+    if (!temNumero) {
+      return {
+        ok: false,
+        camada: 5,
+        motivo: 'dado_sem_numero',
+        termo_violado: corpoSemLink.slice(0, 80),
+      }
     }
   }
 
