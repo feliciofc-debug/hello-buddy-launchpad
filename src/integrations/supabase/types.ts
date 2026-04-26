@@ -2299,6 +2299,86 @@ export type Database = {
         }
         Relationships: []
       }
+      engagement_blacklist: {
+        Row: {
+          ativo: boolean
+          categoria: string
+          created_at: string
+          descricao: string | null
+          id: string
+          regex_pattern: string | null
+          termo_simples: string | null
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          categoria: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          regex_pattern?: string | null
+          termo_simples?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          categoria?: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          regex_pattern?: string | null
+          termo_simples?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      engagement_post_logs: {
+        Row: {
+          caption_final: string | null
+          created_at: string
+          estilo_usado: string | null
+          fallback_para_promocional: boolean
+          id: string
+          motivo_fallback: string | null
+          produto_id: string | null
+          tentativas: number
+          tipo_chamada: string
+          user_id: string
+        }
+        Insert: {
+          caption_final?: string | null
+          created_at?: string
+          estilo_usado?: string | null
+          fallback_para_promocional?: boolean
+          id?: string
+          motivo_fallback?: string | null
+          produto_id?: string | null
+          tentativas?: number
+          tipo_chamada?: string
+          user_id: string
+        }
+        Update: {
+          caption_final?: string | null
+          created_at?: string
+          estilo_usado?: string | null
+          fallback_para_promocional?: boolean
+          id?: string
+          motivo_fallback?: string | null
+          produto_id?: string | null
+          tentativas?: number
+          tipo_chamada?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "engagement_post_logs_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       enrichment_queue: {
         Row: {
           created_at: string | null
@@ -5336,6 +5416,7 @@ export type Database = {
           created_at: string
           descricao: string | null
           dimensoes: string | null
+          engajamento_estilos: string[]
           especificacoes: string | null
           estoque: number | null
           ficha_tecnica: string | null
@@ -5348,6 +5429,7 @@ export type Database = {
           ingredientes: string | null
           link: string | null
           link_marketplace: string | null
+          modo_postagem_fb: string
           modo_uso: string | null
           nome: string
           peso: string | null
@@ -5375,6 +5457,7 @@ export type Database = {
           created_at?: string
           descricao?: string | null
           dimensoes?: string | null
+          engajamento_estilos?: string[]
           especificacoes?: string | null
           estoque?: number | null
           ficha_tecnica?: string | null
@@ -5387,6 +5470,7 @@ export type Database = {
           ingredientes?: string | null
           link?: string | null
           link_marketplace?: string | null
+          modo_postagem_fb?: string
           modo_uso?: string | null
           nome: string
           peso?: string | null
@@ -5414,6 +5498,7 @@ export type Database = {
           created_at?: string
           descricao?: string | null
           dimensoes?: string | null
+          engajamento_estilos?: string[]
           especificacoes?: string | null
           estoque?: number | null
           ficha_tecnica?: string | null
@@ -5426,6 +5511,7 @@ export type Database = {
           ingredientes?: string | null
           link?: string | null
           link_marketplace?: string | null
+          modo_postagem_fb?: string
           modo_uso?: string | null
           nome?: string
           peso?: string | null
