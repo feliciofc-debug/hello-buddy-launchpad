@@ -208,8 +208,17 @@ interface ValidacaoResultado {
   ok: boolean
   motivo?: string
   termo_violado?: string
-  camada?: 1 | 2 | 3 | 4 | 5
+  camada?: 1 | 2 | 3 | 4 | 5 | 6
 }
+
+// Regex anti-preço (Camada 6) — captura qualquer menção numérica de valor
+const PRECO_REGEXES: { name: string; re: RegExp }[] = [
+  { name: 'simbolo_real', re: /R\$\s*\d+[.,]?\d*/i },
+  { name: 'numero_reais', re: /\d+\s*(reais|real|mango|pila)\b/i },
+  { name: 'preposicao_valor', re: /\b(de|por|sai|menos\s+de|apenas|so|só)\s+R?\$?\s*\d+(?:[.,]\d+)?/i },
+  { name: 'padrao_decimal', re: /\b\d+[.,]\d{2}\b/ },
+]
+
 
 function validarCaption(
   caption: string,
