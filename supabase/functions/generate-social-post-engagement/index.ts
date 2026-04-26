@@ -77,6 +77,16 @@ REGRAS UNIVERSAIS:
 - NUNCA prometa cura, milagre, garantia 100%, resultado milagroso, ou cite ANVISA/FDA/OMS.
 - NUNCA depreciem outros marketplaces.
 - NÃO invente preço, frete grátis ou prazo de entrega que não foi informado.
+
+PROIBIDO ABSOLUTAMENTE mencionar qualquer preço, valor monetário ou cifra. NÃO use:
+- R$, BRL, ou qualquer símbolo de moeda
+- Números seguidos de "reais", "real", "mango", "pila"
+- Frases como "por apenas X", "oferta de Y reais", "de R$ X por R$ Y"
+- Cifras explícitas como "sai por 99", "só 49,90", "menos de 50"
+
+Termos vagos de preço SÃO PERMITIDOS quando necessários pra escassez (ex: "preço imperdível", "tá um achado", "preço que cabe no bolso"), MAS SEM número junto.
+
+Se você incluir qualquer cifra ou valor numérico de preço, sua resposta será REJEITADA.
 `.trim()
 
 // ----------------------------------------------------------------------------
