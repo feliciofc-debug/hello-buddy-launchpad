@@ -447,7 +447,7 @@ serve(async (req) => {
       await supabase.from('engagement_post_logs').insert({
         user_id: userIdLog,
         produto_id: produto.id,
-        tipo_chamada: 'engagement',
+        tipo_chamada: 'manual',
         estilo_usado: estiloEscolhido,
         tentativas,
         fallback_para_promocional: false,
@@ -471,7 +471,7 @@ serve(async (req) => {
   const { error: logErr } = await supabase.from('engagement_post_logs').insert({
     user_id: userIdLog,
     produto_id: produto.id,
-    tipo_chamada: 'engagement',
+    tipo_chamada: 'manual',
     estilo_usado: estiloEscolhido,
     tentativas,
     fallback_para_promocional: usouFallback,
