@@ -24,6 +24,7 @@ import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppMo
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 import { TextosPersonalizadosProdutoModal } from '@/components/produtos/TextosPersonalizadosProdutoModal';
+import { EngagementModeSelector } from '@/components/produtos/EngagementModeSelector';
 import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
@@ -796,6 +797,8 @@ export default function MeusProdutos() {
   const [simultaneoProduct, setSimultaneoProduct] = useState<Product | null>(null);
   const [isTextosModalOpen, setIsTextosModalOpen] = useState(false);
   const [textosProduct, setTextosProduct] = useState<Product | null>(null);
+  const [isEngagementModalOpen, setIsEngagementModalOpen] = useState(false);
+  const [engagementProduct, setEngagementProduct] = useState<Product | null>(null);
   
   const showTikTok = useFeatureFlag('tiktok_integration');
 
@@ -1779,6 +1782,17 @@ export default function MeusProdutos() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full gap-2 text-blue-700 dark:text-blue-300 border-blue-500/40 hover:bg-blue-500/10"
+                          onClick={() => { setEngagementProduct(product); setIsEngagementModalOpen(true); }}
+                        >
+                          ⚙️ Modo de postagem FB
+                          {(product as any).modo_postagem_fb === 'engajamento' && (
+                            <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded bg-blue-500/20">ENGAJ.</span>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full gap-2 text-pink-600 border-pink-300 hover:bg-pink-50"
                           onClick={() => { setInstagramProduct(product); setIsInstagramModalOpen(true); }}
                         >
@@ -1871,6 +1885,17 @@ export default function MeusProdutos() {
                         >
                           <Facebook className="w-4 h-4" />
                            {t('products.post_facebook')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-blue-700 dark:text-blue-300 border-blue-500/40 hover:bg-blue-500/10"
+                          onClick={() => { setEngagementProduct(product); setIsEngagementModalOpen(true); }}
+                        >
+                          ⚙️ Modo de postagem FB
+                          {(product as any).modo_postagem_fb === 'engajamento' && (
+                            <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded bg-blue-500/20">ENGAJ.</span>
+                          )}
                         </Button>
                         <Button
                           variant="outline"
@@ -2174,6 +2199,27 @@ export default function MeusProdutos() {
         }}
       />
 
+      <EngagementModeSelector
+        open={isEngagementModalOpen}
+        onOpenChange={(open) => {
+          setIsEngagementModalOpen(open);
+          if (!open) setEngagementProduct(null);
+        }}
+        produto={engagementProduct ? {
+          id: engagementProduct.id,
+          nome: engagementProduct.nome,
+          modo_postagem_fb: (engagementProduct as any).modo_postagem_fb,
+          engajamento_estilos: (engagementProduct as any).engajamento_estilos,
+          usa_textos_personalizados: (engagementProduct as any).usa_textos_personalizados,
+        } : null}
+        onSaved={(produtoId, modo, estilos) => {
+          setProducts(prev => prev.map(p => p.id === produtoId ? ({
+            ...p,
+            modo_postagem_fb: modo,
+            engajamento_estilos: modo === 'engajamento' ? estilos : (p as any).engajamento_estilos,
+          } as any) : p));
+        }}
+      />
 
       {/* Modal de geração de Reel */}
       <ModalProgressoReel
