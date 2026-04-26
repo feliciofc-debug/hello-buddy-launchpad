@@ -550,6 +550,7 @@ serve(async (req) => {
   return new Response(
     JSON.stringify({
       success: true,
+      version: 'v2-ajustes-fase2',
       estilo: estiloEscolhido,
       tentativas,
       fallback: usouFallback,
