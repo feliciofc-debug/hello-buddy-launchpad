@@ -326,9 +326,9 @@ export function EngagementModeSelector({
           </RadioGroup>
 
           {modo === 'engajamento' && temTextoPersonalizado && (
-            <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
-              <AlertTriangle className="h-4 w-4 text-warning mt-0.5 shrink-0" />
-              <div className="text-warning-foreground">
+            <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+              <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+              <div className="text-foreground">
                 Este produto tem <strong>textos personalizados</strong> ativos.
                 No Modo Engajamento, os textos personalizados são ignorados — a
                 IA gera a copy a partir dos estilos selecionados.
