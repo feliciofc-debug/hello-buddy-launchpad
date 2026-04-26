@@ -1782,6 +1782,17 @@ export default function MeusProdutos() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full gap-2 text-blue-700 dark:text-blue-300 border-blue-500/40 hover:bg-blue-500/10"
+                          onClick={() => { setEngagementProduct(product); setIsEngagementModalOpen(true); }}
+                        >
+                          ⚙️ Modo de postagem FB
+                          {(product as any).modo_postagem_fb === 'engajamento' && (
+                            <span className="text-[10px] ml-1 px-1.5 py-0.5 rounded bg-blue-500/20">ENGAJ.</span>
+                          )}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full gap-2 text-pink-600 border-pink-300 hover:bg-pink-50"
                           onClick={() => { setInstagramProduct(product); setIsInstagramModalOpen(true); }}
                         >
