@@ -128,10 +128,16 @@ PRODUTO:
 function promptPolemica(p: ProdutoLite): string {
   return `
 ESTILO: POLÊMICA LEVE.
-Comece com uma opinião contraintuitiva ou um "hot take" honesto sobre o tema do
-produto (ex: "todo mundo compra X errado", "ninguém te conta isso sobre Y").
-NÃO ataque concorrentes nem marketplaces. NÃO use teorias de conspiração.
-A polêmica é sobre HÁBITO ou ESCOLHA DO CONSUMIDOR, não sobre marca/empresa.
+Comece o SCRIPT OBRIGATORIAMENTE com uma destas aberturas (escolha uma):
+  - "Vou ser sincero:"
+  - "A verdade é que"
+  - "Ninguém fala isso, mas"
+  - "Ninguém te conta:"
+Em seguida, defenda uma OPINIÃO CONTRA O SENSO COMUM relacionada ao tema do
+produto (ex: "comprar caro não significa qualidade", "gastar mais não resolve
+nada", "o problema não é o produto, é como a maioria usa").
+NÃO ataque concorrentes, marketplaces, marcas específicas. NÃO use teorias de
+conspiração. A polêmica é sobre HÁBITO ou ESCOLHA DO CONSUMIDOR.
 
 PRODUTO:
 - Nome: ${p.nome}
@@ -143,10 +149,15 @@ PRODUTO:
 function promptDado(p: ProdutoLite): string {
   return `
 ESTILO: DADO / PROVA SOCIAL.
-Construa o script ao redor de um dado plausível e VERIFICÁVEL sobre o uso/contexto
-do produto (ex: "uma pesquisa do IBGE mostra que X% dos brasileiros..."). Se não
-souber a estatística exata, use linguagem honesta tipo "muita gente reclama que..."
-ou "quem usa tende a...". NÃO invente número específico que pareça falso.
+Comece o SCRIPT OBRIGATORIAMENTE com UM número ou estatística plausível,
+usando uma destas estruturas (escolha uma):
+  - "X em cada Y pessoas..."
+  - "Mais de X% das pessoas..."
+  - "A maioria (X%) das casas..."
+  - "X de cada 10 brasileiros..."
+SEM número explícito no início, sua resposta será REJEITADA.
+Use número plausível e razoável (não invente "97% dos especialistas" exagerado).
+Conecte o dado direto à dor/desejo que o produto resolve.
 
 PRODUTO:
 - Nome: ${p.nome}
