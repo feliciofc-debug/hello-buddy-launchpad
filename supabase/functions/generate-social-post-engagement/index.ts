@@ -468,7 +468,7 @@ serve(async (req) => {
   }
 
   // Log final
-  await supabase.from('engagement_post_logs').insert({
+  const { error: logErr } = await supabase.from('engagement_post_logs').insert({
     user_id: userIdLog,
     produto_id: produto.id,
     tipo_chamada: 'engagement',
@@ -478,6 +478,9 @@ serve(async (req) => {
     motivo_fallback: usouFallback ? motivosFalha.join(' | ') : null,
     caption_final: captionFinal,
   })
+  if (logErr) {
+    console.error('❌ Falha ao gravar log:', JSON.stringify(logErr))
+  }
 
   return new Response(
     JSON.stringify({
