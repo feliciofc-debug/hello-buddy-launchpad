@@ -2199,6 +2199,27 @@ export default function MeusProdutos() {
         }}
       />
 
+      <EngagementModeSelector
+        open={isEngagementModalOpen}
+        onOpenChange={(open) => {
+          setIsEngagementModalOpen(open);
+          if (!open) setEngagementProduct(null);
+        }}
+        produto={engagementProduct ? {
+          id: engagementProduct.id,
+          nome: engagementProduct.nome,
+          modo_postagem_fb: (engagementProduct as any).modo_postagem_fb,
+          engajamento_estilos: (engagementProduct as any).engajamento_estilos,
+          usa_textos_personalizados: (engagementProduct as any).usa_textos_personalizados,
+        } : null}
+        onSaved={(produtoId, modo, estilos) => {
+          setProducts(prev => prev.map(p => p.id === produtoId ? ({
+            ...p,
+            modo_postagem_fb: modo,
+            engajamento_estilos: modo === 'engajamento' ? estilos : (p as any).engajamento_estilos,
+          } as any) : p));
+        }}
+      />
 
       {/* Modal de geração de Reel */}
       <ModalProgressoReel
