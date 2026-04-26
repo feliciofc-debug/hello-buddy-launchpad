@@ -489,7 +489,7 @@ serve(async (req) => {
     }
 
     const comLink = injetarLink(bruto, link)
-    const validacao = validarCaption(comLink, blacklist)
+    const validacao = validarCaption(comLink, blacklist, estiloEscolhido)
 
     if (validacao.ok) {
       captionFinal = comLink
