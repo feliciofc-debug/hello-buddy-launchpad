@@ -310,6 +310,19 @@ function validarCaption(
     }
   }
 
+  // CAMADA 6: PROIBIDO menção a preço (cifras, R$, "X reais", padrão "99,90")
+  for (const { name, re } of PRECO_REGEXES) {
+    const match = caption.match(re)
+    if (match) {
+      return {
+        ok: false,
+        camada: 6,
+        motivo: `preco_proibido:${name}`,
+        termo_violado: match[0].slice(0, 80),
+      }
+    }
+  }
+
   return { ok: true }
 }
 
