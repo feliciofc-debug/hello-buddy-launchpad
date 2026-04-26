@@ -418,10 +418,19 @@ GANHO: -60% tempo administrativo."
 
 ---
 
-# MÓDULO B2C - PEQUENAS E MÉDIAS EMPRESAS
+# MÓDULO B2C - PEQUENAS E MÉDIAS EMPRESAS (AMZ OFERTAS)
 
 ## SOBRE O MÓDULO B2C (AMZ OFERTAS)
-A AMZ Ofertas é uma plataforma completa de marketing digital com inteligência artificial para pequenas e médias empresas. Ajudamos empresas a criar, agendar e publicar conteúdo profissional em redes sociais de forma automatizada.
+A AMZ Ofertas é uma plataforma completa de marketing digital com inteligência artificial para pequenas e médias empresas, lojistas Shopee, Amazon e Mercado Livre. Criamos, agendamos e publicamos conteúdo profissional em redes sociais de forma totalmente automatizada — incluindo posts, Reels e Stories.
+
+## 🏆 PARCERIA OFICIAL META (MUITO IMPORTANTE!)
+- A AMZ Ofertas é EMPRESA PARCEIRA OFICIAL da Meta (Facebook/Instagram)
+- Utilizamos a API oficial da Meta Business (Graph API) — homologada e aprovada
+- Conexão segura via OAuth oficial Facebook Login for Business
+- Tokens de longa duração com renovação automática
+- Sem risco de bloqueio: usamos o método oficial recomendado pela Meta
+- Publicação 100% legítima — sua conta nunca é marcada como bot
+- Diferencial vs concorrentes que usam métodos não oficiais (e travam contas)
 
 ## PRINCIPAIS FUNCIONALIDADES B2C
 
@@ -429,135 +438,117 @@ A AMZ Ofertas é uma plataforma completa de marketing digital com inteligência 
 - Geração automática de textos para posts usando nossa IA própria
 - 3 variações de texto para cada post
 - Otimização específica para cada rede social (Instagram, Facebook, WhatsApp)
-- Criação de legendas persuasivas e hashtags relevantes
+- Legendas persuasivas com hashtags relevantes
+- Geração de imagens profissionais com IA (sem precisar de designer)
+- Modo Retrato: usa sua foto preservando 100% da identidade facial
+- Carrosséis de até 10 slides com templates prontos
 
-### 2. GERAÇÃO DE IMAGENS COM IA (DESTAQUE!)
-- SIM, criamos imagens incríveis com nossa IA própria!
-- Geração de imagens profissionais para marketing
-- Ideal para posts em redes sociais, banners, anúncios
-- Imagens personalizadas baseadas em descrição de produtos
-- Perfeito para área de marketing de empresas
-- Crie artes visuais sem precisar de designer
-- Imagens de alta qualidade para campanhas
-- IMPORTANTE: As imagens devem ser salvas na área de trabalho e enviadas manualmente para redes sociais
+### 2. POSTAGEM AUTOMÁTICA NO FACEBOOK E INSTAGRAM (API OFICIAL META!)
+- Publicação DIRETA na sua página do Facebook e perfil Instagram Business
+- Tudo via API oficial da Meta (somos parceiros homologados)
+- Não precisa copiar e colar — a plataforma posta sozinha
+- Suporta: Posts simples, Carrosséis, Reels e Stories
 
-### 3. POSTAGEM EM REDES SOCIAIS (IMPORTANTE!)
-- WHATSAPP: Agendamento automático de campanhas disponível!
-- INSTAGRAM e FACEBOOK: A plataforma GERA o conteúdo (textos e imagens), mas o usuário precisa COPIAR e POSTAR MANUALMENTE
-- Fluxo para Instagram/Facebook:
-  1. Gere o post com IA na plataforma
-  2. Copie o texto gerado
-  3. Salve a imagem na área de trabalho
-  4. Abra o Instagram/Facebook e poste manualmente
-- Apenas WhatsApp tem envio automático e agendado
+### 3. AGENDAMENTO AUTOMÁTICO COMPLETO
+Agendamento real, com envio automático no horário marcado, para:
+- ✅ Posts Facebook (foto + texto)
+- ✅ Posts Instagram Feed
+- ✅ Carrosséis Instagram e Facebook
+- ✅ Reels Instagram e Facebook (vídeo curto)
+- ✅ Stories Instagram e Facebook (24h)
+- ✅ Campanhas WhatsApp em massa
+Frequências: Enviar Agora, Uma vez, Diário, Semanal, Personalizado.
 
-### 4. AGENDAMENTO AUTOMÁTICO (SOMENTE WHATSAPP!)
-- Agendamento automático disponível APENAS para WhatsApp
-- Frequências: Enviar Agora, Uma vez, Diário, Semanal, Personalizado
-- Múltiplos horários por dia
-- Campanhas de WhatsApp com envio automático para listas de transmissão
-- Para Instagram e Facebook: geração de conteúdo apenas, postagem manual
+### 4. PILOTO AUTOMÁTICO (AUTOPILOT SOCIAL — NOSSO DIFERENCIAL!)
+- Sistema 24/7 que posta sozinho no Facebook e Instagram
+- Você cadastra os produtos uma vez, a IA cuida do resto
+- Define horários, frequência e dias da semana
+- A IA escolhe o produto, gera texto criativo, escolhe imagem e publica
+- Rotação inteligente de produtos (não repete sempre o mesmo)
+- Estilos de texto configuráveis (vendedor, casual, profissional, etc.)
+- Funciona enquanto você dorme — vendas no automático
 
-### 5. CATÁLOGO DE PRODUTOS
-- Upload de fotos de produtos
+### 5. REELS E VÍDEOS
+- Upload de vídeos curtos para publicar como Reels
+- Publicação direta no Instagram Reels e Facebook Reels
+- Geração de legendas otimizadas para Reels com IA (3 opções)
+- Agendamento de Reels para horário ideal
+- Reaproveitamento de vídeos já enviados (sem re-upload)
+
+### 6. STORIES (FACEBOOK + INSTAGRAM)
+- Publicação imediata de Stories (foto ou vídeo)
+- AGENDAMENTO de Stories com horário programado (raríssimo no mercado!)
+- Stories em ambas as redes simultaneamente
+- Ideal para promoções relâmpago e engajamento diário
+
+### 7. IMPORTAÇÃO AUTOMÁTICA DE PRODUTOS SHOPEE (NOVIDADE TOP!)
+- Cole o link da sua VITRINE Shopee — a plataforma baixa todos os produtos
+- Importa automaticamente: foto, título, preço e link de afiliado/checkout
+- Funciona para lojistas Shopee e afiliados Shopee
+- Em minutos seu catálogo está pronto para o Autopilot postar
+- Também suporta importação manual e por planilha
+- Suporte adicional para links Amazon e Mercado Livre
+
+### 8. CATÁLOGO DE PRODUTOS
+- Upload de até 5 fotos por produto (carrossel automático)
 - Análise automática de produtos com IA
 - Organização por categorias
 - Histórico completo de campanhas por produto
+- Edição em massa
 
-### 6. CAMPANHAS DE WHATSAPP
+### 9. CAMPANHAS DE WHATSAPP
 - Envio em massa para listas de transmissão
 - Personalização com {{nome}}, {{produto}}, {{preco}}
-- Agendamento de campanhas
+- Agendamento recorrente
 - Métricas de envio e resposta
+- Anti-bloqueio com delays randomizados (3 a 7 segundos)
 
-### 7. BIBLIOTECA DE CAMPANHAS
-- Histórico de todas as campanhas realizadas
+### 10. BIBLIOTECA DE CAMPANHAS
+- Histórico de todas as campanhas (Facebook, Instagram, WhatsApp)
 - Métricas de desempenho (alcance, engajamento, conversões)
 - Reutilização de campanhas de sucesso
-- Integração com Google Ads para remarketing
 
-### 8. GESTÃO DE LEADS/PROSPECTS
-- Descoberta automática de leads qualificados
-- Enriquecimento de dados (LinkedIn, Instagram, telefone)
-- Score de qualificação automático
-- Funil Kanban com 7 estágios
-- Geração de mensagens personalizadas com IA
-- Validação manual de leads
+### 11. MARKETPLACE PÚBLICO (BÔNUS)
+- Vitrine pública dos produtos em amzofertas.com.br/marketplace
+- 15 categorias principais com busca e filtros
+- A AMZ Ofertas divulga o Marketplace no Google Ads — visibilidade extra grátis!
+- Cadastrar produtos no Marketplace traz tráfego adicional sem custo
 
-### 9. ATENDIMENTO COM IA (WhatsApp)
-- Respostas automáticas humanizadas
-- Contexto completo do produto/serviço
-- Detecção de leads quentes
-- Handoff para atendimento humano
-- Histórico de conversas
-
-### 10. MARKETPLACE PÚBLICO (SUPER IMPORTANTE!)
-- Vitrine de produtos de todos os vendedores em amzofertas.com.br/marketplace
-- 15 categorias principais
-- Busca e filtros avançados
-- Compra direta via link do vendedor
-- Contato via WhatsApp
-- **VANTAGEM EXCLUSIVA**: A AMZ Ofertas divulga o Marketplace no Google Ads!
-- Seus produtos ganham visibilidade extra sem custo adicional
-- É MUITO importante cadastrar seus produtos no Marketplace para aproveitar essa divulgação gratuita
-
-### 11. BÔNUS EXCLUSIVOS PARA CLIENTES
-- Ebooks GRÁTIS de brinde para todos os clientes que comprarem na AMZ!
-- Ebooks criados pela nossa IA própria exclusiva
-- Temas disponíveis:
-  • Guia de Emagrecimento
-  • Dicas de Maquiagem Profissional  
-  • Dietas Low Carb
-  • Receitas Saudáveis
-  • Finanças Pessoais
-  • Produtividade
-  • E muito mais!
-- Material de altíssima qualidade criado por IA
-- Pode usar para atrair clientes ou como brinde pós-venda
-- Conteúdo exclusivo que só clientes AMZ Ofertas têm acesso
-
-### 12. ANALYTICS/MÉTRICAS
-- Dashboard com métricas em tempo real
-- Total de mensagens enviadas
-- Taxa de conversão
-- Leads no funil
+### 12. ANALYTICS / MÉTRICAS
+- Dashboard com métricas em tempo real (Facebook, Instagram, WhatsApp)
+- Total de posts publicados, alcance, engajamento
 - Comparativo de campanhas
-- Exportação PDF/Excel
+- Histórico de Reels e Stories
 
-### 13. GESTÃO DE VENDEDORES
+### 13. GESTÃO DE VENDEDORES (OPCIONAL)
 - Cadastro de equipe de vendas
-- Atribuição de leads por vendedor
-- Metas e comissões
 - Painel exclusivo do vendedor
 - Controle de acesso
 
 ## PRECIFICAÇÃO B2C
 
-### PLANO EMPRESAS - R$ 447/mês
-Ou R$ 4.470/ano (2 meses grátis)
-
-Inclui:
-- Postagens Ilimitadas
-- IA Avançada
-- Instagram + Facebook
-- Agendamento Automático
-- Biblioteca de Conteúdo
-- Catálogo de Produtos
-- Análise de Desempenho
-- Suporte Prioritário
-- Atualizações Gratuitas
-- 7 Dias de Teste Grátis (sem cartão)
+### AMZ OFERTAS PRO — R$ 597/mês
+Plano único, tudo incluso:
+- Posts ilimitados Facebook + Instagram via API oficial Meta
+- Reels e Stories ilimitados (com agendamento)
+- Piloto Automático 24/7
+- Importação automática de produtos Shopee
+- IA para textos, imagens e carrosséis
+- Campanhas WhatsApp em massa
+- Marketplace público com divulgação no Google Ads
+- Suporte prioritário
 
 ## FORMAS DE PAGAMENTO
 - Cartão de Crédito (todas as bandeiras)
-- Boleto Bancário
 - PIX
-- Pagamento anual com desconto
+- Boleto Bancário
+- Recorrência mensal via Mercado Pago
 
-## TESTE GRÁTIS
-- 7 dias completos (B2C) ou 30 dias (B2B)
+## TESTE / DEMONSTRAÇÃO
+- 7 dias de teste para B2C / 30 dias para B2B
 - Acesso a todas as funcionalidades
-- Sem necessidade de cartão de crédito
+- Para contratar imediatamente: botão "Contratar Agora" na landing
+- Para tirar dúvidas: WhatsApp (21) 99537-9550
 - Sem compromisso
 
 ## SUPORTE TÉCNICO
