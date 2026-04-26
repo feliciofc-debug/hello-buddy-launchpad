@@ -797,6 +797,8 @@ export default function MeusProdutos() {
   const [simultaneoProduct, setSimultaneoProduct] = useState<Product | null>(null);
   const [isTextosModalOpen, setIsTextosModalOpen] = useState(false);
   const [textosProduct, setTextosProduct] = useState<Product | null>(null);
+  const [isEngagementModalOpen, setIsEngagementModalOpen] = useState(false);
+  const [engagementProduct, setEngagementProduct] = useState<Product | null>(null);
   
   const showTikTok = useFeatureFlag('tiktok_integration');
 
