@@ -57,20 +57,23 @@ interface BlacklistTermo {
 // Header obrigatório de estrutura — repetido em TODOS os 6 prompts
 // ----------------------------------------------------------------------------
 
+const CTA_EXATO = 'Garante o seu pelo link aí em cima 👆'
+
 const HEADER_ESTRUTURA = `
 ESTRUTURA OBRIGATÓRIA DA CAPTION (NÃO NEGOCIÁVEL):
 1. LINHA 1: O LINK do produto sozinho (sem texto antes). Use exatamente: {{LINK}}
 2. LINHA EM BRANCO
 3. SCRIPT: O texto principal de copywriting no estilo solicitado (3 a 6 linhas, parágrafos curtos)
 4. LINHA EM BRANCO
-5. CTA: Uma chamada final convidativa para clicar no link acima ("Garante o seu pelo link aí em cima 👆", "Toque no link e vê", etc.)
+5. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_EXATO}
 
 REGRAS UNIVERSAIS:
 - NUNCA repita o link no meio ou no fim. O link aparece UMA VEZ na linha 1.
 - Use português brasileiro coloquial e natural.
 - Máximo 700 caracteres no total.
 - Pode usar 1 a 3 emojis no script. Não exagere.
-- 2 a 4 hashtags relevantes APÓS o CTA, em uma única linha.
+- PROIBIDO ABSOLUTAMENTE usar hashtags. NÃO inclua NENHUM caractere "#" em lugar nenhum da caption. Se você incluir qualquer hashtag, sua resposta será REJEITADA e descartada.
+- APENAS UM CTA na caption inteira. Não escreva dois CTAs nem variações alternativas. Só a string exata acima na última linha.
 - NUNCA prometa cura, milagre, garantia 100%, resultado milagroso, ou cite ANVISA/FDA/OMS.
 - NUNCA depreciem outros marketplaces.
 - NÃO invente preço, frete grátis ou prazo de entrega que não foi informado.
@@ -125,10 +128,16 @@ PRODUTO:
 function promptPolemica(p: ProdutoLite): string {
   return `
 ESTILO: POLÊMICA LEVE.
-Comece com uma opinião contraintuitiva ou um "hot take" honesto sobre o tema do
-produto (ex: "todo mundo compra X errado", "ninguém te conta isso sobre Y").
-NÃO ataque concorrentes nem marketplaces. NÃO use teorias de conspiração.
-A polêmica é sobre HÁBITO ou ESCOLHA DO CONSUMIDOR, não sobre marca/empresa.
+Comece o SCRIPT OBRIGATORIAMENTE com uma destas aberturas (escolha uma):
+  - "Vou ser sincero:"
+  - "A verdade é que"
+  - "Ninguém fala isso, mas"
+  - "Ninguém te conta:"
+Em seguida, defenda uma OPINIÃO CONTRA O SENSO COMUM relacionada ao tema do
+produto (ex: "comprar caro não significa qualidade", "gastar mais não resolve
+nada", "o problema não é o produto, é como a maioria usa").
+NÃO ataque concorrentes, marketplaces, marcas específicas. NÃO use teorias de
+conspiração. A polêmica é sobre HÁBITO ou ESCOLHA DO CONSUMIDOR.
 
 PRODUTO:
 - Nome: ${p.nome}
@@ -140,10 +149,15 @@ PRODUTO:
 function promptDado(p: ProdutoLite): string {
   return `
 ESTILO: DADO / PROVA SOCIAL.
-Construa o script ao redor de um dado plausível e VERIFICÁVEL sobre o uso/contexto
-do produto (ex: "uma pesquisa do IBGE mostra que X% dos brasileiros..."). Se não
-souber a estatística exata, use linguagem honesta tipo "muita gente reclama que..."
-ou "quem usa tende a...". NÃO invente número específico que pareça falso.
+Comece o SCRIPT OBRIGATORIAMENTE com UM número ou estatística plausível,
+usando uma destas estruturas (escolha uma):
+  - "X em cada Y pessoas..."
+  - "Mais de X% das pessoas..."
+  - "A maioria (X%) das casas..."
+  - "X de cada 10 brasileiros..."
+SEM número explícito no início, sua resposta será REJEITADA.
+Use número plausível e razoável (não invente "97% dos especialistas" exagerado).
+Conecte o dado direto à dor/desejo que o produto resolve.
 
 PRODUTO:
 - Nome: ${p.nome}
@@ -184,16 +198,17 @@ interface ValidacaoResultado {
   ok: boolean
   motivo?: string
   termo_violado?: string
-  camada?: 1 | 2
+  camada?: 1 | 2 | 3 | 4 | 5
 }
 
 function validarCaption(
   caption: string,
   blacklist: BlacklistTermo[],
+  estilo: Estilo,
 ): ValidacaoResultado {
   const captionLower = caption.toLowerCase()
 
-  // CAMADA 1: string match contra termo_simples
+  // CAMADA 1: string match contra termo_simples (blacklist)
   for (const item of blacklist) {
     if (!item.termo_simples) continue
     const termo = item.termo_simples.toLowerCase().trim()
@@ -208,7 +223,7 @@ function validarCaption(
     }
   }
 
-  // CAMADA 2: regex_pattern contextual
+  // CAMADA 2: regex_pattern contextual (blacklist)
   for (const item of blacklist) {
     if (!item.regex_pattern) continue
     try {
@@ -223,6 +238,56 @@ function validarCaption(
       }
     } catch (e) {
       console.warn('⚠️ Regex inválida na blacklist:', item.regex_pattern, e)
+    }
+  }
+
+  // CAMADA 3: PROIBIDO hashtags
+  const hashtagMatch = caption.match(/#\w+/g)
+  if (hashtagMatch && hashtagMatch.length > 0) {
+    return {
+      ok: false,
+      camada: 3,
+      motivo: 'hashtag_proibida',
+      termo_violado: hashtagMatch.join(', '),
+    }
+  }
+
+  // CAMADA 4: CTA exato (última linha) e único
+  const linhasNaoVazias = caption
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+  const ultimaLinha = linhasNaoVazias[linhasNaoVazias.length - 1] || ''
+  if (ultimaLinha !== CTA_EXATO) {
+    return {
+      ok: false,
+      camada: 4,
+      motivo: 'cta_invalido',
+      termo_violado: ultimaLinha.slice(0, 80),
+    }
+  }
+  const ocorrenciasCTA = caption.split(CTA_EXATO).length - 1
+  if (ocorrenciasCTA !== 1) {
+    return {
+      ok: false,
+      camada: 4,
+      motivo: `cta_duplicado:${ocorrenciasCTA}x`,
+      termo_violado: CTA_EXATO,
+    }
+  }
+
+  // CAMADA 5: estilo "dado" exige número/percentual no script
+  if (estilo === 'dado') {
+    const corpoSemLink = linhasNaoVazias.slice(1).join(' ')
+    const temNumero = /\b\d+(?:[.,]\d+)?\s*%|\b\d+\s*(em|de)\s*cada\s*\d+\b|\b(mais de|cerca de|quase)\s*\d+/i
+      .test(corpoSemLink)
+    if (!temNumero) {
+      return {
+        ok: false,
+        camada: 5,
+        motivo: 'dado_sem_numero',
+        termo_violado: corpoSemLink.slice(0, 80),
+      }
     }
   }
 
@@ -424,7 +489,7 @@ serve(async (req) => {
     }
 
     const comLink = injetarLink(bruto, link)
-    const validacao = validarCaption(comLink, blacklist)
+    const validacao = validarCaption(comLink, blacklist, estiloEscolhido)
 
     if (validacao.ok) {
       captionFinal = comLink
@@ -485,6 +550,7 @@ serve(async (req) => {
   return new Response(
     JSON.stringify({
       success: true,
+      version: 'v2-ajustes-fase2',
       estilo: estiloEscolhido,
       tentativas,
       fallback: usouFallback,
