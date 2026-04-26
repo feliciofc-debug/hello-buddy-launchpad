@@ -171,6 +171,7 @@ export function EngagementModeSelector({
   }, [modo, estilosSelecionados]);
 
   const handleSalvar = async () => {
+    console.log('[EngagementModeSelector] handleSalvar invoked', { produto, modo, estilosSelecionados });
     if (!produto) return;
     if (modo === 'engajamento' && estilosSelecionados.length === 0) {
       toast.error('Selecione pelo menos 1 estilo para o Modo Engajamento.');
@@ -184,15 +185,22 @@ export function EngagementModeSelector({
       if (modo === 'engajamento') {
         update.engajamento_estilos = estilosSelecionados;
       }
-      const { error } = await supabase
+      console.log('[EngagementModeSelector] sending update', { id: produto.id, update });
+      const { data, error } = await supabase
         .from('produtos')
         .update(update)
-        .eq('id', produto.id);
+        .eq('id', produto.id)
+        .select('id, modo_postagem_fb, engajamento_estilos');
+      console.log('[EngagementModeSelector] update result', { data, error });
       if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('Nenhuma linha atualizada — verifique permissões.');
+      }
       toast.success('Modo de postagem salvo.');
       onSaved?.(produto.id, modo, estilosSelecionados);
       onOpenChange(false);
     } catch (err) {
+      console.error('[EngagementModeSelector] save error', err);
       const msg = err instanceof Error ? err.message : 'Erro ao salvar.';
       toast.error(msg);
     } finally {
@@ -393,6 +401,25 @@ export function EngagementModeSelector({
             </div>
           )}
 
+          {modo === 'engajamento' && (
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handlePreview}
+                disabled={previewLoading || estilosSelecionados.length === 0}
+                className="gap-2 w-full sm:w-auto"
+              >
+                {previewLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+                Pré-visualizar exemplo
+              </Button>
+            </div>
+          )}
+
           {previewCaption && (
             <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
               <div className="text-xs text-muted-foreground mb-1 flex items-center gap-2">
@@ -413,45 +440,25 @@ export function EngagementModeSelector({
           )}
         </div>
 
-        <DialogFooter className="gap-2 sm:justify-between flex-wrap">
+        <DialogFooter>
           <Button
             type="button"
-            variant="outline"
-            onClick={handlePreview}
-            disabled={
-              modo !== 'engajamento' ||
-              previewLoading ||
-              estilosSelecionados.length === 0
-            }
-            className="gap-2"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={salvando}
           >
-            {previewLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Eye className="h-4 w-4" />
-            )}
-            Pré-visualizar
+            Cancelar
           </Button>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              disabled={salvando}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              onClick={handleSalvar}
-              disabled={!podeSalvar || salvando}
-            >
-              {salvando ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : null}
-              Salvar
-            </Button>
-          </div>
+          <Button
+            type="button"
+            onClick={handleSalvar}
+            disabled={!podeSalvar || salvando}
+          >
+            {salvando ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : null}
+            Salvar
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
