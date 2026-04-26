@@ -102,7 +102,7 @@ Use ângulos verdadeiros: "esse modelo costuma sumir rápido", "tá com preço b
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -116,7 +116,7 @@ saber mais (sem clickbait barato tipo "você não vai acreditar"). Mostre um det
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -130,7 +130,7 @@ não genérica ("você quer ser feliz?"). Depois apresente o produto como respos
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -151,7 +151,7 @@ conspiração. A polêmica é sobre HÁBITO ou ESCOLHA DO CONSUMIDOR.
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -171,7 +171,7 @@ Conecte o dado direto à dor/desejo que o produto resolve.
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -186,7 +186,7 @@ oculta no mercado, NÃO sobre temas pessoais sensíveis.
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
