@@ -57,20 +57,23 @@ interface BlacklistTermo {
 // Header obrigatório de estrutura — repetido em TODOS os 6 prompts
 // ----------------------------------------------------------------------------
 
+const CTA_EXATO = 'Garante o seu pelo link aí em cima 👆'
+
 const HEADER_ESTRUTURA = `
 ESTRUTURA OBRIGATÓRIA DA CAPTION (NÃO NEGOCIÁVEL):
 1. LINHA 1: O LINK do produto sozinho (sem texto antes). Use exatamente: {{LINK}}
 2. LINHA EM BRANCO
 3. SCRIPT: O texto principal de copywriting no estilo solicitado (3 a 6 linhas, parágrafos curtos)
 4. LINHA EM BRANCO
-5. CTA: Uma chamada final convidativa para clicar no link acima ("Garante o seu pelo link aí em cima 👆", "Toque no link e vê", etc.)
+5. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_EXATO}
 
 REGRAS UNIVERSAIS:
 - NUNCA repita o link no meio ou no fim. O link aparece UMA VEZ na linha 1.
 - Use português brasileiro coloquial e natural.
 - Máximo 700 caracteres no total.
 - Pode usar 1 a 3 emojis no script. Não exagere.
-- 2 a 4 hashtags relevantes APÓS o CTA, em uma única linha.
+- PROIBIDO ABSOLUTAMENTE usar hashtags. NÃO inclua NENHUM caractere "#" em lugar nenhum da caption. Se você incluir qualquer hashtag, sua resposta será REJEITADA e descartada.
+- APENAS UM CTA na caption inteira. Não escreva dois CTAs nem variações alternativas. Só a string exata acima na última linha.
 - NUNCA prometa cura, milagre, garantia 100%, resultado milagroso, ou cite ANVISA/FDA/OMS.
 - NUNCA depreciem outros marketplaces.
 - NÃO invente preço, frete grátis ou prazo de entrega que não foi informado.
