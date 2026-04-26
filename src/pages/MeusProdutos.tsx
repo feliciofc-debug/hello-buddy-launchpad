@@ -24,6 +24,7 @@ import { CriarCampanhaWhatsAppModal } from '@/components/CriarCampanhaWhatsAppMo
 import { CampanhaDebugPanel } from '@/components/CampanhaDebugPanel';
 import { CATEGORIAS_MARKETPLACE } from '@/lib/categories';
 import { TextosPersonalizadosProdutoModal } from '@/components/produtos/TextosPersonalizadosProdutoModal';
+import { EngagementModeSelector } from '@/components/produtos/EngagementModeSelector';
 import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
