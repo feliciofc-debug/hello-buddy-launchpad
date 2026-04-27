@@ -8,14 +8,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-billing-token",
 };
 
-const ALLOWED_ADMIN_EMAILS = [
-  "expo@atombrasildigital.com",
-  "felicio@atombrasildigital.com",
-  "feliciofc@gmail.com",
-];
 const INSTANCE_NAME = "pietro-cobranca";
 
 function json(body: unknown, status = 200) {
@@ -36,17 +31,11 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // 1. Auth
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return json({ success: false, error: "Não autorizado" }, 401);
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: userErr } = await supabase.auth.getUser(token);
-    if (userErr || !user) return json({ success: false, error: "Sessão inválida" }, 401);
-
-    // 2. Guard admin (lista de emails autorizados)
-    const userEmail = (user.email || "").toLowerCase();
-    if (!ALLOWED_ADMIN_EMAILS.includes(userEmail)) {
-      console.warn(`[pietro-cobranca] acesso negado para ${userEmail}`);
+    // 1. Auth via billing_token (mesmo padrão do /pay/admin)
+    const billingToken = req.headers.get("x-billing-token");
+    const expected = Deno.env.get("BILLING_ADMIN_PASSWORD");
+    if (!billingToken || !expected || billingToken !== expected) {
+      console.warn("[pietro-cobranca] billing_token inválido");
       return json({ success: false, error: "Acesso restrito ao administrador" }, 403);
     }
 
