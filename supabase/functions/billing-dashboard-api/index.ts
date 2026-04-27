@@ -104,10 +104,12 @@ serve(async (req) => {
         else if (sit.key === 'sem_assinatura') sem_assinatura++;
       }
 
+      const mrr = em_dia * MONTHLY_AMOUNT;
       return new Response(JSON.stringify({
         total_empresas: (rows || []).length,
         em_dia, inadimplentes, pendente_primeiro_pagamento: pendente, cancelados, sem_assinatura,
-        mrr_estimado_reais: em_dia * MONTHLY_AMOUNT,
+        mrr_estimado_reais: mrr,
+        arr_estimado_reais: mrr * 12,
         valor_mensalidade: MONTHLY_AMOUNT,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
