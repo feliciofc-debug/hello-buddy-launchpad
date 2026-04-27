@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { formatDateBR } from '@/lib/dateBR';
 
 export default function PayAdminCliente() {
   const { id } = useParams();
@@ -176,10 +177,10 @@ export default function PayAdminCliente() {
             <tbody>
               {(data.subscriptions || []).map((s: any) => (
                 <tr key={s.id} className="border-t border-slate-700">
-                  <td className="p-3">{new Date(s.created_at).toLocaleDateString('pt-BR')}</td>
+                  <td className="p-3">{formatDateBR(s.created_at)}</td>
                   <td className="p-3">{s.status}</td>
-                  <td className="p-3">{s.next_billing_date ? new Date(s.next_billing_date).toLocaleDateString('pt-BR') : '—'}</td>
-                  <td className="p-3">{s.last_payment_date ? new Date(s.last_payment_date).toLocaleDateString('pt-BR') : '—'}</td>
+                  <td className="p-3">{formatDateBR(s.next_billing_date)}</td>
+                  <td className="p-3">{formatDateBR(s.last_payment_date)}</td>
                 </tr>
               ))}
             </tbody>

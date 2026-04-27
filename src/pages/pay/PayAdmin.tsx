@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
+import { formatDateBR } from '@/lib/dateBR';
 
 export default function PayAdmin() {
   const [stats, setStats] = useState<any>(null);
