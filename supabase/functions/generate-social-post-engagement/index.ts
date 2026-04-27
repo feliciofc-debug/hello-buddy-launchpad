@@ -77,6 +77,16 @@ REGRAS UNIVERSAIS:
 - NUNCA prometa cura, milagre, garantia 100%, resultado milagroso, ou cite ANVISA/FDA/OMS.
 - NUNCA depreciem outros marketplaces.
 - NÃO invente preço, frete grátis ou prazo de entrega que não foi informado.
+
+PROIBIDO ABSOLUTAMENTE mencionar qualquer preço, valor monetário ou cifra. NÃO use:
+- R$, BRL, ou qualquer símbolo de moeda
+- Números seguidos de "reais", "real", "mango", "pila"
+- Frases como "por apenas X", "oferta de Y reais", "de R$ X por R$ Y"
+- Cifras explícitas como "sai por 99", "só 49,90", "menos de 50"
+
+Termos vagos de preço SÃO PERMITIDOS quando necessários pra escassez (ex: "preço imperdível", "tá um achado", "preço que cabe no bolso"), MAS SEM número junto.
+
+Se você incluir qualquer cifra ou valor numérico de preço, sua resposta será REJEITADA.
 `.trim()
 
 // ----------------------------------------------------------------------------
@@ -92,7 +102,7 @@ Use ângulos verdadeiros: "esse modelo costuma sumir rápido", "tá com preço b
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -106,7 +116,7 @@ saber mais (sem clickbait barato tipo "você não vai acreditar"). Mostre um det
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -120,7 +130,7 @@ não genérica ("você quer ser feliz?"). Depois apresente o produto como respos
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -141,7 +151,7 @@ conspiração. A polêmica é sobre HÁBITO ou ESCOLHA DO CONSUMIDOR.
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -161,7 +171,7 @@ Conecte o dado direto à dor/desejo que o produto resolve.
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -176,7 +186,7 @@ oculta no mercado, NÃO sobre temas pessoais sensíveis.
 
 PRODUTO:
 - Nome: ${p.nome}
-- Preço: ${p.preco ? `R$ ${p.preco.toFixed(2).replace('.', ',')}` : 'consultar'}
+- Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
 `.trim()
 }
@@ -198,8 +208,17 @@ interface ValidacaoResultado {
   ok: boolean
   motivo?: string
   termo_violado?: string
-  camada?: 1 | 2 | 3 | 4 | 5
+  camada?: 1 | 2 | 3 | 4 | 5 | 6
 }
+
+// Regex anti-preço (Camada 6) — captura qualquer menção numérica de valor
+const PRECO_REGEXES: { name: string; re: RegExp }[] = [
+  { name: 'simbolo_real', re: /R\$\s*\d+[.,]?\d*/i },
+  { name: 'numero_reais', re: /\d+\s*(reais|real|mango|pila)\b/i },
+  { name: 'preposicao_valor', re: /\b(de|por|sai|menos\s+de|apenas|so|só)\s+R?\$?\s*\d+(?:[.,]\d+)?/i },
+  { name: 'padrao_decimal', re: /\b\d+[.,]\d{2}\b/ },
+]
+
 
 function validarCaption(
   caption: string,
@@ -287,6 +306,19 @@ function validarCaption(
         camada: 5,
         motivo: 'dado_sem_numero',
         termo_violado: corpoSemLink.slice(0, 80),
+      }
+    }
+  }
+
+  // CAMADA 6: PROIBIDO menção a preço (cifras, R$, "X reais", padrão "99,90")
+  for (const { name, re } of PRECO_REGEXES) {
+    const match = caption.match(re)
+    if (match) {
+      return {
+        ok: false,
+        camada: 6,
+        motivo: `preco_proibido:${name}`,
+        termo_violado: match[0].slice(0, 80),
       }
     }
   }
@@ -550,7 +582,7 @@ serve(async (req) => {
   return new Response(
     JSON.stringify({
       success: true,
-      version: 'v2-ajustes-fase2',
+      version: 'v3-no-price',
       estilo: estiloEscolhido,
       tentativas,
       fallback: usouFallback,
