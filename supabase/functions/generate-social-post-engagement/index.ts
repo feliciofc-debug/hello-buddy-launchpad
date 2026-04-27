@@ -215,9 +215,19 @@ interface ValidacaoResultado {
 const PRECO_REGEXES: { name: string; re: RegExp }[] = [
   { name: 'simbolo_real', re: /R\$\s*\d+[.,]?\d*/i },
   { name: 'numero_reais', re: /\d+\s*(reais|real|mango|pila)\b/i },
-  { name: 'preposicao_valor', re: /\b(de|por|sai|menos\s+de|apenas|so|só)\s+R?\$?\s*\d+(?:[.,]\d+)?/i },
+  // "de" removido da lista de âncoras pra não colidir com "Mais de 85%" / "de 8 em cada 10"
+  { name: 'preposicao_valor', re: /\b(por|sai|menos\s+de|apenas|só|so)\s+R?\$?\s*\d+(?:[.,]\d{1,2})?\b/i },
   { name: 'padrao_decimal', re: /\b\d+[.,]\d{2}\b/ },
 ]
+
+// Remove tokens estatísticos legítimos antes de aplicar regex de preço
+// Exemplos protegidos: "85%", "8 em cada 10", "1 em 3", "9 a cada 10"
+function sanitizarParaCheckPreco(texto: string): string {
+  return texto
+    .replace(/\b\d+(?:[.,]\d+)?\s*%/g, ' ')                        // 85%, 12,5%
+    .replace(/\b\d+\s*(?:em|a)\s*cada\s*\d+\b/gi, ' ')             // 8 em cada 10
+    .replace(/\b\d+\s*em\s*\d+\b/gi, ' ')                          // 1 em 3
+}
 
 
 function validarCaption(
@@ -311,8 +321,10 @@ function validarCaption(
   }
 
   // CAMADA 6: PROIBIDO menção a preço (cifras, R$, "X reais", padrão "99,90")
+  // Sanitiza primeiro pra não colidir com estatísticas legítimas do estilo Dado
+  const captionParaCheckPreco = sanitizarParaCheckPreco(caption)
   for (const { name, re } of PRECO_REGEXES) {
-    const match = caption.match(re)
+    const match = captionParaCheckPreco.match(re)
     if (match) {
       return {
         ok: false,
@@ -582,7 +594,7 @@ serve(async (req) => {
   return new Response(
     JSON.stringify({
       success: true,
-      version: 'v3-no-price',
+      version: 'v3.1-no-price-fixed-percentage',
       estilo: estiloEscolhido,
       tentativas,
       fallback: usouFallback,
