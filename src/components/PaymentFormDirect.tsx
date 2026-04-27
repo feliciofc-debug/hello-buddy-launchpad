@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -38,10 +38,24 @@ export default function PaymentFormDirect({
     cvv: ''
   });
 
-  // Plano único: AMZ Ofertas PRO mensal
-  const PLANO_MENSAL = 597;
-  const PLANO_ANUAL_PARCELA = 597;
-  const PLANO_ANUAL_TOTAL = 597;
+  // Detectar email de teste para liberar pagamento de R$ 1,00
+  const [isTestUser, setIsTestUser] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const email = data?.user?.email?.toLowerCase() || '';
+      if (email === 'teste@teste.com.br') {
+        setIsTestUser(true);
+        setFormData((prev) => ({ ...prev, email: data!.user!.email! }));
+      }
+    })();
+  }, []);
+
+  // Plano único: AMZ Ofertas PRO mensal (R$ 1 para conta de teste)
+  const PLANO_MENSAL = isTestUser ? 1 : 597;
+  const PLANO_ANUAL_PARCELA = PLANO_MENSAL;
+  const PLANO_ANUAL_TOTAL = PLANO_MENSAL;
 
   const valorIntegral = PLANO_MENSAL;
   const temDescontoPix = false;
@@ -309,14 +323,14 @@ export default function PaymentFormDirect({
 
         {/* Plano único - AMZ Ofertas PRO */}
         <div className="mb-6 p-6 rounded-xl border-2 border-primary bg-primary/5">
-          <p className="text-sm text-muted-foreground mb-1">AMZ Ofertas PRO</p>
-          <p className="text-5xl font-bold text-primary">R$ 597</p>
+          <p className="text-sm text-muted-foreground mb-1">AMZ Ofertas PRO {isTestUser && '(MODO TESTE)'}</p>
+          <p className="text-5xl font-bold text-primary">R$ {valorIntegral.toLocaleString('pt-BR')}</p>
           <p className="text-sm text-muted-foreground mt-1">/mês</p>
         </div>
 
         <div className="text-sm text-muted-foreground mb-2">
-          <p>💳 Cartão: R$ 597,00 em até 12x</p>
-          <p>📱 PIX: R$ 597,00 (aprovação imediata)</p>
+          <p>💳 Cartão: R$ {valorIntegral.toLocaleString('pt-BR')},00 em até 12x</p>
+          <p>📱 PIX: R$ {valorIntegral.toLocaleString('pt-BR')},00 (aprovação imediata)</p>
         </div>
       </div>
 
