@@ -594,7 +594,7 @@ serve(async (req) => {
   return new Response(
     JSON.stringify({
       success: true,
-      version: 'v3-no-price',
+      version: 'v3.1-no-price-fixed-percentage',
       estilo: estiloEscolhido,
       tentativas,
       fallback: usouFallback,
