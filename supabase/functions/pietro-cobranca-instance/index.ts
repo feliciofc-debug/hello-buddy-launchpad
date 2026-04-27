@@ -43,9 +43,10 @@ serve(async (req) => {
     const { data: { user }, error: userErr } = await supabase.auth.getUser(token);
     if (userErr || !user) return json({ success: false, error: "Sessão inválida" }, 401);
 
-    // 2. Guard admin
-    if ((user.email || "").toLowerCase() !== ADMIN_EMAIL) {
-      console.warn(`[pietro-cobranca] acesso negado para ${user.email}`);
+    // 2. Guard admin (lista de emails autorizados)
+    const userEmail = (user.email || "").toLowerCase();
+    if (!ALLOWED_ADMIN_EMAILS.includes(userEmail)) {
+      console.warn(`[pietro-cobranca] acesso negado para ${userEmail}`);
       return json({ success: false, error: "Acesso restrito ao administrador" }, 403);
     }
 
