@@ -51,6 +51,15 @@ verify_jwt = false
 [functions.create-payment]
 verify_jwt = false
 
+[functions.payment-webhook]
+verify_jwt = false
+
+[functions.billing-webhook]
+verify_jwt = false
+
+[functions.check-payment-status]
+verify_jwt = false
+
 [functions.buscar-produtos-lomadee]
 verify_jwt = false
 
