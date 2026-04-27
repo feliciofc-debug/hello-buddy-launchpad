@@ -12,6 +12,7 @@ const corsHeaders = {
 };
 
 const INSTANCE_NAME = "pietro-cobranca";
+const DEFAULT_WUZAPI_URL = "http://api2.amzofertas.com.br:8082";
 
 async function verifyBillingToken(token: string): Promise<boolean> {
   const adminPassword = Deno.env.get("BILLING_ADMIN_PASSWORD");
@@ -39,10 +40,58 @@ function extractQr(payload: any): string | null {
     payload?.result?.qrcode || payload?.result?.QRCode || payload?.result?.qr || payload?.result?.code || null;
 }
 
+function normalizeEvents(events: unknown): string[] {
+  if (Array.isArray(events)) return events.map(String).filter(Boolean);
+  if (typeof events === "string" && events.trim()) return events.split(",").map((e) => e.trim()).filter(Boolean);
+  return [];
+}
+
+function generateSessionToken() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function redactToken(value: unknown) {
+  if (!value) return value;
+  const token = String(value);
+  return `${token.slice(0, 8)}...`;
+}
+
+function compactWuzapiBody(body: any) {
+  const data = body?.data && typeof body.data === "object" ? body.data : body;
+  return {
+    code: body?.code,
+    success: body?.success,
+    error: body?.error,
+    details: body?.details || data?.details || data?.Details,
+    name: data?.name,
+    id: data?.id,
+    loggedIn: data?.loggedIn ?? data?.LoggedIn,
+    connected: data?.connected ?? data?.Connected,
+    jid: data?.jid ?? data?.Jid,
+    qrcode_len: (extractQr(body) || "").length,
+    token: redactToken(data?.token),
+  };
+}
+
 async function fetchJson(url: string, token: string, init: RequestInit = {}) {
   const response = await fetch(url, {
     ...init,
     headers: { Token: token, "Content-Type": "application/json", ...(init.headers || {}) },
+  });
+  const text = await response.text();
+  try {
+    return { ok: response.ok, status: response.status, json: text ? JSON.parse(text) : null };
+  } catch {
+    return { ok: response.ok, status: response.status, json: { rawText: text } };
+  }
+}
+
+async function fetchAdminJson(url: string, adminToken: string, init: RequestInit = {}) {
+  const response = await fetch(url, {
+    ...init,
+    headers: { Authorization: adminToken, "Content-Type": "application/json", ...(init.headers || {}) },
   });
   const text = await response.text();
   try {
