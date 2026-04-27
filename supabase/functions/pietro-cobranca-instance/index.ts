@@ -33,6 +33,25 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function extractQr(payload: any): string | null {
+  return payload?.qrcode || payload?.QRCode || payload?.qr || payload?.code ||
+    payload?.data?.qrcode || payload?.data?.QRCode || payload?.data?.qr || payload?.data?.code ||
+    payload?.result?.qrcode || payload?.result?.QRCode || payload?.result?.qr || payload?.result?.code || null;
+}
+
+async function fetchJson(url: string, token: string, init: RequestInit = {}) {
+  const response = await fetch(url, {
+    ...init,
+    headers: { Token: token, "Content-Type": "application/json", ...(init.headers || {}) },
+  });
+  const text = await response.text();
+  try {
+    return { ok: response.ok, status: response.status, json: text ? JSON.parse(text) : null };
+  } catch {
+    return { ok: response.ok, status: response.status, json: { rawText: text } };
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -73,7 +92,7 @@ serve(async (req) => {
       return json({ success: false, error: "Instância pietro-cobranca não cadastrada" }, 404);
     }
 
-    const wuzapiUrl: string | null = instance.wuzapi_url;
+    const wuzapiUrl: string | null = instance.wuzapi_url ? String(instance.wuzapi_url).replace(/\/$/, "") : null;
     const wuzapiToken: string | null = instance.wuzapi_token;
     if (!wuzapiUrl || !wuzapiToken) {
       return json({
@@ -89,10 +108,7 @@ serve(async (req) => {
     // ---------------- STATUS ----------------
     if (action === "status") {
       try {
-        const r = await fetch(`${wuzapiUrl}/session/status`, {
-          headers: { Token: wuzapiToken },
-        });
-        const raw = await r.json();
+        const { json: raw } = await fetchJson(`${wuzapiUrl}/session/status`, wuzapiToken, { method: "GET" });
         const data = raw?.data || raw;
         const isConnected = data?.loggedIn === true || data?.LoggedIn === true;
         const phoneNumber = data?.jid ? String(data.jid).split(":")[0] : (data?.PhoneNumber || null);
@@ -115,7 +131,7 @@ serve(async (req) => {
           phone_number: phoneNumber,
           instance_name: instance.instance_name,
           port: instance.port,
-          qrcode: data?.qrcode || null,
+          qrcode: extractQr(raw),
         });
       } catch (e) {
         console.error("[pietro-cobranca] erro status:", e);
@@ -132,13 +148,10 @@ serve(async (req) => {
     if (action === "gerar-qr") {
       try {
         // Status primeiro
-        const sResp = await fetch(`${wuzapiUrl}/session/status`, {
-          headers: { Token: wuzapiToken },
-        });
-        const sRaw = await sResp.json();
+        const { json: sRaw } = await fetchJson(`${wuzapiUrl}/session/status`, wuzapiToken, { method: "GET" });
         const sData = sRaw?.data || sRaw;
 
-        if (sData?.loggedIn === true) {
+        if (sData?.loggedIn === true || sData?.LoggedIn === true) {
           const phone = sData?.jid ? String(sData.jid).split(":")[0] : null;
           await supabase
             .from("wuzapi_instances")
@@ -159,41 +172,43 @@ serve(async (req) => {
           });
         }
 
-        if (sData?.qrcode && sData.qrcode.length > 50) {
-          return json({ success: true, qrcode: sData.qrcode, message: "QR pronto" });
+        const statusQr = extractQr(sRaw);
+        if (statusQr && statusQr.length > 20) {
+          return json({ success: true, qrcode: statusQr, message: "QR pronto", raw: { status: sRaw } });
         }
 
-        // Tenta /session/qr direto
-        const qResp = await fetch(`${wuzapiUrl}/session/qr`, {
-          headers: { Token: wuzapiToken },
-        });
-        const qRaw = await qResp.json();
-        const qrCode = qRaw?.data?.qrcode || qRaw?.qrcode || qRaw?.data?.QRCode || null;
-        if (qrCode && qrCode.length > 50) {
-          return json({ success: true, qrcode: qrCode, message: "QR gerado" });
-        }
-
-        // Força /session/connect e tenta de novo
-        await fetch(`${wuzapiUrl}/session/connect`, {
+        // Força /session/connect e tenta buscar o QR por alguns segundos
+        const connect = await fetchJson(`${wuzapiUrl}/session/connect`, wuzapiToken, {
           method: "POST",
-          headers: { Token: wuzapiToken, "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
-        await new Promise((r) => setTimeout(r, 1500));
+        const connectQr = extractQr(connect.json);
+        if (connectQr && connectQr.length > 20) {
+          return json({ success: true, qrcode: connectQr, message: "QR gerado", raw: { connect: connect.json } });
+        }
 
-        const q2 = await fetch(`${wuzapiUrl}/session/qr`, {
-          headers: { Token: wuzapiToken },
-        });
-        const q2Raw = await q2.json();
-        const qr2 = q2Raw?.data?.qrcode || q2Raw?.qrcode || q2Raw?.data?.QRCode || null;
-        if (qr2 && qr2.length > 50) {
-          return json({ success: true, qrcode: qr2, message: "QR gerado (retry)" });
+        let lastQrRaw: unknown = null;
+        for (let i = 0; i < 5; i++) {
+          await new Promise((r) => setTimeout(r, 1000));
+          const qrResponse = await fetchJson(`${wuzapiUrl}/session/qr`, wuzapiToken, { method: "GET" });
+          lastQrRaw = qrResponse.json;
+          const qrCode = extractQr(qrResponse.json);
+          if (qrCode && qrCode.length > 20) {
+            return json({ success: true, qrcode: qrCode, message: "QR gerado", raw: { connect: connect.json, qr: qrResponse.json } });
+          }
+
+          const statusResponse = await fetchJson(`${wuzapiUrl}/session/status`, wuzapiToken, { method: "GET" });
+          const statusQrRetry = extractQr(statusResponse.json);
+          if (statusQrRetry && statusQrRetry.length > 20) {
+            return json({ success: true, qrcode: statusQrRetry, message: "QR gerado via status", raw: { connect: connect.json, status: statusResponse.json } });
+          }
         }
 
         return json({
           success: false,
           retry: true,
           error: "QR ainda não disponível, tente novamente em instantes",
+          raw: { last_qr: lastQrRaw },
         });
       } catch (e) {
         console.error("[pietro-cobranca] erro gerar-qr:", e);
