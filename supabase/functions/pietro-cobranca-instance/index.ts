@@ -101,6 +101,53 @@ async function fetchAdminJson(url: string, adminToken: string, init: RequestInit
   }
 }
 
+async function ensureWuzapiSession(supabase: any, instance: any, wuzapiUrl: string, currentToken: string | null) {
+  const adminToken = Deno.env.get("CONTABO_WUZAPI_ADMIN_TOKEN");
+  if (!adminToken) return { token: currentToken, created: false, error: "CONTABO_WUZAPI_ADMIN_TOKEN não configurado" };
+
+  const users = await fetchAdminJson(`${wuzapiUrl}/admin/users`, adminToken, { method: "GET" });
+  console.log("[pietro-cobranca] GET /admin/users", users.status, compactWuzapiBody(users.json));
+  const list = Array.isArray(users.json?.data) ? users.json.data : [];
+  const physical = list.find((u: any) => u?.name === INSTANCE_NAME);
+
+  if (physical?.token) {
+    if (physical.token !== currentToken) {
+      await supabase.from("wuzapi_instances").update({
+        wuzapi_token: physical.token,
+        wuzapi_url: wuzapiUrl,
+        updated_at: new Date().toISOString(),
+      }).eq("id", instance.id);
+    }
+    return { token: physical.token, created: false, error: null };
+  }
+
+  if (physical?.id) {
+    const deleted = await fetchAdminJson(`${wuzapiUrl}/admin/users/${physical.id}`, adminToken, { method: "DELETE" });
+    console.log("[pietro-cobranca] DELETE sessão sem token", deleted.status, compactWuzapiBody(deleted.json));
+  }
+
+  const newToken = generateSessionToken();
+  const created = await fetchAdminJson(`${wuzapiUrl}/admin/users`, adminToken, {
+    method: "POST",
+    body: JSON.stringify({ name: INSTANCE_NAME, token: newToken, events: "All", webhook: "" }),
+  });
+  console.log("[pietro-cobranca] POST /admin/users", created.status, compactWuzapiBody(created.json));
+
+  const createdToken = created.json?.data?.token || created.json?.token || newToken;
+  if (!created.ok || !createdToken) return { token: currentToken, created: false, error: "Falha ao criar sessão no WuzAPI" };
+
+  await supabase.from("wuzapi_instances").update({
+    wuzapi_token: createdToken,
+    wuzapi_url: wuzapiUrl,
+    is_connected: false,
+    phone_number: null,
+    connected_at: null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", instance.id);
+
+  return { token: createdToken, created: true, error: null };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
