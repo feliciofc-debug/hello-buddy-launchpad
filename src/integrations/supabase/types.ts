@@ -7949,6 +7949,16 @@ export type Database = {
         }
         Returns: undefined
       }
+      admin_list_cron_jobs: {
+        Args: never
+        Returns: {
+          active: boolean
+          command: string
+          jobid: number
+          jobname: string
+          schedule: string
+        }[]
+      }
       auto_classificar_produto_afiliado: {
         Args: { p_categoria?: string; p_titulo: string }
         Returns: string
