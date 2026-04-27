@@ -16,7 +16,7 @@ export default function PaymentFormDirect({
   userId 
 }: PaymentFormDirectProps) {
   const navigate = useNavigate();
-  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
+  const [selectedPlan] = useState<'monthly'>('monthly');
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | 'boleto'>('pix');
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
@@ -38,16 +38,14 @@ export default function PaymentFormDirect({
     cvv: ''
   });
 
-  // Valores dos planos
-  const PLANO_MENSAL = 297;
-  const PLANO_ANUAL_PARCELA = 237;
-  const PLANO_ANUAL_TOTAL = 2844; // 12 x 237
+  // Plano único: AMZ Ofertas PRO mensal
+  const PLANO_MENSAL = 597;
+  const PLANO_ANUAL_PARCELA = 597;
+  const PLANO_ANUAL_TOTAL = 597;
 
-  // Calcula valores baseado no plano selecionado
-  const valorIntegral = selectedPlan === 'monthly' ? PLANO_MENSAL : PLANO_ANUAL_TOTAL;
-  // Desconto PIX só para plano anual
-  const temDescontoPix = selectedPlan === 'yearly';
-  const valorComDesconto = temDescontoPix ? valorIntegral * 0.9 : valorIntegral;
+  const valorIntegral = PLANO_MENSAL;
+  const temDescontoPix = false;
+  const valorComDesconto = valorIntegral;
 
   const getDisplayAmount = () => {
     if (paymentMethod === 'pix' && temDescontoPix) {
@@ -308,52 +306,17 @@ export default function PaymentFormDirect({
     <div className="max-w-3xl mx-auto p-6 bg-card rounded-xl shadow-xl">
       <div className="mb-6 text-center">
         <h2 className="text-3xl font-bold mb-4">Finalizar Assinatura</h2>
-        
-        {/* Seleção de Plano */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          {/* Plano Mensal */}
-          <button
-            onClick={() => setSelectedPlan('monthly')}
-            className={`p-4 rounded-xl border-2 transition-all ${
-              selectedPlan === 'monthly'
-                ? 'border-primary bg-primary/10 shadow-lg'
-                : 'border-border hover:border-primary/50'
-            }`}
-          >
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-1">Mensal</p>
-              <p className="text-3xl font-bold text-primary">R$ {PLANO_MENSAL}</p>
-              <p className="text-xs text-muted-foreground">/mês</p>
-            </div>
-          </button>
 
-          {/* Plano Anual */}
-          <button
-            onClick={() => setSelectedPlan('yearly')}
-            className={`p-4 rounded-xl border-2 transition-all relative ${
-              selectedPlan === 'yearly'
-                ? 'border-green-500 bg-green-500/10 shadow-lg'
-                : 'border-border hover:border-green-500/50'
-            }`}
-          >
-            <div className="absolute -top-2 -right-2 bg-green-500 text-white text-xs px-2 py-0.5 rounded-full">
-              ECONOMIA
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground mb-1">Anual</p>
-              <p className="text-3xl font-bold text-green-500">12x R$ {PLANO_ANUAL_PARCELA}</p>
-              <p className="text-xs text-muted-foreground">Total: R$ {PLANO_ANUAL_TOTAL.toLocaleString('pt-BR')}</p>
-            </div>
-          </button>
+        {/* Plano único - AMZ Ofertas PRO */}
+        <div className="mb-6 p-6 rounded-xl border-2 border-primary bg-primary/5">
+          <p className="text-sm text-muted-foreground mb-1">AMZ Ofertas PRO</p>
+          <p className="text-5xl font-bold text-primary">R$ 597</p>
+          <p className="text-sm text-muted-foreground mt-1">/mês</p>
         </div>
 
         <div className="text-sm text-muted-foreground mb-2">
-          <p>💳 Cartão: R$ {valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} {selectedPlan === 'yearly' ? 'em até 12x' : ''}</p>
-          {temDescontoPix ? (
-            <p className="text-green-500 font-semibold">📱 PIX: R$ {valorComDesconto.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (10% off)</p>
-          ) : (
-            <p className="text-muted-foreground">📱 PIX: R$ {valorIntegral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-          )}
+          <p>💳 Cartão: R$ 597,00 em até 12x</p>
+          <p>📱 PIX: R$ 597,00 (aprovação imediata)</p>
         </div>
       </div>
 
