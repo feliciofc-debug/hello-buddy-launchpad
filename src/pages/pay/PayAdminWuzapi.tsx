@@ -55,6 +55,7 @@ export default function PayAdminWuzapi() {
     try {
       const { data, error: err } = await supabase.functions.invoke("pietro-cobranca-instance", {
         body: { action: "status" },
+        headers: getBillingHeaders(),
       });
       if (err) throw err;
       if (data?.success) {
