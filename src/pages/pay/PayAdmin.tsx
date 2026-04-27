@@ -79,13 +79,14 @@ export default function PayAdmin() {
       <div className="max-w-[1200px] mx-auto p-6">
         {/* Dashboard Cards */}
         {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-6">
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-4 mb-6">
             <Card label="Total empresas" value={stats.total_empresas} />
             <Card label="Em dia" value={stats.em_dia} color="text-green-400" onClick={() => setFilter('em_dia')} />
             <Card label="Inadimplentes" value={stats.inadimplentes} color="text-red-500" onClick={() => setFilter('inadimplente')} />
             <Card label="Aguardando pgto" value={stats.pendente_primeiro_pagamento} color="text-amber-400" onClick={() => setFilter('pendente')} />
             <Card label="Suspensos" value={(stats.inadimplentes || 0) + (stats.cancelados || 0)} color="text-orange-400" onClick={() => setFilter('suspenso')} />
             <Card label="MRR estimado" value={`R$ ${(stats.mrr_estimado_reais || 0).toLocaleString('pt-BR')}`} color="text-sky-400" />
+            <Card label="ARR estimado" value={`R$ ${(stats.arr_estimado_reais ?? (stats.mrr_estimado_reais || 0) * 12).toLocaleString('pt-BR')}`} color="text-emerald-400" tooltip="Receita anual recorrente projetada com clientes atuais (MRR × 12)" />
           </div>
         )}
 
@@ -158,9 +159,9 @@ export default function PayAdmin() {
   );
 }
 
-function Card({ label, value, color, onClick }: { label: string; value: any; color?: string; onClick?: () => void }) {
+function Card({ label, value, color, onClick, tooltip }: { label: string; value: any; color?: string; onClick?: () => void; tooltip?: string }) {
   return (
-    <div onClick={onClick}
+    <div onClick={onClick} title={tooltip}
       className={`bg-slate-800 rounded-xl p-4 border border-slate-700 ${onClick ? 'cursor-pointer hover:border-sky-500 transition-colors' : ''}`}>
       <div className="text-xs text-slate-400 uppercase tracking-wide">{label}</div>
       <div className={`text-2xl font-bold mt-1 ${color || ''}`}>{value}</div>
