@@ -11,7 +11,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const ADMIN_EMAIL = "expo@atombrasildigital.com";
+const ALLOWED_ADMIN_EMAILS = [
+  "expo@atombrasildigital.com",
+  "felicio@atombrasildigital.com",
+  "feliciofc@gmail.com",
+];
 const INSTANCE_NAME = "pietro-cobranca";
 
 function json(body: unknown, status = 200) {
