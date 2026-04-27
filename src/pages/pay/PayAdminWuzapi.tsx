@@ -59,6 +59,10 @@ export default function PayAdminWuzapi() {
       });
       if (err) throw err;
       if (data?.success) {
+        if (!data.connected && data.qrcode) {
+          setQrcode(data.qrcode);
+          setInfo("QR Code disponível para escanear");
+        }
         if (data.connected) {
           setQrcode(null);
           setInfo(null);
@@ -121,7 +125,7 @@ export default function PayAdminWuzapi() {
         setQrcode(data.qrcode);
         setInfo("Escaneie o QR Code com o WhatsApp do Pietro");
       } else if (data?.retry) {
-        setInfo("QR ainda não disponível — clique novamente em instantes");
+        setInfo("QR ainda não disponível — estou tentando atualizar automaticamente");
       } else {
         setError(data?.error || "Não foi possível gerar QR");
       }
