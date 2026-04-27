@@ -2,12 +2,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
-const ALLOWED_ADMIN_EMAILS = [
-  "expo@atombrasildigital.com",
-  "felicio@atombrasildigital.com",
-  "feliciofc@gmail.com",
-];
-
 interface InstanceRow {
   id: string;
   instance_name: string;
@@ -16,6 +10,11 @@ interface InstanceRow {
   is_connected: boolean | null;
   connected_at: string | null;
   updated_at: string | null;
+}
+
+function getBillingHeaders() {
+  const token = sessionStorage.getItem("billing_token");
+  return token ? { "x-billing-token": token } : {};
 }
 
 export default function PayAdminWuzapi() {
@@ -29,32 +28,16 @@ export default function PayAdminWuzapi() {
   const [info, setInfo] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
 
-  // ---------------- GUARD DUPLO ----------------
+  // ---------------- GUARD: somente billing_token (igual /pay/admin) ----------------
   useEffect(() => {
-    (async () => {
-      // 1) billing_token (login do painel /pay)
-      const billingToken = sessionStorage.getItem("billing_token");
-      // 2) email admin
-      const { data: { user } } = await supabase.auth.getUser();
-      const email = (user?.email || "").toLowerCase();
-
-      console.log("[DEBUG PayAdminWuzapi] billing_token:", billingToken ? "presente" : "ausente");
-      console.log("[DEBUG PayAdminWuzapi] user.email:", email);
-      console.log("[DEBUG PayAdminWuzapi] allowed:", ALLOWED_ADMIN_EMAILS);
-      console.log("[DEBUG PayAdminWuzapi] match:", ALLOWED_ADMIN_EMAILS.includes(email));
-
-      if (!billingToken) {
-        console.warn("[PayAdminWuzapi] sem billing_token — redirect /pay");
-        navigate("/pay");
-        return;
-      }
-      if (!email || !ALLOWED_ADMIN_EMAILS.includes(email)) {
-        console.warn(`[PayAdminWuzapi] acesso negado: ${email || "sem usuário"}`);
-        navigate("/pay");
-        return;
-      }
-      setAuthChecked(true);
-    })();
+    const billingToken = sessionStorage.getItem("billing_token");
+    console.log("[DEBUG PayAdminWuzapi] billing_token:", billingToken ? "presente" : "ausente");
+    if (!billingToken) {
+      console.warn("[PayAdminWuzapi] sem billing_token → redirect /pay");
+      navigate("/pay");
+      return;
+    }
+    setAuthChecked(true);
   }, [navigate]);
 
   const loadInstance = useCallback(async () => {
