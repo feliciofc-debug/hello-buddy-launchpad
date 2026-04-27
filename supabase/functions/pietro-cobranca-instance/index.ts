@@ -33,6 +33,25 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function extractQr(payload: any): string | null {
+  return payload?.qrcode || payload?.QRCode || payload?.qr || payload?.code ||
+    payload?.data?.qrcode || payload?.data?.QRCode || payload?.data?.qr || payload?.data?.code ||
+    payload?.result?.qrcode || payload?.result?.QRCode || payload?.result?.qr || payload?.result?.code || null;
+}
+
+async function fetchJson(url: string, token: string, init: RequestInit = {}) {
+  const response = await fetch(url, {
+    ...init,
+    headers: { Token: token, "Content-Type": "application/json", ...(init.headers || {}) },
+  });
+  const text = await response.text();
+  try {
+    return { ok: response.ok, status: response.status, json: text ? JSON.parse(text) : null };
+  } catch {
+    return { ok: response.ok, status: response.status, json: { rawText: text } };
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -73,7 +92,7 @@ serve(async (req) => {
       return json({ success: false, error: "Instância pietro-cobranca não cadastrada" }, 404);
     }
 
-    const wuzapiUrl: string | null = instance.wuzapi_url;
+    const wuzapiUrl: string | null = instance.wuzapi_url ? String(instance.wuzapi_url).replace(/\/$/, "") : null;
     const wuzapiToken: string | null = instance.wuzapi_token;
     if (!wuzapiUrl || !wuzapiToken) {
       return json({
