@@ -260,8 +260,15 @@ serve(async (req) => {
     // ---------------- GERAR QR ----------------
     if (action === "gerar-qr") {
       try {
+        let activeToken = wuzapiToken;
+        const ensured = await ensureWuzapiSession(supabase, instance, wuzapiUrl, activeToken);
+        if (ensured.error || !ensured.token) return json({ success: false, error: ensured.error }, 500);
+        activeToken = ensured.token;
+
         // Status primeiro
-        const { json: sRaw } = await fetchJson(`${wuzapiUrl}/session/status`, wuzapiToken, { method: "GET" });
+        const status = await fetchJson(`${wuzapiUrl}/session/status`, activeToken, { method: "GET" });
+        console.log("[pietro-cobranca] GET /session/status gerar-qr", status.status, compactWuzapiBody(status.json));
+        const sRaw = status.json;
         const sData = sRaw?.data || sRaw;
 
         if (sData?.loggedIn === true || sData?.LoggedIn === true) {
@@ -291,26 +298,29 @@ serve(async (req) => {
         }
 
         // Força /session/connect e tenta buscar o QR por alguns segundos
-        const connect = await fetchJson(`${wuzapiUrl}/session/connect`, wuzapiToken, {
+        const connect = await fetchJson(`${wuzapiUrl}/session/connect`, activeToken, {
           method: "POST",
-          body: JSON.stringify({}),
+          body: JSON.stringify({ Events: "All", Immediate: true }),
         });
+        console.log("[pietro-cobranca] POST /session/connect", connect.status, compactWuzapiBody(connect.json));
         const connectQr = extractQr(connect.json);
         if (connectQr && connectQr.length > 20) {
           return json({ success: true, qrcode: connectQr, message: "QR gerado", raw: { connect: connect.json } });
         }
 
         let lastQrRaw: unknown = null;
-        for (let i = 0; i < 5; i++) {
-          await new Promise((r) => setTimeout(r, 1000));
-          const qrResponse = await fetchJson(`${wuzapiUrl}/session/qr`, wuzapiToken, { method: "GET" });
+        for (let i = 0; i < 12; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const qrResponse = await fetchJson(`${wuzapiUrl}/session/qr`, activeToken, { method: "GET" });
           lastQrRaw = qrResponse.json;
+          console.log("[pietro-cobranca] GET /session/qr", qrResponse.status, compactWuzapiBody(qrResponse.json));
           const qrCode = extractQr(qrResponse.json);
           if (qrCode && qrCode.length > 20) {
             return json({ success: true, qrcode: qrCode, message: "QR gerado", raw: { connect: connect.json, qr: qrResponse.json } });
           }
 
-          const statusResponse = await fetchJson(`${wuzapiUrl}/session/status`, wuzapiToken, { method: "GET" });
+          const statusResponse = await fetchJson(`${wuzapiUrl}/session/status`, activeToken, { method: "GET" });
+          console.log("[pietro-cobranca] GET /session/status qr-loop", statusResponse.status, compactWuzapiBody(statusResponse.json));
           const statusQrRetry = extractQr(statusResponse.json);
           if (statusQrRetry && statusQrRetry.length > 20) {
             return json({ success: true, qrcode: statusQrRetry, message: "QR gerado via status", raw: { connect: connect.json, status: statusResponse.json } });
