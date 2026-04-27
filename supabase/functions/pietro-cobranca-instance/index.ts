@@ -188,12 +188,12 @@ serve(async (req) => {
       return json({ success: false, error: "Instância pietro-cobranca não cadastrada" }, 404);
     }
 
-    const wuzapiUrl: string | null = instance.wuzapi_url ? String(instance.wuzapi_url).replace(/\/$/, "") : null;
-    const wuzapiToken: string | null = instance.wuzapi_token;
-    if (!wuzapiUrl || !wuzapiToken) {
+    const wuzapiUrl: string = instance.wuzapi_url ? String(instance.wuzapi_url).replace(/\/$/, "") : DEFAULT_WUZAPI_URL;
+    const wuzapiToken: string | null = instance.wuzapi_token || null;
+    if (!wuzapiUrl) {
       return json({
         success: false,
-        error: "Instância sem wuzapi_url/token configurados",
+        error: "Instância sem wuzapi_url configurado",
         instance_name: instance.instance_name,
         port: instance.port,
       }, 500);
@@ -204,7 +204,24 @@ serve(async (req) => {
     // ---------------- STATUS ----------------
     if (action === "status") {
       try {
-        const { json: raw } = await fetchJson(`${wuzapiUrl}/session/status`, wuzapiToken, { method: "GET" });
+        let activeToken = wuzapiToken;
+        if (!activeToken) {
+          const ensured = await ensureWuzapiSession(supabase, instance, wuzapiUrl, activeToken);
+          if (ensured.error || !ensured.token) return json({ success: false, connected: false, error: ensured.error }, 500);
+          activeToken = ensured.token;
+        }
+
+        let statusResponse = await fetchJson(`${wuzapiUrl}/session/status`, activeToken, { method: "GET" });
+        console.log("[pietro-cobranca] GET /session/status", statusResponse.status, compactWuzapiBody(statusResponse.json));
+        if (statusResponse.status === 401 || statusResponse.json?.error === "unauthorized" || statusResponse.json?.error === "no session") {
+          const ensured = await ensureWuzapiSession(supabase, instance, wuzapiUrl, activeToken);
+          if (ensured.error || !ensured.token) return json({ success: false, connected: false, error: ensured.error }, 500);
+          activeToken = ensured.token;
+          statusResponse = await fetchJson(`${wuzapiUrl}/session/status`, activeToken, { method: "GET" });
+          console.log("[pietro-cobranca] GET /session/status retry", statusResponse.status, compactWuzapiBody(statusResponse.json));
+        }
+
+        const raw = statusResponse.json;
         const data = raw?.data || raw;
         const isConnected = data?.loggedIn === true || data?.LoggedIn === true;
         const phoneNumber = data?.jid ? String(data.jid).split(":")[0] : (data?.PhoneNumber || null);
