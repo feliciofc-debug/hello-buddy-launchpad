@@ -34,14 +34,21 @@ export default function PayAdminWuzapi() {
     (async () => {
       // 1) billing_token (login do painel /pay)
       const billingToken = sessionStorage.getItem("billing_token");
-      if (!billingToken) {
-        navigate("/pay");
-        return;
-      }
       // 2) email admin
       const { data: { user } } = await supabase.auth.getUser();
       const email = (user?.email || "").toLowerCase();
-      if (email !== ADMIN_EMAIL) {
+
+      console.log("[DEBUG PayAdminWuzapi] billing_token:", billingToken ? "presente" : "ausente");
+      console.log("[DEBUG PayAdminWuzapi] user.email:", email);
+      console.log("[DEBUG PayAdminWuzapi] allowed:", ALLOWED_ADMIN_EMAILS);
+      console.log("[DEBUG PayAdminWuzapi] match:", ALLOWED_ADMIN_EMAILS.includes(email));
+
+      if (!billingToken) {
+        console.warn("[PayAdminWuzapi] sem billing_token — redirect /pay");
+        navigate("/pay");
+        return;
+      }
+      if (!email || !ALLOWED_ADMIN_EMAILS.includes(email)) {
         console.warn(`[PayAdminWuzapi] acesso negado: ${email || "sem usuário"}`);
         navigate("/pay");
         return;
