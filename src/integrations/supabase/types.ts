@@ -1201,10 +1201,13 @@ export type Database = {
       }
       billing_subscriptions: {
         Row: {
+          amount: number
+          cobranca_manual: boolean
           created_at: string | null
           current_period_end: string | null
           current_period_start: string | null
           customer_id: string
+          dia_vencimento: number | null
           id: string
           last_payment_date: string | null
           last_reminder_for_date: string | null
@@ -1214,10 +1217,13 @@ export type Database = {
           status: string
         }
         Insert: {
+          amount?: number
+          cobranca_manual?: boolean
           created_at?: string | null
           current_period_end?: string | null
           current_period_start?: string | null
           customer_id: string
+          dia_vencimento?: number | null
           id?: string
           last_payment_date?: string | null
           last_reminder_for_date?: string | null
@@ -1227,10 +1233,13 @@ export type Database = {
           status?: string
         }
         Update: {
+          amount?: number
+          cobranca_manual?: boolean
           created_at?: string | null
           current_period_end?: string | null
           current_period_start?: string | null
           customer_id?: string
+          dia_vencimento?: number | null
           id?: string
           last_payment_date?: string | null
           last_reminder_for_date?: string | null
