@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      _backup_billing_fase1_20260427: {
+        Row: {
+          backup_at: string | null
+          payload: Json | null
+          tipo: string | null
+        }
+        Insert: {
+          backup_at?: string | null
+          payload?: Json | null
+          tipo?: string | null
+        }
+        Update: {
+          backup_at?: string | null
+          payload?: Json | null
+          tipo?: string | null
+        }
+        Relationships: []
+      }
       afiliado_analytics_ebooks: {
         Row: {
           categoria: string | null
