@@ -1,0 +1,2 @@
+ALTER TABLE public.billing_subscriptions ADD COLUMN IF NOT EXISTS cobranca_manual_ate DATE NULL;
+COMMENT ON COLUMN public.billing_subscriptions.cobranca_manual_ate IS 'Se cobranca_manual=true, define até quando a cobrança fica manual. Após essa data, sistema volta ao automático. NULL = manual permanente.';

@@ -145,7 +145,7 @@ export default function PayAdminCliente() {
             <tbody>
               {(data.transactions || []).map((tx: any) => (
                 <tr key={tx.id} className={`border-t border-slate-700 ${tx.status === 'approved' ? '' : 'opacity-60'}`}>
-                  <td className="p-3">{tx.payment_date ? new Date(tx.payment_date).toLocaleDateString('pt-BR') : '—'}</td>
+                  <td className="p-3">{tx.payment_date ? formatDateBR(tx.payment_date) : '—'}</td>
                   <td className="p-3">{tx.amount ? Number(tx.amount).toFixed(2).replace('.', ',') : '—'}</td>
                   <td className="p-3">
                     <span className={`px-2 py-0.5 rounded text-xs ${tx.status === 'approved' ? 'bg-green-900 text-green-300' : 'bg-slate-600 text-slate-300'}`}>
