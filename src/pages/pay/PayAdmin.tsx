@@ -159,9 +159,9 @@ export default function PayAdmin() {
   );
 }
 
-function Card({ label, value, color, onClick }: { label: string; value: any; color?: string; onClick?: () => void }) {
+function Card({ label, value, color, onClick, tooltip }: { label: string; value: any; color?: string; onClick?: () => void; tooltip?: string }) {
   return (
-    <div onClick={onClick}
+    <div onClick={onClick} title={tooltip}
       className={`bg-slate-800 rounded-xl p-4 border border-slate-700 ${onClick ? 'cursor-pointer hover:border-sky-500 transition-colors' : ''}`}>
       <div className="text-xs text-slate-400 uppercase tracking-wide">{label}</div>
       <div className={`text-2xl font-bold mt-1 ${color || ''}`}>{value}</div>
