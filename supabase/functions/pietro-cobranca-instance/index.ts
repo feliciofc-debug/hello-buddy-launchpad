@@ -13,6 +13,19 @@ const corsHeaders = {
 
 const INSTANCE_NAME = "pietro-cobranca";
 
+async function verifyBillingToken(token: string): Promise<boolean> {
+  const adminPassword = Deno.env.get("BILLING_ADMIN_PASSWORD");
+  if (!adminPassword || !token) return false;
+
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${adminPassword}:${Math.floor(Date.now() / (1000 * 60 * 60 * 24))}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const expected = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  return token === expected;
+}
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -33,8 +46,8 @@ serve(async (req) => {
 
     // 1. Auth via billing_token (mesmo padrão do /pay/admin)
     const billingToken = req.headers.get("x-billing-token");
-    const expected = Deno.env.get("BILLING_ADMIN_PASSWORD");
-    if (!billingToken || !expected || billingToken !== expected) {
+    const isAdmin = await verifyBillingToken(billingToken || "");
+    if (!isAdmin) {
       console.warn("[pietro-cobranca] billing_token inválido");
       return json({ success: false, error: "Acesso restrito ao administrador" }, 403);
     }
