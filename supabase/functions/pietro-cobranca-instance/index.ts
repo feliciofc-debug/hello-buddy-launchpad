@@ -108,10 +108,7 @@ serve(async (req) => {
     // ---------------- STATUS ----------------
     if (action === "status") {
       try {
-        const r = await fetch(`${wuzapiUrl}/session/status`, {
-          headers: { Token: wuzapiToken },
-        });
-        const raw = await r.json();
+        const { json: raw } = await fetchJson(`${wuzapiUrl}/session/status`, wuzapiToken, { method: "GET" });
         const data = raw?.data || raw;
         const isConnected = data?.loggedIn === true || data?.LoggedIn === true;
         const phoneNumber = data?.jid ? String(data.jid).split(":")[0] : (data?.PhoneNumber || null);
@@ -134,7 +131,7 @@ serve(async (req) => {
           phone_number: phoneNumber,
           instance_name: instance.instance_name,
           port: instance.port,
-          qrcode: data?.qrcode || null,
+          qrcode: extractQr(raw),
         });
       } catch (e) {
         console.error("[pietro-cobranca] erro status:", e);
@@ -151,13 +148,10 @@ serve(async (req) => {
     if (action === "gerar-qr") {
       try {
         // Status primeiro
-        const sResp = await fetch(`${wuzapiUrl}/session/status`, {
-          headers: { Token: wuzapiToken },
-        });
-        const sRaw = await sResp.json();
+        const { json: sRaw } = await fetchJson(`${wuzapiUrl}/session/status`, wuzapiToken, { method: "GET" });
         const sData = sRaw?.data || sRaw;
 
-        if (sData?.loggedIn === true) {
+        if (sData?.loggedIn === true || sData?.LoggedIn === true) {
           const phone = sData?.jid ? String(sData.jid).split(":")[0] : null;
           await supabase
             .from("wuzapi_instances")
@@ -178,8 +172,9 @@ serve(async (req) => {
           });
         }
 
-        if (sData?.qrcode && sData.qrcode.length > 50) {
-          return json({ success: true, qrcode: sData.qrcode, message: "QR pronto" });
+        const statusQr = extractQr(sRaw);
+        if (statusQr && statusQr.length > 20) {
+          return json({ success: true, qrcode: statusQr, message: "QR pronto", raw: { status: sRaw } });
         }
 
         // Tenta /session/qr direto
