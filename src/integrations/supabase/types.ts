@@ -1221,6 +1221,7 @@ export type Database = {
         Row: {
           amount: number
           cobranca_manual: boolean
+          cobranca_manual_ate: string | null
           created_at: string | null
           current_period_end: string | null
           current_period_start: string | null
@@ -1237,6 +1238,7 @@ export type Database = {
         Insert: {
           amount?: number
           cobranca_manual?: boolean
+          cobranca_manual_ate?: string | null
           created_at?: string | null
           current_period_end?: string | null
           current_period_start?: string | null
@@ -1253,6 +1255,7 @@ export type Database = {
         Update: {
           amount?: number
           cobranca_manual?: boolean
+          cobranca_manual_ate?: string | null
           created_at?: string | null
           current_period_end?: string | null
           current_period_start?: string | null
