@@ -2,7 +2,11 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
-const ADMIN_EMAIL = "expo@atombrasildigital.com";
+const ALLOWED_ADMIN_EMAILS = [
+  "expo@atombrasildigital.com",
+  "felicio@atombrasildigital.com",
+  "feliciofc@gmail.com",
+];
 
 interface InstanceRow {
   id: string;
