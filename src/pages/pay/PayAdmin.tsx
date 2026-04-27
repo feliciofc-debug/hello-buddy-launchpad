@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
+import { formatDateBR } from '@/lib/dateBR';
 
 export default function PayAdmin() {
   const [stats, setStats] = useState<any>(null);
@@ -140,8 +141,8 @@ export default function PayAdmin() {
                   <td className="p-3 font-mono text-xs">{c.cnpj || '—'}</td>
                   <td className="p-3">{c.responsible_name || '—'}</td>
                   <td className="p-3">{c.email}</td>
-                  <td className="p-3">{c.next_billing_date ? new Date(c.next_billing_date).toLocaleDateString('pt-BR') : '—'}</td>
-                  <td className="p-3">{c.last_payment_date ? new Date(c.last_payment_date).toLocaleDateString('pt-BR') : '—'}</td>
+                  <td className="p-3">{c.next_billing_date ? formatDateBR(c.next_billing_date) : '—'}</td>
+                  <td className="p-3">{c.last_payment_date ? formatDateBR(c.last_payment_date) : '—'}</td>
                   <td className="p-3">
                     <button onClick={() => navigate(`/pay/admin/cliente/${c.id}`)}
                       className="text-sky-400 hover:underline text-xs font-semibold">Ver</button>
