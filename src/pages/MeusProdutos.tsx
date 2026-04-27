@@ -2140,6 +2140,8 @@ export default function MeusProdutos() {
             if (!open) setFacebookProduct(null);
           }}
           produto={facebookProduct}
+          modo_postagem_fb={(facebookProduct as any).modo_postagem_fb ?? null}
+          engajamento_estilos={(facebookProduct as any).engajamento_estilos ?? null}
         />
       )}
       {instagramProduct && (
