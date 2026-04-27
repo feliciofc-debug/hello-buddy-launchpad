@@ -67,7 +67,7 @@ import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
 import ListasContatosPJ from "./pages/pj/ListasContatosPJ";
 import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
-// import SophiaDispatcher from "./pages/SophiaDispatcher"; // Desativado 27/04/2026 — Sophia descontinuada
+// SophiaDispatcher removido (Sophia descontinuada — 27/04/2026). Arquivo físico mantido como órfão em src/pages/SophiaDispatcher.tsx.
 import GatewayWhatsApp from "./pages/GatewayWhatsApp";
 import RedesSociaisPainel from "./pages/RedesSociaisPainel";
 import WhatsAppPainel from "./pages/WhatsAppPainel";
@@ -170,7 +170,7 @@ const App = () => (
             {/* <Route path="/integracoes" element={<Integracoes />} /> */} {/* Oculto - reativar removendo o comentário */}
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
-            {/* <Route path="/sophia-dispatcher" element={<SophiaDispatcher />} /> Desativado 27/04/2026 */}
+            {/* Rota /sophia-dispatcher removida — Sophia descontinuada (27/04/2026) */}
             <Route path="/gateway-whatsapp" element={<GatewayWhatsApp />} />
             <Route path="/redes-sociais" element={<RedesSociaisPainel />} />
             <Route path="/whatsapp-painel" element={<WhatsAppPainel />} />
