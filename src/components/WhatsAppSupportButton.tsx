@@ -1,8 +1,11 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Loader2, MessageCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { supabase } from '@/integrations/supabase/client';
-import pietroImage from '@/assets/pietro-eugenio.png';
+import React from 'react';
+import { MessageCircle } from 'lucide-react';
+
+// Bolinha azul: link direto para o WhatsApp pessoal do fundador (21 96752-0706)
+const FOUNDER_WHATSAPP = '5521967520706';
+const DEFAULT_MESSAGE = encodeURIComponent(
+  'Olá! Vim pelo site da AMZ Ofertas e gostaria de falar com você.'
+);
 
 interface Message {
   id: string;
