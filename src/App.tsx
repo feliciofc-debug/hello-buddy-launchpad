@@ -94,6 +94,7 @@ import PayIpad from "./pages/pay/PayIpad";
 import PayAdmin from "./pages/pay/PayAdmin";
 import PayAdminNovo from "./pages/pay/PayAdminNovo";
 import PayAdminCliente from "./pages/pay/PayAdminCliente";
+import PayAdminWuzapi from "./pages/pay/PayAdminWuzapi";
 
 // Páginas Painel Suporte
 import PainelLogin from "./pages/painel/PainelLogin";
@@ -205,6 +206,7 @@ const App = () => (
             <Route path="/pay/admin" element={<PayAdmin />} />
             <Route path="/pay/admin/novo" element={<PayAdminNovo />} />
             <Route path="/pay/admin/cliente/:id" element={<PayAdminCliente />} />
+            <Route path="/pay/admin/wuzapi" element={<PayAdminWuzapi />} />
 
             {/* Painel Suporte Atom Brasil */}
             <Route path="/painel" element={<PainelLogin />} />

@@ -72,6 +72,7 @@ export default function PayAdmin() {
         <nav className="flex gap-4 text-sm items-center">
           <button onClick={() => navigate('/pay/admin')} className="text-sky-400 hover:underline">Dashboard</button>
           <button onClick={() => navigate('/pay/admin/novo')} className="text-sky-400 hover:underline">Novo cliente</button>
+          <button onClick={() => navigate('/pay/admin/wuzapi')} className="text-emerald-400 hover:underline">📱 WhatsApp Pietro</button>
           <button onClick={() => navigate('/pay')} className="text-sky-400 hover:underline">iPad PIX</button>
           <button onClick={logout} className="text-red-400 hover:underline">Sair</button>
         </nav>
