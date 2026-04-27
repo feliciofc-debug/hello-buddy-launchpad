@@ -114,14 +114,11 @@ const FooterOptIn = () => {
       setWhatsapp('');
       setAceite(false);
 
-      // Redirecionar para WhatsApp com mensagem pré-preenchida (funil inbound)
-      const mensagemWhatsApp = encodeURIComponent('Oi Sophia, tudo bem? Vim pelo site e quero saber mais sobre desenvolvimento profissional 😊');
-      const waLink = `https://wa.me/5521995379550?text=${mensagemWhatsApp}`;
-      
-      // Pequeno delay para o toast aparecer antes do redirect
-      setTimeout(() => {
-        window.open(waLink, '_blank');
-      }, 800);
+      // ────────────────────────────────────────────────────────────────
+      // Redirect WhatsApp DESATIVADO em 27/04/2026.
+      // Número 5521995379550 reservado p/ Pietro Cobrança (Wuzapi).
+      // Reativar com número Meta WhatsApp Cloud quando aprovado.
+      // ────────────────────────────────────────────────────────────────
 
     } catch (error: any) {
       console.error('Erro ao cadastrar:', error);
