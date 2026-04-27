@@ -321,8 +321,10 @@ function validarCaption(
   }
 
   // CAMADA 6: PROIBIDO menção a preço (cifras, R$, "X reais", padrão "99,90")
+  // Sanitiza primeiro pra não colidir com estatísticas legítimas do estilo Dado
+  const captionParaCheckPreco = sanitizarParaCheckPreco(caption)
   for (const { name, re } of PRECO_REGEXES) {
-    const match = caption.match(re)
+    const match = captionParaCheckPreco.match(re)
     if (match) {
       return {
         ok: false,
