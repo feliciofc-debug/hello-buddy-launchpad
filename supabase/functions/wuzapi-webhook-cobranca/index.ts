@@ -441,7 +441,7 @@ serve(async (req) => {
     // System prompt do cobrador
     const systemPrompt = buildCobradorPrompt(
       customer?.nome || customer?.name || null,
-      subscription?.amount ?? customer?.payment_link ? Number(subscription?.amount || 0) : null,
+      subscription?.amount != null ? Number(subscription.amount) : null,
       subscription?.dia_vencimento ?? null,
       customer?.payment_link || null,
       subscription?.status || customer?.status || null,
