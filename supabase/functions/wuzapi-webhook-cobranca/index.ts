@@ -241,8 +241,48 @@ serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    console.log("📨 [COB-WEBHOOK] Recebido:", JSON.stringify(body).substring(0, 1500));
+    // Parser robusto: WuzAPI 8082 envia form-urlencoded (instanceName=...&data={...})
+    // Aceita também JSON puro e text/plain com JSON dentro.
+    const rawText = await req.text();
+    let body: any = null;
+    const ct = (req.headers.get("content-type") || "").toLowerCase();
+
+    const tryParseJson = (s: string) => {
+      try { return JSON.parse(s); } catch { return null; }
+    };
+
+    if (ct.includes("application/json")) {
+      body = tryParseJson(rawText);
+    } else if (ct.includes("application/x-www-form-urlencoded")) {
+      const params = new URLSearchParams(rawText);
+      body = {};
+      for (const [k, v] of params.entries()) {
+        const parsed = tryParseJson(v);
+        body[k] = parsed !== null ? parsed : v;
+      }
+      // Caso comum WuzAPI: { instanceName, data: {...} } -> mantém data como envelope
+    } else {
+      // Tenta JSON puro; se falhar, tenta urlencoded
+      body = tryParseJson(rawText);
+      if (!body && rawText.includes("=")) {
+        const params = new URLSearchParams(rawText);
+        body = {};
+        for (const [k, v] of params.entries()) {
+          const parsed = tryParseJson(v);
+          body[k] = parsed !== null ? parsed : v;
+        }
+      }
+    }
+
+    if (!body) {
+      console.warn("⚠️ [COB-WEBHOOK] Body não-parseável:", rawText.substring(0, 300));
+      return new Response(
+        JSON.stringify({ success: true, ignored: true, reason: "unparseable_body" }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log("📨 [COB-WEBHOOK] Recebido (ct=" + ct + "):", JSON.stringify(body).substring(0, 1500));
 
     const envelope = body?.data || body;
     const eventType = envelope?.type || envelope?.event?.type || "";
@@ -380,7 +420,7 @@ serve(async (req) => {
     // Anti-loop
     const LOOP_WINDOW_MIN = 3;
     const LOOP_MAX = 6;
-    const COOLDOWN_SEC = 30;
+    const COOLDOWN_SEC = 5; // ambiente de teste (era 30s)
     const loopCutoff = new Date(Date.now() - LOOP_WINDOW_MIN * 60 * 1000).toISOString();
     const { count: recent } = await supabase
       .from("cobranca_conversas")
