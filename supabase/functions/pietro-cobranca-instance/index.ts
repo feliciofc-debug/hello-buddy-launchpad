@@ -81,17 +81,30 @@ serve(async (req) => {
     );
 
     // 1. Auth: billing_token do /pay/admin OU usuário autenticado da lista admin
-    const billingToken = req.headers.get("x-billing-token") || "";
-    const billingOk = billingToken ? await verifyBillingToken(billingToken) : false;
+    const billingToken = (req.headers.get("x-billing-token") || "").trim();
+    const billingCheck = billingToken
+      ? await verifyBillingToken(billingToken)
+      : { ok: false, reason: "absent" };
     const userEmail = await getBearerUserEmail(req, supabaseUrl);
     const emailOk = !!userEmail && ALLOWED_ADMIN_EMAILS.includes(userEmail);
 
-    if (!billingOk && !emailOk) {
-      console.log("[pietro-cobranca-instance] acesso negado:", userEmail || "sem-email", "billing_token:", billingToken ? "invalido" : "ausente");
+    console.log(
+      "[pietro-cobranca-instance] auth",
+      JSON.stringify({
+        email: userEmail || "sem-email",
+        emailOk,
+        billingOk: billingCheck.ok,
+        billingReason: billingCheck.reason,
+      }),
+    );
+
+    if (!billingCheck.ok && !emailOk) {
+      console.log("[pietro-cobranca-instance] acesso negado:", userEmail || "sem-email", "billing_token:", billingCheck.reason);
       return json({
         success: false,
         error: "Forbidden",
         email_recebido: userEmail,
+        billing_token_status: billingCheck.reason,
       }, 403);
     }
 
