@@ -40,9 +40,9 @@ export default function TestarPietroCobrancaModal({ open, onClose }: Props) {
   const preview = useMemo(() => {
     const tpl = TEMPLATES[tipo] || "";
     return tpl
-      .replaceAll("{nome}", nome || "amigo(a)")
-      .replaceAll("{valor}", fmtValor(Number(valor) || 0))
-      .replaceAll("{data}", fmtData(dataVenc));
+      .replace(/\{nome\}/g, nome || "amigo(a)")
+      .replace(/\{valor\}/g, fmtValor(Number(valor) || 0))
+      .replace(/\{data\}/g, fmtData(dataVenc));
   }, [tipo, nome, valor, dataVenc]);
 
   if (!open) return null;
