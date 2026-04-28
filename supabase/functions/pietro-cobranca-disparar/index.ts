@@ -165,25 +165,33 @@ serve(async (req) => {
 
     if (body?.cliente_id) {
       clienteId = body.cliente_id;
+      // Busca cliente em billing_customers + última subscription
       const { data: cli, error } = await supabase
-        .from("pay_clients")
-        .select("*")
+        .from("billing_customers")
+        .select("id, name, responsible_name, phone, payment_link")
         .eq("id", clienteId)
         .maybeSingle();
       if (error || !cli) {
         return json({ success: false, error: `cliente não encontrado: ${error?.message || "null"}` }, 404);
       }
-      nome = cli.responsible_name || cli.razao_social || cli.nome || "cliente";
-      whatsappRaw = cli.whatsapp || cli.telefone || "";
-      valor = Number(cli.amount ?? 0);
-      // tenta usar next_billing_date, senão monta do dia_vencimento no mês atual
-      if (cli.next_billing_date) {
-        dataVenc = String(cli.next_billing_date).slice(0, 10);
-      } else if (cli.dia_vencimento) {
+      const { data: sub } = await supabase
+        .from("billing_subscriptions")
+        .select("amount, dia_vencimento, next_billing_date")
+        .eq("customer_id", clienteId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      nome = cli.responsible_name || cli.name || "cliente";
+      whatsappRaw = cli.phone || "";
+      valor = Number(sub?.amount ?? 0);
+      if (sub?.next_billing_date) {
+        dataVenc = String(sub.next_billing_date).slice(0, 10);
+      } else if (sub?.dia_vencimento) {
         const now = new Date();
         const yyyy = now.getUTCFullYear();
         const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
-        const dd = String(cli.dia_vencimento).padStart(2, "0");
+        const dd = String(sub.dia_vencimento).padStart(2, "0");
         dataVenc = `${yyyy}-${mm}-${dd}`;
       } else {
         dataVenc = new Date().toISOString().slice(0, 10);

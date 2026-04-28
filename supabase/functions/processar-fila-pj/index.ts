@@ -481,7 +481,18 @@ serve(async (req) => {
       // Buscar URL real da instância WuzAPI para este usuário (IP:Porta)
       let wuzapiUrl = CONFIG.WUZAPI_URL;
       let mappedToken: string | null = null;
-      if (item.user_id) {
+
+      // PRIORIDADE 1: wuzapi_url já gravado no item da fila (cobranca, etc.)
+      if (item.wuzapi_url) {
+        wuzapiUrl = String(item.wuzapi_url).replace(/\/+$/, "");
+        const { data: inst } = await supabase
+          .from("wuzapi_instances")
+          .select("wuzapi_token")
+          .eq("wuzapi_url", item.wuzapi_url)
+          .maybeSingle();
+        if (inst?.wuzapi_token) mappedToken = inst.wuzapi_token;
+        console.log(`📡 [PJ-FILA] Usando wuzapi_url da fila: ${wuzapiUrl}`);
+      } else if (item.user_id) {
         const { data: config } = await supabase
           .from("pj_clientes_config")
           .select("wuzapi_port")
