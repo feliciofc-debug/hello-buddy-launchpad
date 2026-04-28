@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { formatDateBR } from '@/lib/dateBR';
+import TestarPietroCobrancaModal from '@/components/TestarPietroCobrancaModal';
 
 export default function PayAdmin() {
   const [stats, setStats] = useState<any>(null);
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('todos');
+  const [testarPietroOpen, setTestarPietroOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -73,10 +75,13 @@ export default function PayAdmin() {
           <button onClick={() => navigate('/pay/admin')} className="text-sky-400 hover:underline">Dashboard</button>
           <button onClick={() => navigate('/pay/admin/novo')} className="text-sky-400 hover:underline">Novo cliente</button>
           <button onClick={() => navigate('/pay/admin/wuzapi')} className="text-emerald-400 hover:underline">📱 WhatsApp Pietro</button>
+          <button onClick={() => setTestarPietroOpen(true)} className="text-amber-400 hover:underline">🧪 Testar Pietro</button>
           <button onClick={() => navigate('/pay')} className="text-sky-400 hover:underline">iPad PIX</button>
           <button onClick={logout} className="text-red-400 hover:underline">Sair</button>
         </nav>
       </header>
+
+      <TestarPietroCobrancaModal open={testarPietroOpen} onClose={() => setTestarPietroOpen(false)} />
 
       <div className="max-w-[1200px] mx-auto p-6">
         {/* Dashboard Cards */}

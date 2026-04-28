@@ -2101,6 +2101,48 @@ export type Database = {
           },
         ]
       }
+      cobranca_envios_log: {
+        Row: {
+          cliente_id: string | null
+          created_at: string
+          enviado_em: string
+          erro_detalhe: string | null
+          id: string
+          mensagem_enviada: string
+          status: string
+          tipo: string
+          updated_at: string
+          whatsapp_destino: string
+          wuzapi_message_id: string | null
+        }
+        Insert: {
+          cliente_id?: string | null
+          created_at?: string
+          enviado_em?: string
+          erro_detalhe?: string | null
+          id?: string
+          mensagem_enviada: string
+          status?: string
+          tipo: string
+          updated_at?: string
+          whatsapp_destino: string
+          wuzapi_message_id?: string | null
+        }
+        Update: {
+          cliente_id?: string | null
+          created_at?: string
+          enviado_em?: string
+          erro_detalhe?: string | null
+          id?: string
+          mensagem_enviada?: string
+          status?: string
+          tipo?: string
+          updated_at?: string
+          whatsapp_destino?: string
+          wuzapi_message_id?: string | null
+        }
+        Relationships: []
+      }
       comissoes: {
         Row: {
           afiliado_id: string | null
