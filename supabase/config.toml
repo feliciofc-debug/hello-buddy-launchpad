@@ -314,3 +314,7 @@ verify_jwt = false
 [functions.processar-videos-agendados]
 verify_jwt = false
 
+
+[functions.pietro-cobranca-cron]
+verify_jwt = false
+
