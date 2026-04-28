@@ -102,14 +102,30 @@ export default function PayAdminWuzapi() {
   }, [authChecked, instance?.is_connected, fetchStatus]);
 
   const gerarQR = async () => {
+    console.log("[gerarQR] === CLIQUE detectado ===");
     setLoading(true);
     setError(null);
     setInfo(null);
+
     try {
-      const { data, error: err } = await supabase.functions.invoke("pietro-cobranca-instance", {
-        body: { action: "gerar-qr" },
-        headers: getBillingHeaders(),
-      });
+      const headers = getBillingHeaders();
+      console.log("[gerarQR] headers:", headers);
+      console.log("[gerarQR] supabase client:", supabase);
+      console.log("[gerarQR] chamando invoke...");
+
+      const result = await Promise.race([
+        supabase.functions.invoke("pietro-cobranca-instance", {
+          body: { action: "gerar-qr" },
+          headers,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("TIMEOUT 15s")), 15000)
+        )
+      ]) as any;
+
+      const { data, error: err } = result;
+      console.log("[gerarQR] retorno:", { data, err });
+
       if (err) throw err;
       if (data?.already_connected) {
         setInfo("WhatsApp já está conectado");
@@ -126,8 +142,10 @@ export default function PayAdminWuzapi() {
         setError(data?.error || "Não foi possível gerar QR");
       }
     } catch (e: any) {
+      console.error("[gerarQR] EXCEPTION caught:", e);
       setError(e?.message || "Erro ao gerar QR");
     } finally {
+      console.log("[gerarQR] === finally executado ===");
       setLoading(false);
     }
   };
