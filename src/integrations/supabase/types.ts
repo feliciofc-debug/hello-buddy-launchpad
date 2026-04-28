@@ -2104,6 +2104,33 @@ export type Database = {
           },
         ]
       }
+      cobranca_conversas: {
+        Row: {
+          content: string
+          created_at: string
+          customer_id: string | null
+          id: string
+          phone: string
+          role: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          phone: string
+          role: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          phone?: string
+          role?: string
+        }
+        Relationships: []
+      }
       cobranca_envios_log: {
         Row: {
           cliente_id: string | null
@@ -2143,6 +2170,24 @@ export type Database = {
           updated_at?: string
           whatsapp_destino?: string
           wuzapi_message_id?: string | null
+        }
+        Relationships: []
+      }
+      cobranca_webhook_dedup: {
+        Row: {
+          created_at: string
+          id: string
+          message_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message_id?: string
         }
         Relationships: []
       }
