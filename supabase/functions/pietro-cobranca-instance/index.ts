@@ -25,17 +25,33 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function verifyBillingToken(token: string): Promise<boolean> {
-  const adminPassword = Deno.env.get("BILLING_ADMIN_PASSWORD");
-  if (!adminPassword) return false;
-
+async function sha256Hex(value: string): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(`${adminPassword}:${Math.floor(Date.now() / (1000 * 60 * 60 * 24))}`);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(value));
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const expected = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
-  return token === expected;
+async function verifyBillingToken(token: string): Promise<{ ok: boolean; reason: string }> {
+  const adminPassword = Deno.env.get("BILLING_ADMIN_PASSWORD");
+  if (!adminPassword) return { ok: false, reason: "missing-secret" };
+
+  const currentDay = Math.floor(Date.now() / (1000 * 60 * 60 * 24));
+  const acceptedDays = [currentDay, currentDay - 1, currentDay + 1];
+  const acceptedHashes = await Promise.all(
+    acceptedDays.map((day) => sha256Hex(`${adminPassword}:${day}`)),
+  );
+
+  if (acceptedHashes.includes(token)) {
+    return { ok: true, reason: "billing-daily-hash" };
+  }
+
+  // Compatibilidade com sessões antigas do painel /pay que possam ter salvo a senha diretamente.
+  if (token === adminPassword) {
+    return { ok: true, reason: "billing-legacy-password" };
+  }
+
+  return { ok: false, reason: `no-match-len-${token.length}` };
 }
 
 async function getBearerUserEmail(req: Request, supabaseUrl: string): Promise<string | null> {
@@ -65,17 +81,30 @@ serve(async (req) => {
     );
 
     // 1. Auth: billing_token do /pay/admin OU usuário autenticado da lista admin
-    const billingToken = req.headers.get("x-billing-token") || "";
-    const billingOk = billingToken ? await verifyBillingToken(billingToken) : false;
+    const billingToken = (req.headers.get("x-billing-token") || "").trim();
+    const billingCheck = billingToken
+      ? await verifyBillingToken(billingToken)
+      : { ok: false, reason: "absent" };
     const userEmail = await getBearerUserEmail(req, supabaseUrl);
     const emailOk = !!userEmail && ALLOWED_ADMIN_EMAILS.includes(userEmail);
 
-    if (!billingOk && !emailOk) {
-      console.log("[pietro-cobranca-instance] acesso negado:", userEmail || "sem-email", "billing_token:", billingToken ? "invalido" : "ausente");
+    console.log(
+      "[pietro-cobranca-instance] auth",
+      JSON.stringify({
+        email: userEmail || "sem-email",
+        emailOk,
+        billingOk: billingCheck.ok,
+        billingReason: billingCheck.reason,
+      }),
+    );
+
+    if (!billingCheck.ok && !emailOk) {
+      console.log("[pietro-cobranca-instance] acesso negado:", userEmail || "sem-email", "billing_token:", billingCheck.reason);
       return json({
         success: false,
         error: "Forbidden",
         email_recebido: userEmail,
+        billing_token_status: billingCheck.reason,
       }, 403);
     }
 
