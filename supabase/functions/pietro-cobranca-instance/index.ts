@@ -1,6 +1,6 @@
 // Edge Function: pietro-cobranca-instance
 // Escopo restrito: instância WuzAPI 'pietro-cobranca' (porta 8082)
-// Acesso: somente admin (expo@atombrasildigital.com)
+// Acesso: somente fundador/admin autorizado
 // Actions: status | gerar-qr | desconectar
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -12,6 +12,11 @@ const corsHeaders = {
 };
 
 const INSTANCE_NAME = "pietro-cobranca";
+const ALLOWED_ADMIN_EMAILS = [
+  "expo@atombrasildigital.com",
+  "felicio@atombrasildigital.com",
+  "feliciofc@gmail.com",
+];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -20,23 +25,58 @@ function json(body: unknown, status = 200) {
   });
 }
 
+async function verifyBillingToken(token: string): Promise<boolean> {
+  const adminPassword = Deno.env.get("BILLING_ADMIN_PASSWORD");
+  if (!adminPassword) return false;
+
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${adminPassword}:${Math.floor(Date.now() / (1000 * 60 * 60 * 24))}`);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const expected = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  return token === expected;
+}
+
+async function getBearerUserEmail(req: Request, supabaseUrl: string): Promise<string | null> {
+  const authBearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  if (!authBearer) return null;
+
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!anonKey) return null;
+
+  const authClient = createClient(supabaseUrl, anonKey);
+  const { data, error } = await authClient.auth.getUser(authBearer);
+  if (error || !data?.user?.email) return null;
+
+  return data.user.email.toLowerCase();
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
+      supabaseUrl,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // 1. Auth via billing_token (mesmo padrão do /pay/admin)
-    const billingToken = req.headers.get("x-billing-token");
-    const expected = Deno.env.get("BILLING_ADMIN_PASSWORD");
-    if (!billingToken || !expected || billingToken !== expected) {
-      console.warn("[pietro-cobranca] billing_token inválido");
-      return json({ success: false, error: "Acesso restrito ao administrador" }, 403);
+    // 1. Auth: billing_token do /pay/admin OU usuário autenticado da lista admin
+    const billingToken = req.headers.get("x-billing-token") || "";
+    const billingOk = billingToken ? await verifyBillingToken(billingToken) : false;
+    const userEmail = await getBearerUserEmail(req, supabaseUrl);
+    const emailOk = !!userEmail && ALLOWED_ADMIN_EMAILS.includes(userEmail);
+
+    if (!billingOk && !emailOk) {
+      console.log("[pietro-cobranca-instance] acesso negado:", userEmail || "sem-email", "billing_token:", billingToken ? "invalido" : "ausente");
+      return json({
+        success: false,
+        error: "Forbidden",
+        email_recebido: userEmail,
+      }, 403);
     }
 
     // 3. Parse body
