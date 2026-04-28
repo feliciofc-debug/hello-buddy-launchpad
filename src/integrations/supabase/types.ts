@@ -1171,6 +1171,7 @@ export type Database = {
           inscricao_estadual: string | null
           inscricao_municipal: string | null
           name: string
+          payment_link: string | null
           phone: string | null
           platform_login: string | null
           regime_tributario: string | null
@@ -1189,6 +1190,7 @@ export type Database = {
           inscricao_estadual?: string | null
           inscricao_municipal?: string | null
           name: string
+          payment_link?: string | null
           phone?: string | null
           platform_login?: string | null
           regime_tributario?: string | null
@@ -1207,6 +1209,7 @@ export type Database = {
           inscricao_estadual?: string | null
           inscricao_municipal?: string | null
           name?: string
+          payment_link?: string | null
           phone?: string | null
           platform_login?: string | null
           regime_tributario?: string | null

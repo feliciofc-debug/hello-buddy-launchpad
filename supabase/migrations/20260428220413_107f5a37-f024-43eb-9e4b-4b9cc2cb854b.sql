@@ -1,0 +1,1 @@
+ALTER TABLE public.billing_customers ADD COLUMN IF NOT EXISTS payment_link text;
