@@ -244,6 +244,7 @@ serve(async (req) => {
     // Parser robusto: WuzAPI 8082 envia form-urlencoded (instanceName=...&data={...})
     // Aceita também JSON puro e text/plain com JSON dentro.
     const rawText = await req.text();
+    console.log("📦 [COB-WEBHOOK] Raw body (ct=" + ct + "):", rawText.substring(0, 3000));
     let body: any = null;
     const ct = (req.headers.get("content-type") || "").toLowerCase();
 
@@ -284,7 +285,7 @@ serve(async (req) => {
 
     console.log("📨 [COB-WEBHOOK] Recebido (ct=" + ct + "):", JSON.stringify(body).substring(0, 1500));
 
-    const envelope = body?.data || body;
+    const envelope = body?.data || body?.jsonData || body;
     const eventType = envelope?.type || envelope?.event?.type || "";
     const messageData = envelope?.event || envelope;
 
