@@ -9,6 +9,7 @@ export default function PayAdmin() {
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('todos');
+  const [testarPietroOpen, setTestarPietroOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
