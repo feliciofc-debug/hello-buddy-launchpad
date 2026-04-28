@@ -187,7 +187,7 @@ serve(async (req) => {
     // ---------------- GERAR QR ----------------
     if (action === "gerar-qr") {
       try {
-        // Status primeiro
+        // 1. GET /session/status — se já logado, retorna conectado
         const sResp = await fetch(`${wuzapiUrl}/session/status`, {
           headers: { Token: wuzapiToken },
         });
@@ -215,11 +215,55 @@ serve(async (req) => {
           });
         }
 
-        if (sData?.qrcode && sData.qrcode.length > 50) {
-          return json({ success: true, qrcode: sData.qrcode, message: "QR pronto" });
+        // 2. POST /session/connect com payload completo (Subscribe + Immediate)
+        //    Mesmo payload usado em criar-instancia-wuzapi-pj (L371-374)
+        const connectResp = await fetch(`${wuzapiUrl}/session/connect`, {
+          method: "POST",
+          headers: { Token: wuzapiToken, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            Subscribe: ["Message", "ReadReceipt", "ChatPresence", "Presence"],
+            Immediate: true,
+          }),
+        });
+        const connectRaw = await connectResp.json().catch(() => ({}));
+        console.log("[pietro-cobranca] connect response:", JSON.stringify(connectRaw));
+
+        // 3. Aguardar 2500ms — WuzAPI estabelece WebSocket e contacta WhatsApp
+        await new Promise((r) => setTimeout(r, 2500));
+
+        // 4. GET /session/status — re-checar qrcode inline
+        const s2Resp = await fetch(`${wuzapiUrl}/session/status`, {
+          headers: { Token: wuzapiToken },
+        });
+        const s2Raw = await s2Resp.json();
+        const s2Data = s2Raw?.data || s2Raw;
+
+        if (s2Data?.loggedIn === true) {
+          const phone = s2Data?.jid ? String(s2Data.jid).split(":")[0] : null;
+          await supabase
+            .from("wuzapi_instances")
+            .update({
+              is_connected: true,
+              phone_number: phone,
+              connected_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", instance.id);
+
+          return json({
+            success: true,
+            already_connected: true,
+            connected: true,
+            phone_number: phone,
+            message: "WhatsApp conectado durante o connect",
+          });
         }
 
-        // Tenta /session/qr direto
+        if (s2Data?.qrcode && s2Data.qrcode.length > 50) {
+          return json({ success: true, qrcode: s2Data.qrcode, message: "QR pronto (status)" });
+        }
+
+        // 5. GET /session/qr — se ainda não veio no status
         const qResp = await fetch(`${wuzapiUrl}/session/qr`, {
           headers: { Token: wuzapiToken },
         });
@@ -229,23 +273,8 @@ serve(async (req) => {
           return json({ success: true, qrcode: qrCode, message: "QR gerado" });
         }
 
-        // Força /session/connect e tenta de novo
-        await fetch(`${wuzapiUrl}/session/connect`, {
-          method: "POST",
-          headers: { Token: wuzapiToken, "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        await new Promise((r) => setTimeout(r, 1500));
-
-        const q2 = await fetch(`${wuzapiUrl}/session/qr`, {
-          headers: { Token: wuzapiToken },
-        });
-        const q2Raw = await q2.json();
-        const qr2 = q2Raw?.data?.qrcode || q2Raw?.qrcode || q2Raw?.data?.QRCode || null;
-        if (qr2 && qr2.length > 50) {
-          return json({ success: true, qrcode: qr2, message: "QR gerado (retry)" });
-        }
-
+        // 6. Ainda vazio → frontend faz polling
+        console.log("[pietro-cobranca] QR ainda vazio após connect+wait, aguardando próximo poll");
         return json({
           success: false,
           retry: true,
