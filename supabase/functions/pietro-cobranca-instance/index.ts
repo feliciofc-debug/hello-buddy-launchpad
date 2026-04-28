@@ -1,6 +1,6 @@
 // Edge Function: pietro-cobranca-instance
 // Escopo restrito: instância WuzAPI 'pietro-cobranca' (porta 8082)
-// Acesso: somente admin (expo@atombrasildigital.com)
+// Acesso: somente fundador/admin autorizado
 // Actions: status | gerar-qr | desconectar
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -12,11 +12,22 @@ const corsHeaders = {
 };
 
 const INSTANCE_NAME = "pietro-cobranca";
-const DEFAULT_WUZAPI_URL = "http://api2.amzofertas.com.br:8082";
+const ALLOWED_ADMIN_EMAILS = [
+  "expo@atombrasildigital.com",
+  "felicio@atombrasildigital.com",
+  "feliciofc@gmail.com",
+];
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 async function verifyBillingToken(token: string): Promise<boolean> {
   const adminPassword = Deno.env.get("BILLING_ADMIN_PASSWORD");
-  if (!adminPassword || !token) return false;
+  if (!adminPassword) return false;
 
   const encoder = new TextEncoder();
   const data = encoder.encode(`${adminPassword}:${Math.floor(Date.now() / (1000 * 60 * 60 * 24))}`);
@@ -27,125 +38,18 @@ async function verifyBillingToken(token: string): Promise<boolean> {
   return token === expected;
 }
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
+async function getBearerUserEmail(req: Request, supabaseUrl: string): Promise<string | null> {
+  const authBearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") || "";
+  if (!authBearer) return null;
 
-function extractQr(payload: any): string | null {
-  return payload?.qrcode || payload?.QRCode || payload?.qr || payload?.code ||
-    payload?.data?.qrcode || payload?.data?.QRCode || payload?.data?.qr || payload?.data?.code ||
-    payload?.result?.qrcode || payload?.result?.QRCode || payload?.result?.qr || payload?.result?.code || null;
-}
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+  if (!anonKey) return null;
 
-function normalizeEvents(events: unknown): string[] {
-  if (Array.isArray(events)) return events.map(String).filter(Boolean);
-  if (typeof events === "string" && events.trim()) return events.split(",").map((e) => e.trim()).filter(Boolean);
-  return [];
-}
+  const authClient = createClient(supabaseUrl, anonKey);
+  const { data, error } = await authClient.auth.getUser(authBearer);
+  if (error || !data?.user?.email) return null;
 
-function generateSessionToken() {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function redactToken(value: unknown) {
-  if (!value) return value;
-  const token = String(value);
-  return `${token.slice(0, 8)}...`;
-}
-
-function compactWuzapiBody(body: any) {
-  const data = body?.data && typeof body.data === "object" ? body.data : body;
-  return {
-    code: body?.code,
-    success: body?.success,
-    error: body?.error,
-    details: body?.details || data?.details || data?.Details,
-    name: data?.name,
-    id: data?.id,
-    loggedIn: data?.loggedIn ?? data?.LoggedIn,
-    connected: data?.connected ?? data?.Connected,
-    jid: data?.jid ?? data?.Jid,
-    qrcode_len: (extractQr(body) || "").length,
-    token: redactToken(data?.token),
-  };
-}
-
-async function fetchJson(url: string, token: string, init: RequestInit = {}) {
-  const response = await fetch(url, {
-    ...init,
-    headers: { Token: token, "Content-Type": "application/json", ...(init.headers || {}) },
-  });
-  const text = await response.text();
-  try {
-    return { ok: response.ok, status: response.status, json: text ? JSON.parse(text) : null };
-  } catch {
-    return { ok: response.ok, status: response.status, json: { rawText: text } };
-  }
-}
-
-async function fetchAdminJson(url: string, adminToken: string, init: RequestInit = {}) {
-  const response = await fetch(url, {
-    ...init,
-    headers: { Authorization: adminToken, "Content-Type": "application/json", ...(init.headers || {}) },
-  });
-  const text = await response.text();
-  try {
-    return { ok: response.ok, status: response.status, json: text ? JSON.parse(text) : null };
-  } catch {
-    return { ok: response.ok, status: response.status, json: { rawText: text } };
-  }
-}
-
-async function ensureWuzapiSession(supabase: any, instance: any, wuzapiUrl: string, currentToken: string | null) {
-  const adminToken = Deno.env.get("CONTABO_WUZAPI_ADMIN_TOKEN");
-  if (!adminToken) return { token: currentToken, created: false, error: "CONTABO_WUZAPI_ADMIN_TOKEN não configurado" };
-
-  const users = await fetchAdminJson(`${wuzapiUrl}/admin/users`, adminToken, { method: "GET" });
-  console.log("[pietro-cobranca] GET /admin/users", users.status, compactWuzapiBody(users.json));
-  const list = Array.isArray(users.json?.data) ? users.json.data : [];
-  const physical = list.find((u: any) => u?.name === INSTANCE_NAME);
-
-  if (physical?.token) {
-    if (physical.token !== currentToken) {
-      await supabase.from("wuzapi_instances").update({
-        wuzapi_token: physical.token,
-        wuzapi_url: wuzapiUrl,
-        updated_at: new Date().toISOString(),
-      }).eq("id", instance.id);
-    }
-    return { token: physical.token, created: false, error: null };
-  }
-
-  if (physical?.id) {
-    const deleted = await fetchAdminJson(`${wuzapiUrl}/admin/users/${physical.id}`, adminToken, { method: "DELETE" });
-    console.log("[pietro-cobranca] DELETE sessão sem token", deleted.status, compactWuzapiBody(deleted.json));
-  }
-
-  const newToken = generateSessionToken();
-  const created = await fetchAdminJson(`${wuzapiUrl}/admin/users`, adminToken, {
-    method: "POST",
-    body: JSON.stringify({ name: INSTANCE_NAME, token: newToken, events: "All", webhook: "" }),
-  });
-  console.log("[pietro-cobranca] POST /admin/users", created.status, compactWuzapiBody(created.json));
-
-  const createdToken = created.json?.data?.token || created.json?.token || newToken;
-  if (!created.ok || !createdToken) return { token: currentToken, created: false, error: "Falha ao criar sessão no WuzAPI" };
-
-  await supabase.from("wuzapi_instances").update({
-    wuzapi_token: createdToken,
-    wuzapi_url: wuzapiUrl,
-    is_connected: false,
-    phone_number: null,
-    connected_at: null,
-    updated_at: new Date().toISOString(),
-  }).eq("id", instance.id);
-
-  return { token: createdToken, created: true, error: null };
+  return data.user.email.toLowerCase();
 }
 
 serve(async (req) => {
@@ -154,17 +58,25 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
+      supabaseUrl,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // 1. Auth via billing_token (mesmo padrão do /pay/admin)
-    const billingToken = req.headers.get("x-billing-token");
-    const isAdmin = await verifyBillingToken(billingToken || "");
-    if (!isAdmin) {
-      console.warn("[pietro-cobranca] billing_token inválido");
-      return json({ success: false, error: "Acesso restrito ao administrador" }, 403);
+    // 1. Auth: billing_token do /pay/admin OU usuário autenticado da lista admin
+    const billingToken = req.headers.get("x-billing-token") || "";
+    const billingOk = billingToken ? await verifyBillingToken(billingToken) : false;
+    const userEmail = await getBearerUserEmail(req, supabaseUrl);
+    const emailOk = !!userEmail && ALLOWED_ADMIN_EMAILS.includes(userEmail);
+
+    if (!billingOk && !emailOk) {
+      console.log("[pietro-cobranca-instance] acesso negado:", userEmail || "sem-email", "billing_token:", billingToken ? "invalido" : "ausente");
+      return json({
+        success: false,
+        error: "Forbidden",
+        email_recebido: userEmail,
+      }, 403);
     }
 
     // 3. Parse body
@@ -188,12 +100,12 @@ serve(async (req) => {
       return json({ success: false, error: "Instância pietro-cobranca não cadastrada" }, 404);
     }
 
-    const wuzapiUrl: string = instance.wuzapi_url ? String(instance.wuzapi_url).replace(/\/$/, "") : DEFAULT_WUZAPI_URL;
-    const wuzapiToken: string | null = instance.wuzapi_token || null;
-    if (!wuzapiUrl) {
+    const wuzapiUrl: string | null = instance.wuzapi_url;
+    const wuzapiToken: string | null = instance.wuzapi_token;
+    if (!wuzapiUrl || !wuzapiToken) {
       return json({
         success: false,
-        error: "Instância sem wuzapi_url configurado",
+        error: "Instância sem wuzapi_url/token configurados",
         instance_name: instance.instance_name,
         port: instance.port,
       }, 500);
@@ -204,24 +116,10 @@ serve(async (req) => {
     // ---------------- STATUS ----------------
     if (action === "status") {
       try {
-        let activeToken = wuzapiToken;
-        if (!activeToken) {
-          const ensured = await ensureWuzapiSession(supabase, instance, wuzapiUrl, activeToken);
-          if (ensured.error || !ensured.token) return json({ success: false, connected: false, error: ensured.error }, 500);
-          activeToken = ensured.token;
-        }
-
-        let statusResponse = await fetchJson(`${wuzapiUrl}/session/status`, activeToken, { method: "GET" });
-        console.log("[pietro-cobranca] GET /session/status", statusResponse.status, compactWuzapiBody(statusResponse.json));
-        if (statusResponse.status === 401 || statusResponse.json?.error === "unauthorized" || statusResponse.json?.error === "no session") {
-          const ensured = await ensureWuzapiSession(supabase, instance, wuzapiUrl, activeToken);
-          if (ensured.error || !ensured.token) return json({ success: false, connected: false, error: ensured.error }, 500);
-          activeToken = ensured.token;
-          statusResponse = await fetchJson(`${wuzapiUrl}/session/status`, activeToken, { method: "GET" });
-          console.log("[pietro-cobranca] GET /session/status retry", statusResponse.status, compactWuzapiBody(statusResponse.json));
-        }
-
-        const raw = statusResponse.json;
+        const r = await fetch(`${wuzapiUrl}/session/status`, {
+          headers: { Token: wuzapiToken },
+        });
+        const raw = await r.json();
         const data = raw?.data || raw;
         const isConnected = data?.loggedIn === true || data?.LoggedIn === true;
         const phoneNumber = data?.jid ? String(data.jid).split(":")[0] : (data?.PhoneNumber || null);
@@ -244,7 +142,7 @@ serve(async (req) => {
           phone_number: phoneNumber,
           instance_name: instance.instance_name,
           port: instance.port,
-          qrcode: extractQr(raw),
+          qrcode: data?.qrcode || null,
         });
       } catch (e) {
         console.error("[pietro-cobranca] erro status:", e);
@@ -260,18 +158,14 @@ serve(async (req) => {
     // ---------------- GERAR QR ----------------
     if (action === "gerar-qr") {
       try {
-        let activeToken = wuzapiToken;
-        const ensured = await ensureWuzapiSession(supabase, instance, wuzapiUrl, activeToken);
-        if (ensured.error || !ensured.token) return json({ success: false, error: ensured.error }, 500);
-        activeToken = ensured.token;
-
         // Status primeiro
-        const status = await fetchJson(`${wuzapiUrl}/session/status`, activeToken, { method: "GET" });
-        console.log("[pietro-cobranca] GET /session/status gerar-qr", status.status, compactWuzapiBody(status.json));
-        const sRaw = status.json;
+        const sResp = await fetch(`${wuzapiUrl}/session/status`, {
+          headers: { Token: wuzapiToken },
+        });
+        const sRaw = await sResp.json();
         const sData = sRaw?.data || sRaw;
 
-        if (sData?.loggedIn === true || sData?.LoggedIn === true) {
+        if (sData?.loggedIn === true) {
           const phone = sData?.jid ? String(sData.jid).split(":")[0] : null;
           await supabase
             .from("wuzapi_instances")
@@ -292,46 +186,41 @@ serve(async (req) => {
           });
         }
 
-        const statusQr = extractQr(sRaw);
-        if (statusQr && statusQr.length > 20) {
-          return json({ success: true, qrcode: statusQr, message: "QR pronto", raw: { status: sRaw } });
+        if (sData?.qrcode && sData.qrcode.length > 50) {
+          return json({ success: true, qrcode: sData.qrcode, message: "QR pronto" });
         }
 
-        // Força /session/connect e tenta buscar o QR por alguns segundos
-        const connect = await fetchJson(`${wuzapiUrl}/session/connect`, activeToken, {
-          method: "POST",
-          body: JSON.stringify({ Events: "All", Immediate: true }),
+        // Tenta /session/qr direto
+        const qResp = await fetch(`${wuzapiUrl}/session/qr`, {
+          headers: { Token: wuzapiToken },
         });
-        console.log("[pietro-cobranca] POST /session/connect", connect.status, compactWuzapiBody(connect.json));
-        const connectQr = extractQr(connect.json);
-        if (connectQr && connectQr.length > 20) {
-          return json({ success: true, qrcode: connectQr, message: "QR gerado", raw: { connect: connect.json } });
+        const qRaw = await qResp.json();
+        const qrCode = qRaw?.data?.qrcode || qRaw?.qrcode || qRaw?.data?.QRCode || null;
+        if (qrCode && qrCode.length > 50) {
+          return json({ success: true, qrcode: qrCode, message: "QR gerado" });
         }
 
-        let lastQrRaw: unknown = null;
-        for (let i = 0; i < 12; i++) {
-          await new Promise((r) => setTimeout(r, 1500));
-          const qrResponse = await fetchJson(`${wuzapiUrl}/session/qr`, activeToken, { method: "GET" });
-          lastQrRaw = qrResponse.json;
-          console.log("[pietro-cobranca] GET /session/qr", qrResponse.status, compactWuzapiBody(qrResponse.json));
-          const qrCode = extractQr(qrResponse.json);
-          if (qrCode && qrCode.length > 20) {
-            return json({ success: true, qrcode: qrCode, message: "QR gerado", raw: { connect: connect.json, qr: qrResponse.json } });
-          }
+        // Força /session/connect e tenta de novo
+        await fetch(`${wuzapiUrl}/session/connect`, {
+          method: "POST",
+          headers: { Token: wuzapiToken, "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        await new Promise((r) => setTimeout(r, 1500));
 
-          const statusResponse = await fetchJson(`${wuzapiUrl}/session/status`, activeToken, { method: "GET" });
-          console.log("[pietro-cobranca] GET /session/status qr-loop", statusResponse.status, compactWuzapiBody(statusResponse.json));
-          const statusQrRetry = extractQr(statusResponse.json);
-          if (statusQrRetry && statusQrRetry.length > 20) {
-            return json({ success: true, qrcode: statusQrRetry, message: "QR gerado via status", raw: { connect: connect.json, status: statusResponse.json } });
-          }
+        const q2 = await fetch(`${wuzapiUrl}/session/qr`, {
+          headers: { Token: wuzapiToken },
+        });
+        const q2Raw = await q2.json();
+        const qr2 = q2Raw?.data?.qrcode || q2Raw?.qrcode || q2Raw?.data?.QRCode || null;
+        if (qr2 && qr2.length > 50) {
+          return json({ success: true, qrcode: qr2, message: "QR gerado (retry)" });
         }
 
         return json({
           success: false,
           retry: true,
           error: "QR ainda não disponível, tente novamente em instantes",
-          raw: { last_qr: lastQrRaw },
         });
       } catch (e) {
         console.error("[pietro-cobranca] erro gerar-qr:", e);
