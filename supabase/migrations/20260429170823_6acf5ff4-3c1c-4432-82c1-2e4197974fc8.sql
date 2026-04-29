@@ -1,0 +1,1 @@
+UPDATE public.billing_customers SET payment_link = NULL WHERE id = 'b33dabb2-8faf-449f-89f5-94a30c9b2dfa';
