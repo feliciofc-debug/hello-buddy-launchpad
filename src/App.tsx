@@ -13,6 +13,7 @@ import Cadastro from "./pages/Cadastro";
 import CadastroAfiliado from "./pages/CadastroAfiliado";
 import Planos from "./pages/Planos";
 import TestPayment from "./pages/TestPayment";
+import PagarMensalidade from "./pages/PagarMensalidade";
 import NotFound from "./pages/NotFound";
 import ProductsPage from "./pages/ProductsPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
@@ -116,6 +117,7 @@ const App = () => (
             <Route path="/cadastro-afiliado" element={<CadastroAfiliado />} />
             <Route path="/planos" element={<Planos />} />
             <Route path="/test-payment" element={<TestPayment />} />
+            <Route path="/pagar/:subscriptionId" element={<PagarMensalidade />} />
             <Route path="/dashboard" element={<DashboardMetricas />} />
             <Route path="/dashboard-antigo" element={<Dashboard />} />
             <Route path="/produtos" element={<ProductsPage />} />
