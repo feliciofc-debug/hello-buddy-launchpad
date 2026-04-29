@@ -237,7 +237,54 @@ serve(async (req) => {
               })
             }
 
-            // === IA (quando produto NÃO está em modo personalizado E IA está ligada) ===
+            // === MODO ENGAJAMENTO (gera caption psicológica sem preço, link já vem na linha 1) ===
+            const modoGeracao = (config as any).modo_geracao || 'padrao'
+            if (!textoFacebook && modoGeracao === 'engajamento') {
+              const controllerEng = new AbortController()
+              const timeoutEng = setTimeout(() => controllerEng.abort(), 20000)
+              try {
+                console.log(`🧠 [AUTOPILOT] Modo Engajamento — chamando generate-social-post-engagement para ${produto.nome}`)
+                const respEng = await fetch(`${SUPABASE_URL}/functions/v1/generate-social-post-engagement`, {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                    'Content-Type': 'application/json',
+                    'apikey': SUPABASE_SERVICE_ROLE_KEY,
+                  },
+                  signal: controllerEng.signal,
+                  body: JSON.stringify({
+                    produto_id: produto.id,
+                    user_id: config.user_id,
+                  }),
+                })
+                clearTimeout(timeoutEng)
+
+                const engData = await respEng.json().catch(() => ({} as any))
+                console.log('🧠 [AUTOPILOT] Resposta engajamento', {
+                  produto_id: produto.id,
+                  status: respEng.status,
+                  ok: respEng.ok,
+                  success: engData?.success,
+                  estilo: engData?.estilo,
+                  fallback: engData?.fallback,
+                  caracteres: engData?.caracteres,
+                })
+
+                if (engData?.success && engData?.caption) {
+                  textoFacebook = engData.caption
+                  textoInstagram = engData.caption
+                  iaStatus = `engajamento:${engData.estilo}${engData.fallback ? ':fallback' : ''}`
+                } else {
+                  throw new Error(engData?.error || `engajamento_falhou_status_${respEng.status}`)
+                }
+              } catch (engErr) {
+                clearTimeout(timeoutEng)
+                iaStatus = 'engajamento_erro_fallback_padrao'
+                console.error(`⚠️ [AUTOPILOT] Modo Engajamento falhou, caindo no fluxo padrão:`, engErr instanceof Error ? engErr.message : engErr)
+              }
+            }
+
+            // === IA PADRÃO (quando produto NÃO está em modo personalizado E IA está ligada) ===
             if (!textoFacebook && config.gerar_texto_ia) {
               const controller = new AbortController()
               const timeout = setTimeout(() => controller.abort(), 15000)
@@ -296,10 +343,12 @@ serve(async (req) => {
             }
 
             const linkProduto = produto.link || produto.link_marketplace || null
-            if (config.incluir_link && linkProduto) {
+            // No Modo Engajamento o link já vem embutido na linha 1 da caption — não anexa de novo.
+            if (modoGeracao !== 'engajamento' && config.incluir_link && linkProduto) {
               textoFacebook = `${textoFacebook}\n\n🔗 Compre aqui: ${linkProduto}`
               textoInstagram = `${textoInstagram}\n\n🔗 Link na bio ou acesse: ${linkProduto}`
             }
+
 
             const imagemUrl = config.incluir_imagem ? (produto.imagem_url || null) : null
             console.log('🖼️ [AUTOPILOT] Payload base do post', {
