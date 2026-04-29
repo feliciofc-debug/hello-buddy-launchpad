@@ -19,15 +19,15 @@ type TipoRegua = typeof TIPOS_VALIDOS[number];
 
 const TEMPLATES: Record<TipoRegua, string> = {
   "D-5":
-    "Olá {nome}, tudo bem? Aqui é o Pietro da AMZ Ofertas. Passando pra lembrar com carinho que sua mensalidade de R$ {valor} vence dia {data}. Qualquer dúvida, é só chamar! 😊",
+    "Olá {nome}, tudo bem? Aqui é o Pietro da AMZ Ofertas. Passando pra lembrar com carinho que sua mensalidade de R$ {valor} vence dia {data}.\n\n💳 Link pra pagar (PIX, cartão ou boleto):\n{link}\n\nQualquer dúvida, é só chamar! 😊",
   "D-2":
-    "Oi {nome}! Pietro aqui novamente. Faltam 2 diazinhos pro vencimento da sua mensalidade ({data} - R$ {valor}). Posso te ajudar com algo?",
+    "Oi {nome}! Pietro aqui novamente. Faltam 2 diazinhos pro vencimento da sua mensalidade ({data} - R$ {valor}).\n\n💳 Pra adiantar, segue o link:\n{link}\n\nPosso te ajudar com algo?",
   "D-0":
-    "Olá {nome}, bom dia! Hoje é o dia do vencimento da sua mensalidade AMZ Ofertas (R$ {valor}). Já efetuou o pagamento? Se precisar do link, é só me dizer!",
+    "Olá {nome}, bom dia! Hoje é o dia do vencimento da sua mensalidade AMZ Ofertas (R$ {valor}).\n\n💳 Link pra pagamento imediato:\n{link}\n\nJá efetuou o pagamento? Qualquer coisa me chama!",
   "D+1":
-    "Oi {nome}, tudo bem? Notei que sua mensalidade de ontem ainda não consta como paga. Aconteceu algo? Posso te ajudar a regularizar.",
+    "Oi {nome}, tudo bem? Notei que sua mensalidade de ontem ainda não consta como paga.\n\n💳 Se quiser regularizar agora:\n{link}\n\nAconteceu algo? Posso te ajudar.",
   "D+5":
-    "Olá {nome}. Pietro aqui. Estou um pouco preocupado, sua mensalidade está com 5 dias de atraso. Por favor, entre em contato pra conversarmos. Tenho certeza que conseguimos uma solução juntos.",
+    "Olá {nome}. Pietro aqui. Estou um pouco preocupado, sua mensalidade está com 5 dias de atraso.\n\n💳 Pra regularizar é só clicar:\n{link}\n\nPor favor, entre em contato pra conversarmos. Tenho certeza que conseguimos uma solução juntos.",
 };
 
 function json(body: unknown, status = 200) {
@@ -74,12 +74,13 @@ function formatData(iso: string): string {
 
 function renderTemplate(
   tipo: TipoRegua,
-  ctx: { nome: string; valor: number; data: string },
+  ctx: { nome: string; valor: number; data: string; link: string },
 ): string {
   return TEMPLATES[tipo]
     .replaceAll("{nome}", ctx.nome || "amigo(a)")
     .replaceAll("{valor}", formatValor(ctx.valor))
-    .replaceAll("{data}", ctx.data);
+    .replaceAll("{data}", ctx.data)
+    .replaceAll("{link}", ctx.link || "(link indisponível)");
 }
 
 function normalizePhone(raw: string): string {
@@ -162,6 +163,7 @@ serve(async (req) => {
     let valor = 0;
     let dataVenc = "";
     let clienteId: string | null = null;
+    let paymentLink = "";
 
     if (body?.cliente_id) {
       clienteId = body.cliente_id;
@@ -196,11 +198,35 @@ serve(async (req) => {
       } else {
         dataVenc = new Date().toISOString().slice(0, 10);
       }
+
+      // Gerar link MP fresco para esta cobrança
+      try {
+        const supaUrl = Deno.env.get("SUPABASE_URL") ?? "";
+        const genResp = await fetch(`${supaUrl}/functions/v1/criar-cobranca-mercadopago`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-billing-token": billingToken,
+          },
+          body: JSON.stringify({ customer_id: clienteId }),
+        });
+        const genData = await genResp.json();
+        if (genData?.success && genData?.payment_link) {
+          paymentLink = genData.payment_link;
+        } else {
+          console.warn("[pietro-cobranca-disparar] falha gerar link MP:", genData);
+          paymentLink = cli.payment_link || "";
+        }
+      } catch (e) {
+        console.warn("[pietro-cobranca-disparar] exceção ao gerar link MP:", (e as Error).message);
+        paymentLink = cli.payment_link || "";
+      }
     } else if (body?.test) {
       nome = String(body.test.nome || "Teste");
       whatsappRaw = String(body.test.whatsapp || "");
       valor = Number(body.test.valor ?? 0);
       dataVenc = String(body.test.data_vencimento || new Date().toISOString().slice(0, 10));
+      paymentLink = String(body.test.payment_link || "");
     } else {
       return json({ success: false, error: "informe cliente_id ou test{...}" }, 400);
     }
@@ -208,7 +234,7 @@ serve(async (req) => {
     const phone = normalizePhone(whatsappRaw);
     if (!phone) return json({ success: false, error: "whatsapp inválido" }, 400);
 
-    const mensagem = renderTemplate(tipo, { nome, valor, data: formatData(dataVenc) });
+    const mensagem = renderTemplate(tipo, { nome, valor, data: formatData(dataVenc), link: paymentLink });
 
     // ---- Busca instância WuzAPI Pietro ----
     const { data: instance, error: instErr } = await supabase
