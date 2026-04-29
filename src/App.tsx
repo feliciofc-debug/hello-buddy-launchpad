@@ -13,6 +13,7 @@ import Cadastro from "./pages/Cadastro";
 import CadastroAfiliado from "./pages/CadastroAfiliado";
 import Planos from "./pages/Planos";
 import TestPayment from "./pages/TestPayment";
+import PagarMensalidade from "./pages/PagarMensalidade";
 import NotFound from "./pages/NotFound";
 import ProductsPage from "./pages/ProductsPage";
 import WhatsAppPage from "./pages/WhatsAppPage";
