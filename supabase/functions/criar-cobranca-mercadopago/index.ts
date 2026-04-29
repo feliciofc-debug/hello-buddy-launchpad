@@ -84,7 +84,7 @@ serve(async (req) => {
 
     const ref = `${venc.replaceAll("-", "")}`;
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const appUrl = Deno.env.get("APP_URL") || "https://hello-buddy-launchpad.lovable.app";
+    const appUrl = Deno.env.get("APP_URL") || "https://amzofertas.com.br";
 
     const preference = {
       items: [
