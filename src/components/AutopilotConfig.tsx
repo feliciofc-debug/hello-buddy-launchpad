@@ -127,6 +127,7 @@ export const AutopilotConfig = () => {
         estilo_texto: config.estilo_texto,
         repetir_ciclo: config.repetir_ciclo,
         ativo: config.ativo,
+        modo_geracao: config.modo_geracao,
         updated_at: new Date().toISOString(),
       };
 
