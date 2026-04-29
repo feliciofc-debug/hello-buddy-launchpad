@@ -318,3 +318,9 @@ verify_jwt = false
 [functions.pietro-cobranca-cron]
 verify_jwt = false
 
+
+[functions.criar-cobranca-mercadopago-publico]
+verify_jwt = false
+
+[functions.billing-webhook]
+verify_jwt = false
