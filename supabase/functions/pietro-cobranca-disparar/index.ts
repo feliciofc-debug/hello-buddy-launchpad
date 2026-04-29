@@ -163,6 +163,7 @@ serve(async (req) => {
     let valor = 0;
     let dataVenc = "";
     let clienteId: string | null = null;
+    let paymentLink = "";
 
     if (body?.cliente_id) {
       clienteId = body.cliente_id;
@@ -197,11 +198,35 @@ serve(async (req) => {
       } else {
         dataVenc = new Date().toISOString().slice(0, 10);
       }
+
+      // Gerar link MP fresco para esta cobrança
+      try {
+        const supaUrl = Deno.env.get("SUPABASE_URL") ?? "";
+        const genResp = await fetch(`${supaUrl}/functions/v1/criar-cobranca-mercadopago`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-billing-token": billingToken,
+          },
+          body: JSON.stringify({ customer_id: clienteId }),
+        });
+        const genData = await genResp.json();
+        if (genData?.success && genData?.payment_link) {
+          paymentLink = genData.payment_link;
+        } else {
+          console.warn("[pietro-cobranca-disparar] falha gerar link MP:", genData);
+          paymentLink = cli.payment_link || "";
+        }
+      } catch (e) {
+        console.warn("[pietro-cobranca-disparar] exceção ao gerar link MP:", (e as Error).message);
+        paymentLink = cli.payment_link || "";
+      }
     } else if (body?.test) {
       nome = String(body.test.nome || "Teste");
       whatsappRaw = String(body.test.whatsapp || "");
       valor = Number(body.test.valor ?? 0);
       dataVenc = String(body.test.data_vencimento || new Date().toISOString().slice(0, 10));
+      paymentLink = String(body.test.payment_link || "");
     } else {
       return json({ success: false, error: "informe cliente_id ou test{...}" }, 400);
     }
@@ -209,7 +234,7 @@ serve(async (req) => {
     const phone = normalizePhone(whatsappRaw);
     if (!phone) return json({ success: false, error: "whatsapp inválido" }, 400);
 
-    const mensagem = renderTemplate(tipo, { nome, valor, data: formatData(dataVenc) });
+    const mensagem = renderTemplate(tipo, { nome, valor, data: formatData(dataVenc), link: paymentLink });
 
     // ---- Busca instância WuzAPI Pietro ----
     const { data: instance, error: instErr } = await supabase
