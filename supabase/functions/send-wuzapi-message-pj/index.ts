@@ -19,6 +19,35 @@ async function safeReadJson(response: Response): Promise<any> {
   }
 }
 
+async function buscarInstanciaConectada(supabase: any, userId: string, targetPort?: number | null) {
+  const { data: instances, error } = await supabase
+    .from("wuzapi_instances")
+    .select("wuzapi_url, wuzapi_token, port, is_connected, updated_at, connected_at")
+    .eq("assigned_to_user", userId)
+    .order("is_connected", { ascending: false })
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("❌ [PJ-SEND] Erro ao buscar instâncias:", error);
+    return null;
+  }
+
+  const lista = instances || [];
+  const portaConectada = targetPort
+    ? lista.find((inst: any) => Number(inst.port) === Number(targetPort) && inst.is_connected === true)
+    : null;
+  const qualquerConectada = lista.find((inst: any) => inst.is_connected === true);
+  const portaConfigurada = targetPort
+    ? lista.find((inst: any) => Number(inst.port) === Number(targetPort))
+    : null;
+
+  if (targetPort && portaConfigurada && portaConfigurada.is_connected !== true && qualquerConectada) {
+    console.warn(`⚠️ [PJ-SEND] Porta configurada ${targetPort} desconectada; usando porta conectada ${qualquerConectada.port}`);
+  }
+
+  return portaConectada || qualquerConectada || portaConfigurada || null;
+}
+
 // Converte base64 para URL pública via Supabase Storage
 async function uploadBase64ToStorage(
   supabase: any,
@@ -249,16 +278,11 @@ serve(async (req) => {
       }
 
       const targetPort = Number(config?.wuzapi_port || 8080);
-      const { data: mappedInstance } = await supabase
-        .from("wuzapi_instances")
-        .select("wuzapi_url, wuzapi_token")
-        .eq("assigned_to_user", userId)
-        .eq("port", targetPort)
-        .maybeSingle();
+      const mappedInstance = await buscarInstanciaConectada(supabase, userId, targetPort);
 
       if (mappedInstance?.wuzapi_url) {
         baseUrl = mappedInstance.wuzapi_url.replace(/\/+$/, "");
-        console.log("📡 [PJ-SEND] Usando instância:", baseUrl);
+        console.log(`📡 [PJ-SEND] Usando instância: ${baseUrl} (porta ${mappedInstance.port || 'n/a'})`);
       }
       if (mappedInstance?.wuzapi_token) {
         wuzapiToken = mappedInstance.wuzapi_token;
