@@ -19,15 +19,15 @@ type TipoRegua = typeof TIPOS_VALIDOS[number];
 
 const TEMPLATES: Record<TipoRegua, string> = {
   "D-5":
-    "Olá {nome}, tudo bem? Aqui é o Pietro da AMZ Ofertas. Passando pra lembrar com carinho que sua mensalidade de R$ {valor} vence dia {data}. Qualquer dúvida, é só chamar! 😊",
+    "Olá {nome}, tudo bem? Aqui é o Pietro da AMZ Ofertas. Passando pra lembrar com carinho que sua mensalidade de R$ {valor} vence dia {data}.\n\n💳 Link pra pagar (PIX, cartão ou boleto):\n{link}\n\nQualquer dúvida, é só chamar! 😊",
   "D-2":
-    "Oi {nome}! Pietro aqui novamente. Faltam 2 diazinhos pro vencimento da sua mensalidade ({data} - R$ {valor}). Posso te ajudar com algo?",
+    "Oi {nome}! Pietro aqui novamente. Faltam 2 diazinhos pro vencimento da sua mensalidade ({data} - R$ {valor}).\n\n💳 Pra adiantar, segue o link:\n{link}\n\nPosso te ajudar com algo?",
   "D-0":
-    "Olá {nome}, bom dia! Hoje é o dia do vencimento da sua mensalidade AMZ Ofertas (R$ {valor}). Já efetuou o pagamento? Se precisar do link, é só me dizer!",
+    "Olá {nome}, bom dia! Hoje é o dia do vencimento da sua mensalidade AMZ Ofertas (R$ {valor}).\n\n💳 Link pra pagamento imediato:\n{link}\n\nJá efetuou o pagamento? Qualquer coisa me chama!",
   "D+1":
-    "Oi {nome}, tudo bem? Notei que sua mensalidade de ontem ainda não consta como paga. Aconteceu algo? Posso te ajudar a regularizar.",
+    "Oi {nome}, tudo bem? Notei que sua mensalidade de ontem ainda não consta como paga.\n\n💳 Se quiser regularizar agora:\n{link}\n\nAconteceu algo? Posso te ajudar.",
   "D+5":
-    "Olá {nome}. Pietro aqui. Estou um pouco preocupado, sua mensalidade está com 5 dias de atraso. Por favor, entre em contato pra conversarmos. Tenho certeza que conseguimos uma solução juntos.",
+    "Olá {nome}. Pietro aqui. Estou um pouco preocupado, sua mensalidade está com 5 dias de atraso.\n\n💳 Pra regularizar é só clicar:\n{link}\n\nPor favor, entre em contato pra conversarmos. Tenho certeza que conseguimos uma solução juntos.",
 };
 
 function json(body: unknown, status = 200) {
