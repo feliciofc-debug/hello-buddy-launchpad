@@ -199,26 +199,24 @@ serve(async (req) => {
         dataVenc = new Date().toISOString().slice(0, 10);
       }
 
-      // Gerar link MP fresco para esta cobrança
+      // Buscar subscription_id pra montar link da página bonita /pagar/:subscriptionId
       try {
-        const supaUrl = Deno.env.get("SUPABASE_URL") ?? "";
-        const genResp = await fetch(`${supaUrl}/functions/v1/criar-cobranca-mercadopago`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-billing-token": billingToken,
-          },
-          body: JSON.stringify({ customer_id: clienteId }),
-        });
-        const genData = await genResp.json();
-        if (genData?.success && genData?.payment_link) {
-          paymentLink = genData.payment_link;
+        const { data: subForLink } = await supabase
+          .from("billing_subscriptions")
+          .select("id")
+          .eq("customer_id", clienteId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const appUrl = Deno.env.get("APP_URL") || "https://hello-buddy-launchpad.lovable.app";
+        if (subForLink?.id) {
+          paymentLink = `${appUrl}/pagar/${subForLink.id}`;
         } else {
-          console.warn("[pietro-cobranca-disparar] falha gerar link MP:", genData);
           paymentLink = cli.payment_link || "";
         }
       } catch (e) {
-        console.warn("[pietro-cobranca-disparar] exceção ao gerar link MP:", (e as Error).message);
+        console.warn("[pietro-cobranca-disparar] exceção ao montar link público:", (e as Error).message);
         paymentLink = cli.payment_link || "";
       }
     } else if (body?.test) {
