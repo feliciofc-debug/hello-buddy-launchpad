@@ -143,12 +143,12 @@ const PagarMensalidade = () => {
             <div className="border-2 border-gray-200 rounded-lg p-3 text-center">
               <CreditCard className="w-6 h-6 mx-auto mb-1 text-[#1a2332]" />
               <p className="text-xs font-semibold text-gray-700">Cartão</p>
-              <p className="text-[10px] text-gray-500">Até 12x</p>
+              <p className="text-[10px] text-gray-500">À vista</p>
             </div>
             <div className="border-2 border-gray-200 rounded-lg p-3 text-center">
               <Receipt className="w-6 h-6 mx-auto mb-1 text-[#1a2332]" />
               <p className="text-xs font-semibold text-gray-700">Boleto</p>
-              <p className="text-[10px] text-gray-500">1 a 3 dias</p>
+              <p className="text-[10px] text-gray-500">À vista</p>
             </div>
           </div>
 
