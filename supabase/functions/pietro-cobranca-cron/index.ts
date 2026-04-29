@@ -42,18 +42,29 @@ serve(async (req) => {
     const resultados: any[] = [];
 
     for (const { tipo, offset } of TIPOS) {
-      // Vencimento alvo = hoje - offset (D-5: vence em 5 dias, etc.)
+      // D-5 (offset=-5) = vence em 5 dias → alvo = hoje + 5
+      // D+1 (offset=1)  = venceu há 1 dia → alvo = hoje - 1
       const alvo = new Date(hoje);
-      alvo.setUTCDate(alvo.getUTCDate() - offset);
+      alvo.setUTCDate(alvo.getUTCDate() + Math.abs(offset) * (offset <= 0 ? 1 : -1));
       const diaVencAlvo = alvo.getUTCDate();
       const dataVencISO = alvo.toISOString().slice(0, 10);
 
-      // Busca subscriptions ativas com esse dia_vencimento
-      const { data: subs, error } = await supabase
+      // 1) Tenta match preciso por next_billing_date (data exata YYYY-MM-DD)
+      // 2) Fallback: dia_vencimento = dia do mês alvo
+      const { data: subsExact } = await supabase
         .from("billing_subscriptions")
-        .select("customer_id, dia_vencimento")
+        .select("customer_id, dia_vencimento, next_billing_date")
         .eq("status", "active")
-        .eq("dia_vencimento", diaVencAlvo);
+        .eq("next_billing_date", dataVencISO);
+
+      const { data: subsByDay, error } = await supabase
+        .from("billing_subscriptions")
+        .select("customer_id, dia_vencimento, next_billing_date")
+        .eq("status", "active")
+        .eq("dia_vencimento", diaVencAlvo)
+        .is("next_billing_date", null);
+
+      const subs = [...(subsExact || []), ...(subsByDay || [])];
 
       if (error) {
         resultados.push({ tipo, error: error.message });
