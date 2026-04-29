@@ -204,25 +204,39 @@ serve(async (req) => {
         dataVenc = new Date().toISOString().slice(0, 10);
       }
 
-      // Buscar subscription_id pra montar link da página bonita /pagar/:subscriptionId
-      try {
-        const { data: subForLink } = await supabase
-          .from("billing_subscriptions")
-          .select("id")
-          .eq("customer_id", clienteId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      // Link Mercado Pago DIRETO (sem página intermediária).
+      // 1) Usa payment_link já salvo no cliente, se existir.
+      // 2) Senão, chama criar-cobranca-mercadopago-publico pra gerar e salvar.
+      paymentLink = cli.payment_link || "";
 
-        const appUrl = Deno.env.get("APP_URL") || "https://amzofertas.com.br";
-        if (subForLink?.id) {
-          paymentLink = `${appUrl}/pagar/${subForLink.id}`;
-        } else {
-          paymentLink = cli.payment_link || "";
+      if (!paymentLink) {
+        try {
+          const { data: subForLink } = await supabase
+            .from("billing_subscriptions")
+            .select("id")
+            .eq("customer_id", clienteId)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (subForLink?.id) {
+            const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+            const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+            const resp = await fetch(`${supabaseUrl}/functions/v1/criar-cobranca-mercadopago-publico`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
+              body: JSON.stringify({ subscription_id: subForLink.id }),
+            });
+            const j = await resp.json().catch(() => ({}));
+            if (j?.payment_link) {
+              paymentLink = j.payment_link;
+            } else {
+              console.warn("[pietro-cobranca-disparar] criar-cobranca-mercadopago-publico não retornou payment_link", j);
+            }
+          }
+        } catch (e) {
+          console.warn("[pietro-cobranca-disparar] exceção ao gerar link MP:", (e as Error).message);
         }
-      } catch (e) {
-        console.warn("[pietro-cobranca-disparar] exceção ao montar link público:", (e as Error).message);
-        paymentLink = cli.payment_link || "";
       }
     } else if (body?.test) {
       nome = String(body.test.nome || "Teste");
