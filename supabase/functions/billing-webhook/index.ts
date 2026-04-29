@@ -98,6 +98,42 @@ serve(async (req) => {
       raw: payment,
     });
 
+    // Backfill dados do cliente direto do payer (sem sobrescrever dados já preenchidos)
+    try {
+      const payer = payment.payer || {};
+      const ident = payer.identification || {};
+      const fullName = [payer.first_name, payer.last_name].filter(Boolean).join(' ').trim();
+      const payerPhone = payer.phone
+        ? `${payer.phone.area_code || ''}${payer.phone.number || ''}`.replace(/\D/g, '')
+        : '';
+
+      const { data: existing } = await supabase
+        .from('billing_customers')
+        .select('cpf, cnpj, email, name, responsible_name, phone, tipo_pessoa')
+        .eq('id', sub.customer_id)
+        .maybeSingle();
+
+      if (existing) {
+        const upd: Record<string, any> = {};
+        if (!existing.cpf && ident.type === 'CPF' && ident.number) upd.cpf = String(ident.number);
+        if (!existing.cnpj && ident.type === 'CNPJ' && ident.number) {
+          upd.cnpj = String(ident.number);
+          upd.tipo_pessoa = 'pj';
+        }
+        if (!existing.email && payer.email) upd.email = payer.email;
+        if (!existing.name && fullName) upd.name = fullName;
+        if (!existing.responsible_name && fullName) upd.responsible_name = fullName;
+        if (!existing.phone && payerPhone) upd.phone = payerPhone.startsWith('55') ? payerPhone : `55${payerPhone}`;
+
+        if (Object.keys(upd).length > 0) {
+          await supabase.from('billing_customers').update(upd).eq('id', sub.customer_id);
+          console.log('✅ Backfill billing_customer:', sub.customer_id, Object.keys(upd));
+        }
+      }
+    } catch (bfErr: any) {
+      console.error('Backfill payer falhou (não-crítico):', bfErr?.message);
+    }
+
     // Update subscription to active
     await supabase
       .from('billing_subscriptions')
