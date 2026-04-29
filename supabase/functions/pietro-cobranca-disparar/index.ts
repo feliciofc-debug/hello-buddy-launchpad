@@ -209,7 +209,7 @@ serve(async (req) => {
           .limit(1)
           .maybeSingle();
 
-        const appUrl = Deno.env.get("APP_URL") || "https://hello-buddy-launchpad.lovable.app";
+        const appUrl = Deno.env.get("APP_URL") || "https://amzofertas.com.br";
         if (subForLink?.id) {
           paymentLink = `${appUrl}/pagar/${subForLink.id}`;
         } else {
