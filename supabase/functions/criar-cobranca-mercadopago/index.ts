@@ -115,6 +115,11 @@ serve(async (req) => {
       },
       auto_return: "approved",
       statement_descriptor: "AMZ OFERTAS",
+      payment_methods: {
+        excluded_payment_types: [],
+        excluded_payment_methods: [],
+        installments: 12,
+      },
     };
 
     const mpResp = await fetch("https://api.mercadopago.com/checkout/preferences", {
