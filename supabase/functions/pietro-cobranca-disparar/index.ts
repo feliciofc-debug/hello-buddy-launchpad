@@ -74,12 +74,13 @@ function formatData(iso: string): string {
 
 function renderTemplate(
   tipo: TipoRegua,
-  ctx: { nome: string; valor: number; data: string },
+  ctx: { nome: string; valor: number; data: string; link: string },
 ): string {
   return TEMPLATES[tipo]
     .replaceAll("{nome}", ctx.nome || "amigo(a)")
     .replaceAll("{valor}", formatValor(ctx.valor))
-    .replaceAll("{data}", ctx.data);
+    .replaceAll("{data}", ctx.data)
+    .replaceAll("{link}", ctx.link || "(link indisponível)");
 }
 
 function normalizePhone(raw: string): string {
