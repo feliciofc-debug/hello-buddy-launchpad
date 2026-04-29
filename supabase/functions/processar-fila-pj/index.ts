@@ -75,6 +75,35 @@ function calcularDelayAleatorio(): number {
     Math.random() * (CONFIG.DELAY_MAX_MS - CONFIG.DELAY_MIN_MS);
 }
 
+async function buscarInstanciaConectada(supabase: any, userId: string, targetPort?: number | null) {
+  const { data: instances, error } = await supabase
+    .from("wuzapi_instances")
+    .select("wuzapi_url, wuzapi_token, port, is_connected, updated_at, connected_at")
+    .eq("assigned_to_user", userId)
+    .order("is_connected", { ascending: false })
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("❌ [PJ-FILA] Erro ao buscar instâncias:", error);
+    return null;
+  }
+
+  const lista = instances || [];
+  const portaConectada = targetPort
+    ? lista.find((inst: any) => Number(inst.port) === Number(targetPort) && inst.is_connected === true)
+    : null;
+  const qualquerConectada = lista.find((inst: any) => inst.is_connected === true);
+  const portaConfigurada = targetPort
+    ? lista.find((inst: any) => Number(inst.port) === Number(targetPort))
+    : null;
+
+  if (targetPort && portaConfigurada && portaConfigurada.is_connected !== true && qualquerConectada) {
+    console.warn(`⚠️ [PJ-FILA] Porta configurada ${targetPort} desconectada; usando porta conectada ${qualquerConectada.port}`);
+  }
+
+  return portaConectada || qualquerConectada || portaConfigurada || null;
+}
+
 // ═══════════════════════════════════════
 // 📤 ENVIAR STATUS "DIGITANDO"
 // ═══════════════════════════════════════
@@ -500,16 +529,11 @@ serve(async (req) => {
           .maybeSingle();
         
         const targetPort = Number(config?.wuzapi_port || 8080);
-        const { data: mappedInstance } = await supabase
-          .from("wuzapi_instances")
-          .select("wuzapi_url, wuzapi_token")
-          .eq("assigned_to_user", item.user_id)
-          .eq("port", targetPort)
-          .maybeSingle();
+        const mappedInstance = await buscarInstanciaConectada(supabase, item.user_id, targetPort);
         
         if (mappedInstance?.wuzapi_url) {
           wuzapiUrl = mappedInstance.wuzapi_url.replace(/\/+$/, "");
-          console.log(`📡 [PJ-FILA] Usando instância real: ${wuzapiUrl}`);
+          console.log(`📡 [PJ-FILA] Usando instância real: ${wuzapiUrl} (porta ${mappedInstance.port || 'n/a'})`);
         }
 
         if (mappedInstance?.wuzapi_token) {
