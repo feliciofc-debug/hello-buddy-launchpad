@@ -32,6 +32,7 @@ export const AutopilotConfig = () => {
     ativo: false,
     total_publicados: 0,
     ultimo_produto_index: 0,
+    modo_geracao: "padrao" as "padrao" | "engajamento",
   });
   const [totalProdutos, setTotalProdutos] = useState(0);
   const [categorias, setCategorias] = useState<string[]>([]);
