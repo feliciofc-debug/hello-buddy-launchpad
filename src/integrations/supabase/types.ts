@@ -916,6 +916,7 @@ export type Database = {
           id: string
           incluir_imagem: boolean | null
           incluir_link: boolean | null
+          modo_geracao: string
           nome: string
           postar_facebook: boolean | null
           postar_instagram: boolean | null
@@ -942,6 +943,7 @@ export type Database = {
           id?: string
           incluir_imagem?: boolean | null
           incluir_link?: boolean | null
+          modo_geracao?: string
           nome?: string
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
@@ -968,6 +970,7 @@ export type Database = {
           id?: string
           incluir_imagem?: boolean | null
           incluir_link?: boolean | null
+          modo_geracao?: string
           nome?: string
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null

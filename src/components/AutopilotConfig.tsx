@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Rocket, Facebook, Instagram, Calendar, Clock, Package, Sparkles, Play, Pause } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Loader2, Rocket, Facebook, Instagram, Calendar, Clock, Package, Sparkles, Play, Pause, Brain } from "lucide-react";
 
 export const AutopilotConfig = () => {
   const [loading, setLoading] = useState(true);
@@ -32,6 +33,7 @@ export const AutopilotConfig = () => {
     ativo: false,
     total_publicados: 0,
     ultimo_produto_index: 0,
+    modo_geracao: "padrao" as "padrao" | "engajamento",
   });
   const [totalProdutos, setTotalProdutos] = useState(0);
   const [categorias, setCategorias] = useState<string[]>([]);
@@ -126,6 +128,7 @@ export const AutopilotConfig = () => {
         estilo_texto: config.estilo_texto,
         repetir_ciclo: config.repetir_ciclo,
         ativo: config.ativo,
+        modo_geracao: config.modo_geracao,
         updated_at: new Date().toISOString(),
       };
 
@@ -246,7 +249,52 @@ export const AutopilotConfig = () => {
         </div>
       </div>
 
-      {/* Projeção */}
+      {/* Modo de geração */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Brain className="h-4 w-4" /> Modo de geração de texto
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <RadioGroup
+            value={config.modo_geracao}
+            onValueChange={(v) => setConfig(prev => ({ ...prev, modo_geracao: v as "padrao" | "engajamento" }))}
+            className="grid grid-cols-1 md:grid-cols-2 gap-3"
+          >
+            <label
+              htmlFor="modo-padrao"
+              className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${config.modo_geracao === "padrao" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}
+            >
+              <RadioGroupItem value="padrao" id="modo-padrao" className="mt-1" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">📣 Modo Padrão</p>
+                <p className="text-xs text-muted-foreground">
+                  Posts promocionais com nome, preço e link. Comportamento atual.
+                </p>
+              </div>
+            </label>
+            <label
+              htmlFor="modo-engajamento"
+              className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${config.modo_geracao === "engajamento" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}`}
+            >
+              <RadioGroupItem value="engajamento" id="modo-engajamento" className="mt-1" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium">🧠 Modo Engajamento</p>
+                <p className="text-xs text-muted-foreground">
+                  Captions psicológicas (escassez, curiosidade, pergunta...) sem preço, focadas em clique. Mesma lógica do botão manual já validado.
+                </p>
+              </div>
+            </label>
+          </RadioGroup>
+          {config.modo_geracao === "engajamento" && (
+            <p className="text-xs text-muted-foreground mt-3">
+              ℹ️ Nesse modo, o autopilot ignora o "Estilo do texto" abaixo e o toggle "Incluir link" (o link já vem na primeira linha da caption). Demais configs (horários, redes, frequência) seguem normais.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card>
           <CardContent className="p-4 text-center">
