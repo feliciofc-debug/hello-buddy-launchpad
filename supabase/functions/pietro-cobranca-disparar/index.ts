@@ -184,7 +184,12 @@ serve(async (req) => {
         .limit(1)
         .maybeSingle();
 
-      nome = cli.responsible_name || cli.name || "cliente";
+      // Nome: prioriza responsible_name, depois name. Ignora se for e-mail.
+      const isEmail = (s: string) => /\S+@\S+\.\S+/.test(s);
+      const rawName = cli.responsible_name || cli.name || "";
+      const cleanName = rawName && !isEmail(rawName) ? rawName : "";
+      // Pega só o primeiro nome pra ficar mais natural
+      nome = cleanName ? cleanName.trim().split(/\s+/)[0] : "amigo(a)";
       whatsappRaw = cli.phone || "";
       valor = Number(sub?.amount ?? 0);
       if (sub?.next_billing_date) {
