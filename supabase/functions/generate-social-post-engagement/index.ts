@@ -232,6 +232,24 @@ function sanitizarParaCheckPreco(texto: string): string {
     .replace(/\b\d+\s*em\s*\d+\b/gi, ' ')                          // 1 em 3
 }
 
+function blocoContextoProduto(p: ProdutoLite): string {
+  const descricao = (p.descricao || '').toString().trim()
+  const temBriefing = descricao.length > 10
+  const tagsArr = Array.isArray(p.tags) ? p.tags.filter(Boolean) : []
+  const beneficios = (p.beneficios || '').toString().trim()
+
+  const briefing = temBriefing
+    ? `\n⚠️ BRIEFING DO CLIENTE (PRIORIDADE MÁXIMA): "${descricao}"\nA descrição acima é a INTENÇÃO do cliente. Respeite o tom (comemorativo, agradecimento, educativo, promocional, etc) e a temática (data sazonal, evento, homenagem, campanha) do briefing. NÃO invente urgência/desconto se o briefing não pedir. NÃO ignore o contexto. Adapte o estilo de copy abaixo SEM contradizer essa intenção.\n`
+    : ''
+
+  const extras = [
+    tagsArr.length ? `- Tags: ${tagsArr.join(', ')}` : '',
+    beneficios ? `- Benefícios: ${beneficios}` : '',
+  ].filter(Boolean).join('\n')
+
+  return `${briefing}${extras ? '\n' + extras : ''}`
+}
+
 
 function validarCaption(
   caption: string,
