@@ -7,11 +7,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatSaoPauloDateTime, toSaoPauloDateKey } from "@/lib/sao-paulo-time";
 import {
   Facebook, Instagram, ArrowLeft, CheckCircle, XCircle, Clock,
-  RefreshCw, Loader2, AlertTriangle, CalendarDays
+  RefreshCw, Loader2, AlertTriangle, CalendarDays, Pencil, Trash2
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { TikTokIcon } from "@/components/tiktok/TikTokIcon";
+import { CancelarAgendamentoDialog } from "@/components/social/CancelarAgendamentoDialog";
+import { EditarAgendamentoModal } from "@/components/social/EditarAgendamentoModal";
 
 export default function RedesSociaisPainel() {
   const navigate = useNavigate();
@@ -21,6 +23,8 @@ export default function RedesSociaisPainel() {
   const [metaConn, setMetaConn] = useState<any>(null);
   const [tiktokConn, setTiktokConn] = useState<any>(null);
   const showTikTok = useFeatureFlag('tiktok_integration');
+  const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<any | null>(null);
 
   useEffect(() => { loadData(); }, []);
 
