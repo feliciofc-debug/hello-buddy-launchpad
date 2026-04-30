@@ -476,7 +476,7 @@ serve(async (req) => {
   // Carregar produto
   const { data: produto, error: prodErr } = await supabase
     .from('produtos')
-    .select('id, nome, preco, categoria, link, link_marketplace, user_id, engajamento_estilos')
+    .select('id, nome, preco, categoria, link, link_marketplace, user_id, engajamento_estilos, descricao, tags, beneficios')
     .eq('id', produto_id)
     .maybeSingle()
 
