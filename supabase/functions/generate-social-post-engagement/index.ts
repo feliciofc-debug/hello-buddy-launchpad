@@ -297,7 +297,9 @@ function validarCaption(
   caption: string,
   blacklist: BlacklistTermo[],
   estilo: Estilo,
+  temLink: boolean = true,
 ): ValidacaoResultado {
+  const ctaEsperado = temLink ? CTA_COM_LINK : CTA_SEM_LINK
   const captionLower = caption.toLowerCase()
 
   // CAMADA 1: string match contra termo_simples (blacklist)
@@ -350,7 +352,7 @@ function validarCaption(
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
   const ultimaLinha = linhasNaoVazias[linhasNaoVazias.length - 1] || ''
-  if (ultimaLinha !== CTA_EXATO) {
+  if (ultimaLinha !== ctaEsperado) {
     return {
       ok: false,
       camada: 4,
@@ -358,13 +360,13 @@ function validarCaption(
       termo_violado: ultimaLinha.slice(0, 80),
     }
   }
-  const ocorrenciasCTA = caption.split(CTA_EXATO).length - 1
+  const ocorrenciasCTA = caption.split(ctaEsperado).length - 1
   if (ocorrenciasCTA !== 1) {
     return {
       ok: false,
       camada: 4,
       motivo: `cta_duplicado:${ocorrenciasCTA}x`,
-      termo_violado: CTA_EXATO,
+      termo_violado: ctaEsperado,
     }
   }
 
@@ -596,8 +598,8 @@ serve(async (req) => {
       continue
     }
 
-    const comLink = injetarLink(bruto, link)
-    const validacao = validarCaption(comLink, blacklist, estiloEscolhido)
+    const comLink = temLink ? injetarLink(bruto, link) : bruto
+    const validacao = validarCaption(comLink, blacklist, estiloEscolhido, temLink)
 
     if (validacao.ok) {
       captionFinal = comLink
@@ -609,8 +611,8 @@ serve(async (req) => {
     validacaoFinal = validacao
   }
 
-  // Fallback se 3 tentativas falharam
-  if (!captionFinal) {
+  // Fallback se 3 tentativas falharam (apenas quando temLink — fallbackPromocional exige link)
+  if (!captionFinal && temLink) {
     try {
       captionFinal = await fallbackPromocional(produtoLite, link)
       usouFallback = true
