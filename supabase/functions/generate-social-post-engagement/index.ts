@@ -522,6 +522,9 @@ serve(async (req) => {
     categoria: produto.categoria,
     link: produto.link,
     link_marketplace: produto.link_marketplace,
+    descricao: (produto as any).descricao ?? null,
+    tags: (produto as any).tags ?? null,
+    beneficios: (produto as any).beneficios ?? null,
   }
 
   // Loop de até 3 tentativas
