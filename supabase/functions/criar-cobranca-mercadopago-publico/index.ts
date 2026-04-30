@@ -87,8 +87,7 @@ serve(async (req) => {
       payment_methods: {
         excluded_payment_types: [],
         excluded_payment_methods: [],
-        installments: 1,
-        default_installments: 1,
+        installments: 12,
       },
     };
 
