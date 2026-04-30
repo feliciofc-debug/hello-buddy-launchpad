@@ -12,14 +12,31 @@ serve(async (req) => {
   }
 
   try {
-    const { productTitle, productPrice, productRating, productLink, platform } = await req.json();
-    
-    console.log('Gerando conteúdo com Lovable AI para:', { productTitle, platform });
+    const body = await req.json();
+    const { productTitle, productPrice, productRating, productLink, platform } = body;
+    const productDescription = (body.productDescription || body.descricao || '').toString().trim();
+    const productCategory = (body.productCategory || body.categoria || '').toString().trim();
+    const productTagsRaw = body.productTags || body.tags || [];
+    const productTags = Array.isArray(productTagsRaw) ? productTagsRaw.filter(Boolean) : [];
+    const productBenefits = (body.productBenefits || body.beneficios || '').toString().trim();
+    const temBriefing = productDescription.length > 10;
+
+    console.log('Gerando conteúdo com Lovable AI para:', { productTitle, platform, temBriefing });
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY não configurada');
     }
+
+    const blocoBriefing = temBriefing
+      ? `\n========================================\n⚠️ BRIEFING DO CLIENTE (PRIORIDADE MÁXIMA):\n"${productDescription}"\n\nIMPORTANTE: Esta descrição representa a INTENÇÃO do cliente sobre como o produto deve ser comunicado. Respeite o TOM (comemorativo, agradecimento, promocional, educativo, etc) e a TEMÁTICA (data sazonal, evento, homenagem, campanha) do briefing. NÃO invente urgência, desconto ou pitch de venda se o briefing não pedir. NÃO ignore o contexto fornecido.\n========================================\n`
+      : '';
+
+    const blocoExtras = [
+      productCategory ? `Categoria: ${productCategory}` : '',
+      productTags.length ? `Tags: ${productTags.join(', ')}` : '',
+      productBenefits ? `Benefícios: ${productBenefits}` : '',
+    ].filter(Boolean).join('\n');
 
     // Criar prompt específico para cada plataforma
     let prompt = '';
@@ -29,7 +46,7 @@ serve(async (req) => {
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 A legenda deve:
 - Ser atrativa e usar emojis relevantes
 - Ter no máximo 2200 caracteres
@@ -41,7 +58,7 @@ A legenda deve:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 A mensagem deve:
 - Ser curta e direta
 - Usar emojis estrategicamente
@@ -52,7 +69,7 @@ A mensagem deve:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 O post deve:
 - Ser informativo e persuasivo
 - Destacar benefícios
@@ -63,7 +80,7 @@ O post deve:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 O script deve:
 - Ter gancho forte nos primeiros 3 segundos
 - Ser dinâmico e energético
@@ -74,7 +91,7 @@ O script deve:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 O email deve incluir:
 - Assunto irresistível
 - Corpo do email bem estruturado

@@ -45,6 +45,9 @@ interface ProdutoLite {
   categoria: string | null
   link: string | null
   link_marketplace: string | null
+  descricao?: string | null
+  tags?: string[] | null
+  beneficios?: string | null
 }
 
 interface BlacklistTermo {
@@ -104,6 +107,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -118,6 +122,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -132,6 +137,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -153,6 +159,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -173,6 +180,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -188,6 +196,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -227,6 +236,24 @@ function sanitizarParaCheckPreco(texto: string): string {
     .replace(/\b\d+(?:[.,]\d+)?\s*%/g, ' ')                        // 85%, 12,5%
     .replace(/\b\d+\s*(?:em|a)\s*cada\s*\d+\b/gi, ' ')             // 8 em cada 10
     .replace(/\b\d+\s*em\s*\d+\b/gi, ' ')                          // 1 em 3
+}
+
+function blocoContextoProduto(p: ProdutoLite): string {
+  const descricao = (p.descricao || '').toString().trim()
+  const temBriefing = descricao.length > 10
+  const tagsArr = Array.isArray(p.tags) ? p.tags.filter(Boolean) : []
+  const beneficios = (p.beneficios || '').toString().trim()
+
+  const briefing = temBriefing
+    ? `\n⚠️ BRIEFING DO CLIENTE (PRIORIDADE MÁXIMA): "${descricao}"\nA descrição acima é a INTENÇÃO do cliente. Respeite o tom (comemorativo, agradecimento, educativo, promocional, etc) e a temática (data sazonal, evento, homenagem, campanha) do briefing. NÃO invente urgência/desconto se o briefing não pedir. NÃO ignore o contexto. Adapte o estilo de copy abaixo SEM contradizer essa intenção.\n`
+    : ''
+
+  const extras = [
+    tagsArr.length ? `- Tags: ${tagsArr.join(', ')}` : '',
+    beneficios ? `- Benefícios: ${beneficios}` : '',
+  ].filter(Boolean).join('\n')
+
+  return `${briefing}${extras ? '\n' + extras : ''}`
 }
 
 
@@ -449,7 +476,7 @@ serve(async (req) => {
   // Carregar produto
   const { data: produto, error: prodErr } = await supabase
     .from('produtos')
-    .select('id, nome, preco, categoria, link, link_marketplace, user_id, engajamento_estilos')
+    .select('id, nome, preco, categoria, link, link_marketplace, user_id, engajamento_estilos, descricao, tags, beneficios')
     .eq('id', produto_id)
     .maybeSingle()
 
@@ -495,6 +522,9 @@ serve(async (req) => {
     categoria: produto.categoria,
     link: produto.link,
     link_marketplace: produto.link_marketplace,
+    descricao: (produto as any).descricao ?? null,
+    tags: (produto as any).tags ?? null,
+    beneficios: (produto as any).beneficios ?? null,
   }
 
   // Loop de até 3 tentativas
