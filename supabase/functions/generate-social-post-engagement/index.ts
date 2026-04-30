@@ -45,6 +45,9 @@ interface ProdutoLite {
   categoria: string | null
   link: string | null
   link_marketplace: string | null
+  descricao?: string | null
+  tags?: string[] | null
+  beneficios?: string | null
 }
 
 interface BlacklistTermo {
