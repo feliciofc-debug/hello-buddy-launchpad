@@ -21,28 +21,21 @@ const PagarMensalidade = () => {
   useEffect(() => {
     const load = async () => {
       if (!subscriptionId) return;
-      const { data: sub } = await supabase
-        .from('billing_subscriptions')
-        .select('amount, next_billing_date, customer_id')
-        .eq('id', subscriptionId)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc('get_billing_pagamento_publico', {
+        p_subscription_id: subscriptionId,
+      });
 
-      if (!sub) {
+      if (error || !data || (Array.isArray(data) && data.length === 0)) {
         setLoadingInfo(false);
         return;
       }
 
-      const { data: cust } = await supabase
-        .from('billing_customers')
-        .select('name, email')
-        .eq('id', sub.customer_id)
-        .maybeSingle();
-
+      const row: any = Array.isArray(data) ? data[0] : data;
       setInfo({
-        amount: Number(sub.amount ?? 597),
-        next_billing_date: sub.next_billing_date,
-        customer_name: cust?.name ?? null,
-        customer_email: cust?.email ?? null,
+        amount: Number(row.amount ?? 597),
+        next_billing_date: row.next_billing_date,
+        customer_name: row.customer_name ?? null,
+        customer_email: row.customer_email ?? null,
       });
       setLoadingInfo(false);
     };
