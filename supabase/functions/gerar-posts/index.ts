@@ -21,14 +21,29 @@ serve(async (req) => {
 
     console.log(`Gerando posts para produto: ${produto.nome}`);
 
-    const prompt = `Crie posts promocionais para o seguinte produto:
+    const descricao = (produto.descricao || '').toString().trim();
+    const temBriefing = descricao.length > 10;
+    const tagsArr = Array.isArray(produto.tags) ? produto.tags.filter(Boolean) : [];
+    const beneficios = (produto.beneficios || '').toString().trim();
+    const categoria = (produto.categoria || '').toString().trim();
 
+    const blocoBriefing = temBriefing
+      ? `\n========================================\n⚠️ BRIEFING DO CLIENTE (PRIORIDADE MÁXIMA):\n"${descricao}"\n\nIMPORTANTE: Esta descrição representa a INTENÇÃO do cliente sobre como o produto deve ser comunicado. Respeite o TOM (comemorativo, agradecimento, promocional, educativo, informativo, etc) e a TEMÁTICA (data sazonal, evento específico, campanha, homenagem) presentes no briefing. NÃO invente urgência, desconto ou pitch de venda se o briefing não pedir. NÃO ignore o contexto fornecido. Se for uma data comemorativa ou homenagem, mantenha esse tom em TODAS as 9 variações — adaptando apenas o formato (mais curto/longo, mais visual/textual), nunca a intenção.\n========================================\n`
+      : '';
+
+    const prompt = `Crie posts para o seguinte produto:
+${blocoBriefing}
 Produto: ${produto.nome}
-Preço: R$ ${produto.preco}
+${produto.preco ? `Preço: R$ ${produto.preco}` : ''}
+${categoria ? `Categoria: ${categoria}` : ''}
+${tagsArr.length ? `Tags: ${tagsArr.join(', ')}` : ''}
+${beneficios ? `Benefícios: ${beneficios}` : ''}
 ${produto.rating ? `Avaliação: ${produto.rating} estrelas (${produto.reviews} reviews)` : ''}
 ${produto.comissao ? `Comissão: R$ ${produto.comissao}` : ''}
 
-Gere 9 variações de posts, 3 para cada tipo:
+${temBriefing
+  ? 'Gere 9 variações de posts (3 por formato) SEMPRE respeitando o tom e a temática do briefing acima. As "variações" são de FORMATO/ABORDAGEM, nunca contradizem a intenção do cliente:'
+  : 'Gere 9 variações de posts, 3 para cada tipo:'}
 
 INSTAGRAM (3 variações):
 - Opção A: Estilo direto/urgente com call-to-action forte
