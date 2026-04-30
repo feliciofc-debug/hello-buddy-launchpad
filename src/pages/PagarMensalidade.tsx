@@ -110,7 +110,7 @@ const PagarMensalidade = () => {
           <div className="grid grid-cols-2 gap-3 text-sm">
             {[
               'Postagem automática 24/7',
-              'IA Marketing ilimitada',
+              'IA Marketing (50 imagens/mês)',
               'WhatsApp integrado',
               'Suporte prioritário',
             ].map((b) => (

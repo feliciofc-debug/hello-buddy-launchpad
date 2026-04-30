@@ -529,8 +529,8 @@ Frequências: Enviar Agora, Uma vez, Diário, Semanal, Personalizado.
 
 ### AMZ OFERTAS PRO — R$ 597/mês
 Plano único, tudo incluso:
-- Posts ilimitados Facebook + Instagram via API oficial Meta
-- Reels e Stories ilimitados (com agendamento)
+- Posts Facebook + Instagram via API oficial Meta
+- Reels e Stories com agendamento
 - Piloto Automático 24/7
 - Importação automática de produtos Shopee
 - IA para textos, imagens e carrosséis
