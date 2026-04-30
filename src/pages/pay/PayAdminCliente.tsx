@@ -55,7 +55,9 @@ export default function PayAdminCliente() {
         alert('Assinatura sem ID válido. Verifique o cadastro.');
         return;
       }
-      const link = `${window.location.origin}/pagar/${subscriptionId}`;
+      // SEMPRE usar domínio de produção — nunca window.location.origin (que pode ser preview)
+      const PROD_BASE = 'https://amzofertas.com.br';
+      const link = `${PROD_BASE}/pagar/${subscriptionId}`;
       setPayLink(link);
     } catch (e) {
       console.error(e);
