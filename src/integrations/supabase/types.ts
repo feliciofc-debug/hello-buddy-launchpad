@@ -8096,6 +8096,14 @@ export type Database = {
           status: string
         }[]
       }
+      get_billing_subscription_status: {
+        Args: { p_subscription_id: string }
+        Returns: {
+          last_payment_date: string
+          next_billing_date: string
+          status: string
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
