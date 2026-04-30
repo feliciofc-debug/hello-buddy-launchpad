@@ -4,7 +4,7 @@ import { Check, Zap, Shield, Clock, CreditCard, AlertCircle, TrendingUp, Buildin
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { supabase } from '@/integrations/supabase/client';
-import CheckoutProMP from '@/components/CheckoutProMP';
+import PaymentFormDirect from '@/components/PaymentFormDirect';
 import { SEGMENTOS_EMPRESA } from '@/lib/segments';
 
 const Planos = () => {
@@ -90,7 +90,7 @@ const Planos = () => {
             </div>
           </div>
           
-          <CheckoutProMP
+          <PaymentFormDirect
             planName="AMZ Ofertas PRO"
             userId={user.id}
           />
