@@ -8086,6 +8086,16 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_billing_pagamento_publico: {
+        Args: { p_subscription_id: string }
+        Returns: {
+          amount: number
+          customer_email: string
+          customer_name: string
+          next_billing_date: string
+          status: string
+        }[]
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
