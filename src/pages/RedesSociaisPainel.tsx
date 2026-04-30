@@ -272,6 +272,23 @@ export default function RedesSociaisPainel() {
                         </p>
                       </div>
                       <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Agendado</Badge>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditTarget(post)}
+                        title="Editar agendamento"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setCancelTarget(post.id)}
+                        title="Cancelar agendamento"
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   ))}
                 </div>
