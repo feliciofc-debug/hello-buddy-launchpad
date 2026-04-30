@@ -27,10 +27,11 @@ const CheckoutProMP = ({ planName, userId }: CheckoutProMPProps) => {
       });
 
       if (error) throw error;
-      if (!data?.init_point) throw new Error('Link de pagamento não retornado');
+      const paymentLink = data?.init_point || data?.checkoutUrl || data?.payment_link;
+      if (!paymentLink) throw new Error('Link de pagamento não retornado');
 
       // Redireciona para o Checkout Pro do Mercado Pago (página bonita com PIX/Cartão/Boleto)
-      window.location.href = data.init_point;
+      window.location.href = paymentLink;
     } catch (err: any) {
       console.error('Erro ao iniciar pagamento:', err);
       toast.error(err.message || 'Erro ao iniciar pagamento. Tente novamente.');
