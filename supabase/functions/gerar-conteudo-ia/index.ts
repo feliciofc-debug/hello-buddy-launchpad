@@ -46,7 +46,7 @@ serve(async (req) => {
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 A legenda deve:
 - Ser atrativa e usar emojis relevantes
 - Ter no máximo 2200 caracteres
@@ -58,7 +58,7 @@ A legenda deve:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 A mensagem deve:
 - Ser curta e direta
 - Usar emojis estrategicamente
@@ -69,7 +69,7 @@ A mensagem deve:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 O post deve:
 - Ser informativo e persuasivo
 - Destacar benefícios
@@ -80,7 +80,7 @@ O post deve:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 O script deve:
 - Ter gancho forte nos primeiros 3 segundos
 - Ser dinâmico e energético
@@ -91,7 +91,7 @@ O script deve:
 Produto: ${productTitle}
 Preço: R$ ${productPrice}
 Avaliação: ${productRating}/5 estrelas
-
+${blocoExtras ? blocoExtras + "\n" : ""}${blocoBriefing}
 O email deve incluir:
 - Assunto irresistível
 - Corpo do email bem estruturado
