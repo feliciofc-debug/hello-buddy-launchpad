@@ -39,17 +39,39 @@ export default function PayAdminCliente() {
 
   async function generateLink() {
     setLinkLoading(true);
+    setPayLink('');
     try {
-      const { data: res } = await supabase.functions.invoke('billing-dashboard-api', {
-        method: 'POST',
-        headers: { ...getHeaders(), 'x-route': `/clients/${id}/checkout-link` },
-        body: {},
-      });
-      if (res?.init_point) setPayLink(res.init_point);
+      // Pega a subscription mais recente do cliente (do próprio payload já carregado)
+      const subs = (data?.subscriptions || []) as any[];
+      if (!subs.length) {
+        alert('Este cliente não possui nenhuma assinatura cadastrada. Crie uma assinatura antes de gerar o link.');
+        return;
+      }
+      const sorted = [...subs].sort((a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      const subscriptionId = sorted[0].id;
+      if (!subscriptionId) {
+        alert('Assinatura sem ID válido. Verifique o cadastro.');
+        return;
+      }
+      const link = `${window.location.origin}/pagar/${subscriptionId}`;
+      setPayLink(link);
     } catch (e) {
       console.error(e);
+      alert('Erro ao gerar link. Tente novamente.');
     } finally {
       setLinkLoading(false);
+    }
+  }
+
+  async function copyLink() {
+    if (!payLink) return;
+    try {
+      await navigator.clipboard.writeText(payLink);
+      alert('Link copiado!');
+    } catch {
+      alert('Não foi possível copiar. Selecione manualmente.');
     }
   }
 
@@ -114,18 +136,25 @@ export default function PayAdminCliente() {
         </div>
 
         {/* Ações */}
-        <div className="flex items-center gap-4 mb-6">
+        <div className="mb-6">
           <button onClick={generateLink} disabled={linkLoading}
             className="px-4 py-2 bg-sky-600 hover:bg-sky-700 rounded-lg text-sm font-semibold disabled:opacity-50">
             {linkLoading ? 'Gerando...' : '🔗 Gerar link de pagamento'}
           </button>
           {payLink && (
-            <div className="flex-1">
-              <a href={payLink} target="_blank" rel="noopener noreferrer" className="text-sky-400 text-sm break-all hover:underline">
-                {payLink}
-              </a>
-              <button onClick={() => { navigator.clipboard.writeText(payLink); }}
-                className="ml-2 text-xs text-slate-400 hover:text-white">📋 Copiar</button>
+            <div className="mt-3 p-3 bg-slate-800 border border-slate-700 rounded-lg">
+              <p className="text-xs text-slate-400 uppercase mb-2">Link do checkout AMZ (modal Pro)</p>
+              <p className="text-sky-400 text-sm break-all mb-3 font-mono">{payLink}</p>
+              <div className="flex gap-2">
+                <button onClick={copyLink}
+                  className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs font-semibold">
+                  📋 Copiar link
+                </button>
+                <a href={payLink} target="_blank" rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 rounded text-xs font-semibold">
+                  ↗ Abrir em nova aba
+                </a>
+              </div>
             </div>
           )}
         </div>
