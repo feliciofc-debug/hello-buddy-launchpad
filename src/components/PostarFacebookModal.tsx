@@ -285,8 +285,8 @@ export function PostarFacebookModal({
       savePreviewCache(cacheId, { caption: resp.caption, estilo: resp.estilo || estiloFinal, ts: Date.now() });
       pushPreviewRate(produto.id);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao gerar prévia.';
-      toast.error(msg);
+      console.error('[engagement-preview]', err);
+      toast.error('Não foi possível gerar a caption. Verifique se o produto tem informações suficientes e tente novamente.');
     } finally {
       setPreviewLoading(false);
     }

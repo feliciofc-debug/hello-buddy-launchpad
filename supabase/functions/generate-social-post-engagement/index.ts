@@ -60,15 +60,20 @@ interface BlacklistTermo {
 // Header obrigatório de estrutura — repetido em TODOS os 6 prompts
 // ----------------------------------------------------------------------------
 
-const CTA_EXATO = 'Garante o seu pelo link aí em cima 👆'
+const CTA_COM_LINK = 'Garante o seu pelo link aí em cima 👆'
+const CTA_SEM_LINK = 'Chame no Direct pra falar com a gente 💬'
+// Mantido por compat (caso algum import externo referencie)
+const CTA_EXATO = CTA_COM_LINK
 
-const HEADER_ESTRUTURA = `
+function montarHeader(temLink: boolean): string {
+  if (temLink) {
+    return `
 ESTRUTURA OBRIGATÓRIA DA CAPTION (NÃO NEGOCIÁVEL):
 1. LINHA 1: O LINK do produto sozinho (sem texto antes). Use exatamente: {{LINK}}
 2. LINHA EM BRANCO
 3. SCRIPT: O texto principal de copywriting no estilo solicitado (3 a 6 linhas, parágrafos curtos)
 4. LINHA EM BRANCO
-5. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_EXATO}
+5. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_COM_LINK}
 
 REGRAS UNIVERSAIS:
 - NUNCA repita o link no meio ou no fim. O link aparece UMA VEZ na linha 1.
@@ -91,6 +96,37 @@ Termos vagos de preço SÃO PERMITIDOS quando necessários pra escassez (ex: "pr
 
 Se você incluir qualquer cifra ou valor numérico de preço, sua resposta será REJEITADA.
 `.trim()
+  }
+
+  // SEM LINK — foco em marca/serviço, sem URL na caption
+  return `
+ESTRUTURA OBRIGATÓRIA DA CAPTION (NÃO NEGOCIÁVEL):
+1. SCRIPT: O texto principal de copywriting no estilo solicitado (3 a 6 linhas, parágrafos curtos). Foque na MARCA/SERVIÇO e no que o negócio oferece. NÃO inclua URL, link ou domínio.
+2. LINHA EM BRANCO
+3. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_SEM_LINK}
+
+REGRAS UNIVERSAIS:
+- NÃO inclua URLs, links, "http", "www" ou qualquer endereço web na caption.
+- Use português brasileiro coloquial e natural.
+- Máximo 700 caracteres no total.
+- Pode usar 1 a 3 emojis no script. Não exagere.
+- PROIBIDO ABSOLUTAMENTE usar hashtags. NÃO inclua NENHUM caractere "#" em lugar nenhum da caption. Se você incluir qualquer hashtag, sua resposta será REJEITADA e descartada.
+- APENAS UM CTA na caption inteira. Não escreva dois CTAs nem variações alternativas. Só a string exata acima na última linha.
+- NUNCA prometa cura, milagre, garantia 100%, resultado milagroso, ou cite ANVISA/FDA/OMS.
+- NUNCA depreciem outros marketplaces ou concorrentes.
+- NÃO invente preço, frete grátis ou prazo de entrega que não foi informado.
+
+PROIBIDO ABSOLUTAMENTE mencionar qualquer preço, valor monetário ou cifra. NÃO use:
+- R$, BRL, ou qualquer símbolo de moeda
+- Números seguidos de "reais", "real", "mango", "pila"
+- Frases como "por apenas X", "oferta de Y reais", "de R$ X por R$ Y"
+- Cifras explícitas como "sai por 99", "só 49,90", "menos de 50"
+
+Termos vagos de preço SÃO PERMITIDOS quando necessários (ex: "preço que cabe no bolso"), MAS SEM número junto.
+
+Se você incluir qualquer cifra ou valor numérico de preço, sua resposta será REJEITADA.
+`.trim()
+}
 
 // ----------------------------------------------------------------------------
 // Os 6 prompts dedicados (apenas o "miolo" — header é prependido)
@@ -261,7 +297,9 @@ function validarCaption(
   caption: string,
   blacklist: BlacklistTermo[],
   estilo: Estilo,
+  temLink: boolean = true,
 ): ValidacaoResultado {
+  const ctaEsperado = temLink ? CTA_COM_LINK : CTA_SEM_LINK
   const captionLower = caption.toLowerCase()
 
   // CAMADA 1: string match contra termo_simples (blacklist)
@@ -314,7 +352,7 @@ function validarCaption(
     .map((l) => l.trim())
     .filter((l) => l.length > 0)
   const ultimaLinha = linhasNaoVazias[linhasNaoVazias.length - 1] || ''
-  if (ultimaLinha !== CTA_EXATO) {
+  if (ultimaLinha !== ctaEsperado) {
     return {
       ok: false,
       camada: 4,
@@ -322,13 +360,13 @@ function validarCaption(
       termo_violado: ultimaLinha.slice(0, 80),
     }
   }
-  const ocorrenciasCTA = caption.split(CTA_EXATO).length - 1
+  const ocorrenciasCTA = caption.split(ctaEsperado).length - 1
   if (ocorrenciasCTA !== 1) {
     return {
       ok: false,
       camada: 4,
       motivo: `cta_duplicado:${ocorrenciasCTA}x`,
-      termo_violado: CTA_EXATO,
+      termo_violado: ctaEsperado,
     }
   }
 
@@ -488,12 +526,8 @@ serve(async (req) => {
   }
 
   const link = produto.link_marketplace || produto.link || ''
-  if (!link) {
-    return new Response(
-      JSON.stringify({ success: false, error: 'Produto sem link válido' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-    )
-  }
+  const temLink = link.length > 0
+  // Sem validação bloqueadora: produto sem link gera caption focada em marca/serviço.
 
   const userIdLog = user_id || produto.user_id
 
@@ -541,9 +575,11 @@ serve(async (req) => {
     const promptMiolo = PROMPT_BUILDERS[estiloEscolhido](produtoLite)
     const promptCompleto = [
       'Você é redator brasileiro de copy para Facebook/Instagram.',
-      HEADER_ESTRUTURA,
+      montarHeader(temLink),
       promptMiolo,
-      `\nLINK A USAR: ${link}\n`,
+      temLink
+        ? `\nLINK A USAR: ${link}\n`
+        : '\n(Este produto NÃO possui link externo — fale apenas da marca/serviço, sem URLs.)\n',
       'Gere AGORA a caption final, seguindo a estrutura. Nada de prefácio.',
     ].join('\n\n')
 
@@ -562,8 +598,8 @@ serve(async (req) => {
       continue
     }
 
-    const comLink = injetarLink(bruto, link)
-    const validacao = validarCaption(comLink, blacklist, estiloEscolhido)
+    const comLink = temLink ? injetarLink(bruto, link) : bruto
+    const validacao = validarCaption(comLink, blacklist, estiloEscolhido, temLink)
 
     if (validacao.ok) {
       captionFinal = comLink
@@ -575,8 +611,8 @@ serve(async (req) => {
     validacaoFinal = validacao
   }
 
-  // Fallback se 3 tentativas falharam
-  if (!captionFinal) {
+  // Fallback se 3 tentativas falharam (apenas quando temLink — fallbackPromocional exige link)
+  if (!captionFinal && temLink) {
     try {
       captionFinal = await fallbackPromocional(produtoLite, link)
       usouFallback = true
