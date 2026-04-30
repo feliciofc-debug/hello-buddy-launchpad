@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Lock, Mail, Phone, MessageCircle } from 'lucide-react';
 import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
-import { createMercadoPagoPayment } from '@/api/mercadopago';
 import { toast } from 'sonner';
 
 const WHATSAPP_URL =
@@ -79,17 +78,10 @@ export default function Cadastro() {
       const userId = signUpData.user?.id;
       if (!userId) throw new Error('Erro ao criar conta');
 
-      toast.success('Conta criada! Redirecionando para o pagamento...');
+      toast.success('Conta criada! Escolha a forma de pagamento...');
 
-      // Criar checkout Mercado Pago - plano PRO (R$ 597/mês)
-      const paymentResult = await createMercadoPagoPayment(userId, form.email, 'pro');
-
-      if (!paymentResult?.success || !paymentResult?.checkoutUrl) {
-        throw new Error(paymentResult?.error || 'Erro ao gerar link de pagamento');
-      }
-
-      // Redirecionar para checkout
-      window.location.href = paymentResult.checkoutUrl;
+      // Redireciona para /planos onde o modal CheckoutProMP é renderizado
+      navigate('/planos');
     } catch (err: any) {
       console.error('Erro no cadastro:', err);
       toast.error(err.message || 'Erro ao processar cadastro');
