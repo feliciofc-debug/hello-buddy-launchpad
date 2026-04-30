@@ -124,7 +124,7 @@ serve(async (req) => {
       subscriptionId = sub.id;
     }
 
-    const appUrl = Deno.env.get("APP_URL") || "https://amzofertas.com.br";
+    const appUrl = Deno.env.get("APP_URL") || "https://www.amzofertas.com.br";
     const paymentLink = `${appUrl}/pagar/${subscriptionId}`;
 
     return json({
