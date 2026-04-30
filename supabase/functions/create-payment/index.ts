@@ -105,6 +105,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        init_point: data.init_point,
+        payment_link: data.init_point,
         checkoutUrl: data.init_point,
         preferenceId: data.id
       }),
