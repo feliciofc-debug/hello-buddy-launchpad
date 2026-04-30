@@ -54,7 +54,7 @@ serve(async (req) => {
       : new Date().toISOString().slice(0, 10);
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const appUrl = Deno.env.get("APP_URL") || "https://amzofertas.com.br";
+    const appUrl = Deno.env.get("APP_URL") || "https://www.amzofertas.com.br";
 
     const preference = {
       items: [
