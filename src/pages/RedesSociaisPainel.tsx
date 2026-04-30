@@ -319,6 +319,20 @@ export default function RedesSociaisPainel() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <CancelarAgendamentoDialog
+        open={!!cancelTarget}
+        onOpenChange={(o) => { if (!o) setCancelTarget(null); }}
+        postId={cancelTarget}
+        onSuccess={loadData}
+      />
+
+      <EditarAgendamentoModal
+        open={!!editTarget}
+        onOpenChange={(o) => { if (!o) setEditTarget(null); }}
+        post={editTarget}
+        onSuccess={loadData}
+      />
     </div>
   );
 }
