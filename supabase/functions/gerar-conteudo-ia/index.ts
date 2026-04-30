@@ -12,14 +12,31 @@ serve(async (req) => {
   }
 
   try {
-    const { productTitle, productPrice, productRating, productLink, platform } = await req.json();
-    
-    console.log('Gerando conteúdo com Lovable AI para:', { productTitle, platform });
+    const body = await req.json();
+    const { productTitle, productPrice, productRating, productLink, platform } = body;
+    const productDescription = (body.productDescription || body.descricao || '').toString().trim();
+    const productCategory = (body.productCategory || body.categoria || '').toString().trim();
+    const productTagsRaw = body.productTags || body.tags || [];
+    const productTags = Array.isArray(productTagsRaw) ? productTagsRaw.filter(Boolean) : [];
+    const productBenefits = (body.productBenefits || body.beneficios || '').toString().trim();
+    const temBriefing = productDescription.length > 10;
+
+    console.log('Gerando conteúdo com Lovable AI para:', { productTitle, platform, temBriefing });
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
       throw new Error('LOVABLE_API_KEY não configurada');
     }
+
+    const blocoBriefing = temBriefing
+      ? `\n========================================\n⚠️ BRIEFING DO CLIENTE (PRIORIDADE MÁXIMA):\n"${productDescription}"\n\nIMPORTANTE: Esta descrição representa a INTENÇÃO do cliente sobre como o produto deve ser comunicado. Respeite o TOM (comemorativo, agradecimento, promocional, educativo, etc) e a TEMÁTICA (data sazonal, evento, homenagem, campanha) do briefing. NÃO invente urgência, desconto ou pitch de venda se o briefing não pedir. NÃO ignore o contexto fornecido.\n========================================\n`
+      : '';
+
+    const blocoExtras = [
+      productCategory ? `Categoria: ${productCategory}` : '',
+      productTags.length ? `Tags: ${productTags.join(', ')}` : '',
+      productBenefits ? `Benefícios: ${productBenefits}` : '',
+    ].filter(Boolean).join('\n');
 
     // Criar prompt específico para cada plataforma
     let prompt = '';
