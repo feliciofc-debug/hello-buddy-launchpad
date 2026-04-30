@@ -204,39 +204,26 @@ serve(async (req) => {
         dataVenc = new Date().toISOString().slice(0, 10);
       }
 
-      // Link Mercado Pago DIRETO (sem página intermediária).
-      // 1) Usa payment_link já salvo no cliente, se existir.
-      // 2) Senão, chama criar-cobranca-mercadopago-publico pra gerar e salvar.
-      paymentLink = cli.payment_link || "";
+      // Link do checkout INTERNO (PIX/Cartão/Boleto) — sempre com www.
+      // Busca subscription mais recente do cliente para montar /pagar/:id
+      try {
+        const { data: subForLink } = await supabase
+          .from("billing_subscriptions")
+          .select("id")
+          .eq("customer_id", clienteId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (!paymentLink) {
-        try {
-          const { data: subForLink } = await supabase
-            .from("billing_subscriptions")
-            .select("id")
-            .eq("customer_id", clienteId)
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (subForLink?.id) {
-            const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-            const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-            const resp = await fetch(`${supabaseUrl}/functions/v1/criar-cobranca-mercadopago-publico`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "apikey": anonKey, "Authorization": `Bearer ${anonKey}` },
-              body: JSON.stringify({ subscription_id: subForLink.id }),
-            });
-            const j = await resp.json().catch(() => ({}));
-            if (j?.payment_link) {
-              paymentLink = j.payment_link;
-            } else {
-              console.warn("[pietro-cobranca-disparar] criar-cobranca-mercadopago-publico não retornou payment_link", j);
-            }
-          }
-        } catch (e) {
-          console.warn("[pietro-cobranca-disparar] exceção ao gerar link MP:", (e as Error).message);
+        if (subForLink?.id) {
+          paymentLink = `https://www.amzofertas.com.br/pagar/${subForLink.id}`;
+        } else {
+          console.warn("[pietro-cobranca-disparar] nenhuma subscription encontrada para cliente", clienteId);
+          paymentLink = cli.payment_link || "";
         }
+      } catch (e) {
+        console.warn("[pietro-cobranca-disparar] exceção ao montar link interno:", (e as Error).message);
+        paymentLink = cli.payment_link || "";
       }
     } else if (body?.test) {
       nome = String(body.test.nome || "Teste");
