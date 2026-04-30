@@ -107,6 +107,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -121,6 +122,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -135,6 +137,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -156,6 +159,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -176,6 +180,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
@@ -191,6 +196,7 @@ PRODUTO:
 - Nome: ${p.nome}
 - Faixa de preço: NÃO MENCIONAR na caption (proibido cifras)
 - Categoria: ${p.categoria || 'geral'}
+${blocoContextoProduto(p)}
 `.trim()
 }
 
