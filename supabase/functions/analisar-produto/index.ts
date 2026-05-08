@@ -46,6 +46,13 @@ function buildConceptKeywords(text: string): string {
   const compact = text.replace(/\s+/g, ' ').trim();
   if (!compact) return 'marketing digital, automação, redes sociais';
 
+  // Se for uma frase única (sem separadores), preserva o prompt INTEIRO do usuário.
+  // Truncar aqui faz a IA perder o contexto (ex.: "bola de fogo caindo na lua" virava só "bola...").
+  const hasSeparators = /[\n,;|]/.test(compact);
+  if (!hasSeparators) {
+    return compact.slice(0, 600);
+  }
+
   const segments = compact
     .split(/[\n,;|]+/)
     .map((segment) => segment.trim())
@@ -58,13 +65,14 @@ function buildConceptKeywords(text: string): string {
         .trim()
     )
     .filter(Boolean)
-    .map((segment) => segment.slice(0, 48));
+    // Limite generoso por segmento para não cortar frases descritivas
+    .map((segment) => segment.slice(0, 240));
 
   if (segments.length > 0) {
-    return segments.slice(0, 6).join(', ');
+    return segments.slice(0, 8).join(', ');
   }
 
-  return compact.split(/\s+/).slice(0, 12).join(' ');
+  return compact.slice(0, 600);
 }
 
 function hasMatch(text: string, patterns: RegExp[]): boolean {
