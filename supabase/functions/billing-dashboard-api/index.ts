@@ -263,7 +263,9 @@ serve(async (req) => {
 
     // GET /clients-by-month?ym=YYYY-MM
     if (req.method === 'GET' && path.startsWith('/clients-by-month')) {
-      const ym = url.searchParams.get('ym') || new Date().toISOString().slice(0, 7);
+      const qIdx = path.indexOf('?');
+      const routeParams = qIdx >= 0 ? new URLSearchParams(path.slice(qIdx + 1)) : new URLSearchParams();
+      const ym = routeParams.get('ym') || url.searchParams.get('ym') || new Date().toISOString().slice(0, 7);
       const [yStr, mStr] = ym.split('-');
       const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
       if (!y || !m || m < 1 || m > 12) {
