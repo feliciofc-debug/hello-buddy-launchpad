@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const MONTHLY_AMOUNT = 597;
-const GRACE_DAYS = 2;
+const GRACE_DAYS = 1;
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
