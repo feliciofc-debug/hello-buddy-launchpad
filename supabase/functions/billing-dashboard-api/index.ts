@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const MONTHLY_AMOUNT = 597;
-const GRACE_DAYS = 2;
+const GRACE_DAYS = 1;
 
 function hasAccess(sub: any): boolean {
   if (!sub || !['active'].includes(sub.status)) return false;
