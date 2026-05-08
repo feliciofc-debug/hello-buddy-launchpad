@@ -297,10 +297,19 @@ serve(async (req) => {
         let monthStatus: 'pago' | 'pendente' | 'atrasado' = 'pendente';
         if (tx) monthStatus = 'pago';
         else if (sub?.next_billing_date) {
-          const due = new Date(sub.next_billing_date + 'T12:00:00');
-          if (due.getUTCFullYear() === y && (due.getUTCMonth() + 1) === m) {
-            monthStatus = new Date() > due ? 'atrasado' : 'pendente';
-          } else if (due.getUTCFullYear() < y || (due.getUTCFullYear() === y && (due.getUTCMonth() + 1) < m)) {
+          // Comparar por DATA (São Paulo), não por horário.
+          // Só fica "atrasado" no dia SEGUINTE ao vencimento.
+          const [dy, dmo, dd] = sub.next_billing_date.split('-').map((n: string) => parseInt(n, 10));
+          const dueY = dy, dueM = dmo, dueD = dd;
+          const nowSP = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+          const todayY = nowSP.getFullYear();
+          const todayM = nowSP.getMonth() + 1;
+          const todayD = nowSP.getDate();
+          const dueNum = dueY * 10000 + dueM * 100 + dueD;
+          const todayNum = todayY * 10000 + todayM * 100 + todayD;
+          if (dueY === y && dueM === m) {
+            monthStatus = todayNum > dueNum ? 'atrasado' : 'pendente';
+          } else if (dueY < y || (dueY === y && dueM < m)) {
             monthStatus = 'atrasado';
           } else {
             monthStatus = 'pendente';
