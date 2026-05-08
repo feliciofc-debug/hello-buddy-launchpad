@@ -261,6 +261,130 @@ serve(async (req) => {
       });
     }
 
+    // GET /clients-by-month?ym=YYYY-MM
+    if (req.method === 'GET' && path.startsWith('/clients-by-month')) {
+      const ym = url.searchParams.get('ym') || new Date().toISOString().slice(0, 7);
+      const [yStr, mStr] = ym.split('-');
+      const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
+      if (!y || !m || m < 1 || m > 12) {
+        return new Response(JSON.stringify({ error: 'Parâmetro ym inválido (use YYYY-MM)' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+      const monthStart = new Date(Date.UTC(y, m - 1, 1)).toISOString();
+      const monthEnd = new Date(Date.UTC(y, m, 1)).toISOString();
+
+      const { data: customers } = await supabase
+        .from('billing_customers')
+        .select(`id, name, email, billing_subscriptions ( id, status, next_billing_date, last_payment_date, created_at )`)
+        .order('name', { ascending: true });
+
+      const { data: txs } = await supabase
+        .from('billing_transactions')
+        .select('id, customer_id, amount, status, payment_date')
+        .gte('payment_date', monthStart)
+        .lt('payment_date', monthEnd)
+        .eq('status', 'approved');
+
+      const txByCustomer: Record<string, any> = {};
+      for (const t of txs || []) {
+        if (!txByCustomer[t.customer_id]) txByCustomer[t.customer_id] = t;
+      }
+
+      const list = (customers || []).map((c: any) => {
+        const sub = pickLatest(c.billing_subscriptions || []);
+        const tx = txByCustomer[c.id];
+        let monthStatus: 'pago' | 'pendente' | 'atrasado' = 'pendente';
+        if (tx) monthStatus = 'pago';
+        else if (sub?.next_billing_date) {
+          const due = new Date(sub.next_billing_date + 'T12:00:00');
+          if (due.getUTCFullYear() === y && (due.getUTCMonth() + 1) === m) {
+            monthStatus = new Date() > due ? 'atrasado' : 'pendente';
+          } else if (due.getUTCFullYear() < y || (due.getUTCFullYear() === y && (due.getUTCMonth() + 1) < m)) {
+            monthStatus = 'atrasado';
+          } else {
+            monthStatus = 'pendente';
+          }
+        }
+        return {
+          id: c.id, razao_social: c.name, email: c.email,
+          month_status: monthStatus,
+          paid_amount: tx?.amount ?? null,
+          paid_date: tx?.payment_date ?? null,
+          next_billing_date: sub?.next_billing_date ?? null,
+          subscription_id: sub?.id ?? null,
+        };
+      });
+
+      const totalPago = list.filter(x => x.month_status === 'pago').reduce((s, x) => s + Number(x.paid_amount || 0), 0);
+      return new Response(JSON.stringify({
+        ym, clients: list,
+        resumo: {
+          total_clientes: list.length,
+          pagos: list.filter(x => x.month_status === 'pago').length,
+          pendentes: list.filter(x => x.month_status === 'pendente').length,
+          atrasados: list.filter(x => x.month_status === 'atrasado').length,
+          total_recebido: totalPago,
+        }
+      }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // POST /clients/:id/mark-paid  body: { ym: 'YYYY-MM', amount?, payment_date? }
+    if (req.method === 'POST' && path.match(/\/clients\/[^/]+\/mark-paid/)) {
+      const id = path.split('/clients/')[1]?.split('/')[0];
+      const body = await req.json().catch(() => ({}));
+      const ym: string = body.ym || new Date().toISOString().slice(0, 7);
+      const amount = Number(body.amount ?? MONTHLY_AMOUNT);
+      const paymentDate = body.payment_date
+        ? new Date(body.payment_date).toISOString()
+        : new Date(`${ym}-15T12:00:00Z`).toISOString();
+
+      const { data: sub } = await supabase
+        .from('billing_subscriptions').select('*').eq('customer_id', id)
+        .order('created_at', { ascending: false }).limit(1).single();
+      if (!sub) {
+        return new Response(JSON.stringify({ error: 'Assinatura não encontrada' }), {
+          status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      const { error: txErr } = await supabase.from('billing_transactions').insert({
+        subscription_id: sub.id,
+        customer_id: id,
+        mp_payment_id: `manual-${ym}-${Date.now()}`,
+        amount,
+        status: 'approved',
+        payment_date: paymentDate,
+        webhook_received: false,
+        raw: { source: 'admin_manual', ym },
+      });
+      if (txErr) throw txErr;
+
+      // Avança ciclo: próximo vencimento = mesmo dia do mês seguinte do ym pago
+      const [yStr, mStr] = ym.split('-');
+      const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
+      const dia = sub.dia_vencimento || (sub.next_billing_date ? new Date(sub.next_billing_date + 'T12:00:00').getUTCDate() : 15);
+      const nextY = m === 12 ? y + 1 : y;
+      const nextM = m === 12 ? 1 : m + 1;
+      const lastDayNext = new Date(Date.UTC(nextY, nextM, 0)).getUTCDate();
+      const nextDay = Math.min(dia, lastDayNext);
+      const nextBilling = `${nextY}-${String(nextM).padStart(2, '0')}-${String(nextDay).padStart(2, '0')}`;
+      const periodStart = `${y}-${String(m).padStart(2, '0')}-${String(Math.min(dia, new Date(Date.UTC(y, m, 0)).getUTCDate())).padStart(2, '0')}`;
+
+      const { error: subErr } = await supabase.from('billing_subscriptions').update({
+        status: 'active',
+        last_payment_date: paymentDate,
+        current_period_start: periodStart,
+        next_billing_date: nextBilling,
+        payment_fail_count: 0,
+      }).eq('id', sub.id);
+      if (subErr) throw subErr;
+
+      return new Response(JSON.stringify({ ok: true, next_billing_date: nextBilling }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
     return new Response(JSON.stringify({ error: 'Rota não encontrada' }), {
       status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
