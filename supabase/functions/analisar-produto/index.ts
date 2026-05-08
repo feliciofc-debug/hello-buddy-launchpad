@@ -361,59 +361,48 @@ serve(async (req) => {
           }
         ];
       } else {
+        const userPromptRaw = (url || '').toString().trim();
         const conceptKeywords = buildConceptKeywords(url);
         const hasLogo = Boolean(logoReferenceForAI);
         const imagePrompt = referenceImage
-          ? `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
+          ? `PRIMARY USER REQUEST (follow LITERALLY and FAITHFULLY — this is the most important instruction):
+"${userPromptRaw}"
 
-Create a stunning, photorealistic social media marketing image for: ${conceptKeywords}.
+Generate a single ultra-realistic photographic image that depicts EXACTLY what the user described above. Every element mentioned (objects, scenery, atmosphere, action) MUST be present in the final image.
 
-MANDATORY STYLE RULES:
-- Photorealistic style ONLY — absolutely NO cartoon, NO illustration, NO vector art, NO clip art, NO animated style
-- Must look like a real professional photograph or high-end product photography
-- Professional studio lighting, realistic textures, real materials
-- Modern, premium, magazine-quality aesthetic
-- Suitable for Instagram and Facebook marketing posts
-- Clean composition with space for branding
+STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting, real materials and textures. NO cartoon, NO illustration, NO vector, NO clip art.
 
 REFERENCE IMAGE RULES:
-- The reference image provided shows the ACTUAL product/concept — reproduce it faithfully
-- Keep the same product, colors, shapes and identity from the reference
-- Only improve the context, lighting, angle and professional quality
+- Use the reference image only as visual inspiration for the subject when relevant
+- Do NOT copy the reference if it conflicts with the user request — the user request ALWAYS wins
 
 ${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
 - The LAST image provided is the company LOGO
-- You MUST incorporate this logo EXACTLY as it appears — same colors, same font, same design
-- Place the logo in a natural, visible position (corner or integrated into the scene)
-- Do NOT modify, redraw or reinterpret the logo — use it IDENTICALLY
-- The logo must be clearly legible and recognizable in the final image
+- Incorporate it EXACTLY as it appears (same colors, font, design)
+- Place it in a natural, visible position
+- Do NOT modify, redraw or reinterpret the logo
 ` : ''}CRITICAL RULES:
-- ABSOLUTELY NO TEXT of any kind EXCEPT the logo if provided
-- NO slogans, NO captions, NO labels, NO watermarks besides the logo
-- If text starts appearing, replace with visual elements instead
-- The image must be text-free except for the original logo`
-          : `STYLE: Ultra-realistic, photographic quality, 8K resolution, professional photography lighting.
+- ABSOLUTELY NO TEXT of any kind${hasLogo ? ' EXCEPT the logo' : ''}
+- NO slogans, captions, labels, watermarks${hasLogo ? ' besides the logo' : ''}
+- The image must be text-free${hasLogo ? ' except the logo' : ''}`
+          : `PRIMARY USER REQUEST (follow LITERALLY and FAITHFULLY — this is the most important instruction):
+"${userPromptRaw}"
 
-Create a stunning, photorealistic social media marketing image for: ${conceptKeywords}.
+Generate a single ultra-realistic photographic image that depicts EXACTLY what the user described above. Every element mentioned (objects, scenery, atmosphere, action, location like "lua", "praia", "espaço" etc.) MUST be present and clearly recognizable in the final image. Do NOT replace the requested scene with a generic marketing/product photo.
 
-MANDATORY STYLE RULES:
-- Photorealistic style ONLY — absolutely NO cartoon, NO illustration, NO vector art, NO clip art, NO animated style
-- Must look like a real professional photograph or high-end product photography
-- Professional studio lighting, realistic textures, real materials
-- Modern, premium, magazine-quality aesthetic
-- Suitable for Instagram and Facebook marketing posts
+STYLE: Ultra-realistic, photographic quality, 8K resolution, cinematic lighting, real materials and textures. NO cartoon, NO illustration, NO vector, NO clip art.
+
+Concept summary for reinforcement: ${conceptKeywords}.
 
 ${hasLogo ? `LOGO / BRAND IDENTITY (CRITICAL):
 - The image provided is the company LOGO
-- You MUST incorporate this logo EXACTLY as it appears — same colors, same font, same design
-- Place the logo in a natural, visible position (corner or integrated into the scene)
-- Do NOT modify, redraw or reinterpret the logo — use it IDENTICALLY
-- The logo must be clearly legible and recognizable in the final image
+- Incorporate it EXACTLY as it appears (same colors, font, design)
+- Place it in a natural, visible position
+- Do NOT modify, redraw or reinterpret the logo
 ` : ''}CRITICAL RULES:
-- ABSOLUTELY NO TEXT of any kind EXCEPT the logo if provided
-- NO slogans, NO captions, NO labels, NO watermarks besides the logo
-- If text starts appearing, replace with visual elements instead
-- Communicate through colors, shapes, products and composition ONLY`;
+- ABSOLUTELY NO TEXT of any kind${hasLogo ? ' EXCEPT the logo' : ''}
+- NO slogans, captions, labels, watermarks${hasLogo ? ' besides the logo' : ''}
+- Communicate through visual composition only`;
 
         // Build content array with images
         const contentParts: any[] = [];
