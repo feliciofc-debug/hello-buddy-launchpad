@@ -9,6 +9,7 @@ import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
+import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
 
 interface VideoItem {
