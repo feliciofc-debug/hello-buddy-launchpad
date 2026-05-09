@@ -108,8 +108,13 @@ const TikTokCallback = () => {
         });
 
         const origin3 = localStorage.getItem('tiktok_auth_origin') || 'pj';
-        const fallbackUrl3 = origin3 === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
-        setTimeout(() => navigate(fallbackUrl3), 3000);
+        localStorage.removeItem('tiktok_auth_origin');
+        if (origin3 === 'settings') {
+          setTimeout(() => navigate('/configuracoes?error=' + encodeURIComponent(err.message || 'erro') + '&platform=tiktok'), 1500);
+        } else {
+          const fallbackUrl3 = origin3 === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
+          setTimeout(() => navigate(fallbackUrl3), 3000);
+        }
       }
     };
 
