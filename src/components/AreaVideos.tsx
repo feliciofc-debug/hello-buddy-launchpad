@@ -36,6 +36,13 @@ export const AreaVideos = () => {
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
   const [storyVideo, setStoryVideo] = useState<VideoItem | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
+  const [tiktokModalContent, setTiktokModalContent] = useState<{
+    type: 'video';
+    url: string;
+    title?: string;
+    description?: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleStoryPublished = async (
