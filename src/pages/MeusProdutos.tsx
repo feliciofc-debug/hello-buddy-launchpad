@@ -34,6 +34,7 @@ import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
+import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { useGerarReel } from '@/hooks/useGerarReel';
 import { ModalProgressoReel } from '@/components/videos/ModalProgressoReel';
 
@@ -801,6 +802,14 @@ export default function MeusProdutos() {
   const [engagementProduct, setEngagementProduct] = useState<Product | null>(null);
   
   const showTikTok = useFeatureFlag('tiktok_integration');
+
+  const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
+  const [tiktokModalContent, setTiktokModalContent] = useState<{
+    type: 'image' | 'video';
+    url: string;
+    title?: string;
+    description?: string;
+  } | null>(null);
 
   // Form states
   const [formData, setFormData] = useState({
