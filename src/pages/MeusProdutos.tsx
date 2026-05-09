@@ -1801,7 +1801,7 @@ export default function MeusProdutos() {
                             variant="outline"
                             size="sm"
                             className="w-full gap-2 text-foreground border-border hover:bg-muted"
-                            onClick={() => handlePostTikTok(product)}
+                            onClick={() => handleOpenTikTokModal(product)}
                           >
                             <TikTokIcon className="w-4 h-4" />
                             Post on TikTok
@@ -1908,7 +1908,7 @@ export default function MeusProdutos() {
                             variant="outline"
                             size="sm"
                             className="w-full gap-2 text-foreground border-border hover:bg-muted"
-                            onClick={() => handlePostTikTok(product)}
+                            onClick={() => handleOpenTikTokModal(product)}
                           >
                             <TikTokIcon className="w-4 h-4" />
                             Post on TikTok
