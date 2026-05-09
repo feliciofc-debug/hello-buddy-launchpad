@@ -2217,6 +2217,14 @@ export default function MeusProdutos() {
         aberto={modalReelAberto}
         onFechar={() => setModalReelAberto(false)}
       />
+
+      {tiktokModalContent && (
+        <TikTokShareModal
+          open={tiktokModalOpen}
+          onOpenChange={setTiktokModalOpen}
+          content={tiktokModalContent}
+        />
+      )}
     </div>
   );
 }
