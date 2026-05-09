@@ -34,6 +34,7 @@ import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
+import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { useGerarReel } from '@/hooks/useGerarReel';
 import { ModalProgressoReel } from '@/components/videos/ModalProgressoReel';
 
@@ -802,6 +803,14 @@ export default function MeusProdutos() {
   
   const showTikTok = useFeatureFlag('tiktok_integration');
 
+  const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
+  const [tiktokModalContent, setTiktokModalContent] = useState<{
+    type: 'image' | 'video';
+    url: string;
+    title?: string;
+    description?: string;
+  } | null>(null);
+
   // Form states
   const [formData, setFormData] = useState({
     nome: '',
@@ -1308,41 +1317,20 @@ export default function MeusProdutos() {
     }
   };
 
-  const handlePostTikTok = async (produto: any) => {
-    if (!produto.imagem_url) {
+  const handleOpenTikTokModal = (produto: any) => {
+    const url = produto?.imagem_url;
+    if (!url) {
       toast.error('TikTok requer uma imagem ou vídeo do produto');
       return;
     }
-
-    try {
-      toast.loading('Publicando no TikTok...');
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        toast.dismiss();
-        toast.error('Você precisa estar logado');
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke('tiktok-post-content', {
-        body: {
-          user_id: userData.user.id,
-          content_type: 'image',
-          content_url: produto.imagem_url,
-          title: produto.nome?.substring(0, 150) || 'Produto',
-          post_mode: 'direct'
-        }
-      });
-
-      toast.dismiss();
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erro ao publicar');
-
-      toast.success('Publicado no TikTok com sucesso!');
-    } catch (err: any) {
-      toast.dismiss();
-      toast.error(err?.message || 'Erro ao publicar no TikTok');
-    }
+    const isVideo = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url);
+    setTiktokModalContent({
+      type: isVideo ? 'video' : 'image',
+      url,
+      title: produto?.nome,
+      description: produto?.descricao,
+    });
+    setTiktokModalOpen(true);
   };
 
   const handleTestarCampanha = async (product: Product) => {
@@ -1813,7 +1801,7 @@ export default function MeusProdutos() {
                             variant="outline"
                             size="sm"
                             className="w-full gap-2 text-foreground border-border hover:bg-muted"
-                            onClick={() => handlePostTikTok(product)}
+                            onClick={() => handleOpenTikTokModal(product)}
                           >
                             <TikTokIcon className="w-4 h-4" />
                             Post on TikTok
@@ -1920,7 +1908,7 @@ export default function MeusProdutos() {
                             variant="outline"
                             size="sm"
                             className="w-full gap-2 text-foreground border-border hover:bg-muted"
-                            onClick={() => handlePostTikTok(product)}
+                            onClick={() => handleOpenTikTokModal(product)}
                           >
                             <TikTokIcon className="w-4 h-4" />
                             Post on TikTok
@@ -2229,6 +2217,14 @@ export default function MeusProdutos() {
         aberto={modalReelAberto}
         onFechar={() => setModalReelAberto(false)}
       />
+
+      {tiktokModalContent && (
+        <TikTokShareModal
+          open={tiktokModalOpen}
+          onOpenChange={setTiktokModalOpen}
+          content={tiktokModalContent}
+        />
+      )}
     </div>
   );
 }

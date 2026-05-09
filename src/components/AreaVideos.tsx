@@ -9,6 +9,7 @@ import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarStoryModal } from '@/components/PublicarStoryModal';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
+import { TikTokShareModal } from '@/components/TikTokShareModal';
 import { ReelsGeradosGrid } from './videos/ReelsGeradosGrid';
 
 interface VideoItem {
@@ -35,6 +36,13 @@ export const AreaVideos = () => {
   const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
   const [storyVideo, setStoryVideo] = useState<VideoItem | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [tiktokModalOpen, setTiktokModalOpen] = useState(false);
+  const [tiktokModalContent, setTiktokModalContent] = useState<{
+    type: 'video';
+    url: string;
+    title?: string;
+    description?: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleStoryPublished = async (
@@ -135,41 +143,17 @@ export const AreaVideos = () => {
     loadVideos();
   };
 
-  const handlePostTikTok = async (video: any) => {
+  const handleOpenTikTokModal = (video: VideoItem) => {
     if (!video.video_url) {
       toast.error('Vídeo não encontrado');
       return;
     }
-
-    try {
-      toast.loading('Publicando no TikTok...');
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        toast.dismiss();
-        toast.error('Você precisa estar logado');
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke('tiktok-post-content', {
-        body: {
-          user_id: userData.user.id,
-          content_type: 'video',
-          content_url: video.video_url,
-          title: (video.titulo || 'Vídeo').substring(0, 150),
-          post_mode: 'direct'
-        }
-      });
-
-      toast.dismiss();
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erro ao publicar no TikTok');
-
-      toast.success(data?.message || 'Publicado no TikTok com sucesso!');
-    } catch (err: any) {
-      toast.dismiss();
-      toast.error(err?.message || 'Erro ao publicar no TikTok');
-    }
+    setTiktokModalContent({
+      type: 'video',
+      url: video.video_url,
+      title: video.titulo || 'Vídeo',
+    });
+    setTiktokModalOpen(true);
   };
 
   const openReels = (video: VideoItem) => {
@@ -300,7 +284,7 @@ export const AreaVideos = () => {
                     <Button
                       size="sm"
                       className="flex-1 bg-black text-white text-xs hover:bg-gray-800"
-                      onClick={() => handlePostTikTok(video)}
+                      onClick={() => handleOpenTikTokModal(video)}
                     >
                       <TikTokIcon className="mr-1 h-3 w-3" />
                       TikTok
@@ -338,6 +322,14 @@ export const AreaVideos = () => {
           jaPostadoInstagram={!!storyVideo.postado_story_instagram}
           postadoStoryEm={storyVideo.postado_story_em || null}
           onPublished={(result) => handleStoryPublished(storyVideo.id, result)}
+        />
+      )}
+
+      {tiktokModalContent && (
+        <TikTokShareModal
+          open={tiktokModalOpen}
+          onOpenChange={setTiktokModalOpen}
+          content={tiktokModalContent}
         />
       )}
     </div>
