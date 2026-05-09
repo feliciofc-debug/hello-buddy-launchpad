@@ -226,6 +226,40 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* TikTok Account Card */}
+          {loadingProfile ? (
+            <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-3">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Loading TikTok account…</span>
+            </div>
+          ) : tiktokProfile ? (
+            <div className="rounded-lg border bg-muted/40 p-3">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-12 w-12">
+                  {tiktokProfile.avatar_url && (
+                    <AvatarImage src={tiktokProfile.avatar_url} alt={tiktokProfile.display_name || "TikTok"} />
+                  )}
+                  <AvatarFallback>
+                    {(tiktokProfile.display_name || tiktokProfile.username || "T").charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground">Posting to TikTok account:</p>
+                  <p className="font-semibold truncate">{tiktokProfile.display_name || "—"}</p>
+                  {tiktokProfile.username && (
+                    <p className="text-xs text-muted-foreground truncate">@{tiktokProfile.username}</p>
+                  )}
+                </div>
+              </div>
+              {tiktokProfile.expired && (
+                <div className="mt-2 flex items-center gap-2 rounded-md bg-yellow-500/10 p-2 text-xs text-yellow-700 dark:text-yellow-400">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>Token expired. Reconnect TikTok before posting.</span>
+                </div>
+              )}
+            </div>
+          ) : null}
+
           {/* Preview */}
           <div className="aspect-[9/16] max-h-[300px] bg-muted rounded-lg overflow-hidden flex items-center justify-center">
             {content.type === "video" ? (
