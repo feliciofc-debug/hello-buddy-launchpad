@@ -65,7 +65,36 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
         .gt("token_expires_at", nowIso)
         .maybeSingle();
 
-      setIsConnected(!!integration);
+      const connected = !!integration;
+      setIsConnected(connected);
+
+      if (connected) {
+        setLoadingProfile(true);
+        try {
+          const { data: profileData } = await supabase.functions.invoke(
+            "tiktok-fetch-userinfo",
+            { body: { user_id: user.id } }
+          );
+          if (profileData?.connected) {
+            setTiktokProfile({
+              display_name: profileData.display_name || null,
+              username: profileData.username || null,
+              avatar_url: profileData.avatar_url || null,
+              open_id: profileData.open_id || null,
+              expired: !!profileData.expired,
+            });
+          } else {
+            setTiktokProfile(null);
+          }
+        } catch (e) {
+          console.error("Erro ao buscar perfil TikTok:", e);
+          setTiktokProfile(null);
+        } finally {
+          setLoadingProfile(false);
+        }
+      } else {
+        setTiktokProfile(null);
+      }
     } catch (error) {
       console.error("Erro ao verificar conexão TikTok:", error);
       setIsConnected(false);
