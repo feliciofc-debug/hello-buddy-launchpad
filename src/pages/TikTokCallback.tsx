@@ -30,6 +30,12 @@ const TikTokCallback = () => {
           variant: "destructive",
         });
         const origin = localStorage.getItem('tiktok_auth_origin') || 'pj';
+        if (origin === 'settings') {
+          localStorage.removeItem('tiktok_auth_origin');
+          const msg = errorDescription || error || 'Erro desconhecido';
+          setTimeout(() => navigate('/configuracoes?error=' + encodeURIComponent(msg) + '&platform=tiktok'), 1500);
+          return;
+        }
         const fallbackUrl = origin === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
         setTimeout(() => navigate(fallbackUrl), 3000);
         return;
