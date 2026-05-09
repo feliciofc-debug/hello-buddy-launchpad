@@ -324,6 +324,14 @@ export const AreaVideos = () => {
           onPublished={(result) => handleStoryPublished(storyVideo.id, result)}
         />
       )}
+
+      {tiktokModalContent && (
+        <TikTokShareModal
+          open={tiktokModalOpen}
+          onOpenChange={setTiktokModalOpen}
+          content={tiktokModalContent}
+        />
+      )}
     </div>
   );
 };
