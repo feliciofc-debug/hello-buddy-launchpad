@@ -143,41 +143,17 @@ export const AreaVideos = () => {
     loadVideos();
   };
 
-  const handlePostTikTok = async (video: any) => {
+  const handleOpenTikTokModal = (video: VideoItem) => {
     if (!video.video_url) {
       toast.error('Vídeo não encontrado');
       return;
     }
-
-    try {
-      toast.loading('Publicando no TikTok...');
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        toast.dismiss();
-        toast.error('Você precisa estar logado');
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke('tiktok-post-content', {
-        body: {
-          user_id: userData.user.id,
-          content_type: 'video',
-          content_url: video.video_url,
-          title: (video.titulo || 'Vídeo').substring(0, 150),
-          post_mode: 'direct'
-        }
-      });
-
-      toast.dismiss();
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erro ao publicar no TikTok');
-
-      toast.success(data?.message || 'Publicado no TikTok com sucesso!');
-    } catch (err: any) {
-      toast.dismiss();
-      toast.error(err?.message || 'Erro ao publicar no TikTok');
-    }
+    setTiktokModalContent({
+      type: 'video',
+      url: video.video_url,
+      title: video.titulo || 'Vídeo',
+    });
+    setTiktokModalOpen(true);
   };
 
   const openReels = (video: VideoItem) => {
