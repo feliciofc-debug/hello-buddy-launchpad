@@ -26,6 +26,14 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
   const [postMode, setPostMode] = useState<"direct" | "draft">("draft");
   const [isConnected, setIsConnected] = useState<boolean | null>(null);
   const [checkingConnection, setCheckingConnection] = useState(true);
+  const [tiktokProfile, setTiktokProfile] = useState<{
+    display_name: string | null;
+    username: string | null;
+    avatar_url: string | null;
+    open_id: string | null;
+    expired?: boolean;
+  } | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   useEffect(() => {
     if (open) {
