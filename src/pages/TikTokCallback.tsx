@@ -30,6 +30,12 @@ const TikTokCallback = () => {
           variant: "destructive",
         });
         const origin = localStorage.getItem('tiktok_auth_origin') || 'pj';
+        if (origin === 'settings') {
+          localStorage.removeItem('tiktok_auth_origin');
+          const msg = errorDescription || error || 'Erro desconhecido';
+          setTimeout(() => navigate('/configuracoes?error=' + encodeURIComponent(msg) + '&platform=tiktok'), 1500);
+          return;
+        }
         const fallbackUrl = origin === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
         setTimeout(() => navigate(fallbackUrl), 3000);
         return;
@@ -76,12 +82,17 @@ const TikTokCallback = () => {
             description: "Sua conta TikTok foi conectada com sucesso",
           });
 
-          // Detect context: PJ or Afiliado based on localStorage or default
+          // Detect context: settings, PJ or Afiliado based on localStorage or default
           const origin = localStorage.getItem('tiktok_auth_origin') || 'pj';
-          const redirectUrl = origin === 'afiliado' 
-            ? '/afiliado/produtos?tiktok=connected' 
-            : '/meus-produtos?tab=videos&tiktok=connected';
-          setTimeout(() => navigate(redirectUrl), 2000);
+          localStorage.removeItem('tiktok_auth_origin');
+          if (origin === 'settings') {
+            setTimeout(() => navigate('/configuracoes?success=true&platform=tiktok'), 1500);
+          } else {
+            const redirectUrl = origin === 'afiliado'
+              ? '/afiliado/produtos?tiktok=connected'
+              : '/meus-produtos?tab=videos&tiktok=connected';
+            setTimeout(() => navigate(redirectUrl), 2000);
+          }
         } else {
           throw new Error(data?.error || 'Erro ao obter token');
         }
@@ -97,8 +108,13 @@ const TikTokCallback = () => {
         });
 
         const origin3 = localStorage.getItem('tiktok_auth_origin') || 'pj';
-        const fallbackUrl3 = origin3 === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
-        setTimeout(() => navigate(fallbackUrl3), 3000);
+        localStorage.removeItem('tiktok_auth_origin');
+        if (origin3 === 'settings') {
+          setTimeout(() => navigate('/configuracoes?error=' + encodeURIComponent(err.message || 'erro') + '&platform=tiktok'), 1500);
+        } else {
+          const fallbackUrl3 = origin3 === 'afiliado' ? '/afiliado/produtos' : '/meus-produtos';
+          setTimeout(() => navigate(fallbackUrl3), 3000);
+        }
       }
     };
 

@@ -5,7 +5,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { MarcaPersonalizacao } from './MarcaPersonalizacao';
 
 const SettingsPage = () => {
@@ -14,7 +13,31 @@ const SettingsPage = () => {
   const [metaConnection, setMetaConnection] = useState<any>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
-  const showTikTok = useFeatureFlag('tiktok_integration');
+  const [tiktokConnection, setTiktokConnection] = useState<any>(null);
+  const [loadingTiktok, setLoadingTiktok] = useState(true);
+  const [disconnectingTiktok, setDisconnectingTiktok] = useState(false);
+
+  const fetchTiktokConnection = async () => {
+    setLoadingTiktok(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setLoadingTiktok(false); return; }
+      const { data, error } = await supabase.functions.invoke('tiktok-fetch-userinfo', {
+        body: { user_id: user.id }
+      });
+      if (error) {
+        console.error('Erro ao buscar TikTok:', error);
+        setTiktokConnection(null);
+      } else {
+        setTiktokConnection(data?.connected ? data : null);
+      }
+    } catch (err) {
+      console.error('Erro inesperado TikTok:', err);
+      setTiktokConnection(null);
+    } finally {
+      setLoadingTiktok(false);
+    }
+  };
 
   useEffect(() => {
     const fetchMetaConnection = async () => {
@@ -29,6 +52,7 @@ const SettingsPage = () => {
       setLoadingMeta(false);
     };
     fetchMetaConnection();
+    fetchTiktokConnection();
 
     const params = new URLSearchParams(window.location.search);
     const urlMessage = params.get('message');
@@ -37,6 +61,16 @@ const SettingsPage = () => {
       window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('error') === 'true') {
       toast.error(urlMessage ? `❌ ${decodeURIComponent(urlMessage)}` : '❌ Erro ao conectar. Tente novamente.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    if (params.get('success') === 'true' && params.get('platform') === 'tiktok') {
+      toast.success('✅ TikTok conectado com sucesso!');
+      window.history.replaceState({}, '', window.location.pathname);
+      fetchTiktokConnection();
+    }
+    if (params.get('error') && params.get('platform') === 'tiktok') {
+      toast.error('Erro ao conectar TikTok: ' + decodeURIComponent(params.get('error') || ''));
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -57,7 +91,6 @@ const SettingsPage = () => {
     if (!user) return;
     setDisconnecting(true);
     try {
-      // Delete ALL Meta records for this user only
       const { error: e1 } = await supabase.from('meta_connections').delete().eq('user_id', user.id);
       const { error: e2 } = await supabase.from('integrations').delete().eq('user_id', user.id).like('platform', 'meta%');
       if (e1) console.error('Erro meta_connections:', e1);
@@ -68,6 +101,40 @@ const SettingsPage = () => {
       toast.error('Erro ao desconectar. Tente novamente.');
     } finally {
       setDisconnecting(false);
+    }
+  };
+
+  const handleConnectTiktok = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error(t('settings.login_required_tiktok'));
+      return;
+    }
+    const CLIENT_KEY = 'sbawx08s3trep7gfvg';
+    const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
+    const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
+    const STATE = user.id;
+    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
+    localStorage.setItem('tiktok_auth_origin', 'settings');
+    window.location.href = authUrl;
+  };
+
+  const handleDisconnectTiktok = async () => {
+    if (!window.confirm('Tem certeza que deseja desconectar a conta TikTok?')) return;
+    setDisconnectingTiktok(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { error } = await supabase.from('integrations').delete()
+        .eq('user_id', user.id).eq('platform', 'tiktok');
+      if (error) throw error;
+      setTiktokConnection(null);
+      toast.success('Conta TikTok desconectada com sucesso.');
+    } catch (err) {
+      console.error('Erro ao desconectar:', err);
+      toast.error('Erro ao desconectar. Tente novamente.');
+    } finally {
+      setDisconnectingTiktok(false);
     }
   };
 
@@ -85,9 +152,9 @@ const SettingsPage = () => {
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-white">{t('settings.api_settings_title')}</h1>
 
         <Tabs defaultValue="meta" className="w-full">
-          <TabsList className={`grid w-full ${showTikTok ? 'grid-cols-3' : 'grid-cols-2'} mb-8`}>
+          <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="meta">{t('settings.meta_tab')}</TabsTrigger>
-            {showTikTok && <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>}
+            <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>
             <TabsTrigger value="marca">🎨 Marca</TabsTrigger>
           </TabsList>
 
@@ -157,39 +224,102 @@ const SettingsPage = () => {
             </div>
           </TabsContent>
 
-          {showTikTok && (
-            <TabsContent value="tiktok">
-              <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
-                <h2 className="text-xl font-semibold mb-4 text-gray-900 dark:text-white">{t('settings.tiktok_business_title')}</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  {t('settings.tiktok_business_description')}
-                </p>
-                <button
-                  onClick={async () => {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    if (!user) {
-                      alert(t('settings.login_required_tiktok'));
-                      return;
-                    }
-                    
-                    const CLIENT_KEY = 'sbawx08s3trep7gfvg';
-                    const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
-                    const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
-                    const STATE = user.id;
+          <TabsContent value="tiktok">
+            <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+              <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">TikTok for Developers</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                Conecte sua conta TikTok para postar vídeos diretamente da plataforma.
+              </p>
 
-                    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
-                    
-                    console.log("Redirecionando para a URL de login do TikTok:", authUrl);
-                    localStorage.setItem('tiktok_auth_origin', 'pj');
-                    window.location.href = authUrl;
-                  }}
-                  className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
-                >
-                  {t('settings.connect_tiktok')}
-                </button>
-              </div>
-            </TabsContent>
-          )}
+              {loadingTiktok ? (
+                <div className="flex items-center gap-2 text-gray-500">
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Carregando status da conexão...</span>
+                </div>
+              ) : tiktokConnection ? (
+                <div className="space-y-4">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                    ✅ Conectado
+                  </span>
+
+                  <div className="flex items-center gap-4">
+                    {tiktokConnection.avatar_url && (
+                      <img
+                        src={tiktokConnection.avatar_url}
+                        alt={tiktokConnection.display_name || 'TikTok avatar'}
+                        className="w-16 h-16 rounded-full border border-gray-200 dark:border-gray-700"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    )}
+                    <div>
+                      {tiktokConnection.display_name && (
+                        <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                          {tiktokConnection.display_name}
+                        </p>
+                      )}
+                      {tiktokConnection.username && (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          @{tiktokConnection.username}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
+                    {tiktokConnection.open_id && (
+                      <p><span className="font-medium">Open ID:</span> {tiktokConnection.open_id}</p>
+                    )}
+                    {tiktokConnection.scope && (
+                      <p><span className="font-medium">Permissões:</span> {tiktokConnection.scope}</p>
+                    )}
+                    {tiktokConnection.connected_at && (
+                      <p>
+                        <span className="font-medium">Conectado em:</span>{' '}
+                        {new Date(tiktokConnection.connected_at).toLocaleString('pt-BR')}
+                      </p>
+                    )}
+                    {tiktokConnection.expired && (
+                      <p className="text-yellow-700 dark:text-yellow-400 font-medium">
+                        ⚠️ Token expirado — clique em Reconectar
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={handleConnectTiktok}
+                      className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
+                    >
+                      🔄 Reconectar
+                    </button>
+                    <button
+                      onClick={handleDisconnectTiktok}
+                      disabled={disconnectingTiktok}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2"
+                    >
+                      {disconnectingTiktok && <Loader2 className="w-4 h-4 animate-spin" />}
+                      🗑️ Desconectar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 mb-4">
+                    Não conectado
+                  </span>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 mt-3">
+                    Sua conta TikTok ainda não está conectada.
+                  </p>
+                  <button
+                    onClick={handleConnectTiktok}
+                    className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
+                  >
+                    Conectar com TikTok
+                  </button>
+                </div>
+              )}
+            </div>
+          </TabsContent>
 
           <TabsContent value="marca">
             <MarcaPersonalizacao />
