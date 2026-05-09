@@ -284,7 +284,7 @@ export const AreaVideos = () => {
                     <Button
                       size="sm"
                       className="flex-1 bg-black text-white text-xs hover:bg-gray-800"
-                      onClick={() => handlePostTikTok(video)}
+                      onClick={() => handleOpenTikTokModal(video)}
                     >
                       <TikTokIcon className="mr-1 h-3 w-3" />
                       TikTok
