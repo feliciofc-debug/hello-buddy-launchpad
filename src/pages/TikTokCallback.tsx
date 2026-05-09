@@ -82,12 +82,17 @@ const TikTokCallback = () => {
             description: "Sua conta TikTok foi conectada com sucesso",
           });
 
-          // Detect context: PJ or Afiliado based on localStorage or default
+          // Detect context: settings, PJ or Afiliado based on localStorage or default
           const origin = localStorage.getItem('tiktok_auth_origin') || 'pj';
-          const redirectUrl = origin === 'afiliado' 
-            ? '/afiliado/produtos?tiktok=connected' 
-            : '/meus-produtos?tab=videos&tiktok=connected';
-          setTimeout(() => navigate(redirectUrl), 2000);
+          localStorage.removeItem('tiktok_auth_origin');
+          if (origin === 'settings') {
+            setTimeout(() => navigate('/configuracoes?success=true&platform=tiktok'), 1500);
+          } else {
+            const redirectUrl = origin === 'afiliado'
+              ? '/afiliado/produtos?tiktok=connected'
+              : '/meus-produtos?tab=videos&tiktok=connected';
+            setTimeout(() => navigate(redirectUrl), 2000);
+          }
         } else {
           throw new Error(data?.error || 'Erro ao obter token');
         }
