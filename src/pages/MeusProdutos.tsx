@@ -1317,41 +1317,20 @@ export default function MeusProdutos() {
     }
   };
 
-  const handlePostTikTok = async (produto: any) => {
-    if (!produto.imagem_url) {
+  const handleOpenTikTokModal = (produto: any) => {
+    const url = produto?.imagem_url;
+    if (!url) {
       toast.error('TikTok requer uma imagem ou vídeo do produto');
       return;
     }
-
-    try {
-      toast.loading('Publicando no TikTok...');
-      const { data: userData } = await supabase.auth.getUser();
-      if (!userData.user) {
-        toast.dismiss();
-        toast.error('Você precisa estar logado');
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke('tiktok-post-content', {
-        body: {
-          user_id: userData.user.id,
-          content_type: 'image',
-          content_url: produto.imagem_url,
-          title: produto.nome?.substring(0, 150) || 'Produto',
-          post_mode: 'direct'
-        }
-      });
-
-      toast.dismiss();
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Erro ao publicar');
-
-      toast.success('Publicado no TikTok com sucesso!');
-    } catch (err: any) {
-      toast.dismiss();
-      toast.error(err?.message || 'Erro ao publicar no TikTok');
-    }
+    const isVideo = /\.(mp4|mov|webm|m4v)(\?|$)/i.test(url);
+    setTiktokModalContent({
+      type: isVideo ? 'video' : 'image',
+      url,
+      title: produto?.nome,
+      description: produto?.descricao,
+    });
+    setTiktokModalOpen(true);
   };
 
   const handleTestarCampanha = async (product: Product) => {
