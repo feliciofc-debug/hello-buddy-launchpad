@@ -44,6 +44,8 @@ import {
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import { useBillingAccess } from '@/hooks/useBillingAccess';
+import BillingBlockedScreen from '@/components/BillingBlockedScreen';
 
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
@@ -89,6 +91,14 @@ interface DadosGraficos {
 export default function DashboardMetricas() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const {
+    loading: billingLoading,
+    active: billingActive,
+    expiresAt: billingExpiresAt,
+    customerName: billingCustomerName,
+    subscriptionStatus: billingSubStatus,
+    refetch: billingRefetch,
+  } = useBillingAccess();
   const [loading, setLoading] = useState(true);
   const [metricas, setMetricas] = useState<Metricas>({
     totalMensagens: 0,
@@ -354,6 +364,25 @@ export default function DashboardMetricas() {
           <p className="text-muted-foreground">{t('dashboard.loading_metrics')}</p>
         </div>
       </div>
+    );
+  }
+
+  if (billingLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!billingActive) {
+    return (
+      <BillingBlockedScreen
+        expiresAt={billingExpiresAt}
+        customerName={billingCustomerName}
+        subscriptionStatus={billingSubStatus}
+        refetch={billingRefetch}
+      />
     );
   }
 
