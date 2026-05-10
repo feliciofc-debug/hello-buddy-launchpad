@@ -44,6 +44,8 @@ import {
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import { useBillingAccess } from '@/hooks/useBillingAccess';
+import BillingBlockedScreen from '@/components/BillingBlockedScreen';
 
 import { LeadsQuentes } from '@/components/LeadsQuentes';
 import {
@@ -89,6 +91,14 @@ interface DadosGraficos {
 export default function DashboardMetricas() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const {
+    loading: billingLoading,
+    active: billingActive,
+    expiresAt: billingExpiresAt,
+    customerName: billingCustomerName,
+    subscriptionStatus: billingSubStatus,
+    refetch: billingRefetch,
+  } = useBillingAccess();
   const [loading, setLoading] = useState(true);
   const [metricas, setMetricas] = useState<Metricas>({
     totalMensagens: 0,
