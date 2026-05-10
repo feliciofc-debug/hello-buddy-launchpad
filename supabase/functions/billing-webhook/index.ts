@@ -149,6 +149,53 @@ serve(async (req) => {
       .eq('id', sub.id);
 
     console.log('✅ Billing subscription activated:', sub.id);
+
+    // ===== REATIVAÇÃO AUTOMÁTICA AO PAGAMENTO =====
+    // Quando cliente paga após inadimplência, reativar autopilot_config se estava desligado.
+    // Bloco totalmente opcional: qualquer erro NÃO impede o fluxo de pagamento.
+    try {
+      const { data: customer } = await supabase
+        .from('billing_customers')
+        .select('platform_login')
+        .eq('id', sub.customer_id)
+        .maybeSingle();
+
+      if (customer?.platform_login) {
+        const targetEmail = customer.platform_login.toLowerCase();
+        const { data: usersList, error: listErr } = await supabase.auth.admin.listUsers();
+        if (listErr) {
+          console.error('[BILLING-WEBHOOK] Erro listUsers (não-crítico):', listErr);
+        } else {
+          const targetUserId = usersList?.users?.find(
+            (u: any) => u.email?.toLowerCase() === targetEmail
+          )?.id;
+
+          if (targetUserId) {
+            const { data: updated, error: updErr } = await supabase
+              .from('autopilot_config')
+              .update({ ativo: true, updated_at: new Date().toISOString() })
+              .eq('user_id', targetUserId)
+              .eq('ativo', false)
+              .select('id');
+
+            if (updErr) {
+              console.error('[BILLING-WEBHOOK] Erro ao reativar autopilot (não-crítico):', updErr);
+            } else if (updated && updated.length > 0) {
+              console.log(`✅ [BILLING-WEBHOOK] Autopilot reativado automaticamente para user_id=${targetUserId} (${updated.length} config(s)) após pagamento da subscription ${sub.id}`);
+            } else {
+              console.log(`ℹ️ [BILLING-WEBHOOK] Nenhum autopilot_config inativo para user_id=${targetUserId} (cliente nunca usou autopilot ou já estava ativo)`);
+            }
+          } else {
+            console.warn('[BILLING-WEBHOOK] user_id não encontrado pelo platform_login:', targetEmail);
+          }
+        }
+      } else {
+        console.log('[BILLING-WEBHOOK] platform_login vazio — pulando reativação autopilot');
+      }
+    } catch (reativacaoErr: any) {
+      console.error('[BILLING-WEBHOOK] Erro na reativação autopilot (não-crítico):', reativacaoErr?.message);
+    }
+    // ===== FIM REATIVAÇÃO =====
   } catch (e: any) {
     console.error('[billing-webhook]', e);
   }
