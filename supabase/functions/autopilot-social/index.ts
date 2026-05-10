@@ -8,6 +8,7 @@ const corsHeaders = {
 }
 
 const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo'
+const ADMIN_DOMAINS = ['@atombrasildigital.com']
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -70,6 +71,47 @@ serve(async (req) => {
 
     for (const config of configs) {
       try {
+        // ============================================================
+        // GATE DE INADIMPLÊNCIA — bloqueia autopilot de clientes em débito
+        // Fail-open: qualquer erro permite continuar (não derruba cron)
+        // ============================================================
+        try {
+          const { data: userData, error: userErr } = await supabase.auth.admin.getUserById(config.user_id)
+          const userEmail = userData?.user?.email || ''
+          const isAdmin = ADMIN_DOMAINS.some(d => userEmail.toLowerCase().endsWith(d))
+
+          if (userErr) {
+            console.warn('⚠️ [AUTOPILOT] Erro buscando user (fail-open, continuando):', userErr)
+          } else if (isAdmin) {
+            console.log(`✅ [AUTOPILOT] Admin bypass: ${userEmail}`)
+          } else {
+            const { data: billingData, error: billingErr } = await supabase.functions.invoke('billing-validate-access', {
+              body: { user_id: config.user_id },
+            })
+
+            if (billingErr) {
+              console.warn('⚠️ [AUTOPILOT] billing-validate-access falhou (fail-open):', billingErr)
+            } else if (billingData && billingData.active === false) {
+              console.log('🚫 [AUTOPILOT] Cliente inadimplente, pulando', {
+                config_id: config.id,
+                user_id: config.user_id,
+                email: userEmail,
+                reason: billingData.reason || 'inadimplente',
+              })
+              results.push({
+                config_id: config.id,
+                user_id: config.user_id,
+                skipped: true,
+                reason: 'billing_blocked',
+                billing_reason: billingData.reason,
+              })
+              continue
+            }
+          }
+        } catch (gateErr) {
+          console.warn('⚠️ [AUTOPILOT] Gate de inadimplência falhou (fail-open):', gateErr)
+        }
+
         console.log('⚙️ [AUTOPILOT] Processando config', {
           config_id: config.id,
           user_id: config.user_id,
