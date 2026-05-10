@@ -367,6 +367,25 @@ export default function DashboardMetricas() {
     );
   }
 
+  if (billingLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!billingActive) {
+    return (
+      <BillingBlockedScreen
+        expiresAt={billingExpiresAt}
+        customerName={billingCustomerName}
+        subscriptionStatus={billingSubStatus}
+        refetch={billingRefetch}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
