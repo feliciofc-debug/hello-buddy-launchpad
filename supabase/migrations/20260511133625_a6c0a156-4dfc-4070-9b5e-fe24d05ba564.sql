@@ -1,0 +1,1 @@
+UPDATE public.profiles SET tipo='empresa', nome='Ademicom', nome_fantasia='Ademicom' WHERE id='d2ca3f33-777b-465d-9961-59ce2eae393d';
