@@ -76,8 +76,14 @@ export function useBillingAccess(): BillingAccessState {
 
       if (error) throw error;
 
+      // FAIL-OPEN se cliente NÃO ESTÁ no sistema de billing presencial.
+      // Só bloqueia clientes que TÊM subscription e estão inadimplentes.
+      // Sem subscription = paga por outra via (B2B, parceiro, trial, etc.) → libera.
+      const hasSubscription = !!data?.subscription_status;
+      const isActive = hasSubscription ? data?.active === true : true;
+
       const result: CacheEntry = {
-        active: data?.active === true,
+        active: isActive,
         expiresAt: data?.expires_at ?? null,
         customerName: data?.customer_name ?? null,
         subscriptionStatus: data?.subscription_status ?? null,
