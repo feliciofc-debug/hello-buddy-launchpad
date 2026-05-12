@@ -35,6 +35,7 @@ import { AreaVideos } from '@/components/AreaVideos';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
+import { AgendarStoryFotoModal } from '@/components/AgendarStoryFotoModal';
 import { useGerarReel } from '@/hooks/useGerarReel';
 import { ModalProgressoReel } from '@/components/videos/ModalProgressoReel';
 
