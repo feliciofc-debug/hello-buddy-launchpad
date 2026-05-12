@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Calendar, Clock, Trash2, Video, BookOpen, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Calendar, Clock, Trash2, Video, BookOpen, Loader2, CheckCircle2, XCircle, Image as ImageIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -98,8 +98,8 @@ export function VideosAgendadosLista() {
           <div className="flex items-start justify-between gap-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                {item.tipo === 'reels' ? <Video className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
-                <span className="font-medium text-sm capitalize">{item.tipo}</span>
+                {item.tipo === 'reels' ? <Video className="h-4 w-4" /> : item.tipo === 'story_imagem' ? <ImageIcon className="h-4 w-4" /> : <BookOpen className="h-4 w-4" />}
+                <span className="font-medium text-sm capitalize">{item.tipo === 'story_imagem' ? 'Story Foto' : item.tipo}</span>
                 {statusBadge(item.status)}
               </div>
               {item.video_nome && (
