@@ -812,6 +812,9 @@ export default function MeusProdutos() {
     description?: string;
   } | null>(null);
 
+  const [storyFotoOpen, setStoryFotoOpen] = useState(false);
+  const [storyFotoProduct, setStoryFotoProduct] = useState<any | null>(null);
+
   // Form states
   const [formData, setFormData] = useState({
     nome: '',
@@ -2224,6 +2227,14 @@ export default function MeusProdutos() {
           open={tiktokModalOpen}
           onOpenChange={setTiktokModalOpen}
           content={tiktokModalContent}
+        />
+      )}
+
+      {storyFotoProduct && (
+        <AgendarStoryFotoModal
+          open={storyFotoOpen}
+          onOpenChange={setStoryFotoOpen}
+          produto={storyFotoProduct}
         />
       )}
     </div>
