@@ -1794,6 +1794,14 @@ export default function MeusProdutos() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full gap-2 text-pink-700 dark:text-pink-300 border-pink-500/40 hover:bg-pink-500/10"
+                          onClick={() => { setStoryFotoProduct(product); setStoryFotoOpen(true); }}
+                        >
+                          📸 Story Foto (Agendar)
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           className="w-full gap-2 text-purple-600 border-purple-300 hover:bg-purple-50"
                           onClick={() => handleGerarReel(product)}
                         >
@@ -1897,6 +1905,14 @@ export default function MeusProdutos() {
                         >
                           <Instagram className="w-4 h-4" />
                           {t('products.post_instagram')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full gap-2 text-pink-700 dark:text-pink-300 border-pink-500/40 hover:bg-pink-500/10"
+                          onClick={() => { setStoryFotoProduct(product); setStoryFotoOpen(true); }}
+                        >
+                          📸 Story Foto (Agendar)
                         </Button>
                         <Button
                           variant="outline"
