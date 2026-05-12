@@ -59,6 +59,18 @@ serve(async (req) => {
           });
           funcResult = data;
           funcError = error;
+        } else if (item.tipo === "story_imagem") {
+          const { data, error } = await supabase.functions.invoke("meta-publish-story-image", {
+            body: {
+              image_url: item.video_url,
+              user_id: item.user_id,
+              link_sticker: item.link_sticker || null,
+            },
+          });
+          funcResult = data;
+          funcError = error;
+          // Normaliza para o checador okAny
+          if (data?.success) funcResult = { success: true, instagram: { ok: true, story_id: data.story_id }, warnings: data.warnings };
         } else if (item.tipo === "reels") {
           // Reels: publica em cada plataforma do array canais
           const reelsResult: any = { success: false };

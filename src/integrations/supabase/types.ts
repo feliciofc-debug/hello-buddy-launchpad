@@ -7179,6 +7179,8 @@ export type Database = {
           created_at: string
           erro: string | null
           id: string
+          link_sticker: string | null
+          metadata: Json | null
           produto_id: string | null
           published_at: string | null
           resultado: Json | null
@@ -7197,6 +7199,8 @@ export type Database = {
           created_at?: string
           erro?: string | null
           id?: string
+          link_sticker?: string | null
+          metadata?: Json | null
           produto_id?: string | null
           published_at?: string | null
           resultado?: Json | null
@@ -7215,6 +7219,8 @@ export type Database = {
           created_at?: string
           erro?: string | null
           id?: string
+          link_sticker?: string | null
+          metadata?: Json | null
           produto_id?: string | null
           published_at?: string | null
           resultado?: Json | null
