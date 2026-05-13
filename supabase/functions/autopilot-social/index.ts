@@ -85,8 +85,9 @@ serve(async (req) => {
           } else if (isAdmin) {
             console.log(`✅ [AUTOPILOT] Admin bypass: ${userEmail}`)
           } else {
+            // ✅ FIX: billing-validate-access espera { email } ou { platform_login }, não user_id
             const { data: billingData, error: billingErr } = await supabase.functions.invoke('billing-validate-access', {
-              body: { user_id: config.user_id },
+              body: { email: userEmail, platform_login: userEmail },
             })
 
             if (billingErr) {
