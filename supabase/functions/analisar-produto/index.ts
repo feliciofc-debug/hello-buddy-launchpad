@@ -413,6 +413,31 @@ serve(async (req) => {
             ]
           }
         ];
+      } else if (scenePreservationMode && referenceImage) {
+        console.log('🏪 Modo PRESERVAÇÃO DE CENA ativado — mantendo local original e apenas refinando cores/qualidade/logo.');
+        imageGenMessages = [
+          {
+            role: 'system',
+            content: 'Você é um retocador fotográfico profissional especializado em fotografia comercial de fachadas, lojas e ambientes reais. Sua prioridade máxima é PRESERVAR a cena original da primeira foto exatamente como ela é (mesmo local, mesma arquitetura, mesmos elementos), aplicando apenas correções fotográficas profissionais (cor, luz, nitidez, limpeza visual) e refinamento sutil de letreiro/logo. Nunca substitua o local, nunca invente uma loja diferente, nunca gere ilustração ou render 3D.'
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: buildScenePreservationPrompt(url, Boolean(logoReferenceForAI), supportImages.length)
+              },
+              { type: 'image_url', image_url: { url: referenceImage } },
+              ...supportImages.map((image: string) => ({
+                type: 'image_url',
+                image_url: { url: image }
+              })),
+              ...(logoReferenceForAI
+                ? [{ type: 'image_url', image_url: { url: logoReferenceForAI } }]
+                : []),
+            ]
+          }
+        ];
       } else {
         const userPromptRaw = (url || '').toString().trim();
         const conceptKeywords = buildConceptKeywords(url);
