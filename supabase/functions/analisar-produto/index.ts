@@ -129,6 +129,58 @@ function isPortraitEditRequest(text: string, imageCount: number): boolean {
   return hasMatch(text, identityPatterns) || (firstPersonHints && hasMatch(text, appearancePatterns));
 }
 
+function isScenePreservationRequest(text: string, imageCount: number): boolean {
+  if (imageCount === 0) return false;
+  const normalized = (text || '').toLowerCase();
+
+  // Sinais explícitos de preservação do cenário/local original
+  const preservePatterns = [
+    /manter (a |o )?(foto|imagem|cen[áa]rio|ambiente|local|lugar|fachada|original)/i,
+    /preserv[ae] (a |o )?(foto|imagem|cen[áa]rio|ambiente|local|lugar|fachada|original)/i,
+    /mesma (foto|imagem|cena|fachada|loja|ambiente)/i,
+    /mesmo (local|lugar|ambiente|cen[áa]rio)/i,
+    /(esta|essa) (foto|imagem|fachada|loja)/i,
+    /(originalidade|fiel ao original|sem mudar (o )?(local|cen[áa]rio|ambiente))/i,
+    /melhorar (as )?cores/i,
+    /melhorar (a )?(qualidade|ilumina[çc][ãa]o|design)/i,
+    /(deixar|deixe|deixa) (mais )?(bonita|bonito|profissional)/i,
+    /minha (loja|fachada|empresa|fabrica|f[áa]brica|oficina|cl[íi]nica|escrit[óo]rio)/i,
+    /(fachada|loja|estabelecimento|com[ée]rcio|pet ?shop|mercearia|padaria|restaurante|barbearia|sal[ãa]o)/i,
+  ];
+
+  return hasMatch(text, preservePatterns);
+}
+
+function buildScenePreservationPrompt(userPrompt: string, hasLogoReference: boolean, supportImageCount: number): string {
+  return `Edite a PRIMEIRA imagem enviada mantendo-a como BASE FIEL e RECONHECÍVEL da composição final.
+
+O LOCAL/CENÁRIO/AMBIENTE da foto original deve continuar sendo o MESMO lugar, com a MESMA arquitetura, MESMO enquadramento geral, MESMOS elementos estruturais (paredes, fachada, vitrine, prateleiras, mobiliário, produtos visíveis, placas, totens, postes, calçada, céu, vegetação) e MESMA composição.
+
+REGRAS INEGOCIÁVEIS:
+- NÃO troque o local por outro
+- NÃO invente uma loja/ambiente diferente
+- NÃO remova nem mova elementos estruturais importantes
+- NÃO altere a arquitetura, formato do imóvel ou disposição dos produtos
+- NÃO adicione pessoas, animais ou veículos que não estavam na cena original
+- NÃO transforme em ilustração, 3D, cartoon ou render artificial
+- O resultado deve parecer claramente a MESMA foto, apenas tratada profissionalmente
+
+PERMITIDO (melhorias sutis e realistas):
+- Corrigir e equilibrar cores, contraste, saturação e temperatura
+- Melhorar iluminação natural, remover sombras duras, suavizar reflexos
+- Limpar ruído, fios elétricos bagunçados no primeiro plano se atrapalharem leitura, sujeira pontual e elementos visualmente poluentes pequenos
+- Realçar nitidez, texturas reais (tinta, madeira, metal, vidro)
+- Deixar a fachada/letreiro/logo da loja mais legível, vibrante e bem acabada SEM redesenhá-los do zero — apenas como retoque/restauração fotográfica
+- Aplicar acabamento de fotografia comercial profissional, 8K, ultra-realista
+
+${supportImageCount > 0 ? `IMAGENS DE APOIO:\n- As ${supportImageCount} imagem(ns) adicional(is) servem apenas como referência secundária e NUNCA substituem a cena da primeira foto.\n\n` : ''}${hasLogoReference ? `LOGO / MARCA:\n- A última imagem enviada é a logo oficial. Use-a APENAS para refinar/atualizar o letreiro existente da fachada, mantendo posição, escala e perspectiva originais. Não crie letreiros novos em outros lugares.\n\n` : ''}TEXTO NA IMAGEM:
+- Preserve textos já existentes na fachada/letreiro originais (nome da loja, telefones, categorias) com a mesma grafia
+- NÃO adicione textos promocionais, slogans, preços ou legendas novas
+
+INSTRUÇÕES DO USUÁRIO — siga com máxima fidelidade dentro das regras acima:
+${userPrompt}`;
+}
+
 function buildPortraitEditPrompt(userPrompt: string, hasLogoReference: boolean, supportImageCount: number): string {
   return `Edite a PRIMEIRA imagem enviada usando-a como BASE PRINCIPAL da composição final.
 
