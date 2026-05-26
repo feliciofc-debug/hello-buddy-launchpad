@@ -12,6 +12,7 @@ interface VideoAgendado {
   id: string;
   tipo: string;
   video_nome: string | null;
+  video_url: string | null;
   caption: string | null;
   canais: string[];
   scheduled_for: string;
