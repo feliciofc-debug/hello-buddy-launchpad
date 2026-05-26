@@ -1,0 +1,1 @@
+UPDATE public.billing_subscriptions SET status='active', last_payment_date=now(), next_billing_date=(CURRENT_DATE + INTERVAL '30 days')::date, payment_fail_count=0 WHERE id IN ('f849893b-6b1c-47f5-bba7-7c83a665a4ac','80d8949a-28d8-4c64-8803-d28331c8de2b');
