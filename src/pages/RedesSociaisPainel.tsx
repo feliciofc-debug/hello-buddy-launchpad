@@ -14,6 +14,7 @@ import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { TikTokIcon } from "@/components/tiktok/TikTokIcon";
 import { CancelarAgendamentoDialog } from "@/components/social/CancelarAgendamentoDialog";
 import { EditarAgendamentoModal } from "@/components/social/EditarAgendamentoModal";
+import { VideosAgendadosLista } from "@/components/VideosAgendadosLista";
 
 export default function RedesSociaisPainel() {
   const navigate = useNavigate();
