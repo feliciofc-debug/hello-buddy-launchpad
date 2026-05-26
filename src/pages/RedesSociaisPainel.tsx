@@ -253,50 +253,63 @@ export default function RedesSociaisPainel() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="agendados">
-          <Card>
-            <CardContent className="p-4">
-              {posts.filter((p: any) => p.status === "pendente").length === 0 ? (
-                <p className="text-center text-muted-foreground py-8">Nenhum post agendado</p>
-              ) : (
-                <div className="space-y-3">
-                  {posts.filter((p: any) => p.status === "pendente").map((post: any) => (
-                    <div key={post.id} className="flex items-center gap-3 p-3 border rounded-lg">
-                      {post.image_url && (
-                        <img src={post.image_url} alt="" className="w-12 h-12 rounded object-cover" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{post.post_text?.substring(0, 80)}...</p>
-                        <p className="text-xs text-muted-foreground">
-                          {post.platform === "facebook" ? "📘 Facebook" : "📸 Instagram"}
-                          {post.scheduled_at ? ` • Agendado ${formatSaoPauloDateTime(post.scheduled_at, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : " • Aguardando"}
-                        </p>
+        <TabsContent value="agendados" className="space-y-6">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+              🎬 Reels e Stories agendados
+            </h3>
+            <VideosAgendadosLista />
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+              🖼️ Posts de imagem agendados
+            </h3>
+            <Card>
+              <CardContent className="p-4">
+                {posts.filter((p: any) => p.status === "pendente").length === 0 ? (
+                  <p className="text-center text-muted-foreground py-8">Nenhum post de imagem agendado</p>
+                ) : (
+                  <div className="space-y-3">
+                    {posts.filter((p: any) => p.status === "pendente").map((post: any) => (
+                      <div key={post.id} className="flex items-center gap-3 p-3 border rounded-lg">
+                        {post.image_url && (
+                          <img src={post.image_url} alt="" className="w-12 h-12 rounded object-cover" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{post.post_text?.substring(0, 80)}...</p>
+                          <p className="text-xs text-muted-foreground">
+                            {post.platform === "facebook" ? "📘 Facebook" : "📸 Instagram"}
+                            {post.scheduled_at ? ` • Agendado ${formatSaoPauloDateTime(post.scheduled_at, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}` : " • Aguardando"}
+                          </p>
+                        </div>
+                        <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Agendado</Badge>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setEditTarget(post)}
+                          title="Editar agendamento"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setCancelTarget(post.id)}
+                          title="Cancelar agendamento"
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Badge variant="secondary"><Clock className="h-3 w-3 mr-1" /> Agendado</Badge>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditTarget(post)}
-                        title="Editar agendamento"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setCancelTarget(post.id)}
-                        title="Cancelar agendamento"
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
+
 
         <TabsContent value="erros">
           <Card>
