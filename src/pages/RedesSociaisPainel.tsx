@@ -57,6 +57,12 @@ export default function RedesSociaisPainel() {
         .order("created_at", { ascending: false })
         .limit(50);
 
+      const { count: videosAgendadosCount } = await supabase
+        .from("videos_agendados" as any)
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id)
+        .eq("status", "pendente");
+
       const allPosts = (postsData || []) as any[];
       setPosts(allPosts);
 
@@ -65,7 +71,7 @@ export default function RedesSociaisPainel() {
         total: allPosts.length,
         publicados: allPosts.filter((p: any) => p.status === "publicado").length,
         hoje: allPosts.filter((p: any) => p.status === "publicado" && p.published_at && toSaoPauloDateKey(p.published_at) === today).length,
-        pendentes: allPosts.filter((p: any) => p.status === "pendente").length,
+        pendentes: allPosts.filter((p: any) => p.status === "pendente").length + (videosAgendadosCount || 0),
         erros: allPosts.filter((p: any) => p.status === "erro").length,
       });
     } catch (err) {
