@@ -1,0 +1,2 @@
+ALTER TABLE public.videos_agendados DROP CONSTRAINT IF EXISTS videos_agendados_tipo_check;
+ALTER TABLE public.videos_agendados ADD CONSTRAINT videos_agendados_tipo_check CHECK (tipo = ANY (ARRAY['reels'::text, 'story'::text, 'story_imagem'::text, 'foto'::text, 'carrossel'::text]));
