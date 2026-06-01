@@ -35,25 +35,22 @@ serve(async (req) => {
     const token = conn.page_access_token
     const igId = conn.ig_account_id
 
-    // 1) Verifica account_type (Business/Creator)
-    const acctRes = await fetch(`https://graph.facebook.com/v25.0/${igId}?fields=account_type,followers_count,is_published&access_token=${token}`)
-    const acct = await acctRes.json()
-    if (acct.error) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: `Falha ao validar conta IG: ${acct.error.message}`
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
-    }
-    const accountType: string = acct.account_type || ''
-    if (accountType === 'PERSONAL') {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Sua conta Instagram precisa ser Business ou Creator para postar Stories.'
-      }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    // 1) Busca metadata da conta IG (apenas campos suportados na Graph v25)
+    // Nota: `account_type` foi removido da Graph API — se a conta foi conectada
+    // via FB Page, já é Business/Creator por definição.
+    let followers = 0
+    let accountType = 'BUSINESS'
+    try {
+      const acctRes = await fetch(`https://graph.facebook.com/v25.0/${igId}?fields=username,followers_count&access_token=${token}`)
+      const acct = await acctRes.json()
+      if (!acct.error) {
+        followers = Number(acct.followers_count || 0)
+      }
+    } catch (_) {
+      // não bloqueia o envio se a chamada de metadata falhar
     }
 
     // 2) Decide se inclui link_sticker (>=10k followers ou verificada)
-    const followers: number = Number(acct.followers_count || 0)
     const elegivelLink = followers >= 10000
     const warnings: string[] = []
 
