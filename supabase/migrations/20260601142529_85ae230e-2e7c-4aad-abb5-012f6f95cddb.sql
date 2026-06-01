@@ -1,0 +1,1 @@
+UPDATE videos_agendados SET status='pendente', erro=NULL, tentativas=0, resultado=NULL WHERE id IN ('864dbe4b-9567-4b18-a06c-65230df52381','adccdd4a-9184-4e7d-9b36-7a84b2e3ffe7');
