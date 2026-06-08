@@ -73,14 +73,16 @@ ESTRUTURA OBRIGATÓRIA DA CAPTION (NÃO NEGOCIÁVEL):
 2. LINHA EM BRANCO
 3. SCRIPT: O texto principal de copywriting no estilo solicitado (3 a 6 linhas, parágrafos curtos)
 4. LINHA EM BRANCO
-5. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_COM_LINK}
+5. HASHTAGS: uma linha contendo de 6 a 10 hashtags relevantes ao produto/nicho/categoria, separadas por espaço, todas começando com "#", em minúsculas e sem acentos (ex: #cozinha #organizacao #achadinhos). NÃO use hashtags genéricas demais como #fyp #viral #foryou.
+6. LINHA EM BRANCO
+7. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_COM_LINK}
 
 REGRAS UNIVERSAIS:
 - NUNCA repita o link no meio ou no fim. O link aparece UMA VEZ na linha 1.
 - Use português brasileiro coloquial e natural.
-- Máximo 700 caracteres no total.
+- Máximo 900 caracteres no total (incluindo hashtags).
 - Pode usar 1 a 3 emojis no script. Não exagere.
-- PROIBIDO ABSOLUTAMENTE usar hashtags. NÃO inclua NENHUM caractere "#" em lugar nenhum da caption. Se você incluir qualquer hashtag, sua resposta será REJEITADA e descartada.
+- As hashtags ficam APENAS na linha 5 — NÃO espalhe "#" pelo script.
 - APENAS UM CTA na caption inteira. Não escreva dois CTAs nem variações alternativas. Só a string exata acima na última linha.
 - NUNCA prometa cura, milagre, garantia 100%, resultado milagroso, ou cite ANVISA/FDA/OMS.
 - NUNCA depreciem outros marketplaces.
@@ -103,14 +105,16 @@ Se você incluir qualquer cifra ou valor numérico de preço, sua resposta será
 ESTRUTURA OBRIGATÓRIA DA CAPTION (NÃO NEGOCIÁVEL):
 1. SCRIPT: O texto principal de copywriting no estilo solicitado (3 a 6 linhas, parágrafos curtos). Foque na MARCA/SERVIÇO e no que o negócio oferece. NÃO inclua URL, link ou domínio.
 2. LINHA EM BRANCO
-3. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_SEM_LINK}
+3. HASHTAGS: uma linha contendo de 6 a 10 hashtags relevantes ao nicho/serviço/categoria, separadas por espaço, todas começando com "#", em minúsculas e sem acentos. NÃO use hashtags genéricas demais como #fyp #viral #foryou.
+4. LINHA EM BRANCO
+5. CTA — ÚLTIMA LINHA OBRIGATÓRIA, copiar EXATAMENTE esta string (sem variações, sem adicionar nada antes ou depois): ${CTA_SEM_LINK}
 
 REGRAS UNIVERSAIS:
 - NÃO inclua URLs, links, "http", "www" ou qualquer endereço web na caption.
 - Use português brasileiro coloquial e natural.
-- Máximo 700 caracteres no total.
+- Máximo 900 caracteres no total (incluindo hashtags).
 - Pode usar 1 a 3 emojis no script. Não exagere.
-- PROIBIDO ABSOLUTAMENTE usar hashtags. NÃO inclua NENHUM caractere "#" em lugar nenhum da caption. Se você incluir qualquer hashtag, sua resposta será REJEITADA e descartada.
+- As hashtags ficam APENAS na linha de hashtags — NÃO espalhe "#" pelo script.
 - APENAS UM CTA na caption inteira. Não escreva dois CTAs nem variações alternativas. Só a string exata acima na última linha.
 - NUNCA prometa cura, milagre, garantia 100%, resultado milagroso, ou cite ANVISA/FDA/OMS.
 - NUNCA depreciem outros marketplaces ou concorrentes.
@@ -335,16 +339,8 @@ function validarCaption(
     }
   }
 
-  // CAMADA 3: PROIBIDO hashtags
-  const hashtagMatch = caption.match(/#\w+/g)
-  if (hashtagMatch && hashtagMatch.length > 0) {
-    return {
-      ok: false,
-      camada: 3,
-      motivo: 'hashtag_proibida',
-      termo_violado: hashtagMatch.join(', '),
-    }
-  }
+  // CAMADA 3: hashtags agora SÃO permitidas (e incentivadas) — sem validação aqui
+
 
   // CAMADA 4: CTA exato (última linha) e único
   const linhasNaoVazias = caption
