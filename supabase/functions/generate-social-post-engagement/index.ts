@@ -339,16 +339,8 @@ function validarCaption(
     }
   }
 
-  // CAMADA 3: PROIBIDO hashtags
-  const hashtagMatch = caption.match(/#\w+/g)
-  if (hashtagMatch && hashtagMatch.length > 0) {
-    return {
-      ok: false,
-      camada: 3,
-      motivo: 'hashtag_proibida',
-      termo_violado: hashtagMatch.join(', '),
-    }
-  }
+  // CAMADA 3: hashtags agora SÃO permitidas (e incentivadas) — sem validação aqui
+
 
   // CAMADA 4: CTA exato (última linha) e único
   const linhasNaoVazias = caption
