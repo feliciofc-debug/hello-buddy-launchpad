@@ -72,6 +72,7 @@ import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import GatewayWhatsApp from "./pages/GatewayWhatsApp";
 import RedesSociaisPainel from "./pages/RedesSociaisPainel";
 import WhatsAppPainel from "./pages/WhatsAppPainel";
+import GuiaContasComerciais from "./pages/GuiaContasComerciais";
 // import Integracoes from "./pages/Integracoes"; // Oculto - reativar removendo o comentário
 
 // Páginas Afiliados
