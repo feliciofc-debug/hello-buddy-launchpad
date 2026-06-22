@@ -72,6 +72,7 @@ import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 import GatewayWhatsApp from "./pages/GatewayWhatsApp";
 import RedesSociaisPainel from "./pages/RedesSociaisPainel";
 import WhatsAppPainel from "./pages/WhatsAppPainel";
+import GuiaContasComerciais from "./pages/GuiaContasComerciais";
 // import Integracoes from "./pages/Integracoes"; // Oculto - reativar removendo o comentário
 
 // Páginas Afiliados
@@ -184,6 +185,8 @@ const App = () => (
             {/* Páginas Legais */}
             <Route path="/termos" element={<Termos />} />
             <Route path="/privacidade" element={<Privacidade />} />
+            <Route path="/guia/contas-comerciais" element={<GuiaContasComerciais />} />
+            <Route path="/guia-contas-comerciais" element={<GuiaContasComerciais />} />
             
             {/* Rotas Afiliados */}
             <Route path="/afiliado/dashboard" element={<AfiliadoDashboard />} />
