@@ -59,6 +59,16 @@ export function useBillingAccess(): BillingAccessState {
         return;
       }
 
+      // Bloqueio manual por cancelamento / inadimplência
+      if (email && BLOCKED_EMAILS.has(email.toLowerCase())) {
+        setActive(false);
+        setExpiresAt(null);
+        setCustomerName(null);
+        setSubscriptionStatus('cancelled');
+        setLoading(false);
+        return;
+      }
+
       if (!email) {
         // Sem usuário: fail-open (não bloqueia)
         setActive(true);
