@@ -3,6 +3,13 @@ import { supabase } from '@/integrations/supabase/client';
 
 const ADMIN_DOMAINS = ['@atombrasildigital.com'];
 
+// Contas bloqueadas temporariamente por inadimplência / cancelamento
+const BLOCKED_EMAILS = new Set<string>([
+  'solemar89@hotmail.com',
+  'carolribeiro@barraworld.com',
+  'blindattablindados@gmail.com',
+]);
+
 export interface BillingAccessState {
   loading: boolean;
   active: boolean;
