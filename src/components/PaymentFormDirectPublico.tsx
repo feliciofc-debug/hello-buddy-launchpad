@@ -35,7 +35,7 @@ export default function PaymentFormDirectPublico({
   const [loading, setLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
   const [copied, setCopied] = useState(false);
-  const [installments, setInstallments] = useState(12);
+  const [installments, setInstallments] = useState(1);
   const [documentType, setDocumentType] = useState<'cpf' | 'cnpj'>('cpf');
   const [confirmed, setConfirmed] = useState(false);
   const pollRef = useRef<number | null>(null);
@@ -351,19 +351,11 @@ export default function PaymentFormDirectPublico({
             {paymentMethod === 'card' && (
               <div>
                 <Label>Parcelamento</Label>
-                <select
-                  value={installments}
-                  onChange={(e) => setInstallments(Number(e.target.value))}
-                  className="w-full p-2 border rounded-lg bg-background"
-                >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((num) => (
-                    <option key={num} value={num}>
-                      {num}x de R$ {calculateInstallment(num).toFixed(2)} sem juros
-                    </option>
-                  ))}
-                </select>
+                <div className="w-full p-3 border rounded-lg bg-muted/40 text-sm font-medium">
+                  1x de R$ {calculateInstallment(1).toFixed(2)} (à vista)
+                </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Você será redirecionado para o checkout seguro do Mercado Pago para inserir os dados do cartão.
+                  Pagamento somente à vista. Você será redirecionado para o checkout seguro do Mercado Pago para inserir os dados do cartão.
                 </p>
               </div>
             )}
