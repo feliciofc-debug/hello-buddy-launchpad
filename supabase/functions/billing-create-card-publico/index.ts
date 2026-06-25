@@ -38,7 +38,8 @@ serve(async (req) => {
     const docNum = String(document_number || '').replace(/\D/g, '');
     if (document_type === 'cpf' && docNum.length !== 11) return bad('CPF inválido');
     if (document_type === 'cnpj' && docNum.length !== 14) return bad('CNPJ inválido');
-    const inst = Math.min(Math.max(Number(installments || 1), 1), 12);
+    // Trava de negócio: pagamento no cartão somente 1x (à vista).
+    const inst = 1;
 
     const mpToken = Deno.env.get('MERCADOPAGO_ACCESS_TOKEN');
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
