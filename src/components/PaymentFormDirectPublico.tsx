@@ -42,7 +42,7 @@ export default function PaymentFormDirectPublico({
   const initialPaymentDateRef = useRef<string | null>(null);
 
   const [formData, setFormData] = useState({
-    email: customerEmail || '',
+    email: '',
     cpf: '',
     cnpj: '',
     companyName: '',
