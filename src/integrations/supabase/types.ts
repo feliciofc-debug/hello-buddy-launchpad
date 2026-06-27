@@ -7518,6 +7518,93 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_cloud_agent_config: {
+        Row: {
+          agent_name: string | null
+          created_at: string
+          greeting: string | null
+          handoff_rules: Json | null
+          id: string
+          is_active: boolean
+          knowledge_base: string | null
+          persona: string | null
+          tone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          agent_name?: string | null
+          created_at?: string
+          greeting?: string | null
+          handoff_rules?: Json | null
+          id?: string
+          is_active?: boolean
+          knowledge_base?: string | null
+          persona?: string | null
+          tone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          agent_name?: string | null
+          created_at?: string
+          greeting?: string | null
+          handoff_rules?: Json | null
+          id?: string
+          is_active?: boolean
+          knowledge_base?: string | null
+          persona?: string | null
+          tone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_cloud_inbound_queue: {
+        Row: {
+          attempts: number
+          created_at: string
+          error: string | null
+          from_number: string
+          id: string
+          message_type: string | null
+          payload: Json
+          phone_number_id: string
+          processed_at: string | null
+          status: string
+          user_id: string | null
+          wamid: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          from_number: string
+          id?: string
+          message_type?: string | null
+          payload: Json
+          phone_number_id: string
+          processed_at?: string | null
+          status?: string
+          user_id?: string | null
+          wamid: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          error?: string | null
+          from_number?: string
+          id?: string
+          message_type?: string | null
+          payload?: Json
+          phone_number_id?: string
+          processed_at?: string | null
+          status?: string
+          user_id?: string | null
+          wamid?: string
+        }
+        Relationships: []
+      }
       whatsapp_config: {
         Row: {
           access_token: string | null
