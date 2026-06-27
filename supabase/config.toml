@@ -1,5 +1,9 @@
 project_id = "jibpvpqgplmahjhswiza"
 
+[functions.whatsapp-cloud-webhook]
+verify_jwt = false
+
+
 [functions.ebook-airfryer]
 verify_jwt = false
 
