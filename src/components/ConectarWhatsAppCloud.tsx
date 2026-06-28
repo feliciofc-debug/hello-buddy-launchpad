@@ -33,23 +33,28 @@ export default function ConectarWhatsAppCloud() {
   const [config, setConfig] = useState<ConfigRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [metaCfg, setMetaCfg] = useState<{ app_id: string | null; embedded_config_id: string | null } | null>(null);
 
-  // 1) Carrega SDK do Facebook
+  // 1) Carrega config pública do Meta (APP_ID + embedded_config_id) e SDK do Facebook
   useEffect(() => {
-    if (window.FB) return;
-    window.fbAsyncInit = function () {
-      window.FB.init({
-        appId: META_APP_ID,
-        cookie: true,
-        xfbml: true,
-        version: "v25.0",
-      });
-    };
-    const s = document.createElement("script");
-    s.src = "https://connect.facebook.net/en_US/sdk.js";
-    s.async = true;
-    s.defer = true;
-    document.body.appendChild(s);
+    (async () => {
+      const { data } = await supabase.functions.invoke("get-meta-public-config", { method: "GET" });
+      setMetaCfg(data ?? { app_id: null, embedded_config_id: null });
+      if (!data?.app_id || window.FB) return;
+      window.fbAsyncInit = function () {
+        window.FB.init({
+          appId: data.app_id,
+          cookie: true,
+          xfbml: true,
+          version: "v25.0",
+        });
+      };
+      const s = document.createElement("script");
+      s.src = "https://connect.facebook.net/en_US/sdk.js";
+      s.async = true;
+      s.defer = true;
+      document.body.appendChild(s);
+    })();
   }, []);
 
   // 2) Lê config atual
