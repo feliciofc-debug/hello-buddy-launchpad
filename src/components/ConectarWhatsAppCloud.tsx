@@ -11,10 +11,8 @@ import { Loader2, CheckCircle2, AlertCircle, MessageCircle } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-// Config_id do Embedded Signup (criado no painel Meta → ver guia abaixo)
-const WHATSAPP_EMBEDDED_CONFIG_ID =
-  import.meta.env.VITE_WHATSAPP_EMBEDDED_CONFIG_ID || "";
-const META_APP_ID = import.meta.env.VITE_META_APP_ID || "";
+// APP_ID e config_id são carregados em runtime via edge function pública
+// `get-meta-public-config` (fonte única = secrets do projeto).
 
 declare global {
   interface Window {
@@ -35,23 +33,28 @@ export default function ConectarWhatsAppCloud() {
   const [config, setConfig] = useState<ConfigRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
+  const [metaCfg, setMetaCfg] = useState<{ app_id: string | null; embedded_config_id: string | null } | null>(null);
 
-  // 1) Carrega SDK do Facebook
+  // 1) Carrega config pública do Meta (APP_ID + embedded_config_id) e SDK do Facebook
   useEffect(() => {
-    if (window.FB) return;
-    window.fbAsyncInit = function () {
-      window.FB.init({
-        appId: META_APP_ID,
-        cookie: true,
-        xfbml: true,
-        version: "v25.0",
-      });
-    };
-    const s = document.createElement("script");
-    s.src = "https://connect.facebook.net/en_US/sdk.js";
-    s.async = true;
-    s.defer = true;
-    document.body.appendChild(s);
+    (async () => {
+      const { data } = await supabase.functions.invoke("get-meta-public-config", { method: "GET" });
+      setMetaCfg(data ?? { app_id: null, embedded_config_id: null });
+      if (!data?.app_id || window.FB) return;
+      window.fbAsyncInit = function () {
+        window.FB.init({
+          appId: data.app_id,
+          cookie: true,
+          xfbml: true,
+          version: "v25.0",
+        });
+      };
+      const s = document.createElement("script");
+      s.src = "https://connect.facebook.net/en_US/sdk.js";
+      s.async = true;
+      s.defer = true;
+      document.body.appendChild(s);
+    })();
   }, []);
 
   // 2) Lê config atual
@@ -87,8 +90,8 @@ export default function ConectarWhatsAppCloud() {
 
   const handleConnect = () => {
     if (!window.FB) { toast.error("SDK do Facebook ainda carregando…"); return; }
-    if (!WHATSAPP_EMBEDDED_CONFIG_ID) {
-      toast.error("WHATSAPP_EMBEDDED_CONFIG_ID não configurado");
+    if (!metaCfg?.embedded_config_id) {
+      toast.error("WHATSAPP_EMBEDDED_CONFIG_ID não configurado nos secrets");
       return;
     }
     setConnecting(true);
@@ -132,7 +135,7 @@ export default function ConectarWhatsAppCloud() {
         }
       },
       {
-        config_id: WHATSAPP_EMBEDDED_CONFIG_ID,
+        config_id: metaCfg.embedded_config_id,
         response_type: "code",
         override_default_response_type: true,
         extras: { setup: {}, featureType: "", sessionInfoVersion: "2" },
