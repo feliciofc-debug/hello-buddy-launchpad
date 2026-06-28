@@ -7718,42 +7718,57 @@ export type Database = {
       whatsapp_config: {
         Row: {
           access_token: string | null
+          alert_status: string
           business_name: string | null
+          connection_method: string | null
           created_at: string | null
           display_phone: string | null
           id: string
           is_active: boolean | null
           is_verified: boolean | null
+          last_refresh_at: string | null
           last_verified_at: string | null
           phone_number_id: string | null
+          refresh_attempts: number
+          token_expires_at: string | null
           updated_at: string | null
           user_id: string
           waba_id: string | null
         }
         Insert: {
           access_token?: string | null
+          alert_status?: string
           business_name?: string | null
+          connection_method?: string | null
           created_at?: string | null
           display_phone?: string | null
           id?: string
           is_active?: boolean | null
           is_verified?: boolean | null
+          last_refresh_at?: string | null
           last_verified_at?: string | null
           phone_number_id?: string | null
+          refresh_attempts?: number
+          token_expires_at?: string | null
           updated_at?: string | null
           user_id: string
           waba_id?: string | null
         }
         Update: {
           access_token?: string | null
+          alert_status?: string
           business_name?: string | null
+          connection_method?: string | null
           created_at?: string | null
           display_phone?: string | null
           id?: string
           is_active?: boolean | null
           is_verified?: boolean | null
+          last_refresh_at?: string | null
           last_verified_at?: string | null
           phone_number_id?: string | null
+          refresh_attempts?: number
+          token_expires_at?: string | null
           updated_at?: string | null
           user_id?: string
           waba_id?: string | null
