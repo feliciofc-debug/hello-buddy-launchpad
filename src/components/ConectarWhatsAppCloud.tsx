@@ -138,7 +138,7 @@ export default function ConectarWhatsAppCloud() {
         config_id: metaCfg.embedded_config_id,
         response_type: "code",
         override_default_response_type: true,
-        extras: { setup: {}, featureType: "", sessionInfoVersion: "2" },
+        extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
       },
     );
   };
