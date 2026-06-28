@@ -90,8 +90,8 @@ export default function ConectarWhatsAppCloud() {
 
   const handleConnect = () => {
     if (!window.FB) { toast.error("SDK do Facebook ainda carregando…"); return; }
-    if (!WHATSAPP_EMBEDDED_CONFIG_ID) {
-      toast.error("WHATSAPP_EMBEDDED_CONFIG_ID não configurado");
+    if (!metaCfg?.embedded_config_id) {
+      toast.error("WHATSAPP_EMBEDDED_CONFIG_ID não configurado nos secrets");
       return;
     }
     setConnecting(true);
@@ -135,7 +135,7 @@ export default function ConectarWhatsAppCloud() {
         }
       },
       {
-        config_id: WHATSAPP_EMBEDDED_CONFIG_ID,
+        config_id: metaCfg.embedded_config_id,
         response_type: "code",
         override_default_response_type: true,
         extras: { setup: {}, featureType: "", sessionInfoVersion: "2" },
