@@ -11,10 +11,8 @@ import { Loader2, CheckCircle2, AlertCircle, MessageCircle } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
-// Config_id do Embedded Signup (criado no painel Meta → ver guia abaixo)
-const WHATSAPP_EMBEDDED_CONFIG_ID =
-  import.meta.env.VITE_WHATSAPP_EMBEDDED_CONFIG_ID || "";
-const META_APP_ID = import.meta.env.VITE_META_APP_ID || "";
+// APP_ID e config_id são carregados em runtime via edge function pública
+// `get-meta-public-config` (fonte única = secrets do projeto).
 
 declare global {
   interface Window {
