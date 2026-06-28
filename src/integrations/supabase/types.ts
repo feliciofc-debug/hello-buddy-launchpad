@@ -867,6 +867,36 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_messages_quota: {
+        Row: {
+          created_at: string
+          is_enabled: boolean
+          monthly_limit: number
+          reset_at: string
+          updated_at: string
+          used_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          is_enabled?: boolean
+          monthly_limit?: number
+          reset_at?: string
+          updated_at?: string
+          used_count?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          is_enabled?: boolean
+          monthly_limit?: number
+          reset_at?: string
+          updated_at?: string
+          used_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       api_keys: {
         Row: {
           created_at: string
@@ -7560,6 +7590,39 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_cloud_conversations: {
+        Row: {
+          contact_name: string | null
+          contact_number: string
+          created_at: string
+          id: string
+          last_message_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contact_name?: string | null
+          contact_number: string
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contact_name?: string | null
+          contact_number?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_cloud_inbound_queue: {
         Row: {
           attempts: number
@@ -7571,6 +7634,7 @@ export type Database = {
           payload: Json
           phone_number_id: string
           processed_at: string | null
+          processing_started_at: string | null
           status: string
           user_id: string | null
           wamid: string
@@ -7585,6 +7649,7 @@ export type Database = {
           payload: Json
           phone_number_id: string
           processed_at?: string | null
+          processing_started_at?: string | null
           status?: string
           user_id?: string | null
           wamid: string
@@ -7599,11 +7664,56 @@ export type Database = {
           payload?: Json
           phone_number_id?: string
           processed_at?: string | null
+          processing_started_at?: string | null
           status?: string
           user_id?: string | null
           wamid?: string
         }
         Relationships: []
+      }
+      whatsapp_cloud_messages: {
+        Row: {
+          content: string | null
+          conversation_id: string
+          created_at: string
+          direction: string
+          id: string
+          message_type: string
+          sender: string
+          user_id: string
+          wamid: string | null
+        }
+        Insert: {
+          content?: string | null
+          conversation_id: string
+          created_at?: string
+          direction: string
+          id?: string
+          message_type?: string
+          sender: string
+          user_id: string
+          wamid?: string | null
+        }
+        Update: {
+          content?: string | null
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          message_type?: string
+          sender?: string
+          user_id?: string
+          wamid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_cloud_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_cloud_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_config: {
         Row: {
@@ -8319,6 +8429,7 @@ export type Database = {
         }
       }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
+      resgatar_whatsapp_cloud_orfaos: { Args: never; Returns: Json }
       unaccent: { Args: { "": string }; Returns: string }
       verificar_blacklist_afiliado: {
         Args: { p_phone: string }
