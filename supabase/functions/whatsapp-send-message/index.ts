@@ -35,6 +35,15 @@ serve(async (req) => {
       throw new Error('WhatsApp não configurado. Vá em WhatsApp → Configuração para conectar.')
     }
 
+    const testAccessToken = Deno.env.get('WHATSAPP_TEST_ACCESS_TOKEN')
+    const accessToken = config.phone_number_id === '1156251107576181' && testAccessToken
+      ? testAccessToken
+      : config.access_token
+
+    if (!accessToken) {
+      throw new Error('Token do WhatsApp não configurado')
+    }
+
     const API_URL = `https://graph.facebook.com/v25.0/${config.phone_number_id}/messages`
 
     let messagePayload: any
@@ -73,7 +82,7 @@ serve(async (req) => {
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${config.access_token}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(messagePayload),
