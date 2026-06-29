@@ -3,6 +3,7 @@
 // Fluxo de 13 passos, claim atômico, quota, regra de persona do tenant (nunca AMZ).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { buildSystemPrompt } from "../_shared/agent-soul.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -270,28 +271,24 @@ async function processOne(queueId: string) {
       return { ok: false, reason: "quota_exceeded" };
     }
 
-    // PASSO 7 — Monta prompt do agente DO TENANT (NUNCA mencionar AMZ)
-    const personaParts = [
-      agent.persona ? `Persona: ${agent.persona}` : null,
-      agent.tone ? `Tom de voz: ${agent.tone}` : null,
-      agent.knowledge_base ? `Base de conhecimento do negócio:\n${agent.knowledge_base}` : null,
-      agent.handoff_rules && Object.keys(agent.handoff_rules ?? {}).length
-        ? `Regras de transferência para humano: ${JSON.stringify(agent.handoff_rules)}`
-        : null,
-      agent.greeting ? `Saudação padrão: ${agent.greeting}` : null,
-    ].filter(Boolean).join("\n\n");
-
-    const systemPrompt = [
-      `Você é ${agent.agent_name ?? "o atendente virtual"} do negócio do cliente.`,
-      personaParts,
-      `REGRAS ABSOLUTAS:`,
-      `- Você fala EXCLUSIVAMENTE em nome do negócio do cliente.`,
-      `- NUNCA mencione "AMZ Ofertas", "Lovable", "IA", "agente virtual", "robô", "automação", ou qualquer tecnologia/plataforma usada.`,
-      `- NUNCA revele que você é uma inteligência artificial.`,
-      `- Responda como uma pessoa real do atendimento responderia: direto, educado, dentro do escopo do negócio.`,
-      `- Se a pergunta fugir do escopo do negócio, peça para a pessoa aguardar e diga que um atendente vai retornar.`,
-      `- Seja conciso (idealmente 1-3 frases por resposta).`,
-    ].filter(Boolean).join("\n");
+    // PASSO 7 — Monta system prompt unificado via agent-soul
+    // (modo 'amz' só se user_id === ADMIN_AMZ_USER_ID; senão força whitelabel)
+    const { systemPrompt, mode } = await buildSystemPrompt(
+      sb,
+      {
+        user_id: userId,
+        agent_mode: (agent as any).agent_mode,
+        agent_name: agent.agent_name,
+        persona: agent.persona,
+        tone: agent.tone,
+        greeting: agent.greeting,
+        knowledge_base: agent.knowledge_base,
+        handoff_rules: agent.handoff_rules,
+        is_active: agent.is_active,
+      },
+      userText || "",
+    );
+    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPrompt.length}`);
 
     // Histórico recente da conversa (últimas 10 msgs antes desta)
     const { data: histRows } = await sb
