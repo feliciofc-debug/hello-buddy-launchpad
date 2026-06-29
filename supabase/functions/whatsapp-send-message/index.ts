@@ -35,10 +35,16 @@ serve(async (req) => {
       throw new Error('WhatsApp não configurado. Vá em WhatsApp → Configuração para conectar.')
     }
 
+    // Prioridade: token permanente (System User, never expire) > token de teste > token do tenant
+    const permanentToken = Deno.env.get('WHATSAPP_PERMANENT_TOKEN')
     const testAccessToken = Deno.env.get('WHATSAPP_TEST_ACCESS_TOKEN')
-    const accessToken = config.phone_number_id === '1156251107576181' && testAccessToken
-      ? testAccessToken
-      : config.access_token
+    const isSystemUserTenant = config.connection_method === 'system_user_permanent'
+    const accessToken = isSystemUserTenant && permanentToken
+      ? permanentToken
+      : (config.phone_number_id === '1156251107576181' && testAccessToken
+        ? testAccessToken
+        : (permanentToken || config.access_token))
+
 
     if (!accessToken) {
       throw new Error('Token do WhatsApp não configurado')
