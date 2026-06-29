@@ -70,6 +70,7 @@ import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 // SophiaDispatcher removido (Sophia descontinuada — 27/04/2026). Arquivo físico mantido como órfão em src/pages/SophiaDispatcher.tsx.
 import GatewayWhatsApp from "./pages/GatewayWhatsApp";
+import ConfigAgenteWhatsApp from "./pages/ConfigAgenteWhatsApp";
 import RedesSociaisPainel from "./pages/RedesSociaisPainel";
 import WhatsAppPainel from "./pages/WhatsAppPainel";
 import GuiaContasComerciais from "./pages/GuiaContasComerciais";
@@ -176,6 +177,7 @@ const App = () => (
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
             {/* Rota /sophia-dispatcher removida — Sophia descontinuada (27/04/2026) */}
             <Route path="/gateway-whatsapp" element={<GatewayWhatsApp />} />
+            <Route path="/agente-whatsapp/config" element={<ConfigAgenteWhatsApp />} />
             <Route path="/redes-sociais" element={<RedesSociaisPainel />} />
             <Route path="/whatsapp-painel" element={<WhatsAppPainel />} />
             
