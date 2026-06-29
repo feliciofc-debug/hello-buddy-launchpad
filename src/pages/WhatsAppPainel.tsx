@@ -59,10 +59,23 @@ export default function WhatsAppPainel() {
         .eq("user_id", user.id)
         .eq("ativa", true);
 
+      const { count: conversasAtivas } = await supabase
+        .from("whatsapp_cloud_conversations" as any)
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id);
+
+      const { data: agentCfg } = await supabase
+        .from("whatsapp_cloud_agent_config" as any)
+        .select("is_active")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      setAgentActive(((agentCfg as any)?.is_active ?? null));
+
       setStats({
         enviadas: enviadas || 0,
         grupos: 0,
         campanhasAtivas: campanhas || 0,
+        conversasAtivas: conversasAtivas || 0,
       });
 
       const { data: config } = await supabase
