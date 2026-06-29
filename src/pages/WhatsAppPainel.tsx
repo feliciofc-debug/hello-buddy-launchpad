@@ -170,6 +170,92 @@ export default function WhatsAppPainel() {
         <p className="text-muted-foreground">{t('whatsapp.painel_subtitle')}</p>
       </div>
 
+      {/* ============== ATENDIMENTO IA (OFICIAL) — PRODUTO PRINCIPAL ============== */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-green-600" />
+          <h2 className="text-lg font-semibold text-foreground">Atendimento IA (Oficial)</h2>
+          <Badge className="bg-green-600 text-white">Principal</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Atendimento 1-a-1 automático no seu WhatsApp Business via API oficial da Meta.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card
+            className="cursor-pointer hover:shadow-md transition-shadow border-green-200 dark:border-green-900"
+            onClick={() => navigate("/whatsapp-conversations")}
+          >
+            <CardContent className="p-5 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                <Inbox className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-foreground">Conversas</p>
+                  <Badge variant="outline">{stats.conversasAtivas}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Inbox do agente IA — atendimentos em andamento
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="cursor-pointer hover:shadow-md transition-shadow border-green-200 dark:border-green-900"
+            onClick={() => navigate("/agente-whatsapp/config")}
+          >
+            <CardContent className="p-5 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                <Bot className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-foreground">Configurar Agente</p>
+                  {agentActive === true && <Badge className="bg-green-600 text-white">Ativo</Badge>}
+                  {agentActive === false && <Badge variant="secondary">Pausado</Badge>}
+                  {agentActive === null && <Badge variant="outline">Não configurado</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Persona, tom de voz, conhecimento e regras de handoff
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="cursor-pointer hover:shadow-md transition-shadow border-green-200 dark:border-green-900"
+            onClick={() => {
+              const el = document.getElementById("conectar-numero-card");
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          >
+            <CardContent className="p-5 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                <PlugZap className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-foreground">Conectar Número</p>
+                  {whatsappConfig?.is_active ? (
+                    <Badge className="bg-green-600 text-white">Conectado</Badge>
+                  ) : (
+                    <Badge variant="outline">Pendente</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {whatsappConfig?.display_phone || "Conecte seu WhatsApp Business oficial"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <div id="conectar-numero-card" />
+
+
       {/* WhatsApp Cloud API Config Card */}
       <Card className="border-green-200 dark:border-green-800">
         <CardHeader>
