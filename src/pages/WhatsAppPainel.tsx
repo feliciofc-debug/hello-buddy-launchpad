@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, MessageCircle, Users, Send, Smartphone, BookOpen, Megaphone, Loader2, Settings, CheckCircle2, ExternalLink, Shield } from "lucide-react";
+import { ArrowLeft, MessageCircle, Users, Send, Smartphone, BookOpen, Megaphone, Loader2, Settings, CheckCircle2, ExternalLink, Shield, Bot, Inbox, PlugZap, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 interface WhatsAppConfig {
@@ -26,7 +26,8 @@ export default function WhatsAppPainel() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ enviadas: 0, grupos: 0, campanhasAtivas: 0 });
+  const [stats, setStats] = useState({ enviadas: 0, grupos: 0, campanhasAtivas: 0, conversasAtivas: 0 });
+  const [agentActive, setAgentActive] = useState<boolean | null>(null);
   const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfig | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,10 +59,23 @@ export default function WhatsAppPainel() {
         .eq("user_id", user.id)
         .eq("ativa", true);
 
+      const { count: conversasAtivas } = await supabase
+        .from("whatsapp_cloud_conversations" as any)
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", user.id);
+
+      const { data: agentCfg } = await supabase
+        .from("whatsapp_cloud_agent_config" as any)
+        .select("is_active")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      setAgentActive(((agentCfg as any)?.is_active ?? null));
+
       setStats({
         enviadas: enviadas || 0,
         grupos: 0,
         campanhasAtivas: campanhas || 0,
+        conversasAtivas: conversasAtivas || 0,
       });
 
       const { data: config } = await supabase
@@ -155,6 +169,92 @@ export default function WhatsAppPainel() {
         <h1 className="text-2xl font-bold text-foreground">{t('whatsapp.title')}</h1>
         <p className="text-muted-foreground">{t('whatsapp.painel_subtitle')}</p>
       </div>
+
+      {/* ============== ATENDIMENTO IA (OFICIAL) — PRODUTO PRINCIPAL ============== */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-5 w-5 text-green-600" />
+          <h2 className="text-lg font-semibold text-foreground">Atendimento IA (Oficial)</h2>
+          <Badge className="bg-green-600 text-white">Principal</Badge>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Atendimento 1-a-1 automático no seu WhatsApp Business via API oficial da Meta.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card
+            className="cursor-pointer hover:shadow-md transition-shadow border-green-200 dark:border-green-900"
+            onClick={() => navigate("/whatsapp-conversations")}
+          >
+            <CardContent className="p-5 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                <Inbox className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-foreground">Conversas</p>
+                  <Badge variant="outline">{stats.conversasAtivas}</Badge>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Inbox do agente IA — atendimentos em andamento
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="cursor-pointer hover:shadow-md transition-shadow border-green-200 dark:border-green-900"
+            onClick={() => navigate("/agente-whatsapp/config")}
+          >
+            <CardContent className="p-5 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                <Bot className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-foreground">Configurar Agente</p>
+                  {agentActive === true && <Badge className="bg-green-600 text-white">Ativo</Badge>}
+                  {agentActive === false && <Badge variant="secondary">Pausado</Badge>}
+                  {agentActive === null && <Badge variant="outline">Não configurado</Badge>}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Persona, tom de voz, conhecimento e regras de handoff
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="cursor-pointer hover:shadow-md transition-shadow border-green-200 dark:border-green-900"
+            onClick={() => {
+              const el = document.getElementById("conectar-numero-card");
+              el?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }}
+          >
+            <CardContent className="p-5 flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                <PlugZap className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-foreground">Conectar Número</p>
+                  {whatsappConfig?.is_active ? (
+                    <Badge className="bg-green-600 text-white">Conectado</Badge>
+                  ) : (
+                    <Badge variant="outline">Pendente</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {whatsappConfig?.display_phone || "Conecte seu WhatsApp Business oficial"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <div id="conectar-numero-card" />
+
 
       {/* WhatsApp Cloud API Config Card */}
       <Card className="border-green-200 dark:border-green-800">
