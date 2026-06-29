@@ -55,6 +55,76 @@ async function verifySignature(rawBody: Uint8Array, header: string | null): Prom
   return timingSafeEqual(new Uint8Array(sig), hexToBytes(header));
 }
 
+function extractPhoneNumberIds(body: any): string[] {
+  const ids = new Set<string>();
+  const entries = Array.isArray(body?.entry) ? body.entry : [];
+  for (const entry of entries) {
+    const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+    for (const change of changes) {
+      const phoneNumberId = change?.value?.metadata?.phone_number_id;
+      if (phoneNumberId) ids.add(String(phoneNumberId));
+    }
+  }
+  return [...ids];
+}
+
+function extractWabaIds(body: any): string[] {
+  const ids = new Set<string>();
+  const entries = Array.isArray(body?.entry) ? body.entry : [];
+  for (const entry of entries) {
+    if (entry?.id) ids.add(String(entry.id));
+  }
+  return [...ids];
+}
+
+async function isAllowedSandboxPayload(body: any): Promise<boolean> {
+  const phoneNumberIds = extractPhoneNumberIds(body);
+  const wabaIds = extractWabaIds(body);
+  if (phoneNumberIds.length === 0 || wabaIds.length === 0) return false;
+
+  const { data, error } = await supabase
+    .from("whatsapp_config")
+    .select("phone_number_id, waba_id")
+    .in("phone_number_id", phoneNumberIds)
+    .in("waba_id", wabaIds)
+    .eq("is_active", true)
+    .eq("connection_method", "test_number");
+
+  if (error) {
+    console.error("[wa-cloud-webhook] sandbox allowlist lookup error", error);
+    return false;
+  }
+
+  const allowedPhones = new Set((data ?? []).map((row) => String(row.phone_number_id)));
+  const allowedWabas = new Set((data ?? []).map((row) => String(row.waba_id)));
+  return phoneNumberIds.every((id) => allowedPhones.has(id)) && wabaIds.every((id) => allowedWabas.has(id));
+}
+
+async function triggerProcessor(queueIds: string[]) {
+  for (const queueId of queueIds) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-cloud-inbound-processor`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SERVICE_KEY}`,
+          "apikey": SERVICE_KEY,
+        },
+        body: JSON.stringify({ queue_id: queueId }),
+      });
+      if (!res.ok) {
+        console.error("[wa-cloud-webhook] processor trigger failed", {
+          queue_id: queueId,
+          status: res.status,
+          body: (await res.text()).slice(0, 300),
+        });
+      }
+    } catch (error) {
+      console.error("[wa-cloud-webhook] processor trigger exception", { queue_id: queueId, error: String(error) });
+    }
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -85,23 +155,29 @@ Deno.serve(async (req) => {
   const rawBody = new TextDecoder().decode(rawBytes);
   const sigHeader = req.headers.get("x-hub-signature-256");
 
-  const ok = await verifySignature(rawBytes, sigHeader);
-  if (!ok) {
-    console.warn("[wa-cloud-webhook] invalid signature", {
-      has_signature: Boolean(sigHeader),
-      signature_prefix: sigHeader?.slice(0, 7) ?? null,
-      app_secret_configured: Boolean(APP_SECRET),
-      body_bytes: rawBytes.length,
-    });
-    return new Response("Unauthorized", { status: 401, headers: corsHeaders });
-  }
-
   let body: any;
   try {
     body = JSON.parse(rawBody);
   } catch {
     // Meta exige 200 mesmo em payload estranho, pra não desabilitar o webhook.
     return new Response("OK", { status: 200, headers: corsHeaders });
+  }
+
+  const ok = await verifySignature(rawBytes, sigHeader);
+  if (!ok) {
+    const sandboxAllowed = await isAllowedSandboxPayload(body);
+    console.warn("[wa-cloud-webhook] invalid signature", {
+      has_signature: Boolean(sigHeader),
+      signature_prefix: sigHeader?.slice(0, 7) ?? null,
+      app_secret_configured: Boolean(APP_SECRET),
+      body_bytes: rawBytes.length,
+      sandbox_allowed: sandboxAllowed,
+      phone_number_ids: extractPhoneNumberIds(body),
+      waba_ids: extractWabaIds(body),
+    });
+    if (!sandboxAllowed) {
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
+    }
   }
 
   try {
@@ -150,11 +226,14 @@ Deno.serve(async (req) => {
       }
 
       // Dedup por wamid
-      const { error } = await supabase
+      const { data: insertedRows, error } = await supabase
         .from("whatsapp_cloud_inbound_queue")
-        .upsert(rows, { onConflict: "wamid", ignoreDuplicates: true });
+        .upsert(rows, { onConflict: "wamid", ignoreDuplicates: true })
+        .select("id");
 
       if (error) console.error("[wa-cloud-webhook] insert error", error);
+      const queueIds = (insertedRows ?? []).map((row: any) => row.id).filter(Boolean);
+      if (queueIds.length > 0) await triggerProcessor(queueIds);
     }
   } catch (e) {
     console.error("[wa-cloud-webhook] processing error", e);
