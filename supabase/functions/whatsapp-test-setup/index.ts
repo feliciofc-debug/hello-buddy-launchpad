@@ -15,6 +15,16 @@ const TEST_USER_ID = "b7af0118-c506-4f87-8ac3-a0a11fd621fe";
 const PHONE_NUMBER_ID = "1156251107576181";
 const WABA_ID = "851111477791145";
 
+type MetaCheck = {
+  ok: boolean;
+  status?: number;
+  code?: number | null;
+  message?: string | null;
+  success?: boolean | null;
+  count?: number | null;
+  error?: string;
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: cors });
   if (!TEST_TOKEN) {
@@ -26,7 +36,26 @@ Deno.serve(async (req) => {
   const expiresAt = new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString();
 
   const graphBase = "https://graph.facebook.com/v25.0";
-  const metaChecks: Record<string, unknown> = {};
+  const metaChecks: Record<string, MetaCheck> = {};
+
+  const tokenCheckRes = await fetch(`${graphBase}/${PHONE_NUMBER_ID}?fields=id,display_phone_number,verified_name`, {
+    headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+  });
+  const tokenCheckJson = await tokenCheckRes.json().catch(() => ({}));
+  metaChecks.token_check = {
+    ok: tokenCheckRes.ok,
+    status: tokenCheckRes.status,
+    code: tokenCheckJson?.error?.code ?? null,
+    message: tokenCheckJson?.error?.message ?? null,
+  };
+
+  if (!tokenCheckRes.ok) {
+    return Response.json({
+      ok: false,
+      error: "WHATSAPP_TEST_ACCESS_TOKEN inválido ou expirado. Atualize o secret antes de gravar a configuração.",
+      meta_checks: metaChecks,
+    }, { headers: cors, status: 401 });
+  }
 
   // Número de teste precisa estar registrado para envio/recebimento na Cloud API.
   try {
@@ -94,8 +123,8 @@ Deno.serve(async (req) => {
     connection_method: "test_number",
     token_expires_at: expiresAt,
     alert_status: "none",
-    display_phone: "+1 555 TEST (Meta sandbox)",
-    business_name: "Moda Style (Sandbox Meta)",
+    display_phone: tokenCheckJson?.display_phone_number ?? "+1 555 TEST (Meta sandbox)",
+    business_name: tokenCheckJson?.verified_name ?? "Moda Style (Sandbox Meta)",
     updated_at: new Date().toISOString(),
   };
 
