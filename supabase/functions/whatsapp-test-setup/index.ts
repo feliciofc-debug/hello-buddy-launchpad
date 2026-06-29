@@ -25,6 +25,64 @@ Deno.serve(async (req) => {
   // Token de teste da Meta dura ~24h
   const expiresAt = new Date(Date.now() + 23 * 60 * 60 * 1000).toISOString();
 
+  const graphBase = "https://graph.facebook.com/v25.0";
+  const metaChecks: Record<string, unknown> = {};
+
+  // Número de teste precisa estar registrado para envio/recebimento na Cloud API.
+  try {
+    const registerRes = await fetch(`${graphBase}/${PHONE_NUMBER_ID}/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: JSON.stringify({ messaging_product: "whatsapp", pin: "000000" }),
+    });
+    const registerJson = await registerRes.json().catch(() => ({}));
+    metaChecks.register_phone = {
+      ok: registerRes.ok,
+      status: registerRes.status,
+      code: registerJson?.error?.code ?? null,
+      message: registerJson?.error?.message ?? null,
+    };
+  } catch (error) {
+    metaChecks.register_phone = { ok: false, error: String(error) };
+  }
+
+  // O webhook só recebe POST da Meta se o app estiver inscrito neste WABA.
+  try {
+    const subRes = await fetch(`${graphBase}/${WABA_ID}/subscribed_apps`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+    });
+    const subJson = await subRes.json().catch(() => ({}));
+    metaChecks.subscribe_waba = {
+      ok: subRes.ok,
+      status: subRes.status,
+      success: subJson?.success ?? null,
+      code: subJson?.error?.code ?? null,
+      message: subJson?.error?.message ?? null,
+    };
+  } catch (error) {
+    metaChecks.subscribe_waba = { ok: false, error: String(error) };
+  }
+
+  try {
+    const listRes = await fetch(`${graphBase}/${WABA_ID}/subscribed_apps`, {
+      headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+    });
+    const listJson = await listRes.json().catch(() => ({}));
+    metaChecks.subscribed_apps_check = {
+      ok: listRes.ok,
+      status: listRes.status,
+      count: Array.isArray(listJson?.data) ? listJson.data.length : null,
+      code: listJson?.error?.code ?? null,
+      message: listJson?.error?.message ?? null,
+    };
+  } catch (error) {
+    metaChecks.subscribed_apps_check = { ok: false, error: String(error) };
+  }
+
   // Tenta detectar colunas existentes via upsert genérico
   const payload: Record<string, unknown> = {
     user_id: TEST_USER_ID,
@@ -58,5 +116,5 @@ Deno.serve(async (req) => {
   if (res.error) {
     return Response.json({ ok: false, error: res.error.message }, { headers: cors, status: 500 });
   }
-  return Response.json({ ok: true, row: res.data }, { headers: cors });
+  return Response.json({ ok: true, row: res.data, meta_checks: metaChecks }, { headers: cors });
 });
