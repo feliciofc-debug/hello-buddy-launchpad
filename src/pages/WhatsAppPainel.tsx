@@ -26,7 +26,8 @@ export default function WhatsAppPainel() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ enviadas: 0, grupos: 0, campanhasAtivas: 0 });
+  const [stats, setStats] = useState({ enviadas: 0, grupos: 0, campanhasAtivas: 0, conversasAtivas: 0 });
+  const [agentActive, setAgentActive] = useState<boolean | null>(null);
   const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfig | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [saving, setSaving] = useState(false);
