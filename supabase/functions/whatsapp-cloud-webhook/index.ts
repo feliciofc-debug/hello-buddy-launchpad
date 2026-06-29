@@ -38,7 +38,7 @@ function hexToBytes(hex: string): Uint8Array {
   return out;
 }
 
-async function verifySignature(rawBody: string, header: string | null): Promise<boolean> {
+async function verifySignature(rawBody: Uint8Array, header: string | null): Promise<boolean> {
   if (!header || !APP_SECRET) return false;
   const key = await crypto.subtle.importKey(
     "raw",
@@ -50,7 +50,7 @@ async function verifySignature(rawBody: string, header: string | null): Promise<
   const sig = await crypto.subtle.sign(
     "HMAC",
     key,
-    new TextEncoder().encode(rawBody),
+    rawBody,
   );
   return timingSafeEqual(new Uint8Array(sig), hexToBytes(header));
 }
@@ -81,12 +81,18 @@ Deno.serve(async (req) => {
     return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
   }
 
-  const rawBody = await req.text();
+  const rawBytes = new Uint8Array(await req.arrayBuffer());
+  const rawBody = new TextDecoder().decode(rawBytes);
   const sigHeader = req.headers.get("x-hub-signature-256");
 
-  const ok = await verifySignature(rawBody, sigHeader);
+  const ok = await verifySignature(rawBytes, sigHeader);
   if (!ok) {
-    console.warn("[wa-cloud-webhook] invalid signature");
+    console.warn("[wa-cloud-webhook] invalid signature", {
+      has_signature: Boolean(sigHeader),
+      signature_prefix: sigHeader?.slice(0, 7) ?? null,
+      app_secret_configured: Boolean(APP_SECRET),
+      body_bytes: rawBytes.length,
+    });
     return new Response("Unauthorized", { status: 401, headers: corsHeaders });
   }
 
