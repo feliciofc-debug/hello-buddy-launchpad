@@ -184,7 +184,7 @@ export default function WhatsAppPainel() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card
             className="cursor-pointer hover:shadow-md transition-shadow border-green-200 dark:border-green-900"
-            onClick={() => navigate("/whatsapp-conversations")}
+            onClick={() => navigate("/atendimento-cloud")}
           >
             <CardContent className="p-5 flex items-start gap-3">
               <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
