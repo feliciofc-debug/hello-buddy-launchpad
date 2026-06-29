@@ -177,6 +177,7 @@ const App = () => (
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
             {/* Rota /sophia-dispatcher removida — Sophia descontinuada (27/04/2026) */}
             <Route path="/gateway-whatsapp" element={<GatewayWhatsApp />} />
+            <Route path="/agente-whatsapp/config" element={<ConfigAgenteWhatsApp />} />
             <Route path="/redes-sociais" element={<RedesSociaisPainel />} />
             <Route path="/whatsapp-painel" element={<WhatsAppPainel />} />
             
