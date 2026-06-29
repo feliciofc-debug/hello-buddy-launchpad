@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, MessageCircle, Users, Send, Smartphone, BookOpen, Megaphone, Loader2, Settings, CheckCircle2, ExternalLink, Shield } from "lucide-react";
+import { ArrowLeft, MessageCircle, Users, Send, Smartphone, BookOpen, Megaphone, Loader2, Settings, CheckCircle2, ExternalLink, Shield, Bot, Inbox, PlugZap, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 interface WhatsAppConfig {
