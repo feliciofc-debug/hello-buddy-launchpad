@@ -71,6 +71,7 @@ import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 // SophiaDispatcher removido (Sophia descontinuada — 27/04/2026). Arquivo físico mantido como órfão em src/pages/SophiaDispatcher.tsx.
 import GatewayWhatsApp from "./pages/GatewayWhatsApp";
 import ConfigAgenteWhatsApp from "./pages/ConfigAgenteWhatsApp";
+import AtendimentoCloud from "./pages/AtendimentoCloud";
 import RedesSociaisPainel from "./pages/RedesSociaisPainel";
 import WhatsAppPainel from "./pages/WhatsAppPainel";
 import GuiaContasComerciais from "./pages/GuiaContasComerciais";
