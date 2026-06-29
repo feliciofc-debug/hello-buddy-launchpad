@@ -1,0 +1,1 @@
+UPDATE public.whatsapp_cloud_agent_config SET agent_mode='amz', agent_name='Pietro Eugenio' WHERE user_id='b7af0118-c506-4f87-8ac3-a0a11fd621fe';
