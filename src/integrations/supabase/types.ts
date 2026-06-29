@@ -7550,6 +7550,7 @@ export type Database = {
       }
       whatsapp_cloud_agent_config: {
         Row: {
+          agent_mode: string
           agent_name: string | null
           created_at: string
           greeting: string | null
@@ -7563,6 +7564,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          agent_mode?: string
           agent_name?: string | null
           created_at?: string
           greeting?: string | null
@@ -7576,6 +7578,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          agent_mode?: string
           agent_name?: string | null
           created_at?: string
           greeting?: string | null
