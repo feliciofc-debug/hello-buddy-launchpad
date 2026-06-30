@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { WhatsAppSupportButton } from "@/components/WhatsAppSupportButton";
+import { WhatsAppFloatingButton } from "@/components/WhatsAppFloatingButton";
 import FooterOptIn from "@/components/FooterOptIn";
 
 function Landing() {
@@ -547,6 +548,7 @@ function Landing() {
         </div>
       </footer>
       <WhatsAppSupportButton />
+      <WhatsAppFloatingButton />
     </div>
   );
 }
