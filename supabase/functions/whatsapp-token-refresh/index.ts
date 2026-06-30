@@ -11,7 +11,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const META_APP_ID = Deno.env.get("META_APP_ID")!;
-const META_APP_SECRET = Deno.env.get("META_APP_SECRET")!;
+const META_APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? Deno.env.get("META_APP_SECRET")!;
 const GRAPH = "https://graph.facebook.com/v25.0";
 
 Deno.serve(async (req) => {

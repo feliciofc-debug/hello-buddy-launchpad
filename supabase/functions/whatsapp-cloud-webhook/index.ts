@@ -13,7 +13,8 @@ const corsHeaders = {
 };
 
 const VERIFY_TOKEN = Deno.env.get("WHATSAPP_WEBHOOK_VERIFY_TOKEN") ?? "";
-const APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
+// WhatsApp webhook usa secret do app WA. Fallback p/ META_APP_SECRET por 1 deploy.
+const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? Deno.env.get("META_APP_SECRET") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
