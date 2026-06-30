@@ -14,24 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      _backup_billing_fase1_20260427: {
-        Row: {
-          backup_at: string | null
-          payload: Json | null
-          tipo: string | null
-        }
-        Insert: {
-          backup_at?: string | null
-          payload?: Json | null
-          tipo?: string | null
-        }
-        Update: {
-          backup_at?: string | null
-          payload?: Json | null
-          tipo?: string | null
-        }
-        Relationships: []
-      }
       afiliado_analytics_ebooks: {
         Row: {
           categoria: string | null
@@ -7115,7 +7097,7 @@ export type Database = {
           login: string | null
           meta_mensal: number | null
           nome: string
-          senha: string | null
+          senha_hash: string
           updated_at: string | null
           user_id: string | null
           whatsapp: string | null
@@ -7131,7 +7113,7 @@ export type Database = {
           login?: string | null
           meta_mensal?: number | null
           nome: string
-          senha?: string | null
+          senha_hash: string
           updated_at?: string | null
           user_id?: string | null
           whatsapp?: string | null
@@ -7147,7 +7129,7 @@ export type Database = {
           login?: string | null
           meta_mensal?: number | null
           nome?: string
-          senha?: string | null
+          senha_hash?: string
           updated_at?: string | null
           user_id?: string | null
           whatsapp?: string | null
@@ -8449,6 +8431,30 @@ export type Database = {
       process_scheduled_campaigns: { Args: never; Returns: undefined }
       resgatar_whatsapp_cloud_orfaos: { Args: never; Returns: Json }
       unaccent: { Args: { "": string }; Returns: string }
+      vendedor_definir_senha: {
+        Args: { p_senha: string; p_vendedor_id: string }
+        Returns: undefined
+      }
+      vendedor_login: {
+        Args: { p_email: string; p_senha: string }
+        Returns: {
+          ativo: boolean
+          email: string
+          especialidade: string
+          id: string
+          nome: string
+          whatsapp: string
+        }[]
+      }
+      vendedor_resetar_senha: {
+        Args: { p_email: string }
+        Returns: {
+          id: string
+          nome: string
+          nova_senha: string
+          whatsapp: string
+        }[]
+      }
       verificar_blacklist_afiliado: {
         Args: { p_phone: string }
         Returns: boolean

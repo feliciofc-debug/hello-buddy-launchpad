@@ -80,17 +80,26 @@ export default function Vendedores() {
         // Gerar senha automática: primeiro nome + "123"
         const primeiroNome = formData.nome.split(' ')[0];
         const senhaGerada = primeiroNome + '123';
-        
+
+        // Hash inicial (placeholder) — será sobrescrito pela RPC vendedor_definir_senha
         const { data: novoVendedor, error } = await supabase
           .from('vendedores')
           .insert({
             ...payload,
-            senha: senhaGerada
+            senha_hash: 'pending',
           })
           .select()
           .single();
-        
+
         if (error) throw error;
+
+        // Define a senha via RPC (faz hash bcrypt no servidor)
+        const { error: senhaError } = await supabase.rpc('vendedor_definir_senha', {
+          p_vendedor_id: novoVendedor.id,
+          p_senha: senhaGerada,
+        });
+
+        if (senhaError) throw senhaError;
         
         // Enviar credenciais via WhatsApp se tiver número
         if (formData.whatsapp) {
