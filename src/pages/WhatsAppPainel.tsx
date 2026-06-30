@@ -365,21 +365,6 @@ export default function WhatsAppPainel() {
         </CardContent>
       </Card>
 
-      {/* Local agent status */}
-      <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/10">
-        <CardContent className="p-4 flex items-center gap-4">
-          <div className="p-3 rounded-full bg-yellow-100 dark:bg-yellow-900/30">
-            <Smartphone className="h-6 w-6 text-yellow-600" />
-          </div>
-          <div className="flex-1">
-            <p className="font-medium text-foreground">{t('whatsapp.local_agent_title')}</p>
-            <p className="text-sm text-muted-foreground">
-              {t('whatsapp.local_agent_desc')}
-            </p>
-          </div>
-          <Badge variant="secondary">{t('whatsapp.optional')}</Badge>
-        </CardContent>
-      </Card>
 
       {/* Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
