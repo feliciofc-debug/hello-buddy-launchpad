@@ -29,28 +29,26 @@ export default function VendedorLogin() {
     setLoading(true);
 
     try {
-      // Buscar por email (campo correto)
-      const { data: vendedores, error } = await supabase
-        .from('vendedores')
-        .select('*')
-        .eq('email', login.toLowerCase().trim())
-        .eq('senha', senha)
-        .eq('ativo', true);
+      // Login via RPC segura (senha hasheada bcrypt no servidor)
+      const { data, error } = await supabase.rpc('vendedor_login', {
+        p_email: login.toLowerCase().trim(),
+        p_senha: senha,
+      });
 
       if (error) {
-        console.error('Erro na query:', error);
+        console.error('Erro na RPC:', error);
         toast.error('Erro ao verificar credenciais');
         setLoading(false);
         return;
       }
 
-      if (!vendedores || vendedores.length === 0) {
+      const vendedor = Array.isArray(data) ? data[0] : null;
+
+      if (!vendedor) {
         toast.error('Login ou senha incorretos');
         setLoading(false);
         return;
       }
-
-      const vendedor = vendedores[0];
 
       localStorage.setItem('vendedor_session', JSON.stringify({
         id: vendedor.id,
