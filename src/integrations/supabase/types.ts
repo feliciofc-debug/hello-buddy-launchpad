@@ -2552,6 +2552,105 @@ export type Database = {
           },
         ]
       }
+      facebook_ads_connections: {
+        Row: {
+          access_token: string
+          ad_accounts: Json
+          created_at: string
+          expires_at: string | null
+          fb_user_id: string
+          fb_user_name: string | null
+          id: string
+          last_error: string | null
+          last_refreshed_at: string | null
+          scopes: string[]
+          selected_account_id: string | null
+          status: string
+          token_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          ad_accounts?: Json
+          created_at?: string
+          expires_at?: string | null
+          fb_user_id: string
+          fb_user_name?: string | null
+          id?: string
+          last_error?: string | null
+          last_refreshed_at?: string | null
+          scopes?: string[]
+          selected_account_id?: string | null
+          status?: string
+          token_type?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          ad_accounts?: Json
+          created_at?: string
+          expires_at?: string | null
+          fb_user_id?: string
+          fb_user_name?: string | null
+          id?: string
+          last_error?: string | null
+          last_refreshed_at?: string | null
+          scopes?: string[]
+          selected_account_id?: string | null
+          status?: string
+          token_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      facebook_ads_insights_cache: {
+        Row: {
+          ad_account_id: string
+          created_at: string
+          date_preset: string
+          date_start: string | null
+          date_stop: string | null
+          expires_at: string
+          fetched_at: string
+          id: string
+          level: string
+          metrics: Json
+          object_id: string
+          user_id: string
+        }
+        Insert: {
+          ad_account_id: string
+          created_at?: string
+          date_preset: string
+          date_start?: string | null
+          date_stop?: string | null
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          level: string
+          metrics?: Json
+          object_id: string
+          user_id: string
+        }
+        Update: {
+          ad_account_id?: string
+          created_at?: string
+          date_preset?: string
+          date_start?: string | null
+          date_stop?: string | null
+          expires_at?: string
+          fetched_at?: string
+          id?: string
+          level?: string
+          metrics?: Json
+          object_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       feature_flags: {
         Row: {
           allowed_emails: string[] | null
@@ -8236,7 +8335,57 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      facebook_ads_connections_safe: {
+        Row: {
+          ad_accounts: Json | null
+          created_at: string | null
+          expires_at: string | null
+          fb_user_id: string | null
+          fb_user_name: string | null
+          id: string | null
+          last_error: string | null
+          last_refreshed_at: string | null
+          scopes: string[] | null
+          selected_account_id: string | null
+          status: string | null
+          token_type: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          ad_accounts?: Json | null
+          created_at?: string | null
+          expires_at?: string | null
+          fb_user_id?: string | null
+          fb_user_name?: string | null
+          id?: string | null
+          last_error?: string | null
+          last_refreshed_at?: string | null
+          scopes?: string[] | null
+          selected_account_id?: string | null
+          status?: string | null
+          token_type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          ad_accounts?: Json | null
+          created_at?: string | null
+          expires_at?: string | null
+          fb_user_id?: string | null
+          fb_user_name?: string | null
+          id?: string | null
+          last_error?: string | null
+          last_refreshed_at?: string | null
+          scopes?: string[] | null
+          selected_account_id?: string | null
+          status?: string | null
+          token_type?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       adicionar_blacklist_afiliado: {
