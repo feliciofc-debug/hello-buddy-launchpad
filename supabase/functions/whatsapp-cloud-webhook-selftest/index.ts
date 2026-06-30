@@ -1,7 +1,7 @@
 // Self-test: assina um payload com META_APP_SECRET e POSTa no whatsapp-cloud-webhook.
 // Uso: GET/POST nesta função, retorna { status, body } da chamada.
 
-const APP_SECRET = Deno.env.get("META_APP_SECRET") ?? "";
+const APP_SECRET = Deno.env.get("WHATSAPP_APP_SECRET") ?? Deno.env.get("META_APP_SECRET") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 
 function bytesToHex(b: Uint8Array): string {
