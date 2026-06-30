@@ -77,21 +77,25 @@ export default function VendedorLogin() {
     setSendingPassword(true);
 
     try {
-      // Buscar vendedor pelo email
-      const { data: vendedor, error } = await supabase
-        .from('vendedores')
-        .select('id, nome, email, whatsapp')
-        .eq('email', forgotEmail.toLowerCase().trim())
-        .eq('ativo', true)
-        .maybeSingle();
+      // RPC: reseta senha (hash bcrypt) e retorna a nova em texto pra envio único via WhatsApp
+      const { data, error } = await supabase.rpc('vendedor_resetar_senha', {
+        p_email: forgotEmail.toLowerCase().trim(),
+      });
 
-      if (error || !vendedor) {
+      if (error) {
+        toast.error('Erro ao gerar nova senha');
+        setSendingPassword(false);
+        return;
+      }
+
+      const vendedor = Array.isArray(data) ? data[0] : null;
+
+      if (!vendedor) {
         toast.error('Email não encontrado no sistema');
         setSendingPassword(false);
         return;
       }
 
-      // Verificar se tem WhatsApp cadastrado
       if (!vendedor.whatsapp) {
         toast.error('Não há WhatsApp cadastrado. Fale com seu gerente para recuperar sua senha.', {
           duration: 8000
@@ -100,20 +104,7 @@ export default function VendedorLogin() {
         return;
       }
 
-      // Gerar nova senha aleatória
-      const novaSenha = Math.random().toString(36).slice(-8);
-
-      // Atualizar senha no banco
-      const { error: updateError } = await supabase
-        .from('vendedores')
-        .update({ senha: novaSenha })
-        .eq('id', vendedor.id);
-
-      if (updateError) {
-        toast.error('Erro ao gerar nova senha');
-        setSendingPassword(false);
-        return;
-      }
+      const novaSenha = vendedor.nova_senha;
 
       // Enviar nova senha via WhatsApp para o número cadastrado
       try {
@@ -123,10 +114,9 @@ export default function VendedorLogin() {
             message: `🔐 *AMZ Ofertas - Nova Senha*\n\nOlá ${vendedor.nome}!\n\nSua nova senha de acesso é:\n*${novaSenha}*\n\nAcesse: amzofertas.com.br/vendedor-login`
           }
         });
-        
-        // Mascarar o número para exibição
+
         const whatsappMasked = vendedor.whatsapp.replace(/(\d{2})(\d{5})(\d{4})/, '($1) *****-$3');
-        
+
         toast.success(`Nova senha enviada para ${whatsappMasked}`, {
           duration: 8000,
           description: 'Verifique seu WhatsApp cadastrado'
