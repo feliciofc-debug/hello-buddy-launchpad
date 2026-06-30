@@ -548,6 +548,7 @@ function Landing() {
         </div>
       </footer>
       <WhatsAppSupportButton />
+      <WhatsAppFloatingButton />
     </div>
   );
 }
