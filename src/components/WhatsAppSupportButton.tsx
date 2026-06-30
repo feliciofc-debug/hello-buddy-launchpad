@@ -12,9 +12,9 @@ interface Message {
   showAvatar?: boolean;
 }
 
-// WhatsApp pessoal do fundador (exibido como contato direto no rodapé do chat)
-const FOUNDER_WHATSAPP_DISPLAY = '(21) 96752-0706';
-const FOUNDER_WHATSAPP_LINK = 'https://wa.me/5521967520706';
+// WhatsApp comercial do agente IA (exibido como contato direto no rodapé do chat)
+const FOUNDER_WHATSAPP_DISPLAY = '(21) 98080-4901';
+const FOUNDER_WHATSAPP_LINK = 'https://wa.me/5521980804901';
 
 const generateSessionId = () =>
   `pietro_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
