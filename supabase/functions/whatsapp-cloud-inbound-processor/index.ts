@@ -178,9 +178,11 @@ async function toolBuscarLugaresProximos(
     });
     if (!r.ok) {
       const t = await r.text();
-      return JSON.stringify({ erro: `places ${r.status}: ${t.slice(0, 200)}` });
+      console.log(`[places][ERROR] status=${r.status} body=${t.slice(0, 500)}`);
+      return JSON.stringify({ erro: `places ${r.status}: ${t.slice(0, 300)}` });
     }
     const d = await r.json();
+    console.log(`[places][OK] query="${query}" count=${(d.places ?? []).length}`);
     const lugares = (d.places ?? []).map((p: any) => {
       const dLat = (p.location?.latitude ?? 0) - locRow.latitude;
       const dLng = (p.location?.longitude ?? 0) - locRow.longitude;
