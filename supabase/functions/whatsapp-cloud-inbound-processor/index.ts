@@ -525,6 +525,57 @@ async function toolCotacaoMoeda(par: string): Promise<string> {
   }
 }
 
+// ---- criar_lembrete: agenda notificação com escalonamento (30min antes, a cada 10min) ----
+async function toolCriarLembrete(
+  args: { titulo?: string; data_hora_sp?: string; minutos_a_partir_de_agora?: number },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const titulo = (args?.titulo || "").trim();
+  if (!titulo) return JSON.stringify({ erro: "titulo_obrigatorio" });
+  let meetingMs: number | null = null;
+  if (args?.minutos_a_partir_de_agora && Number(args.minutos_a_partir_de_agora) > 0) {
+    meetingMs = Date.now() + Number(args.minutos_a_partir_de_agora) * 60000;
+  } else if (args?.data_hora_sp) {
+    // "YYYY-MM-DD HH:MM" em horário de São Paulo (UTC-3, sem DST)
+    const m = String(args.data_hora_sp).trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!m) return JSON.stringify({ erro: "formato_data_invalido", esperado: "YYYY-MM-DD HH:MM" });
+    const [, y, mo, d, h, mi] = m;
+    // SP = UTC-3 → adiciona 3h para converter para UTC
+    meetingMs = Date.UTC(+y, +mo - 1, +d, +h + 3, +mi, 0);
+  } else {
+    return JSON.stringify({ erro: "informe data_hora_sp ou minutos_a_partir_de_agora" });
+  }
+  if (meetingMs <= Date.now()) return JSON.stringify({ erro: "data_no_passado" });
+
+  const nowMs = Date.now();
+  const diffMin = Math.round((meetingMs - nowMs) / 60000);
+  // Primeiro aviso: 30min antes; se falta menos que isso, dispara já
+  const firstNotifyMs = diffMin > 30 ? meetingMs - 30 * 60000 : nowMs;
+
+  const { data, error } = await sb.from("whatsapp_reminders").insert({
+    user_id: ctx.userId,
+    contact_number: ctx.fromNumber,
+    titulo,
+    meeting_at: new Date(meetingMs).toISOString(),
+    next_notify_at: new Date(firstNotifyMs).toISOString(),
+    status: "active",
+  }).select("id").single();
+  if (error) return JSON.stringify({ erro: error.message });
+
+  const quandoSP = new Date(meetingMs).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+  return JSON.stringify({
+    ok: true,
+    id: data.id,
+    titulo,
+    quando: quandoSP,
+    primeiro_aviso_em_min: Math.max(0, Math.round((firstNotifyMs - nowMs) / 60000)),
+    politica: "aviso 30min antes e a cada 10min até a hora",
+  });
+}
+
 const TOOLS = [
   {
     type: "function",
