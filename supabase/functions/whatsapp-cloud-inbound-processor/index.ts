@@ -4,7 +4,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
-import { buildAmzContext, STRANGER_MSG } from "../_shared/amz-context.ts";
+import { buildAmzContext, STRANGER_MSG, OWNER_PHONE } from "../_shared/amz-context.ts";
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 
 const corsHeaders = {
@@ -576,6 +576,204 @@ async function toolCriarLembrete(
   });
 }
 
+// ---- NOTAS (segunda memória) ----
+async function toolSalvarNota(conteudo: string, tags: string[] | undefined, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const c = (conteudo || "").trim();
+  if (!c) return JSON.stringify({ erro: "conteudo_vazio" });
+  const { data, error } = await sb.from("jarvis_notes").insert({
+    user_id: ctx.userId, contact_number: ctx.fromNumber, content: c, tags: Array.isArray(tags) ? tags.slice(0, 10) : [],
+  }).select("id, created_at").single();
+  if (error) return JSON.stringify({ erro: error.message });
+  return JSON.stringify({ ok: true, id: data.id, salva_em: data.created_at });
+}
+
+async function toolBuscarNotas(query: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const q = (query || "").trim();
+  let sel = sb.from("jarvis_notes").select("id, content, tags, created_at")
+    .eq("user_id", ctx.userId).eq("contact_number", ctx.fromNumber)
+    .order("created_at", { ascending: false }).limit(10);
+  if (q) sel = sel.ilike("content", `%${q}%`);
+  const { data, error } = await sel;
+  if (error) return JSON.stringify({ erro: error.message });
+  return JSON.stringify({ query: q, total: (data ?? []).length, notas: data ?? [] });
+}
+
+// ---- TAREFAS (to-do conversacional) ----
+async function toolAdicionarTarefa(args: { titulo?: string; prazo_sp?: string }, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const t = (args?.titulo || "").trim();
+  if (!t) return JSON.stringify({ erro: "titulo_obrigatorio" });
+  let dueIso: string | null = null;
+  if (args?.prazo_sp) {
+    const m = String(args.prazo_sp).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (m) dueIso = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] + 3, +m[5])).toISOString();
+  }
+  const { data, error } = await sb.from("jarvis_tasks").insert({
+    user_id: ctx.userId, contact_number: ctx.fromNumber, title: t, due_at: dueIso, status: "open",
+  }).select("id").single();
+  if (error) return JSON.stringify({ erro: error.message });
+  return JSON.stringify({ ok: true, id: data.id, titulo: t, prazo: dueIso });
+}
+
+async function toolListarTarefas(status: string | undefined, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const st = status || "open";
+  const { data, error } = await sb.from("jarvis_tasks").select("id, title, status, due_at, created_at")
+    .eq("user_id", ctx.userId).eq("contact_number", ctx.fromNumber)
+    .eq("status", st).order("created_at", { ascending: false }).limit(30);
+  if (error) return JSON.stringify({ erro: error.message });
+  return JSON.stringify({ status: st, total: (data ?? []).length, tarefas: data ?? [] });
+}
+
+async function toolConcluirTarefa(id_ou_titulo: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const q = (id_ou_titulo || "").trim();
+  if (!q) return JSON.stringify({ erro: "id_ou_titulo_obrigatorio" });
+  const uuid = /^[0-9a-f-]{36}$/i.test(q);
+  let query = sb.from("jarvis_tasks").update({ status: "done", completed_at: new Date().toISOString() })
+    .eq("user_id", ctx.userId).eq("contact_number", ctx.fromNumber).eq("status", "open");
+  query = uuid ? query.eq("id", q) : query.ilike("title", `%${q}%`);
+  const { data, error } = await query.select("id, title");
+  if (error) return JSON.stringify({ erro: error.message });
+  return JSON.stringify({ ok: true, concluidas: data ?? [] });
+}
+
+// ---- NOTÍCIAS (Google News RSS, grátis) ----
+async function toolConsultarNoticias(tema: string): Promise<string> {
+  const t = (tema || "").trim();
+  if (!t) return JSON.stringify({ erro: "tema_obrigatorio" });
+  try {
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(t)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return JSON.stringify({ erro: `rss ${r.status}` });
+    const xml = await r.text();
+    const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 8).map((m) => {
+      const b = m[1];
+      const pick = (tag: string) => {
+        const rx = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`);
+        return b.match(rx)?.[1]?.trim() ?? "";
+      };
+      return { titulo: pick("title"), link: pick("link"), data: pick("pubDate"), fonte: pick("source") };
+    });
+    return JSON.stringify({ tema: t, total: items.length, noticias: items });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+// ---- RASTREIO CORREIOS (LinkAndTrack, grátis) ----
+async function toolRastrearCorreios(codigo: string): Promise<string> {
+  const c = (codigo || "").toUpperCase().replace(/\s+/g, "");
+  if (!/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(c)) return JSON.stringify({ erro: "codigo_invalido", esperado: "13 chars ex AA123456789BR" });
+  try {
+    const r = await fetch(`https://api.linketrack.com/track/json?user=teste&token=1abcd00b2731640e886fb41a8a9671ad1434c599dbaa0a0de9a5aa619f29a83f&codigo=${c}`, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return JSON.stringify({ erro: `rastreio ${r.status}` });
+    const d = await r.json();
+    return JSON.stringify({
+      codigo: c, servico: d.servico, quantidade: d.quantidade,
+      eventos: (d.eventos ?? []).slice(0, 6).map((e: any) => ({ data: `${e.data} ${e.hora}`, status: e.status, local: e.local, subStatus: e.subStatus })),
+    });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+// ---- ROTA/TRÂNSITO (OSRM público, grátis) ----
+async function toolCalcularRota(origem: string, destino: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  async function geocode(q: string): Promise<{ lat: number; lng: number; nome: string } | null> {
+    if (!q) return null;
+    const ll = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (ll) return { lat: +ll[1], lng: +ll[2], nome: q };
+    if (q.toLowerCase().includes("aqui") || q.toLowerCase().includes("minha loc")) {
+      const { data } = await sb.from("whatsapp_user_locations").select("latitude,longitude,address").eq("user_id", ctx.userId).eq("contact_number", ctx.fromNumber).maybeSingle();
+      if (data) return { lat: +data.latitude, lng: +data.longitude, nome: data.address || "sua localização" };
+    }
+    const g = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`, {
+      headers: { "User-Agent": "amz-jarvis/1.0" }, signal: AbortSignal.timeout(8000),
+    });
+    if (!g.ok) return null;
+    const arr = await g.json();
+    if (!arr?.[0]) return null;
+    return { lat: +arr[0].lat, lng: +arr[0].lon, nome: arr[0].display_name };
+  }
+  try {
+    const o = await geocode(origem); const d = await geocode(destino);
+    if (!o || !d) return JSON.stringify({ erro: "endereco_nao_encontrado" });
+    const url = `https://router.project-osrm.org/route/v1/driving/${o.lng},${o.lat};${d.lng},${d.lat}?overview=false&steps=false`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) return JSON.stringify({ erro: `osrm ${r.status}` });
+    const j = await r.json();
+    const rt = j?.routes?.[0];
+    if (!rt) return JSON.stringify({ erro: "rota_nao_encontrada" });
+    return JSON.stringify({
+      origem: o.nome, destino: d.nome,
+      distancia_km: +(rt.distance / 1000).toFixed(1),
+      duracao_min: Math.round(rt.duration / 60),
+      mapa: `https://www.google.com/maps/dir/?api=1&origin=${o.lat},${o.lng}&destination=${d.lat},${d.lng}`,
+    });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+// ---- ADMIN (só Felicio) ----
+function isOwner(ctx: { fromNumber: string }): boolean { return ctx.fromNumber === OWNER_PHONE; }
+
+async function toolMetricasAmz(ctx: { fromNumber: string }): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  try {
+    const { count: totalClientes } = await sb.from("billing_customers").select("*", { count: "exact", head: true });
+    const { count: ativas } = await sb.from("billing_subscriptions").select("*", { count: "exact", head: true }).eq("status", "authorized");
+    const { count: pausadas } = await sb.from("billing_subscriptions").select("*", { count: "exact", head: true }).in("status", ["paused", "cancelled"]);
+    const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+    const { data: txs } = await sb.from("billing_transactions").select("amount").eq("status", "approved").gte("payment_date", monthStart.toISOString());
+    const faturamentoMes = (txs ?? []).reduce((s, t: any) => s + Number(t.amount || 0), 0);
+    const yStart = new Date(Date.now() - 86400000); yStart.setUTCHours(0, 0, 0, 0);
+    const yEnd = new Date(yStart.getTime() + 86400000);
+    const { data: txsY } = await sb.from("billing_transactions").select("amount").eq("status", "approved").gte("payment_date", yStart.toISOString()).lt("payment_date", yEnd.toISOString());
+    const faturamentoOntem = (txsY ?? []).reduce((s, t: any) => s + Number(t.amount || 0), 0);
+    return JSON.stringify({ clientes_total: totalClientes, assinaturas_ativas: ativas, pausadas_ou_canceladas: pausadas, faturamento_mes_atual: faturamentoMes, faturamento_ontem: faturamentoOntem });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+async function toolInadimplentesAmz(ctx: { fromNumber: string }): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  try {
+    const { data } = await sb.from("billing_subscriptions")
+      .select("id, status, amount, next_billing_date, payment_fail_count, customer_id, billing_customers(name, trade_name, phone, email)")
+      .or("status.eq.overdue,payment_fail_count.gte.1")
+      .order("payment_fail_count", { ascending: false }).limit(20);
+    return JSON.stringify({ total: (data ?? []).length, inadimplentes: (data ?? []).map((s: any) => ({
+      nome: s.billing_customers?.trade_name || s.billing_customers?.name, telefone: s.billing_customers?.phone, email: s.billing_customers?.email,
+      valor: s.amount, vencimento: s.next_billing_date, falhas: s.payment_fail_count, status: s.status,
+    })) });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+async function toolStatusPlataforma(ctx: { fromNumber: string }): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  try {
+    const { data } = await sb.from("edge_functions_health").select("function_name, status, last_check, last_error, consecutive_failures, is_critical")
+      .order("consecutive_failures", { ascending: false }).limit(50);
+    const problemas = (data ?? []).filter((f: any) => f.status !== "healthy" && f.status !== "online");
+    return JSON.stringify({ total_monitoradas: (data ?? []).length, com_problema: problemas.length, criticas_offline: problemas.filter((p: any) => p.is_critical), avisos: problemas.slice(0, 15) });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+async function toolCriarCobrancaAmz(args: { cliente: string; valor?: number }, ctx: { fromNumber: string }): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  const nome = (args?.cliente || "").trim();
+  if (!nome) return JSON.stringify({ erro: "cliente_obrigatorio" });
+  try {
+    const { data: customers } = await sb.from("billing_customers")
+      .select("id, name, trade_name, email, phone")
+      .or(`name.ilike.%${nome}%,trade_name.ilike.%${nome}%,email.ilike.%${nome}%`).limit(3);
+    if (!customers?.length) return JSON.stringify({ erro: "cliente_nao_encontrado", busca: nome });
+    if (customers.length > 1) return JSON.stringify({ erro: "multiplos_clientes", candidatos: customers.map((c: any) => c.trade_name || c.name) });
+    const c = customers[0];
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/pietro-criar-cobranca`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${SERVICE_KEY}`, "apikey": SERVICE_KEY },
+      body: JSON.stringify({ customer_id: c.id, amount: args?.valor ?? 597 }),
+    });
+    const txt = await r.text();
+    if (!r.ok) return JSON.stringify({ erro: `cobranca_falhou ${r.status}`, detalhe: txt.slice(0, 200) });
+    return JSON.stringify({ ok: true, cliente: c.trade_name || c.name, valor: args?.valor ?? 597, resposta: txt.slice(0, 300) });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+
 const TOOLS = [
   {
     type: "function",
@@ -682,6 +880,102 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "salvar_nota",
+      description: "Salva uma nota rápida / segunda memória do usuário. Use quando ele disser 'anota que…', 'lembra que…', 'guarda essa info', 'grava aí que…'.",
+      parameters: { type: "object", properties: { conteudo: { type: "string" }, tags: { type: "array", items: { type: "string" }, description: "Palavras-chave opcionais pra facilitar busca depois" } }, required: ["conteudo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "buscar_notas",
+      description: "Busca notas salvas anteriormente. Use quando o usuário perguntar 'qual era o CNPJ da X?', 'o que eu tinha anotado sobre Y?', 'me lembra o que eu falei sobre Z'.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Termo/palavra-chave. Vazio = últimas notas." } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "adicionar_tarefa",
+      description: "Adiciona uma tarefa na to-do list do usuário. Use quando disser 'adiciona na minha lista', 'preciso fazer X', 'coloca X pra eu fazer amanhã'.",
+      parameters: { type: "object", properties: { titulo: { type: "string" }, prazo_sp: { type: "string", description: "Opcional YYYY-MM-DD HH:MM em SP" } }, required: ["titulo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listar_tarefas",
+      description: "Lista as tarefas do usuário. Use quando disser 'quais são minhas tarefas', 'o que eu tenho pra fazer', 'to-do'.",
+      parameters: { type: "object", properties: { status: { type: "string", enum: ["open", "done"], description: "padrão: open" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "concluir_tarefa",
+      description: "Marca uma tarefa como concluída. Use quando disser 'já fiz X', 'concluí a tarefa X', 'pode marcar como feito'.",
+      parameters: { type: "object", properties: { id_ou_titulo: { type: "string", description: "id UUID ou parte do título" } }, required: ["id_ou_titulo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_noticias",
+      description: "Busca notícias recentes sobre um tema (Google News). Use pra 'notícias sobre X', 'o que tá rolando sobre Y'.",
+      parameters: { type: "object", properties: { tema: { type: "string" } }, required: ["tema"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "rastrear_correios",
+      description: "Rastreia encomenda dos Correios pelo código (13 caracteres, ex: AA123456789BR).",
+      parameters: { type: "object", properties: { codigo: { type: "string" } }, required: ["codigo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "calcular_rota",
+      description: "Calcula distância e tempo de carro entre origem e destino (OSRM). Aceita endereços, cidades, 'aqui'/'minha localização' pra usar a localização salva do usuário, ou 'lat,lng'.",
+      parameters: { type: "object", properties: { origem: { type: "string" }, destino: { type: "string" } }, required: ["origem", "destino"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_metricas_amz",
+      description: "[ADMIN — só Felicio] Retorna métricas gerais do negócio AMZ OFERTAS: total de clientes, assinaturas ativas/pausadas, faturamento do mês e de ontem.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listar_inadimplentes_amz",
+      description: "[ADMIN — só Felicio] Lista clientes AMZ inadimplentes ou com falha de pagamento recente.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "status_plataforma_amz",
+      description: "[ADMIN — só Felicio] Retorna saúde das Edge Functions da plataforma (quais estão com problema, offline, com falhas críticas).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "criar_cobranca_amz",
+      description: "[ADMIN — só Felicio] Cria uma cobrança PIX para um cliente AMZ pelo nome/razão social. Valor padrão 597. Use quando Felicio disser 'gera cobrança de X pro cliente Y'.",
+      parameters: { type: "object", properties: { cliente: { type: "string" }, valor: { type: "number" } }, required: ["cliente"] },
+    },
+  },
 ];
 
 async function runTool(
@@ -705,6 +999,18 @@ async function runTool(
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
+  if (name === "salvar_nota") return { result: await toolSalvarNota(args?.conteudo ?? "", args?.tags, ctx) };
+  if (name === "buscar_notas") return { result: await toolBuscarNotas(args?.query ?? "", ctx) };
+  if (name === "adicionar_tarefa") return { result: await toolAdicionarTarefa(args ?? {}, ctx) };
+  if (name === "listar_tarefas") return { result: await toolListarTarefas(args?.status, ctx) };
+  if (name === "concluir_tarefa") return { result: await toolConcluirTarefa(args?.id_ou_titulo ?? "", ctx) };
+  if (name === "consultar_noticias") return { result: await toolConsultarNoticias(args?.tema ?? "") };
+  if (name === "rastrear_correios") return { result: await toolRastrearCorreios(args?.codigo ?? "") };
+  if (name === "calcular_rota") return { result: await toolCalcularRota(args?.origem ?? "", args?.destino ?? "", ctx) };
+  if (name === "consultar_metricas_amz") return { result: await toolMetricasAmz(ctx) };
+  if (name === "listar_inadimplentes_amz") return { result: await toolInadimplentesAmz(ctx) };
+  if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
+  if (name === "criar_cobranca_amz") return { result: await toolCriarCobrancaAmz(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
