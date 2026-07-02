@@ -328,3 +328,6 @@ verify_jwt = false
 
 [functions.billing-webhook]
 verify_jwt = false
+
+[functions.diag-google]
+verify_jwt = false
