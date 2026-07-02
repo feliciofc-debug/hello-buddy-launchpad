@@ -3505,6 +3505,66 @@ export type Database = {
         }
         Relationships: []
       }
+      jarvis_notes: {
+        Row: {
+          contact_number: string
+          content: string
+          created_at: string
+          id: string
+          tags: string[] | null
+          user_id: string
+        }
+        Insert: {
+          contact_number: string
+          content: string
+          created_at?: string
+          id?: string
+          tags?: string[] | null
+          user_id: string
+        }
+        Update: {
+          contact_number?: string
+          content?: string
+          created_at?: string
+          id?: string
+          tags?: string[] | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      jarvis_tasks: {
+        Row: {
+          completed_at: string | null
+          contact_number: string
+          created_at: string
+          due_at: string | null
+          id: string
+          status: string
+          title: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          contact_number: string
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          status?: string
+          title: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          contact_number?: string
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          status?: string
+          title?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       lead_atribuicoes: {
         Row: {
           atribuido_por: string | null
@@ -8657,6 +8717,8 @@ export type Database = {
       }
       process_scheduled_campaigns: { Args: never; Returns: undefined }
       resgatar_whatsapp_cloud_orfaos: { Args: never; Returns: Json }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       unaccent: { Args: { "": string }; Returns: string }
       vendedor_definir_senha: {
         Args: { p_senha: string; p_vendedor_id: string }
