@@ -1107,6 +1107,24 @@ async function callGemini(
     { role: "user", content: userContent },
   ];
 
+  if (!hasMedia && typeof userContent === "string") {
+    const forcedSearch = detectWebSearchIntent(userContent);
+    if (forcedSearch) {
+      console.log("[pietro][forced_web_search]", forcedSearch);
+      const searchResult = await toolPesquisarWeb(forcedSearch.query, forcedSearch.recencia);
+      messages.push({
+        role: "assistant",
+        content: null,
+        tool_calls: [{
+          id: "forced_web_search_1",
+          type: "function",
+          function: { name: "pesquisar_web", arguments: JSON.stringify(forcedSearch) },
+        }],
+      });
+      messages.push({ role: "tool", tool_call_id: "forced_web_search_1", content: searchResult });
+    }
+  }
+
   // Modelo pro é mais confiável com áudio/imagem
   const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
   let pendingImageUrl: string | undefined;
