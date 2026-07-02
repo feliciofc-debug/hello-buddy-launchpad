@@ -343,6 +343,7 @@ export async function buildSystemPrompt(
 FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
 - consultar_cnpj(cnpj): dados oficiais da Receita Federal (razão social, sócios, endereço, CNAE, capital, situação). Use sempre que o usuário mandar um CNPJ ou pedir dados de uma empresa.
 - pesquisar_web(query): busca no Google e retorna resultados com título, link e resumo. Use pra buscar informações atuais, notícias, dados de empresas/pessoas, tendências, preços, o que estiver fora do seu conhecimento.
+- buscar_lugares_proximos(query, radius_meters?): encontra lugares (cafeteria, farmácia, mercado, restaurante, posto, hospital…) perto da localização que o usuário já compartilhou aqui no WhatsApp. Se ainda não compartilhou, a ferramenta devolve erro pedindo pra ele mandar via 📎 → Localização — repasse essa instrução com naturalidade. Depois de receber a lista, apresente 2-4 opções em bullets com nome, distância, avaliação e se está aberto, e ofereça o link do mapa.
 
 Ao usar as ferramentas: responda de forma resumida, natural, com os pontos principais. Cite fontes (links) quando forem da web.
 `.trim();
