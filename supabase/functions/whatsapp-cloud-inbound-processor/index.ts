@@ -1285,6 +1285,11 @@ async function runTool(
   if (name === "listar_inadimplentes_amz") return { result: await toolInadimplentesAmz(ctx) };
   if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
   if (name === "criar_cobranca_amz") return { result: await toolCriarCobrancaAmz(args ?? {}, ctx) };
+  if (name === "consultar_estoque") return { result: await toolConsultarEstoque(args?.query ?? "", ctx) };
+  if (name === "consultar_campanhas") return { result: await toolConsultarCampanhas(ctx) };
+  if (name === "consultar_autopilot") return { result: await toolConsultarAutopilot(ctx) };
+  if (name === "consultar_clientes_leads") return { result: await toolConsultarClientesLeads(ctx) };
+  if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
