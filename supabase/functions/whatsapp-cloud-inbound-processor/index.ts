@@ -622,7 +622,9 @@ async function callGemini(
 }
 
 
-async function sendWhatsApp(user_id: string, to: string, message: string): Promise<string | null> {
+async function sendWhatsApp(user_id: string, to: string, message: string, imageUrl?: string): Promise<string | null> {
+  const body: any = { user_id, to, message };
+  if (imageUrl) body.image_url = imageUrl;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
     method: "POST",
     headers: {
@@ -630,7 +632,7 @@ async function sendWhatsApp(user_id: string, to: string, message: string): Promi
       "Authorization": `Bearer ${SERVICE_KEY}`,
       "apikey": SERVICE_KEY,
     },
-    body: JSON.stringify({ user_id, to, message }),
+    body: JSON.stringify(body),
   });
   const txt = await res.text();
   if (!res.ok) throw new Error(`send ${res.status}: ${txt.slice(0, 200)}`);
