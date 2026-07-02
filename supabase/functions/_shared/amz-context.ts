@@ -6,7 +6,7 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { ADMIN_AMZ_USER_ID } from "./agent-soul.ts";
 
-export const OWNER_PHONE = "5521967520706";
+export const OWNER_PHONE = "5521980804901";
 
 export type AmzAccess = "owner" | "client" | "stranger";
 
