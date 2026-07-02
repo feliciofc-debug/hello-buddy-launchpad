@@ -339,7 +339,15 @@ export async function buildSystemPrompt(
 ): Promise<{ systemPrompt: string; mode: AgentMode }> {
   const mode = resolveAgentMode(cfg.agent_mode, cfg.user_id);
 
-  const blocks: string[] = [PERSONALITY_CORE, ""];
+  const TOOLS_HINT = `
+FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
+- consultar_cnpj(cnpj): dados oficiais da Receita Federal (razão social, sócios, endereço, CNAE, capital, situação). Use sempre que o usuário mandar um CNPJ ou pedir dados de uma empresa.
+- pesquisar_web(query): busca no Google e retorna resultados com título, link e resumo. Use pra buscar informações atuais, notícias, dados de empresas/pessoas, tendências, preços, o que estiver fora do seu conhecimento.
+
+Ao usar as ferramentas: responda de forma resumida, natural, com os pontos principais. Cite fontes (links) quando forem da web.
+`.trim();
+
+  const blocks: string[] = [PERSONALITY_CORE, "", TOOLS_HINT, ""];
   if (mode === "amz") {
     blocks.push(AMZ_KNOWLEDGE);
     if (amzContextBlock && amzContextBlock.trim().length > 0) {
