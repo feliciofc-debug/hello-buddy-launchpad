@@ -8268,6 +8268,39 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_user_locations: {
+        Row: {
+          address: string | null
+          contact_number: string
+          id: string
+          latitude: number
+          longitude: number
+          name: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          contact_number: string
+          id?: string
+          latitude: number
+          longitude: number
+          name?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          contact_number?: string
+          id?: string
+          latitude?: number
+          longitude?: number
+          name?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       wuzapi_instances: {
         Row: {
           assigned_to_user: string | null
