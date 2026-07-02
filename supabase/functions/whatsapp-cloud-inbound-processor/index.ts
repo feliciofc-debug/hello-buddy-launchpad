@@ -1,9 +1,10 @@
-// WhatsApp Cloud — Inbound Processor (Fase 1.1)
-// Disparado por trigger pg_net (real-time) e por cron de backup (a cada 2min).
-// Fluxo de 13 passos, claim atômico, quota, regra de persona do tenant (nunca AMZ).
+// WhatsApp Cloud — Inbound Processor (Fase 1.2 — Pietro Multimodal)
+// Modo AMZ: reconhece Felicio (dono), filtra clientes AMZ, lê imagens e áudios.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { buildSystemPrompt } from "../_shared/agent-soul.ts";
+import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
+import { buildAmzContext, STRANGER_MSG } from "../_shared/amz-context.ts";
+import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -49,14 +50,43 @@ function extractText(payload: any): string {
   if (payload.button?.text) return payload.button.text;
   if (payload.interactive?.button_reply?.title) return payload.interactive.button_reply.title;
   if (payload.interactive?.list_reply?.title) return payload.interactive.list_reply.title;
+  if (payload.image?.caption) return payload.image.caption;
+  if (payload.video?.caption) return payload.video.caption;
+  if (payload.document?.caption) return payload.document.caption;
   return "";
 }
 
-async function callGemini(systemPrompt: string, history: Array<{ role: string; content: string }>, userText: string): Promise<string> {
+function buildUserContent(userText: string, media: MediaExtract[]): any {
+  if (media.length === 0) return userText || "(mensagem sem texto)";
+  const preface = userText
+    ? userText
+    : media.length === 1
+    ? `[o usuário mandou ${media[0].kind === "image" ? "uma imagem/print" : media[0].kind === "audio" ? "um áudio de voz" : media[0].kind}]`
+    : `[o usuário mandou ${media.length} mídias]`;
+  const parts: any[] = [{ type: "text", text: preface }];
+  for (const m of media) {
+    if (m.kind === "image") {
+      parts.push({ type: "image_url", image_url: { url: `data:${m.mime};base64,${m.base64}` } });
+    } else if (m.kind === "audio") {
+      const format = m.mime.includes("ogg") ? "ogg"
+        : m.mime.includes("mpeg") || m.mime.includes("mp3") ? "mp3"
+        : m.mime.includes("wav") ? "wav"
+        : m.mime.includes("m4a") || m.mime.includes("mp4") ? "m4a" : "ogg";
+      parts.push({ type: "input_audio", input_audio: { data: m.base64, format } });
+    }
+  }
+  return parts;
+}
+
+async function callGemini(
+  systemPrompt: string,
+  history: Array<{ role: string; content: string }>,
+  userContent: any,
+): Promise<string> {
   const messages = [
     { role: "system", content: systemPrompt },
     ...history,
-    { role: "user", content: userText },
+    { role: "user", content: userContent },
   ];
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -101,13 +131,12 @@ async function sendWhatsApp(user_id: string, to: string, message: string): Promi
 }
 
 async function processOne(queueId: string) {
-  // PASSO 2 — Claim atômico (único cadeado entre trigger e cron)
   const { data: claimed, error: claimErr } = await sb
     .from("whatsapp_cloud_inbound_queue")
     .update({
       status: "processing",
       processing_started_at: new Date().toISOString(),
-      attempts: undefined as any, // placeholder, replaced abaixo
+      attempts: undefined as any,
     })
     .eq("id", queueId)
     .eq("status", "received")
@@ -115,12 +144,8 @@ async function processOne(queueId: string) {
     .maybeSingle();
 
   if (claimErr) throw claimErr;
-  if (!claimed) {
-    // Outro worker já pegou. Silenciosamente encerra.
-    return { skipped: true, queueId };
-  }
+  if (!claimed) return { skipped: true, queueId };
 
-  // Reaplica attempts+1 (separado pra evitar default sumir)
   await sb
     .from("whatsapp_cloud_inbound_queue")
     .update({ attempts: (claimed.attempts ?? 0) + 1 })
@@ -129,23 +154,25 @@ async function processOne(queueId: string) {
   const row = claimed as QueueRow;
 
   try {
-    // PASSO 3 — Resolve tenant pelo phone_number_id
+    // PASSO 3 — Resolve tenant + access_token
     let userId = row.user_id;
-    if (!userId) {
-      const { data: cfg } = await sb
-        .from("whatsapp_config")
-        .select("user_id")
-        .eq("phone_number_id", row.phone_number_id)
-        .eq("is_active", true)
-        .maybeSingle();
-      userId = cfg?.user_id ?? null;
+    let waAccessToken: string | null = null;
+    const { data: cfg } = await sb
+      .from("whatsapp_config")
+      .select("user_id, access_token")
+      .eq("phone_number_id", row.phone_number_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (cfg) {
+      if (!userId) userId = cfg.user_id;
+      waAccessToken = cfg.access_token ?? null;
     }
     if (!userId) {
       await failQueue(row.id, "tenant_not_found");
       return { ok: false, reason: "tenant_not_found" };
     }
 
-    // PASSO 4 — Carrega config do agente DO TENANT
+    // PASSO 4 — Config do agente
     const { data: agent } = await sb
       .from("whatsapp_cloud_agent_config")
       .select("*")
@@ -194,6 +221,7 @@ async function processOne(queueId: string) {
     }
 
     const userText = extractText(row.payload);
+    const inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
 
     // PASSO 6 — Grava inbound
     await sb.from("whatsapp_cloud_messages").insert({
@@ -201,15 +229,42 @@ async function processOne(queueId: string) {
       user_id: userId,
       direction: "inbound",
       sender: "contact",
-      content: userText,
+      content: inboundContent,
       message_type: row.message_type ?? "text",
       wamid: row.wamid,
     });
 
-    // Se handoff: humano no controle, não chama IA
     if (conv.status === "handoff") {
       await doneQueue(row.id);
       return { ok: true, handoff: true };
+    }
+
+    // PASSO 6.5 — Modo AMZ: 3 níveis de acesso
+    const isAmzMode =
+      (agent as any).agent_mode === "amz" && userId === ADMIN_AMZ_USER_ID;
+    let amzContextBlock: string | undefined;
+    if (isAmzMode) {
+      const amzCtx = await buildAmzContext(sb, row.from_number);
+      console.log(`[processor][amz] from=${row.from_number} access=${amzCtx.access}`);
+
+      if (amzCtx.access === "stranger") {
+        try {
+          await sendWhatsApp(userId, row.from_number, STRANGER_MSG);
+          await sb.from("whatsapp_cloud_messages").insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: STRANGER_MSG,
+            message_type: "text",
+          });
+        } catch (e) {
+          console.error("[processor][amz] stranger send falhou:", e);
+        }
+        await doneQueue(row.id);
+        return { ok: true, amz_access: "stranger" };
+      }
+      amzContextBlock = amzCtx.block;
     }
 
     // PASSO 8 — Janela 24h
@@ -220,7 +275,6 @@ async function processOne(queueId: string) {
       .eq("direction", "inbound")
       .order("created_at", { ascending: false })
       .limit(2);
-    // O insert acima é o mais recente; pegamos o ANTERIOR (índice 1)
     const previousInbound = lastInbound?.[1]?.created_at;
     if (previousInbound) {
       const ageMs = Date.now() - new Date(previousInbound).getTime();
@@ -230,7 +284,7 @@ async function processOne(queueId: string) {
       }
     }
 
-    // PASSO 4.5 — Quota / kill switch
+    // PASSO 4.5 — Quota
     let { data: quota } = await sb
       .from("ai_messages_quota")
       .select("*")
@@ -246,7 +300,6 @@ async function processOne(queueId: string) {
       quota = ins.data;
     }
 
-    // Reset mensal se passou
     if (quota && new Date(quota.reset_at).getTime() <= Date.now()) {
       const nextReset = new Date();
       nextReset.setUTCMonth(nextReset.getUTCMonth() + 1, 1);
@@ -271,8 +324,14 @@ async function processOne(queueId: string) {
       return { ok: false, reason: "quota_exceeded" };
     }
 
-    // PASSO 7 — Monta system prompt unificado via agent-soul
-    // (modo 'amz' só se user_id === ADMIN_AMZ_USER_ID; senão força whitelabel)
+    // PASSO 6.7 — Baixa mídias
+    let media: MediaExtract[] = [];
+    if (waAccessToken && ["image", "audio", "video", "document"].includes(row.message_type ?? "")) {
+      media = await downloadAllMedia(row.payload, waAccessToken);
+      console.log(`[processor] media baixadas: ${media.length}`);
+    }
+
+    // PASSO 7 — System prompt (com contexto AMZ se aplicável)
     const { systemPrompt, mode } = await buildSystemPrompt(
       sb,
       {
@@ -287,10 +346,11 @@ async function processOne(queueId: string) {
         is_active: agent.is_active,
       },
       userText || "",
+      amzContextBlock,
     );
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPrompt.length}`);
 
-    // Histórico recente da conversa (últimas 10 msgs antes desta)
+    // Histórico
     const { data: histRows } = await sb
       .from("whatsapp_cloud_messages")
       .select("direction, content")
@@ -298,7 +358,7 @@ async function processOne(queueId: string) {
       .order("created_at", { ascending: false })
       .limit(11);
     const history = (histRows ?? [])
-      .slice(1) // pula a msg atual (recém inserida)
+      .slice(1)
       .reverse()
       .filter((m) => m.content)
       .map((m) => ({
@@ -306,8 +366,9 @@ async function processOne(queueId: string) {
         content: m.content as string,
       }));
 
-    // PASSO 9 — IA
-    const reply = await callGemini(systemPrompt, history, userText || "(mensagem sem texto)");
+    // PASSO 9 — IA (multimodal)
+    const userContent = buildUserContent(userText, media);
+    const reply = await callGemini(systemPrompt, history, userContent);
 
     // Incrementa quota
     await sb
@@ -329,7 +390,7 @@ async function processOne(queueId: string) {
       .select("id")
       .single();
 
-    // PASSO 11 — Envia via whatsapp-send-message
+    // PASSO 11 — Envia
     let sendError: string | null = null;
     try {
       const sentId = await sendWhatsApp(userId, row.from_number, reply);
@@ -340,7 +401,6 @@ async function processOne(queueId: string) {
       sendError = String((e as Error).message ?? e);
     }
 
-    // Atualiza last_message_at
     await sb
       .from("whatsapp_cloud_conversations")
       .update({ last_message_at: new Date().toISOString() })
@@ -351,11 +411,9 @@ async function processOne(queueId: string) {
       return { ok: false, reason: "send_failed", error: sendError };
     }
 
-    // PASSO 12
     await doneQueue(row.id);
     return { ok: true, conversation_id: conv.id, reply_preview: reply.slice(0, 120) };
   } catch (e) {
-    // PASSO 13 — Falha. Marca failed; cron pode resgatar processing órfão (não este caso, mas reset segue regra).
     const msg = String((e as Error).message ?? e).slice(0, 500);
     await failQueue(row.id, msg);
     return { ok: false, reason: "exception", error: msg };
@@ -374,7 +432,6 @@ Deno.serve(async (req) => {
       return Response.json(result, { headers: corsHeaders });
     }
 
-    // Sem queue_id: varre fila received (modo cron/manual)
     const { data: pending } = await sb
       .from("whatsapp_cloud_inbound_queue")
       .select("id")

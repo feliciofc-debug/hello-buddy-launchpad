@@ -328,20 +328,28 @@ function rankByKeywords(produtos: any[], userText: string, topN: number): any[] 
 
 // ----------------------------------------------------------------------------
 // buildSystemPrompt — junta PERSONALITY_CORE + bloco de conhecimento do modo.
+// No modo AMZ, `amzContextBlock` (opcional) injeta contexto dinâmico do contato
+// (owner=Felicio ou cliente AMZ) montado por _shared/amz-context.ts.
 // ----------------------------------------------------------------------------
 export async function buildSystemPrompt(
   sb: SupabaseClient,
   cfg: TenantAgentConfig,
   userText: string,
+  amzContextBlock?: string,
 ): Promise<{ systemPrompt: string; mode: AgentMode }> {
   const mode = resolveAgentMode(cfg.agent_mode, cfg.user_id);
 
-  const knowledgeBlock =
-    mode === "amz" ? AMZ_KNOWLEDGE : await buildTenantContext(sb, cfg, userText);
+  const blocks: string[] = [PERSONALITY_CORE, ""];
+  if (mode === "amz") {
+    blocks.push(AMZ_KNOWLEDGE);
+    if (amzContextBlock && amzContextBlock.trim().length > 0) {
+      blocks.push("", amzContextBlock.trim());
+    }
+  } else {
+    blocks.push(await buildTenantContext(sb, cfg, userText));
+  }
 
-  const systemPrompt = [PERSONALITY_CORE, "", knowledgeBlock].join("\n");
-
-  return { systemPrompt, mode };
+  return { systemPrompt: blocks.join("\n"), mode };
 }
 
 // Helper: cria client service-role (usado pelo processor).
