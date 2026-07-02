@@ -15,6 +15,8 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+const WHATSAPP_PERMANENT_TOKEN = Deno.env.get("WHATSAPP_PERMANENT_TOKEN");
+const WHATSAPP_TEST_ACCESS_TOKEN = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
@@ -170,13 +172,16 @@ async function processOne(queueId: string) {
     let waAccessToken: string | null = null;
     const { data: cfg } = await sb
       .from("whatsapp_config")
-      .select("user_id, access_token")
+      .select("user_id, access_token, connection_method, phone_number_id")
       .eq("phone_number_id", row.phone_number_id)
       .eq("is_active", true)
       .maybeSingle();
     if (cfg) {
       if (!userId) userId = cfg.user_id;
-      waAccessToken = cfg.access_token ?? null;
+      const isSystemUserTenant = cfg.connection_method === "system_user_permanent";
+      waAccessToken = isSystemUserTenant && (WHATSAPP_PERMANENT_TOKEN || WHATSAPP_TEST_ACCESS_TOKEN)
+        ? (WHATSAPP_PERMANENT_TOKEN || WHATSAPP_TEST_ACCESS_TOKEN)!
+        : cfg.access_token ?? null;
     }
     if (!userId) {
       await failQueue(row.id, "tenant_not_found");

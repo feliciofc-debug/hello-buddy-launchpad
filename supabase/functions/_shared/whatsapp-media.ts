@@ -3,7 +3,7 @@
 // ============================================================================
 
 const MAX_MEDIA_BYTES = 10 * 1024 * 1024;
-const GRAPH_API_VERSION = "v22.0";
+const GRAPH_API_VERSION = "v25.0";
 
 export type MediaExtract = {
   kind: "image" | "audio" | "video" | "document";
@@ -53,7 +53,10 @@ export async function downloadMedia(
     }
 
     const binRes = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-    if (!binRes.ok) return null;
+    if (!binRes.ok) {
+      console.error(`[whatsapp-media] download ${binRes.status} para ${mediaId}`);
+      return null;
+    }
     const buf = new Uint8Array(await binRes.arrayBuffer());
     if (buf.byteLength > MAX_MEDIA_BYTES) return null;
 
