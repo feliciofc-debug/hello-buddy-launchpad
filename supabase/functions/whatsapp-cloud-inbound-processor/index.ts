@@ -1505,7 +1505,7 @@ async function processOne(queueId: string) {
     const history = (histRows ?? [])
       .slice(1)
       .reverse()
-      .filter((m) => m.content)
+      .filter((m) => m.content && !isStaleToolFailureMessage(m.content as string))
       .map((m) => ({
         role: m.direction === "inbound" ? "user" : "assistant",
         content: m.content as string,
