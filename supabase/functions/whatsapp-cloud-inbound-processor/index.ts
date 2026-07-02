@@ -642,6 +642,34 @@ async function processOne(queueId: string) {
       return { ok: true, handoff: true };
     }
 
+    // PASSO 6.5 — Modo AMZ: 3 níveis de acesso
+    const isAmzMode =
+      (agent as any).agent_mode === "amz" && userId === ADMIN_AMZ_USER_ID;
+    let amzContextBlock: string | undefined;
+    if (isAmzMode) {
+      const amzCtx = await buildAmzContext(sb, row.from_number);
+      console.log(`[processor][amz] from=${row.from_number} access=${amzCtx.access}`);
+
+      if (amzCtx.access === "stranger") {
+        try {
+          await sendWhatsApp(userId, row.from_number, STRANGER_MSG);
+          await sb.from("whatsapp_cloud_messages").insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: STRANGER_MSG,
+            message_type: "text",
+          });
+        } catch (e) {
+          console.error("[processor][amz] stranger send falhou:", e);
+        }
+        await doneQueue(row.id);
+        return { ok: true, amz_access: "stranger" };
+      }
+      amzContextBlock = amzCtx.block;
+    }
+
     // Atalho determinístico: pedidos explícitos de lugar próximo não dependem da IA chamar tool.
     // Isso evita respostas falsas de "permissão bloqueada" quando a localização já está salva.
     if (directNearbySearch && userId) {
@@ -685,34 +713,6 @@ async function processOne(queueId: string) {
 
       await doneQueue(row.id);
       return { ok: true, direct_nearby: true, reply_preview: reply.slice(0, 120) };
-    }
-
-    // PASSO 6.5 — Modo AMZ: 3 níveis de acesso
-    const isAmzMode =
-      (agent as any).agent_mode === "amz" && userId === ADMIN_AMZ_USER_ID;
-    let amzContextBlock: string | undefined;
-    if (isAmzMode) {
-      const amzCtx = await buildAmzContext(sb, row.from_number);
-      console.log(`[processor][amz] from=${row.from_number} access=${amzCtx.access}`);
-
-      if (amzCtx.access === "stranger") {
-        try {
-          await sendWhatsApp(userId, row.from_number, STRANGER_MSG);
-          await sb.from("whatsapp_cloud_messages").insert({
-            conversation_id: conv.id,
-            user_id: userId,
-            direction: "outbound",
-            sender: "agent",
-            content: STRANGER_MSG,
-            message_type: "text",
-          });
-        } catch (e) {
-          console.error("[processor][amz] stranger send falhou:", e);
-        }
-        await doneQueue(row.id);
-        return { ok: true, amz_access: "stranger" };
-      }
-      amzContextBlock = amzCtx.block;
     }
 
     // PASSO 8 — Janela 24h
