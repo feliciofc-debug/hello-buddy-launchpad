@@ -568,7 +568,7 @@ async function callGemini(
   userContent: any,
   hasMedia: boolean,
   toolCtx: { userId: string; fromNumber: string },
-): Promise<string> {
+): Promise<{ text: string; imageUrl?: string }> {
   const messages: any[] = [
     { role: "system", content: systemPrompt },
     ...history,
@@ -577,6 +577,7 @@ async function callGemini(
 
   // Modelo pro é mais confiável com áudio/imagem
   const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
+  let pendingImageUrl: string | undefined;
 
   for (let step = 0; step < 4; step++) {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -608,15 +609,16 @@ async function callGemini(
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
         console.log(`[pietro][tool] ${name}`, args);
-        const result = await runTool(name, args, toolCtx);
+        const { result, imageUrl } = await runTool(name, args, toolCtx);
+        if (imageUrl) pendingImageUrl = imageUrl;
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
     }
 
-    return msg?.content ?? "";
+    return { text: msg?.content ?? "", imageUrl: pendingImageUrl };
   }
-  return "Desculpa, não consegui concluir a pesquisa agora.";
+  return { text: "Desculpa, não consegui concluir a pesquisa agora.", imageUrl: pendingImageUrl };
 }
 
 
