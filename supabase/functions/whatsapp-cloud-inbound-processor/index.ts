@@ -199,6 +199,36 @@ async function toolPesquisarWeb(query: string, recencia?: string): Promise<strin
   }
 }
 
+function detectWebSearchIntent(text: string): { query: string; recencia?: string } | null {
+  const raw = (text || "").trim();
+  if (!raw) return null;
+  const t = normalizePt(raw);
+
+  const hasExplicitSearchIntent = /\b(procura|procurar|busca|buscar|pesquisa|pesquisar|google|internet|web|acha ai|ve pra mim|consulte)\b/.test(t);
+  const hasRealtimeIntent = /\b(hoje|agora|atual|recente|ultimas|noticias|transito|trafego|cotacao|preco|placar|resultado|agenda|greve)\b/.test(t);
+  const hasRecipeIntent = /\b(receita|como fazer|ingredientes|modo de preparo)\b/.test(t);
+
+  if (!hasExplicitSearchIntent && !hasRealtimeIntent && !hasRecipeIntent) return null;
+
+  let query = raw
+    .replace(/^jarvis[,\s]*/i, "")
+    .replace(/^(procura|procurar|busca|buscar|pesquisa|pesquisar|consulta|consulte)\s+(no\s+google\s+|na\s+internet\s+|na\s+web\s+)?/i, "")
+    .trim();
+
+  if (!query) query = raw;
+  if (/\btransito\b/.test(t) && !/\b2026\b/.test(t)) query = `${query} trânsito agora 2026`;
+  if (/\b(notícias|noticias|recente|hoje|agora|atual|transito|trafego|greve)\b/i.test(raw)) return { query, recencia: "d" };
+  return { query };
+}
+
+function isStaleToolFailureMessage(content: string): boolean {
+  const t = normalizePt(content);
+  return (
+    /\b(nao consigo acessar a internet|ferramenta de pesquisa|erro de permissao|pesquisa esta bloqueada|acesso ao google|buscar diretamente no google)\b/.test(t) ||
+    /\b(problema|erro|bloquead|permissao)\b/.test(t) && /\b(google|internet|web|pesquisa|ferramenta)\b/.test(t)
+  );
+}
+
 function normalizePt(text: string): string {
   return (text || "")
     .toLowerCase()
@@ -1085,6 +1115,24 @@ async function callGemini(
     { role: "user", content: userContent },
   ];
 
+  if (!hasMedia && typeof userContent === "string") {
+    const forcedSearch = detectWebSearchIntent(userContent);
+    if (forcedSearch) {
+      console.log("[pietro][forced_web_search]", forcedSearch);
+      const searchResult = await toolPesquisarWeb(forcedSearch.query, forcedSearch.recencia);
+      messages.push({
+        role: "assistant",
+        content: null,
+        tool_calls: [{
+          id: "forced_web_search_1",
+          type: "function",
+          function: { name: "pesquisar_web", arguments: JSON.stringify(forcedSearch) },
+        }],
+      });
+      messages.push({ role: "tool", tool_call_id: "forced_web_search_1", content: searchResult });
+    }
+  }
+
   // Modelo pro é mais confiável com áudio/imagem
   const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
   let pendingImageUrl: string | undefined;
@@ -1457,7 +1505,7 @@ async function processOne(queueId: string) {
     const history = (histRows ?? [])
       .slice(1)
       .reverse()
-      .filter((m) => m.content)
+      .filter((m) => m.content && !isStaleToolFailureMessage(m.content as string))
       .map((m) => ({
         role: m.direction === "inbound" ? "user" : "assistant",
         content: m.content as string,
