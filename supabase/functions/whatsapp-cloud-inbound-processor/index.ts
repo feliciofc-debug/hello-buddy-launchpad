@@ -91,6 +91,47 @@ function buildUserContent(userText: string, media: MediaExtract[]): any {
 
 const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
 const GOOGLE_CX = Deno.env.get("GOOGLE_CX");
+const SERPAPI_KEY = Deno.env.get("SERPAPI_KEY");
+const GOOGLE_REFERER = (Deno.env.get("APP_URL") || "https://hello-buddy-launchpad.lovable.app/").replace(/\/?$/, "/");
+
+function googleApiHeaders(): HeadersInit {
+  return {
+    "Referer": GOOGLE_REFERER,
+    "Origin": GOOGLE_REFERER.replace(/\/$/, ""),
+    "User-Agent": "amz-jarvis/1.0",
+  };
+}
+
+async function toolPesquisarWebSerpApi(query: string, recencia?: string): Promise<string | null> {
+  if (!SERPAPI_KEY) return null;
+  const params = new URLSearchParams({
+    engine: "google",
+    q: query,
+    google_domain: "google.com.br",
+    gl: "br",
+    hl: "pt-br",
+    num: "8",
+    api_key: SERPAPI_KEY,
+  });
+  const r2 = (recencia || "").toLowerCase().trim();
+  if (["d", "w", "m", "y"].includes(r2)) params.set("tbs", `qdr:${r2}`);
+
+  const r = await fetch(`https://serpapi.com/search.json?${params.toString()}`, { signal: AbortSignal.timeout(12000) });
+  if (!r.ok) {
+    const detalhe = await r.text().catch(() => "");
+    console.error("[pietro][pesquisar_web][serpapi] falhou", r.status, detalhe.slice(0, 400));
+    return JSON.stringify({ erro: `busca fallback falhou (${r.status})`, detalhe: detalhe.slice(0, 400) });
+  }
+  const d = await r.json();
+  const items = (d.organic_results ?? []).slice(0, 8).map((it: any) => ({
+    titulo: it.title,
+    link: it.link,
+    resumo: it.snippet,
+    fonte: it.displayed_link || it.source,
+    data: it.date || null,
+  }));
+  return JSON.stringify({ query, recencia: recencia || "qualquer", fonte_busca: "Google via SerpAPI", total: items.length, resultados: items });
+}
 
 async function toolConsultarCnpj(cnpj: string): Promise<string> {
   const clean = (cnpj || "").replace(/\D/g, "");
@@ -120,7 +161,10 @@ async function toolConsultarCnpj(cnpj: string): Promise<string> {
 }
 
 async function toolPesquisarWeb(query: string, recencia?: string): Promise<string> {
-  if (!GOOGLE_API_KEY || !GOOGLE_CX) return JSON.stringify({ erro: "Busca web não configurada" });
+  if (!GOOGLE_API_KEY || !GOOGLE_CX) {
+    const fallback = await toolPesquisarWebSerpApi(query, recencia);
+    return fallback ?? JSON.stringify({ erro: "Busca web não configurada" });
+  }
   try {
     const params = new URLSearchParams({
       key: GOOGLE_API_KEY, cx: GOOGLE_CX, q: query, num: "8", hl: "pt-BR", gl: "br", lr: "lang_pt",
@@ -132,10 +176,12 @@ async function toolPesquisarWeb(query: string, recencia?: string): Promise<strin
       params.set("sort", "date");
     }
     const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
-    const r = await fetch(url);
+    const r = await fetch(url, { headers: googleApiHeaders(), signal: AbortSignal.timeout(12000) });
     if (!r.ok) {
       const detalhe = await r.text().catch(() => "");
       console.error("[pietro][pesquisar_web] falhou", r.status, detalhe.slice(0, 400));
+      const fallback = await toolPesquisarWebSerpApi(query, recencia);
+      if (fallback) return fallback;
       return JSON.stringify({ erro: `busca falhou (${r.status})`, detalhe: detalhe.slice(0, 400) });
     }
     const d = await r.json();
@@ -146,9 +192,10 @@ async function toolPesquisarWeb(query: string, recencia?: string): Promise<strin
       fonte: it.displayLink,
       data: it.pagemap?.metatags?.[0]?.["article:published_time"] || it.pagemap?.metatags?.[0]?.["og:updated_time"] || null,
     }));
-    return JSON.stringify({ query, recencia: recencia || "qualquer", total: items.length, resultados: items });
+    return JSON.stringify({ query, recencia: recencia || "qualquer", fonte_busca: "Google Custom Search", total: items.length, resultados: items });
   } catch (e) {
-    return JSON.stringify({ erro: String((e as Error).message) });
+    const fallback = await toolPesquisarWebSerpApi(query, recencia).catch(() => null);
+    return fallback ?? JSON.stringify({ erro: String((e as Error).message) });
   }
 }
 
