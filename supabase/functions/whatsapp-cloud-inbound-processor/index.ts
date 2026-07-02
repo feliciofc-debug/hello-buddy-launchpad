@@ -118,19 +118,30 @@ async function toolConsultarCnpj(cnpj: string): Promise<string> {
   }
 }
 
-async function toolPesquisarWeb(query: string): Promise<string> {
+async function toolPesquisarWeb(query: string, recencia?: string): Promise<string> {
   if (!GOOGLE_API_KEY || !GOOGLE_CX) return JSON.stringify({ erro: "Busca web não configurada" });
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=6&hl=pt-BR`;
+    const params = new URLSearchParams({
+      key: GOOGLE_API_KEY, cx: GOOGLE_CX, q: query, num: "8", hl: "pt-BR", gl: "br", lr: "lang_pt",
+    });
+    // recencia: d=24h, w=7d, m=30d, y=365d (Google CSE dateRestrict)
+    const r2 = (recencia || "").toLowerCase().trim();
+    if (["d", "w", "m", "y"].includes(r2)) {
+      params.set("dateRestrict", `${r2}1`);
+      params.set("sort", "date");
+    }
+    const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
     const r = await fetch(url);
-    if (!r.ok) return JSON.stringify({ erro: `busca falhou (${r.status})` });
+    if (!r.ok) return JSON.stringify({ erro: `busca falhou (${r.status})`, detalhe: await r.text().catch(() => "") });
     const d = await r.json();
     const items = (d.items ?? []).map((it: any) => ({
       titulo: it.title,
       link: it.link,
       resumo: it.snippet,
+      fonte: it.displayLink,
+      data: it.pagemap?.metatags?.[0]?.["article:published_time"] || it.pagemap?.metatags?.[0]?.["og:updated_time"] || null,
     }));
-    return JSON.stringify({ query, resultados: items });
+    return JSON.stringify({ query, recencia: recencia || "qualquer", total: items.length, resultados: items });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
   }
@@ -226,10 +237,13 @@ const TOOLS = [
     type: "function",
     function: {
       name: "pesquisar_web",
-      description: "Pesquisa no Google e retorna títulos, links e resumos dos resultados. Use para buscar informações atuais, notícias, dados sobre empresas, pessoas, produtos, tendências etc.",
+      description: "Pesquisa no Google (pt-BR) e retorna títulos, links, resumos e data quando disponível. Use SEMPRE para notícias, eventos, cotações, clima, preços, resultados esportivos, greves, agenda — qualquer coisa que dependa de data. Inclua o ano/mês atual na query e use 'recencia' pra restringir a janela temporal.",
       parameters: {
         type: "object",
-        properties: { query: { type: "string", description: "Termo de busca no Google" } },
+        properties: {
+          query: { type: "string", description: "Termo de busca. Inclua ano/mês/data quando fizer sentido (ex: 'greve ônibus Rio Janeiro dezembro 2026')." },
+          recencia: { type: "string", enum: ["d", "w", "m", "y"], description: "Janela: d=últimas 24h, w=última semana, m=último mês, y=último ano. Omita para busca geral." },
+        },
         required: ["query"],
       },
     },
@@ -257,7 +271,7 @@ async function runTool(
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   if (name === "consultar_cnpj") return await toolConsultarCnpj(args?.cnpj ?? "");
-  if (name === "pesquisar_web") return await toolPesquisarWeb(args?.query ?? "");
+  if (name === "pesquisar_web") return await toolPesquisarWeb(args?.query ?? "", args?.recencia);
   if (name === "buscar_lugares_proximos") return await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters);
   return JSON.stringify({ erro: `ferramenta ${name} não existe` });
 }
@@ -578,7 +592,15 @@ async function processOne(queueId: string) {
       userText || "",
       amzContextBlock,
     );
-    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPrompt.length}`);
+    // Injeta DATA/HORA atual (São Paulo) no system prompt — evita respostas desatualizadas
+    const nowSP = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      weekday: "long", day: "2-digit", month: "long", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    }).format(new Date());
+    const dateBlock = `\n\nCONTEXTO TEMPORAL (IMPORTANTE):\n- Data e hora atual em São Paulo: ${nowSP}.\n- Use SEMPRE esta data como referência de "hoje", "ontem", "esta semana", "este ano".\n- Para qualquer pergunta sobre notícias, eventos, cotações, clima, preços, jogos, agenda ou "o que está acontecendo", chame pesquisar_web com termos incluindo o ano/mês atual e passe recencia="d" (últimas 24h) ou "w" (última semana) quando fizer sentido. NUNCA responda de memória sobre fatos recentes.`;
+    const systemPromptWithDate = systemPrompt + dateBlock;
+    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
     const { data: histRows } = await sb
@@ -598,7 +620,7 @@ async function processOne(queueId: string) {
 
     // PASSO 9 — IA (multimodal)
     const userContent = buildUserContent(userText, media);
-    const reply = await callGemini(systemPrompt, history, userContent, media.length > 0, { userId, fromNumber: row.from_number });
+    const reply = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number });
 
     // Incrementa quota
     await sb
