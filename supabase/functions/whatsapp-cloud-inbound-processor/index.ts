@@ -1209,7 +1209,9 @@ const TOOLS = [
       description: "[ADMIN — só Felicio] Cria uma cobrança PIX para um cliente AMZ pelo nome/razão social. Valor padrão 597. Use quando Felicio disser 'gera cobrança de X pro cliente Y'.",
       parameters: { type: "object", properties: { cliente: { type: "string" }, valor: { type: "number" } }, required: ["cliente"] },
     },
+  },
   {
+
     type: "function",
     function: {
       name: "consultar_estoque",
