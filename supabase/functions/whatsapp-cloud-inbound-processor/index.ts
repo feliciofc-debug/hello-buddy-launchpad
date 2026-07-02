@@ -58,11 +58,17 @@ function extractText(payload: any): string {
 
 function buildUserContent(userText: string, media: MediaExtract[]): any {
   if (media.length === 0) return userText || "(mensagem sem texto)";
-  const preface = userText
-    ? userText
-    : media.length === 1
-    ? `[o usuário mandou ${media[0].kind === "image" ? "uma imagem/print" : media[0].kind === "audio" ? "um áudio de voz" : media[0].kind}]`
-    : `[o usuário mandou ${media.length} mídias]`;
+  const hasAudio = media.some((m) => m.kind === "audio");
+  const hasImage = media.some((m) => m.kind === "image");
+  let preface = userText;
+  if (!preface) {
+    if (hasAudio && hasImage) preface = "O usuário mandou um áudio e uma imagem. ESCUTE o áudio, VEJA a imagem e responda ao que ele pede — não cumprimente sem responder.";
+    else if (hasAudio) preface = "O usuário mandou um ÁUDIO de voz. ESCUTE o áudio, entenda o que ele está pedindo e RESPONDA à pergunta dele. Não responda só 'oi' — responda o conteúdo do áudio.";
+    else if (hasImage) preface = "O usuário mandou uma imagem/print. ANALISE a imagem e comente/responda baseado no que você vê.";
+    else preface = `[o usuário mandou ${media.length} mídia(s)]`;
+  } else if (hasAudio) {
+    preface = `${userText}\n\n(o usuário também mandou um áudio — ESCUTE e responda ao conteúdo dele)`;
+  }
   const parts: any[] = [{ type: "text", text: preface }];
   for (const m of media) {
     if (m.kind === "image") {
@@ -82,12 +88,16 @@ async function callGemini(
   systemPrompt: string,
   history: Array<{ role: string; content: string }>,
   userContent: any,
+  hasMedia: boolean,
 ): Promise<string> {
   const messages = [
     { role: "system", content: systemPrompt },
     ...history,
     { role: "user", content: userContent },
   ];
+
+  // Modelo pro é mais confiável com áudio/imagem
+  const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
 
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
@@ -96,7 +106,7 @@ async function callGemini(
       "Authorization": `Bearer ${LOVABLE_API_KEY}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      model,
       messages,
       temperature: 0.7,
     }),
@@ -109,6 +119,7 @@ async function callGemini(
   const data = await res.json();
   return data?.choices?.[0]?.message?.content ?? "";
 }
+
 
 async function sendWhatsApp(user_id: string, to: string, message: string): Promise<string | null> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
