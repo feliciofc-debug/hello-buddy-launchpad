@@ -578,7 +578,15 @@ async function processOne(queueId: string) {
       userText || "",
       amzContextBlock,
     );
-    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPrompt.length}`);
+    // Injeta DATA/HORA atual (São Paulo) no system prompt — evita respostas desatualizadas
+    const nowSP = new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      weekday: "long", day: "2-digit", month: "long", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    }).format(new Date());
+    const dateBlock = `\n\nCONTEXTO TEMPORAL (IMPORTANTE):\n- Data e hora atual em São Paulo: ${nowSP}.\n- Use SEMPRE esta data como referência de "hoje", "ontem", "esta semana", "este ano".\n- Para qualquer pergunta sobre notícias, eventos, cotações, clima, preços, jogos, agenda ou "o que está acontecendo", chame pesquisar_web com termos incluindo o ano/mês atual e passe recencia="d" (últimas 24h) ou "w" (última semana) quando fizer sentido. NUNCA responda de memória sobre fatos recentes.`;
+    const systemPromptWithDate = systemPrompt + dateBlock;
+    console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
     const { data: histRows } = await sb
