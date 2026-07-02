@@ -123,11 +123,29 @@ async function collectOwnerStats(sb: SupabaseClient): Promise<string> {
       .from("scheduled_posts").select("id", { count: "exact", head: true })
       .gte("data", new Date().toISOString().slice(0, 10));
     parts.push(`• Posts agendados (hoje/futuro): ${posts ?? 0}`);
+
+    // Clientes com acesso bloqueado à plataforma
+    const { data: bloqueados } = await sb
+      .from("profiles")
+      .select("nome, nome_fantasia, motivo_bloqueio, bloqueado_em")
+      .eq("acesso_bloqueado", true)
+      .order("bloqueado_em", { ascending: false });
+
+    if (bloqueados && bloqueados.length > 0) {
+      parts.push(`• Clientes com acesso BLOQUEADO (${bloqueados.length}):`);
+      for (const b of bloqueados) {
+        const nome = b.nome_fantasia || b.nome || "(sem nome)";
+        parts.push(`   - ${nome}${b.motivo_bloqueio ? ` — ${b.motivo_bloqueio}` : ""}`);
+      }
+    } else {
+      parts.push("• Clientes bloqueados: 0");
+    }
   } catch (e) {
     console.error("[amz-context] owner stats:", e);
   }
   return parts.join("\n") || "(sem dados)";
 }
+
 
 async function collectClientContext(sb: SupabaseClient, phone: string): Promise<string> {
   const out: string[] = [];
