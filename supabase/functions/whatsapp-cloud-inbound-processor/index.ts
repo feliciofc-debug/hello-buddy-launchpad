@@ -221,6 +221,14 @@ function detectWebSearchIntent(text: string): { query: string; recencia?: string
   return { query };
 }
 
+function isStaleToolFailureMessage(content: string): boolean {
+  const t = normalizePt(content);
+  return (
+    /\b(nao consigo acessar a internet|ferramenta de pesquisa|erro de permissao|pesquisa esta bloqueada|acesso ao google|buscar diretamente no google)\b/.test(t) ||
+    /\b(problema|erro|bloquead|permissao)\b/.test(t) && /\b(google|internet|web|pesquisa|ferramenta)\b/.test(t)
+  );
+}
+
 function normalizePt(text: string): string {
   return (text || "")
     .toLowerCase()
