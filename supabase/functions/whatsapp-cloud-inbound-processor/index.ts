@@ -308,8 +308,12 @@ function formatNearbyReply(raw: string, query: string): string {
 
   const lugares = Array.isArray(data?.lugares) ? data.lugares : [];
   if (!lugares.length) {
+    if (data?.erro) {
+      console.log(`[nearby][empty] erro=${String(data.erro).slice(0, 300)} google=${String(data?.detalhe_google ?? "").slice(0, 300)}`);
+    }
     return `Recebi sua localização, mas não encontrei ${query} próximo num raio seguro agora. Quer que eu tente ampliar a busca para alguns quilômetros a mais?`;
   }
+
 
   const first = lugares[0];
   const lines = lugares.slice(0, 4).map((l: any, i: number) => {
