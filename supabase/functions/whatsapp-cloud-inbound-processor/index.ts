@@ -955,7 +955,7 @@ async function processOne(queueId: string) {
 
     // PASSO 9 — IA (multimodal)
     const userContent = buildUserContent(userText, media);
-    const reply = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number });
+    const { text: reply, imageUrl: generatedImageUrl } = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number });
 
     // Incrementa quota
     await sb
@@ -971,8 +971,8 @@ async function processOne(queueId: string) {
         user_id: userId,
         direction: "outbound",
         sender: "agent",
-        content: reply,
-        message_type: "text",
+        content: generatedImageUrl ? `${reply}\n\n[imagem: ${generatedImageUrl}]` : reply,
+        message_type: generatedImageUrl ? "image" : "text",
       })
       .select("id")
       .single();
@@ -980,7 +980,7 @@ async function processOne(queueId: string) {
     // PASSO 11 — Envia
     let sendError: string | null = null;
     try {
-      const sentId = await sendWhatsApp(userId, row.from_number, reply);
+      const sentId = await sendWhatsApp(userId, row.from_number, reply, generatedImageUrl);
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
       }
