@@ -307,7 +307,7 @@ async function callGemini(
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
         console.log(`[pietro][tool] ${name}`, args);
-        const result = await runTool(name, args);
+        const result = await runTool(name, args, toolCtx);
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
