@@ -855,6 +855,159 @@ async function toolCriarCobrancaAmz(args: { cliente: string; valor?: number }, c
 }
 
 
+// ---- CONSCIÊNCIA DA PLATAFORMA (dono vê tudo, cliente só o próprio) ----
+async function resolveScope(ctx: { userId: string; fromNumber: string }): Promise<{ scopeUserId: string | null; isAdmin: boolean }> {
+  return { scopeUserId: isOwner(ctx) ? null : ctx.userId, isAdmin: isOwner(ctx) };
+}
+
+async function toolConsultarEstoque(query: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const q = (query || "").trim();
+  const { scopeUserId, isAdmin } = await resolveScope(ctx);
+  try {
+    // produtos (tabela principal)
+    let p = sb.from("produtos").select("nome, categoria, preco, estoque, ativo, user_id, link").limit(20);
+    if (scopeUserId) p = p.eq("user_id", scopeUserId);
+    if (q) p = p.or(`nome.ilike.%${q}%,descricao.ilike.%${q}%,categoria.ilike.%${q}%,tags.ilike.%${q}%`);
+    const { data: prods } = await p;
+
+    // products_stock (secundária)
+    let s = sb.from("products_stock").select("name, category, price, qty, active, user_id").limit(20);
+    if (scopeUserId) s = s.eq("user_id", scopeUserId);
+    if (q) s = s.or(`name.ilike.%${q}%,category.ilike.%${q}%,sku.ilike.%${q}%`);
+    const { data: stock } = await s;
+
+    // contagens totais
+    let cp = sb.from("produtos").select("*", { count: "exact", head: true });
+    if (scopeUserId) cp = cp.eq("user_id", scopeUserId);
+    const { count: totalProdutos } = await cp;
+
+    let cs = sb.from("products_stock").select("*", { count: "exact", head: true });
+    if (scopeUserId) cs = cs.eq("user_id", scopeUserId);
+    const { count: totalStock } = await cs;
+
+    return JSON.stringify({
+      escopo: isAdmin ? "admin_global" : "usuario",
+      busca: q || "(sem filtro)",
+      total_produtos_catalogo: totalProdutos ?? 0,
+      total_products_stock: totalStock ?? 0,
+      encontrados_produtos: (prods ?? []).map((r: any) => ({ nome: r.nome, categoria: r.categoria, preco: r.preco, estoque: r.estoque, ativo: r.ativo, link: r.link })),
+      encontrados_stock: (stock ?? []).map((r: any) => ({ nome: r.name, categoria: r.category, preco: r.price, qtd: r.qty, ativo: r.active })),
+    });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+async function toolConsultarCampanhas(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const { scopeUserId, isAdmin } = await resolveScope(ctx);
+  try {
+    let c = sb.from("campanhas_recorrentes").select("id, nome, ativa, frequencia, proxima_execucao, ultima_execucao, total_enviados, status").order("proxima_execucao", { ascending: true }).limit(15);
+    if (scopeUserId) c = c.eq("user_id", scopeUserId);
+    const { data: camps } = await c;
+
+    const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    let h = sb.from("historico_envios").select("*", { count: "exact", head: true }).gte("created_at", since);
+    if (scopeUserId) h = h.eq("user_id", scopeUserId);
+    const { count: envios24h } = await h;
+
+    let f = sb.from("fila_atendimento_pj").select("status", { count: "exact", head: false }).limit(1000);
+    if (scopeUserId) f = f.eq("user_id", scopeUserId);
+    const { data: fila } = await f;
+    const filaStats = { pendente: 0, processando: 0, enviado: 0, falhou: 0 };
+    (fila ?? []).forEach((r: any) => { if (filaStats[r.status as keyof typeof filaStats] !== undefined) filaStats[r.status as keyof typeof filaStats]++; });
+
+    return JSON.stringify({
+      escopo: isAdmin ? "admin_global" : "usuario",
+      total_campanhas: (camps ?? []).length,
+      campanhas_ativas: (camps ?? []).filter((c: any) => c.ativa).length,
+      envios_ultimas_24h: envios24h ?? 0,
+      fila_whatsapp: filaStats,
+      campanhas: camps ?? [],
+    });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+async function toolConsultarAutopilot(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const { scopeUserId, isAdmin } = await resolveScope(ctx);
+  try {
+    let a = sb.from("autopilot_config").select("id, nome, ativo, posts_por_dia, postar_facebook, postar_instagram, horario_inicio, horario_fim, total_publicados, ultima_execucao, proxima_execucao");
+    if (scopeUserId) a = a.eq("user_id", scopeUserId);
+    const { data: cfgs } = await a;
+
+    const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    let q = sb.from("social_posts_queue").select("platform, status", { count: "exact", head: false }).gte("created_at", since).limit(1000);
+    if (scopeUserId) q = q.eq("user_id", scopeUserId);
+    const { data: posts } = await q;
+    const stats: Record<string, { total: number; published: number; failed: number; pending: number }> = {};
+    (posts ?? []).forEach((r: any) => {
+      const p = r.platform || "unknown";
+      if (!stats[p]) stats[p] = { total: 0, published: 0, failed: 0, pending: 0 };
+      stats[p].total++;
+      if (r.status === "published") stats[p].published++;
+      else if (r.status === "failed") stats[p].failed++;
+      else if (r.status === "pending" || r.status === "scheduled") stats[p].pending++;
+    });
+
+    return JSON.stringify({
+      escopo: isAdmin ? "admin_global" : "usuario",
+      total_configs: (cfgs ?? []).length,
+      configs_ativas: (cfgs ?? []).filter((c: any) => c.ativo).length,
+      posts_ultimas_24h_por_rede: stats,
+      configuracoes: cfgs ?? [],
+    });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+async function toolConsultarClientesLeads(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  const { scopeUserId, isAdmin } = await resolveScope(ctx);
+  try {
+    let c = sb.from("clientes").select("*", { count: "exact", head: true }).eq("ativo", true);
+    if (scopeUserId) c = c.eq("user_id", scopeUserId);
+    const { count: clientesAtivos } = await c;
+
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+    let cn = sb.from("clientes").select("*", { count: "exact", head: true }).gte("created_at", since);
+    if (scopeUserId) cn = cn.eq("user_id", scopeUserId);
+    const { count: novos7d } = await cn;
+
+    let lb = sb.from("leads_b2b").select("*", { count: "exact", head: true });
+    if (scopeUserId) lb = lb.eq("user_id", scopeUserId);
+    const { count: leadsB2b } = await lb;
+
+    let lc = sb.from("leads_b2c").select("*", { count: "exact", head: true });
+    if (scopeUserId) lc = lc.eq("user_id", scopeUserId);
+    const { count: leadsB2c } = await lc;
+
+    return JSON.stringify({
+      escopo: isAdmin ? "admin_global" : "usuario",
+      clientes_ativos: clientesAtivos ?? 0,
+      novos_clientes_7d: novos7d ?? 0,
+      leads_b2b: leadsB2b ?? 0,
+      leads_b2c: leadsB2c ?? 0,
+    });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+async function toolResumoPlataforma(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  try {
+    const [estoque, campanhas, autopilot, leads] = await Promise.all([
+      toolConsultarEstoque("", ctx),
+      toolConsultarCampanhas(ctx),
+      toolConsultarAutopilot(ctx),
+      toolConsultarClientesLeads(ctx),
+    ]);
+    return JSON.stringify({
+      timestamp: new Date().toISOString(),
+      estoque: JSON.parse(estoque),
+      campanhas: JSON.parse(campanhas),
+      autopilot: JSON.parse(autopilot),
+      clientes_leads: JSON.parse(leads),
+    });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
+
+
+
+
+
 const TOOLS = [
   {
     type: "function",
@@ -1057,7 +1210,49 @@ const TOOLS = [
       parameters: { type: "object", properties: { cliente: { type: "string" }, valor: { type: "number" } }, required: ["cliente"] },
     },
   },
+  {
+
+    type: "function",
+    function: {
+      name: "consultar_estoque",
+      description: "Consulta produtos/estoque da plataforma. Se query vazia, retorna totais. Se preenchida, busca por nome/categoria/tags/sku (ex.: 'chinelo', 'xícara chocolate'). Dono vê tudo; cliente só o próprio catálogo.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "termo de busca ou vazio para totais" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_campanhas",
+      description: "Status das campanhas WhatsApp: total, ativas, próximas execuções, envios nas últimas 24h e stats da fila (pendente/processando/enviado/falhou).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_autopilot",
+      description: "Status do Autopilot de redes sociais: configs ativas, quantos posts foram publicados/agendados/falhados nas últimas 24h por rede (Facebook/Instagram).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_clientes_leads",
+      description: "Contagens de clientes ativos, novos clientes nos últimos 7 dias e total de leads B2B/B2C.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "resumo_plataforma",
+      description: "Snapshot completo da plataforma agora: estoque + campanhas + autopilot + clientes/leads. Use quando o usuário pedir 'resumo geral', 'como tá a plataforma', 'panorama'.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ];
+
 
 async function runTool(
   name: string,
@@ -1092,6 +1287,11 @@ async function runTool(
   if (name === "listar_inadimplentes_amz") return { result: await toolInadimplentesAmz(ctx) };
   if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
   if (name === "criar_cobranca_amz") return { result: await toolCriarCobrancaAmz(args ?? {}, ctx) };
+  if (name === "consultar_estoque") return { result: await toolConsultarEstoque(args?.query ?? "", ctx) };
+  if (name === "consultar_campanhas") return { result: await toolConsultarCampanhas(ctx) };
+  if (name === "consultar_autopilot") return { result: await toolConsultarAutopilot(ctx) };
+  if (name === "consultar_clientes_leads") return { result: await toolConsultarClientesLeads(ctx) };
+  if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
