@@ -716,8 +716,14 @@ async function callGemini(
   hasMedia: boolean,
   toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[] },
 ): Promise<{ text: string; imageUrl?: string }> {
+  const nowSP = new Date().toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+  const timeHeader = `Data/hora atual em São Paulo: ${nowSP}. Use isto para resolver expressões como "hoje", "amanhã", "daqui a X min" ao chamar ferramentas de agendamento.`;
   const messages: any[] = [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: `${timeHeader}\n\n${systemPrompt}` },
     ...history,
     { role: "user", content: userContent },
   ];
