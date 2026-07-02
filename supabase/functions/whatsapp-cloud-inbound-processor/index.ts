@@ -133,7 +133,11 @@ async function toolPesquisarWeb(query: string, recencia?: string): Promise<strin
     }
     const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
     const r = await fetch(url);
-    if (!r.ok) return JSON.stringify({ erro: `busca falhou (${r.status})`, detalhe: await r.text().catch(() => "") });
+    if (!r.ok) {
+      const detalhe = await r.text().catch(() => "");
+      console.error("[pietro][pesquisar_web] falhou", r.status, detalhe.slice(0, 400));
+      return JSON.stringify({ erro: `busca falhou (${r.status})`, detalhe: detalhe.slice(0, 400) });
+    }
     const d = await r.json();
     const items = (d.items ?? []).map((it: any) => ({
       titulo: it.title,
