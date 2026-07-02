@@ -379,7 +379,7 @@ async function processOne(queueId: string) {
 
     // PASSO 9 — IA (multimodal)
     const userContent = buildUserContent(userText, media);
-    const reply = await callGemini(systemPrompt, history, userContent);
+    const reply = await callGemini(systemPrompt, history, userContent, media.length > 0);
 
     // Incrementa quota
     await sb
