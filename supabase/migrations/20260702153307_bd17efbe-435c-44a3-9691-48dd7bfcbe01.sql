@@ -1,0 +1,1 @@
+UPDATE whatsapp_cloud_inbound_queue SET status='failed', error='timeout_osm_stuck', processed_at=now() WHERE status='processing' AND processing_started_at < now() - interval '2 minutes';

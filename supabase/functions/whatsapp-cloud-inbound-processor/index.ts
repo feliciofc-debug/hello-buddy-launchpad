@@ -234,6 +234,7 @@ out center tags 25;`.trim();
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent": "amz-jarvis/1.0" },
         body: new URLSearchParams({ data: overpassQuery }),
+        signal: AbortSignal.timeout(15000),
       });
       if (!r.ok) {
         lastErr = `overpass ${r.status}: ${(await r.text().catch(() => "")).slice(0, 200)}`;
