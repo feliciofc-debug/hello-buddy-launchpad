@@ -237,10 +237,13 @@ const TOOLS = [
     type: "function",
     function: {
       name: "pesquisar_web",
-      description: "Pesquisa no Google e retorna títulos, links e resumos dos resultados. Use para buscar informações atuais, notícias, dados sobre empresas, pessoas, produtos, tendências etc.",
+      description: "Pesquisa no Google (pt-BR) e retorna títulos, links, resumos e data quando disponível. Use SEMPRE para notícias, eventos, cotações, clima, preços, resultados esportivos, greves, agenda — qualquer coisa que dependa de data. Inclua o ano/mês atual na query e use 'recencia' pra restringir a janela temporal.",
       parameters: {
         type: "object",
-        properties: { query: { type: "string", description: "Termo de busca no Google" } },
+        properties: {
+          query: { type: "string", description: "Termo de busca. Inclua ano/mês/data quando fizer sentido (ex: 'greve ônibus Rio Janeiro dezembro 2026')." },
+          recencia: { type: "string", enum: ["d", "w", "m", "y"], description: "Janela: d=últimas 24h, w=última semana, m=último mês, y=último ano. Omita para busca geral." },
+        },
         required: ["query"],
       },
     },
