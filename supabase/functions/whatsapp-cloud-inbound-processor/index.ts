@@ -2,6 +2,7 @@
 // Modo AMZ: reconhece Felicio (dono), filtra clientes AMZ, lê imagens e áudios.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
 import { buildAmzContext, STRANGER_MSG } from "../_shared/amz-context.ts";
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
@@ -350,6 +351,118 @@ async function toolBuscarLugaresProximos(
   return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, null);
 }
 
+// ---- gerar_imagem: cria imagem por IA (Nano Banana) e sobe pro storage público ----
+async function toolGerarImagem(prompt: string, userId: string): Promise<string> {
+  const clean = (prompt || "").trim();
+  if (!clean) return JSON.stringify({ erro: "prompt vazio" });
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
+      body: JSON.stringify({
+        model: "google/gemini-3.1-flash-image-preview",
+        messages: [{ role: "user", content: clean }],
+        modalities: ["image", "text"],
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return JSON.stringify({ erro: `image_gen ${res.status}`, detalhe: t.slice(0, 200) });
+    }
+    const data = await res.json();
+    const dataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    if (!dataUrl) return JSON.stringify({ erro: "sem_imagem_retornada" });
+
+    let b64 = dataUrl;
+    let mime = "image/png";
+    if (b64.startsWith("data:")) {
+      const m = b64.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (m) { mime = m[1]; b64 = m[2]; }
+    }
+    const bytes = base64Decode(b64);
+    const fileName = `whatsapp-ai/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
+    if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
+    const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
+    if (!pub?.publicUrl) return JSON.stringify({ erro: "sem_url_publica" });
+    return JSON.stringify({ ok: true, image_url: pub.publicUrl, prompt: clean });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+// ---- consultar_clima: Open-Meteo (grátis, sem chave), com geocoding opcional ----
+async function toolConsultarClima(cidadeOuLatLng: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  try {
+    let lat: number | null = null, lng: number | null = null, nome = cidadeOuLatLng?.trim() || "";
+    const latlng = nome.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (latlng) { lat = Number(latlng[1]); lng = Number(latlng[2]); nome = `${lat},${lng}`; }
+    if (lat == null && nome) {
+      const g = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=pt&name=${encodeURIComponent(nome)}`, { signal: AbortSignal.timeout(8000) });
+      if (g.ok) {
+        const gd = await g.json();
+        const r0 = gd?.results?.[0];
+        if (r0) { lat = r0.latitude; lng = r0.longitude; nome = `${r0.name}${r0.admin1 ? " - " + r0.admin1 : ""}${r0.country ? ", " + r0.country : ""}`; }
+      }
+    }
+    if (lat == null && ctx.userId) {
+      const { data: loc } = await sb.from("whatsapp_user_locations").select("latitude, longitude, address").eq("user_id", ctx.userId).eq("contact_number", ctx.fromNumber).maybeSingle();
+      if (loc) { lat = Number(loc.latitude); lng = Number(loc.longitude); nome = loc.address || `${lat},${lng}`; }
+    }
+    if (lat == null || lng == null) return JSON.stringify({ erro: "cidade_nao_encontrada", instrucao: "Peça pra especificar a cidade (ex: 'clima em São Paulo')." });
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=America/Sao_Paulo&forecast_days=3`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return JSON.stringify({ erro: `clima_api ${r.status}` });
+    const d = await r.json();
+    const codeMap: Record<number, string> = {0:"céu limpo",1:"predominante claro",2:"parcialmente nublado",3:"nublado",45:"neblina",48:"neblina com geada",51:"garoa leve",53:"garoa",55:"garoa forte",61:"chuva leve",63:"chuva",65:"chuva forte",71:"neve leve",73:"neve",75:"neve forte",80:"pancadas leves",81:"pancadas de chuva",82:"pancadas fortes",95:"trovoadas",96:"trovoadas com granizo",99:"trovoadas fortes com granizo"};
+    return JSON.stringify({
+      local: nome,
+      agora: {
+        temperatura_c: d.current?.temperature_2m,
+        sensacao_c: d.current?.apparent_temperature,
+        umidade_pct: d.current?.relative_humidity_2m,
+        vento_kmh: d.current?.wind_speed_10m,
+        condicao: codeMap[d.current?.weather_code] || `código ${d.current?.weather_code}`,
+      },
+      previsao: (d.daily?.time ?? []).map((t: string, i: number) => ({
+        data: t,
+        min_c: d.daily.temperature_2m_min[i],
+        max_c: d.daily.temperature_2m_max[i],
+        chuva_prob_pct: d.daily.precipitation_probability_max[i],
+        condicao: codeMap[d.daily.weather_code[i]] || `código ${d.daily.weather_code[i]}`,
+      })),
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+// ---- cotacao_moeda: AwesomeAPI (grátis, sem chave). Ex: USD-BRL, EUR-BRL, BTC-BRL ----
+async function toolCotacaoMoeda(par: string): Promise<string> {
+  const clean = (par || "").toUpperCase().replace(/\s+/g, "").replace(/\//g, "-");
+  if (!/^[A-Z]{3,5}-[A-Z]{3,5}$/.test(clean)) return JSON.stringify({ erro: "par_invalido", exemplo: "USD-BRL, EUR-BRL, BTC-BRL" });
+  try {
+    const r = await fetch(`https://economia.awesomeapi.com.br/last/${clean}`, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return JSON.stringify({ erro: `cotacao_api ${r.status}` });
+    const d = await r.json();
+    const key = clean.replace("-", "");
+    const c = d[key];
+    if (!c) return JSON.stringify({ erro: "par_nao_encontrado" });
+    return JSON.stringify({
+      par: clean,
+      compra: Number(c.bid),
+      venda: Number(c.ask),
+      variacao_pct: Number(c.pctChange),
+      maxima_dia: Number(c.high),
+      minima_dia: Number(c.low),
+      atualizado_em: c.create_date,
+      nome: c.name,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
 const TOOLS = [
   {
     type: "function",
@@ -393,17 +506,59 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "gerar_imagem",
+      description: "Cria uma imagem por IA a partir de um prompt descritivo (arte, foto realista, ilustração, banner, story, meme, mockup). Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria um post', 'desenha', 'me manda uma foto de X', 'faz um banner'. A imagem é enviada automaticamente no WhatsApp — você só precisa responder com uma legenda curta (1-2 linhas) descrevendo o que criou. NUNCA cole a URL na resposta, apenas comente.",
+      parameters: {
+        type: "object",
+        properties: { prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" } },
+        required: ["prompt"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_clima",
+      description: "Consulta clima atual e previsão de 3 dias para uma cidade (ou lat,lng). Se a cidade não for informada, usa a última localização compartilhada pelo usuário. Retorna temperatura, sensação, umidade, vento e previsão.",
+      parameters: {
+        type: "object",
+        properties: { local: { type: "string", description: "Nome da cidade (ex: 'São Paulo'), ou coordenadas 'lat,lng'. Opcional se o usuário já compartilhou localização." } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cotacao_moeda",
+      description: "Consulta cotação em tempo real de moedas e cripto (fonte: AwesomeAPI). Exemplos: USD-BRL, EUR-BRL, BTC-BRL, ETH-BRL, GBP-BRL.",
+      parameters: {
+        type: "object",
+        properties: { par: { type: "string", description: "Par no formato ORIGEM-DESTINO, ex: USD-BRL" } },
+        required: ["par"],
+      },
+    },
+  },
 ];
 
 async function runTool(
   name: string,
   args: any,
   ctx: { userId: string; fromNumber: string },
-): Promise<string> {
-  if (name === "consultar_cnpj") return await toolConsultarCnpj(args?.cnpj ?? "");
-  if (name === "pesquisar_web") return await toolPesquisarWeb(args?.query ?? "", args?.recencia);
-  if (name === "buscar_lugares_proximos") return await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters);
-  return JSON.stringify({ erro: `ferramenta ${name} não existe` });
+): Promise<{ result: string; imageUrl?: string }> {
+  if (name === "consultar_cnpj") return { result: await toolConsultarCnpj(args?.cnpj ?? "") };
+  if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
+  if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
+  if (name === "gerar_imagem") {
+    const r = await toolGerarImagem(args?.prompt ?? "", ctx.userId);
+    let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
+    return { result: r, imageUrl: parsed?.image_url };
+  }
+  if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
+  if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
+  return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
 
@@ -413,7 +568,7 @@ async function callGemini(
   userContent: any,
   hasMedia: boolean,
   toolCtx: { userId: string; fromNumber: string },
-): Promise<string> {
+): Promise<{ text: string; imageUrl?: string }> {
   const messages: any[] = [
     { role: "system", content: systemPrompt },
     ...history,
@@ -422,6 +577,7 @@ async function callGemini(
 
   // Modelo pro é mais confiável com áudio/imagem
   const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
+  let pendingImageUrl: string | undefined;
 
   for (let step = 0; step < 4; step++) {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -453,19 +609,22 @@ async function callGemini(
         let args: any = {};
         try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
         console.log(`[pietro][tool] ${name}`, args);
-        const result = await runTool(name, args, toolCtx);
+        const { result, imageUrl } = await runTool(name, args, toolCtx);
+        if (imageUrl) pendingImageUrl = imageUrl;
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
     }
 
-    return msg?.content ?? "";
+    return { text: msg?.content ?? "", imageUrl: pendingImageUrl };
   }
-  return "Desculpa, não consegui concluir a pesquisa agora.";
+  return { text: "Desculpa, não consegui concluir a pesquisa agora.", imageUrl: pendingImageUrl };
 }
 
 
-async function sendWhatsApp(user_id: string, to: string, message: string): Promise<string | null> {
+async function sendWhatsApp(user_id: string, to: string, message: string, imageUrl?: string): Promise<string | null> {
+  const body: any = { user_id, to, message };
+  if (imageUrl) body.image_url = imageUrl;
   const res = await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
     method: "POST",
     headers: {
@@ -473,7 +632,7 @@ async function sendWhatsApp(user_id: string, to: string, message: string): Promi
       "Authorization": `Bearer ${SERVICE_KEY}`,
       "apikey": SERVICE_KEY,
     },
-    body: JSON.stringify({ user_id, to, message }),
+    body: JSON.stringify(body),
   });
   const txt = await res.text();
   if (!res.ok) throw new Error(`send ${res.status}: ${txt.slice(0, 200)}`);
@@ -796,7 +955,7 @@ async function processOne(queueId: string) {
 
     // PASSO 9 — IA (multimodal)
     const userContent = buildUserContent(userText, media);
-    const reply = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number });
+    const { text: reply, imageUrl: generatedImageUrl } = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number });
 
     // Incrementa quota
     await sb
@@ -812,8 +971,8 @@ async function processOne(queueId: string) {
         user_id: userId,
         direction: "outbound",
         sender: "agent",
-        content: reply,
-        message_type: "text",
+        content: generatedImageUrl ? `${reply}\n\n[imagem: ${generatedImageUrl}]` : reply,
+        message_type: generatedImageUrl ? "image" : "text",
       })
       .select("id")
       .single();
@@ -821,7 +980,7 @@ async function processOne(queueId: string) {
     // PASSO 11 — Envia
     let sendError: string | null = null;
     try {
-      const sentId = await sendWhatsApp(userId, row.from_number, reply);
+      const sentId = await sendWhatsApp(userId, row.from_number, reply, generatedImageUrl);
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
       }
