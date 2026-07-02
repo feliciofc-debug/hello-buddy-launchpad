@@ -118,19 +118,30 @@ async function toolConsultarCnpj(cnpj: string): Promise<string> {
   }
 }
 
-async function toolPesquisarWeb(query: string): Promise<string> {
+async function toolPesquisarWeb(query: string, recencia?: string): Promise<string> {
   if (!GOOGLE_API_KEY || !GOOGLE_CX) return JSON.stringify({ erro: "Busca web não configurada" });
   try {
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=6&hl=pt-BR`;
+    const params = new URLSearchParams({
+      key: GOOGLE_API_KEY, cx: GOOGLE_CX, q: query, num: "8", hl: "pt-BR", gl: "br", lr: "lang_pt",
+    });
+    // recencia: d=24h, w=7d, m=30d, y=365d (Google CSE dateRestrict)
+    const r2 = (recencia || "").toLowerCase().trim();
+    if (["d", "w", "m", "y"].includes(r2)) {
+      params.set("dateRestrict", `${r2}1`);
+      params.set("sort", "date");
+    }
+    const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
     const r = await fetch(url);
-    if (!r.ok) return JSON.stringify({ erro: `busca falhou (${r.status})` });
+    if (!r.ok) return JSON.stringify({ erro: `busca falhou (${r.status})`, detalhe: await r.text().catch(() => "") });
     const d = await r.json();
     const items = (d.items ?? []).map((it: any) => ({
       titulo: it.title,
       link: it.link,
       resumo: it.snippet,
+      fonte: it.displayLink,
+      data: it.pagemap?.metatags?.[0]?.["article:published_time"] || it.pagemap?.metatags?.[0]?.["og:updated_time"] || null,
     }));
-    return JSON.stringify({ query, resultados: items });
+    return JSON.stringify({ query, recencia: recencia || "qualquer", total: items.length, resultados: items });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
   }
