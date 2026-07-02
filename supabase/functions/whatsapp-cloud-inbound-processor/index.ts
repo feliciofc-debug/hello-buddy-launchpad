@@ -266,6 +266,7 @@ async function callGemini(
   history: Array<{ role: string; content: string }>,
   userContent: any,
   hasMedia: boolean,
+  toolCtx: { userId: string; fromNumber: string },
 ): Promise<string> {
   const messages: any[] = [
     { role: "system", content: systemPrompt },
