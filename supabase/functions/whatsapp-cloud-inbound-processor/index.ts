@@ -351,6 +351,118 @@ async function toolBuscarLugaresProximos(
   return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, null);
 }
 
+// ---- gerar_imagem: cria imagem por IA (Nano Banana) e sobe pro storage público ----
+async function toolGerarImagem(prompt: string, userId: string): Promise<string> {
+  const clean = (prompt || "").trim();
+  if (!clean) return JSON.stringify({ erro: "prompt vazio" });
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
+      body: JSON.stringify({
+        model: "google/gemini-3.1-flash-image-preview",
+        messages: [{ role: "user", content: clean }],
+        modalities: ["image", "text"],
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return JSON.stringify({ erro: `image_gen ${res.status}`, detalhe: t.slice(0, 200) });
+    }
+    const data = await res.json();
+    const dataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    if (!dataUrl) return JSON.stringify({ erro: "sem_imagem_retornada" });
+
+    let b64 = dataUrl;
+    let mime = "image/png";
+    if (b64.startsWith("data:")) {
+      const m = b64.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (m) { mime = m[1]; b64 = m[2]; }
+    }
+    const bytes = base64Decode(b64);
+    const fileName = `whatsapp-ai/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
+    if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
+    const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
+    if (!pub?.publicUrl) return JSON.stringify({ erro: "sem_url_publica" });
+    return JSON.stringify({ ok: true, image_url: pub.publicUrl, prompt: clean });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+// ---- consultar_clima: Open-Meteo (grátis, sem chave), com geocoding opcional ----
+async function toolConsultarClima(cidadeOuLatLng: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
+  try {
+    let lat: number | null = null, lng: number | null = null, nome = cidadeOuLatLng?.trim() || "";
+    const latlng = nome.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (latlng) { lat = Number(latlng[1]); lng = Number(latlng[2]); nome = `${lat},${lng}`; }
+    if (lat == null && nome) {
+      const g = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=1&language=pt&name=${encodeURIComponent(nome)}`, { signal: AbortSignal.timeout(8000) });
+      if (g.ok) {
+        const gd = await g.json();
+        const r0 = gd?.results?.[0];
+        if (r0) { lat = r0.latitude; lng = r0.longitude; nome = `${r0.name}${r0.admin1 ? " - " + r0.admin1 : ""}${r0.country ? ", " + r0.country : ""}`; }
+      }
+    }
+    if (lat == null && ctx.userId) {
+      const { data: loc } = await sb.from("whatsapp_user_locations").select("latitude, longitude, address").eq("user_id", ctx.userId).eq("contact_number", ctx.fromNumber).maybeSingle();
+      if (loc) { lat = Number(loc.latitude); lng = Number(loc.longitude); nome = loc.address || `${lat},${lng}`; }
+    }
+    if (lat == null || lng == null) return JSON.stringify({ erro: "cidade_nao_encontrada", instrucao: "Peça pra especificar a cidade (ex: 'clima em São Paulo')." });
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=America/Sao_Paulo&forecast_days=3`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return JSON.stringify({ erro: `clima_api ${r.status}` });
+    const d = await r.json();
+    const codeMap: Record<number, string> = {0:"céu limpo",1:"predominante claro",2:"parcialmente nublado",3:"nublado",45:"neblina",48:"neblina com geada",51:"garoa leve",53:"garoa",55:"garoa forte",61:"chuva leve",63:"chuva",65:"chuva forte",71:"neve leve",73:"neve",75:"neve forte",80:"pancadas leves",81:"pancadas de chuva",82:"pancadas fortes",95:"trovoadas",96:"trovoadas com granizo",99:"trovoadas fortes com granizo"};
+    return JSON.stringify({
+      local: nome,
+      agora: {
+        temperatura_c: d.current?.temperature_2m,
+        sensacao_c: d.current?.apparent_temperature,
+        umidade_pct: d.current?.relative_humidity_2m,
+        vento_kmh: d.current?.wind_speed_10m,
+        condicao: codeMap[d.current?.weather_code] || `código ${d.current?.weather_code}`,
+      },
+      previsao: (d.daily?.time ?? []).map((t: string, i: number) => ({
+        data: t,
+        min_c: d.daily.temperature_2m_min[i],
+        max_c: d.daily.temperature_2m_max[i],
+        chuva_prob_pct: d.daily.precipitation_probability_max[i],
+        condicao: codeMap[d.daily.weather_code[i]] || `código ${d.daily.weather_code[i]}`,
+      })),
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+// ---- cotacao_moeda: AwesomeAPI (grátis, sem chave). Ex: USD-BRL, EUR-BRL, BTC-BRL ----
+async function toolCotacaoMoeda(par: string): Promise<string> {
+  const clean = (par || "").toUpperCase().replace(/\s+/g, "").replace(/\//g, "-");
+  if (!/^[A-Z]{3,5}-[A-Z]{3,5}$/.test(clean)) return JSON.stringify({ erro: "par_invalido", exemplo: "USD-BRL, EUR-BRL, BTC-BRL" });
+  try {
+    const r = await fetch(`https://economia.awesomeapi.com.br/last/${clean}`, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return JSON.stringify({ erro: `cotacao_api ${r.status}` });
+    const d = await r.json();
+    const key = clean.replace("-", "");
+    const c = d[key];
+    if (!c) return JSON.stringify({ erro: "par_nao_encontrado" });
+    return JSON.stringify({
+      par: clean,
+      compra: Number(c.bid),
+      venda: Number(c.ask),
+      variacao_pct: Number(c.pctChange),
+      maxima_dia: Number(c.high),
+      minima_dia: Number(c.low),
+      atualizado_em: c.create_date,
+      nome: c.name,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
 const TOOLS = [
   {
     type: "function",
