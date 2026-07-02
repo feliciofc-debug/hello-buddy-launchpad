@@ -136,6 +136,77 @@ async function toolPesquisarWeb(query: string): Promise<string> {
   }
 }
 
+async function toolBuscarLugaresProximos(
+  ctx: { userId: string; fromNumber: string },
+  query: string,
+  radiusMeters?: number,
+): Promise<string> {
+  if (!GOOGLE_API_KEY) return JSON.stringify({ erro: "Google API key não configurada" });
+  const { data: locRow } = await sb
+    .from("whatsapp_user_locations")
+    .select("latitude, longitude, address, updated_at")
+    .eq("user_id", ctx.userId)
+    .eq("contact_number", ctx.fromNumber)
+    .maybeSingle();
+  if (!locRow) {
+    return JSON.stringify({
+      erro: "sem_localizacao",
+      instrucao: "Peça ao usuário para compartilhar a localização no WhatsApp (📎 → Localização → Enviar localização atual) e tentar de novo.",
+    });
+  }
+  const ageMin = (Date.now() - new Date(locRow.updated_at).getTime()) / 60000;
+  try {
+    const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_API_KEY,
+        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.currentOpeningHours.openNow,places.primaryTypeDisplayName,places.googleMapsUri,places.nationalPhoneNumber",
+      },
+      body: JSON.stringify({
+        textQuery: query,
+        languageCode: "pt-BR",
+        regionCode: "BR",
+        maxResultCount: 8,
+        locationBias: {
+          circle: {
+            center: { latitude: locRow.latitude, longitude: locRow.longitude },
+            radius: Math.min(Math.max(radiusMeters ?? 2000, 200), 20000),
+          },
+        },
+      }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      return JSON.stringify({ erro: `places ${r.status}: ${t.slice(0, 200)}` });
+    }
+    const d = await r.json();
+    const lugares = (d.places ?? []).map((p: any) => {
+      const dLat = (p.location?.latitude ?? 0) - locRow.latitude;
+      const dLng = (p.location?.longitude ?? 0) - locRow.longitude;
+      const km = Math.sqrt(dLat * dLat + dLng * dLng) * 111;
+      return {
+        nome: p.displayName?.text,
+        tipo: p.primaryTypeDisplayName?.text,
+        endereco: p.formattedAddress,
+        distancia_km: Number(km.toFixed(2)),
+        nota: p.rating,
+        avaliacoes: p.userRatingCount,
+        aberto_agora: p.currentOpeningHours?.openNow,
+        telefone: p.nationalPhoneNumber,
+        mapa: p.googleMapsUri,
+      };
+    });
+    return JSON.stringify({
+      query,
+      origem: { lat: locRow.latitude, lng: locRow.longitude, endereco: locRow.address, idade_minutos: Math.round(ageMin) },
+      lugares,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
 const TOOLS = [
   {
     type: "function",
@@ -161,13 +232,34 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "buscar_lugares_proximos",
+      description: "Busca lugares (cafeteria, farmácia, mercado, restaurante, posto, hospital, etc.) próximos à localização que o usuário compartilhou no WhatsApp. Retorna nome, endereço, distância, avaliação e se está aberto. Se o usuário nunca compartilhou localização, retorna erro pedindo pra ele mandar via 📎 → Localização.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Tipo de lugar em linguagem natural, ex: 'cafeteria', 'farmácia 24h', 'hamburgueria', 'mercado'" },
+          radius_meters: { type: "number", description: "Raio de busca em metros (padrão 2000, máx 20000)" },
+        },
+        required: ["query"],
+      },
+    },
+  },
 ];
 
-async function runTool(name: string, args: any): Promise<string> {
+async function runTool(
+  name: string,
+  args: any,
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
   if (name === "consultar_cnpj") return await toolConsultarCnpj(args?.cnpj ?? "");
   if (name === "pesquisar_web") return await toolPesquisarWeb(args?.query ?? "");
+  if (name === "buscar_lugares_proximos") return await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters);
   return JSON.stringify({ erro: `ferramenta ${name} não existe` });
 }
+
 
 async function callGemini(
   systemPrompt: string,
