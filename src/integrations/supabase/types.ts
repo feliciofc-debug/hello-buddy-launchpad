@@ -8268,6 +8268,42 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_reminders: {
+        Row: {
+          contact_number: string
+          created_at: string
+          id: string
+          meeting_at: string
+          next_notify_at: string
+          status: string
+          titulo: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          contact_number: string
+          created_at?: string
+          id?: string
+          meeting_at: string
+          next_notify_at: string
+          status?: string
+          titulo: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          contact_number?: string
+          created_at?: string
+          id?: string
+          meeting_at?: string
+          next_notify_at?: string
+          status?: string
+          titulo?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       whatsapp_user_locations: {
         Row: {
           address: string | null
