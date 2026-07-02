@@ -3505,6 +3505,24 @@ export type Database = {
         }
         Relationships: []
       }
+      jarvis_alerts_state: {
+        Row: {
+          alert_key: string
+          last_sent_at: string
+          payload: Json | null
+        }
+        Insert: {
+          alert_key: string
+          last_sent_at?: string
+          payload?: Json | null
+        }
+        Update: {
+          alert_key?: string
+          last_sent_at?: string
+          payload?: Json | null
+        }
+        Relationships: []
+      }
       jarvis_notes: {
         Row: {
           contact_number: string
