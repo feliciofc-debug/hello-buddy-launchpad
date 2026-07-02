@@ -880,6 +880,102 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "salvar_nota",
+      description: "Salva uma nota rápida / segunda memória do usuário. Use quando ele disser 'anota que…', 'lembra que…', 'guarda essa info', 'grava aí que…'.",
+      parameters: { type: "object", properties: { conteudo: { type: "string" }, tags: { type: "array", items: { type: "string" }, description: "Palavras-chave opcionais pra facilitar busca depois" } }, required: ["conteudo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "buscar_notas",
+      description: "Busca notas salvas anteriormente. Use quando o usuário perguntar 'qual era o CNPJ da X?', 'o que eu tinha anotado sobre Y?', 'me lembra o que eu falei sobre Z'.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "Termo/palavra-chave. Vazio = últimas notas." } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "adicionar_tarefa",
+      description: "Adiciona uma tarefa na to-do list do usuário. Use quando disser 'adiciona na minha lista', 'preciso fazer X', 'coloca X pra eu fazer amanhã'.",
+      parameters: { type: "object", properties: { titulo: { type: "string" }, prazo_sp: { type: "string", description: "Opcional YYYY-MM-DD HH:MM em SP" } }, required: ["titulo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listar_tarefas",
+      description: "Lista as tarefas do usuário. Use quando disser 'quais são minhas tarefas', 'o que eu tenho pra fazer', 'to-do'.",
+      parameters: { type: "object", properties: { status: { type: "string", enum: ["open", "done"], description: "padrão: open" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "concluir_tarefa",
+      description: "Marca uma tarefa como concluída. Use quando disser 'já fiz X', 'concluí a tarefa X', 'pode marcar como feito'.",
+      parameters: { type: "object", properties: { id_ou_titulo: { type: "string", description: "id UUID ou parte do título" } }, required: ["id_ou_titulo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_noticias",
+      description: "Busca notícias recentes sobre um tema (Google News). Use pra 'notícias sobre X', 'o que tá rolando sobre Y'.",
+      parameters: { type: "object", properties: { tema: { type: "string" } }, required: ["tema"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "rastrear_correios",
+      description: "Rastreia encomenda dos Correios pelo código (13 caracteres, ex: AA123456789BR).",
+      parameters: { type: "object", properties: { codigo: { type: "string" } }, required: ["codigo"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "calcular_rota",
+      description: "Calcula distância e tempo de carro entre origem e destino (OSRM). Aceita endereços, cidades, 'aqui'/'minha localização' pra usar a localização salva do usuário, ou 'lat,lng'.",
+      parameters: { type: "object", properties: { origem: { type: "string" }, destino: { type: "string" } }, required: ["origem", "destino"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_metricas_amz",
+      description: "[ADMIN — só Felicio] Retorna métricas gerais do negócio AMZ OFERTAS: total de clientes, assinaturas ativas/pausadas, faturamento do mês e de ontem.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listar_inadimplentes_amz",
+      description: "[ADMIN — só Felicio] Lista clientes AMZ inadimplentes ou com falha de pagamento recente.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "status_plataforma_amz",
+      description: "[ADMIN — só Felicio] Retorna saúde das Edge Functions da plataforma (quais estão com problema, offline, com falhas críticas).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "criar_cobranca_amz",
+      description: "[ADMIN — só Felicio] Cria uma cobrança PIX para um cliente AMZ pelo nome/razão social. Valor padrão 597. Use quando Felicio disser 'gera cobrança de X pro cliente Y'.",
+      parameters: { type: "object", properties: { cliente: { type: "string" }, valor: { type: "number" } }, required: ["cliente"] },
+    },
+  },
 ];
 
 async function runTool(
@@ -903,6 +999,18 @@ async function runTool(
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
+  if (name === "salvar_nota") return { result: await toolSalvarNota(args?.conteudo ?? "", args?.tags, ctx) };
+  if (name === "buscar_notas") return { result: await toolBuscarNotas(args?.query ?? "", ctx) };
+  if (name === "adicionar_tarefa") return { result: await toolAdicionarTarefa(args ?? {}, ctx) };
+  if (name === "listar_tarefas") return { result: await toolListarTarefas(args?.status, ctx) };
+  if (name === "concluir_tarefa") return { result: await toolConcluirTarefa(args?.id_ou_titulo ?? "", ctx) };
+  if (name === "consultar_noticias") return { result: await toolConsultarNoticias(args?.tema ?? "") };
+  if (name === "rastrear_correios") return { result: await toolRastrearCorreios(args?.codigo ?? "") };
+  if (name === "calcular_rota") return { result: await toolCalcularRota(args?.origem ?? "", args?.destino ?? "", ctx) };
+  if (name === "consultar_metricas_amz") return { result: await toolMetricasAmz(ctx) };
+  if (name === "listar_inadimplentes_amz") return { result: await toolInadimplentesAmz(ctx) };
+  if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
+  if (name === "criar_cobranca_amz") return { result: await toolCriarCobrancaAmz(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
