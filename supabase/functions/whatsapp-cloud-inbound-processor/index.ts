@@ -2,6 +2,7 @@
 // Modo AMZ: reconhece Felicio (dono), filtra clientes AMZ, lê imagens e áudios.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
 import { buildAmzContext, STRANGER_MSG } from "../_shared/amz-context.ts";
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
