@@ -5873,7 +5873,9 @@ export type Database = {
       }
       profiles: {
         Row: {
+          acesso_bloqueado: boolean
           amazon_id: string | null
+          bloqueado_em: string | null
           cnae: string | null
           cnae_descricao: string | null
           cpf: string
@@ -5885,6 +5887,7 @@ export type Database = {
           logo_reel_url: string | null
           lomadee_id: string | null
           mercado_livre_id: string | null
+          motivo_bloqueio: string | null
           nome: string
           nome_fantasia: string | null
           plano: string | null
@@ -5897,7 +5900,9 @@ export type Database = {
           whatsapp: string
         }
         Insert: {
+          acesso_bloqueado?: boolean
           amazon_id?: string | null
+          bloqueado_em?: string | null
           cnae?: string | null
           cnae_descricao?: string | null
           cpf: string
@@ -5909,6 +5914,7 @@ export type Database = {
           logo_reel_url?: string | null
           lomadee_id?: string | null
           mercado_livre_id?: string | null
+          motivo_bloqueio?: string | null
           nome: string
           nome_fantasia?: string | null
           plano?: string | null
@@ -5921,7 +5927,9 @@ export type Database = {
           whatsapp: string
         }
         Update: {
+          acesso_bloqueado?: boolean
           amazon_id?: string | null
+          bloqueado_em?: string | null
           cnae?: string | null
           cnae_descricao?: string | null
           cpf?: string
@@ -5933,6 +5941,7 @@ export type Database = {
           logo_reel_url?: string | null
           lomadee_id?: string | null
           mercado_livre_id?: string | null
+          motivo_bloqueio?: string | null
           nome?: string
           nome_fantasia?: string | null
           plano?: string | null
