@@ -666,6 +666,22 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "criar_lembrete",
+      description: "Cria um lembrete/aviso que a Jarvis vai disparar no WhatsApp do usuário automaticamente: 1º aviso 30 minutos antes e depois a cada 10 minutos até a hora combinada, além de um aviso final na hora exata. Use SEMPRE que o usuário pedir 'me lembra', 'me avisa', 'agenda um lembrete', 'não me deixa esquecer', 'me chama X minutos antes'. Você DEVE calcular a data/hora absoluta em horário de São Paulo a partir da 'Data/hora atual' informada no system prompt (ex: 'amanhã 15h' → soma 1 dia à data de hoje). Prefira o parâmetro data_hora_sp. Use minutos_a_partir_de_agora só quando o usuário disser algo como 'daqui 20 minutos'.",
+      parameters: {
+        type: "object",
+        properties: {
+          titulo: { type: "string", description: "Assunto curto do lembrete, ex: 'Reunião com Marcelo Martins'" },
+          data_hora_sp: { type: "string", description: "Data/hora absoluta em horário de São Paulo no formato 'YYYY-MM-DD HH:MM'. Ex: '2026-07-03 15:00'." },
+          minutos_a_partir_de_agora: { type: "number", description: "Alternativa: minutos até o evento a partir de agora. Ex: 20." },
+        },
+        required: ["titulo"],
+      },
+    },
+  },
 ];
 
 async function runTool(
