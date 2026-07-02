@@ -525,6 +525,57 @@ async function toolCotacaoMoeda(par: string): Promise<string> {
   }
 }
 
+// ---- criar_lembrete: agenda notificação com escalonamento (30min antes, a cada 10min) ----
+async function toolCriarLembrete(
+  args: { titulo?: string; data_hora_sp?: string; minutos_a_partir_de_agora?: number },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const titulo = (args?.titulo || "").trim();
+  if (!titulo) return JSON.stringify({ erro: "titulo_obrigatorio" });
+  let meetingMs: number | null = null;
+  if (args?.minutos_a_partir_de_agora && Number(args.minutos_a_partir_de_agora) > 0) {
+    meetingMs = Date.now() + Number(args.minutos_a_partir_de_agora) * 60000;
+  } else if (args?.data_hora_sp) {
+    // "YYYY-MM-DD HH:MM" em horário de São Paulo (UTC-3, sem DST)
+    const m = String(args.data_hora_sp).trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!m) return JSON.stringify({ erro: "formato_data_invalido", esperado: "YYYY-MM-DD HH:MM" });
+    const [, y, mo, d, h, mi] = m;
+    // SP = UTC-3 → adiciona 3h para converter para UTC
+    meetingMs = Date.UTC(+y, +mo - 1, +d, +h + 3, +mi, 0);
+  } else {
+    return JSON.stringify({ erro: "informe data_hora_sp ou minutos_a_partir_de_agora" });
+  }
+  if (meetingMs <= Date.now()) return JSON.stringify({ erro: "data_no_passado" });
+
+  const nowMs = Date.now();
+  const diffMin = Math.round((meetingMs - nowMs) / 60000);
+  // Primeiro aviso: 30min antes; se falta menos que isso, dispara já
+  const firstNotifyMs = diffMin > 30 ? meetingMs - 30 * 60000 : nowMs;
+
+  const { data, error } = await sb.from("whatsapp_reminders").insert({
+    user_id: ctx.userId,
+    contact_number: ctx.fromNumber,
+    titulo,
+    meeting_at: new Date(meetingMs).toISOString(),
+    next_notify_at: new Date(firstNotifyMs).toISOString(),
+    status: "active",
+  }).select("id").single();
+  if (error) return JSON.stringify({ erro: error.message });
+
+  const quandoSP = new Date(meetingMs).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+  return JSON.stringify({
+    ok: true,
+    id: data.id,
+    titulo,
+    quando: quandoSP,
+    primeiro_aviso_em_min: Math.max(0, Math.round((firstNotifyMs - nowMs) / 60000)),
+    politica: "aviso 30min antes e a cada 10min até a hora",
+  });
+}
+
 const TOOLS = [
   {
     type: "function",
@@ -615,6 +666,22 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "criar_lembrete",
+      description: "Cria um lembrete/aviso que a Jarvis vai disparar no WhatsApp do usuário automaticamente: 1º aviso 30 minutos antes e depois a cada 10 minutos até a hora combinada, além de um aviso final na hora exata. Use SEMPRE que o usuário pedir 'me lembra', 'me avisa', 'agenda um lembrete', 'não me deixa esquecer', 'me chama X minutos antes'. Você DEVE calcular a data/hora absoluta em horário de São Paulo a partir da 'Data/hora atual' informada no system prompt (ex: 'amanhã 15h' → soma 1 dia à data de hoje). Prefira o parâmetro data_hora_sp. Use minutos_a_partir_de_agora só quando o usuário disser algo como 'daqui 20 minutos'.",
+      parameters: {
+        type: "object",
+        properties: {
+          titulo: { type: "string", description: "Assunto curto do lembrete, ex: 'Reunião com Marcelo Martins'" },
+          data_hora_sp: { type: "string", description: "Data/hora absoluta em horário de São Paulo no formato 'YYYY-MM-DD HH:MM'. Ex: '2026-07-03 15:00'." },
+          minutos_a_partir_de_agora: { type: "number", description: "Alternativa: minutos até o evento a partir de agora. Ex: 20." },
+        },
+        required: ["titulo"],
+      },
+    },
+  },
 ];
 
 async function runTool(
@@ -637,6 +704,7 @@ async function runTool(
   }
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
+  if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
@@ -648,8 +716,14 @@ async function callGemini(
   hasMedia: boolean,
   toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[] },
 ): Promise<{ text: string; imageUrl?: string }> {
+  const nowSP = new Date().toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    weekday: "long", day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+  const timeHeader = `Data/hora atual em São Paulo: ${nowSP}. Use isto para resolver expressões como "hoje", "amanhã", "daqui a X min" ao chamar ferramentas de agendamento.`;
   const messages: any[] = [
-    { role: "system", content: systemPrompt },
+    { role: "system", content: `${timeHeader}\n\n${systemPrompt}` },
     ...history,
     { role: "user", content: userContent },
   ];
