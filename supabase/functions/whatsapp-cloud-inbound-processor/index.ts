@@ -199,6 +199,28 @@ async function toolPesquisarWeb(query: string, recencia?: string): Promise<strin
   }
 }
 
+function detectWebSearchIntent(text: string): { query: string; recencia?: string } | null {
+  const raw = (text || "").trim();
+  if (!raw) return null;
+  const t = normalizePt(raw);
+
+  const hasExplicitSearchIntent = /\b(procura|procurar|busca|buscar|pesquisa|pesquisar|google|internet|web|acha ai|ve pra mim|consulte)\b/.test(t);
+  const hasRealtimeIntent = /\b(hoje|agora|atual|recente|ultimas|noticias|transito|trafego|cotacao|preco|placar|resultado|agenda|greve)\b/.test(t);
+  const hasRecipeIntent = /\b(receita|como fazer|ingredientes|modo de preparo)\b/.test(t);
+
+  if (!hasExplicitSearchIntent && !hasRealtimeIntent && !hasRecipeIntent) return null;
+
+  let query = raw
+    .replace(/^jarvis[,\s]*/i, "")
+    .replace(/^(procura|procurar|busca|buscar|pesquisa|pesquisar|consulta|consulte)\s+(no\s+google\s+|na\s+internet\s+|na\s+web\s+)?/i, "")
+    .trim();
+
+  if (!query) query = raw;
+  if (/\btransito\b/.test(t) && !/\b2026\b/.test(t)) query = `${query} trânsito agora 2026`;
+  if (/\b(notícias|noticias|recente|hoje|agora|atual|transito|trafego|greve)\b/i.test(raw)) return { query, recencia: "d" };
+  return { query };
+}
+
 function normalizePt(text: string): string {
   return (text || "")
     .toLowerCase()
