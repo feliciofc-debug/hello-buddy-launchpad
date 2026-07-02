@@ -862,39 +862,49 @@ async function resolveScope(ctx: { userId: string; fromNumber: string }): Promis
 
 async function toolConsultarEstoque(query: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
   const q = (query || "").trim();
-  const { scopeUserId, isAdmin } = await resolveScope(ctx);
+  const { isAdmin } = await resolveScope(ctx);
   try {
-    // produtos (tabela principal)
+    // Busca por termo (se houver) — respeita escopo
     let p = sb.from("produtos").select("nome, categoria, preco, estoque, ativo, user_id, link").limit(20);
-    if (scopeUserId) p = p.eq("user_id", scopeUserId);
+    if (!isAdmin) p = p.eq("user_id", ctx.userId);
     if (q) p = p.or(`nome.ilike.%${q}%,descricao.ilike.%${q}%,categoria.ilike.%${q}%,tags.ilike.%${q}%`);
     const { data: prods } = await p;
 
-    // products_stock (secundária)
     let s = sb.from("products_stock").select("name, category, price, qty, active, user_id").limit(20);
-    if (scopeUserId) s = s.eq("user_id", scopeUserId);
+    if (!isAdmin) s = s.eq("user_id", ctx.userId);
     if (q) s = s.or(`name.ilike.%${q}%,category.ilike.%${q}%,sku.ilike.%${q}%`);
     const { data: stock } = await s;
 
-    // contagens totais
-    let cp = sb.from("produtos").select("*", { count: "exact", head: true });
-    if (scopeUserId) cp = cp.eq("user_id", scopeUserId);
-    const { count: totalProdutos } = await cp;
+    // Contagens — sempre reportar AMBOS quando admin (evita divergência com a UI do dono)
+    const { count: totalOwn } = await sb.from("produtos").select("*", { count: "exact", head: true }).eq("user_id", ctx.userId);
+    const { count: ativosOwn } = await sb.from("produtos").select("*", { count: "exact", head: true }).eq("user_id", ctx.userId).eq("ativo", true);
 
-    let cs = sb.from("products_stock").select("*", { count: "exact", head: true });
-    if (scopeUserId) cs = cs.eq("user_id", scopeUserId);
-    const { count: totalStock } = await cs;
+    let totalGlobal: number | null = null;
+    let ativosGlobal: number | null = null;
+    if (isAdmin) {
+      const g1 = await sb.from("produtos").select("*", { count: "exact", head: true });
+      const g2 = await sb.from("produtos").select("*", { count: "exact", head: true }).eq("ativo", true);
+      totalGlobal = g1.count ?? 0;
+      ativosGlobal = g2.count ?? 0;
+    }
 
     return JSON.stringify({
       escopo: isAdmin ? "admin_global" : "usuario",
       busca: q || "(sem filtro)",
-      total_produtos_catalogo: totalProdutos ?? 0,
-      total_products_stock: totalStock ?? 0,
-      encontrados_produtos: (prods ?? []).map((r: any) => ({ nome: r.nome, categoria: r.categoria, preco: r.preco, estoque: r.estoque, ativo: r.ativo, link: r.link })),
-      encontrados_stock: (stock ?? []).map((r: any) => ({ nome: r.name, categoria: r.category, preco: r.price, qtd: r.qty, ativo: r.active })),
+      // Contagens do CATÁLOGO do próprio usuário (o que ele vê em /meus-produtos)
+      meu_catalogo_total: totalOwn ?? 0,
+      meu_catalogo_ativos: ativosOwn ?? 0,
+      // Contagens da PLATAFORMA INTEIRA (somente admin)
+      plataforma_total_produtos: totalGlobal,
+      plataforma_total_ativos: ativosGlobal,
+      // NOTA para a IA: a maioria dos produtos são links de afiliado (Shopee/Amazon etc). O campo `estoque` é 0 na maior parte — isso NÃO significa ruptura, apenas que não é estoque físico rastreado.
+      observacao_estoque: "Produtos afiliados não têm estoque físico rastreado. Não reporte 'estoque zerado' a menos que o usuário pergunte especificamente sobre um SKU físico em products_stock.",
+      encontrados_produtos: (prods ?? []).map((r: any) => ({ nome: r.nome, categoria: r.categoria, preco: r.preco, ativo: r.ativo, link: r.link })),
+      encontrados_stock_fisico: (stock ?? []).map((r: any) => ({ nome: r.name, categoria: r.category, preco: r.price, qtd: r.qty, ativo: r.active })),
     });
   } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
 }
+
 
 async function toolConsultarCampanhas(ctx: { userId: string; fromNumber: string }): Promise<string> {
   const { scopeUserId, isAdmin } = await resolveScope(ctx);
