@@ -340,7 +340,23 @@ async function processOne(queueId: string) {
     }
 
     const userText = extractText(row.payload);
-    const inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
+    let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
+
+    // Captura localização compartilhada
+    const loc = row.payload?.location;
+    if (loc?.latitude != null && loc?.longitude != null) {
+      await sb.from("whatsapp_user_locations").upsert({
+        user_id: userId,
+        contact_number: row.from_number,
+        latitude: Number(loc.latitude),
+        longitude: Number(loc.longitude),
+        name: loc.name ?? null,
+        address: loc.address ?? null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id,contact_number" });
+      inboundContent = `📍 Localização compartilhada${loc.name ? ` (${loc.name})` : ""}${loc.address ? ` — ${loc.address}` : ""} [${loc.latitude}, ${loc.longitude}]`;
+      console.log(`[processor] location saved for ${row.from_number}`);
+    }
 
     // PASSO 6 — Grava inbound
     await sb.from("whatsapp_cloud_messages").insert({
