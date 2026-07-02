@@ -506,17 +506,59 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "gerar_imagem",
+      description: "Cria uma imagem por IA a partir de um prompt descritivo (arte, foto realista, ilustração, banner, story, meme, mockup). Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria um post', 'desenha', 'me manda uma foto de X', 'faz um banner'. A imagem é enviada automaticamente no WhatsApp — você só precisa responder com uma legenda curta (1-2 linhas) descrevendo o que criou. NUNCA cole a URL na resposta, apenas comente.",
+      parameters: {
+        type: "object",
+        properties: { prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" } },
+        required: ["prompt"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_clima",
+      description: "Consulta clima atual e previsão de 3 dias para uma cidade (ou lat,lng). Se a cidade não for informada, usa a última localização compartilhada pelo usuário. Retorna temperatura, sensação, umidade, vento e previsão.",
+      parameters: {
+        type: "object",
+        properties: { local: { type: "string", description: "Nome da cidade (ex: 'São Paulo'), ou coordenadas 'lat,lng'. Opcional se o usuário já compartilhou localização." } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cotacao_moeda",
+      description: "Consulta cotação em tempo real de moedas e cripto (fonte: AwesomeAPI). Exemplos: USD-BRL, EUR-BRL, BTC-BRL, ETH-BRL, GBP-BRL.",
+      parameters: {
+        type: "object",
+        properties: { par: { type: "string", description: "Par no formato ORIGEM-DESTINO, ex: USD-BRL" } },
+        required: ["par"],
+      },
+    },
+  },
 ];
 
 async function runTool(
   name: string,
   args: any,
   ctx: { userId: string; fromNumber: string },
-): Promise<string> {
-  if (name === "consultar_cnpj") return await toolConsultarCnpj(args?.cnpj ?? "");
-  if (name === "pesquisar_web") return await toolPesquisarWeb(args?.query ?? "", args?.recencia);
-  if (name === "buscar_lugares_proximos") return await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters);
-  return JSON.stringify({ erro: `ferramenta ${name} não existe` });
+): Promise<{ result: string; imageUrl?: string }> {
+  if (name === "consultar_cnpj") return { result: await toolConsultarCnpj(args?.cnpj ?? "") };
+  if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
+  if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
+  if (name === "gerar_imagem") {
+    const r = await toolGerarImagem(args?.prompt ?? "", ctx.userId);
+    let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
+    return { result: r, imageUrl: parsed?.image_url };
+  }
+  if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
+  if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
+  return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
 
