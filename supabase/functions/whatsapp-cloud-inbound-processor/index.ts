@@ -1209,8 +1209,48 @@ const TOOLS = [
       description: "[ADMIN — só Felicio] Cria uma cobrança PIX para um cliente AMZ pelo nome/razão social. Valor padrão 597. Use quando Felicio disser 'gera cobrança de X pro cliente Y'.",
       parameters: { type: "object", properties: { cliente: { type: "string" }, valor: { type: "number" } }, required: ["cliente"] },
     },
+  {
+    type: "function",
+    function: {
+      name: "consultar_estoque",
+      description: "Consulta produtos/estoque da plataforma. Se query vazia, retorna totais. Se preenchida, busca por nome/categoria/tags/sku (ex.: 'chinelo', 'xícara chocolate'). Dono vê tudo; cliente só o próprio catálogo.",
+      parameters: { type: "object", properties: { query: { type: "string", description: "termo de busca ou vazio para totais" } } },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_campanhas",
+      description: "Status das campanhas WhatsApp: total, ativas, próximas execuções, envios nas últimas 24h e stats da fila (pendente/processando/enviado/falhou).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_autopilot",
+      description: "Status do Autopilot de redes sociais: configs ativas, quantos posts foram publicados/agendados/falhados nas últimas 24h por rede (Facebook/Instagram).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "consultar_clientes_leads",
+      description: "Contagens de clientes ativos, novos clientes nos últimos 7 dias e total de leads B2B/B2C.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "resumo_plataforma",
+      description: "Snapshot completo da plataforma agora: estoque + campanhas + autopilot + clientes/leads. Use quando o usuário pedir 'resumo geral', 'como tá a plataforma', 'panorama'.",
+      parameters: { type: "object", properties: {} },
+    },
   },
 ];
+
 
 async function runTool(
   name: string,
