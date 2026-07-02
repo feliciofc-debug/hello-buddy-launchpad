@@ -630,6 +630,11 @@ async function runTool(
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
+  if (name === "editar_imagem") {
+    const r = await toolEditarImagem(args?.prompt ?? "", { userId: ctx.userId, media: ctx.media });
+    let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
+    return { result: r, imageUrl: parsed?.image_url };
+  }
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
@@ -641,7 +646,7 @@ async function callGemini(
   history: Array<{ role: string; content: string }>,
   userContent: any,
   hasMedia: boolean,
-  toolCtx: { userId: string; fromNumber: string },
+  toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[] },
 ): Promise<{ text: string; imageUrl?: string }> {
   const messages: any[] = [
     { role: "system", content: systemPrompt },
