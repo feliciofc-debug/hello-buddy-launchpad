@@ -271,7 +271,7 @@ async function runTool(
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   if (name === "consultar_cnpj") return await toolConsultarCnpj(args?.cnpj ?? "");
-  if (name === "pesquisar_web") return await toolPesquisarWeb(args?.query ?? "");
+  if (name === "pesquisar_web") return await toolPesquisarWeb(args?.query ?? "", args?.recencia);
   if (name === "buscar_lugares_proximos") return await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters);
   return JSON.stringify({ erro: `ferramenta ${name} não existe` });
 }
