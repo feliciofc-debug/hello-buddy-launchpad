@@ -345,62 +345,8 @@ async function toolBuscarLugaresProximos(
       instrucao: "Peça ao usuário para compartilhar a localização no WhatsApp (📎 → Localização → Enviar localização atual) e tentar de novo.",
     });
   }
-  if (!GOOGLE_API_KEY) return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, "Google API key não configurada");
-  const ageMin = (Date.now() - new Date(locRow.updated_at).getTime()) / 60000;
-  try {
-    const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_API_KEY,
-        "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.currentOpeningHours.openNow,places.primaryTypeDisplayName,places.googleMapsUri,places.nationalPhoneNumber",
-      },
-      body: JSON.stringify({
-        textQuery: query,
-        languageCode: "pt-BR",
-        regionCode: "BR",
-        maxResultCount: 8,
-        locationBias: {
-          circle: {
-            center: { latitude: locRow.latitude, longitude: locRow.longitude },
-            radius: Math.min(Math.max(radiusMeters ?? 2000, 200), 20000),
-          },
-        },
-      }),
-    });
-    if (!r.ok) {
-      const t = await r.text();
-      console.log(`[places][ERROR] status=${r.status} body=${t.slice(0, 500)}`);
-      return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, `places ${r.status}: ${t.slice(0, 300)}`);
-    }
-    const d = await r.json();
-    console.log(`[places][OK] query="${query}" count=${(d.places ?? []).length}`);
-    const lugares = (d.places ?? []).map((p: any) => {
-      const dLat = (p.location?.latitude ?? 0) - locRow.latitude;
-      const dLng = (p.location?.longitude ?? 0) - locRow.longitude;
-      const km = Math.sqrt(dLat * dLat + dLng * dLng) * 111;
-      return {
-        nome: p.displayName?.text,
-        tipo: p.primaryTypeDisplayName?.text,
-        endereco: p.formattedAddress,
-        distancia_km: Number(km.toFixed(2)),
-        nota: p.rating,
-        avaliacoes: p.userRatingCount,
-        aberto_agora: p.currentOpeningHours?.openNow,
-        telefone: p.nationalPhoneNumber,
-        mapa: p.googleMapsUri,
-      };
-    });
-    return JSON.stringify({
-      query,
-      origem: { lat: locRow.latitude, lng: locRow.longitude, endereco: locRow.address, idade_minutos: Math.round(ageMin) },
-      lugares,
-    });
-  } catch (e) {
-    const googleError = String((e as Error).message);
-    console.log(`[places][EXCEPTION] ${googleError}`);
-    return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, googleError);
-  }
+  // OSM (Overpass) como fonte primária — gratuito, sem chave.
+  return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, null);
 }
 
 const TOOLS = [
