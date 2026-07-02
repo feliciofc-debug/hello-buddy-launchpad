@@ -6,7 +6,10 @@
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { ADMIN_AMZ_USER_ID } from "./agent-soul.ts";
 
-export const OWNER_PHONE = "5521980804901";
+// 21980804901 = número DO AGENTE (Meta Cloud API) — NÃO é o dono
+// 21967520706 = número DO DONO (Felicio Carega)
+export const OWNER_PHONE = "5521967520706";
+export const AGENT_PHONE = "5521980804901";
 
 export type AmzAccess = "owner" | "client" | "stranger";
 
