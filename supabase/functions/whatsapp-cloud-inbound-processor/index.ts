@@ -391,6 +391,68 @@ async function toolGerarImagem(prompt: string, userId: string): Promise<string> 
   }
 }
 
+// ---- editar_imagem: edita/melhora foto que o usuário mandou (usa última imagem do turno) ----
+async function toolEditarImagem(
+  prompt: string,
+  ctx: { userId: string; media?: MediaExtract[] },
+): Promise<string> {
+  const clean = (prompt || "").trim();
+  if (!clean) return JSON.stringify({ erro: "prompt vazio" });
+  const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
+  if (!img) {
+    return JSON.stringify({
+      erro: "sem_imagem",
+      instrucao: "Peça ao usuário para enviar a foto no mesmo momento do pedido de edição.",
+    });
+  }
+  try {
+    const dataUrlInput = `data:${img.mime};base64,${img.base64}`;
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
+      body: JSON.stringify({
+        model: "google/gemini-3.1-flash-image-preview",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `Edite esta foto conforme o pedido abaixo, preservando pessoas, rostos e o produto/objeto principal reconhecíveis. Apenas melhore ambiente, iluminação, cores, fundo e composição.\n\nPedido: ${clean}\n\nRegras: sem texto, palavras, letras ou marcas d'água na imagem. Resultado fotorealista de alta qualidade.`,
+              },
+              { type: "image_url", image_url: { url: dataUrlInput } },
+            ],
+          },
+        ],
+        modalities: ["image", "text"],
+      }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      return JSON.stringify({ erro: `image_edit ${res.status}`, detalhe: t.slice(0, 200) });
+    }
+    const data = await res.json();
+    const dataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
+    if (!dataUrl) return JSON.stringify({ erro: "sem_imagem_retornada" });
+
+    let b64 = dataUrl;
+    let mime = "image/png";
+    if (b64.startsWith("data:")) {
+      const m = b64.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (m) { mime = m[1]; b64 = m[2]; }
+    }
+    const bytes = base64Decode(b64);
+    const fileName = `whatsapp-ai/${ctx.userId}/edit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
+    if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
+    const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
+    if (!pub?.publicUrl) return JSON.stringify({ erro: "sem_url_publica" });
+    return JSON.stringify({ ok: true, image_url: pub.publicUrl, prompt: clean });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
 // ---- consultar_clima: Open-Meteo (grátis, sem chave), com geocoding opcional ----
 async function toolConsultarClima(cidadeOuLatLng: string, ctx: { userId: string; fromNumber: string }): Promise<string> {
   try {
@@ -541,18 +603,35 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "editar_imagem",
+      description: "Edita/melhora uma FOTO que o usuário acabou de enviar no WhatsApp (mesma mensagem ou anterior recente). Use quando ele pedir 'melhora essa foto', 'deixa o ambiente mais bonito', 'troca o fundo', 'coloca luz natural', 'transforma em profissional', 'remove X'. NÃO use pra criar imagem do zero (use gerar_imagem). A imagem editada é enviada automaticamente — responda com legenda curta descrevendo o que ajustou.",
+      parameters: {
+        type: "object",
+        properties: { prompt: { type: "string", description: "Descrição da edição desejada. Ex: 'deixa a cafeteria mais aconchegante, luz quente de fim de tarde, mais plantas, mesa de madeira rústica' — mantendo as pessoas/produto originais." } },
+        required: ["prompt"],
+      },
+    },
+  },
 ];
 
 async function runTool(
   name: string,
   args: any,
-  ctx: { userId: string; fromNumber: string },
+  ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
 ): Promise<{ result: string; imageUrl?: string }> {
   if (name === "consultar_cnpj") return { result: await toolConsultarCnpj(args?.cnpj ?? "") };
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
   if (name === "gerar_imagem") {
     const r = await toolGerarImagem(args?.prompt ?? "", ctx.userId);
+    let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
+    return { result: r, imageUrl: parsed?.image_url };
+  }
+  if (name === "editar_imagem") {
+    const r = await toolEditarImagem(args?.prompt ?? "", { userId: ctx.userId, media: ctx.media });
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
@@ -567,7 +646,7 @@ async function callGemini(
   history: Array<{ role: string; content: string }>,
   userContent: any,
   hasMedia: boolean,
-  toolCtx: { userId: string; fromNumber: string },
+  toolCtx: { userId: string; fromNumber: string; media?: MediaExtract[] },
 ): Promise<{ text: string; imageUrl?: string }> {
   const messages: any[] = [
     { role: "system", content: systemPrompt },
@@ -955,7 +1034,7 @@ async function processOne(queueId: string) {
 
     // PASSO 9 — IA (multimodal)
     const userContent = buildUserContent(userText, media);
-    const { text: reply, imageUrl: generatedImageUrl } = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number });
+    const { text: reply, imageUrl: generatedImageUrl } = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number, media });
 
     // Incrementa quota
     await sb
