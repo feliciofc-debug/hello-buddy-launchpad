@@ -308,7 +308,6 @@ async function toolBuscarLugaresProximos(
   query: string,
   radiusMeters?: number,
 ): Promise<string> {
-  if (!GOOGLE_API_KEY) return JSON.stringify({ erro: "Google API key não configurada" });
   const { data: locRow } = await sb
     .from("whatsapp_user_locations")
     .select("latitude, longitude, address, updated_at")
@@ -321,6 +320,7 @@ async function toolBuscarLugaresProximos(
       instrucao: "Peça ao usuário para compartilhar a localização no WhatsApp (📎 → Localização → Enviar localização atual) e tentar de novo.",
     });
   }
+  if (!GOOGLE_API_KEY) return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, "Google API key não configurada");
   const ageMin = (Date.now() - new Date(locRow.updated_at).getTime()) / 60000;
   try {
     const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -346,7 +346,7 @@ async function toolBuscarLugaresProximos(
     if (!r.ok) {
       const t = await r.text();
       console.log(`[places][ERROR] status=${r.status} body=${t.slice(0, 500)}`);
-      return JSON.stringify({ erro: `places ${r.status}: ${t.slice(0, 300)}` });
+      return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, `places ${r.status}: ${t.slice(0, 300)}`);
     }
     const d = await r.json();
     console.log(`[places][OK] query="${query}" count=${(d.places ?? []).length}`);
@@ -372,7 +372,9 @@ async function toolBuscarLugaresProximos(
       lugares,
     });
   } catch (e) {
-    return JSON.stringify({ erro: String((e as Error).message) });
+    const googleError = String((e as Error).message);
+    console.log(`[places][EXCEPTION] ${googleError}`);
+    return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, googleError);
   }
 }
 
@@ -606,6 +608,7 @@ async function processOne(queueId: string) {
 
     const userText = extractText(row.payload);
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
+    const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
 
     // Captura localização compartilhada
     const loc = row.payload?.location;
@@ -637,6 +640,51 @@ async function processOne(queueId: string) {
     if (conv.status === "handoff") {
       await doneQueue(row.id);
       return { ok: true, handoff: true };
+    }
+
+    // Atalho determinístico: pedidos explícitos de lugar próximo não dependem da IA chamar tool.
+    // Isso evita respostas falsas de "permissão bloqueada" quando a localização já está salva.
+    if (directNearbySearch && userId) {
+      console.log(`[processor][nearby-direct] from=${row.from_number} query=${directNearbySearch.query}`);
+      const rawNearby = await toolBuscarLugaresProximos(
+        { userId, fromNumber: row.from_number },
+        directNearbySearch.query,
+        directNearbySearch.radiusMeters,
+      );
+      const reply = formatNearbyReply(rawNearby, directNearbySearch.query);
+
+      const { data: outMsg } = await sb
+        .from("whatsapp_cloud_messages")
+        .insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+
+      let sendError: string | null = null;
+      try {
+        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        if (sentId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+        }
+      } catch (e) {
+        sendError = String((e as Error).message ?? e);
+      }
+
+      await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+
+      if (sendError) {
+        await failQueue(row.id, `send_failed: ${sendError}`);
+        return { ok: false, reason: "send_failed", error: sendError };
+      }
+
+      await doneQueue(row.id);
+      return { ok: true, direct_nearby: true, reply_preview: reply.slice(0, 120) };
     }
 
     // PASSO 6.5 — Modo AMZ: 3 níveis de acesso
