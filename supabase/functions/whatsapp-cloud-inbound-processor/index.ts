@@ -86,13 +86,96 @@ function buildUserContent(userText: string, media: MediaExtract[]): any {
   return parts;
 }
 
+// ============ TOOLS DO PIETRO ============
+
+const GOOGLE_API_KEY = Deno.env.get("GOOGLE_API_KEY");
+const GOOGLE_CX = Deno.env.get("GOOGLE_CX");
+
+async function toolConsultarCnpj(cnpj: string): Promise<string> {
+  const clean = (cnpj || "").replace(/\D/g, "");
+  if (clean.length !== 14) return JSON.stringify({ erro: "CNPJ inválido — precisa ter 14 dígitos" });
+  try {
+    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${clean}`);
+    if (!r.ok) return JSON.stringify({ erro: `CNPJ não encontrado (${r.status})` });
+    const d = await r.json();
+    return JSON.stringify({
+      cnpj: d.cnpj,
+      razao_social: d.razao_social,
+      nome_fantasia: d.nome_fantasia,
+      situacao: d.descricao_situacao_cadastral,
+      data_abertura: d.data_inicio_atividade,
+      capital_social: d.capital_social,
+      porte: d.porte,
+      natureza_juridica: d.natureza_juridica,
+      cnae_principal: `${d.cnae_fiscal} - ${d.cnae_fiscal_descricao}`,
+      endereco: `${d.logradouro}, ${d.numero} ${d.complemento ?? ""} - ${d.bairro}, ${d.municipio}/${d.uf} - CEP ${d.cep}`,
+      telefone: d.ddd_telefone_1,
+      email: d.email,
+      socios: (d.qsa ?? []).map((s: any) => ({ nome: s.nome_socio, qualificacao: s.qualificacao_socio, entrada: s.data_entrada_sociedade })),
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+async function toolPesquisarWeb(query: string): Promise<string> {
+  if (!GOOGLE_API_KEY || !GOOGLE_CX) return JSON.stringify({ erro: "Busca web não configurada" });
+  try {
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CX}&q=${encodeURIComponent(query)}&num=6&hl=pt-BR`;
+    const r = await fetch(url);
+    if (!r.ok) return JSON.stringify({ erro: `busca falhou (${r.status})` });
+    const d = await r.json();
+    const items = (d.items ?? []).map((it: any) => ({
+      titulo: it.title,
+      link: it.link,
+      resumo: it.snippet,
+    }));
+    return JSON.stringify({ query, resultados: items });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "consultar_cnpj",
+      description: "Consulta dados oficiais de uma empresa brasileira pelo CNPJ na Receita Federal (via BrasilAPI). Retorna razão social, sócios, endereço, CNAE, capital social e situação cadastral.",
+      parameters: {
+        type: "object",
+        properties: { cnpj: { type: "string", description: "CNPJ com ou sem formatação (14 dígitos)" } },
+        required: ["cnpj"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "pesquisar_web",
+      description: "Pesquisa no Google e retorna títulos, links e resumos dos resultados. Use para buscar informações atuais, notícias, dados sobre empresas, pessoas, produtos, tendências etc.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string", description: "Termo de busca no Google" } },
+        required: ["query"],
+      },
+    },
+  },
+];
+
+async function runTool(name: string, args: any): Promise<string> {
+  if (name === "consultar_cnpj") return await toolConsultarCnpj(args?.cnpj ?? "");
+  if (name === "pesquisar_web") return await toolPesquisarWeb(args?.query ?? "");
+  return JSON.stringify({ erro: `ferramenta ${name} não existe` });
+}
+
 async function callGemini(
   systemPrompt: string,
   history: Array<{ role: string; content: string }>,
   userContent: any,
   hasMedia: boolean,
 ): Promise<string> {
-  const messages = [
+  const messages: any[] = [
     { role: "system", content: systemPrompt },
     ...history,
     { role: "user", content: userContent },
@@ -101,25 +184,45 @@ async function callGemini(
   // Modelo pro é mais confiável com áudio/imagem
   const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${LOVABLE_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0.7,
-    }),
-  });
+  for (let step = 0; step < 4; step++) {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.7,
+        tools: TOOLS,
+      }),
+    });
 
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`gemini ${res.status}: ${t.slice(0, 200)}`);
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`gemini ${res.status}: ${t.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const msg = data?.choices?.[0]?.message;
+    const toolCalls = msg?.tool_calls;
+
+    if (toolCalls && toolCalls.length > 0) {
+      messages.push(msg);
+      for (const tc of toolCalls) {
+        const name = tc.function?.name;
+        let args: any = {};
+        try { args = JSON.parse(tc.function?.arguments ?? "{}"); } catch { /* ignore */ }
+        console.log(`[pietro][tool] ${name}`, args);
+        const result = await runTool(name, args);
+        messages.push({ role: "tool", tool_call_id: tc.id, content: result });
+      }
+      continue;
+    }
+
+    return msg?.content ?? "";
   }
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content ?? "";
+  return "Desculpa, não consegui concluir a pesquisa agora.";
 }
 
 
