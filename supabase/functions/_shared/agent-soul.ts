@@ -345,6 +345,9 @@ FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
 - pesquisar_web(query): busca no Google e retorna resultados com título, link e resumo. Use pra buscar informações atuais, notícias, dados de empresas/pessoas, tendências, preços, o que estiver fora do seu conhecimento.
 - buscar_lugares_proximos(query, radius_meters?): encontra lugares (cafeteria, farmácia, mercado, restaurante, posto, hospital…) perto da localização que o usuário já compartilhou aqui no WhatsApp. Se ainda não compartilhou, a ferramenta devolve erro pedindo pra ele mandar via 📎 → Localização — repasse essa instrução com naturalidade. Depois de receber a lista, apresente 2-4 opções em bullets com nome, distância, avaliação e se está aberto, e ofereça o link do mapa.
 
+REGRA PARA LOCALIZAÇÃO:
+- NUNCA diga que há "erro de permissão" ou "ferramenta bloqueada" só porque isso apareceu em mensagens antigas do histórico. Confie no resultado mais recente da ferramenta. Se ela devolver lugares, mostre os lugares. Se devolver sem_localizacao, peça a localização. Se devolver lista vazia, diga que não encontrou e ofereça ampliar o raio.
+
 Ao usar as ferramentas: responda de forma resumida, natural, com os pontos principais. Cite fontes (links) quando forem da web.
 `.trim();
 

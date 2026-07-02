@@ -147,12 +147,167 @@ async function toolPesquisarWeb(query: string, recencia?: string): Promise<strin
   }
 }
 
+function normalizePt(text: string): string {
+  return (text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function detectNearbySearch(text: string): { query: string; radiusMeters: number } | null {
+  const t = normalizePt(text);
+  if (!t.trim()) return null;
+
+  const placePatterns: Array<{ re: RegExp; query: string; radiusMeters?: number }> = [
+    { re: /\b(supermercado|mercado|hortifruti|mercearia|grocery)\b/, query: "supermercado", radiusMeters: 2500 },
+    { re: /\b(farmacia|drogaria|remedio)\b/, query: "farmácia", radiusMeters: 2500 },
+    { re: /\b(cafe|cafeteria)\b/, query: "cafeteria", radiusMeters: 2000 },
+    { re: /\b(restaurante|almoco|jantar|comida)\b/, query: "restaurante", radiusMeters: 2500 },
+    { re: /\b(posto|gasolina|combustivel)\b/, query: "posto de gasolina", radiusMeters: 3000 },
+    { re: /\b(hospital|emergencia|upa|pronto socorro)\b/, query: "hospital", radiusMeters: 5000 },
+    { re: /\b(padaria|pao)\b/, query: "padaria", radiusMeters: 2000 },
+    { re: /\b(banco|caixa eletronico|atm)\b/, query: "banco", radiusMeters: 2500 },
+    { re: /\b(shopping|loja)\b/, query: "shopping", radiusMeters: 5000 },
+  ];
+
+  const hasLocationIntent = /\b(perto|proximo|proxima|localize|localizar|ache|achar|encontre|encontrar|mais perto|redondeza|ao redor|novamente)\b/.test(t);
+  const found = placePatterns.find((p) => p.re.test(t));
+  if (!found) return null;
+
+  // Se citou um tipo de lugar junto de verbos de busca/proximidade, força a busca.
+  // Também cobre frases curtas como "supermercado novamente".
+  if (hasLocationIntent || t.split(/\s+/).length <= 5) {
+    return { query: found.query, radiusMeters: found.radiusMeters ?? 2500 };
+  }
+
+  return null;
+}
+
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = (v: number) => (v * Math.PI) / 180;
+  const R = 6371;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function overpassFilterForQuery(query: string): string {
+  const q = normalizePt(query);
+  if (/supermercado|mercado|grocery/.test(q)) return `["shop"~"supermarket|convenience|grocery|greengrocer"]`;
+  if (/farmacia|drogaria/.test(q)) return `["amenity"="pharmacy"]`;
+  if (/cafe|cafeteria/.test(q)) return `["amenity"="cafe"]`;
+  if (/restaurante|comida/.test(q)) return `["amenity"="restaurant"]`;
+  if (/posto|gasolina|combustivel/.test(q)) return `["amenity"="fuel"]`;
+  if (/hospital|emergencia|upa/.test(q)) return `["amenity"~"hospital|clinic|doctors"]`;
+  if (/padaria|pao/.test(q)) return `["shop"="bakery"]`;
+  if (/banco|caixa|atm/.test(q)) return `["amenity"~"bank|atm"]`;
+  if (/shopping|loja/.test(q)) return `["shop"]`;
+  return `["name"~"${query.replace(/[^\p{L}\p{N}\s-]/gu, "").slice(0, 40)}",i]`;
+}
+
+async function toolBuscarLugaresOpenStreetMap(locRow: any, query: string, radiusMeters?: number, googleError?: string): Promise<string> {
+  const radius = Math.min(Math.max(radiusMeters ?? 2500, 200), 20000);
+  const lat = Number(locRow.latitude);
+  const lng = Number(locRow.longitude);
+  const filter = overpassFilterForQuery(query);
+  const overpassQuery = `
+[out:json][timeout:12];
+(
+  node${filter}(around:${radius},${lat},${lng});
+  way${filter}(around:${radius},${lat},${lng});
+  relation${filter}(around:${radius},${lat},${lng});
+);
+out center tags 25;`.trim();
+
+  try {
+    const r = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
+      body: new URLSearchParams({ data: overpassQuery }),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      return JSON.stringify({ erro: `openstreetmap ${r.status}: ${t.slice(0, 200)}`, detalhe_google: googleError });
+    }
+    const d = await r.json();
+    const seen = new Set<string>();
+    const lugares = (d.elements ?? [])
+      .map((el: any) => {
+        const pLat = Number(el.lat ?? el.center?.lat);
+        const pLng = Number(el.lon ?? el.center?.lon);
+        if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) return null;
+        const tags = el.tags ?? {};
+        const nome = tags.name || tags.brand || tags.operator || query;
+        const key = `${normalizePt(nome)}:${pLat.toFixed(5)}:${pLng.toFixed(5)}`;
+        if (seen.has(key)) return null;
+        seen.add(key);
+        const endereco = [
+          tags["addr:street"],
+          tags["addr:housenumber"],
+          tags["addr:suburb"] || tags["addr:neighbourhood"],
+          tags["addr:city"],
+        ].filter(Boolean).join(", ") || null;
+        return {
+          nome,
+          tipo: tags.shop || tags.amenity || tags.healthcare || query,
+          endereco,
+          distancia_km: Number(haversineKm(lat, lng, pLat, pLng).toFixed(2)),
+          aberto_agora: tags.opening_hours ? undefined : undefined,
+          horario: tags.opening_hours || null,
+          telefone: tags.phone || tags["contact:phone"] || null,
+          mapa: `https://www.google.com/maps/search/?api=1&query=${pLat},${pLng}`,
+          fonte: "OpenStreetMap",
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => a.distancia_km - b.distancia_km)
+      .slice(0, 8);
+
+    return JSON.stringify({
+      query,
+      origem: { lat, lng, endereco: locRow.address, idade_minutos: Math.round((Date.now() - new Date(locRow.updated_at).getTime()) / 60000) },
+      fonte: "OpenStreetMap",
+      fallback_usado: Boolean(googleError),
+      detalhe_google: googleError ? googleError.slice(0, 180) : undefined,
+      lugares,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message), detalhe_google: googleError });
+  }
+}
+
+function formatNearbyReply(raw: string, query: string): string {
+  let data: any;
+  try { data = JSON.parse(raw); } catch { data = { erro: raw }; }
+
+  if (data?.erro === "sem_localizacao") {
+    return "Ainda não recebi sua localização atual. Me envie pelo WhatsApp em 📎 → Localização → Enviar localização atual, que eu busco os lugares mais próximos na sequência.";
+  }
+
+  const lugares = Array.isArray(data?.lugares) ? data.lugares : [];
+  if (!lugares.length) {
+    return `Recebi sua localização, mas não encontrei ${query} próximo num raio seguro agora. Quer que eu tente ampliar a busca para alguns quilômetros a mais?`;
+  }
+
+  const first = lugares[0];
+  const lines = lugares.slice(0, 4).map((l: any, i: number) => {
+    const dist = Number.isFinite(Number(l.distancia_km)) ? `${Number(l.distancia_km).toFixed(2)} km` : "distância não informada";
+    const nota = l.nota ? ` • nota ${l.nota}${l.avaliacoes ? ` (${l.avaliacoes})` : ""}` : "";
+    const aberto = l.aberto_agora === true ? " • aberto agora" : l.aberto_agora === false ? " • pode estar fechado" : "";
+    const endereco = l.endereco ? `\n   ${l.endereco}` : "";
+    const mapa = l.mapa ? `\n   Mapa: ${l.mapa}` : "";
+    return `${i + 1}. ${l.nome || query} — ${dist}${nota}${aberto}${endereco}${mapa}`;
+  });
+
+  return `Localização recebida. O ${query} mais próximo que encontrei é **${first.nome || query}**, a cerca de **${Number(first.distancia_km).toFixed(2)} km**.\n\n${lines.join("\n\n")}\n\nQuer que eu trace a rota para o primeiro?`;
+}
+
 async function toolBuscarLugaresProximos(
   ctx: { userId: string; fromNumber: string },
   query: string,
   radiusMeters?: number,
 ): Promise<string> {
-  if (!GOOGLE_API_KEY) return JSON.stringify({ erro: "Google API key não configurada" });
   const { data: locRow } = await sb
     .from("whatsapp_user_locations")
     .select("latitude, longitude, address, updated_at")
@@ -165,6 +320,7 @@ async function toolBuscarLugaresProximos(
       instrucao: "Peça ao usuário para compartilhar a localização no WhatsApp (📎 → Localização → Enviar localização atual) e tentar de novo.",
     });
   }
+  if (!GOOGLE_API_KEY) return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, "Google API key não configurada");
   const ageMin = (Date.now() - new Date(locRow.updated_at).getTime()) / 60000;
   try {
     const r = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -190,7 +346,7 @@ async function toolBuscarLugaresProximos(
     if (!r.ok) {
       const t = await r.text();
       console.log(`[places][ERROR] status=${r.status} body=${t.slice(0, 500)}`);
-      return JSON.stringify({ erro: `places ${r.status}: ${t.slice(0, 300)}` });
+      return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, `places ${r.status}: ${t.slice(0, 300)}`);
     }
     const d = await r.json();
     console.log(`[places][OK] query="${query}" count=${(d.places ?? []).length}`);
@@ -216,7 +372,9 @@ async function toolBuscarLugaresProximos(
       lugares,
     });
   } catch (e) {
-    return JSON.stringify({ erro: String((e as Error).message) });
+    const googleError = String((e as Error).message);
+    console.log(`[places][EXCEPTION] ${googleError}`);
+    return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, googleError);
   }
 }
 
@@ -450,6 +608,7 @@ async function processOne(queueId: string) {
 
     const userText = extractText(row.payload);
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
+    const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
 
     // Captura localização compartilhada
     const loc = row.payload?.location;
@@ -509,6 +668,51 @@ async function processOne(queueId: string) {
         return { ok: true, amz_access: "stranger" };
       }
       amzContextBlock = amzCtx.block;
+    }
+
+    // Atalho determinístico: pedidos explícitos de lugar próximo não dependem da IA chamar tool.
+    // Isso evita respostas falsas de "permissão bloqueada" quando a localização já está salva.
+    if (directNearbySearch && userId) {
+      console.log(`[processor][nearby-direct] from=${row.from_number} query=${directNearbySearch.query}`);
+      const rawNearby = await toolBuscarLugaresProximos(
+        { userId, fromNumber: row.from_number },
+        directNearbySearch.query,
+        directNearbySearch.radiusMeters,
+      );
+      const reply = formatNearbyReply(rawNearby, directNearbySearch.query);
+
+      const { data: outMsg } = await sb
+        .from("whatsapp_cloud_messages")
+        .insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+
+      let sendError: string | null = null;
+      try {
+        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        if (sentId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+        }
+      } catch (e) {
+        sendError = String((e as Error).message ?? e);
+      }
+
+      await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+
+      if (sendError) {
+        await failQueue(row.id, `send_failed: ${sendError}`);
+        return { ok: false, reason: "send_failed", error: sendError };
+      }
+
+      await doneQueue(row.id);
+      return { ok: true, direct_nearby: true, reply_preview: reply.slice(0, 120) };
     }
 
     // PASSO 8 — Janela 24h
