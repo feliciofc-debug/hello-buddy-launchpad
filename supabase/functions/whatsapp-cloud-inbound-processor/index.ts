@@ -220,17 +220,38 @@ async function toolBuscarLugaresOpenStreetMap(locRow: any, query: string, radius
 );
 out center tags 25;`.trim();
 
-  try {
-    const r = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-      body: new URLSearchParams({ data: overpassQuery }),
-    });
-    if (!r.ok) {
-      const t = await r.text().catch(() => "");
-      return JSON.stringify({ erro: `openstreetmap ${r.status}: ${t.slice(0, 200)}`, detalhe_google: googleError });
+  const ENDPOINTS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+  ];
+  let d: any = null;
+  let lastErr = "";
+  for (const ep of ENDPOINTS) {
+    try {
+      console.log(`[osm][try] endpoint=${ep} lat=${lat} lng=${lng} r=${radius} q="${query}"`);
+      const r = await fetch(ep, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent": "amz-jarvis/1.0" },
+        body: new URLSearchParams({ data: overpassQuery }),
+      });
+      if (!r.ok) {
+        lastErr = `overpass ${r.status}: ${(await r.text().catch(() => "")).slice(0, 200)}`;
+        console.log(`[osm][fail] ${ep} -> ${lastErr}`);
+        continue;
+      }
+      d = await r.json();
+      console.log(`[osm][ok] ${ep} elements=${(d.elements ?? []).length}`);
+      break;
+    } catch (e) {
+      lastErr = String((e as Error).message);
+      console.log(`[osm][exception] ${ep} -> ${lastErr}`);
     }
-    const d = await r.json();
+  }
+  if (!d) {
+    return JSON.stringify({ erro: `openstreetmap indisponivel: ${lastErr}`, detalhe_google: googleError });
+  }
+  try {
     const seen = new Set<string>();
     const lugares = (d.elements ?? [])
       .map((el: any) => {
