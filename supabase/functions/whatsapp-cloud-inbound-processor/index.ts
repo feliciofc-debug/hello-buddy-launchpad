@@ -1762,6 +1762,21 @@ const TOOLS = [
       description: "Snapshot completo da plataforma agora: estoque + campanhas + autopilot + clientes/leads. Use quando o usuário pedir 'resumo geral', 'como tá a plataforma', 'panorama'.",
       parameters: { type: "object", properties: {} },
     },
+  {
+    type: "function",
+    function: {
+      name: "postar_redes_sociais",
+      description: "Publica um produto do catálogo do usuário no Facebook e/ou Instagram AGORA, gerando automaticamente um script de copywriting com o TOM escolhido (urgência, escassez, black-friday, prova-social, benefício). Use quando o usuário disser 'posta X nas redes', 'divulga X no face e insta', 'publica o produto Y com urgência', 'faz um post pro Instagram do Z'. Sempre confirma o produto pelo nome/categoria antes. A imagem do produto cadastrada é usada no post.",
+      parameters: {
+        type: "object",
+        properties: {
+          produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto (busca no catálogo do usuário)." },
+          tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copywriting. Padrão: urgencia." },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram"] }, description: "Redes onde publicar. Padrão: ambas." },
+        },
+        required: ["produto"],
+      },
+    },
   },
 ];
 
