@@ -2331,7 +2331,8 @@ async function runTool(
   args: any,
   ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
 ): Promise<{ result: string; imageUrl?: string }> {
-  if ((ctx.media?.length ?? 0) > 0 && name !== "salvar_midia_biblioteca") {
+  const hasFreshLibraryMedia = (ctx.media ?? []).some((m) => m.kind === "image" || m.kind === "video");
+  if (hasFreshLibraryMedia && name !== "salvar_midia_biblioteca") {
     console.warn(`[pietro][media_guard] bloqueando tool ${name}; mídia nova deve ir para /midias`);
     const result = await toolSalvarMidiaBiblioteca({ contexto: args?.contexto ?? args?.produto ?? args?.query ?? "" }, ctx);
     return { result };
