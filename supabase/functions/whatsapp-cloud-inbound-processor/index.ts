@@ -2259,7 +2259,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_redes_sociais",
-      description: "Gera PREVIEW COMPLETO de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. LINK NÃO É OBRIGATÓRIO: se o produto não tiver link de compra, gera post institucional/lifestyle/engajamento (CTA de contato direto, direct, comentário) — NUNCA recuse por falta de link nem peça o link ao usuário. REGRA CRÍTICA: quando o usuário pedir 'posta X nas redes', CHAME ESTA TOOL IMEDIATAMENTE na mesma resposta. A resposta da tool JÁ CONTÉM o preview; depois dela, mostre o preview e o token ao usuário. NUNCA responda 'aguarde um instante', 'já te mostro', 'vou preparar' ou promessa parecida — isso é bug. A busca do produto é fuzzy por palavras-chave, acentos, sinônimos e consulta também products_stock. Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões ao usuário. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio) nesta fase.",
+      description: "Gera PREVIEW COMPLETO de post para Facebook, Instagram e/ou TikTok a partir de um PRODUTO DO CATÁLOGO do dono (estoque cadastrado), com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. ⛔ NUNCA use esta tool quando o cliente ACABOU DE ENVIAR foto/vídeo/áudio nesta mensagem — nesse caso use salvar_midia_biblioteca. Esta tool é EXCLUSIVA pra produto do catálogo pedido POR NOME em texto (ex: 'posta a caneta delineadora', 'divulga o kit xícaras'). LINK NÃO É OBRIGATÓRIO: se o produto não tiver link de compra, gera post institucional/lifestyle/engajamento — NUNCA recuse por falta de link. Quando o usuário pedir por NOME 'posta X nas redes', CHAME IMEDIATAMENTE. A busca do produto é fuzzy. Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio).",
       parameters: {
         type: "object",
         properties: {
@@ -2290,7 +2290,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "salvar_midia_biblioteca",
-      description: "Salva a foto, vídeo ou áudio que o cliente ACABOU de enviar nesta conversa na biblioteca de Mídias da plataforma. Use quando o usuário pedir 'salva essa foto', 'guarda esse vídeo pra postar depois', 'coloca isso na biblioteca', 'usa isso pra rede social', ou mandar mídia sem contexto claro (aí pergunte antes se quer salvar). Depois de salvar, o cliente pode publicar/reusar pela tela /midias. NÃO publica direto — só arquiva. Se o cliente quiser publicar imediatamente, use postar_redes_sociais.",
+      description: "🔴 USE SEMPRE E IMEDIATAMENTE quando o cliente ENVIAR foto, vídeo ou áudio nesta mensagem — mesmo sem legenda. É a ação PADRÃO pra qualquer mídia recebida. Salva o arquivo na biblioteca de Mídias (/midias) da plataforma pra ele publicar/reusar depois. NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes — só arquiva e confirma. Passe em 'contexto' o que o cliente falou junto, ou string vazia se não falou nada.",
       parameters: {
         type: "object",
         properties: {
@@ -2780,7 +2780,10 @@ async function processOne(queueId: string) {
       hour: "2-digit", minute: "2-digit",
     }).format(new Date());
     const dateBlock = `\n\nCONTEXTO TEMPORAL (IMPORTANTE):\n- Data e hora atual em São Paulo: ${nowSP}.\n- Use SEMPRE esta data como referência de "hoje", "ontem", "esta semana", "este ano".\n- Para qualquer pergunta sobre notícias, eventos, cotações, clima, preços, jogos, agenda ou "o que está acontecendo", chame pesquisar_web com termos incluindo o ano/mês atual e passe recencia="d" (últimas 24h) ou "w" (última semana) quando fizer sentido. NUNCA responda de memória sobre fatos recentes.`;
-    const systemPromptWithDate = systemPrompt + dateBlock;
+    const mediaBlock = media.length > 0
+      ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O cliente ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio enviado pelo cliente é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que o cliente falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada pelo cliente.\n- É PROIBIDO buscar/casar essa mídia com produto do estoque/catálogo. Não invente produto.\n- Depois de salvar, responda curto: confirma que salvou na biblioteca /midias e diz que ele pode publicar/reusar por lá quando quiser. Não peça mais informação.`
+      : "";
+    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
