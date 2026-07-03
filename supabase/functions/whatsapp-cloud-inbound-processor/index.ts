@@ -1141,7 +1141,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "pesquisar_web",
-      description: "Pesquisa no Google (pt-BR) e retorna títulos, links, resumos e data quando disponível. Use SEMPRE para notícias, eventos, cotações, clima, preços, resultados esportivos, greves, agenda — qualquer coisa que dependa de data. Inclua o ano/mês atual na query e use 'recencia' pra restringir a janela temporal.",
+      description: "Pesquisa no Google (pt-BR). Retorna títulos, links, resumos, datas E o conteúdo textual extraído das 3 primeiras páginas (campo 'conteudo_extraido'). USE 'conteudo_extraido' como fonte primária ao responder — cite valores/números/datas literalmente conforme aparecem. Ideal para notícias, eventos, resultados, greves, agenda, previsões, clima extremo, informações factuais recentes. NÃO use para cotação de moeda/cripto (chame cotacao_moeda). Inclua ano/mês atual na query e use 'recencia' pra janela temporal.",
       parameters: {
         type: "object",
         properties: {
