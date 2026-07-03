@@ -2279,7 +2279,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "gerar_imagem",
-      description: "Cria uma imagem por IA a partir de um prompt descritivo (arte, foto realista, ilustração, banner, story, meme, mockup). Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria um post', 'desenha', 'me manda uma foto de X', 'faz um banner'. A imagem é enviada automaticamente no WhatsApp — você só precisa responder com uma legenda curta (1-2 linhas) descrevendo o que criou. NUNCA cole a URL na resposta, apenas comente.",
+      description: "Cria uma imagem ULTRA REALISTA por IA (padrão IA Marketing — fotorealista, iluminação profissional, qualidade editorial, SEM texto/letras) a partir de um prompt descritivo. Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria uma foto de X', 'desenha', 'me manda uma imagem', 'faz um banner/post/mockup'. A imagem é enviada automaticamente no WhatsApp E salva na biblioteca /midias — o usuário pode publicar direto nas redes sociais depois. Responda com legenda curta (1-2 linhas) descrevendo o que criou e avisando que já está pronta pra postar. NUNCA cole a URL na resposta.",
       parameters: {
         type: "object",
         properties: { prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" } },
