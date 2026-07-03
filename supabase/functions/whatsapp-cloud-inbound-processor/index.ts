@@ -2036,6 +2036,86 @@ async function toolSalvarMidiaBiblioteca(
   }
 }
 
+// ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
+async function toolPostarMidiaBiblioteca(
+  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  try {
+    if (!isOwner(ctx)) return JSON.stringify({ erro: "Publicação em redes sociais liberada apenas para o dono (Felicio) nesta fase." });
+    pendingCleanup();
+
+    // Busca a última mídia salva pelo dono (foto/vídeo), ainda não publicada
+    let query = sb
+      .from("midias_whatsapp")
+      .select("id, tipo, midia_url, contexto_original, created_at")
+      .eq("user_id", ctx.userId)
+      .in("tipo", ["foto", "video"])
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (args?.midia_id) query = sb
+      .from("midias_whatsapp")
+      .select("id, tipo, midia_url, contexto_original, created_at")
+      .eq("user_id", ctx.userId)
+      .eq("id", args.midia_id)
+      .limit(1);
+
+    const { data: midias, error } = await query;
+    if (error) return JSON.stringify({ erro: `db_falhou: ${error.message}` });
+    const midia = midias?.[0];
+    if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
+
+    const redesValidas = ["facebook", "instagram", "tiktok"];
+    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
+      .map((r) => r.toLowerCase())
+      .filter((r) => redesValidas.includes(r));
+    const tom = args?.tom || "urgencia";
+
+    const precoNum = args?.preco != null ? Number(String(args.preco).replace(",", ".").replace(/[^\d.]/g, "")) : null;
+    const nome = (args?.nome || args?.legenda || midia.contexto_original || "Produto").toString().trim().slice(0, 120);
+    const descricao = (args?.legenda || midia.contexto_original || "").toString().trim();
+
+    const produtoLike = {
+      nome,
+      descricao: descricao || null,
+      preco: precoNum && !isNaN(precoNum) ? precoNum : null,
+      link: null,
+      categoria: null,
+      imagem_url: midia.midia_url,
+      ativo: true,
+      source: "midias_whatsapp",
+      id: midia.id,
+    };
+
+    const scriptsEntries = await Promise.all(
+      redes.map(async (r) => {
+        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen)] as const;
+      }),
+    );
+    const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() };
+    const queueRows = await persistPendingSocialPost(token, pending);
+    PENDING_POSTS.set(token, { ...pending, queueRows });
+
+    return JSON.stringify({
+      status: "aguardando_confirmacao",
+      fonte: "biblioteca_midias",
+      token,
+      midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
+      produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
+      tom,
+      redes,
+      preview: scripts,
+      instrucoes: `Mostre o preview e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
 
 const TOOLS = [
   {
@@ -2324,6 +2404,24 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "postar_midia_biblioteca",
+      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR (ou enviou logo antes) — mesmo que o texto atual não tenha mídia anexada. Ex: cliente manda foto de taças, depois escreve 'Jogo de 4 taças 29,99 para postar no face e insta'. Esta tool pega a ÚLTIMA mídia salva em /midias e gera o preview do post. ⛔ NÃO use postar_redes_sociais nesse caso — aquela é só pra produto do catálogo. Se o cliente informou nome/preço/legenda, passe nos parâmetros.",
+      parameters: {
+        type: "object",
+        properties: {
+          legenda: { type: "string", description: "Texto/legenda que o cliente falou junto (ex: 'Jogo de 4 taças 29,99')." },
+          nome: { type: "string", description: "Nome do produto/item, se informado." },
+          preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
+          tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
+        },
+      },
+    },
+  },
+
 ];
 
 
@@ -2338,6 +2436,36 @@ async function runTool(
     const result = await toolSalvarMidiaBiblioteca({ contexto: args?.contexto ?? args?.produto ?? args?.query ?? "" }, ctx);
     return { result };
   }
+
+  // Guard: se pediu postar_redes_sociais mas tem mídia RECENTE (últimos 15 min) em /midias,
+  // redireciona pra postar_midia_biblioteca — evita buscar produto errado do catálogo
+  // quando o cliente enviou foto antes e agora só mandou a legenda/preço em texto.
+  if (name === "postar_redes_sociais") {
+    try {
+      const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { data: recentes } = await sb
+        .from("midias_whatsapp")
+        .select("id, created_at")
+        .eq("user_id", ctx.userId)
+        .in("tipo", ["foto", "video"])
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (recentes && recentes.length > 0) {
+        console.warn(`[pietro][postar_guard] mídia recente em /midias → redirecionando pra postar_midia_biblioteca`);
+        const result = await toolPostarMidiaBiblioteca({
+          legenda: args?.produto,
+          nome: args?.produto,
+          tom: args?.tom,
+          redes: args?.redes,
+        }, ctx);
+        return { result };
+      }
+    } catch (e) {
+      console.warn("[pietro][postar_guard] falhou ao checar /midias:", (e as Error).message);
+    }
+  }
+
   if (name === "consultar_cnpj") return { result: await toolConsultarCnpj(args?.cnpj ?? "") };
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
@@ -2374,6 +2502,7 @@ async function runTool(
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
+  if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
@@ -2856,7 +2985,28 @@ async function processOne(queueId: string) {
     const mediaBlock = media.length > 0
       ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O cliente ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio enviado pelo cliente é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que o cliente falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada pelo cliente.\n- É PROIBIDO buscar/casar essa mídia com produto do estoque/catálogo. Não invente produto.\n- Depois de salvar, responda curto: confirma que salvou na biblioteca /midias e diz que ele pode publicar/reusar por lá quando quiser. Não peça mais informação.`
       : "";
-    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock;
+
+    // Detecta mídia recente em /midias (últimos 15 min) — se cliente pedir postar, usa ela em vez do catálogo
+    let recentMediaBlock = "";
+    try {
+      const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { data: recMid } = await sb
+        .from("midias_whatsapp")
+        .select("id, tipo, contexto_original, created_at")
+        .eq("user_id", userId)
+        .in("tipo", ["foto", "video"])
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const m0 = recMid?.[0];
+      if (m0 && media.length === 0) {
+        recentMediaBlock = `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o cliente pedir pra POSTAR/DIVULGAR agora (ex: "posta X pra face e insta", "Jogo de 4 taças 29,99 pra postar"), chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual.\n- ⛔ NÃO chame postar_redes_sociais — aquela busca no catálogo e vai pegar o produto ERRADO.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`;
+      }
+    } catch (e) {
+      console.warn("[pietro][recent_media_hint] falhou:", (e as Error).message);
+    }
+
+    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock + recentMediaBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
