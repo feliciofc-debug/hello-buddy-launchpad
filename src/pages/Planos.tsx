@@ -17,12 +17,34 @@ const Planos = () => {
   useEffect(() => {
     const checkAuth = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         navigate('/cadastro');
         return;
       }
-      
+
+      // Padroniza fluxo de contratação: cria billing_customer + subscription pending
+      // e redireciona para /pagar/:id (mesmo checkout já validado em produção).
+      // Se falhar, faz fallback para o checkout embutido antigo.
+      try {
+        const { data, error } = await supabase.functions.invoke('criar-cobranca-onboarding', {
+          body: {
+            user_id: user.id,
+            email: user.email,
+            whatsapp: user.user_metadata?.whatsapp || null,
+            nome: user.user_metadata?.nome || null,
+          },
+        });
+
+        if (!error && data?.success && data?.subscription_id) {
+          navigate(`/pagar/${data.subscription_id}`, { replace: true });
+          return;
+        }
+        console.warn('[Planos] onboarding fallback', error, data);
+      } catch (e) {
+        console.warn('[Planos] onboarding exception, usando fallback', e);
+      }
+
       setUser(user);
       setCheckingAuth(false);
     };
