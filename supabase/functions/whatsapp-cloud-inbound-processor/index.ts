@@ -1895,6 +1895,7 @@ async function runTool(
   if (name === "consultar_clientes_leads") return { result: await toolConsultarClientesLeads(ctx) };
   if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
+  if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
