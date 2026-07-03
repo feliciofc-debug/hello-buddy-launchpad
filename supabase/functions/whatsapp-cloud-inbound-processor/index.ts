@@ -1418,21 +1418,26 @@ async function gerarScriptRedesSociais(
     beneficio: "Foque nos benefícios reais e transformação que o produto entrega.",
   };
   const guiaTom = guia[tomLabel] ?? guia["urgencia"];
-  const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "confira no link";
+  const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "";
   const limite = rede === "instagram" ? 2200 : 1500;
-  const prompt = `Você é copywriter de e-commerce. Crie um post para ${rede.toUpperCase()} vendendo este produto.
+  const temLink = !!(produto.link && /^https?:\/\//i.test(produto.link));
+  const ctaRegra = temLink
+    ? `- CTA claro no fim ("👉 Link na bio" para IG, "👉 Compre aqui: ${produto.link}" para FB).`
+    : `- CTA de engajamento no fim (ex: "👉 Chama no direct pra garantir", "Comenta EU QUERO", "Manda mensagem"). NÃO invente link, NÃO escreva "link na bio" se não existir link — foque em contato direto/interesse.`;
+  const prompt = `Você é copywriter de e-commerce. Crie um post para ${rede.toUpperCase()} vendendo/divulgando este produto.
 ${guiaTom}
 
 PRODUTO: ${produto.nome}
 ${produto.descricao ? `DESCRIÇÃO: ${produto.descricao}` : ""}
-PREÇO: ${preco}
+${preco ? `PREÇO: ${preco}` : "PREÇO: (não informar valor no post)"}
 ${produto.categoria ? `CATEGORIA: ${produto.categoria}` : ""}
+${temLink ? "" : "OBS: este produto NÃO tem link de compra — é post institucional/lifestyle/engajamento."}
 
 REGRAS:
 - Máx ${limite} caracteres.
 - Comece com 1 linha impactante e emoji.
 - 2-4 bullets de benefício.
-- CTA claro no fim ("👉 Link na bio" para IG, "👉 Compre aqui: ${produto.link || "link"}" para FB).
+${ctaRegra}
 - 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
 - NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.`;
 
