@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Bot,
   Package,
+  Images,
   BarChart3,
   Settings,
   LogOut,
@@ -288,6 +289,7 @@ export default function DashboardMetricas() {
   const menuItemsAll = [
     { id: 'dashboard', icon: BarChart3, label: t('nav.dashboard'), path: '/dashboard' },
     { id: 'produtos', icon: Package, label: t('nav.products'), path: '/meus-produtos' },
+    { id: 'midias', icon: Images, label: 'Mídias', path: '/midias' },
     { id: 'ia-marketing', icon: Zap, label: t('nav.ia_marketing'), path: '/ia-marketing' },
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },

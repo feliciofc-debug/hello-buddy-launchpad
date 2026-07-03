@@ -11,6 +11,7 @@ interface MenuConfig {
 const routeToMenuId: Record<string, string> = {
   '/dashboard': 'dashboard',
   '/meus-produtos': 'produtos',
+  '/midias': 'midias',
   '/ia-marketing': 'ia-marketing',
   '/redes-sociais': 'redes-sociais',
   '/whatsapp-painel': 'whatsapp',
@@ -66,7 +67,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
           setMenuConfig({
             tipo_cliente: userTipo,
             menus_permitidos: [
-              'dashboard', 'produtos', 'ia-marketing', 'redes-sociais', 'whatsapp', 'integracoes', 'configuracoes'
+              'dashboard', 'produtos', 'midias', 'ia-marketing', 'redes-sociais', 'whatsapp', 'integracoes', 'configuracoes'
             ],
             empresa_nome: 'AMZ Ofertas'
           });

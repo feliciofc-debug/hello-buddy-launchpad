@@ -1947,6 +1947,66 @@ async function toolConfirmarPostagemRedes(
 }
 
 
+// ---- salvar_midia_biblioteca: pega a mídia enviada pelo cliente (foto/vídeo/áudio) e salva na biblioteca de Mídias ----
+async function toolSalvarMidiaBiblioteca(
+  args: { contexto?: string },
+  ctx: { userId: string; media?: MediaExtract[] },
+): Promise<string> {
+  const media = (ctx.media || []).slice().reverse().find((m) => m.kind === "image" || m.kind === "video" || m.kind === "audio");
+  if (!media) {
+    return JSON.stringify({
+      erro: "sem_midia",
+      mensagem: "Não encontrei nenhuma foto, vídeo ou áudio nessa conversa. Me manda a mídia e depois pede pra salvar.",
+    });
+  }
+
+  try {
+    const bytes = base64Decode(media.base64);
+    const tipoMap = { image: "foto", video: "video", audio: "audio" } as const;
+    const tipo = tipoMap[media.kind as keyof typeof tipoMap] || "foto";
+    const ext = (media.mime.split("/")[1] || "bin").split(";")[0];
+    const fileName = `midias/${ctx.userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+    const { error: upErr } = await sb.storage
+      .from("produtos")
+      .upload(fileName, bytes, { contentType: media.mime, upsert: false });
+    if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
+
+    const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
+    const url = pub?.publicUrl;
+    if (!url) return JSON.stringify({ erro: "sem_url_publica" });
+
+    const contexto = (args?.contexto || media.caption || "").trim();
+
+    const { data: novo, error: insErr } = await sb
+      .from("midias_whatsapp")
+      .insert({
+        user_id: ctx.userId,
+        origem: "whatsapp",
+        tipo,
+        midia_url: url,
+        mime_type: media.mime,
+        tamanho_bytes: bytes.length,
+        contexto_original: contexto || null,
+        status: "pendente",
+      })
+      .select("id")
+      .single();
+
+    if (insErr) return JSON.stringify({ erro: `db_falhou: ${insErr.message}` });
+
+    return JSON.stringify({
+      ok: true,
+      midia_id: novo.id,
+      tipo,
+      mensagem: `${tipo === "foto" ? "Foto" : tipo === "video" ? "Vídeo" : "Áudio"} salvo na biblioteca de Mídias. Acesse em /midias pra revisar, gerar legenda com IA e publicar nas redes.`,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
+
 const TOOLS = [
   {
     type: "function",
@@ -2221,6 +2281,19 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "salvar_midia_biblioteca",
+      description: "Salva a foto, vídeo ou áudio que o cliente ACABOU de enviar nesta conversa na biblioteca de Mídias da plataforma. Use quando o usuário pedir 'salva essa foto', 'guarda esse vídeo pra postar depois', 'coloca isso na biblioteca', 'usa isso pra rede social', ou mandar mídia sem contexto claro (aí pergunte antes se quer salvar). Depois de salvar, o cliente pode publicar/reusar pela tela /midias. NÃO publica direto — só arquiva. Se o cliente quiser publicar imediatamente, use postar_redes_sociais.",
+      parameters: {
+        type: "object",
+        properties: {
+          contexto: { type: "string", description: "Breve descrição do que a mídia mostra ou do que o cliente falou (ex: 'cliente João contemplou carta de 80k', 'produto novo chegou'). Ajuda a IA a gerar legenda depois." },
+        },
+      },
+    },
+  },
 ];
 
 
@@ -2264,6 +2337,7 @@ async function runTool(
   if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
+  if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
