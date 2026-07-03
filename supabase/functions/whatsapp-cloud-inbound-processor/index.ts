@@ -2290,7 +2290,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "salvar_midia_biblioteca",
-      description: "Salva a foto, vídeo ou áudio que o cliente ACABOU de enviar nesta conversa na biblioteca de Mídias da plataforma. Use quando o usuário pedir 'salva essa foto', 'guarda esse vídeo pra postar depois', 'coloca isso na biblioteca', 'usa isso pra rede social', ou mandar mídia sem contexto claro (aí pergunte antes se quer salvar). Depois de salvar, o cliente pode publicar/reusar pela tela /midias. NÃO publica direto — só arquiva. Se o cliente quiser publicar imediatamente, use postar_redes_sociais.",
+      description: "🔴 USE SEMPRE E IMEDIATAMENTE quando o cliente ENVIAR foto, vídeo ou áudio nesta mensagem — mesmo sem legenda. É a ação PADRÃO pra qualquer mídia recebida. Salva o arquivo na biblioteca de Mídias (/midias) da plataforma pra ele publicar/reusar depois. NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes — só arquiva e confirma. Passe em 'contexto' o que o cliente falou junto, ou string vazia se não falou nada.",
       parameters: {
         type: "object",
         properties: {
