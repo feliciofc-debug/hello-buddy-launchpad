@@ -160,43 +160,124 @@ async function toolConsultarCnpj(cnpj: string): Promise<string> {
   }
 }
 
-async function toolPesquisarWeb(query: string, recencia?: string): Promise<string> {
-  if (!GOOGLE_API_KEY || !GOOGLE_CX) {
-    const fallback = await toolPesquisarWebSerpApi(query, recencia);
-    return fallback ?? JSON.stringify({ erro: "Busca web não configurada" });
-  }
+// Extrai texto legível de uma página (strip HTML) — timeout curto, retorna vazio em erro.
+async function fetchPageText(url: string, maxChars = 1800): Promise<string> {
   try {
-    const params = new URLSearchParams({
-      key: GOOGLE_API_KEY, cx: GOOGLE_CX, q: query, num: "8", hl: "pt-BR", gl: "br", lr: "lang_pt",
+    const r = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; JarvisBot/1.0)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.6",
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(6000),
     });
-    // recencia: d=24h, w=7d, m=30d, y=365d (Google CSE dateRestrict)
-    const r2 = (recencia || "").toLowerCase().trim();
-    if (["d", "w", "m", "y"].includes(r2)) {
-      params.set("dateRestrict", `${r2}1`);
-      params.set("sort", "date");
-    }
-    const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
-    const r = await fetch(url, { headers: googleApiHeaders(), signal: AbortSignal.timeout(12000) });
-    if (!r.ok) {
-      const detalhe = await r.text().catch(() => "");
-      console.error("[pietro][pesquisar_web] falhou", r.status, detalhe.slice(0, 400));
-      const fallback = await toolPesquisarWebSerpApi(query, recencia);
-      if (fallback) return fallback;
-      return JSON.stringify({ erro: `busca falhou (${r.status})`, detalhe: detalhe.slice(0, 400) });
-    }
-    const d = await r.json();
-    const items = (d.items ?? []).map((it: any) => ({
-      titulo: it.title,
-      link: it.link,
-      resumo: it.snippet,
-      fonte: it.displayLink,
-      data: it.pagemap?.metatags?.[0]?.["article:published_time"] || it.pagemap?.metatags?.[0]?.["og:updated_time"] || null,
-    }));
-    return JSON.stringify({ query, recencia: recencia || "qualquer", fonte_busca: "Google Custom Search", total: items.length, resultados: items });
-  } catch (e) {
-    const fallback = await toolPesquisarWebSerpApi(query, recencia).catch(() => null);
-    return fallback ?? JSON.stringify({ erro: String((e as Error).message) });
+    if (!r.ok) return "";
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("html") && !ct.includes("text")) return "";
+    let html = await r.text();
+    // Corta scripts/styles/nav/footer
+    html = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+      .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
+      .replace(/<header[\s\S]*?<\/header>/gi, " ")
+      .replace(/<aside[\s\S]*?<\/aside>/gi, " ");
+    // Preserva um pouco de estrutura em parágrafos
+    html = html.replace(/<\/(p|h[1-6]|li|br|div)>/gi, "\n");
+    const text = html
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{2,}/g, "\n")
+      .trim();
+    return text.slice(0, maxChars);
+  } catch {
+    return "";
   }
+}
+
+async function toolPesquisarWeb(query: string, recencia?: string): Promise<string> {
+  let items: any[] = [];
+  let fonte_busca = "";
+  if (GOOGLE_API_KEY && GOOGLE_CX) {
+    try {
+      const params = new URLSearchParams({
+        key: GOOGLE_API_KEY, cx: GOOGLE_CX, q: query, num: "8", hl: "pt-BR", gl: "br", lr: "lang_pt",
+      });
+      const r2 = (recencia || "").toLowerCase().trim();
+      if (["d", "w", "m", "y"].includes(r2)) {
+        params.set("dateRestrict", `${r2}1`);
+        params.set("sort", "date");
+      }
+      const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
+      const r = await fetch(url, { headers: googleApiHeaders(), signal: AbortSignal.timeout(12000) });
+      if (r.ok) {
+        const d = await r.json();
+        items = (d.items ?? []).map((it: any) => ({
+          titulo: it.title,
+          link: it.link,
+          resumo: it.snippet,
+          fonte: it.displayLink,
+          data: it.pagemap?.metatags?.[0]?.["article:published_time"] || it.pagemap?.metatags?.[0]?.["og:updated_time"] || null,
+        }));
+        fonte_busca = "Google Custom Search";
+      } else {
+        const detalhe = await r.text().catch(() => "");
+        console.error("[pietro][pesquisar_web] falhou", r.status, detalhe.slice(0, 300));
+      }
+    } catch (e) {
+      console.error("[pietro][pesquisar_web] erro", (e as Error).message);
+    }
+  }
+
+  if (items.length === 0) {
+    const fb = await toolPesquisarWebSerpApi(query, recencia);
+    if (fb) {
+      try {
+        const parsed = JSON.parse(fb);
+        if (Array.isArray(parsed?.resultados) && parsed.resultados.length > 0) {
+          items = parsed.resultados;
+          fonte_busca = parsed.fonte_busca || "SerpAPI";
+        } else if (parsed?.erro) {
+          return fb;
+        }
+      } catch {
+        return fb;
+      }
+    }
+  }
+
+  if (items.length === 0) {
+    return JSON.stringify({ query, erro: "sem_resultados" });
+  }
+
+  // Enriquecimento: baixa conteúdo textual das top 3 páginas em paralelo
+  const topN = Math.min(3, items.length);
+  const enriched = await Promise.all(
+    items.slice(0, topN).map(async (it: any) => ({
+      ...it,
+      conteudo_extraido: await fetchPageText(it.link, 1500),
+    })),
+  );
+  const rest = items.slice(topN);
+  const finalItems = [...enriched, ...rest];
+
+  return JSON.stringify({
+    query,
+    recencia: recencia || "qualquer",
+    fonte_busca,
+    instrucao: "Use 'conteudo_extraido' das top páginas como fonte primária. Cite valores/datas literais. Se houver divergência, prefira a fonte mais recente.",
+    total: finalItems.length,
+    resultados: finalItems,
+  });
 }
 
 function detectWebSearchIntent(text: string): { query: string; recencia?: string } | null {
