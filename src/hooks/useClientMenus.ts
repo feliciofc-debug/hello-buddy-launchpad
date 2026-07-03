@@ -67,7 +67,7 @@ export function useClientMenus(userTipo: string | null | undefined, userNomeFant
           setMenuConfig({
             tipo_cliente: userTipo,
             menus_permitidos: [
-              'dashboard', 'produtos', 'ia-marketing', 'redes-sociais', 'whatsapp', 'integracoes', 'configuracoes'
+              'dashboard', 'produtos', 'midias', 'ia-marketing', 'redes-sociais', 'whatsapp', 'integracoes', 'configuracoes'
             ],
             empresa_nome: 'AMZ Ofertas'
           });
