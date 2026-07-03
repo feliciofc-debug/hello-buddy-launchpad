@@ -786,17 +786,35 @@ async function toolBuscarLugaresNominatim(locRow: any, query: string, radiusMete
   }
 }
 
-// ---- gerar_imagem: cria imagem por IA (Nano Banana) e sobe pro storage público ----
-async function toolGerarImagem(prompt: string, userId: string): Promise<string> {
+// ---- gerar_imagem: cria imagem por IA (Nano Banana), sobe pro storage e salva em /midias ----
+// Padrão IA Marketing: fotorealista, sem texto/letras/marca d'água, iluminação profissional.
+async function toolGerarImagem(
+  prompt: string,
+  ctx: { userId: string; fromNumber?: string },
+): Promise<string> {
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
   try {
+    // Blindagem de qualidade — força padrão ULTRA REALISTA idêntico ao IA Marketing
+    const enhancedPrompt = `${clean}
+
+DIRETRIZES OBRIGATÓRIAS DE QUALIDADE (padrão IA Marketing):
+- Fotografia ultra-realista, resolução máxima, nível editorial/publicitário profissional.
+- Iluminação natural e cinematográfica, sombras suaves, profundidade de campo real.
+- Cores vibrantes, texturas nítidas, materiais convincentes (madeira, tecido, metal, pele).
+- Composição equilibrada, enquadramento profissional (regra dos terços quando fizer sentido).
+- Se houver produto: destacado em primeiro plano, foco perfeito, apelo comercial.
+- Se houver pessoa: rosto e mãos anatomicamente corretos, expressão natural.
+- PROIBIDO: qualquer texto, letras, palavras, números, legendas, marcas d'água, logos artificiais, bordas ou molduras.
+- PROIBIDO: aparência de IA/CGI barato, plástico, cartoon (a menos que o usuário peça explicitamente).
+- Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.`;
+
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
         model: "google/gemini-3.1-flash-image-preview",
-        messages: [{ role: "user", content: clean }],
+        messages: [{ role: "user", content: enhancedPrompt }],
         modalities: ["image", "text"],
       }),
     });
@@ -815,12 +833,43 @@ async function toolGerarImagem(prompt: string, userId: string): Promise<string> 
       if (m) { mime = m[1]; b64 = m[2]; }
     }
     const bytes = base64Decode(b64);
-    const fileName = `whatsapp-ai/${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+    const fileName = `midias/${ctx.userId}/ai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
     const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
     if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
     const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
     if (!pub?.publicUrl) return JSON.stringify({ erro: "sem_url_publica" });
-    return JSON.stringify({ ok: true, image_url: pub.publicUrl, prompt: clean });
+
+    // Salva automaticamente na biblioteca /midias para o usuário poder publicar
+    let midiaId: string | null = null;
+    try {
+      const { data: novo } = await sb
+        .from("midias_whatsapp")
+        .insert({
+          user_id: ctx.userId,
+          origem: "ia_whatsapp",
+          telefone_origem: ctx.fromNumber ?? null,
+          tipo: "foto",
+          midia_url: pub.publicUrl,
+          mime_type: mime,
+          tamanho_bytes: bytes.length,
+          contexto_original: clean,
+          status: "pendente",
+        })
+        .select("id")
+        .single();
+      midiaId = novo?.id ?? null;
+    } catch (e) {
+      console.warn("[gerar_imagem] falhou ao salvar em midias_whatsapp:", (e as Error).message);
+    }
+
+    return JSON.stringify({
+      ok: true,
+      image_url: pub.publicUrl,
+      prompt: clean,
+      midia_id: midiaId,
+      salvo_em_midias: !!midiaId,
+      instrucao: "A imagem foi enviada ao usuário E salva automaticamente na biblioteca /midias. Diga em 1-2 linhas o que criou e avise que já está disponível pra publicar nas redes sociais (ele pode pedir 'posta essa imagem' ou usar em /midias).",
+    });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
   }
@@ -2230,7 +2279,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "gerar_imagem",
-      description: "Cria uma imagem por IA a partir de um prompt descritivo (arte, foto realista, ilustração, banner, story, meme, mockup). Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria um post', 'desenha', 'me manda uma foto de X', 'faz um banner'. A imagem é enviada automaticamente no WhatsApp — você só precisa responder com uma legenda curta (1-2 linhas) descrevendo o que criou. NUNCA cole a URL na resposta, apenas comente.",
+      description: "Cria uma imagem ULTRA REALISTA por IA (padrão IA Marketing — fotorealista, iluminação profissional, qualidade editorial, SEM texto/letras) a partir de um prompt descritivo. Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria uma foto de X', 'desenha', 'me manda uma imagem', 'faz um banner/post/mockup'. A imagem é enviada automaticamente no WhatsApp E salva na biblioteca /midias — o usuário pode publicar direto nas redes sociais depois. Responda com legenda curta (1-2 linhas) descrevendo o que criou e avisando que já está pronta pra postar. NUNCA cole a URL na resposta.",
       parameters: {
         type: "object",
         properties: { prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" } },
@@ -2536,7 +2585,7 @@ async function runTool(
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
   if (name === "gerar_imagem") {
-    const r = await toolGerarImagem(args?.prompt ?? "", ctx.userId);
+    const r = await toolGerarImagem(args?.prompt ?? "", { userId: ctx.userId, fromNumber: ctx.fromNumber });
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
