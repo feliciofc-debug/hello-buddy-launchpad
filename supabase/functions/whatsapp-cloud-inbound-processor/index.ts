@@ -1826,15 +1826,30 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_redes_sociais",
-      description: "Publica um produto do catálogo do usuário no Facebook e/ou Instagram AGORA, gerando automaticamente um script de copywriting com o TOM escolhido (urgência, escassez, black-friday, prova-social, benefício). Use quando o usuário disser 'posta X nas redes', 'divulga X no face e insta', 'publica o produto Y com urgência', 'faz um post pro Instagram do Z'. Sempre confirma o produto pelo nome/categoria antes. A imagem do produto cadastrada é usada no post.",
+      description: "Gera PREVIEW de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. Depois de mostrar o preview ao usuário e ele aprovar, chame confirmar_postagem_redes com o token. Uso: 'posta X nas redes', 'divulga X no face insta e tiktok', 'faz post de urgência do produto Y'. Restrito ao dono (Felicio) nesta fase.",
       parameters: {
         type: "object",
         properties: {
-          produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto (busca no catálogo do usuário)." },
-          tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copywriting. Padrão: urgencia." },
-          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram"] }, description: "Redes onde publicar. Padrão: ambas." },
+          produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto." },
+          tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copy. Padrão: urgencia." },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] }, description: "Redes. Padrão: todas as três." },
         },
         required: ["produto"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "confirmar_postagem_redes",
+      description: "Confirma e PUBLICA de fato o post nas redes sociais usando o token devolvido por postar_redes_sociais. Chame SOMENTE após o usuário aprovar explicitamente o preview ('pode postar', 'confirma', 'manda ver', 'sim'). Se pedir cancelar, passe cancelar=true.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Token de 8 chars devolvido por postar_redes_sociais." },
+          cancelar: { type: "boolean", description: "Se true, descarta o preview sem publicar." },
+        },
+        required: ["token"],
       },
     },
   },
