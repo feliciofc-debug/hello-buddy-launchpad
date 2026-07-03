@@ -1856,7 +1856,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_redes_sociais",
-      description: "Gera PREVIEW de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. Depois de mostrar o preview ao usuário e ele aprovar, chame confirmar_postagem_redes com o token. Uso: 'posta X nas redes', 'divulga X no face insta e tiktok', 'faz post de urgência do produto Y'. Restrito ao dono (Felicio) nesta fase.",
+      description: "Gera PREVIEW de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. REGRA CRÍTICA: quando o usuário pedir 'posta X nas redes', CHAME ESTA TOOL IMEDIATAMENTE na mesma resposta. NUNCA responda 'aguarde um instante', 'já te mostro', 'vou preparar' sem invocar a tool — isso é bug. A busca do produto é fuzzy por palavras-chave (não precisa ser nome exato). Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões ao usuário. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio) nesta fase.",
       parameters: {
         type: "object",
         properties: {
