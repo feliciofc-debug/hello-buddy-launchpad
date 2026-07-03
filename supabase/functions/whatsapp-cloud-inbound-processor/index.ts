@@ -1456,7 +1456,7 @@ ${ctaRegra}
     return txt.slice(0, limite);
   } catch (e) {
     console.error("[postar_redes] gerar script falhou:", e);
-    return `🔥 ${produto.nome} — ${preco}\n\n${produto.descricao ?? ""}\n\n👉 ${produto.link ?? ""}`.slice(0, limite);
+    return `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n${produto.descricao ?? ""}\n\n${temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!"}`.slice(0, limite);
   }
 }
 
