@@ -700,18 +700,25 @@ async function toolConsultarClima(cidadeOuLatLng: string, ctx: { userId: string;
   }
 }
 
-// ---- cotacao_moeda: AwesomeAPI (grátis, sem chave). Ex: USD-BRL, EUR-BRL, BTC-BRL ----
-async function toolCotacaoMoeda(par: string): Promise<string> {
-  const clean = (par || "").toUpperCase().replace(/\s+/g, "").replace(/\//g, "-");
-  if (!/^[A-Z]{3,5}-[A-Z]{3,5}$/.test(clean)) return JSON.stringify({ erro: "par_invalido", exemplo: "USD-BRL, EUR-BRL, BTC-BRL" });
+// ---- cotacao_moeda: AwesomeAPI + fallbacks (CoinGecko p/ cripto, open.er-api p/ fiat) ----
+const CRYPTO_IDS: Record<string, string> = {
+  BTC: "bitcoin", ETH: "ethereum", SOL: "solana", BNB: "binancecoin",
+  XRP: "ripple", DOGE: "dogecoin", ADA: "cardano", LTC: "litecoin",
+  MATIC: "polygon-ecosystem-token", AVAX: "avalanche-2", LINK: "chainlink",
+  DOT: "polkadot", TRX: "tron", USDT: "tether", USDC: "usd-coin",
+};
+
+async function fetchAwesome(clean: string): Promise<any | null> {
   try {
-    const r = await fetch(`https://economia.awesomeapi.com.br/last/${clean}`, { signal: AbortSignal.timeout(6000) });
-    if (!r.ok) return JSON.stringify({ erro: `cotacao_api ${r.status}` });
+    const r = await fetch(`https://economia.awesomeapi.com.br/last/${clean}`, {
+      signal: AbortSignal.timeout(5000),
+      headers: { "User-Agent": "JarvisBot/1.0" },
+    });
+    if (!r.ok) return null;
     const d = await r.json();
-    const key = clean.replace("-", "");
-    const c = d[key];
-    if (!c) return JSON.stringify({ erro: "par_nao_encontrado" });
-    return JSON.stringify({
+    const c = d[clean.replace("-", "")];
+    if (!c) return null;
+    return {
       par: clean,
       compra: Number(c.bid),
       venda: Number(c.ask),
@@ -720,10 +727,109 @@ async function toolCotacaoMoeda(par: string): Promise<string> {
       minima_dia: Number(c.low),
       atualizado_em: c.create_date,
       nome: c.name,
-    });
-  } catch (e) {
-    return JSON.stringify({ erro: String((e as Error).message) });
+      fonte: "AwesomeAPI",
+    };
+  } catch { return null; }
+}
+
+async function fetchCoinGecko(from: string, to: string): Promise<any | null> {
+  const id = CRYPTO_IDS[from];
+  if (!id) return null;
+  const vs = to.toLowerCase();
+  try {
+    const r = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=${vs}&include_24hr_change=true&include_last_updated_at=true`,
+      { signal: AbortSignal.timeout(6000), headers: { "User-Agent": "JarvisBot/1.0", "Accept": "application/json" } },
+    );
+    if (!r.ok) return null;
+    const d = await r.json();
+    const c = d[id];
+    if (!c || c[vs] == null) return null;
+    const price = Number(c[vs]);
+    const ts = c.last_updated_at ? new Date(c.last_updated_at * 1000).toISOString() : new Date().toISOString();
+    return {
+      par: `${from}-${to}`,
+      compra: price,
+      venda: price,
+      variacao_pct: Number(c[`${vs}_24h_change`] ?? 0),
+      atualizado_em: ts,
+      nome: `${from}/${to}`,
+      fonte: "CoinGecko",
+    };
+  } catch { return null; }
+}
+
+// cache em memória para taxas fiat (1h)
+const FIAT_CACHE: Record<string, { rates: Record<string, number>; ts: number }> = {};
+
+async function fetchFiat(from: string, to: string): Promise<any | null> {
+  try {
+    const cached = FIAT_CACHE[from];
+    let rates: Record<string, number> | null = null;
+    let updated = "";
+    if (cached && Date.now() - cached.ts < 3600_000) {
+      rates = cached.rates;
+      updated = new Date(cached.ts).toISOString();
+    } else {
+      const r = await fetch(`https://open.er-api.com/v6/latest/${from}`, {
+        signal: AbortSignal.timeout(6000),
+        headers: { "User-Agent": "JarvisBot/1.0" },
+      });
+      if (!r.ok) return null;
+      const d = await r.json();
+      if (d.result !== "success" || !d.rates) return null;
+      rates = d.rates;
+      updated = d.time_last_update_utc || new Date().toISOString();
+      FIAT_CACHE[from] = { rates: rates!, ts: Date.now() };
+    }
+    const price = rates![to];
+    if (price == null) return null;
+    return {
+      par: `${from}-${to}`,
+      compra: Number(price),
+      venda: Number(price),
+      variacao_pct: null,
+      atualizado_em: updated,
+      nome: `${from}/${to}`,
+      fonte: "ExchangeRate-API",
+    };
+  } catch { return null; }
+}
+
+async function toolCotacaoMoeda(par: string): Promise<string> {
+  const clean = (par || "").toUpperCase().replace(/\s+/g, "").replace(/\//g, "-");
+  if (!/^[A-Z]{3,5}-[A-Z]{3,5}$/.test(clean)) {
+    return JSON.stringify({ erro: "par_invalido", exemplo: "USD-BRL, EUR-BRL, BTC-BRL" });
   }
+  const [from, to] = clean.split("-");
+  const isCrypto = !!CRYPTO_IDS[from];
+
+  // 1) AwesomeAPI (tempo real, primária)
+  const awesome = await fetchAwesome(clean);
+  if (awesome) return JSON.stringify(awesome);
+
+  // 2) fallback por tipo
+  const fb = isCrypto ? await fetchCoinGecko(from, to) : await fetchFiat(from, to);
+  if (fb) return JSON.stringify(fb);
+
+  // 3) para cripto, tentar via USD e converter p/ BRL
+  if (isCrypto && to === "BRL") {
+    const usd = await fetchCoinGecko(from, "USD");
+    const usdBrl = await fetchFiat("USD", "BRL");
+    if (usd && usdBrl) {
+      return JSON.stringify({
+        par: clean,
+        compra: usd.compra * usdBrl.compra,
+        venda: usd.venda * usdBrl.venda,
+        variacao_pct: usd.variacao_pct,
+        atualizado_em: usd.atualizado_em,
+        nome: `${from}/${to}`,
+        fonte: "CoinGecko+ExchangeRate (cross)",
+      });
+    }
+  }
+
+  return JSON.stringify({ erro: "cotacao_indisponivel", par: clean, detalhe: "AwesomeAPI 429/limite; fallback tambem falhou" });
 }
 
 // ---- criar_lembrete: agenda notificação com escalonamento (30min antes, a cada 10min) ----
