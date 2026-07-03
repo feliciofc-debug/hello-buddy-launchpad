@@ -29,6 +29,7 @@ import RedesSociais from "./pages/RedesSociais";
 import Biblioteca from "./pages/Biblioteca";
 import Campanhas from "./pages/Campanhas";
 import MeusProdutos from "./pages/MeusProdutos";
+import Midias from "./pages/Midias";
 import GoogleAds from "./pages/GoogleAds";
 import Analytics from "./pages/Analytics";
 import Terms from "./pages/Terms";
