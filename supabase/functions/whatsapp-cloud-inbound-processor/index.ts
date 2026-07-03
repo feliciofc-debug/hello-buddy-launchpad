@@ -2472,6 +2472,7 @@ async function runTool(
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
+  if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
