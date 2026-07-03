@@ -1890,13 +1890,15 @@ function formatSocialPostToolResult(raw: string): string {
   }
 
   if (data?.status === "publicado") {
-    const ok = Array.isArray(data.redes_publicadas) && data.redes_publicadas.length
-      ? data.redes_publicadas.join(", ")
-      : "nenhuma rede";
+    const redesArr = Array.isArray(data.redes_publicadas) ? data.redes_publicadas : [];
+    const redesFmt = redesArr.length
+      ? redesArr.map((r: string) => `✅ *${String(r).toUpperCase()}*`).join("\n")
+      : "⚠️ *nenhuma rede publicou*";
     const falhas = Array.isArray(data.redes_falharam) && data.redes_falharam.length
-      ? `\nFalhas: ${data.redes_falharam.map((f: any) => `${f.rede}${f.erro ? ` (${f.erro})` : ""}`).join(", ")}`
+      ? `\n\n❌ *Falhas:*\n${data.redes_falharam.map((f: any) => `• ${f.rede}${f.erro ? ` — ${f.erro}` : ""}`).join("\n")}`
       : "";
-    return `Publicado: *${data.produto?.nome ?? "produto"}*\nRedes: ${ok}${falhas}`;
+    const header = redesArr.length ? "🎉 *POSTAGEM REALIZADA COM SUCESSO!* 🎉" : "⚠️ *POSTAGEM NÃO CONCLUÍDA*";
+    return `${header}\n\n📢 *${data.produto?.nome ?? "produto"}*\n\n${redesFmt}${falhas}`;
   }
 
   if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
@@ -2065,7 +2067,11 @@ function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>)
     tipos.video ? `${tipos.video} vídeo${tipos.video > 1 ? "s" : ""}` : "",
     tipos.audio ? `${tipos.audio} áudio${tipos.audio > 1 ? "s" : ""}` : "",
   ].filter(Boolean).join(", ");
-  return `${total === 1 ? "Salvei" : "Salvei"} ${partes || "a mídia"} na biblioteca /midias. Não usei produto do catálogo; publique/reuse por lá quando quiser.`;
+  const temFoto = (tipos.foto ?? 0) > 0;
+  const instrucao = temFoto
+    ? " INSTRUÇÃO PRO ASSISTENTE: analise VISUALMENTE a(s) imagem(ns) que o cliente acabou de mandar (você as recebeu no conteúdo desta mensagem) e descreva em 1-2 frases o que aparece nela (produto, cena, cor, contexto). Depois confirme que salvou. NÃO responda genericamente — mostre que viu a foto."
+    : "";
+  return `${total === 1 ? "Salvei" : "Salvei"} ${partes || "a mídia"} na biblioteca /midias. Não usei produto do catálogo; publique/reuse por lá quando quiser.${instrucao}`;
 }
 
 async function toolSalvarMidiaBiblioteca(
