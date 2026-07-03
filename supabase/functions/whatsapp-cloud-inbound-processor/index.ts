@@ -1418,21 +1418,26 @@ async function gerarScriptRedesSociais(
     beneficio: "Foque nos benefícios reais e transformação que o produto entrega.",
   };
   const guiaTom = guia[tomLabel] ?? guia["urgencia"];
-  const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "confira no link";
+  const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "";
   const limite = rede === "instagram" ? 2200 : 1500;
-  const prompt = `Você é copywriter de e-commerce. Crie um post para ${rede.toUpperCase()} vendendo este produto.
+  const temLink = !!(produto.link && /^https?:\/\//i.test(produto.link));
+  const ctaRegra = temLink
+    ? `- CTA claro no fim ("👉 Link na bio" para IG, "👉 Compre aqui: ${produto.link}" para FB).`
+    : `- CTA de engajamento no fim (ex: "👉 Chama no direct pra garantir", "Comenta EU QUERO", "Manda mensagem"). NÃO invente link, NÃO escreva "link na bio" se não existir link — foque em contato direto/interesse.`;
+  const prompt = `Você é copywriter de e-commerce. Crie um post para ${rede.toUpperCase()} vendendo/divulgando este produto.
 ${guiaTom}
 
 PRODUTO: ${produto.nome}
 ${produto.descricao ? `DESCRIÇÃO: ${produto.descricao}` : ""}
-PREÇO: ${preco}
+${preco ? `PREÇO: ${preco}` : "PREÇO: (não informar valor no post)"}
 ${produto.categoria ? `CATEGORIA: ${produto.categoria}` : ""}
+${temLink ? "" : "OBS: este produto NÃO tem link de compra — é post institucional/lifestyle/engajamento."}
 
 REGRAS:
 - Máx ${limite} caracteres.
 - Comece com 1 linha impactante e emoji.
 - 2-4 bullets de benefício.
-- CTA claro no fim ("👉 Link na bio" para IG, "👉 Compre aqui: ${produto.link || "link"}" para FB).
+${ctaRegra}
 - 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
 - NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.`;
 
@@ -1451,7 +1456,7 @@ REGRAS:
     return txt.slice(0, limite);
   } catch (e) {
     console.error("[postar_redes] gerar script falhou:", e);
-    return `🔥 ${produto.nome} — ${preco}\n\n${produto.descricao ?? ""}\n\n👉 ${produto.link ?? ""}`.slice(0, limite);
+    return `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n${produto.descricao ?? ""}\n\n${temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!"}`.slice(0, limite);
   }
 }
 
@@ -2254,7 +2259,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_redes_sociais",
-      description: "Gera PREVIEW COMPLETO de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. REGRA CRÍTICA: quando o usuário pedir 'posta X nas redes', CHAME ESTA TOOL IMEDIATAMENTE na mesma resposta. A resposta da tool JÁ CONTÉM o preview; depois dela, mostre o preview e o token ao usuário. NUNCA responda 'aguarde um instante', 'já te mostro', 'vou preparar' ou promessa parecida — isso é bug. A busca do produto é fuzzy por palavras-chave, acentos, sinônimos e consulta também products_stock. Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões ao usuário. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio) nesta fase.",
+      description: "Gera PREVIEW COMPLETO de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. LINK NÃO É OBRIGATÓRIO: se o produto não tiver link de compra, gera post institucional/lifestyle/engajamento (CTA de contato direto, direct, comentário) — NUNCA recuse por falta de link nem peça o link ao usuário. REGRA CRÍTICA: quando o usuário pedir 'posta X nas redes', CHAME ESTA TOOL IMEDIATAMENTE na mesma resposta. A resposta da tool JÁ CONTÉM o preview; depois dela, mostre o preview e o token ao usuário. NUNCA responda 'aguarde um instante', 'já te mostro', 'vou preparar' ou promessa parecida — isso é bug. A busca do produto é fuzzy por palavras-chave, acentos, sinônimos e consulta também products_stock. Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões ao usuário. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio) nesta fase.",
       parameters: {
         type: "object",
         properties: {
