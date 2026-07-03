@@ -1953,12 +1953,66 @@ async function toolConfirmarPostagemRedes(
 
 
 // ---- salvar_midia_biblioteca: pega a mídia enviada pelo cliente (foto/vídeo/áudio) e salva na biblioteca de Mídias ----
+async function salvarItemMidiaBiblioteca(
+  media: MediaExtract,
+  ctx: { userId: string; fromNumber?: string },
+  contexto: string,
+): Promise<{ id: string; tipo: "foto" | "video" | "audio" }> {
+  const bytes = base64Decode(media.base64);
+  const tipoMap = { image: "foto", video: "video", audio: "audio" } as const;
+  const tipo = tipoMap[media.kind as keyof typeof tipoMap] || "foto";
+  const ext = (media.mime.split("/")[1] || "bin").split(";")[0];
+  const fileName = `midias/${ctx.userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+  const { error: upErr } = await sb.storage
+    .from("produtos")
+    .upload(fileName, bytes, { contentType: media.mime, upsert: false });
+  if (upErr) throw new Error(`upload_falhou: ${upErr.message}`);
+
+  const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
+  const url = pub?.publicUrl;
+  if (!url) throw new Error("sem_url_publica");
+
+  const { data: novo, error: insErr } = await sb
+    .from("midias_whatsapp")
+    .insert({
+      user_id: ctx.userId,
+      origem: "whatsapp",
+      telefone_origem: ctx.fromNumber ?? null,
+      tipo,
+      midia_url: url,
+      mime_type: media.mime,
+      tamanho_bytes: bytes.length,
+      contexto_original: contexto || media.caption || null,
+      status: "pendente",
+    })
+    .select("id")
+    .single();
+
+  if (insErr) throw new Error(`db_falhou: ${insErr.message}`);
+  return { id: novo.id, tipo };
+}
+
+function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>): string {
+  const total = salvos.length;
+  const tipos = salvos.reduce((acc, item) => {
+    acc[item.tipo] = (acc[item.tipo] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const partes = [
+    tipos.foto ? `${tipos.foto} foto${tipos.foto > 1 ? "s" : ""}` : "",
+    tipos.video ? `${tipos.video} vídeo${tipos.video > 1 ? "s" : ""}` : "",
+    tipos.audio ? `${tipos.audio} áudio${tipos.audio > 1 ? "s" : ""}` : "",
+  ].filter(Boolean).join(", ");
+  return `${total === 1 ? "Salvei" : "Salvei"} ${partes || "a mídia"} na biblioteca /midias. Não usei produto do catálogo; publique/reuse por lá quando quiser.`;
+}
+
 async function toolSalvarMidiaBiblioteca(
   args: { contexto?: string },
-  ctx: { userId: string; media?: MediaExtract[] },
+  ctx: { userId: string; fromNumber?: string; media?: MediaExtract[] },
 ): Promise<string> {
-  const media = (ctx.media || []).slice().reverse().find((m) => m.kind === "image" || m.kind === "video" || m.kind === "audio");
-  if (!media) {
+  const medias = (ctx.media || []).filter((m) => m.kind === "image" || m.kind === "video" || m.kind === "audio");
+  if (medias.length === 0) {
     return JSON.stringify({
       erro: "sem_midia",
       mensagem: "Não encontrei nenhuma foto, vídeo ou áudio nessa conversa. Me manda a mídia e depois pede pra salvar.",
@@ -1966,45 +2020,15 @@ async function toolSalvarMidiaBiblioteca(
   }
 
   try {
-    const bytes = base64Decode(media.base64);
-    const tipoMap = { image: "foto", video: "video", audio: "audio" } as const;
-    const tipo = tipoMap[media.kind as keyof typeof tipoMap] || "foto";
-    const ext = (media.mime.split("/")[1] || "bin").split(";")[0];
-    const fileName = `midias/${ctx.userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-
-    const { error: upErr } = await sb.storage
-      .from("produtos")
-      .upload(fileName, bytes, { contentType: media.mime, upsert: false });
-    if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
-
-    const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
-    const url = pub?.publicUrl;
-    if (!url) return JSON.stringify({ erro: "sem_url_publica" });
-
-    const contexto = (args?.contexto || media.caption || "").trim();
-
-    const { data: novo, error: insErr } = await sb
-      .from("midias_whatsapp")
-      .insert({
-        user_id: ctx.userId,
-        origem: "whatsapp",
-        tipo,
-        midia_url: url,
-        mime_type: media.mime,
-        tamanho_bytes: bytes.length,
-        contexto_original: contexto || null,
-        status: "pendente",
-      })
-      .select("id")
-      .single();
-
-    if (insErr) return JSON.stringify({ erro: `db_falhou: ${insErr.message}` });
+    const contexto = (args?.contexto || "").trim();
+    const salvos = await Promise.all(medias.map((m) => salvarItemMidiaBiblioteca(m, ctx, contexto)));
 
     return JSON.stringify({
       ok: true,
-      midia_id: novo.id,
-      tipo,
-      mensagem: `${tipo === "foto" ? "Foto" : tipo === "video" ? "Vídeo" : "Áudio"} salvo na biblioteca de Mídias. Acesse em /midias pra revisar, gerar legenda com IA e publicar nas redes.`,
+      midia_id: salvos[0]?.id,
+      midia_ids: salvos.map((s) => s.id),
+      tipos: salvos.map((s) => s.tipo),
+      mensagem: respostaMidiaSalva(salvos),
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -2307,6 +2331,12 @@ async function runTool(
   args: any,
   ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
 ): Promise<{ result: string; imageUrl?: string }> {
+  const hasFreshLibraryMedia = (ctx.media ?? []).some((m) => m.kind === "image" || m.kind === "video");
+  if (hasFreshLibraryMedia && name !== "salvar_midia_biblioteca") {
+    console.warn(`[pietro][media_guard] bloqueando tool ${name}; mídia nova deve ir para /midias`);
+    const result = await toolSalvarMidiaBiblioteca({ contexto: args?.contexto ?? args?.produto ?? args?.query ?? "" }, ctx);
+    return { result };
+  }
   if (name === "consultar_cnpj") return { result: await toolConsultarCnpj(args?.cnpj ?? "") };
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
@@ -2754,6 +2784,48 @@ async function processOne(queueId: string) {
     if (waAccessToken && ["image", "audio", "video", "document"].includes(row.message_type ?? "")) {
       media = await downloadAllMedia(row.payload, waAccessToken);
       console.log(`[processor] media baixadas: ${media.length}`);
+    }
+
+    // Regra determinística: foto/vídeo enviado no WhatsApp vira mídia livre em /midias.
+    // Não deixa a IA buscar produto parecido no catálogo nem preparar post com imagem errada.
+    const freshLibraryMedia = media.filter((m) => m.kind === "image" || m.kind === "video");
+    if (freshLibraryMedia.length > 0) {
+      const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
+      const salvos = await Promise.all(freshLibraryMedia.map((m) => salvarItemMidiaBiblioteca(m, { userId, fromNumber: row.from_number }, contexto)));
+      const reply = respostaMidiaSalva(salvos);
+
+      const { data: outMsg } = await sb
+        .from("whatsapp_cloud_messages")
+        .insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+
+      let sendError: string | null = null;
+      try {
+        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        if (sentId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+        }
+      } catch (e) {
+        sendError = String((e as Error).message ?? e);
+      }
+
+      await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+
+      if (sendError) {
+        await failQueue(row.id, `send_failed: ${sendError}`);
+        return { ok: false, reason: "send_failed", error: sendError };
+      }
+
+      await doneQueue(row.id);
+      return { ok: true, saved_to_midias: true, midia_ids: salvos.map((s) => s.id), reply_preview: reply.slice(0, 120) };
     }
 
     // PASSO 7 — System prompt (com contexto AMZ se aplicável)
