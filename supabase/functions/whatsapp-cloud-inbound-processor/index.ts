@@ -2644,6 +2644,24 @@ async function callGemini(
   // Modelo pro é mais confiável com áudio/imagem
   const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
   let pendingImageUrl: string | undefined;
+  let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
+
+  const captureSocialToken = (raw: string) => {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.status === "aguardando_confirmacao" && typeof parsed?.token === "string") {
+        pendingSocialToken = parsed.token;
+      }
+    } catch { /* ignore */ }
+  };
+
+  const appendConfirmCommand = (text: string): string => {
+    if (!pendingSocialToken) return text;
+    // Se o modelo já incluiu o comando ou o token, não duplica.
+    if (text.includes(pendingSocialToken)) return text;
+    const cmd = `pode postar ${pendingSocialToken}`;
+    return `${text}<<SPLIT>>${cmd}`;
+  };
 
   for (let step = 0; step < 4; step++) {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -2677,14 +2695,15 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
+        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais") captureSocialToken(result);
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
     }
 
-    return { text: msg?.content ?? "", imageUrl: pendingImageUrl };
+    return { text: appendConfirmCommand(msg?.content ?? ""), imageUrl: pendingImageUrl };
   }
-  return { text: "Desculpa, não consegui concluir a pesquisa agora.", imageUrl: pendingImageUrl };
+  return { text: appendConfirmCommand("Desculpa, não consegui concluir a pesquisa agora."), imageUrl: pendingImageUrl };
 }
 
 
