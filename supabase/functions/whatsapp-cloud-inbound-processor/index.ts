@@ -600,6 +600,8 @@ out center tags 25;`.trim();
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.osm.jp/api/interpreter",
   ];
   let d: any = null;
   let lastErr = "";
@@ -610,7 +612,7 @@ out center tags 25;`.trim();
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent": "amz-jarvis/1.0" },
         body: new URLSearchParams({ data: overpassQuery }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(8000),
       });
       if (!r.ok) {
         lastErr = `overpass ${r.status}: ${(await r.text().catch(() => "")).slice(0, 200)}`;
