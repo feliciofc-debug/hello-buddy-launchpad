@@ -2780,7 +2780,10 @@ async function processOne(queueId: string) {
       hour: "2-digit", minute: "2-digit",
     }).format(new Date());
     const dateBlock = `\n\nCONTEXTO TEMPORAL (IMPORTANTE):\n- Data e hora atual em São Paulo: ${nowSP}.\n- Use SEMPRE esta data como referência de "hoje", "ontem", "esta semana", "este ano".\n- Para qualquer pergunta sobre notícias, eventos, cotações, clima, preços, jogos, agenda ou "o que está acontecendo", chame pesquisar_web com termos incluindo o ano/mês atual e passe recencia="d" (últimas 24h) ou "w" (última semana) quando fizer sentido. NUNCA responda de memória sobre fatos recentes.`;
-    const systemPromptWithDate = systemPrompt + dateBlock;
+    const mediaBlock = media.length > 0
+      ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O cliente ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio enviado pelo cliente é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que o cliente falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada pelo cliente.\n- É PROIBIDO buscar/casar essa mídia com produto do estoque/catálogo. Não invente produto.\n- Depois de salvar, responda curto: confirma que salvou na biblioteca /midias e diz que ele pode publicar/reusar por lá quando quiser. Não peça mais informação.`
+      : "";
+    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
