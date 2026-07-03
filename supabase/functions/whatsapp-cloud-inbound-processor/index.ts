@@ -1825,7 +1825,8 @@ function formatSocialPostToolResult(raw: string): string {
     const scripts = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
       .join("\n\n");
-    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}\n\nPara publicar de verdade, confirme com: *pode postar ${data.token}*`;
+    // <<SPLIT>> marca quebra em MENSAGENS separadas no WhatsApp — o Felicio pediu o comando de confirmação isolado pra copiar/colar só o post.
+    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}<<SPLIT>>pode postar ${data.token}`;
   }
 
   if (data?.status === "publicado") {
