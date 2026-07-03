@@ -1455,11 +1455,60 @@ REGRAS:
   }
 }
 
+// Cache em memória de posts pendentes de confirmação (TTL 15 min)
+const PENDING_POSTS = new Map<string, { produto: any; tom: string; redes: string[]; scripts: Record<string, string>; userId: string; createdAt: number }>();
+function pendingCleanup() {
+  const now = Date.now();
+  for (const [k, v] of PENDING_POSTS) if (now - v.createdAt > 15 * 60 * 1000) PENDING_POSTS.delete(k);
+}
+
+async function publicarEmRede(
+  rede: string,
+  script: string,
+  produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null },
+  userId: string,
+): Promise<{ rede: string; ok: boolean; status: number; resposta: any }> {
+  try {
+    if (rede === "facebook") {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+        body: JSON.stringify({ user_id: userId, message: script, image_url: produto.imagem_url, link_url: produto.link }),
+      });
+      const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+      return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
+    }
+    if (rede === "instagram") {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+        body: JSON.stringify({ user_id: userId, caption: script, image_url: produto.imagem_url }),
+      });
+      const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+      return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
+    }
+    if (rede === "tiktok") {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-post-content`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+        body: JSON.stringify({ user_id: userId, content_type: "image", content_url: produto.imagem_url, title: script.slice(0, 2200), post_mode: "direct" }),
+      });
+      const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+      return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
+    }
+    return { rede, ok: false, status: 0, resposta: { error: "rede desconhecida" } };
+  } catch (e) {
+    return { rede, ok: false, status: 0, resposta: { error: String((e as Error).message) } };
+  }
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[] },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
+    if (!isOwner(ctx)) return JSON.stringify({ erro: "Publicação em redes sociais liberada apenas para o dono (Felicio) nesta fase. Em breve para todos os clientes PJ." });
+    pendingCleanup();
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
 
@@ -1473,50 +1522,60 @@ async function toolPostarRedesSociais(
       .maybeSingle();
 
     if (!prod) return JSON.stringify({ erro: `produto "${q}" não encontrado no seu catálogo ativo` });
-    if (!prod.imagem_url) return JSON.stringify({ erro: `produto "${prod.nome}" não tem imagem cadastrada — o Instagram exige imagem` });
+    if (!prod.imagem_url) return JSON.stringify({ erro: `produto "${prod.nome}" não tem imagem cadastrada — Instagram/TikTok exigem imagem` });
 
-    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram"]).map((r) => r.toLowerCase());
+    const redesValidas = ["facebook", "instagram", "tiktok"];
+    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
+      .map((r) => r.toLowerCase())
+      .filter((r) => redesValidas.includes(r));
     const tom = args?.tom || "urgencia";
 
-    const tarefas: Promise<any>[] = [];
-    if (redes.includes("facebook")) {
-      tarefas.push((async () => {
-        const message = await gerarScriptRedesSociais(prod, tom, "facebook");
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-          body: JSON.stringify({ user_id: ctx.userId, message, image_url: prod.imagem_url, link_url: prod.link }),
-        });
-        const txt = await res.text();
-        let j: any = {}; try { j = JSON.parse(txt); } catch {}
-        return { rede: "facebook", ok: res.ok && j?.success !== false, mensagem: message, resposta: j, status: res.status };
-      })());
-    }
-    if (redes.includes("instagram")) {
-      tarefas.push((async () => {
-        const caption = await gerarScriptRedesSociais(prod, tom, "instagram");
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-          body: JSON.stringify({ user_id: ctx.userId, caption, image_url: prod.imagem_url }),
-        });
-        const txt = await res.text();
-        let j: any = {}; try { j = JSON.parse(txt); } catch {}
-        return { rede: "instagram", ok: res.ok && j?.success !== false, caption, resposta: j, status: res.status };
-      })());
-    }
+    // Gera scripts em paralelo (uma vez só) para preview
+    const scriptsEntries = await Promise.all(
+      redes.map(async (r) => {
+        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+        return [r, await gerarScriptRedesSociais(prod, tom, redeGen)] as const;
+      }),
+    );
+    const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
 
-    const resultados = await Promise.all(tarefas);
+    const token = crypto.randomUUID().slice(0, 8);
+    PENDING_POSTS.set(token, { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() });
+
     return JSON.stringify({
+      status: "aguardando_confirmacao",
+      token,
       produto: { nome: prod.nome, preco: prod.preco, imagem_url: prod.imagem_url, link: prod.link },
       tom,
-      redes_publicadas: resultados.filter((r: any) => r.ok).map((r: any) => r.rede),
-      redes_falharam: resultados.filter((r: any) => !r.ok).map((r: any) => ({ rede: r.rede, status: r.status, erro: r.resposta?.error || r.resposta?.message })),
-      detalhes: resultados,
+      redes,
+      preview: scripts,
+      instrucoes: `Mostre ao usuário o produto, tom, redes e os scripts (um por rede). Peça confirmação clara. Se confirmar, chame confirmar_postagem_redes com token="${token}". Se pedir mudanças, gere novo preview.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
   }
+}
+
+async function toolConfirmarPostagemRedes(
+  args: { token: string; cancelar?: boolean },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  pendingCleanup();
+  const p = PENDING_POSTS.get(args?.token || "");
+  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado (15min). Refaça o pedido de postagem." });
+  if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
+  if (args?.cancelar) { PENDING_POSTS.delete(args.token); return JSON.stringify({ status: "cancelado" }); }
+
+  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId)));
+  PENDING_POSTS.delete(args.token);
+  return JSON.stringify({
+    status: "publicado",
+    produto: { nome: p.produto.nome },
+    redes_publicadas: resultados.filter((r) => r.ok).map((r) => r.rede),
+    redes_falharam: resultados.filter((r) => !r.ok).map((r) => ({ rede: r.rede, status: r.status, erro: r.resposta?.error || r.resposta?.message })),
+    detalhes: resultados,
+  });
 }
 
 
@@ -1767,15 +1826,30 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_redes_sociais",
-      description: "Publica um produto do catálogo do usuário no Facebook e/ou Instagram AGORA, gerando automaticamente um script de copywriting com o TOM escolhido (urgência, escassez, black-friday, prova-social, benefício). Use quando o usuário disser 'posta X nas redes', 'divulga X no face e insta', 'publica o produto Y com urgência', 'faz um post pro Instagram do Z'. Sempre confirma o produto pelo nome/categoria antes. A imagem do produto cadastrada é usada no post.",
+      description: "Gera PREVIEW de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. Depois de mostrar o preview ao usuário e ele aprovar, chame confirmar_postagem_redes com o token. Uso: 'posta X nas redes', 'divulga X no face insta e tiktok', 'faz post de urgência do produto Y'. Restrito ao dono (Felicio) nesta fase.",
       parameters: {
         type: "object",
         properties: {
-          produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto (busca no catálogo do usuário)." },
-          tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copywriting. Padrão: urgencia." },
-          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram"] }, description: "Redes onde publicar. Padrão: ambas." },
+          produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto." },
+          tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copy. Padrão: urgencia." },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] }, description: "Redes. Padrão: todas as três." },
         },
         required: ["produto"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "confirmar_postagem_redes",
+      description: "Confirma e PUBLICA de fato o post nas redes sociais usando o token devolvido por postar_redes_sociais. Chame SOMENTE após o usuário aprovar explicitamente o preview ('pode postar', 'confirma', 'manda ver', 'sim'). Se pedir cancelar, passe cancelar=true.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Token de 8 chars devolvido por postar_redes_sociais." },
+          cancelar: { type: "boolean", description: "Se true, descarta o preview sem publicar." },
+        },
+        required: ["token"],
       },
     },
   },
@@ -1821,6 +1895,7 @@ async function runTool(
   if (name === "consultar_clientes_leads") return { result: await toolConsultarClientesLeads(ctx) };
   if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
+  if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
