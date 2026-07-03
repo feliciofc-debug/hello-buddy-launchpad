@@ -2404,6 +2404,24 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "postar_midia_biblioteca",
+      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR (ou enviou logo antes) — mesmo que o texto atual não tenha mídia anexada. Ex: cliente manda foto de taças, depois escreve 'Jogo de 4 taças 29,99 para postar no face e insta'. Esta tool pega a ÚLTIMA mídia salva em /midias e gera o preview do post. ⛔ NÃO use postar_redes_sociais nesse caso — aquela é só pra produto do catálogo. Se o cliente informou nome/preço/legenda, passe nos parâmetros.",
+      parameters: {
+        type: "object",
+        properties: {
+          legenda: { type: "string", description: "Texto/legenda que o cliente falou junto (ex: 'Jogo de 4 taças 29,99')." },
+          nome: { type: "string", description: "Nome do produto/item, se informado." },
+          preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
+          tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
+          redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
+        },
+      },
+    },
+  },
+
 ];
 
 
