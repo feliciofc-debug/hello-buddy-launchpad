@@ -809,22 +809,30 @@ DIRETRIZES OBRIGATÓRIAS DE QUALIDADE (padrão IA Marketing):
 - PROIBIDO: aparência de IA/CGI barato, plástico, cartoon (a menos que o usuário peça explicitamente).
 - Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.`;
 
+    console.log("[gerar_imagem] iniciando geração, promptLen=", enhancedPrompt.length);
+    const t0 = Date.now();
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
-        model: "google/gemini-3.1-flash-image-preview",
+        model: "google/gemini-3.1-flash-image",
         messages: [{ role: "user", content: enhancedPrompt }],
         modalities: ["image", "text"],
       }),
+      signal: AbortSignal.timeout(90000),
     });
+    console.log("[gerar_imagem] gateway respondeu em", Date.now() - t0, "ms status=", res.status);
     if (!res.ok) {
       const t = await res.text();
+      console.error("[gerar_imagem] erro gateway:", res.status, t.slice(0, 300));
       return JSON.stringify({ erro: `image_gen ${res.status}`, detalhe: t.slice(0, 200) });
     }
     const data = await res.json();
     const dataUrl = data?.choices?.[0]?.message?.images?.[0]?.image_url?.url;
-    if (!dataUrl) return JSON.stringify({ erro: "sem_imagem_retornada" });
+    if (!dataUrl) {
+      console.error("[gerar_imagem] resposta sem imagem:", JSON.stringify(data).slice(0, 400));
+      return JSON.stringify({ erro: "sem_imagem_retornada" });
+    }
 
     let b64 = dataUrl;
     let mime = "image/png";
