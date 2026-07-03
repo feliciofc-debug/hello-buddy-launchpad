@@ -1194,7 +1194,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "cotacao_moeda",
-      description: "Consulta cotação em tempo real de moedas e cripto (fonte: AwesomeAPI). Exemplos: USD-BRL, EUR-BRL, BTC-BRL, ETH-BRL, GBP-BRL.",
+      description: "ÚNICA fonte válida para cotação AO VIVO de moedas e criptos (AwesomeAPI, atualiza a cada segundo). SEMPRE use esta ferramenta — NUNCA responda cotação a partir de pesquisar_web (que traz páginas defasadas). Pares aceitos: USD-BRL (dólar), EUR-BRL (euro), GBP-BRL (libra), JPY-BRL (iene), ARS-BRL (peso), BTC-BRL (bitcoin), ETH-BRL (ethereum), SOL-BRL (solana), BNB-BRL, XRP-BRL, DOGE-BRL, ADA-BRL. Para pares em USD use SUFIXO -USD (ex: BTC-USD, ETH-USD). Chame múltiplas vezes se o usuário pedir várias moedas.",
       parameters: {
         type: "object",
         properties: { par: { type: "string", description: "Par no formato ORIGEM-DESTINO, ex: USD-BRL" } },
