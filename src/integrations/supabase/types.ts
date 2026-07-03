@@ -4809,6 +4809,119 @@ export type Database = {
         }
         Relationships: []
       }
+      midias_whatsapp: {
+        Row: {
+          comments: number | null
+          contexto_original: string | null
+          contexto_transcricao: string | null
+          created_at: string
+          duracao_segundos: number | null
+          erro_mensagem: string | null
+          hashtags: string[] | null
+          id: string
+          legenda_gerada: string | null
+          likes: number | null
+          metricas_atualizadas_em: string | null
+          midia_pai_id: string | null
+          midia_url: string
+          mime_type: string | null
+          origem: string
+          plataformas: string[] | null
+          post_ids: Json | null
+          post_urls: Json | null
+          posted_at: string | null
+          reusos: number | null
+          shares: number | null
+          status: string
+          tags_ia: string[] | null
+          tamanho_bytes: number | null
+          telefone_origem: string | null
+          thumbnail_url: string | null
+          tipo: string
+          ultima_repostagem: string | null
+          updated_at: string
+          user_id: string
+          views: number | null
+          whatsapp_message_id: string | null
+        }
+        Insert: {
+          comments?: number | null
+          contexto_original?: string | null
+          contexto_transcricao?: string | null
+          created_at?: string
+          duracao_segundos?: number | null
+          erro_mensagem?: string | null
+          hashtags?: string[] | null
+          id?: string
+          legenda_gerada?: string | null
+          likes?: number | null
+          metricas_atualizadas_em?: string | null
+          midia_pai_id?: string | null
+          midia_url: string
+          mime_type?: string | null
+          origem?: string
+          plataformas?: string[] | null
+          post_ids?: Json | null
+          post_urls?: Json | null
+          posted_at?: string | null
+          reusos?: number | null
+          shares?: number | null
+          status?: string
+          tags_ia?: string[] | null
+          tamanho_bytes?: number | null
+          telefone_origem?: string | null
+          thumbnail_url?: string | null
+          tipo: string
+          ultima_repostagem?: string | null
+          updated_at?: string
+          user_id: string
+          views?: number | null
+          whatsapp_message_id?: string | null
+        }
+        Update: {
+          comments?: number | null
+          contexto_original?: string | null
+          contexto_transcricao?: string | null
+          created_at?: string
+          duracao_segundos?: number | null
+          erro_mensagem?: string | null
+          hashtags?: string[] | null
+          id?: string
+          legenda_gerada?: string | null
+          likes?: number | null
+          metricas_atualizadas_em?: string | null
+          midia_pai_id?: string | null
+          midia_url?: string
+          mime_type?: string | null
+          origem?: string
+          plataformas?: string[] | null
+          post_ids?: Json | null
+          post_urls?: Json | null
+          posted_at?: string | null
+          reusos?: number | null
+          shares?: number | null
+          status?: string
+          tags_ia?: string[] | null
+          tamanho_bytes?: number | null
+          telefone_origem?: string | null
+          thumbnail_url?: string | null
+          tipo?: string
+          ultima_repostagem?: string | null
+          updated_at?: string
+          user_id?: string
+          views?: number | null
+          whatsapp_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "midias_whatsapp_midia_pai_id_fkey"
+            columns: ["midia_pai_id"]
+            isOneToOne: false
+            referencedRelation: "midias_whatsapp"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notificacoes_usuario: {
         Row: {
           created_at: string
