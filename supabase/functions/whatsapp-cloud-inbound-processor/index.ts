@@ -1401,7 +1401,123 @@ async function toolResumoPlataforma(ctx: { userId: string; fromNumber: string })
 }
 
 
+// =========================================================
+// Postagem em redes sociais (Facebook + Instagram) via Jarvis
+// =========================================================
+async function gerarScriptRedesSociais(
+  produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null },
+  tom: string,
+  rede: "facebook" | "instagram",
+): Promise<string> {
+  const tomLabel = (tom || "urgencia").toLowerCase();
+  const guia: Record<string, string> = {
+    urgencia: "Tom de URGÊNCIA e escassez. Use gatilhos como '⚡ ÚLTIMAS UNIDADES', 'ACABA HOJE', 'estoque limitado', contagem regressiva. CTA forte: 'Corre no link!'",
+    escassez: "Tom de escassez pura. Foque em 'poucas unidades', 'apenas hoje', 'antes que acabe'.",
+    "black-friday": "Tom BLACK FRIDAY: desconto agressivo, 'menor preço do ano', 'oferta relâmpago'.",
+    "prova-social": "Foque em prova social: 'milhares já compraram', 'avaliação 5 estrelas', 'top vendas'.",
+    beneficio: "Foque nos benefícios reais e transformação que o produto entrega.",
+  };
+  const guiaTom = guia[tomLabel] ?? guia["urgencia"];
+  const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "confira no link";
+  const limite = rede === "instagram" ? 2200 : 1500;
+  const prompt = `Você é copywriter de e-commerce. Crie um post para ${rede.toUpperCase()} vendendo este produto.
+${guiaTom}
 
+PRODUTO: ${produto.nome}
+${produto.descricao ? `DESCRIÇÃO: ${produto.descricao}` : ""}
+PREÇO: ${preco}
+${produto.categoria ? `CATEGORIA: ${produto.categoria}` : ""}
+
+REGRAS:
+- Máx ${limite} caracteres.
+- Comece com 1 linha impactante e emoji.
+- 2-4 bullets de benefício.
+- CTA claro no fim ("👉 Link na bio" para IG, "👉 Compre aqui: ${produto.link || "link"}" para FB).
+- 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
+- NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.`;
+
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.9,
+      }),
+    });
+    const data = await res.json();
+    const txt = data?.choices?.[0]?.message?.content?.trim() || "";
+    return txt.slice(0, limite);
+  } catch (e) {
+    console.error("[postar_redes] gerar script falhou:", e);
+    return `🔥 ${produto.nome} — ${preco}\n\n${produto.descricao ?? ""}\n\n👉 ${produto.link ?? ""}`.slice(0, limite);
+  }
+}
+
+async function toolPostarRedesSociais(
+  args: { produto: string; tom?: string; redes?: string[] },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  try {
+    const q = (args?.produto || "").trim();
+    if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
+
+    const { data: prod } = await sb
+      .from("produtos")
+      .select("id, nome, descricao, preco, imagem_url, link, categoria, ativo")
+      .eq("user_id", ctx.userId)
+      .or(`nome.ilike.%${q}%,descricao.ilike.%${q}%,categoria.ilike.%${q}%,tags.ilike.%${q}%`)
+      .eq("ativo", true)
+      .limit(1)
+      .maybeSingle();
+
+    if (!prod) return JSON.stringify({ erro: `produto "${q}" não encontrado no seu catálogo ativo` });
+    if (!prod.imagem_url) return JSON.stringify({ erro: `produto "${prod.nome}" não tem imagem cadastrada — o Instagram exige imagem` });
+
+    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram"]).map((r) => r.toLowerCase());
+    const tom = args?.tom || "urgencia";
+
+    const tarefas: Promise<any>[] = [];
+    if (redes.includes("facebook")) {
+      tarefas.push((async () => {
+        const message = await gerarScriptRedesSociais(prod, tom, "facebook");
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+          body: JSON.stringify({ user_id: ctx.userId, message, image_url: prod.imagem_url, link_url: prod.link }),
+        });
+        const txt = await res.text();
+        let j: any = {}; try { j = JSON.parse(txt); } catch {}
+        return { rede: "facebook", ok: res.ok && j?.success !== false, mensagem: message, resposta: j, status: res.status };
+      })());
+    }
+    if (redes.includes("instagram")) {
+      tarefas.push((async () => {
+        const caption = await gerarScriptRedesSociais(prod, tom, "instagram");
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+          body: JSON.stringify({ user_id: ctx.userId, caption, image_url: prod.imagem_url }),
+        });
+        const txt = await res.text();
+        let j: any = {}; try { j = JSON.parse(txt); } catch {}
+        return { rede: "instagram", ok: res.ok && j?.success !== false, caption, resposta: j, status: res.status };
+      })());
+    }
+
+    const resultados = await Promise.all(tarefas);
+    return JSON.stringify({
+      produto: { nome: prod.nome, preco: prod.preco, imagem_url: prod.imagem_url, link: prod.link },
+      tom,
+      redes_publicadas: resultados.filter((r: any) => r.ok).map((r: any) => r.rede),
+      redes_falharam: resultados.filter((r: any) => !r.ok).map((r: any) => ({ rede: r.rede, status: r.status, erro: r.resposta?.error || r.resposta?.message })),
+      detalhes: resultados,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
 
 
 const TOOLS = [
