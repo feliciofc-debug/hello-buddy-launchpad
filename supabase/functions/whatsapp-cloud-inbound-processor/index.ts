@@ -918,6 +918,7 @@ async function toolEditarImagem(
         ],
         modalities: ["image", "text"],
       }),
+      signal: AbortSignal.timeout(90000),
     });
     if (!res.ok) {
       const t = await res.text();
