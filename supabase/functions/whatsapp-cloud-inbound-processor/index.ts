@@ -1920,7 +1920,8 @@ async function toolConfirmarPostagemRedes(
   if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
   pendingCleanup();
   const token = (args?.token || "").trim().toLowerCase();
-  const p = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, ctx.userId);
+  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
   if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
   if (args?.cancelar) {
