@@ -2585,7 +2585,7 @@ async function runTool(
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
   if (name === "gerar_imagem") {
-    const r = await toolGerarImagem(args?.prompt ?? "", ctx.userId);
+    const r = await toolGerarImagem(args?.prompt ?? "", { userId: ctx.userId, fromNumber: ctx.fromNumber });
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
