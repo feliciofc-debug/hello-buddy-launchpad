@@ -2885,6 +2885,12 @@ async function processOne(queueId: string) {
       .update({ used_count: quota.used_count + 1 })
       .eq("user_id", userId);
 
+    // Splits reply em múltiplas mensagens separadas usando o sentinel <<SPLIT>>
+    const replyParts = reply.split("<<SPLIT>>").map((p) => p.trim()).filter((p) => p.length > 0);
+    const primaryReply = replyParts[0] ?? reply;
+    const followUps = replyParts.slice(1);
+    const loggedContent = replyParts.join("\n\n---\n\n");
+
     // PASSO 10 — Grava outbound
     const { data: outMsg } = await sb
       .from("whatsapp_cloud_messages")
@@ -2893,18 +2899,26 @@ async function processOne(queueId: string) {
         user_id: userId,
         direction: "outbound",
         sender: "agent",
-        content: generatedImageUrl ? `${reply}\n\n[imagem: ${generatedImageUrl}]` : reply,
+        content: generatedImageUrl ? `${loggedContent}\n\n[imagem: ${generatedImageUrl}]` : loggedContent,
         message_type: generatedImageUrl ? "image" : "text",
       })
       .select("id")
       .single();
 
-    // PASSO 11 — Envia
+    // PASSO 11 — Envia (mensagem principal + follow-ups separados)
     let sendError: string | null = null;
     try {
-      const sentId = await sendWhatsApp(userId, row.from_number, reply, generatedImageUrl);
+      const sentId = await sendWhatsApp(userId, row.from_number, primaryReply, generatedImageUrl);
       if (sentId && outMsg?.id) {
         await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+      }
+      for (const part of followUps) {
+        try {
+          await new Promise((r) => setTimeout(r, 600));
+          await sendWhatsApp(userId, row.from_number, part);
+        } catch (e) {
+          console.error("[pietro][followup_send_failed]", (e as Error).message ?? e);
+        }
       }
     } catch (e) {
       sendError = String((e as Error).message ?? e);
