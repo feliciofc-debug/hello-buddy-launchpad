@@ -2657,10 +2657,21 @@ async function callGemini(
 
   const appendConfirmCommand = (text: string): string => {
     if (!pendingSocialToken) return text;
-    // Se o modelo já incluiu o comando ou o token, não duplica.
-    if (text.includes(pendingSocialToken)) return text;
-    const cmd = `pode postar ${pendingSocialToken}`;
-    return `${text}<<SPLIT>>${cmd}`;
+    const token = pendingSocialToken;
+    const cmd = `pode postar ${token}`;
+    // Limpa menções inline ao token (ex: "O token é *abc*") pra não poluir o preview,
+    // já que o comando vai isolado na próxima mensagem pra copiar/colar.
+    let cleaned = text
+      .replace(new RegExp(`\\*?\\b${token}\\b\\*?`, "g"), "")
+      .replace(/Posso publicar agora\??.*$/gim, "")
+      .replace(/O token[^\n.]*\.?/gi, "")
+      .replace(/Token[:\s]*\.?/gi, "")
+      .replace(/pode postar\s*$/gim, "")
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    if (cleaned.includes(cmd)) return cleaned;
+    return `${cleaned}<<SPLIT>>${cmd}`;
   };
 
   for (let step = 0; step < 4; step++) {
