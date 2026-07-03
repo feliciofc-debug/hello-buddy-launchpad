@@ -2036,6 +2036,86 @@ async function toolSalvarMidiaBiblioteca(
   }
 }
 
+// ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
+async function toolPostarMidiaBiblioteca(
+  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  try {
+    if (!isOwner(ctx)) return JSON.stringify({ erro: "Publicação em redes sociais liberada apenas para o dono (Felicio) nesta fase." });
+    pendingCleanup();
+
+    // Busca a última mídia salva pelo dono (foto/vídeo), ainda não publicada
+    let query = sb
+      .from("midias_whatsapp")
+      .select("id, tipo, midia_url, contexto_original, created_at")
+      .eq("user_id", ctx.userId)
+      .in("tipo", ["foto", "video"])
+      .order("created_at", { ascending: false })
+      .limit(1);
+    if (args?.midia_id) query = sb
+      .from("midias_whatsapp")
+      .select("id, tipo, midia_url, contexto_original, created_at")
+      .eq("user_id", ctx.userId)
+      .eq("id", args.midia_id)
+      .limit(1);
+
+    const { data: midias, error } = await query;
+    if (error) return JSON.stringify({ erro: `db_falhou: ${error.message}` });
+    const midia = midias?.[0];
+    if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
+
+    const redesValidas = ["facebook", "instagram", "tiktok"];
+    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
+      .map((r) => r.toLowerCase())
+      .filter((r) => redesValidas.includes(r));
+    const tom = args?.tom || "urgencia";
+
+    const precoNum = args?.preco != null ? Number(String(args.preco).replace(",", ".").replace(/[^\d.]/g, "")) : null;
+    const nome = (args?.nome || args?.legenda || midia.contexto_original || "Produto").toString().trim().slice(0, 120);
+    const descricao = (args?.legenda || midia.contexto_original || "").toString().trim();
+
+    const produtoLike = {
+      nome,
+      descricao: descricao || null,
+      preco: precoNum && !isNaN(precoNum) ? precoNum : null,
+      link: null,
+      categoria: null,
+      imagem_url: midia.midia_url,
+      ativo: true,
+      source: "midias_whatsapp",
+      id: midia.id,
+    };
+
+    const scriptsEntries = await Promise.all(
+      redes.map(async (r) => {
+        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen)] as const;
+      }),
+    );
+    const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() };
+    const queueRows = await persistPendingSocialPost(token, pending);
+    PENDING_POSTS.set(token, { ...pending, queueRows });
+
+    return JSON.stringify({
+      status: "aguardando_confirmacao",
+      fonte: "biblioteca_midias",
+      token,
+      midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
+      produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
+      tom,
+      redes,
+      preview: scripts,
+      instrucoes: `Mostre o preview e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message) });
+  }
+}
+
 
 const TOOLS = [
   {
