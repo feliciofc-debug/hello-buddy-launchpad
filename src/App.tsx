@@ -145,6 +145,7 @@ const App = () => (
           <Route path="/google-ads" element={<GoogleAds />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/meus-produtos" element={<MeusProdutos />} />
+          <Route path="/midias" element={<Midias />} />
             <Route path="/reviewer" element={<ReviewerLogin />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
