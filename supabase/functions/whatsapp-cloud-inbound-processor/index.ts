@@ -725,7 +725,65 @@ async function toolBuscarLugaresProximos(
     });
   }
   // OSM (Overpass) como fonte primária — gratuito, sem chave.
-  return await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, null);
+  const overpassResult = await toolBuscarLugaresOpenStreetMap(locRow, query, radiusMeters, null);
+  try {
+    const parsed = JSON.parse(overpassResult);
+    if (Array.isArray(parsed?.lugares) && parsed.lugares.length > 0) return overpassResult;
+    console.log(`[nearby] overpass vazio/falhou, tentando Nominatim. erro=${parsed?.erro ?? "vazio"}`);
+  } catch (_) {}
+  // Fallback: Nominatim (busca textual em torno do ponto)
+  return await toolBuscarLugaresNominatim(locRow, query, radiusMeters);
+}
+
+async function toolBuscarLugaresNominatim(locRow: any, query: string, radiusMeters?: number): Promise<string> {
+  const lat = Number(locRow.latitude);
+  const lng = Number(locRow.longitude);
+  const radius = Math.min(Math.max(radiusMeters ?? 2500, 500), 20000);
+  // ~1 grau lat = 111km. Aproxima uma bounding box.
+  const dLat = radius / 111000;
+  const dLng = radius / (111000 * Math.max(0.1, Math.cos(lat * Math.PI / 180)));
+  const viewbox = `${lng - dLng},${lat + dLat},${lng + dLng},${lat - dLat}`;
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=20&addressdetails=1&bounded=1&viewbox=${viewbox}&q=${encodeURIComponent(query)}`;
+  try {
+    console.log(`[nominatim][try] ${url}`);
+    const r = await fetch(url, {
+      headers: { "User-Agent": "amz-jarvis/1.0 (contato@amzofertas.com.br)", "Accept-Language": "pt-BR" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      return JSON.stringify({ erro: `nominatim ${r.status}`, detalhe: t.slice(0, 200) });
+    }
+    const arr = await r.json();
+    const lugares = (Array.isArray(arr) ? arr : [])
+      .map((el: any) => {
+        const pLat = Number(el.lat);
+        const pLng = Number(el.lon);
+        if (!Number.isFinite(pLat) || !Number.isFinite(pLng)) return null;
+        const a = el.address ?? {};
+        const endereco = [a.road, a.house_number, a.suburb || a.neighbourhood, a.city || a.town || a.village].filter(Boolean).join(", ") || el.display_name || null;
+        return {
+          nome: el.name || (el.display_name || query).split(",")[0],
+          tipo: el.type || query,
+          endereco,
+          distancia_km: Number(haversineKm(lat, lng, pLat, pLng).toFixed(2)),
+          mapa: `https://www.google.com/maps/search/?api=1&query=${pLat},${pLng}`,
+          fonte: "Nominatim",
+        };
+      })
+      .filter(Boolean)
+      .sort((a: any, b: any) => a.distancia_km - b.distancia_km)
+      .slice(0, 8);
+    return JSON.stringify({
+      query,
+      origem: { lat, lng, endereco: locRow.address, idade_minutos: Math.round((Date.now() - new Date(locRow.updated_at).getTime()) / 60000) },
+      fonte: "Nominatim",
+      fallback_usado: true,
+      lugares,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: `nominatim_exception: ${String((e as Error).message)}` });
+  }
 }
 
 // ---- gerar_imagem: cria imagem por IA (Nano Banana) e sobe pro storage público ----
