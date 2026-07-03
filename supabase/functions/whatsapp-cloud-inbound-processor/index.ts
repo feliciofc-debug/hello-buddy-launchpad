@@ -1455,11 +1455,120 @@ REGRAS:
   }
 }
 
-// Cache em memória de posts pendentes de confirmação (TTL 15 min)
-const PENDING_POSTS = new Map<string, { produto: any; tom: string; redes: string[]; scripts: Record<string, string>; userId: string; createdAt: number }>();
+// Cache em memória + persistência no banco para posts pendentes.
+// Edge Functions podem trocar de instância entre o preview e a confirmação; só Map em memória perde o token.
+const SOCIAL_CONFIRMATION_TTL_MS = 2 * 60 * 60 * 1000;
+type PendingSocialPost = {
+  produto: any;
+  tom: string;
+  redes: string[];
+  scripts: Record<string, string>;
+  userId: string;
+  createdAt: number;
+  queueRows?: Array<{ id: string; platform: string }>;
+};
+const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
   const now = Date.now();
-  for (const [k, v] of PENDING_POSTS) if (now - v.createdAt > 15 * 60 * 1000) PENDING_POSTS.delete(k);
+  for (const [k, v] of PENDING_POSTS) if (now - v.createdAt > SOCIAL_CONFIRMATION_TTL_MS) PENDING_POSTS.delete(k);
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function pendingPostMarker(token: string, productName?: string): string {
+  return `jarvis_token:${token};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
+}
+
+function productNameFromPendingMarker(marker?: string | null): string {
+  return marker?.match(/;produto:(.*)$/)?.[1]?.trim() || "produto";
+}
+
+async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
+  const rows = pending.redes.map((rede) => ({
+    user_id: pending.userId,
+    produto_id: isUuid(pending.produto?.id) ? pending.produto.id : null,
+    produto_source: pending.produto?.source || "produtos",
+    platform: rede,
+    post_text: pending.scripts[rede] || "",
+    image_url: pending.produto?.imagem_url || null,
+    link_url: pending.produto?.link || null,
+    status: "aguardando_confirmacao",
+    scheduled_at: null,
+    error_message: pendingPostMarker(token, pending.produto?.nome),
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { data, error } = await sb
+    .from("social_posts_queue")
+    .insert(rows)
+    .select("id, platform");
+
+  if (error) throw new Error(`não consegui salvar o token de confirmação: ${error.message}`);
+  return (data ?? []).map((r: any) => ({ id: r.id, platform: r.platform }));
+}
+
+async function loadPendingSocialPost(token: string, userId: string): Promise<PendingSocialPost | null> {
+  const { data, error } = await sb
+    .from("social_posts_queue")
+    .select("id, user_id, produto_id, produto_source, platform, post_text, image_url, link_url, status, error_message, created_at")
+    .eq("user_id", userId)
+    .eq("status", "aguardando_confirmacao")
+    .like("error_message", `jarvis_token:${token}%`)
+    .order("created_at", { ascending: true })
+    .limit(10);
+
+  if (error) {
+    console.warn("[social_confirm][load_error]", error.message);
+    return null;
+  }
+  const rows = data ?? [];
+  if (rows.length === 0) return null;
+
+  const createdAt = new Date(rows[0].created_at).getTime();
+  if (Number.isFinite(createdAt) && Date.now() - createdAt > SOCIAL_CONFIRMATION_TTL_MS) {
+    await sb.from("social_posts_queue")
+      .update({ status: "cancelado", error_message: "token_expirado", updated_at: new Date().toISOString() })
+      .in("id", rows.map((r: any) => r.id));
+    return null;
+  }
+
+  const scripts: Record<string, string> = {};
+  for (const row of rows as any[]) scripts[row.platform] = row.post_text || "";
+
+  return {
+    produto: {
+      id: (rows[0] as any).produto_id,
+      source: (rows[0] as any).produto_source,
+      nome: productNameFromPendingMarker((rows[0] as any).error_message),
+      imagem_url: (rows[0] as any).image_url,
+      link: (rows[0] as any).link_url,
+    },
+    tom: "urgencia",
+    redes: (rows as any[]).map((r) => r.platform),
+    scripts,
+    userId,
+    createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
+  };
+}
+
+async function updatePersistedSocialPostRows(pending: PendingSocialPost, resultados: Array<{ rede: string; ok: boolean; status: number; resposta: any }>) {
+  const rows = pending.queueRows ?? [];
+  await Promise.all(resultados.map(async (result) => {
+    const row = rows.find((r) => r.platform === result.rede);
+    if (!row?.id) return;
+    await sb.from("social_posts_queue")
+      .update({
+        status: result.ok ? "publicado" : "erro",
+        fb_post_id: result.ok ? (result.resposta?.post_id || result.resposta?.id || null) : null,
+        published_at: result.ok ? new Date().toISOString() : null,
+        error_message: result.ok ? null : (result.resposta?.error || result.resposta?.message || `falha_${result.status || "sem_status"}`),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id);
+  }));
 }
 
 async function publicarEmRede(
@@ -1785,8 +1894,10 @@ async function toolPostarRedesSociais(
     );
     const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
 
-    const token = crypto.randomUUID().slice(0, 8);
-    PENDING_POSTS.set(token, { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() });
+    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() };
+    const queueRows = await persistPendingSocialPost(token, pending);
+    PENDING_POSTS.set(token, { ...pending, queueRows });
 
     return JSON.stringify({
       status: "aguardando_confirmacao",
@@ -1808,13 +1919,24 @@ async function toolConfirmarPostagemRedes(
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
   pendingCleanup();
-  const p = PENDING_POSTS.get(args?.token || "");
-  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado (15min). Refaça o pedido de postagem." });
+  const token = (args?.token || "").trim().toLowerCase();
+  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
+  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
-  if (args?.cancelar) { PENDING_POSTS.delete(args.token); return JSON.stringify({ status: "cancelado" }); }
+  if (args?.cancelar) {
+    PENDING_POSTS.delete(token);
+    if (p.queueRows?.length) {
+      await sb.from("social_posts_queue")
+        .update({ status: "cancelado", error_message: "cancelado_pelo_whatsapp", updated_at: new Date().toISOString() })
+        .in("id", p.queueRows.map((r) => r.id));
+    }
+    return JSON.stringify({ status: "cancelado" });
+  }
 
   const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId)));
-  PENDING_POSTS.delete(args.token);
+  await updatePersistedSocialPostRows(p, resultados);
+  PENDING_POSTS.delete(token);
   return JSON.stringify({
     status: "publicado",
     produto: { nome: p.produto.nome },
