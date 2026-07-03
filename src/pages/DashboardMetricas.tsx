@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Bot,
   Package,
+  Images,
   BarChart3,
   Settings,
   LogOut,
