@@ -1432,6 +1432,27 @@ async function callGemini(
   ];
 
   if (!hasMedia && typeof userContent === "string") {
+    // 1) Cotações em tempo real (AwesomeAPI) — antes de qualquer coisa
+    const quotePairs = detectQuoteIntent(userContent);
+    if (quotePairs.length > 0) {
+      console.log("[pietro][forced_quote]", quotePairs);
+      const quotes = await Promise.all(quotePairs.map((p) => toolCotacaoMoeda(p)));
+      for (let i = 0; i < quotePairs.length; i++) {
+        const id = `forced_quote_${i + 1}`;
+        messages.push({
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id,
+            type: "function",
+            function: { name: "cotacao_moeda", arguments: JSON.stringify({ par: quotePairs[i] }) },
+          }],
+        });
+        messages.push({ role: "tool", tool_call_id: id, content: quotes[i] });
+      }
+    }
+
+    // 2) Busca web (Google) para outras intenções de tempo real
     const forcedSearch = detectWebSearchIntent(userContent);
     if (forcedSearch) {
       console.log("[pietro][forced_web_search]", forcedSearch);
@@ -1448,6 +1469,7 @@ async function callGemini(
       messages.push({ role: "tool", tool_call_id: "forced_web_search_1", content: searchResult });
     }
   }
+
 
   // Modelo pro é mais confiável com áudio/imagem
   const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
