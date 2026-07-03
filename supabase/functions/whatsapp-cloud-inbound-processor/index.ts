@@ -2065,7 +2065,11 @@ function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>)
     tipos.video ? `${tipos.video} vídeo${tipos.video > 1 ? "s" : ""}` : "",
     tipos.audio ? `${tipos.audio} áudio${tipos.audio > 1 ? "s" : ""}` : "",
   ].filter(Boolean).join(", ");
-  return `${total === 1 ? "Salvei" : "Salvei"} ${partes || "a mídia"} na biblioteca /midias. Não usei produto do catálogo; publique/reuse por lá quando quiser.`;
+  const temFoto = (tipos.foto ?? 0) > 0;
+  const instrucao = temFoto
+    ? " INSTRUÇÃO PRO ASSISTENTE: analise VISUALMENTE a(s) imagem(ns) que o cliente acabou de mandar (você as recebeu no conteúdo desta mensagem) e descreva em 1-2 frases o que aparece nela (produto, cena, cor, contexto). Depois confirme que salvou. NÃO responda genericamente — mostre que viu a foto."
+    : "";
+  return `${total === 1 ? "Salvei" : "Salvei"} ${partes || "a mídia"} na biblioteca /midias. Não usei produto do catálogo; publique/reuse por lá quando quiser.${instrucao}`;
 }
 
 async function toolSalvarMidiaBiblioteca(
