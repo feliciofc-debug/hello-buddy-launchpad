@@ -160,43 +160,124 @@ async function toolConsultarCnpj(cnpj: string): Promise<string> {
   }
 }
 
-async function toolPesquisarWeb(query: string, recencia?: string): Promise<string> {
-  if (!GOOGLE_API_KEY || !GOOGLE_CX) {
-    const fallback = await toolPesquisarWebSerpApi(query, recencia);
-    return fallback ?? JSON.stringify({ erro: "Busca web não configurada" });
-  }
+// Extrai texto legível de uma página (strip HTML) — timeout curto, retorna vazio em erro.
+async function fetchPageText(url: string, maxChars = 1800): Promise<string> {
   try {
-    const params = new URLSearchParams({
-      key: GOOGLE_API_KEY, cx: GOOGLE_CX, q: query, num: "8", hl: "pt-BR", gl: "br", lr: "lang_pt",
+    const r = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; JarvisBot/1.0)",
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.6",
+      },
+      redirect: "follow",
+      signal: AbortSignal.timeout(6000),
     });
-    // recencia: d=24h, w=7d, m=30d, y=365d (Google CSE dateRestrict)
-    const r2 = (recencia || "").toLowerCase().trim();
-    if (["d", "w", "m", "y"].includes(r2)) {
-      params.set("dateRestrict", `${r2}1`);
-      params.set("sort", "date");
-    }
-    const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
-    const r = await fetch(url, { headers: googleApiHeaders(), signal: AbortSignal.timeout(12000) });
-    if (!r.ok) {
-      const detalhe = await r.text().catch(() => "");
-      console.error("[pietro][pesquisar_web] falhou", r.status, detalhe.slice(0, 400));
-      const fallback = await toolPesquisarWebSerpApi(query, recencia);
-      if (fallback) return fallback;
-      return JSON.stringify({ erro: `busca falhou (${r.status})`, detalhe: detalhe.slice(0, 400) });
-    }
-    const d = await r.json();
-    const items = (d.items ?? []).map((it: any) => ({
-      titulo: it.title,
-      link: it.link,
-      resumo: it.snippet,
-      fonte: it.displayLink,
-      data: it.pagemap?.metatags?.[0]?.["article:published_time"] || it.pagemap?.metatags?.[0]?.["og:updated_time"] || null,
-    }));
-    return JSON.stringify({ query, recencia: recencia || "qualquer", fonte_busca: "Google Custom Search", total: items.length, resultados: items });
-  } catch (e) {
-    const fallback = await toolPesquisarWebSerpApi(query, recencia).catch(() => null);
-    return fallback ?? JSON.stringify({ erro: String((e as Error).message) });
+    if (!r.ok) return "";
+    const ct = r.headers.get("content-type") || "";
+    if (!ct.includes("html") && !ct.includes("text")) return "";
+    let html = await r.text();
+    // Corta scripts/styles/nav/footer
+    html = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+      .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
+      .replace(/<header[\s\S]*?<\/header>/gi, " ")
+      .replace(/<aside[\s\S]*?<\/aside>/gi, " ");
+    // Preserva um pouco de estrutura em parágrafos
+    html = html.replace(/<\/(p|h[1-6]|li|br|div)>/gi, "\n");
+    const text = html
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\n{2,}/g, "\n")
+      .trim();
+    return text.slice(0, maxChars);
+  } catch {
+    return "";
   }
+}
+
+async function toolPesquisarWeb(query: string, recencia?: string): Promise<string> {
+  let items: any[] = [];
+  let fonte_busca = "";
+  if (GOOGLE_API_KEY && GOOGLE_CX) {
+    try {
+      const params = new URLSearchParams({
+        key: GOOGLE_API_KEY, cx: GOOGLE_CX, q: query, num: "8", hl: "pt-BR", gl: "br", lr: "lang_pt",
+      });
+      const r2 = (recencia || "").toLowerCase().trim();
+      if (["d", "w", "m", "y"].includes(r2)) {
+        params.set("dateRestrict", `${r2}1`);
+        params.set("sort", "date");
+      }
+      const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
+      const r = await fetch(url, { headers: googleApiHeaders(), signal: AbortSignal.timeout(12000) });
+      if (r.ok) {
+        const d = await r.json();
+        items = (d.items ?? []).map((it: any) => ({
+          titulo: it.title,
+          link: it.link,
+          resumo: it.snippet,
+          fonte: it.displayLink,
+          data: it.pagemap?.metatags?.[0]?.["article:published_time"] || it.pagemap?.metatags?.[0]?.["og:updated_time"] || null,
+        }));
+        fonte_busca = "Google Custom Search";
+      } else {
+        const detalhe = await r.text().catch(() => "");
+        console.error("[pietro][pesquisar_web] falhou", r.status, detalhe.slice(0, 300));
+      }
+    } catch (e) {
+      console.error("[pietro][pesquisar_web] erro", (e as Error).message);
+    }
+  }
+
+  if (items.length === 0) {
+    const fb = await toolPesquisarWebSerpApi(query, recencia);
+    if (fb) {
+      try {
+        const parsed = JSON.parse(fb);
+        if (Array.isArray(parsed?.resultados) && parsed.resultados.length > 0) {
+          items = parsed.resultados;
+          fonte_busca = parsed.fonte_busca || "SerpAPI";
+        } else if (parsed?.erro) {
+          return fb;
+        }
+      } catch {
+        return fb;
+      }
+    }
+  }
+
+  if (items.length === 0) {
+    return JSON.stringify({ query, erro: "sem_resultados" });
+  }
+
+  // Enriquecimento: baixa conteúdo textual das top 3 páginas em paralelo
+  const topN = Math.min(3, items.length);
+  const enriched = await Promise.all(
+    items.slice(0, topN).map(async (it: any) => ({
+      ...it,
+      conteudo_extraido: await fetchPageText(it.link, 1500),
+    })),
+  );
+  const rest = items.slice(topN);
+  const finalItems = [...enriched, ...rest];
+
+  return JSON.stringify({
+    query,
+    recencia: recencia || "qualquer",
+    fonte_busca,
+    instrucao: "Use 'conteudo_extraido' das top páginas como fonte primária. Cite valores/datas literais. Se houver divergência, prefira a fonte mais recente.",
+    total: finalItems.length,
+    resultados: finalItems,
+  });
 }
 
 function detectWebSearchIntent(text: string): { query: string; recencia?: string } | null {
@@ -219,6 +300,45 @@ function detectWebSearchIntent(text: string): { query: string; recencia?: string
   if (/\btransito\b/.test(t) && !/\b2026\b/.test(t)) query = `${query} trânsito agora 2026`;
   if (/\b(notícias|noticias|recente|hoje|agora|atual|transito|trafego|greve)\b/i.test(raw)) return { query, recencia: "d" };
   return { query };
+}
+
+// Detecta pedidos de cotação e retorna pares a consultar (AwesomeAPI é tempo real).
+function detectQuoteIntent(text: string): string[] {
+  const t = normalizePt(text);
+  if (!/\b(cotacao|cotacoes|preco|valor|fechamento|quanto (esta|ta|custa)|hoje|agora|atual)\b/.test(t)
+      && !/\b(dolar|euro|libra|iene|peso|bitcoin|btc|ethereum|eth|solana|sol|bnb|xrp|doge|cardano|ada)\b/.test(t)) {
+    return [];
+  }
+  const map: Record<string, string> = {
+    "dolar": "USD-BRL",
+    "usd": "USD-BRL",
+    "euro": "EUR-BRL",
+    "eur": "EUR-BRL",
+    "libra": "GBP-BRL",
+    "gbp": "GBP-BRL",
+    "iene": "JPY-BRL",
+    "jpy": "JPY-BRL",
+    "peso argentino": "ARS-BRL",
+    "peso": "ARS-BRL",
+    "bitcoin": "BTC-BRL",
+    "btc": "BTC-BRL",
+    "ethereum": "ETH-BRL",
+    "eth": "ETH-BRL",
+    "solana": "SOL-BRL",
+    "\\bsol\\b": "SOL-BRL",
+    "bnb": "BNB-BRL",
+    "xrp": "XRP-BRL",
+    "ripple": "XRP-BRL",
+    "doge": "DOGE-BRL",
+    "cardano": "ADA-BRL",
+    "\\bada\\b": "ADA-BRL",
+  };
+  const pairs = new Set<string>();
+  for (const [k, v] of Object.entries(map)) {
+    const re = new RegExp(k.includes("\\b") ? k : `\\b${k}\\b`);
+    if (re.test(t)) pairs.add(v);
+  }
+  return Array.from(pairs);
 }
 
 function isStaleToolFailureMessage(content: string): boolean {
@@ -1021,7 +1141,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "pesquisar_web",
-      description: "Pesquisa no Google (pt-BR) e retorna títulos, links, resumos e data quando disponível. Use SEMPRE para notícias, eventos, cotações, clima, preços, resultados esportivos, greves, agenda — qualquer coisa que dependa de data. Inclua o ano/mês atual na query e use 'recencia' pra restringir a janela temporal.",
+      description: "Pesquisa no Google (pt-BR). Retorna títulos, links, resumos, datas E o conteúdo textual extraído das 3 primeiras páginas (campo 'conteudo_extraido'). USE 'conteudo_extraido' como fonte primária ao responder — cite valores/números/datas literalmente conforme aparecem. Ideal para notícias, eventos, resultados, greves, agenda, previsões, clima extremo, informações factuais recentes. NÃO use para cotação de moeda/cripto (chame cotacao_moeda). Inclua ano/mês atual na query e use 'recencia' pra janela temporal.",
       parameters: {
         type: "object",
         properties: {
@@ -1074,7 +1194,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "cotacao_moeda",
-      description: "Consulta cotação em tempo real de moedas e cripto (fonte: AwesomeAPI). Exemplos: USD-BRL, EUR-BRL, BTC-BRL, ETH-BRL, GBP-BRL.",
+      description: "ÚNICA fonte válida para cotação AO VIVO de moedas e criptos (AwesomeAPI, atualiza a cada segundo). SEMPRE use esta ferramenta — NUNCA responda cotação a partir de pesquisar_web (que traz páginas defasadas). Pares aceitos: USD-BRL (dólar), EUR-BRL (euro), GBP-BRL (libra), JPY-BRL (iene), ARS-BRL (peso), BTC-BRL (bitcoin), ETH-BRL (ethereum), SOL-BRL (solana), BNB-BRL, XRP-BRL, DOGE-BRL, ADA-BRL. Para pares em USD use SUFIXO -USD (ex: BTC-USD, ETH-USD). Chame múltiplas vezes se o usuário pedir várias moedas.",
       parameters: {
         type: "object",
         properties: { par: { type: "string", description: "Par no formato ORIGEM-DESTINO, ex: USD-BRL" } },
@@ -1312,6 +1432,27 @@ async function callGemini(
   ];
 
   if (!hasMedia && typeof userContent === "string") {
+    // 1) Cotações em tempo real (AwesomeAPI) — antes de qualquer coisa
+    const quotePairs = detectQuoteIntent(userContent);
+    if (quotePairs.length > 0) {
+      console.log("[pietro][forced_quote]", quotePairs);
+      const quotes = await Promise.all(quotePairs.map((p) => toolCotacaoMoeda(p)));
+      for (let i = 0; i < quotePairs.length; i++) {
+        const id = `forced_quote_${i + 1}`;
+        messages.push({
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id,
+            type: "function",
+            function: { name: "cotacao_moeda", arguments: JSON.stringify({ par: quotePairs[i] }) },
+          }],
+        });
+        messages.push({ role: "tool", tool_call_id: id, content: quotes[i] });
+      }
+    }
+
+    // 2) Busca web (Google) para outras intenções de tempo real
     const forcedSearch = detectWebSearchIntent(userContent);
     if (forcedSearch) {
       console.log("[pietro][forced_web_search]", forcedSearch);
@@ -1328,6 +1469,7 @@ async function callGemini(
       messages.push({ role: "tool", tool_call_id: "forced_web_search_1", content: searchResult });
     }
   }
+
 
   // Modelo pro é mais confiável com áudio/imagem
   const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
