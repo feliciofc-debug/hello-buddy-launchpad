@@ -2436,6 +2436,36 @@ async function runTool(
     const result = await toolSalvarMidiaBiblioteca({ contexto: args?.contexto ?? args?.produto ?? args?.query ?? "" }, ctx);
     return { result };
   }
+
+  // Guard: se pediu postar_redes_sociais mas tem mídia RECENTE (últimos 15 min) em /midias,
+  // redireciona pra postar_midia_biblioteca — evita buscar produto errado do catálogo
+  // quando o cliente enviou foto antes e agora só mandou a legenda/preço em texto.
+  if (name === "postar_redes_sociais") {
+    try {
+      const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { data: recentes } = await sb
+        .from("midias_whatsapp")
+        .select("id, created_at")
+        .eq("user_id", ctx.userId)
+        .in("tipo", ["foto", "video"])
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (recentes && recentes.length > 0) {
+        console.warn(`[pietro][postar_guard] mídia recente em /midias → redirecionando pra postar_midia_biblioteca`);
+        const result = await toolPostarMidiaBiblioteca({
+          legenda: args?.produto,
+          nome: args?.produto,
+          tom: args?.tom,
+          redes: args?.redes,
+        }, ctx);
+        return { result };
+      }
+    } catch (e) {
+      console.warn("[pietro][postar_guard] falhou ao checar /midias:", (e as Error).message);
+    }
+  }
+
   if (name === "consultar_cnpj") return { result: await toolConsultarCnpj(args?.cnpj ?? "") };
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
