@@ -2786,6 +2786,48 @@ async function processOne(queueId: string) {
       console.log(`[processor] media baixadas: ${media.length}`);
     }
 
+    // Regra determinística: foto/vídeo enviado no WhatsApp vira mídia livre em /midias.
+    // Não deixa a IA buscar produto parecido no catálogo nem preparar post com imagem errada.
+    const freshLibraryMedia = media.filter((m) => m.kind === "image" || m.kind === "video");
+    if (freshLibraryMedia.length > 0) {
+      const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
+      const salvos = await Promise.all(freshLibraryMedia.map((m) => salvarItemMidiaBiblioteca(m, { userId, fromNumber: row.from_number }, contexto)));
+      const reply = respostaMidiaSalva(salvos);
+
+      const { data: outMsg } = await sb
+        .from("whatsapp_cloud_messages")
+        .insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+
+      let sendError: string | null = null;
+      try {
+        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        if (sentId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+        }
+      } catch (e) {
+        sendError = String((e as Error).message ?? e);
+      }
+
+      await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+
+      if (sendError) {
+        await failQueue(row.id, `send_failed: ${sendError}`);
+        return { ok: false, reason: "send_failed", error: sendError };
+      }
+
+      await doneQueue(row.id);
+      return { ok: true, saved_to_midias: true, midia_ids: salvos.map((s) => s.id), reply_preview: reply.slice(0, 120) };
+    }
+
     // PASSO 7 — System prompt (com contexto AMZ se aplicável)
     const { systemPrompt, mode } = await buildSystemPrompt(
       sb,
