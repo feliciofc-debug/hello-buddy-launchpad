@@ -1762,6 +1762,7 @@ const TOOLS = [
       description: "Snapshot completo da plataforma agora: estoque + campanhas + autopilot + clientes/leads. Use quando o usuário pedir 'resumo geral', 'como tá a plataforma', 'panorama'.",
       parameters: { type: "object", properties: {} },
     },
+  },
   {
     type: "function",
     function: {
