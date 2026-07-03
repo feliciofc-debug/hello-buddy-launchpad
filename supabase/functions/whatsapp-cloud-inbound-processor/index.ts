@@ -307,8 +307,21 @@ async function toolPesquisarWebSerpApi(query: string, recencia?: string): Promis
     resumo: it.snippet,
     fonte: it.displayed_link || it.source,
     data: it.date || null,
+    consulta: query,
   }));
   return JSON.stringify({ query, recencia: recencia || "qualquer", fonte_busca: "Google via SerpAPI", total: items.length, resultados: items });
+}
+
+async function serpApiSearchItems(query: string, recencia?: string): Promise<SearchItem[]> {
+  const raw = await toolPesquisarWebSerpApi(query, recencia);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.resultados)) return [];
+    return parsed.resultados.map((it: SearchItem) => ({ ...it, consulta: it.consulta || query }));
+  } catch {
+    return [];
+  }
 }
 
 async function toolConsultarCnpj(cnpj: string): Promise<string> {
@@ -383,77 +396,62 @@ async function fetchPageText(url: string, maxChars = 1800): Promise<string> {
 }
 
 async function toolPesquisarWeb(query: string, recencia?: string): Promise<string> {
-  let items: any[] = [];
-  let fonte_busca = "";
+  const originalQuery = cleanSearchQuery(query);
+  const variants = buildSearchVariants(originalQuery, recencia);
+  let fonteBusca = "";
+  let gathered: SearchItem[] = [];
+
   if (GOOGLE_API_KEY && GOOGLE_CX) {
     try {
-      const params = new URLSearchParams({
-        key: GOOGLE_API_KEY, cx: GOOGLE_CX, q: query, num: "8", hl: "pt-BR", gl: "br", lr: "lang_pt",
-      });
-      const r2 = (recencia || "").toLowerCase().trim();
-      if (["d", "w", "m", "y"].includes(r2)) {
-        params.set("dateRestrict", `${r2}1`);
-        params.set("sort", "date");
-      }
-      const url = `https://www.googleapis.com/customsearch/v1?${params.toString()}`;
-      const r = await fetch(url, { headers: googleApiHeaders(), signal: AbortSignal.timeout(12000) });
-      if (r.ok) {
-        const d = await r.json();
-        items = (d.items ?? []).map((it: any) => ({
-          titulo: it.title,
-          link: it.link,
-          resumo: it.snippet,
-          fonte: it.displayLink,
-          data: it.pagemap?.metatags?.[0]?.["article:published_time"] || it.pagemap?.metatags?.[0]?.["og:updated_time"] || null,
-        }));
-        fonte_busca = "Google Custom Search";
-      } else {
-        const detalhe = await r.text().catch(() => "");
-        console.error("[pietro][pesquisar_web] falhou", r.status, detalhe.slice(0, 300));
-      }
+      const batches = await Promise.all(variants.map((q) => googleCustomSearchItems(q, recencia)));
+      gathered = batches.flat();
+      if (gathered.length > 0) fonteBusca = `Google Custom Search (${variants.length} consultas otimizadas)`;
     } catch (e) {
       console.error("[pietro][pesquisar_web] erro", (e as Error).message);
     }
   }
 
-  if (items.length === 0) {
-    const fb = await toolPesquisarWebSerpApi(query, recencia);
-    if (fb) {
-      try {
-        const parsed = JSON.parse(fb);
-        if (Array.isArray(parsed?.resultados) && parsed.resultados.length > 0) {
-          items = parsed.resultados;
-          fonte_busca = parsed.fonte_busca || "SerpAPI";
-        } else if (parsed?.erro) {
-          return fb;
-        }
-      } catch {
-        return fb;
-      }
+  if (gathered.length < 4) {
+    const serpBatches = await Promise.all(variants.slice(0, 3).map((q) => serpApiSearchItems(q, recencia)));
+    const serpItems = serpBatches.flat();
+    if (serpItems.length > 0) {
+      gathered = [...gathered, ...serpItems];
+      fonteBusca = fonteBusca ? `${fonteBusca} + SerpAPI` : "Google via SerpAPI";
     }
   }
 
-  if (items.length === 0) {
-    return JSON.stringify({ query, erro: "sem_resultados" });
+  const ranked = dedupeAndRankSearchItems(gathered, originalQuery);
+  if (ranked.length === 0) {
+    return JSON.stringify({
+      query: originalQuery,
+      consultas_tentadas: variants,
+      erro: "sem_resultados_relevantes",
+      instrucao: "A busca retornou resultados fracos ou fora do tema. Peça 1 detalhe a mais (cidade, bairro, data, marca, evento) antes de afirmar algo.",
+    });
   }
 
-  // Enriquecimento: baixa conteúdo textual das top 3 páginas em paralelo
-  const topN = Math.min(3, items.length);
+  // Enriquecimento: baixa conteúdo textual das top 5 páginas em paralelo.
+  const topN = Math.min(5, ranked.length);
   const enriched = await Promise.all(
-    items.slice(0, topN).map(async (it: any) => ({
+    ranked.slice(0, topN).map(async (it: SearchItem) => ({
       ...it,
-      conteudo_extraido: await fetchPageText(it.link, 1500),
+      conteudo_extraido: await fetchPageText(it.link || "", 2600),
     })),
   );
-  const rest = items.slice(topN);
-  const finalItems = [...enriched, ...rest];
+  const finalItems = [...enriched, ...ranked.slice(topN)];
+  const withReadableContent = finalItems.filter((it) => (it.conteudo_extraido || "").length > 180).length;
 
   return JSON.stringify({
-    query,
+    query: originalQuery,
+    consultas_tentadas: variants,
     recencia: recencia || "qualquer",
-    fonte_busca,
-    instrucao: "Use 'conteudo_extraido' das top páginas como fonte primária. Cite valores/datas literais. Se houver divergência, prefira a fonte mais recente.",
-    total: finalItems.length,
+    fonte_busca: fonteBusca || "Google",
+    qualidade: {
+      total_bruto: gathered.length,
+      total_relevante: finalItems.length,
+      paginas_lidas: withReadableContent,
+    },
+    instrucao: "Responda SOMENTE com base nos resultados relevantes e no conteudo_extraido. Se paginas_lidas=0 ou os resultados não responderem exatamente, diga que a busca não trouxe confirmação suficiente e sugira uma consulta mais específica. Para hospedagem, priorize links de Booking/Tripadvisor/hotéis/pousadas e descarte resultados genéricos fora da cidade.",
     resultados: finalItems,
   });
 }
@@ -469,14 +467,12 @@ function detectWebSearchIntent(text: string): { query: string; recencia?: string
 
   if (!hasExplicitSearchIntent && !hasRealtimeIntent && !hasRecipeIntent) return null;
 
-  let query = raw
-    .replace(/^jarvis[,\s]*/i, "")
-    .replace(/^(procura|procurar|busca|buscar|pesquisa|pesquisar|consulta|consulte)\s+(no\s+google\s+|na\s+internet\s+|na\s+web\s+)?/i, "")
-    .trim();
+  let query = cleanSearchQuery(raw);
 
   if (!query) query = raw;
-  if (/\btransito\b/.test(t) && !/\b2026\b/.test(t)) query = `${query} trânsito agora 2026`;
+  if (/\btransito\b/.test(t)) query = `${query} trânsito agora ${currentMonthYearPt()}`;
   if (/\b(notícias|noticias|recente|hoje|agora|atual|transito|trafego|greve)\b/i.test(raw)) return { query, recencia: "d" };
+  if (isLodgingQuery(query)) return { query, recencia: "m" };
   return { query };
 }
 
