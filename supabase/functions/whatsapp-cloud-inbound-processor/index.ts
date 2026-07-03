@@ -2281,6 +2281,19 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "salvar_midia_biblioteca",
+      description: "Salva a foto, vídeo ou áudio que o cliente ACABOU de enviar nesta conversa na biblioteca de Mídias da plataforma. Use quando o usuário pedir 'salva essa foto', 'guarda esse vídeo pra postar depois', 'coloca isso na biblioteca', 'usa isso pra rede social', ou mandar mídia sem contexto claro (aí pergunte antes se quer salvar). Depois de salvar, o cliente pode publicar/reusar pela tela /midias. NÃO publica direto — só arquiva. Se o cliente quiser publicar imediatamente, use postar_redes_sociais.",
+      parameters: {
+        type: "object",
+        properties: {
+          contexto: { type: "string", description: "Breve descrição do que a mídia mostra ou do que o cliente falou (ex: 'cliente João contemplou carta de 80k', 'produto novo chegou'). Ajuda a IA a gerar legenda depois." },
+        },
+      },
+    },
+  },
 ];
 
 
