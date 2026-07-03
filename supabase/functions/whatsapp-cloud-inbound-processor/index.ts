@@ -1894,8 +1894,10 @@ async function toolPostarRedesSociais(
     );
     const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
 
-    const token = crypto.randomUUID().slice(0, 8);
-    PENDING_POSTS.set(token, { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() });
+    const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() };
+    const queueRows = await persistPendingSocialPost(token, pending);
+    PENDING_POSTS.set(token, { ...pending, queueRows });
 
     return JSON.stringify({
       status: "aguardando_confirmacao",
@@ -1917,13 +1919,23 @@ async function toolConfirmarPostagemRedes(
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
   pendingCleanup();
-  const p = PENDING_POSTS.get(args?.token || "");
-  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado (15min). Refaça o pedido de postagem." });
+  const token = (args?.token || "").trim().toLowerCase();
+  const p = PENDING_POSTS.get(token) ?? await loadPendingSocialPost(token, ctx.userId);
+  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
   if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
-  if (args?.cancelar) { PENDING_POSTS.delete(args.token); return JSON.stringify({ status: "cancelado" }); }
+  if (args?.cancelar) {
+    PENDING_POSTS.delete(token);
+    if (p.queueRows?.length) {
+      await sb.from("social_posts_queue")
+        .update({ status: "cancelado", error_message: "cancelado_pelo_whatsapp", updated_at: new Date().toISOString() })
+        .in("id", p.queueRows.map((r) => r.id));
+    }
+    return JSON.stringify({ status: "cancelado" });
+  }
 
   const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId)));
-  PENDING_POSTS.delete(args.token);
+  await updatePersistedSocialPostRows(p, resultados);
+  PENDING_POSTS.delete(token);
   return JSON.stringify({
     status: "publicado",
     produto: { nome: p.produto.nome },
