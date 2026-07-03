@@ -11,6 +11,7 @@ interface MenuConfig {
 const routeToMenuId: Record<string, string> = {
   '/dashboard': 'dashboard',
   '/meus-produtos': 'produtos',
+  '/midias': 'midias',
   '/ia-marketing': 'ia-marketing',
   '/redes-sociais': 'redes-sociais',
   '/whatsapp-painel': 'whatsapp',
