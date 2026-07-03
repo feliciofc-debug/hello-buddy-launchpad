@@ -1512,16 +1512,46 @@ async function toolPostarRedesSociais(
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
 
-    const { data: prod } = await sb
-      .from("produtos")
-      .select("id, nome, descricao, preco, imagem_url, link, categoria, ativo")
-      .eq("user_id", ctx.userId)
-      .or(`nome.ilike.%${q}%,descricao.ilike.%${q}%,categoria.ilike.%${q}%,tags.ilike.%${q}%`)
-      .eq("ativo", true)
-      .limit(1)
-      .maybeSingle();
+    // Busca fuzzy por tokens: divide a query em palavras e busca produtos que contenham QUALQUER token,
+    // depois ranqueia localmente pelo número de tokens presentes no nome/descrição.
+    const stop = new Set(["de","da","do","para","por","com","sem","e","a","o","os","as","um","uma","no","na","em"]);
+    const tokens = q.toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .split(/[^a-z0-9]+/i)
+      .filter((t) => t.length >= 3 && !stop.has(t));
+    const searchTokens = tokens.length > 0 ? tokens : [q.toLowerCase()];
 
-    if (!prod) return JSON.stringify({ erro: `produto "${q}" não encontrado no seu catálogo ativo` });
+    const orFilter = searchTokens
+      .map((t) => `nome.ilike.%${t}%,descricao.ilike.%${t}%,categoria.ilike.%${t}%,tags.ilike.%${t}%`)
+      .join(",");
+
+    const { data: candidatos } = await sb
+      .from("produtos")
+      .select("id, nome, descricao, preco, imagem_url, link, categoria, ativo, tags")
+      .eq("user_id", ctx.userId)
+      .eq("ativo", true)
+      .or(orFilter)
+      .limit(30);
+
+    const score = (row: any) => {
+      const hay = `${row.nome ?? ""} ${row.descricao ?? ""} ${row.categoria ?? ""} ${row.tags ?? ""}`
+        .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return searchTokens.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
+    };
+    const ranked = (candidatos ?? [])
+      .map((r) => ({ r, s: score(r) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s || (a.r.nome?.length ?? 999) - (b.r.nome?.length ?? 999));
+    const prod: any = ranked[0]?.r;
+
+    if (!prod) {
+      const sugestoes = (candidatos ?? []).slice(0, 5).map((r: any) => r.nome);
+      return JSON.stringify({
+        erro: `produto "${q}" não encontrado`,
+        dica: "Tente palavras-chave mais próximas do nome real no catálogo.",
+        sugestoes_do_catalogo: sugestoes,
+      });
+    }
     if (!prod.imagem_url) return JSON.stringify({ erro: `produto "${prod.nome}" não tem imagem cadastrada — Instagram/TikTok exigem imagem` });
 
     const redesValidas = ["facebook", "instagram", "tiktok"];
@@ -1826,7 +1856,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_redes_sociais",
-      description: "Gera PREVIEW de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. Depois de mostrar o preview ao usuário e ele aprovar, chame confirmar_postagem_redes com o token. Uso: 'posta X nas redes', 'divulga X no face insta e tiktok', 'faz post de urgência do produto Y'. Restrito ao dono (Felicio) nesta fase.",
+      description: "Gera PREVIEW de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. REGRA CRÍTICA: quando o usuário pedir 'posta X nas redes', CHAME ESTA TOOL IMEDIATAMENTE na mesma resposta. NUNCA responda 'aguarde um instante', 'já te mostro', 'vou preparar' sem invocar a tool — isso é bug. A busca do produto é fuzzy por palavras-chave (não precisa ser nome exato). Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões ao usuário. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio) nesta fase.",
       parameters: {
         type: "object",
         properties: {
