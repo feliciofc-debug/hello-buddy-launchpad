@@ -1502,6 +1502,249 @@ async function publicarEmRede(
   }
 }
 
+const SOCIAL_POST_STOPWORDS = new Set(["de", "da", "do", "das", "dos", "para", "pra", "pro", "por", "com", "sem", "e", "a", "o", "os", "as", "um", "uma", "no", "na", "nos", "nas", "em"]);
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map((v) => v.trim()).filter(Boolean))];
+}
+
+function buildSocialProductTokens(query: string): { dbTokens: string[]; scoreTokens: string[] } {
+  const rawTokens = (query || "")
+    .toLowerCase()
+    .split(/[^a-z0-9\u00c0-\u017f]+/i)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3 && !SOCIAL_POST_STOPWORDS.has(normalizePt(t)));
+
+  const expansions: Record<string, string[]> = {
+    xicara: ["xicara", "xícara", "caneca", "copo", "cup"],
+    tabua: ["tabua", "tábua"],
+    cortar: ["cortar", "corte"],
+    corte: ["corte", "cortar"],
+  };
+
+  const expanded = rawTokens.flatMap((t) => {
+    const n = normalizePt(t);
+    return [t, n, ...(expansions[n] ?? [])];
+  });
+
+  return {
+    dbTokens: uniqueStrings(expanded).slice(0, 16),
+    scoreTokens: uniqueStrings(expanded.map(normalizePt)).slice(0, 20),
+  };
+}
+
+function firstProductImage(row: any): string | null {
+  if (typeof row?.imagem_url === "string" && row.imagem_url.trim()) return row.imagem_url.trim();
+  if (typeof row?.img_url === "string" && row.img_url.trim()) return row.img_url.trim();
+  if (Array.isArray(row?.imagens)) return row.imagens.find((img: any) => typeof img === "string" && img.trim()) ?? null;
+  return null;
+}
+
+function toSocialProduct(row: any, source: "produtos" | "products_stock") {
+  if (source === "products_stock") {
+    return {
+      source,
+      id: row.id,
+      nome: row.name,
+      descricao: row.description_short || row.description_long || null,
+      preco: row.price ?? null,
+      imagem_url: firstProductImage(row),
+      link: null,
+      categoria: row.category ?? null,
+      ativo: row.active !== false,
+      tags: row.sku ? [row.sku] : [],
+      sku: row.sku ?? null,
+    };
+  }
+
+  return {
+    source,
+    id: row.id,
+    nome: row.nome,
+    descricao: row.descricao ?? null,
+    preco: row.preco ?? null,
+    imagem_url: firstProductImage(row),
+    link: row.link || row.link_marketplace || null,
+    categoria: row.categoria ?? null,
+    ativo: row.ativo !== false,
+    tags: row.tags ?? [],
+    sku: row.sku ?? null,
+  };
+}
+
+function scoreSocialProduct(row: any, query: string, scoreTokens: string[]): number {
+  const hay = normalizePt(`${row.nome ?? ""} ${row.descricao ?? ""} ${row.categoria ?? ""} ${Array.isArray(row.tags) ? row.tags.join(" ") : row.tags ?? ""} ${row.sku ?? ""}`);
+  const queryNorm = normalizePt(query);
+  let score = hay.includes(queryNorm) ? 8 : 0;
+  for (const token of scoreTokens) {
+    if (!token) continue;
+    if (hay.includes(token)) score += 3;
+    else if (token.length > 4 && hay.includes(token.slice(0, -1))) score += 1;
+  }
+  if (normalizePt(row.nome ?? "").includes(scoreTokens[0] ?? "__never__")) score += 2;
+  if (row.ativo) score += 1;
+  if (row.imagem_url) score += 1;
+  return score;
+}
+
+function sanitizeSocialProductText(text: string): string {
+  let product = compactSpaces(text || "");
+  product = product.replace(/\bcom\s+(?:um\s+)?script\b.*$/i, "");
+  product = product.replace(/\b(?:script|copy|legenda)\s+(?:de\s+)?(?:urg[eê]ncia|escassez|benef[ií]cio|prova social|black\s*friday)\b.*$/i, "");
+  product = product.replace(/\b(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b/gi, " ");
+  product = product.replace(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b/gi, " ");
+  product = product.replace(/\b(?:e|no|na|nos|nas|em|para|pra|pro|o|a|os|as|um|uma)\b/gi, " ");
+  return compactSpaces(product.replace(/^[,.;:!\s-]+|[,.;:!\s-]+$/g, ""));
+}
+
+async function buscarProdutoParaPostagem(query: string, userId: string): Promise<{ produto: any | null; sugestoes: string[]; candidatos: any[] }> {
+  const { dbTokens, scoreTokens } = buildSocialProductTokens(query);
+  const produtoFilter = dbTokens
+    .map((t) => `nome.ilike.%${t}%,descricao.ilike.%${t}%,categoria.ilike.%${t}%,tags.cs.{${t}},sku.ilike.%${t}%`)
+    .join(",");
+  const stockFilter = dbTokens
+    .map((t) => `name.ilike.%${t}%,description_short.ilike.%${t}%,description_long.ilike.%${t}%,category.ilike.%${t}%,sku.ilike.%${t}%`)
+    .join(",");
+
+  const [produtosRes, stockRes] = await Promise.all([
+    produtoFilter
+      ? sb.from("produtos")
+        .select("id, nome, descricao, preco, imagem_url, imagens, link, link_marketplace, categoria, ativo, tags, sku")
+        .eq("user_id", userId)
+        .or(produtoFilter)
+        .limit(80)
+      : sb.from("produtos")
+        .select("id, nome, descricao, preco, imagem_url, imagens, link, link_marketplace, categoria, ativo, tags, sku")
+        .eq("user_id", userId)
+        .limit(80),
+    stockFilter
+      ? sb.from("products_stock")
+        .select("id, name, description_short, description_long, price, img_url, category, active, sku")
+        .eq("user_id", userId)
+        .or(stockFilter)
+        .limit(80)
+      : sb.from("products_stock")
+        .select("id, name, description_short, description_long, price, img_url, category, active, sku")
+        .eq("user_id", userId)
+        .limit(80),
+  ]);
+
+  if (produtosRes.error) console.warn("[social_post_search][produtos_error]", produtosRes.error.message);
+  if (stockRes.error) console.warn("[social_post_search][stock_error]", stockRes.error.message);
+
+  let candidatos = [
+    ...(produtosRes.data ?? []).map((r: any) => toSocialProduct(r, "produtos")),
+    ...(stockRes.data ?? []).map((r: any) => toSocialProduct(r, "products_stock")),
+  ];
+
+  // Fallback local: cobre acentos, singular/plural e pequenas diferenças como "cortar" vs "corte".
+  if (candidatos.length === 0 || !candidatos.some((c) => scoreSocialProduct(c, query, scoreTokens) > 0)) {
+    const [allProdutos, allStock] = await Promise.all([
+      sb.from("produtos")
+        .select("id, nome, descricao, preco, imagem_url, imagens, link, link_marketplace, categoria, ativo, tags, sku")
+        .eq("user_id", userId)
+        .limit(500),
+      sb.from("products_stock")
+        .select("id, name, description_short, description_long, price, img_url, category, active, sku")
+        .eq("user_id", userId)
+        .limit(500),
+    ]);
+    candidatos = [
+      ...(allProdutos.data ?? []).map((r: any) => toSocialProduct(r, "produtos")),
+      ...(allStock.data ?? []).map((r: any) => toSocialProduct(r, "products_stock")),
+    ];
+  }
+
+  const ranked = candidatos
+    .map((r) => ({ r, s: scoreSocialProduct(r, query, scoreTokens) }))
+    .filter((x) => x.s > 0)
+    .sort((a, b) => b.s - a.s || Number(b.r.ativo) - Number(a.r.ativo) || Number(Boolean(b.r.imagem_url)) - Number(Boolean(a.r.imagem_url)) || (a.r.nome?.length ?? 999) - (b.r.nome?.length ?? 999));
+
+  console.log("[social_post_search]", JSON.stringify({ query, dbTokens, total: candidatos.length, ranked: ranked.slice(0, 5).map((x) => ({ nome: x.r.nome, score: x.s, source: x.r.source })) }));
+
+  return {
+    produto: ranked[0]?.r ?? null,
+    sugestoes: ranked.slice(0, 7).map((x) => x.r.nome),
+    candidatos,
+  };
+}
+
+function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[] } | null {
+  const original = compactSpaces(text || "");
+  const normalized = normalizePt(original);
+  if (!/\b(posta|poste|postar|publica|publique|publicar)\b/.test(normalized)) return null;
+
+  const redes: string[] = [];
+  if (/\b(face|facebook|fb)\b/.test(normalized)) redes.push("facebook");
+  if (/\b(insta|instagram|ig)\b/.test(normalized)) redes.push("instagram");
+  if (/\b(tiktok|tik tok)\b/.test(normalized)) redes.push("tiktok");
+  if (redes.length === 0 && /\bredes sociais\b/.test(normalized)) redes.push("facebook", "instagram", "tiktok");
+  if (redes.length === 0) return null;
+
+  const tom = /black\s*friday/i.test(original) ? "black-friday"
+    : /prova social/i.test(normalized) ? "prova-social"
+    : /benef/i.test(normalized) ? "beneficio"
+    : /escassez/i.test(normalized) ? "escassez"
+    : "urgencia";
+
+  const withoutJarvis = original.replace(/^jarvis[,.!\s-]*/i, "");
+  let produto = "";
+  const direct = withoutJarvis.match(/\b(?:posta|poste|postar|publica|publique|publicar)\s+(?:o|a|os|as)?\s*(.+?)(?:\s+(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b|\s+com\s+(?:um\s+)?script\b|$)/i);
+  if (direct?.[1]) produto = direct[1];
+
+  const afterNetworks = withoutJarvis.match(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b(?:\s*(?:e|,|\/|\+|no|na|nos|nas|em|para|pra|pro)?\s*(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b)*\s+(?:o|a|os|as)?\s*(.+?)(?:\s+com\s+(?:um\s+)?script\b|$)/i);
+  if ((!produto || /^(nas?|nos?|em|para|pra|pro|face|facebook|insta|instagram|ig|fb)\b/i.test(produto)) && afterNetworks?.[1]) produto = afterNetworks[1];
+
+  const explicitProduct = withoutJarvis.match(/\bproduto\s+(.+?)(?:\s+com\s+(?:um\s+)?script\b|$)/i);
+  if ((!produto || /^(nas?|nos?|em|para|pra|pro)\b/i.test(produto)) && explicitProduct?.[1]) produto = explicitProduct[1];
+
+  produto = sanitizeSocialProductText(produto);
+  if (!produto || produto.length < 3) return null;
+  return { produto, tom, redes: uniqueStrings(redes) };
+}
+
+function formatSocialPostToolResult(raw: string): string {
+  let data: any = null;
+  try { data = JSON.parse(raw); } catch { return raw; }
+
+  if (data?.status === "aguardando_confirmacao") {
+    const scripts = Object.entries(data.preview ?? {})
+      .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
+      .join("\n\n");
+    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}\n\nPara publicar de verdade, confirme com: *pode postar ${data.token}*`;
+  }
+
+  if (data?.status === "publicado") {
+    const ok = Array.isArray(data.redes_publicadas) && data.redes_publicadas.length
+      ? data.redes_publicadas.join(", ")
+      : "nenhuma rede";
+    const falhas = Array.isArray(data.redes_falharam) && data.redes_falharam.length
+      ? `\nFalhas: ${data.redes_falharam.map((f: any) => `${f.rede}${f.erro ? ` (${f.erro})` : ""}`).join(", ")}`
+      : "";
+    return `Publicado: *${data.produto?.nome ?? "produto"}*\nRedes: ${ok}${falhas}`;
+  }
+
+  if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
+
+  if (data?.erro) {
+    const sugestoes = Array.isArray(data.sugestoes_do_catalogo) && data.sugestoes_do_catalogo.length
+      ? `\n\nSugestões mais próximas:\n${data.sugestoes_do_catalogo.map((s: string) => `• ${s}`).join("\n")}`
+      : "";
+    return `Não consegui preparar o post: ${data.erro}.${sugestoes}`;
+  }
+
+  return raw;
+}
+
+function detectSocialPostConfirmation(text: string): { token: string; cancelar?: boolean } | null {
+  const normalized = normalizePt(text || "");
+  const token = (text || "").match(/\b[a-f0-9]{8}\b/i)?.[0];
+  if (!token) return null;
+  if (/\b(cancela|cancelar|nao posta|nao publicar|descarta)\b/.test(normalized)) return { token, cancelar: true };
+  if (/\b(pode postar|confirma|confirmar|manda ver|publica|publique|sim|aprovado)\b/.test(normalized)) return { token };
+  return null;
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[] },
   ctx: { userId: string; fromNumber: string },
@@ -1512,53 +1755,26 @@ async function toolPostarRedesSociais(
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
 
-    // Busca fuzzy por tokens: divide a query em palavras e busca produtos que contenham QUALQUER token,
-    // depois ranqueia localmente pelo número de tokens presentes no nome/descrição.
-    const stop = new Set(["de","da","do","para","por","com","sem","e","a","o","os","as","um","uma","no","na","em"]);
-    const tokens = q.toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-      .split(/[^a-z0-9]+/i)
-      .filter((t) => t.length >= 3 && !stop.has(t));
-    const searchTokens = tokens.length > 0 ? tokens : [q.toLowerCase()];
-
-    const orFilter = searchTokens
-      .map((t) => `nome.ilike.%${t}%,descricao.ilike.%${t}%,categoria.ilike.%${t}%,tags.ilike.%${t}%`)
-      .join(",");
-
-    const { data: candidatos } = await sb
-      .from("produtos")
-      .select("id, nome, descricao, preco, imagem_url, link, categoria, ativo, tags")
-      .eq("user_id", ctx.userId)
-      .eq("ativo", true)
-      .or(orFilter)
-      .limit(30);
-
-    const score = (row: any) => {
-      const hay = `${row.nome ?? ""} ${row.descricao ?? ""} ${row.categoria ?? ""} ${row.tags ?? ""}`
-        .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      return searchTokens.reduce((n, t) => n + (hay.includes(t) ? 1 : 0), 0);
-    };
-    const ranked = (candidatos ?? [])
-      .map((r) => ({ r, s: score(r) }))
-      .filter((x) => x.s > 0)
-      .sort((a, b) => b.s - a.s || (a.r.nome?.length ?? 999) - (b.r.nome?.length ?? 999));
-    const prod: any = ranked[0]?.r;
-
-    if (!prod) {
-      const sugestoes = (candidatos ?? []).slice(0, 5).map((r: any) => r.nome);
-      return JSON.stringify({
-        erro: `produto "${q}" não encontrado`,
-        dica: "Tente palavras-chave mais próximas do nome real no catálogo.",
-        sugestoes_do_catalogo: sugestoes,
-      });
-    }
-    if (!prod.imagem_url) return JSON.stringify({ erro: `produto "${prod.nome}" não tem imagem cadastrada — Instagram/TikTok exigem imagem` });
-
     const redesValidas = ["facebook", "instagram", "tiktok"];
     const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
       .map((r) => r.toLowerCase())
       .filter((r) => redesValidas.includes(r));
     const tom = args?.tom || "urgencia";
+
+    const { produto: prod, sugestoes, candidatos } = await buscarProdutoParaPostagem(q, ctx.userId);
+
+    if (!prod) {
+      return JSON.stringify({
+        erro: `produto "${q}" não encontrado`,
+        dica: "Tente uma palavra-chave do nome real ou escolha uma das sugestões abaixo.",
+        sugestoes_do_catalogo: sugestoes.length ? sugestoes : (candidatos ?? []).slice(0, 7).map((r: any) => r.nome),
+      });
+    }
+
+    if (prod.ativo === false) return JSON.stringify({ erro: `produto "${prod.nome}" foi encontrado, mas está inativo no catálogo`, sugestoes_do_catalogo: sugestoes });
+    if (!prod.imagem_url && redes.some((r) => r === "instagram" || r === "tiktok")) {
+      return JSON.stringify({ erro: `produto "${prod.nome}" não tem imagem cadastrada — Instagram/TikTok exigem imagem`, sugestoes_do_catalogo: sugestoes });
+    }
 
     // Gera scripts em paralelo (uma vez só) para preview
     const scriptsEntries = await Promise.all(
@@ -1856,7 +2072,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_redes_sociais",
-      description: "Gera PREVIEW de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. REGRA CRÍTICA: quando o usuário pedir 'posta X nas redes', CHAME ESTA TOOL IMEDIATAMENTE na mesma resposta. NUNCA responda 'aguarde um instante', 'já te mostro', 'vou preparar' sem invocar a tool — isso é bug. A busca do produto é fuzzy por palavras-chave (não precisa ser nome exato). Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões ao usuário. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio) nesta fase.",
+      description: "Gera PREVIEW COMPLETO de post para Facebook, Instagram e/ou TikTok a partir de um produto do catálogo do dono, com copywriting no TOM escolhido. NÃO publica direto — devolve token de confirmação. REGRA CRÍTICA: quando o usuário pedir 'posta X nas redes', CHAME ESTA TOOL IMEDIATAMENTE na mesma resposta. A resposta da tool JÁ CONTÉM o preview; depois dela, mostre o preview e o token ao usuário. NUNCA responda 'aguarde um instante', 'já te mostro', 'vou preparar' ou promessa parecida — isso é bug. A busca do produto é fuzzy por palavras-chave, acentos, sinônimos e consulta também products_stock. Se retornar 'não encontrado' com sugestoes_do_catalogo, mostre as sugestões ao usuário. Depois de mostrar o preview, ao aprovar chame confirmar_postagem_redes. Restrito ao dono (Felicio) nesta fase.",
       parameters: {
         type: "object",
         properties: {
@@ -1950,6 +2166,21 @@ async function callGemini(
   ];
 
   if (!hasMedia && typeof userContent === "string") {
+    // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
+    const postConfirmation = detectSocialPostConfirmation(userContent);
+    if (postConfirmation) {
+      console.log("[pietro][forced_social_confirm]", postConfirmation);
+      const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
+      return { text: formatSocialPostToolResult(confirmResult) };
+    }
+
+    const socialPost = detectSocialPostIntent(userContent);
+    if (socialPost) {
+      console.log("[pietro][forced_social_post]", socialPost);
+      const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
+      return { text: formatSocialPostToolResult(postResult) };
+    }
+
     // 1) Cotações em tempo real (AwesomeAPI) — antes de qualquer coisa
     const quotePairs = detectQuoteIntent(userContent);
     if (quotePairs.length > 0) {
