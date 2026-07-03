@@ -302,6 +302,45 @@ function detectWebSearchIntent(text: string): { query: string; recencia?: string
   return { query };
 }
 
+// Detecta pedidos de cotação e retorna pares a consultar (AwesomeAPI é tempo real).
+function detectQuoteIntent(text: string): string[] {
+  const t = normalizePt(text);
+  if (!/\b(cotacao|cotacoes|preco|valor|fechamento|quanto (esta|ta|custa)|hoje|agora|atual)\b/.test(t)
+      && !/\b(dolar|euro|libra|iene|peso|bitcoin|btc|ethereum|eth|solana|sol|bnb|xrp|doge|cardano|ada)\b/.test(t)) {
+    return [];
+  }
+  const map: Record<string, string> = {
+    "dolar": "USD-BRL",
+    "usd": "USD-BRL",
+    "euro": "EUR-BRL",
+    "eur": "EUR-BRL",
+    "libra": "GBP-BRL",
+    "gbp": "GBP-BRL",
+    "iene": "JPY-BRL",
+    "jpy": "JPY-BRL",
+    "peso argentino": "ARS-BRL",
+    "peso": "ARS-BRL",
+    "bitcoin": "BTC-BRL",
+    "btc": "BTC-BRL",
+    "ethereum": "ETH-BRL",
+    "eth": "ETH-BRL",
+    "solana": "SOL-BRL",
+    "\\bsol\\b": "SOL-BRL",
+    "bnb": "BNB-BRL",
+    "xrp": "XRP-BRL",
+    "ripple": "XRP-BRL",
+    "doge": "DOGE-BRL",
+    "cardano": "ADA-BRL",
+    "\\bada\\b": "ADA-BRL",
+  };
+  const pairs = new Set<string>();
+  for (const [k, v] of Object.entries(map)) {
+    const re = new RegExp(k.includes("\\b") ? k : `\\b${k}\\b`);
+    if (re.test(t)) pairs.add(v);
+  }
+  return Array.from(pairs);
+}
+
 function isStaleToolFailureMessage(content: string): boolean {
   const t = normalizePt(content);
   return (
