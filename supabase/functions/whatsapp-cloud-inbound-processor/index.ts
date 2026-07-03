@@ -2985,7 +2985,28 @@ async function processOne(queueId: string) {
     const mediaBlock = media.length > 0
       ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O cliente ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio enviado pelo cliente é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que o cliente falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada pelo cliente.\n- É PROIBIDO buscar/casar essa mídia com produto do estoque/catálogo. Não invente produto.\n- Depois de salvar, responda curto: confirma que salvou na biblioteca /midias e diz que ele pode publicar/reusar por lá quando quiser. Não peça mais informação.`
       : "";
-    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock;
+
+    // Detecta mídia recente em /midias (últimos 15 min) — se cliente pedir postar, usa ela em vez do catálogo
+    let recentMediaBlock = "";
+    try {
+      const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+      const { data: recMid } = await sb
+        .from("midias_whatsapp")
+        .select("id, tipo, contexto_original, created_at")
+        .eq("user_id", userId)
+        .in("tipo", ["foto", "video"])
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const m0 = recMid?.[0];
+      if (m0 && media.length === 0) {
+        recentMediaBlock = `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o cliente pedir pra POSTAR/DIVULGAR agora (ex: "posta X pra face e insta", "Jogo de 4 taças 29,99 pra postar"), chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual.\n- ⛔ NÃO chame postar_redes_sociais — aquela busca no catálogo e vai pegar o produto ERRADO.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`;
+      }
+    } catch (e) {
+      console.warn("[pietro][recent_media_hint] falhou:", (e as Error).message);
+    }
+
+    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock + recentMediaBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
