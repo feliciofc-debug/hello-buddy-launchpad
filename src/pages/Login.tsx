@@ -86,7 +86,7 @@ export default function Login() {
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         // Só aceita como "novo login" se veio de OAuth (flag) ou de form (routedRef gerenciado no handleSubmit)
-        const cameFromOAuth = sessionStorage.getItem(oauthFlag) === '1';
+        const cameFromOAuth = sessionStorage.getItem(oauthFlag) === '1' || new URLSearchParams(window.location.search).get('oauth') === 'google';
         if (cameFromOAuth) {
           sessionStorage.removeItem(oauthFlag);
           routeAfterAuth(session.user.id, session.user.email || '');
@@ -101,8 +101,22 @@ export default function Login() {
     setGoogleLoading(true);
     try {
       sessionStorage.setItem('oauth_in_progress', '1');
+      const isAmzDomain = window.location.hostname === 'amzofertas.com.br' || window.location.hostname === 'www.amzofertas.com.br';
+      const redirectUri = isAmzDomain ? 'https://amzofertas.com.br/login?oauth=google' : `${window.location.origin}/login?oauth=google`;
+      const oauthStartOrigin = isAmzDomain ? 'https://hello-buddy-launchpad.lovable.app' : window.location.origin;
+
+      if (isAmzDomain) {
+        const params = new URLSearchParams({
+          provider: 'google',
+          redirect_uri: redirectUri,
+          state: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
+        });
+        window.location.href = `${oauthStartOrigin}/~oauth/initiate?${params.toString()}`;
+        return;
+      }
+
       const result = await lovable.auth.signInWithOAuth('google', {
-        redirect_uri: `${window.location.origin}/login`,
+        redirect_uri: redirectUri,
       });
       if (result.error) throw result.error;
       // Se redirected=true, browser vai redirecionar; se não, onAuthStateChange trata
