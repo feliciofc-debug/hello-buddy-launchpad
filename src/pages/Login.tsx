@@ -22,6 +22,92 @@ export default function Login() {
   const [sendingReset, setSendingReset] = useState(false);
   const routedRef = useRef(false);
 
+  const routeAfterAuth = async (userId: string, email: string) => {
+    if (routedRef.current) return;
+    routedRef.current = true;
+
+    const emailLc = (email || '').trim().toLowerCase();
+
+    // Verificar perfil do usuário
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('tipo, validade_acesso')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (profile?.validade_acesso) {
+      const validade = new Date(profile.validade_acesso);
+      if (validade < new Date()) {
+        await supabase.auth.signOut();
+        toast.error(t('login.access_expired'));
+        routedRef.current = false;
+        return;
+      }
+    }
+
+    if (profile?.tipo === 'afiliado_admin' || profile?.tipo === 'afiliado') {
+      navigate('/afiliado/dashboard');
+      return;
+    }
+
+    const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com', 'dudacarega@gmail.com'];
+    if (contasPermanentes.includes(emailLc) || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro' || profile?.tipo === 'empresa') {
+      navigate('/dashboard');
+      return;
+    }
+
+    const { data: trialCheck } = await supabase
+      .from('trial_configs' as any)
+      .select('status, data_fim')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (trialCheck && (trialCheck as any).status === 'ativo' && new Date((trialCheck as any).data_fim) > new Date()) {
+      navigate('/dashboard');
+      return;
+    }
+
+    const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
+
+    if (subscriptionCheck?.hasActiveSubscription) {
+      navigate('/dashboard');
+    } else {
+      // Cliente novo (sem assinatura) vai direto para o checkout
+      navigate('/planos');
+    }
+  };
+
+  // Detecta sessão criada via Google OAuth ao voltar do provedor
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        routeAfterAuth(session.user.id, session.user.email || '');
+      }
+    });
+    // Também checa sessão já existente ao montar
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        routeAfterAuth(data.session.user.id, data.session.user.email || '');
+      }
+    });
+    return () => { sub.subscription.unsubscribe(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleGoogle = async () => {
+    setGoogleLoading(true);
+    try {
+      const result = await lovable.auth.signInWithOAuth('google', {
+        redirect_uri: `${window.location.origin}/login`,
+      });
+      if (result.error) throw result.error;
+      // Se redirected=true, browser vai redirecionar; se não, onAuthStateChange trata
+    } catch (err: any) {
+      toast.error(err?.message || 'Erro ao entrar com Google');
+      setGoogleLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -38,60 +124,7 @@ export default function Login() {
       if (error) throw error;
 
       toast.success(t('login.success'));
-
-      // Verificar perfil do usuário
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tipo, validade_acesso')
-        .eq('id', data.user.id)
-        .maybeSingle();
-
-      // Verificar se o acesso expirou (para parceiros com validade definida)
-      if (profile?.validade_acesso) {
-        const validade = new Date(profile.validade_acesso);
-        if (validade < new Date()) {
-          await supabase.auth.signOut();
-          toast.error(t('login.access_expired'));
-          return;
-        }
-      }
-
-      // Afiliados vão direto para dashboard de afiliados
-      if (profile?.tipo === 'afiliado_admin' || profile?.tipo === 'afiliado') {
-        navigate('/afiliado/dashboard');
-        return;
-      }
-
-      // Acesso direto para: dono da plataforma OU clientes B2B OU parceiros OU contas permanentes
-      const contasPermanentes = ['expo@atombrasildigital.com', 'renatascarega@gmail.com', 'alessandradiasadm1@gmail.com', 'dudacarega@gmail.com'];
-      if (contasPermanentes.includes(email) || profile?.tipo === 'b2b' || profile?.tipo === 'parceiro' || profile?.tipo === 'empresa') {
-        navigate('/dashboard');
-        return;
-      }
-
-      // Verificar se é conta trial ativa
-      const { data: trialCheck, error: trialError } = await supabase
-        .from('trial_configs' as any)
-        .select('status, data_fim')
-        .eq('user_id', data.user.id)
-        .maybeSingle();
-
-      console.log('Trial check:', trialCheck, 'Error:', trialError);
-
-      if (trialCheck && (trialCheck as any).status === 'ativo' && new Date((trialCheck as any).data_fim) > new Date()) {
-        console.log('✅ Conta trial ativa - acesso liberado');
-        navigate('/dashboard');
-        return;
-      }
-
-      // Outros usuários precisam verificar assinatura
-      const { data: subscriptionCheck } = await supabase.functions.invoke('check-subscription');
-
-      if (subscriptionCheck?.hasActiveSubscription) {
-        navigate('/dashboard');
-      } else {
-        navigate('/planos');
-      }
+      await routeAfterAuth(data.user.id, email);
     } catch (error: any) {
       const msg = String(error?.message || 'Erro ao fazer login');
       if (msg.toLowerCase().includes('invalid login credentials')) {
