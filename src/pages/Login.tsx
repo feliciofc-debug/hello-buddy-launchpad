@@ -77,17 +77,20 @@ export default function Login() {
     }
   };
 
-  // Detecta sessão criada via Google OAuth ao voltar do provedor
+  // Detecta sessão criada via Google OAuth ao voltar do provedor.
+  // IMPORTANTE: só roteia quando o evento é explicitamente SIGNED_IN (login novo
+  // ou retorno do OAuth), nunca em INITIAL_SESSION ou getSession() do mount,
+  // pra não redirecionar sozinho quem só abriu a tela de login.
   useEffect(() => {
+    const oauthFlag = 'oauth_in_progress';
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        routeAfterAuth(session.user.id, session.user.email || '');
-      }
-    });
-    // Também checa sessão já existente ao montar
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session?.user) {
-        routeAfterAuth(data.session.user.id, data.session.user.email || '');
+        // Só aceita como "novo login" se veio de OAuth (flag) ou de form (routedRef gerenciado no handleSubmit)
+        const cameFromOAuth = sessionStorage.getItem(oauthFlag) === '1';
+        if (cameFromOAuth) {
+          sessionStorage.removeItem(oauthFlag);
+          routeAfterAuth(session.user.id, session.user.email || '');
+        }
       }
     });
     return () => { sub.subscription.unsubscribe(); };
