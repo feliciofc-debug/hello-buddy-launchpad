@@ -104,8 +104,6 @@ export default function Login() {
       const result = await lovable.auth.signInWithOAuth('google', {
         redirect_uri: `${window.location.origin}/login`,
       });
-        redirect_uri: `${window.location.origin}/login`,
-      });
       if (result.error) throw result.error;
       // Se redirected=true, browser vai redirecionar; se não, onAuthStateChange trata
     } catch (err: any) {
