@@ -331,3 +331,6 @@ verify_jwt = false
 
 [functions.diag-google]
 verify_jwt = false
+
+[functions.process-email-queue]
+verify_jwt = true
