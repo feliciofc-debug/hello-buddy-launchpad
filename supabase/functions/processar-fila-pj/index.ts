@@ -312,6 +312,35 @@ async function enviarMensagem(
 // ═══════════════════════════════════════
 // 🔄 PROCESSAR ITEM DA FILA
 // ═══════════════════════════════════════
+async function enviarViaCloudAPI(
+  phoneNumberId: string,
+  accessToken: string,
+  toPhone: string,
+  message: string,
+  imageUrl?: string
+): Promise<{ success: boolean; error?: string; wamid?: string }> {
+  const to = formatarDestinoWhatsApp(toPhone);
+  const url = `https://graph.facebook.com/v21.0/${phoneNumberId}/messages`;
+  const body: any = imageUrl
+    ? { messaging_product: "whatsapp", to, type: "image", image: { link: imageUrl, caption: message } }
+    : { messaging_product: "whatsapp", to, type: "text", text: { body: message, preview_url: true } };
+
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const txt = await resp.text();
+  if (!resp.ok) return { success: false, error: `Meta HTTP ${resp.status}: ${txt}` };
+  try {
+    const j = JSON.parse(txt);
+    const wamid = j?.messages?.[0]?.id;
+    return { success: true, wamid };
+  } catch {
+    return { success: true };
+  }
+}
+
 async function processarItem(
   supabase: any,
   item: any,
@@ -334,6 +363,46 @@ async function processarItem(
     // Áudio não precisa de mensagem obrigatória
     if (!mensagem && tipoMensagem !== 'audio') {
       throw new Error("Mensagem não encontrada");
+    }
+
+    // ═══════════════════════════════════════
+    // 🌐 CANAL OFICIAL: WhatsApp Cloud API (Meta)
+    // Baileys/WuzAPI está desativado. Todo envio PJ passa pela Graph API.
+    // ═══════════════════════════════════════
+    if (item.user_id && !destinoEhGrupo && tipoMensagem !== 'audio') {
+      const { data: waCfg } = await supabase
+        .from("whatsapp_config")
+        .select("phone_number_id, access_token, is_active")
+        .eq("user_id", item.user_id)
+        .maybeSingle();
+
+      if (waCfg?.is_active && waCfg?.phone_number_id && waCfg?.access_token) {
+        await supabase.from("fila_atendimento_pj").update({ status: "processando" }).eq("id", item.id);
+
+        console.log(`🌐 [PJ-FILA] Enviando via Meta Cloud API (phone_number_id=${waCfg.phone_number_id})`);
+        const r = await enviarViaCloudAPI(
+          waCfg.phone_number_id,
+          waCfg.access_token,
+          phone,
+          mensagem,
+          item.imagem_url,
+        );
+
+        const tempoTotal = Date.now() - startTime;
+        if (!r.success) throw new Error(r.error || "Falha Cloud API");
+
+        await supabase.from("fila_atendimento_pj").update({
+          status: "enviado",
+          sent_at: new Date().toISOString(),
+          erro: null,
+          metadata: { ...(item.metadata || {}), canal: "meta_cloud_api", wamid: r.wamid },
+        }).eq("id", item.id);
+
+        console.log(`✅ [PJ-FILA] Cloud API OK em ${tempoTotal}ms (wamid=${r.wamid || 'n/a'})`);
+        return { success: true, tempoTotal };
+      } else {
+        throw new Error("WhatsApp Cloud API não configurada/ativa para este usuário (whatsapp_config)");
+      }
     }
 
     // Buscar token do usuário (prioridade: token da instância mapeada > token do item > config do usuário > token padrão)
