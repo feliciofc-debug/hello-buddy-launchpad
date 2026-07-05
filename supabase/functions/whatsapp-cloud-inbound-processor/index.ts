@@ -1369,8 +1369,11 @@ async function toolEnviarMensagemContatoComercial(
     envio_imediato: agora,
     preview_mensagem: mensagem.slice(0, 200),
   });
+}
 
+// ---- NOTÍCIAS (Google News RSS, grátis) ----
 async function toolConsultarNoticias(tema: string): Promise<string> {
+
   const t = (tema || "").trim();
   if (!t) return JSON.stringify({ erro: "tema_obrigatorio" });
   try {
