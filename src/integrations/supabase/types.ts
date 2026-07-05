@@ -2254,6 +2254,63 @@ export type Database = {
           },
         ]
       }
+      contatos_comerciais: {
+        Row: {
+          ativo: boolean
+          cargo: string | null
+          contexto: string | null
+          created_at: string
+          email: string | null
+          empresa: string | null
+          id: string
+          nome: string
+          permite_jarvis_contatar: boolean
+          proximos_passos: string | null
+          tags: string[] | null
+          tipo_relacionamento: string
+          ultima_interacao: string | null
+          updated_at: string
+          user_id: string
+          whatsapp: string
+        }
+        Insert: {
+          ativo?: boolean
+          cargo?: string | null
+          contexto?: string | null
+          created_at?: string
+          email?: string | null
+          empresa?: string | null
+          id?: string
+          nome: string
+          permite_jarvis_contatar?: boolean
+          proximos_passos?: string | null
+          tags?: string[] | null
+          tipo_relacionamento?: string
+          ultima_interacao?: string | null
+          updated_at?: string
+          user_id: string
+          whatsapp: string
+        }
+        Update: {
+          ativo?: boolean
+          cargo?: string | null
+          contexto?: string | null
+          created_at?: string
+          email?: string | null
+          empresa?: string | null
+          id?: string
+          nome?: string
+          permite_jarvis_contatar?: boolean
+          proximos_passos?: string | null
+          tags?: string[] | null
+          tipo_relacionamento?: string
+          ultima_interacao?: string | null
+          updated_at?: string
+          user_id?: string
+          whatsapp?: string
+        }
+        Relationships: []
+      }
       deletion_requests: {
         Row: {
           completed_at: string | null
