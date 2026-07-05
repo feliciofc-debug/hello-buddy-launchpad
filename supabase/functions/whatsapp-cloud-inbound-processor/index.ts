@@ -1519,6 +1519,40 @@ async function toolResumoPlataforma(ctx: { userId: string; fromNumber: string })
 }
 
 
+// ---- Visão: descreve o que aparece em uma imagem (produto, cena, cores, texto visível) ----
+// Usado antes de gerar copy pra redes sociais, pra que a legenda case com a foto do dono.
+async function descreverImagemVisao(imageUrl: string): Promise<string> {
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        temperature: 0.2,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Descreva OBJETIVAMENTE em 2-4 frases o que aparece nesta imagem, como se estivesse instruindo um copywriter que NÃO vai ver a foto. Inclua: o produto/objeto principal e características visuais (cor, formato, material), a cena/contexto, e QUALQUER texto legível na arte (títulos, preços, slogans, marca). Se for um card/post pronto, diga o tema central. Não invente detalhes. Português, sem markdown, sem introdução tipo 'A imagem mostra'.",
+              },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) { console.warn("[visao] falhou status=", res.status); return ""; }
+    const data = await res.json();
+    return (data?.choices?.[0]?.message?.content || "").trim().slice(0, 800);
+  } catch (e) {
+    console.warn("[visao] erro:", (e as Error).message);
+    return "";
+  }
+}
+
+
 // =========================================================
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
@@ -1546,7 +1580,7 @@ async function gerarScriptRedesSociais(
 ${guiaTom}
 
 PRODUTO: ${produto.nome}
-${produto.descricao ? `DESCRIÇÃO: ${produto.descricao}` : ""}
+${produto.descricao ? `CONTEXTO/CONTEÚDO DA IMAGEM: ${produto.descricao}\n(IMPORTANTE: a legenda DEVE conversar com o que está na imagem — nunca contrarie ou ignore o conteúdo visual descrito acima.)` : ""}
 ${preco ? `PREÇO: ${preco}` : "PREÇO: (não informar valor no post)"}
 ${produto.categoria ? `CATEGORIA: ${produto.categoria}` : ""}
 ${temLink ? "" : "OBS: este produto NÃO tem link de compra — é post institucional/lifestyle/engajamento."}
@@ -2148,12 +2182,38 @@ async function toolSalvarMidiaBiblioteca(
     const contexto = (args?.contexto || "").trim();
     const salvos = await Promise.all(medias.map((m) => salvarItemMidiaBiblioteca(m, ctx, contexto)));
 
+    // Descreve a(s) foto(s) por visão pra Jarvis conseguir comentar o que viu e pra alimentar futura copy.
+    let descricaoVisual = "";
+    try {
+      const fotos = medias
+        .map((m, i) => ({ m, id: salvos[i]?.id, tipo: salvos[i]?.tipo }))
+        .filter((x) => x.tipo === "foto");
+      if (fotos.length > 0) {
+        // Vision direto no base64 pra não depender de storage propagar
+        const descricoes = await Promise.all(fotos.map(async (f) => {
+          const dataUrl = `data:${f.m.mime};base64,${f.m.base64}`;
+          const d = await descreverImagemVisao(dataUrl);
+          if (d && f.id) {
+            await sb.from("midias_whatsapp").update({ contexto_original: contexto ? `${contexto}\n\n[visão] ${d}` : `[visão] ${d}` }).eq("id", f.id);
+          }
+          return d;
+        }));
+        descricaoVisual = descricoes.filter(Boolean).join(" | ");
+      }
+    } catch (e) {
+      console.warn("[salvar_midia][visao] falhou:", (e as Error).message);
+    }
+
     return JSON.stringify({
       ok: true,
       midia_id: salvos[0]?.id,
       midia_ids: salvos.map((s) => s.id),
       tipos: salvos.map((s) => s.tipo),
+      descricao_visual: descricaoVisual || undefined,
       mensagem: respostaMidiaSalva(salvos),
+      instrucao_assistente: descricaoVisual
+        ? `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Comente 1-2 linhas confirmando o que viu (produto/tema/cor/texto principal) antes de dizer que salvou em /midias. NÃO responda genérico.`
+        : undefined,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -2196,12 +2256,29 @@ async function toolPostarMidiaBiblioteca(
     const tom = args?.tom || "urgencia";
 
     const precoNum = args?.preco != null ? Number(String(args.preco).replace(",", ".").replace(/[^\d.]/g, "")) : null;
-    const nome = (args?.nome || args?.legenda || midia.contexto_original || "Produto").toString().trim().slice(0, 120);
-    const descricao = (args?.legenda || midia.contexto_original || "").toString().trim();
+
+    // Extrai descrição visual já salva (se veio de salvar_midia_biblioteca) ou gera agora por visão.
+    const contextoRaw = (midia.contexto_original || "").toString();
+    let descricaoVisual = "";
+    const mVisao = contextoRaw.match(/\[visão\]\s*([\s\S]+)/i);
+    if (mVisao) descricaoVisual = mVisao[1].trim();
+    if (!descricaoVisual && midia.tipo === "foto") {
+      descricaoVisual = await descreverImagemVisao(midia.midia_url);
+      if (descricaoVisual) {
+        await sb.from("midias_whatsapp").update({
+          contexto_original: contextoRaw ? `${contextoRaw}\n\n[visão] ${descricaoVisual}` : `[visão] ${descricaoVisual}`,
+        }).eq("id", midia.id);
+      }
+    }
+    const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
+
+    const nome = (args?.nome || args?.legenda || contextoUsuario || "Produto").toString().trim().slice(0, 120);
+    const descricaoBase = (args?.legenda || contextoUsuario || "").toString().trim();
+    const descricaoFinal = [descricaoBase, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
 
     const produtoLike = {
       nome,
-      descricao: descricao || null,
+      descricao: descricaoFinal || null,
       preco: precoNum && !isNaN(precoNum) ? precoNum : null,
       link: null,
       categoria: null,
