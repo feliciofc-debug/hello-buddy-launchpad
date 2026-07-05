@@ -3762,7 +3762,7 @@ async function processOne(queueId: string) {
         .limit(1);
       const m0 = recMid?.[0];
       if (m0 && media.length === 0) {
-        recentMediaBlock = `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o cliente pedir pra POSTAR/DIVULGAR agora (ex: "posta X pra face e insta", "Jogo de 4 taças 29,99 pra postar"), chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual.\n- ⛔ NÃO chame postar_redes_sociais — aquela busca no catálogo e vai pegar o produto ERRADO.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`;
+        recentMediaBlock = `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO (ex: pegar um "mop" aleatório quando a foto enviada era outra coisa). postar_redes_sociais é exclusiva pra quando o dono cita um PRODUTO do catálogo pelo nome SEM ter enviado mídia.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`;
       }
     } catch (e) {
       console.warn("[pietro][recent_media_hint] falhou:", (e as Error).message);
