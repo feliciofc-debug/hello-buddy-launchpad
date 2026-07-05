@@ -41,7 +41,8 @@ import {
   Sparkles,
   Share2,
   Shield,
-  Plug
+  Plug,
+  Briefcase
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
