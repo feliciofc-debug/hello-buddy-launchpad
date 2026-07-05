@@ -1244,6 +1244,37 @@ function normalizePhoneBR(raw: string): string {
   return c;
 }
 
+function normalizeContactLookupText(raw: string): string {
+  return (raw || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function inferContatoComercialFromText(text: string, userId: string): Promise<any | null> {
+  const haystack = ` ${normalizeContactLookupText(text)} `;
+  if (!haystack.trim()) return null;
+
+  const { data } = await sb.from("contatos_comerciais")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("ativo", true)
+    .limit(80);
+
+  const matches = (data ?? []).filter((c: any) => {
+    const nome = normalizeContactLookupText(c.nome || "");
+    if (!nome) return false;
+    const firstName = nome.split(" ")[0];
+    return haystack.includes(` ${nome} `) || (firstName.length >= 4 && haystack.includes(` ${firstName} `));
+  });
+
+  if (matches.length === 1) return matches[0];
+  return null;
+}
+
 async function toolListarContatosComerciais(
   args: { busca?: string },
   ctx: { userId: string },
@@ -1296,6 +1327,12 @@ async function toolEnviarMensagemContatoComercial(
         candidatos: data.map((c: any) => ({ id: c.id, nome: c.nome, empresa: c.empresa })),
       });
     }
+  }
+
+  // Fallback extra: se o modelo ainda inventar UUID e não mandar nome_busca,
+  // tenta inferir pelo nome presente no texto composto (ex: "Oi Renata...").
+  if (!contato) {
+    contato = await inferContatoComercialFromText(mensagem, ctx.userId);
   }
 
   if (!contato) {
