@@ -176,6 +176,7 @@ const App = () => (
             {/* Rotas PJ */}
             <Route path="/pj/whatsapp-automacao" element={<WhatsAppAutomacaoPJ />} />
             <Route path="/pj/listas-contatos" element={<ListasContatosPJ />} />
+            <Route path="/pj/contatos-comerciais" element={<ContatosComerciais />} />
             {/* <Route path="/integracoes" element={<Integracoes />} /> */} {/* Oculto - reativar removendo o comentário */}
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
             <Route path="/contatoswhatsapp" element={<ContatosWhatsApp />} />
