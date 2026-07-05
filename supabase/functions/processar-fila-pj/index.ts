@@ -372,17 +372,26 @@ async function processarItem(
     if (item.user_id && !destinoEhGrupo && tipoMensagem !== 'audio') {
       const { data: waCfg } = await supabase
         .from("whatsapp_config")
-        .select("phone_number_id, access_token, is_active")
+        .select("phone_number_id, access_token, is_active, connection_method")
         .eq("user_id", item.user_id)
         .maybeSingle();
 
-      if (waCfg?.is_active && waCfg?.phone_number_id && waCfg?.access_token) {
+      // Prioridade de token idêntica ao whatsapp-send-message:
+      // System User permanente > secret de teste vivo > token do banco.
+      const permanentToken = Deno.env.get("WHATSAPP_PERMANENT_TOKEN");
+      const testAccessToken = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
+      const isSystemUserTenant = waCfg?.connection_method === "system_user_permanent";
+      const cloudToken = isSystemUserTenant && (permanentToken || testAccessToken)
+        ? (permanentToken || testAccessToken)!
+        : waCfg?.access_token;
+
+      if (waCfg?.is_active && waCfg?.phone_number_id && cloudToken) {
         await supabase.from("fila_atendimento_pj").update({ status: "processando" }).eq("id", item.id);
 
-        console.log(`🌐 [PJ-FILA] Enviando via Meta Cloud API (phone_number_id=${waCfg.phone_number_id})`);
+        console.log(`🌐 [PJ-FILA] Enviando via Meta Cloud API (phone_number_id=${waCfg.phone_number_id}, token_source=${isSystemUserTenant ? (permanentToken ? 'permanent_secret' : 'test_secret') : 'db'})`);
         const r = await enviarViaCloudAPI(
           waCfg.phone_number_id,
-          waCfg.access_token,
+          cloudToken,
           phone,
           mensagem,
           item.imagem_url,
