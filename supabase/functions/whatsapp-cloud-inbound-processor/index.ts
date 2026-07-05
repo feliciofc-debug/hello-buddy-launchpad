@@ -2541,6 +2541,14 @@ async function toolPostarMidiaBiblioteca(
     const midia = midias?.[0];
     if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
 
+    // Etapa 1: story só de FOTO. Vídeo em story fica pra próxima etapa.
+    const formato: "feed" | "story" = (args?.formato || "feed").toString().toLowerCase() === "story" ? "story" : "feed";
+    if (formato === "story" && midia.tipo === "video") {
+      return JSON.stringify({
+        erro: "story de vídeo entra na próxima etapa. Por enquanto, story só de foto. Quer postar essa foto no story, ou este vídeo no feed?",
+      });
+    }
+
     const redesValidas = ["facebook", "instagram", "tiktok"];
     const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
       .map((r) => r.toLowerCase())
