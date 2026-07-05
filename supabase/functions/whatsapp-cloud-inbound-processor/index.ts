@@ -3128,6 +3128,23 @@ async function callGemini(
     const socialPost = detectSocialPostIntent(userContent);
     if (socialPost) {
       console.log("[pietro][forced_social_post]", socialPost);
+      const midiaRecente = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
+      if (midiaRecente) {
+        const formato = detectSocialPostFormat(userContent) ?? "feed";
+        console.warn(`[pietro][forced_social_post] mídia recente em /midias → usando postar_midia_biblioteca id=${midiaRecente.id} formato=${formato}`);
+        const postResult = await toolPostarMidiaBiblioteca({
+          legenda: cleanMediaPostLegenda(userContent),
+          tom: socialPost.tom,
+          redes: socialPost.redes,
+          formato,
+        }, toolCtx);
+        return { text: formatSocialPostToolResult(postResult) };
+      }
+
+      if (!socialPost.temProduto) {
+        return { text: "Qual produto você quer postar? Ou me envie a foto/vídeo primeiro que eu preparo pela biblioteca /midias." };
+      }
+
       const postResult = await toolPostarRedesSociais(socialPost, toolCtx);
       return { text: formatSocialPostToolResult(postResult) };
     }
