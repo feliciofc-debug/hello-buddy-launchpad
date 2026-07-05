@@ -2159,7 +2159,7 @@ async function salvarItemMidiaBiblioteca(
 }
 
 
-function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>): string {
+function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>, descricaoVisual?: string): string {
   const total = salvos.length;
   const tipos = salvos.reduce((acc, item) => {
     acc[item.tipo] = (acc[item.tipo] ?? 0) + 1;
@@ -2171,10 +2171,40 @@ function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>)
     tipos.audio ? `${tipos.audio} áudio${tipos.audio > 1 ? "s" : ""}` : "",
   ].filter(Boolean).join(", ");
   const temFoto = (tipos.foto ?? 0) > 0;
+  if (temFoto && descricaoVisual?.trim()) {
+    return `Oi chefe, salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
+  }
   const instrucao = temFoto
     ? " INSTRUÇÃO PRO ASSISTENTE: analise VISUALMENTE a(s) imagem(ns) que o cliente acabou de mandar (você as recebeu no conteúdo desta mensagem) e descreva em 1-2 frases o que aparece nela (produto, cena, cor, contexto). Depois confirme que salvou. NÃO responda genericamente — mostre que viu a foto."
     : "";
   return `${total === 1 ? "Salvei" : "Salvei"} ${partes || "a mídia"} na biblioteca /midias. Não usei produto do catálogo; publique/reuse por lá quando quiser.${instrucao}`;
+}
+
+async function descreverFotosSalvas(
+  medias: MediaExtract[],
+  salvos: Array<{ id: string; tipo: "foto" | "video" | "audio"; url: string }>,
+  contexto: string,
+): Promise<string> {
+  const fotos = medias
+    .map((m, i) => ({ m, id: salvos[i]?.id, tipo: salvos[i]?.tipo, url: salvos[i]?.url }))
+    .filter((x) => x.tipo === "foto");
+  if (fotos.length === 0) return "";
+
+  const descricoes = await Promise.all(fotos.map(async (f) => {
+    let d = f.url ? await descreverImagemVisao(f.url) : "";
+    if (!d) {
+      const dataUrl = `data:${f.m.mime};base64,${f.m.base64}`;
+      d = await descreverImagemVisao(dataUrl);
+    }
+    if (d && f.id) {
+      await sb
+        .from("midias_whatsapp")
+        .update({ contexto_original: contexto ? `${contexto}\n\n[visão] ${d}` : `[visão] ${d}` })
+        .eq("id", f.id);
+    }
+    return d;
+  }));
+  return descricoes.filter(Boolean).join(" | ");
 }
 
 async function toolSalvarMidiaBiblioteca(
@@ -2196,25 +2226,7 @@ async function toolSalvarMidiaBiblioteca(
     // Descreve a(s) foto(s) por visão pra Jarvis conseguir comentar o que viu e pra alimentar futura copy.
     let descricaoVisual = "";
     try {
-      const fotos = medias
-        .map((m, i) => ({ m, id: salvos[i]?.id, tipo: salvos[i]?.tipo, url: salvos[i]?.url }))
-        .filter((x) => x.tipo === "foto");
-      if (fotos.length > 0) {
-        // Usa a URL pública do storage (imagem íntegra recém-uploadada) — mais confiável que base64 do payload WhatsApp.
-        const descricoes = await Promise.all(fotos.map(async (f) => {
-          let d = f.url ? await descreverImagemVisao(f.url) : "";
-          if (!d) {
-            // Fallback: tenta com base64 caso a URL pública ainda não tenha propagado.
-            const dataUrl = `data:${f.m.mime};base64,${f.m.base64}`;
-            d = await descreverImagemVisao(dataUrl);
-          }
-          if (d && f.id) {
-            await sb.from("midias_whatsapp").update({ contexto_original: contexto ? `${contexto}\n\n[visão] ${d}` : `[visão] ${d}` }).eq("id", f.id);
-          }
-          return d;
-        }));
-        descricaoVisual = descricoes.filter(Boolean).join(" | ");
-      }
+      descricaoVisual = await descreverFotosSalvas(medias, salvos, contexto);
     } catch (e) {
       console.warn("[salvar_midia][visao] falhou:", (e as Error).message);
     }
@@ -2225,7 +2237,7 @@ async function toolSalvarMidiaBiblioteca(
       midia_ids: salvos.map((s) => s.id),
       tipos: salvos.map((s) => s.tipo),
       descricao_visual: descricaoVisual || undefined,
-      mensagem: respostaMidiaSalva(salvos),
+      mensagem: respostaMidiaSalva(salvos, descricaoVisual),
       instrucao_assistente: descricaoVisual
         ? `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Comente 1-2 linhas confirmando o que viu (produto/tema/cor/texto principal) antes de dizer que salvou em /midias. NÃO responda genérico.`
         : undefined,
