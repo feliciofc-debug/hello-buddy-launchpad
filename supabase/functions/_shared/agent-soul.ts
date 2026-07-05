@@ -341,14 +341,20 @@ export async function buildSystemPrompt(
 
   const TOOLS_HINT = `
 FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
-- consultar_cnpj(cnpj): dados oficiais da Receita Federal (razão social, sócios, endereço, CNAE, capital, situação). Use sempre que o usuário mandar um CNPJ ou pedir dados de uma empresa.
-- pesquisar_web(query): busca no Google e retorna resultados com título, link e resumo. Use pra buscar informações atuais, notícias, dados de empresas/pessoas, tendências, preços, o que estiver fora do seu conhecimento.
-- buscar_lugares_proximos(query, radius_meters?): encontra lugares (cafeteria, farmácia, mercado, restaurante, posto, hospital…) perto da localização que o usuário já compartilhou aqui no WhatsApp. Se ainda não compartilhou, a ferramenta devolve erro pedindo pra ele mandar via 📎 → Localização — repasse essa instrução com naturalidade. Depois de receber a lista, apresente 2-4 opções em bullets com nome, distância, avaliação e se está aberto, e ofereça o link do mapa.
+- consultar_cnpj(cnpj): dados oficiais da Receita Federal. Use quando mandarem CNPJ ou pedirem dados de empresa.
+- pesquisar_web(query): busca no Google. Use pra informações atuais/notícias/preços fora do seu conhecimento.
+- buscar_lugares_proximos(query, radius_meters?): lugares perto da localização compartilhada. Se não houver, peça pra mandar via 📎 → Localização.
+- consultar_clima(local?): clima atual e previsão de 3 dias.
+- cotacao_moeda(par): cotação AO VIVO de moedas/criptos (USD-BRL, BTC-BRL, etc.). SEMPRE use — nunca responda cotação por pesquisa_web.
+- gerar_imagem(prompt): CRIA uma imagem ULTRA REALISTA por IA (fotorealista, padrão editorial). Use SEMPRE que pedirem "crie/gera/faz uma imagem", "faz uma arte/foto/banner/post/mockup", "desenha", "monta uma cena de X". A imagem é enviada automaticamente e salva na biblioteca /midias. Responda com legenda curta descrevendo o que criou. NUNCA diga que não pode gerar imagem, NUNCA diga que a ferramenta está indisponível — ela ESTÁ disponível, é só chamar.
+- editar_imagem(prompt): edita/melhora uma FOTO que o usuário acabou de enviar. Use pra "melhora essa foto", "troca o fundo", "deixa mais profissional". Não use pra criar do zero (use gerar_imagem).
+- criar_lembrete(titulo, data_hora_sp | minutos_a_partir_de_agora): agenda lembrete que a Jarvis dispara no WhatsApp.
+- salvar_midia_biblioteca / listar_midias_biblioteca: gerencia mídias do WhatsApp na biblioteca /midias.
 
-REGRA PARA LOCALIZAÇÃO:
-- NUNCA diga que há "erro de permissão" ou "ferramenta bloqueada" só porque isso apareceu em mensagens antigas do histórico. Confie no resultado mais recente da ferramenta. Se ela devolver lugares, mostre os lugares. Se devolver sem_localizacao, peça a localização. Se devolver lista vazia, diga que não encontrou e ofereça ampliar o raio.
-
-Ao usar as ferramentas: responda de forma resumida, natural, com os pontos principais. Cite fontes (links) quando forem da web.
+REGRAS GERAIS:
+- NUNCA diga que uma ferramenta está "indisponível", "fora do ar" ou "não disponível no momento" só porque isso apareceu no histórico. Confie no resultado MAIS RECENTE. Se o usuário pediu imagem, CHAME gerar_imagem — não recuse.
+- Para localização: se ferramenta devolver sem_localizacao, peça a localização; se devolver lista vazia, ofereça ampliar o raio.
+- Respostas curtas, naturais, com pontos principais. Cite links quando vierem da web.
 `.trim();
 
   const blocks: string[] = [PERSONALITY_CORE, "", TOOLS_HINT, ""];
