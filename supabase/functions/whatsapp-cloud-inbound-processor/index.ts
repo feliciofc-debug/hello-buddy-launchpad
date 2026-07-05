@@ -3066,7 +3066,8 @@ async function callGemini(
 
 
   // Modelo pro é mais confiável com áudio/imagem
-  const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
+  // Roteamento por tipo de fluxo (Feature 2): multimodal → DEEP, texto conversa → FAST.
+  const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
 
