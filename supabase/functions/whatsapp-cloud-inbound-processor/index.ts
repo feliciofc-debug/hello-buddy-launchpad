@@ -1522,35 +1522,44 @@ async function toolResumoPlataforma(ctx: { userId: string; fromNumber: string })
 // ---- Visão: descreve o que aparece em uma imagem (produto, cena, cores, texto visível) ----
 // Usado antes de gerar copy pra redes sociais, pra que a legenda case com a foto do dono.
 async function descreverImagemVisao(imageUrl: string): Promise<string> {
-  try {
+  const prompt = "Você é um leitor de imagens PRECISO. Descreva EXATAMENTE o que aparece nesta imagem em 2-4 frases, como se estivesse instruindo um copywriter que NÃO vai ver a foto. OBRIGATÓRIO: 1) Se houver QUALQUER texto/palavra/número na imagem (títulos, marcas, preços, slogans, logos, cards, banners, prints de tela), TRANSCREVA literalmente as palavras principais entre aspas. 2) Diga o tipo de imagem (foto real de produto / print de tela / arte gráfica / banner / card promocional / meme / captura de app etc.). 3) Cite objeto/pessoa principal, cor dominante e cena. NUNCA invente detalhes. Se não tiver certeza, diga 'não identificado'. Português, sem markdown, sem introdução tipo 'A imagem mostra'.";
+  const tryCall = async (model: string) => {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        temperature: 0.2,
+        model,
+        temperature: 0.1,
         messages: [
           {
             role: "user",
             content: [
-              {
-                type: "text",
-                text: "Descreva OBJETIVAMENTE em 2-4 frases o que aparece nesta imagem, como se estivesse instruindo um copywriter que NÃO vai ver a foto. Inclua: o produto/objeto principal e características visuais (cor, formato, material), a cena/contexto, e QUALQUER texto legível na arte (títulos, preços, slogans, marca). Se for um card/post pronto, diga o tema central. Não invente detalhes. Português, sem markdown, sem introdução tipo 'A imagem mostra'.",
-              },
+              { type: "text", text: prompt },
               { type: "image_url", image_url: { url: imageUrl } },
             ],
           },
         ],
       }),
     });
-    if (!res.ok) { console.warn("[visao] falhou status=", res.status); return ""; }
+    if (!res.ok) {
+      console.warn("[visao] falhou model=", model, "status=", res.status, (await res.text()).slice(0, 200));
+      return "";
+    }
     const data = await res.json();
     return (data?.choices?.[0]?.message?.content || "").trim().slice(0, 800);
+  };
+  try {
+    // Modelo novo primeiro (mais preciso em OCR/leitura de arte). Fallback pro 2.5-pro.
+    let out = await tryCall("google/gemini-3-flash-preview");
+    if (!out) out = await tryCall("google/gemini-2.5-pro");
+    console.log("[visao] descricao=", out.slice(0, 200));
+    return out;
   } catch (e) {
     console.warn("[visao] erro:", (e as Error).message);
     return "";
   }
 }
+
 
 
 // =========================================================
