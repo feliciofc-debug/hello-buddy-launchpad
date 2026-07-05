@@ -2982,6 +2982,8 @@ async function runTool(
   // Guard: se pediu postar_redes_sociais mas tem mídia RECENTE (últimos 15 min) em /midias,
   // redireciona pra postar_midia_biblioteca — evita buscar produto errado do catálogo
   // quando o cliente enviou foto antes e agora só mandou a legenda/preço em texto.
+  // IMPORTANTE (Etapa 1 fix): vale TAMBÉM quando o pedido é story/reels — a FONTE
+  // continua sendo a biblioteca /midias, nunca o catálogo. Só o formato muda.
   if (name === "postar_redes_sociais") {
     try {
       const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -2994,12 +2996,21 @@ async function runTool(
         .order("created_at", { ascending: false })
         .limit(1);
       if (recentes && recentes.length > 0) {
-        console.warn(`[pietro][postar_guard] mídia recente em /midias → redirecionando pra postar_midia_biblioteca`);
+        // Detecta formato (story/reels/feed) a partir do que o agente pediu, mesmo
+        // que ele tenha errado a tool. Story/reels keywords em qualquer arg de texto.
+        const argBlob = JSON.stringify(args ?? {}).toLowerCase();
+        let formatoDetectado: string | undefined = args?.formato;
+        if (!formatoDetectado) {
+          if (/\bstor(y|ies|ie)\b/.test(argBlob)) formatoDetectado = "story";
+          else if (/\breels?\b/.test(argBlob)) formatoDetectado = "reels";
+        }
+        console.warn(`[pietro][postar_guard] mídia recente em /midias → redirecionando pra postar_midia_biblioteca (formato=${formatoDetectado ?? "feed"})`);
         const result = await toolPostarMidiaBiblioteca({
-          legenda: args?.produto,
+          legenda: args?.legenda ?? args?.produto,
           nome: args?.produto,
           tom: args?.tom,
           redes: args?.redes,
+          formato: formatoDetectado,
         }, ctx);
         return { result };
       }
