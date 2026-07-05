@@ -3162,12 +3162,51 @@ async function callGemini(
       return { text: formatSocialPostToolResult(confirmResult) };
     }
 
+    // Etapa 2: se o dono está respondendo APENAS o formato ("feed" / "story" / "no story"),
+    // retoma o post pendente (redes/tom/legenda guardados) sem precisar reenviar a foto.
+    const standaloneFormat = detectStandaloneFormatReply(userContent);
+    const pendingChoice = getPendingFormatChoice(toolCtx.userId);
+    if (standaloneFormat && pendingChoice) {
+      const midiaRecenteResume = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
+      if (midiaRecenteResume && midiaRecenteResume.tipo === "foto") {
+        console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")}`);
+        clearPendingFormatChoice(toolCtx.userId);
+        const postResult = await toolPostarMidiaBiblioteca({
+          legenda: pendingChoice.legenda,
+          tom: pendingChoice.tom,
+          redes: pendingChoice.redes,
+          formato: standaloneFormat,
+        }, toolCtx);
+        return { text: formatSocialPostToolResult(postResult) };
+      }
+      // mídia expirou/sumiu — descarta pending e deixa o fluxo normal seguir
+      clearPendingFormatChoice(toolCtx.userId);
+    }
+
     const socialPost = detectSocialPostIntent(userContent);
     if (socialPost) {
       console.log("[pietro][forced_social_post]", socialPost);
       const midiaRecente = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
       if (midiaRecente) {
-        const formato = detectSocialPostFormat(userContent) ?? "feed";
+        const formatoDetectado = socialPost.formato;
+        const isFoto = midiaRecente.tipo === "foto";
+
+        // Etapa 2: FOTO sem formato explícito → PERGUNTA feed ou story e guarda pending.
+        if (isFoto && !formatoDetectado) {
+          const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
+          setPendingFormatChoice(toolCtx.userId, {
+            redes: redesAsk,
+            tom: socialPost.tom,
+            legenda: cleanMediaPostLegenda(userContent),
+          });
+          const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
+          const nota = redesAsk.includes("facebook") ? "\n\n_(no story de foto, por enquanto só o Instagram publica — Facebook story de foto entra na próxima etapa.)_" : "";
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk });
+          return { text: `Quer no *feed* ou no *story* do ${redeLabel}?${nota}` };
+        }
+
+        // Vídeo (ou reels declarado) segue o comportamento atual (sem perguntar).
+        const formato = formatoDetectado ?? "feed";
         console.warn(`[pietro][forced_social_post] mídia recente em /midias → usando postar_midia_biblioteca id=${midiaRecente.id} formato=${formato}`);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: cleanMediaPostLegenda(userContent),
