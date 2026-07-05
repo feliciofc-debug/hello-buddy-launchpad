@@ -2592,6 +2592,38 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "listar_contatos_comerciais",
+      description: "Lista os CONTATOS COMERCIAIS do dono (clientes, parceiros, prospects próximos com quem ele tem relação direta — Marcelo Martins, Renata, etc). Use ANTES de enviar mensagem quando o dono citar alguém pelo primeiro nome e você precisar confirmar quem é / achar o ID / ver o contexto do relacionamento. Também use pra responder 'quais são meus contatos comerciais', 'me lembra do Marcelo', 'qual o whats da Renata'.",
+      parameters: {
+        type: "object",
+        properties: {
+          busca: { type: "string", description: "Filtro opcional por nome ou empresa. Ex: 'marcelo', 'ademicon'. Vazio = lista tudo." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "enviar_mensagem_contato_comercial",
+      description: "Envia uma MENSAGEM DE WHATSAPP TEXTO humanizada para um contato comercial (tabela contatos_comerciais), agora ou agendada. NUNCA faz ligação de voz — Jarvis só envia texto. Use quando o dono mandar comandos tipo 'manda mensagem pro Marcelo confirmando nossa reunião amanhã 10:30', 'avisa a Renata que...', 'faz follow-up com o cliente X', 'amanhã 9:30 chama o Marcelo pra confirmar reunião das 10:30'.\n\nVOCÊ (Jarvis) COMPÕE o texto da mensagem no parâmetro 'mensagem' — em nome do dono, gentil, humanizado, se apresentando como 'aqui é o Jarvis, assistente do Felício'. Use o campo 'contexto' do contato pra dar naturalidade (ex: se contexto diz 'parceiro há 12 anos', a abordagem é mais íntima). Nunca fecha negócio sozinho — coleta info e reporta.\n\nSempre passe 'contato_id' quando souber (chame listar_contatos_comerciais antes se precisar). Só use 'nome_busca' se o dono foi bem específico (nome único).\n\nAgendamento: use 'data_hora_sp' (YYYY-MM-DD HH:MM em SP) pra momento futuro; omita ambos os campos de tempo pra enviar AGORA. Calcule 'amanhã 9:30' a partir da 'Data/hora atual em São Paulo' do system prompt.",
+      parameters: {
+        type: "object",
+        properties: {
+          contato_id: { type: "string", description: "UUID do contato (obtido via listar_contatos_comerciais). Preferido." },
+          nome_busca: { type: "string", description: "Alternativa: parte do nome pra buscar. Falha se houver ambiguidade." },
+          mensagem: { type: "string", description: "Texto COMPLETO da mensagem WhatsApp já humanizado, em nome do dono. Mín 20 chars. Ex: 'Oi Marcelo, tudo bem? Aqui é o Jarvis, assistente do Felício. Ele me pediu pra confirmar com você a reunião marcada pra amanhã 10:30. Tá tudo certo do seu lado? 😊'" },
+          data_hora_sp: { type: "string", description: "Opcional. Envio agendado em horário SP no formato 'YYYY-MM-DD HH:MM'. Omita pra enviar agora." },
+          minutos_a_partir_de_agora: { type: "number", description: "Opcional. Alternativa a data_hora_sp: minutos até o envio." },
+          tipo_acao: { type: "string", enum: ["confirmar_reuniao", "followup_proposta", "resposta_comercial", "checkin_relacionamento", "mensagem_livre"], description: "Categoria da ação pra log/analytics. Padrão: mensagem_livre." },
+        },
+        required: ["mensagem"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "salvar_nota",
       description: "Salva uma nota rápida / segunda memória do usuário. Use quando ele disser 'anota que…', 'lembra que…', 'guarda essa info', 'grava aí que…'.",
       parameters: { type: "object", properties: { conteudo: { type: "string" }, tags: { type: "array", items: { type: "string" }, description: "Palavras-chave opcionais pra facilitar busca depois" } }, required: ["conteudo"] },
