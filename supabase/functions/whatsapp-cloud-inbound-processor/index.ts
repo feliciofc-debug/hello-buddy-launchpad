@@ -3439,6 +3439,122 @@ async function processOne(queueId: string) {
       return { ok: true, saved_to_midias: true, midia_ids: salvos.map((s) => s.id), reply_preview: reply.slice(0, 120) };
     }
 
+    // PASSO 6.8 — DOCUMENTOS (.md, .txt, .json, .pdf) → ler e COMENTAR
+    // Regra: nunca chamar tools, nunca buscar lugares, nunca postar. Só análise.
+    const docMedia = media.filter((m) => m.kind === "document");
+    if (docMedia.length > 0) {
+      const doc = docMedia[0]; // trata 1 por vez (o mais comum no WhatsApp)
+      const extracted = await extractDocumentText(doc.base64, doc.mime, doc.filename);
+      const label = doc.filename || `arquivo ${doc.mime}`;
+
+      let reply: string;
+      if (!extracted.supported || !extracted.text) {
+        reply = extracted.note
+          ? `Recebi o arquivo *${label}*, mas ${extracted.note}`
+          : `Recebi *${label}*, mas não consegui ler o conteúdo. Se puder, manda em .md, .txt, .json ou .pdf com texto.`;
+      } else {
+        const truncNote = extracted.truncated
+          ? `\n\n(Obs: o documento é grande — analisei os primeiros ~60 mil caracteres.)`
+          : "";
+        const userComment = userText ? `\n\nContexto que o dono mandou junto: "${userText}"` : "";
+        const docPrompt = [
+          `O dono (Felício) te enviou um documento/projeto pelo WhatsApp para você COMENTAR.`,
+          `Sua tarefa: LEIA o conteúdo abaixo e responda como o Jarvis — assistente do Felício —`,
+          `com um comentário útil, honesto e direto: pontos fortes, riscos, o que falta, sugestões práticas.`,
+          `Formato: WhatsApp (curto, parágrafos claros, sem tabelas ASCII). Máx ~250 palavras.`,
+          `NÃO use nenhuma ferramenta (nada de busca de lugares, nada de pesquisar_web, nada de postar).`,
+          `Só análise textual do que está aqui.${userComment}`,
+          ``,
+          `NOME DO ARQUIVO: ${label}`,
+          `TIPO: ${extracted.kind}`,
+          ``,
+          `--- CONTEÚDO ---`,
+          extracted.text,
+          `--- FIM ---`,
+        ].join("\n");
+
+        try {
+          const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              temperature: 0.5,
+              messages: [
+                { role: "system", content: "Você é o Jarvis, assistente pessoal do Felício. Leia o documento enviado e comente com franqueza técnica e prática. Nunca invente informação. Nunca peça localização. Nunca ofereça buscar lugares." },
+                { role: "user", content: docPrompt },
+              ],
+            }),
+          });
+          if (!aiRes.ok) {
+            const t = await aiRes.text();
+            throw new Error(`gateway ${aiRes.status}: ${t.slice(0, 200)}`);
+          }
+          const aiJson = await aiRes.json();
+          const aiText = aiJson?.choices?.[0]?.message?.content?.trim();
+          reply = aiText || `Li o arquivo *${label}*, mas não consegui montar o comentário agora. Tenta reenviar em alguns segundos.`;
+          if (extracted.truncated) reply += truncNote;
+        } catch (e) {
+          console.error("[processor][document] falha modelo:", (e as Error).message);
+          reply = `Recebi e li *${label}*, mas travei ao gerar o comentário (${(e as Error).message.slice(0, 120)}). Tenta reenviar.`;
+        }
+      }
+
+      // Grava outbound e envia — usa o mesmo split de mensagens longas
+      const parts: string[] = [];
+      const MAX = 3800;
+      let rest = reply;
+      while (rest.length > MAX) {
+        let cut = rest.lastIndexOf("\n\n", MAX);
+        if (cut < MAX * 0.5) cut = rest.lastIndexOf("\n", MAX);
+        if (cut < MAX * 0.5) cut = MAX;
+        parts.push(rest.slice(0, cut).trim());
+        rest = rest.slice(cut).trim();
+      }
+      if (rest) parts.push(rest);
+
+      const { data: outMsg } = await sb
+        .from("whatsapp_cloud_messages")
+        .insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+
+      let sendError: string | null = null;
+      try {
+        const sentId = await sendWhatsApp(userId, row.from_number, parts[0]);
+        if (sentId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+        }
+        for (const part of parts.slice(1)) {
+          await new Promise((r) => setTimeout(r, 600));
+          await sendWhatsApp(userId, row.from_number, part);
+        }
+      } catch (e) {
+        sendError = String((e as Error).message ?? e);
+      }
+
+      await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+
+      if (sendError) {
+        await failQueue(row.id, `send_failed: ${sendError}`);
+        return { ok: false, reason: "send_failed", error: sendError };
+      }
+      await doneQueue(row.id);
+      return { ok: true, document_commented: true, filename: label, kind: extracted.kind, truncated: extracted.truncated };
+    }
+
+
+
     // PASSO 7 — System prompt (com contexto AMZ se aplicável)
     const { systemPrompt, mode } = await buildSystemPrompt(
       sb,
