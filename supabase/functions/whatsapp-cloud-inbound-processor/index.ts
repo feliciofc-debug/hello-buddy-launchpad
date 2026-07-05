@@ -1853,6 +1853,7 @@ type PendingSocialPost = {
   scripts: Record<string, string>;
   userId: string;
   createdAt: number;
+  formato?: "feed" | "story";
   queueRows?: Array<{ id: string; platform: string }>;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
@@ -1865,12 +1866,17 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function pendingPostMarker(token: string, productName?: string): string {
-  return `jarvis_token:${token};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
+function pendingPostMarker(token: string, productName?: string, formato: "feed" | "story" = "feed"): string {
+  return `jarvis_token:${token};formato:${formato};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
 }
 
 function productNameFromPendingMarker(marker?: string | null): string {
   return marker?.match(/;produto:(.*)$/)?.[1]?.trim() || "produto";
+}
+
+function formatoFromPendingMarker(marker?: string | null): "feed" | "story" {
+  const m = marker?.match(/;formato:(feed|story)/i);
+  return (m?.[1]?.toLowerCase() as "feed" | "story") || "feed";
 }
 
 async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
@@ -1884,7 +1890,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     link_url: pending.produto?.link || null,
     status: "aguardando_confirmacao",
     scheduled_at: null,
-    error_message: pendingPostMarker(token, pending.produto?.nome),
+    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed"),
     updated_at: new Date().toISOString(),
   }));
 
@@ -1938,6 +1944,7 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     scripts,
     userId,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    formato: formatoFromPendingMarker((rows[0] as any).error_message),
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
   };
 }
@@ -1964,8 +1971,44 @@ async function publicarEmRede(
   script: string,
   produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null },
   userId: string,
+  formato: "feed" | "story" = "feed",
 ): Promise<{ rede: string; ok: boolean; status: number; resposta: any }> {
   try {
+    // === STORY (Etapa 1: só imagem) ===
+    if (formato === "story") {
+      if (rede === "instagram") {
+        console.log(`[social-router] rede=instagram formato=story → meta-publish-story-image`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-image`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+          body: JSON.stringify({ user_id: userId, image_url: produto.imagem_url }),
+        });
+        const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+        // Repassa erro amigável (ex.: imagem não 9:16)
+        if (!res.ok || j?.success === false) {
+          const raw = String(j?.error || j?.message || `falha_${res.status}`);
+          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw)
+            ? "a imagem precisa ser vertical 9:16 pra story do Instagram"
+            : raw;
+          return { rede, ok: false, status: res.status, resposta: { ...j, error: amigavel } };
+        }
+        return { rede, ok: true, status: res.status, resposta: j };
+      }
+      if (rede === "facebook") {
+        console.log(`[social-router] rede=facebook formato=story → não suportado nesta etapa (só vídeo)`);
+        return {
+          rede,
+          ok: false,
+          status: 0,
+          resposta: { error: "story de foto no Facebook entra numa próxima etapa (por enquanto só Instagram)" },
+        };
+      }
+      if (rede === "tiktok") {
+        return { rede, ok: false, status: 0, resposta: { error: "TikTok não tem formato story — ignorado" } };
+      }
+    }
+
+    // === FEED (comportamento original — inalterado) ===
     if (rede === "facebook") {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
         method: "POST",
@@ -2325,7 +2368,7 @@ async function toolConfirmarPostagemRedes(
     return JSON.stringify({ status: "cancelado" });
   }
 
-  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId)));
+  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
   await updatePersistedSocialPostRows(p, resultados);
   PENDING_POSTS.delete(token);
   return JSON.stringify({
@@ -2471,7 +2514,7 @@ async function toolSalvarMidiaBiblioteca(
 
 // ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
 async function toolPostarMidiaBiblioteca(
-  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string },
+  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
@@ -2497,6 +2540,14 @@ async function toolPostarMidiaBiblioteca(
     if (error) return JSON.stringify({ erro: `db_falhou: ${error.message}` });
     const midia = midias?.[0];
     if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
+
+    // Etapa 1: story só de FOTO. Vídeo em story fica pra próxima etapa.
+    const formato: "feed" | "story" = (args?.formato || "feed").toString().toLowerCase() === "story" ? "story" : "feed";
+    if (formato === "story" && midia.tipo === "video") {
+      return JSON.stringify({
+        erro: "story de vídeo entra na próxima etapa. Por enquanto, story só de foto. Quer postar essa foto no story, ou este vídeo no feed?",
+      });
+    }
 
     const redesValidas = ["facebook", "instagram", "tiktok"];
     const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
@@ -2546,20 +2597,28 @@ async function toolPostarMidiaBiblioteca(
     const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
+
+    const avisoFormato = formato === "story"
+      ? (redes.includes("instagram")
+          ? `⚠️ Formato: STORY no Instagram (foto precisa ser vertical 9:16).${redes.includes("facebook") ? " Facebook story de foto ainda não é suportado — só Instagram nesta etapa." : ""}`
+          : `⚠️ Story de foto nesta etapa só publica no Instagram. Adicione 'instagram' nas redes.`)
+      : `Formato: FEED.`;
 
     return JSON.stringify({
       status: "aguardando_confirmacao",
       fonte: "biblioteca_midias",
       token,
+      formato,
       midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
       tom,
       redes,
       preview: scripts,
-      instrucoes: `Mostre o preview e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
+      aviso_formato: avisoFormato,
+      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -2890,7 +2949,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR (ou enviou logo antes) — mesmo que o texto atual não tenha mídia anexada. Ex: cliente manda foto de taças, depois escreve 'Jogo de 4 taças 29,99 para postar no face e insta'. Esta tool pega a ÚLTIMA mídia salva em /midias e gera o preview do post. ⛔ NÃO use postar_redes_sociais nesse caso — aquela é só pra produto do catálogo. Se o cliente informou nome/preço/legenda, passe nos parâmetros.",
+      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR (ou enviou logo antes) — mesmo que o texto atual não tenha mídia anexada. Ex: cliente manda foto de taças, depois escreve 'Jogo de 4 taças 29,99 para postar no face e insta'. Esta tool pega a ÚLTIMA mídia salva em /midias e gera o preview do post. ⛔ NÃO use postar_redes_sociais nesse caso — aquela é só pra produto do catálogo. Se o cliente informou nome/preço/legenda, passe nos parâmetros. FORMATO: se o dono disser 'story', 'stories', 'poste no story', 'coloca no story' → passe formato='story'. Se disser 'feed', 'no feed' ou NÃO especificar → passe formato='feed' (default). Nesta etapa story só funciona pra foto no Instagram.",
       parameters: {
         type: "object",
         properties: {
@@ -2899,6 +2958,7 @@ const TOOLS = [
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
           redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
+          formato: { type: "string", enum: ["feed", "story"], description: "Formato do post. 'story' só suporta FOTO no Instagram nesta etapa; vídeo em story e story no Facebook entram nas próximas etapas. Default: 'feed'." },
         },
       },
     },
