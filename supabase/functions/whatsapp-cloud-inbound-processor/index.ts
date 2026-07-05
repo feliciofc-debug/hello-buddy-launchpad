@@ -2514,7 +2514,7 @@ async function toolSalvarMidiaBiblioteca(
 
 // ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
 async function toolPostarMidiaBiblioteca(
-  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string },
+  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
