@@ -1282,26 +1282,33 @@ async function toolEnviarMensagemContatoComercial(
     const { data } = await sb.from("contatos_comerciais")
       .select("*").eq("id", args.contato_id).eq("user_id", ctx.userId).maybeSingle();
     contato = data;
-  } else if (args?.nome_busca) {
+  }
+  // Fallback: se contato_id não achou (AI inventou UUID) ou não veio, tenta por nome
+  if (!contato && args?.nome_busca) {
     const { data } = await sb.from("contatos_comerciais")
       .select("*").eq("user_id", ctx.userId).eq("ativo", true)
       .ilike("nome", `%${args.nome_busca.trim()}%`).limit(5);
-    if (!data || data.length === 0) {
-      return JSON.stringify({ erro: "contato_nao_encontrado", nome_busca: args.nome_busca });
-    }
-    if (data.length > 1) {
+    if (data && data.length === 1) contato = data[0];
+    else if (data && data.length > 1) {
       return JSON.stringify({
         erro: "ambiguidade",
         detalhe: "Vários contatos batem com esse nome. Confirme qual e chame de novo com contato_id.",
         candidatos: data.map((c: any) => ({ id: c.id, nome: c.nome, empresa: c.empresa })),
       });
     }
-    contato = data[0];
-  } else {
-    return JSON.stringify({ erro: "informe contato_id ou nome_busca" });
   }
 
-  if (!contato) return JSON.stringify({ erro: "contato_nao_encontrado" });
+  if (!contato) {
+    // Último fallback: devolve a lista pro AI escolher o UUID real (nunca inventar)
+    const { data: todos } = await sb.from("contatos_comerciais")
+      .select("id, nome, empresa, whatsapp")
+      .eq("user_id", ctx.userId).eq("ativo", true).order("nome").limit(20);
+    return JSON.stringify({
+      erro: "contato_nao_encontrado",
+      detalhe: "NUNCA invente contato_id. Escolha o UUID exato da lista abaixo e chame de novo.",
+      contatos_disponiveis: todos ?? [],
+    });
+  }
   if (!contato.ativo) return JSON.stringify({ erro: "contato_inativo", nome: contato.nome });
   if (!contato.permite_jarvis_contatar) {
     return JSON.stringify({
