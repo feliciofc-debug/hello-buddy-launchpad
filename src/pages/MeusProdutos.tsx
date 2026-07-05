@@ -2045,6 +2045,10 @@ export default function MeusProdutos() {
           <TabsContent value="videos">
             <AreaVideos />
           </TabsContent>
+
+          <TabsContent value="midia">
+            <MidiaWhatsAppTab />
+          </TabsContent>
         </Tabs>
       </div>
 
