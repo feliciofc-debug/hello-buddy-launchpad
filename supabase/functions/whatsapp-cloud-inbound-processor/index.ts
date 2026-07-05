@@ -2597,20 +2597,28 @@ async function toolPostarMidiaBiblioteca(
     const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
+
+    const avisoFormato = formato === "story"
+      ? (redes.includes("instagram")
+          ? `⚠️ Formato: STORY no Instagram (foto precisa ser vertical 9:16).${redes.includes("facebook") ? " Facebook story de foto ainda não é suportado — só Instagram nesta etapa." : ""}`
+          : `⚠️ Story de foto nesta etapa só publica no Instagram. Adicione 'instagram' nas redes.`)
+      : `Formato: FEED.`;
 
     return JSON.stringify({
       status: "aguardando_confirmacao",
       fonte: "biblioteca_midias",
       token,
+      formato,
       midia: { id: midia.id, tipo: midia.tipo, url: midia.midia_url },
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
       tom,
       redes,
       preview: scripts,
-      instrucoes: `Mostre o preview e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
+      aviso_formato: avisoFormato,
+      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
