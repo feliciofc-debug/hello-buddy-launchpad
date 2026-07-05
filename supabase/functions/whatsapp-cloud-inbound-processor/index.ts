@@ -3180,7 +3180,13 @@ async function processOne(queueId: string) {
     if (freshLibraryMedia.length > 0) {
       const contexto = (userText || freshLibraryMedia.map((m) => m.caption).filter(Boolean).join(" ") || "").trim();
       const salvos = await Promise.all(freshLibraryMedia.map((m) => salvarItemMidiaBiblioteca(m, { userId, fromNumber: row.from_number }, contexto)));
-      const reply = respostaMidiaSalva(salvos);
+      let descricaoVisual = "";
+      try {
+        descricaoVisual = await descreverFotosSalvas(freshLibraryMedia, salvos, contexto);
+      } catch (e) {
+        console.warn("[processor][fresh_media_visao] falhou:", (e as Error).message);
+      }
+      const reply = respostaMidiaSalva(salvos, descricaoVisual);
 
       const { data: outMsg } = await sb
         .from("whatsapp_cloud_messages")
