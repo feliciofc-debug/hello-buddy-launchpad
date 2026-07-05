@@ -1234,8 +1234,146 @@ async function toolConcluirTarefa(id_ou_titulo: string, ctx: { userId: string; f
   return JSON.stringify({ ok: true, concluidas: data ?? [] });
 }
 
+// ---- CONTATOS COMERCIAIS (Jarvis dispara WhatsApp humanizado sob ordem do dono) ----
+
+function normalizePhoneBR(raw: string): string {
+  let c = (raw || "").replace(/\D/g, "");
+  if (!c) return "";
+  if (c.startsWith("0")) c = c.substring(1);
+  if (c.length === 10 || c.length === 11) c = "55" + c;
+  return c;
+}
+
+async function toolListarContatosComerciais(
+  args: { busca?: string },
+  ctx: { userId: string },
+): Promise<string> {
+  let q = sb.from("contatos_comerciais")
+    .select("id, nome, empresa, cargo, whatsapp, tipo_relacionamento, contexto, proximos_passos, permite_jarvis_contatar, ultima_interacao")
+    .eq("user_id", ctx.userId)
+    .eq("ativo", true)
+    .order("nome", { ascending: true })
+    .limit(50);
+  const busca = (args?.busca || "").trim();
+  if (busca) q = q.or(`nome.ilike.%${busca}%,empresa.ilike.%${busca}%`);
+  const { data, error } = await q;
+  if (error) return JSON.stringify({ erro: error.message });
+  return JSON.stringify({ total: (data ?? []).length, contatos: data ?? [] });
+}
+
+async function toolEnviarMensagemContatoComercial(
+  args: {
+    contato_id?: string;
+    nome_busca?: string;
+    mensagem?: string;
+    data_hora_sp?: string;
+    minutos_a_partir_de_agora?: number;
+    tipo_acao?: string;
+  },
+  ctx: { userId: string },
+): Promise<string> {
+  const mensagem = (args?.mensagem || "").trim();
+  if (!mensagem) return JSON.stringify({ erro: "mensagem_obrigatoria", detalhe: "Componha o texto humanizado como o Jarvis falaria — gentil, se apresentando como 'Jarvis, assistente do Felício'." });
+  if (mensagem.length < 20) return JSON.stringify({ erro: "mensagem_muito_curta", detalhe: "Texto humanizado mínimo 20 chars." });
+
+  // 1) Localizar o contato
+  let contato: any = null;
+  if (args?.contato_id && /^[0-9a-f-]{36}$/i.test(args.contato_id)) {
+    const { data } = await sb.from("contatos_comerciais")
+      .select("*").eq("id", args.contato_id).eq("user_id", ctx.userId).maybeSingle();
+    contato = data;
+  } else if (args?.nome_busca) {
+    const { data } = await sb.from("contatos_comerciais")
+      .select("*").eq("user_id", ctx.userId).eq("ativo", true)
+      .ilike("nome", `%${args.nome_busca.trim()}%`).limit(5);
+    if (!data || data.length === 0) {
+      return JSON.stringify({ erro: "contato_nao_encontrado", nome_busca: args.nome_busca });
+    }
+    if (data.length > 1) {
+      return JSON.stringify({
+        erro: "ambiguidade",
+        detalhe: "Vários contatos batem com esse nome. Confirme qual e chame de novo com contato_id.",
+        candidatos: data.map((c: any) => ({ id: c.id, nome: c.nome, empresa: c.empresa })),
+      });
+    }
+    contato = data[0];
+  } else {
+    return JSON.stringify({ erro: "informe contato_id ou nome_busca" });
+  }
+
+  if (!contato) return JSON.stringify({ erro: "contato_nao_encontrado" });
+  if (!contato.ativo) return JSON.stringify({ erro: "contato_inativo", nome: contato.nome });
+  if (!contato.permite_jarvis_contatar) {
+    return JSON.stringify({
+      erro: "contato_bloqueado_para_jarvis",
+      nome: contato.nome,
+      detalhe: "Esse contato está com a permissão do Jarvis desligada. O dono precisa ativar em /pj/contatos-comerciais.",
+    });
+  }
+
+  const phone = normalizePhoneBR(contato.whatsapp);
+  if (!phone) return JSON.stringify({ erro: "whatsapp_invalido", nome: contato.nome, whatsapp: contato.whatsapp });
+
+  // 2) Calcular scheduled_at
+  let scheduledMs = Date.now();
+  if (args?.minutos_a_partir_de_agora && Number(args.minutos_a_partir_de_agora) > 0) {
+    scheduledMs = Date.now() + Number(args.minutos_a_partir_de_agora) * 60000;
+  } else if (args?.data_hora_sp) {
+    const m = String(args.data_hora_sp).trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!m) return JSON.stringify({ erro: "formato_data_invalido", esperado: "YYYY-MM-DD HH:MM" });
+    const [, y, mo, d, h, mi] = m;
+    scheduledMs = Date.UTC(+y, +mo - 1, +d, +h + 3, +mi, 0);
+    if (scheduledMs <= Date.now() - 60000) return JSON.stringify({ erro: "data_no_passado" });
+  }
+
+  // 3) Enfileirar via RPC oficial (regra Core: só via inserir_campanha_fila)
+  const { error: rpcErr } = await sb.rpc("inserir_campanha_fila", {
+    p_user_id: ctx.userId,
+    p_contatos: [{
+      phone,
+      name: contato.nome,
+      mensagem,
+      scheduled_at: new Date(scheduledMs).toISOString(),
+      lead_source: "jarvis_contato_comercial",
+      metadata: {
+        contato_comercial_id: contato.id,
+        tipo_acao: args?.tipo_acao || "mensagem_livre",
+        via: "jarvis_command",
+      },
+    }],
+    p_mensagem: mensagem,
+    p_lead_source: "jarvis_contato_comercial",
+    p_metadata: {
+      contato_comercial_id: contato.id,
+      tipo_acao: args?.tipo_acao || "mensagem_livre",
+    },
+  });
+  if (rpcErr) return JSON.stringify({ erro: "falha_ao_enfileirar", detalhe: rpcErr.message });
+
+  // 4) Atualizar última interação
+  await sb.from("contatos_comerciais")
+    .update({ ultima_interacao: new Date().toISOString() })
+    .eq("id", contato.id);
+
+  const quandoSP = new Date(scheduledMs).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+  const agora = Math.abs(scheduledMs - Date.now()) < 60000;
+
+  return JSON.stringify({
+    ok: true,
+    contato: { nome: contato.nome, empresa: contato.empresa, whatsapp: phone },
+    tipo_acao: args?.tipo_acao || "mensagem_livre",
+    agendado_para: quandoSP,
+    envio_imediato: agora,
+    preview_mensagem: mensagem.slice(0, 200),
+  });
+}
+
 // ---- NOTÍCIAS (Google News RSS, grátis) ----
 async function toolConsultarNoticias(tema: string): Promise<string> {
+
   const t = (tema || "").trim();
   if (!t) return JSON.stringify({ erro: "tema_obrigatorio" });
   try {
@@ -2454,6 +2592,38 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "listar_contatos_comerciais",
+      description: "Lista os CONTATOS COMERCIAIS do dono (clientes, parceiros, prospects próximos com quem ele tem relação direta — Marcelo Martins, Renata, etc). Use ANTES de enviar mensagem quando o dono citar alguém pelo primeiro nome e você precisar confirmar quem é / achar o ID / ver o contexto do relacionamento. Também use pra responder 'quais são meus contatos comerciais', 'me lembra do Marcelo', 'qual o whats da Renata'.",
+      parameters: {
+        type: "object",
+        properties: {
+          busca: { type: "string", description: "Filtro opcional por nome ou empresa. Ex: 'marcelo', 'ademicon'. Vazio = lista tudo." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "enviar_mensagem_contato_comercial",
+      description: "Envia uma MENSAGEM DE WHATSAPP TEXTO humanizada para um contato comercial (tabela contatos_comerciais), agora ou agendada. NUNCA faz ligação de voz — Jarvis só envia texto. Use quando o dono mandar comandos tipo 'manda mensagem pro Marcelo confirmando nossa reunião amanhã 10:30', 'avisa a Renata que...', 'faz follow-up com o cliente X', 'amanhã 9:30 chama o Marcelo pra confirmar reunião das 10:30'.\n\nVOCÊ (Jarvis) COMPÕE o texto da mensagem no parâmetro 'mensagem' — em nome do dono, gentil, humanizado, se apresentando como 'aqui é o Jarvis, assistente do Felício'. Use o campo 'contexto' do contato pra dar naturalidade (ex: se contexto diz 'parceiro há 12 anos', a abordagem é mais íntima). Nunca fecha negócio sozinho — coleta info e reporta.\n\nSempre passe 'contato_id' quando souber (chame listar_contatos_comerciais antes se precisar). Só use 'nome_busca' se o dono foi bem específico (nome único).\n\nAgendamento: use 'data_hora_sp' (YYYY-MM-DD HH:MM em SP) pra momento futuro; omita ambos os campos de tempo pra enviar AGORA. Calcule 'amanhã 9:30' a partir da 'Data/hora atual em São Paulo' do system prompt.",
+      parameters: {
+        type: "object",
+        properties: {
+          contato_id: { type: "string", description: "UUID do contato (obtido via listar_contatos_comerciais). Preferido." },
+          nome_busca: { type: "string", description: "Alternativa: parte do nome pra buscar. Falha se houver ambiguidade." },
+          mensagem: { type: "string", description: "Texto COMPLETO da mensagem WhatsApp já humanizado, em nome do dono. Mín 20 chars. Ex: 'Oi Marcelo, tudo bem? Aqui é o Jarvis, assistente do Felício. Ele me pediu pra confirmar com você a reunião marcada pra amanhã 10:30. Tá tudo certo do seu lado? 😊'" },
+          data_hora_sp: { type: "string", description: "Opcional. Envio agendado em horário SP no formato 'YYYY-MM-DD HH:MM'. Omita pra enviar agora." },
+          minutos_a_partir_de_agora: { type: "number", description: "Opcional. Alternativa a data_hora_sp: minutos até o envio." },
+          tipo_acao: { type: "string", enum: ["confirmar_reuniao", "followup_proposta", "resposta_comercial", "checkin_relacionamento", "mensagem_livre"], description: "Categoria da ação pra log/analytics. Padrão: mensagem_livre." },
+        },
+        required: ["mensagem"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "salvar_nota",
       description: "Salva uma nota rápida / segunda memória do usuário. Use quando ele disser 'anota que…', 'lembra que…', 'guarda essa info', 'grava aí que…'.",
       parameters: { type: "object", properties: { conteudo: { type: "string" }, tags: { type: "array", items: { type: "string" }, description: "Palavras-chave opcionais pra facilitar busca depois" } }, required: ["conteudo"] },
@@ -2710,6 +2880,8 @@ async function runTool(
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
+  if (name === "listar_contatos_comerciais") return { result: await toolListarContatosComerciais(args ?? {}, ctx) };
+  if (name === "enviar_mensagem_contato_comercial") return { result: await toolEnviarMensagemContatoComercial(args ?? {}, ctx) };
   if (name === "salvar_nota") return { result: await toolSalvarNota(args?.conteudo ?? "", args?.tags, ctx) };
   if (name === "buscar_notas") return { result: await toolBuscarNotas(args?.query ?? "", ctx) };
   if (name === "adicionar_tarefa") return { result: await toolAdicionarTarefa(args ?? {}, ctx) };
