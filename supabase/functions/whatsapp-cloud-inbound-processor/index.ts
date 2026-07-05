@@ -2197,13 +2197,17 @@ async function toolSalvarMidiaBiblioteca(
     let descricaoVisual = "";
     try {
       const fotos = medias
-        .map((m, i) => ({ m, id: salvos[i]?.id, tipo: salvos[i]?.tipo }))
+        .map((m, i) => ({ m, id: salvos[i]?.id, tipo: salvos[i]?.tipo, url: salvos[i]?.url }))
         .filter((x) => x.tipo === "foto");
       if (fotos.length > 0) {
-        // Vision direto no base64 pra não depender de storage propagar
+        // Usa a URL pública do storage (imagem íntegra recém-uploadada) — mais confiável que base64 do payload WhatsApp.
         const descricoes = await Promise.all(fotos.map(async (f) => {
-          const dataUrl = `data:${f.m.mime};base64,${f.m.base64}`;
-          const d = await descreverImagemVisao(dataUrl);
+          let d = f.url ? await descreverImagemVisao(f.url) : "";
+          if (!d) {
+            // Fallback: tenta com base64 caso a URL pública ainda não tenha propagado.
+            const dataUrl = `data:${f.m.mime};base64,${f.m.base64}`;
+            d = await descreverImagemVisao(dataUrl);
+          }
           if (d && f.id) {
             await sb.from("midias_whatsapp").update({ contexto_original: contexto ? `${contexto}\n\n[visão] ${d}` : `[visão] ${d}` }).eq("id", f.id);
           }
