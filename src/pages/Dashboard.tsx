@@ -393,6 +393,17 @@ const Dashboard = () => {
                 📋 Contatos & Listas
               </a>
           )}
+          <a
+            href="/pj/contatos-comerciais"
+            className={`w-full text-left flex items-center gap-3 py-2.5 px-4 rounded transition duration-200 ${
+              window.location.pathname === '/pj/contatos-comerciais'
+                ? 'bg-blue-500 text-white'
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            <Briefcase size={20} />
+            💼 Contatos Comerciais
+          </a>
           {isMenuAllowed('ia-conversas') && (
             <a
               href="/ia-conversas"
