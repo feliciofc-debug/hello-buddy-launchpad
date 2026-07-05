@@ -1971,8 +1971,44 @@ async function publicarEmRede(
   script: string,
   produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null },
   userId: string,
+  formato: "feed" | "story" = "feed",
 ): Promise<{ rede: string; ok: boolean; status: number; resposta: any }> {
   try {
+    // === STORY (Etapa 1: só imagem) ===
+    if (formato === "story") {
+      if (rede === "instagram") {
+        console.log(`[social-router] rede=instagram formato=story → meta-publish-story-image`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-image`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+          body: JSON.stringify({ user_id: userId, image_url: produto.imagem_url }),
+        });
+        const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+        // Repassa erro amigável (ex.: imagem não 9:16)
+        if (!res.ok || j?.success === false) {
+          const raw = String(j?.error || j?.message || `falha_${res.status}`);
+          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw)
+            ? "a imagem precisa ser vertical 9:16 pra story do Instagram"
+            : raw;
+          return { rede, ok: false, status: res.status, resposta: { ...j, error: amigavel } };
+        }
+        return { rede, ok: true, status: res.status, resposta: j };
+      }
+      if (rede === "facebook") {
+        console.log(`[social-router] rede=facebook formato=story → não suportado nesta etapa (só vídeo)`);
+        return {
+          rede,
+          ok: false,
+          status: 0,
+          resposta: { error: "story de foto no Facebook entra numa próxima etapa (por enquanto só Instagram)" },
+        };
+      }
+      if (rede === "tiktok") {
+        return { rede, ok: false, status: 0, resposta: { error: "TikTok não tem formato story — ignorado" } };
+      }
+    }
+
+    // === FEED (comportamento original — inalterado) ===
     if (rede === "facebook") {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
         method: "POST",
