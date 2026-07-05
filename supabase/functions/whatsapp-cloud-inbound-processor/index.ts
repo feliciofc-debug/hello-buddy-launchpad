@@ -1944,6 +1944,7 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     scripts,
     userId,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    formato: formatoFromPendingMarker((rows[0] as any).error_message),
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
   };
 }
