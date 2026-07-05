@@ -1526,7 +1526,7 @@ async function descreverImagemVisao(imageUrl: string): Promise<string> {
   const tryCall = async (model: string) => {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+      headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
       body: JSON.stringify({
         model,
         temperature: 0.1,
