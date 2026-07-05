@@ -2182,12 +2182,38 @@ async function toolSalvarMidiaBiblioteca(
     const contexto = (args?.contexto || "").trim();
     const salvos = await Promise.all(medias.map((m) => salvarItemMidiaBiblioteca(m, ctx, contexto)));
 
+    // Descreve a(s) foto(s) por visão pra Jarvis conseguir comentar o que viu e pra alimentar futura copy.
+    let descricaoVisual = "";
+    try {
+      const fotos = medias
+        .map((m, i) => ({ m, id: salvos[i]?.id, tipo: salvos[i]?.tipo }))
+        .filter((x) => x.tipo === "foto");
+      if (fotos.length > 0) {
+        // Vision direto no base64 pra não depender de storage propagar
+        const descricoes = await Promise.all(fotos.map(async (f) => {
+          const dataUrl = `data:${f.m.mime};base64,${f.m.base64}`;
+          const d = await descreverImagemVisao(dataUrl);
+          if (d && f.id) {
+            await sb.from("midias_whatsapp").update({ contexto_original: contexto ? `${contexto}\n\n[visão] ${d}` : `[visão] ${d}` }).eq("id", f.id);
+          }
+          return d;
+        }));
+        descricaoVisual = descricoes.filter(Boolean).join(" | ");
+      }
+    } catch (e) {
+      console.warn("[salvar_midia][visao] falhou:", (e as Error).message);
+    }
+
     return JSON.stringify({
       ok: true,
       midia_id: salvos[0]?.id,
       midia_ids: salvos.map((s) => s.id),
       tipos: salvos.map((s) => s.tipo),
+      descricao_visual: descricaoVisual || undefined,
       mensagem: respostaMidiaSalva(salvos),
+      instrucao_assistente: descricaoVisual
+        ? `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Comente 1-2 linhas confirmando o que viu (produto/tema/cor/texto principal) antes de dizer que salvou em /midias. NÃO responda genérico.`
+        : undefined,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
