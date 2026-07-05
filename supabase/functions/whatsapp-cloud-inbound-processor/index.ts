@@ -532,32 +532,52 @@ function normalizePt(text: string): string {
 }
 
 function detectNearbySearch(text: string): { query: string; radiusMeters: number } | null {
-  const t = normalizePt(text);
+  const raw = text ?? "";
+  const t = normalizePt(raw);
   if (!t.trim()) return null;
 
+  // Guard 1: mensagens longas são conteúdo pra comentar, não pedido de lugar.
+  if (raw.length > 400) return null;
+
+  // Guard 2: cara de documento/código colado (markdown, blocos, várias linhas, chaves, ;).
+  const newlineCount = (raw.match(/\n/g) ?? []).length;
+  const looksLikeDoc =
+    newlineCount >= 3 ||
+    /^\s*#{1,6}\s/m.test(raw) ||
+    /```/.test(raw) ||
+    /[{};]\s*$/m.test(raw) ||
+    /\*\*[^*]+\*\*/.test(raw);
+  if (looksLikeDoc) return null;
+
   const placePatterns: Array<{ re: RegExp; query: string; radiusMeters?: number }> = [
-    { re: /\b(supermercado|mercado|hortifruti|mercearia|grocery)\b/, query: "supermercado", radiusMeters: 2500 },
-    { re: /\b(farmacia|drogaria|remedio)\b/, query: "farmácia", radiusMeters: 2500 },
-    { re: /\b(cafe|cafeteria)\b/, query: "cafeteria", radiusMeters: 2000 },
-    { re: /\b(restaurante|almoco|jantar|comida)\b/, query: "restaurante", radiusMeters: 2500 },
-    { re: /\b(posto|gasolina|combustivel)\b/, query: "posto de gasolina", radiusMeters: 3000 },
-    { re: /\b(hospital|emergencia|upa|pronto socorro)\b/, query: "hospital", radiusMeters: 5000 },
-    { re: /\b(padaria|pao)\b/, query: "padaria", radiusMeters: 2000 },
-    { re: /\b(banco|caixa eletronico|atm)\b/, query: "banco", radiusMeters: 2500 },
-    { re: /\b(shopping|loja)\b/, query: "shopping", radiusMeters: 5000 },
+    { re: /\b(supermercado|hortifruti|mercearia|grocery)\b/, query: "supermercado", radiusMeters: 2500 },
+    { re: /\b(farmacia|drogaria)\b/, query: "farmácia", radiusMeters: 2500 },
+    { re: /\b(cafeteria)\b/, query: "cafeteria", radiusMeters: 2000 },
+    { re: /\b(restaurante)\b/, query: "restaurante", radiusMeters: 2500 },
+    { re: /\b(posto de gasolina|posto gasolina)\b/, query: "posto de gasolina", radiusMeters: 3000 },
+    { re: /\b(hospital|upa|pronto socorro)\b/, query: "hospital", radiusMeters: 5000 },
+    { re: /\b(padaria)\b/, query: "padaria", radiusMeters: 2000 },
+    { re: /\b(caixa eletronico|atm)\b/, query: "banco", radiusMeters: 2500 },
+    { re: /\b(shopping)\b/, query: "shopping", radiusMeters: 5000 },
   ];
 
-  const hasLocationIntent = /\b(perto|proximo|proxima|localize|localizar|ache|achar|encontre|encontrar|mais perto|redondeza|ao redor|novamente)\b/.test(t);
+  // Guard 3: exigir intenção EXPLÍCITA de lugar físico. Palavra solta ("banco",
+  // "loja", "mercado", "comida") NÃO dispara — quase sempre é contexto técnico.
+  const explicitIntent =
+    /\bperto de (mim|aqui|voce)\b/.test(t) ||
+    /\b(mais )?(proximo|proxima|perto)\b.*\b(de|da|do)\b/.test(t) ||
+    /\b(onde (tem|fica|acho|encontro|posso)|onde ha)\b/.test(t) ||
+    /\b(endereco|endereço) (de|do|da)\b/.test(t) ||
+    /\bcomo (chego|chegar)\b/.test(t) ||
+    /\b(me (indica|mostra|acha|ache)|indica|mostra|ache|acha) (um|uma|o|a) /.test(t) ||
+    /\b(ao redor|nas redondezas|na regiao|aqui perto)\b/.test(t);
+
+  if (!explicitIntent) return null;
+
   const found = placePatterns.find((p) => p.re.test(t));
   if (!found) return null;
 
-  // Se citou um tipo de lugar junto de verbos de busca/proximidade, força a busca.
-  // Também cobre frases curtas como "supermercado novamente".
-  if (hasLocationIntent || t.split(/\s+/).length <= 5) {
-    return { query: found.query, radiusMeters: found.radiusMeters ?? 2500 };
-  }
-
-  return null;
+  return { query: found.query, radiusMeters: found.radiusMeters ?? 2500 };
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
