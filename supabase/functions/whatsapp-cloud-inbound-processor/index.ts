@@ -1519,6 +1519,40 @@ async function toolResumoPlataforma(ctx: { userId: string; fromNumber: string })
 }
 
 
+// ---- Visão: descreve o que aparece em uma imagem (produto, cena, cores, texto visível) ----
+// Usado antes de gerar copy pra redes sociais, pra que a legenda case com a foto do dono.
+async function descreverImagemVisao(imageUrl: string): Promise<string> {
+  try {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        temperature: 0.2,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Descreva OBJETIVAMENTE em 2-4 frases o que aparece nesta imagem, como se estivesse instruindo um copywriter que NÃO vai ver a foto. Inclua: o produto/objeto principal e características visuais (cor, formato, material), a cena/contexto, e QUALQUER texto legível na arte (títulos, preços, slogans, marca). Se for um card/post pronto, diga o tema central. Não invente detalhes. Português, sem markdown, sem introdução tipo 'A imagem mostra'.",
+              },
+              { type: "image_url", image_url: { url: imageUrl } },
+            ],
+          },
+        ],
+      }),
+    });
+    if (!res.ok) { console.warn("[visao] falhou status=", res.status); return ""; }
+    const data = await res.json();
+    return (data?.choices?.[0]?.message?.content || "").trim().slice(0, 800);
+  } catch (e) {
+    console.warn("[visao] erro:", (e as Error).message);
+    return "";
+  }
+}
+
+
 // =========================================================
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
