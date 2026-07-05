@@ -6,6 +6,7 @@ import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/b
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
 import { buildAmzContext, STRANGER_MSG, OWNER_PHONE } from "../_shared/amz-context.ts";
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
+import { extractDocumentText } from "../_shared/document-extract.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
