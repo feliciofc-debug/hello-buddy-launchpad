@@ -17,6 +17,25 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+
+// ============================================================
+// FEATURE 2 — Roteamento de modelo por tipo de tarefa
+// ============================================================
+// FAST = conversa normal (rápido/barato). DEEP = raciocínio pesado
+// (documento, código, multimodal). Decisão é pelo TIPO de fluxo,
+// nunca por heurística de palavra-chave no conteúdo.
+const MODEL_FAST = "google/gemini-2.5-flash";
+const MODEL_DEEP = "google/gemini-2.5-pro";
+
+type TaskContext = {
+  kind: "conversation" | "document" | "multimodal";
+};
+
+function escolherModelo(ctx: TaskContext): string {
+  const model = (ctx.kind === "document" || ctx.kind === "multimodal") ? MODEL_DEEP : MODEL_FAST;
+  console.log(`[model-router] kind=${ctx.kind} → ${model}`);
+  return model;
+}
 const WHATSAPP_PERMANENT_TOKEN = Deno.env.get("WHATSAPP_PERMANENT_TOKEN");
 const WHATSAPP_TEST_ACCESS_TOKEN = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
 
