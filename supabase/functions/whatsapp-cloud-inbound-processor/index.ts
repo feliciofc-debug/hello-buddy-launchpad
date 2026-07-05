@@ -2121,7 +2121,7 @@ async function salvarItemMidiaBiblioteca(
   media: MediaExtract,
   ctx: { userId: string; fromNumber?: string },
   contexto: string,
-): Promise<{ id: string; tipo: "foto" | "video" | "audio" }> {
+): Promise<{ id: string; tipo: "foto" | "video" | "audio"; url: string }> {
   const bytes = base64Decode(media.base64);
   const tipoMap = { image: "foto", video: "video", audio: "audio" } as const;
   const tipo = tipoMap[media.kind as keyof typeof tipoMap] || "foto";
@@ -2154,8 +2154,10 @@ async function salvarItemMidiaBiblioteca(
     .single();
 
   if (insErr) throw new Error(`db_falhou: ${insErr.message}`);
-  return { id: novo.id, tipo };
+  console.log("[salvar_midia] salvo id=", novo.id, "tipo=", tipo, "bytes=", bytes.length, "url=", url);
+  return { id: novo.id, tipo, url };
 }
+
 
 function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>): string {
   const total = salvos.length;
