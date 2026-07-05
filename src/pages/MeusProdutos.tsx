@@ -32,6 +32,7 @@ import { AutopilotModal } from '@/components/AutopilotModal';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
+import MidiaWhatsAppTab from '@/components/produtos/MidiaWhatsAppTab';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
