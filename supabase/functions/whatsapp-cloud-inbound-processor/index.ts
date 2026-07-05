@@ -3574,6 +3574,60 @@ async function processOne(queueId: string) {
     }
 
 
+    // PASSO 6.9 — Memória por contato (read-only): se o número está em
+    // contatos_comerciais, injeta contexto pra Jarvis personalizar a resposta.
+    let contactMemoryBlock = "";
+    try {
+      const fromDigits = normalizePhoneBR(row.from_number);
+      const fromTail = fromDigits.slice(-10); // DDD+8 (ignora 9º dígito e 55)
+      if (fromTail.length >= 8) {
+        const { data: contatos } = await sb
+          .from("contatos_comerciais")
+          .select("nome, empresa, tipo_relacionamento, contexto, proximos_passos, permite_jarvis_contatar, tags, whatsapp")
+          .eq("user_id", userId)
+          .eq("ativo", true);
+        const match = (contatos ?? []).find((c: any) => {
+          const cd = normalizePhoneBR(c.whatsapp || "");
+          if (!cd) return false;
+          return cd === fromDigits || cd.slice(-10) === fromTail || cd.slice(-8) === fromTail.slice(-8);
+        });
+        if (match) {
+          const { data: recentMsgs } = await sb
+            .from("whatsapp_cloud_messages")
+            .select("direction, content, created_at")
+            .eq("conversation_id", conv.id)
+            .order("created_at", { ascending: false })
+            .limit(6);
+          const histLines = (recentMsgs ?? [])
+            .slice(1) // exclui a mensagem atual recém-inserida
+            .reverse()
+            .map((m: any) => {
+              const who = m.direction === "inbound" ? "Ele" : "Você";
+              const txt = String(m.content || "").replace(/\s+/g, " ").slice(0, 140);
+              return `  - ${who}: ${txt}`;
+            })
+            .join("\n");
+          const tags = Array.isArray(match.tags) ? match.tags.join(", ") : (match.tags || "");
+          const linhas = [
+            `\n\nCONTEXTO DO CONTATO (uso INTERNO — personalize a resposta com naturalidade, NUNCA cite esses campos literalmente, nunca diga "seu tipo é X" ou "seus próximos passos são Y". É contexto pra VOCÊ, não pra recitar):`,
+            match.nome ? `- Nome: ${match.nome}` : null,
+            match.empresa ? `- Empresa: ${match.empresa}` : null,
+            match.tipo_relacionamento ? `- Tipo de relacionamento: ${match.tipo_relacionamento}` : null,
+            tags ? `- Tags: ${tags}` : null,
+            match.contexto ? `- Sobre ele: ${match.contexto}` : null,
+            match.proximos_passos ? `- Próximos passos combinados: ${match.proximos_passos}` : null,
+            match.permite_jarvis_contatar === false ? `- IMPORTANTE: contato NÃO autorizou disparo proativo.` : null,
+            histLines ? `- Últimas interações:\n${histLines}` : null,
+            `- Regra: fale como quem já conhece a pessoa (use o primeiro nome quando fizer sentido), mas NÃO exponha esses dados crus.`,
+          ].filter(Boolean).join("\n");
+          contactMemoryBlock = linhas;
+          console.log(`[processor][contact-memory] hit for ${row.from_number} -> ${match.nome}`);
+        }
+      }
+    } catch (e) {
+      console.warn("[processor][contact-memory] falhou:", (e as Error).message);
+    }
+
 
     // PASSO 7 — System prompt (com contexto AMZ se aplicável)
     const { systemPrompt, mode } = await buildSystemPrompt(
