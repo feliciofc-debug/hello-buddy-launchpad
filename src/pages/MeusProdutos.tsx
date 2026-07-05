@@ -1557,6 +1557,7 @@ export default function MeusProdutos() {
           <TabsList className="mb-4">
             <TabsTrigger value="produtos">{t('products.product_tab')}</TabsTrigger>
             <TabsTrigger value="videos">{t('products.video_tab')}</TabsTrigger>
+            <TabsTrigger value="midia">Mídia</TabsTrigger>
           </TabsList>
 
           <TabsContent value="produtos">
