@@ -32,6 +32,7 @@ import { AutopilotModal } from '@/components/AutopilotModal';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
+import MidiaWhatsAppTab from '@/components/produtos/MidiaWhatsAppTab';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import { TikTokIcon } from '@/components/tiktok/TikTokIcon';
 import { TikTokShareModal } from '@/components/TikTokShareModal';
@@ -1556,6 +1557,7 @@ export default function MeusProdutos() {
           <TabsList className="mb-4">
             <TabsTrigger value="produtos">{t('products.product_tab')}</TabsTrigger>
             <TabsTrigger value="videos">{t('products.video_tab')}</TabsTrigger>
+            <TabsTrigger value="midia">Mídia</TabsTrigger>
           </TabsList>
 
           <TabsContent value="produtos">
@@ -2042,6 +2044,10 @@ export default function MeusProdutos() {
 
           <TabsContent value="videos">
             <AreaVideos />
+          </TabsContent>
+
+          <TabsContent value="midia">
+            <MidiaWhatsAppTab />
           </TabsContent>
         </Tabs>
       </div>
