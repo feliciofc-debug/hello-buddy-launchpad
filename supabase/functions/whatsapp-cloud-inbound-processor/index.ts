@@ -3521,7 +3521,7 @@ async function processOne(queueId: string) {
               "Authorization": `Bearer ${LOVABLE_API_KEY}`,
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
+              model: escolherModelo({ kind: "document" }),
               temperature: 0.5,
               messages: [
                 { role: "system", content: "Você é o Jarvis, assistente pessoal do Felício. Leia o documento enviado e comente com franqueza técnica e prática. Nunca invente informação. Nunca peça localização. Nunca ofereça buscar lugares." },
