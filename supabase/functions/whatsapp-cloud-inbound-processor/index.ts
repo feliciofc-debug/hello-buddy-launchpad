@@ -1866,12 +1866,17 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function pendingPostMarker(token: string, productName?: string): string {
-  return `jarvis_token:${token};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
+function pendingPostMarker(token: string, productName?: string, formato: "feed" | "story" = "feed"): string {
+  return `jarvis_token:${token};formato:${formato};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
 }
 
 function productNameFromPendingMarker(marker?: string | null): string {
   return marker?.match(/;produto:(.*)$/)?.[1]?.trim() || "produto";
+}
+
+function formatoFromPendingMarker(marker?: string | null): "feed" | "story" {
+  const m = marker?.match(/;formato:(feed|story)/i);
+  return (m?.[1]?.toLowerCase() as "feed" | "story") || "feed";
 }
 
 async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
