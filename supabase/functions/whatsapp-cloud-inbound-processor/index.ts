@@ -2227,11 +2227,11 @@ function cleanMediaPostLegenda(text: string): string | undefined {
   return legenda;
 }
 
-async function buscarMidiaRecenteParaPostagem(userId: string): Promise<{ id: string; created_at: string } | null> {
+async function buscarMidiaRecenteParaPostagem(userId: string): Promise<{ id: string; tipo: string; created_at: string } | null> {
   const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const { data, error } = await sb
     .from("midias_whatsapp")
-    .select("id, created_at")
+    .select("id, tipo, created_at")
     .eq("user_id", userId)
     .in("tipo", ["foto", "video"])
     .gte("created_at", cutoff)
@@ -2241,10 +2241,46 @@ async function buscarMidiaRecenteParaPostagem(userId: string): Promise<{ id: str
     console.warn("[pietro][forced_social_post][midia_recente_error]", error.message);
     return null;
   }
-  return (data?.[0] as { id: string; created_at: string } | undefined) ?? null;
+  return (data?.[0] as { id: string; tipo: string; created_at: string } | undefined) ?? null;
 }
 
-function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[]; temProduto: boolean } | null {
+// ---- Estado pendente de escolha de FORMATO (feed/story) — Etapa 2 ----
+// Quando o dono manda foto + "posta no Instagram" sem dizer formato, guardamos
+// as redes/tom/legenda aqui e perguntamos "feed ou story?". Quando ele
+// responder só "feed"/"story"/"no story", retomamos sem exigir reenvio da foto.
+type PendingFormatChoice = {
+  redes: string[];
+  tom: string;
+  legenda?: string;
+  createdAt: number;
+};
+const PENDING_FORMAT_CHOICES = new Map<string, PendingFormatChoice>();
+const PENDING_FORMAT_TTL_MS = 10 * 60 * 1000;
+
+function setPendingFormatChoice(userId: string, p: Omit<PendingFormatChoice, "createdAt">) {
+  PENDING_FORMAT_CHOICES.set(userId, { ...p, createdAt: Date.now() });
+}
+function getPendingFormatChoice(userId: string): PendingFormatChoice | null {
+  const p = PENDING_FORMAT_CHOICES.get(userId);
+  if (!p) return null;
+  if (Date.now() - p.createdAt > PENDING_FORMAT_TTL_MS) {
+    PENDING_FORMAT_CHOICES.delete(userId);
+    return null;
+  }
+  return p;
+}
+function clearPendingFormatChoice(userId: string) { PENDING_FORMAT_CHOICES.delete(userId); }
+
+// Detecta resposta curta só com o formato: "feed", "story", "no story", "nos stories", "pode postar no feed" etc.
+function detectStandaloneFormatReply(text: string): "feed" | "story" | undefined {
+  const n = normalizePt(compactSpaces(text || "")).replace(/[.!?]+$/g, "").trim();
+  if (!n || n.length > 40) return undefined;
+  if (/^(pode\s+postar\s+)?(no\s+|nos\s+|em\s+)?(o\s+|a\s+)?feed$/.test(n)) return "feed";
+  if (/^(pode\s+postar\s+)?(no\s+|nos\s+|em\s+)?(o\s+|a\s+)?stor(y|ies|ie)$/.test(n)) return "story";
+  return undefined;
+}
+
+function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[]; temProduto: boolean; formato?: "feed" | "story" | "reels" } | null {
   const original = compactSpaces(text || "");
   const normalized = normalizePt(original);
   if (!/\b(posta|poste|postar|publica|publique|publicar)\b/.test(normalized)) return null;
@@ -2265,18 +2301,18 @@ function detectSocialPostIntent(text: string): { produto: string; tom: string; r
 
   const withoutJarvis = original.replace(/^jarvis[,.!\s-]*/i, "");
   let produto = "";
-  const direct = withoutJarvis.match(/\b(?:posta|poste|postar|publica|publique|publicar)\s+(?:o|a|os|as)?\s*(.+?)(?:\s+(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b|\s+com\s+(?:um\s+)?script\b|$)/i);
+  const direct = withoutJarvis.match(/\b(?:posta|poste|postar|publica|publique|publicar)\s+(?:o|a|os|as)?\s*(.+?)(?:\s+(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b|\s+com\s+(?:um\s+)?script\b|$)/i);
   if (direct?.[1]) produto = direct[1];
 
-  const afterNetworks = withoutJarvis.match(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b(?:\s*(?:e|,|\/|\+|no|na|nos|nas|em|para|pra|pro)?\s*(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b)*\s+(?:o|a|os|as)?\s*(.+?)(?:\s+com\s+(?:um\s+)?script\b|$)/i);
-  if ((!produto || /^(nas?|nos?|em|para|pra|pro|face|facebook|insta|instagram|ig|fb)\b/i.test(produto)) && afterNetworks?.[1]) produto = afterNetworks[1];
+  const afterNetworks = withoutJarvis.match(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b(?:\s*(?:e|,|\/|\+|no|na|nos|nas|em|para|pra|pro)?\s*(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b)*\s+(?:o|a|os|as)?\s*(.+?)(?:\s+com\s+(?:um\s+)?script\b|$)/i);
+  if ((!produto || /^(nas?|nos?|em|para|pra|pro|face|facebook|insta|instagram|ig|fb|stor(y|ies|ie)|reels?|feed)\b/i.test(produto)) && afterNetworks?.[1]) produto = afterNetworks[1];
 
   const explicitProduct = withoutJarvis.match(/\bproduto\s+(.+?)(?:\s+com\s+(?:um\s+)?script\b|$)/i);
   if ((!produto || /^(nas?|nos?|em|para|pra|pro)\b/i.test(produto)) && explicitProduct?.[1]) produto = explicitProduct[1];
 
   produto = sanitizeSocialProductText(produto);
   const temProduto = !!produto && produto.length >= 3;
-  return { produto: temProduto ? produto : "", tom, redes: uniqueStrings(redes), temProduto };
+  return { produto: temProduto ? produto : "", tom, redes: uniqueStrings(redes), temProduto, formato: formatoPedido };
 }
 
 function formatSocialPostToolResult(raw: string): string {
