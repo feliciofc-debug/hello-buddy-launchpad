@@ -2880,6 +2880,8 @@ async function runTool(
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
+  if (name === "listar_contatos_comerciais") return { result: await toolListarContatosComerciais(args ?? {}, ctx) };
+  if (name === "enviar_mensagem_contato_comercial") return { result: await toolEnviarMensagemContatoComercial(args ?? {}, ctx) };
   if (name === "salvar_nota") return { result: await toolSalvarNota(args?.conteudo ?? "", args?.tags, ctx) };
   if (name === "buscar_notas") return { result: await toolBuscarNotas(args?.query ?? "", ctx) };
   if (name === "adicionar_tarefa") return { result: await toolAdicionarTarefa(args ?? {}, ctx) };
