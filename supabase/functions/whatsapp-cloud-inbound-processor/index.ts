@@ -3677,7 +3677,7 @@ async function processOne(queueId: string) {
       console.warn("[pietro][recent_media_hint] falhou:", (e as Error).message);
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock + recentMediaBlock;
+    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock + recentMediaBlock + contactMemoryBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
