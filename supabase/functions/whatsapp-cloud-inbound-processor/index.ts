@@ -1890,7 +1890,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     link_url: pending.produto?.link || null,
     status: "aguardando_confirmacao",
     scheduled_at: null,
-    error_message: pendingPostMarker(token, pending.produto?.nome),
+    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed"),
     updated_at: new Date().toISOString(),
   }));
 
