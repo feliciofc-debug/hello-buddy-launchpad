@@ -1234,7 +1234,142 @@ async function toolConcluirTarefa(id_ou_titulo: string, ctx: { userId: string; f
   return JSON.stringify({ ok: true, concluidas: data ?? [] });
 }
 
-// ---- NOTÍCIAS (Google News RSS, grátis) ----
+// ---- CONTATOS COMERCIAIS (Jarvis dispara WhatsApp humanizado sob ordem do dono) ----
+
+function normalizePhoneBR(raw: string): string {
+  let c = (raw || "").replace(/\D/g, "");
+  if (!c) return "";
+  if (c.startsWith("0")) c = c.substring(1);
+  if (c.length === 10 || c.length === 11) c = "55" + c;
+  return c;
+}
+
+async function toolListarContatosComerciais(
+  args: { busca?: string },
+  ctx: { userId: string },
+): Promise<string> {
+  let q = sb.from("contatos_comerciais")
+    .select("id, nome, empresa, cargo, whatsapp, tipo_relacionamento, contexto, proximos_passos, permite_jarvis_contatar, ultima_interacao")
+    .eq("user_id", ctx.userId)
+    .eq("ativo", true)
+    .order("nome", { ascending: true })
+    .limit(50);
+  const busca = (args?.busca || "").trim();
+  if (busca) q = q.or(`nome.ilike.%${busca}%,empresa.ilike.%${busca}%`);
+  const { data, error } = await q;
+  if (error) return JSON.stringify({ erro: error.message });
+  return JSON.stringify({ total: (data ?? []).length, contatos: data ?? [] });
+}
+
+async function toolEnviarMensagemContatoComercial(
+  args: {
+    contato_id?: string;
+    nome_busca?: string;
+    mensagem?: string;
+    data_hora_sp?: string;
+    minutos_a_partir_de_agora?: number;
+    tipo_acao?: string;
+  },
+  ctx: { userId: string },
+): Promise<string> {
+  const mensagem = (args?.mensagem || "").trim();
+  if (!mensagem) return JSON.stringify({ erro: "mensagem_obrigatoria", detalhe: "Componha o texto humanizado como o Jarvis falaria — gentil, se apresentando como 'Jarvis, assistente do Felício'." });
+  if (mensagem.length < 20) return JSON.stringify({ erro: "mensagem_muito_curta", detalhe: "Texto humanizado mínimo 20 chars." });
+
+  // 1) Localizar o contato
+  let contato: any = null;
+  if (args?.contato_id && /^[0-9a-f-]{36}$/i.test(args.contato_id)) {
+    const { data } = await sb.from("contatos_comerciais")
+      .select("*").eq("id", args.contato_id).eq("user_id", ctx.userId).maybeSingle();
+    contato = data;
+  } else if (args?.nome_busca) {
+    const { data } = await sb.from("contatos_comerciais")
+      .select("*").eq("user_id", ctx.userId).eq("ativo", true)
+      .ilike("nome", `%${args.nome_busca.trim()}%`).limit(5);
+    if (!data || data.length === 0) {
+      return JSON.stringify({ erro: "contato_nao_encontrado", nome_busca: args.nome_busca });
+    }
+    if (data.length > 1) {
+      return JSON.stringify({
+        erro: "ambiguidade",
+        detalhe: "Vários contatos batem com esse nome. Confirme qual e chame de novo com contato_id.",
+        candidatos: data.map((c: any) => ({ id: c.id, nome: c.nome, empresa: c.empresa })),
+      });
+    }
+    contato = data[0];
+  } else {
+    return JSON.stringify({ erro: "informe contato_id ou nome_busca" });
+  }
+
+  if (!contato) return JSON.stringify({ erro: "contato_nao_encontrado" });
+  if (!contato.ativo) return JSON.stringify({ erro: "contato_inativo", nome: contato.nome });
+  if (!contato.permite_jarvis_contatar) {
+    return JSON.stringify({
+      erro: "contato_bloqueado_para_jarvis",
+      nome: contato.nome,
+      detalhe: "Esse contato está com a permissão do Jarvis desligada. O dono precisa ativar em /pj/contatos-comerciais.",
+    });
+  }
+
+  const phone = normalizePhoneBR(contato.whatsapp);
+  if (!phone) return JSON.stringify({ erro: "whatsapp_invalido", nome: contato.nome, whatsapp: contato.whatsapp });
+
+  // 2) Calcular scheduled_at
+  let scheduledMs = Date.now();
+  if (args?.minutos_a_partir_de_agora && Number(args.minutos_a_partir_de_agora) > 0) {
+    scheduledMs = Date.now() + Number(args.minutos_a_partir_de_agora) * 60000;
+  } else if (args?.data_hora_sp) {
+    const m = String(args.data_hora_sp).trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!m) return JSON.stringify({ erro: "formato_data_invalido", esperado: "YYYY-MM-DD HH:MM" });
+    const [, y, mo, d, h, mi] = m;
+    scheduledMs = Date.UTC(+y, +mo - 1, +d, +h + 3, +mi, 0);
+    if (scheduledMs <= Date.now() - 60000) return JSON.stringify({ erro: "data_no_passado" });
+  }
+
+  // 3) Enfileirar via RPC oficial (regra Core: só via inserir_campanha_fila)
+  const { error: rpcErr } = await sb.rpc("inserir_campanha_fila", {
+    p_user_id: ctx.userId,
+    p_contatos: [{
+      phone,
+      name: contato.nome,
+      mensagem,
+      scheduled_at: new Date(scheduledMs).toISOString(),
+      lead_source: "jarvis_contato_comercial",
+      metadata: {
+        contato_comercial_id: contato.id,
+        tipo_acao: args?.tipo_acao || "mensagem_livre",
+        via: "jarvis_command",
+      },
+    }],
+    p_mensagem: mensagem,
+    p_lead_source: "jarvis_contato_comercial",
+    p_metadata: {
+      contato_comercial_id: contato.id,
+      tipo_acao: args?.tipo_acao || "mensagem_livre",
+    },
+  });
+  if (rpcErr) return JSON.stringify({ erro: "falha_ao_enfileirar", detalhe: rpcErr.message });
+
+  // 4) Atualizar última interação
+  await sb.from("contatos_comerciais")
+    .update({ ultima_interacao: new Date().toISOString() })
+    .eq("id", contato.id);
+
+  const quandoSP = new Date(scheduledMs).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+  const agora = Math.abs(scheduledMs - Date.now()) < 60000;
+
+  return JSON.stringify({
+    ok: true,
+    contato: { nome: contato.nome, empresa: contato.empresa, whatsapp: phone },
+    tipo_acao: args?.tipo_acao || "mensagem_livre",
+    agendado_para: quandoSP,
+    envio_imediato: agora,
+    preview_mensagem: mensagem.slice(0, 200),
+  });
+
 async function toolConsultarNoticias(tema: string): Promise<string> {
   const t = (tema || "").trim();
   if (!t) return JSON.stringify({ erro: "tema_obrigatorio" });
