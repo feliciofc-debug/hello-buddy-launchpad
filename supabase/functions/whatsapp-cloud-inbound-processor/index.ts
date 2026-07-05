@@ -1580,7 +1580,7 @@ async function gerarScriptRedesSociais(
 ${guiaTom}
 
 PRODUTO: ${produto.nome}
-${produto.descricao ? `DESCRIÇÃO: ${produto.descricao}` : ""}
+${produto.descricao ? `CONTEXTO/CONTEÚDO DA IMAGEM: ${produto.descricao}\n(IMPORTANTE: a legenda DEVE conversar com o que está na imagem — nunca contrarie ou ignore o conteúdo visual descrito acima.)` : ""}
 ${preco ? `PREÇO: ${preco}` : "PREÇO: (não informar valor no post)"}
 ${produto.categoria ? `CATEGORIA: ${produto.categoria}` : ""}
 ${temLink ? "" : "OBS: este produto NÃO tem link de compra — é post institucional/lifestyle/engajamento."}
