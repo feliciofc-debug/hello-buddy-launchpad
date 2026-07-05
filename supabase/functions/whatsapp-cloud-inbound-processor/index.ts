@@ -2131,9 +2131,10 @@ function sanitizeSocialProductText(text: string): string {
   let product = compactSpaces(text || "");
   product = product.replace(/\bcom\s+(?:um\s+)?script\b.*$/i, "");
   product = product.replace(/\b(?:script|copy|legenda)\s+(?:de\s+)?(?:urg[eê]ncia|escassez|benef[ií]cio|prova social|black\s*friday)\b.*$/i, "");
-  product = product.replace(/\b(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b/gi, " ");
-  product = product.replace(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais)\b/gi, " ");
-  product = product.replace(/\b(?:e|no|na|nos|nas|em|para|pra|pro|o|a|os|as|um|uma)\b/gi, " ");
+  product = product.replace(/\b(?:posta|poste|postar|publica|publique|publicar)\b/gi, " ");
+  product = product.replace(/\b(?:no|na|nos|nas|em|para|pra|pro)\s+(?:o\s+|a\s+)?(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b/gi, " ");
+  product = product.replace(/\b(?:face|facebook|fb|insta|instagram|ig|tiktok|tik\s*tok|redes sociais|stor(?:y|ies|ie)|reels?|feed)\b/gi, " ");
+  product = product.replace(/\b(?:e|de|do|da|dos|das|no|na|nos|nas|em|para|pra|pro|o|a|os|as|um|uma)\b/gi, " ");
   return compactSpaces(product.replace(/^[,.;:!\s-]+|[,.;:!\s-]+$/g, ""));
 }
 
@@ -2209,7 +2210,40 @@ async function buscarProdutoParaPostagem(query: string, userId: string): Promise
   };
 }
 
-function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[] } | null {
+function detectSocialPostFormat(text: string): "feed" | "story" | "reels" | undefined {
+  const normalized = normalizePt(text || "");
+  if (/\bstor(y|ies|ie)\b/.test(normalized)) return "story";
+  if (/\breels?\b/.test(normalized)) return "reels";
+  if (/\bfeed\b/.test(normalized)) return "feed";
+  return undefined;
+}
+
+function cleanMediaPostLegenda(text: string): string | undefined {
+  let legenda = compactSpaces(text || "").replace(/^jarvis[,.!\s-]*/i, "");
+  legenda = sanitizeSocialProductText(legenda);
+  const genericOnly = /^(?:isso|essa|esse|esta|este|foto|imagem|video|vídeo|midia|mídia|produto|ai|aí|la|lá|agora|hoje)$/i;
+  if (!legenda || legenda.length < 3 || genericOnly.test(normalizePt(legenda))) return undefined;
+  return legenda;
+}
+
+async function buscarMidiaRecenteParaPostagem(userId: string): Promise<{ id: string; created_at: string } | null> {
+  const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+  const { data, error } = await sb
+    .from("midias_whatsapp")
+    .select("id, created_at")
+    .eq("user_id", userId)
+    .in("tipo", ["foto", "video"])
+    .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) {
+    console.warn("[pietro][forced_social_post][midia_recente_error]", error.message);
+    return null;
+  }
+  return (data?.[0] as { id: string; created_at: string } | undefined) ?? null;
+}
+
+function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[]; temProduto: boolean } | null {
   const original = compactSpaces(text || "");
   const normalized = normalizePt(original);
   if (!/\b(posta|poste|postar|publica|publique|publicar)\b/.test(normalized)) return null;
@@ -2219,7 +2253,8 @@ function detectSocialPostIntent(text: string): { produto: string; tom: string; r
   if (/\b(insta|instagram|ig)\b/.test(normalized)) redes.push("instagram");
   if (/\b(tiktok|tik tok)\b/.test(normalized)) redes.push("tiktok");
   if (redes.length === 0 && /\bredes sociais\b/.test(normalized)) redes.push("facebook", "instagram", "tiktok");
-  if (redes.length === 0) return null;
+  const formatoPedido = detectSocialPostFormat(original);
+  if (redes.length === 0 && !formatoPedido) return null;
 
   const tom = /black\s*friday/i.test(original) ? "black-friday"
     : /prova social/i.test(normalized) ? "prova-social"
@@ -2239,8 +2274,8 @@ function detectSocialPostIntent(text: string): { produto: string; tom: string; r
   if ((!produto || /^(nas?|nos?|em|para|pra|pro)\b/i.test(produto)) && explicitProduct?.[1]) produto = explicitProduct[1];
 
   produto = sanitizeSocialProductText(produto);
-  if (!produto || produto.length < 3) return null;
-  return { produto, tom, redes: uniqueStrings(redes) };
+  const temProduto = !!produto && produto.length >= 3;
+  return { produto: temProduto ? produto : "", tom, redes: uniqueStrings(redes), temProduto };
 }
 
 function formatSocialPostToolResult(raw: string): string {
