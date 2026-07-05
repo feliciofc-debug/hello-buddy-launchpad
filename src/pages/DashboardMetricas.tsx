@@ -41,7 +41,8 @@ import {
   Sparkles,
   Share2,
   Shield,
-  Plug
+  Plug,
+  Briefcase
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
@@ -293,6 +294,7 @@ export default function DashboardMetricas() {
     { id: 'ia-marketing', icon: Zap, label: t('nav.ia_marketing'), path: '/ia-marketing' },
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
+    { id: 'contatos-comerciais', icon: Briefcase, label: 'Contatos Comerciais', path: '/pj/contatos-comerciais' },
     // { id: 'integracoes', icon: Plug, label: t('nav.integrations', 'Integrações'), path: '/integracoes' }, // Oculto - reativar removendo o comentário
     { id: 'configuracoes', icon: Settings, label: t('nav.settings'), path: '/configuracoes' },
     ...(userEmail === 'expo@atombrasildigital.com'
@@ -300,7 +302,7 @@ export default function DashboardMetricas() {
       : []),
   ];
 
-  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || isMenuAllowed(item.id));
+  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || isMenuAllowed(item.id));
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
