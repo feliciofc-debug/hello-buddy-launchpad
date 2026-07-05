@@ -2368,7 +2368,7 @@ async function toolConfirmarPostagemRedes(
     return JSON.stringify({ status: "cancelado" });
   }
 
-  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId)));
+  const resultados = await Promise.all(p.redes.map((r) => publicarEmRede(r, p.scripts[r], p.produto, p.userId, p.formato || "feed")));
   await updatePersistedSocialPostRows(p, resultados);
   PENDING_POSTS.delete(token);
   return JSON.stringify({
