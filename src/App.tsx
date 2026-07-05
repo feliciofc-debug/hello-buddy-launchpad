@@ -67,6 +67,7 @@ import Termos from "./pages/Termos";
 import Privacidade from "./pages/Privacidade";
 import WhatsAppAutomacaoPJ from "./pages/pj/WhatsAppAutomacaoPJ";
 import ListasContatosPJ from "./pages/pj/ListasContatosPJ";
+import ContatosComerciais from "./pages/pj/ContatosComerciais";
 import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 // SophiaDispatcher removido (Sophia descontinuada — 27/04/2026). Arquivo físico mantido como órfão em src/pages/SophiaDispatcher.tsx.
