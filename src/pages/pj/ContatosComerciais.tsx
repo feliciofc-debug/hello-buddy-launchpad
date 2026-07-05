@@ -243,7 +243,7 @@ export default function ContatosComerciais() {
             Contatos Comerciais
           </h1>
           <p className="text-sm text-muted-foreground">
-            Clientes, parceiros e contatos próximos — o Jarvis pode acionar sob sua ordem
+            Clientes, parceiros e contatos próximos — o Jarvis envia mensagens de WhatsApp sob sua ordem (nunca liga)
           </p>
         </div>
         <Button onClick={openNew}>
@@ -493,10 +493,10 @@ export default function ContatosComerciais() {
             <div className="flex items-center justify-between border rounded-lg p-3">
               <div>
                 <Label className="flex items-center gap-2">
-                  <Bot className="h-4 w-4" /> Jarvis pode contatar
+                  <Bot className="h-4 w-4" /> Jarvis pode enviar mensagem
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Se desligado, o Jarvis nunca liga/envia mensagem para esse contato.
+                  Se desligado, o Jarvis nunca envia WhatsApp para esse contato. (Jarvis nunca faz ligações de voz.)
                 </p>
               </div>
               <Switch
