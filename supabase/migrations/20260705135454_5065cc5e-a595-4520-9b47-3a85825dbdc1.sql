@@ -1,0 +1,1 @@
+UPDATE public.fila_atendimento_pj SET status='pendente', tentativas=0, scheduled_at=now(), erro=NULL WHERE id='551bf30d-c0f9-4450-94dc-9d7889f7ba93';
