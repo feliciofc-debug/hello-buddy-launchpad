@@ -2256,12 +2256,29 @@ async function toolPostarMidiaBiblioteca(
     const tom = args?.tom || "urgencia";
 
     const precoNum = args?.preco != null ? Number(String(args.preco).replace(",", ".").replace(/[^\d.]/g, "")) : null;
-    const nome = (args?.nome || args?.legenda || midia.contexto_original || "Produto").toString().trim().slice(0, 120);
-    const descricao = (args?.legenda || midia.contexto_original || "").toString().trim();
+
+    // Extrai descrição visual já salva (se veio de salvar_midia_biblioteca) ou gera agora por visão.
+    const contextoRaw = (midia.contexto_original || "").toString();
+    let descricaoVisual = "";
+    const mVisao = contextoRaw.match(/\[visão\]\s*([\s\S]+)/i);
+    if (mVisao) descricaoVisual = mVisao[1].trim();
+    if (!descricaoVisual && midia.tipo === "foto") {
+      descricaoVisual = await descreverImagemVisao(midia.midia_url);
+      if (descricaoVisual) {
+        await sb.from("midias_whatsapp").update({
+          contexto_original: contextoRaw ? `${contextoRaw}\n\n[visão] ${descricaoVisual}` : `[visão] ${descricaoVisual}`,
+        }).eq("id", midia.id);
+      }
+    }
+    const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
+
+    const nome = (args?.nome || args?.legenda || contextoUsuario || "Produto").toString().trim().slice(0, 120);
+    const descricaoBase = (args?.legenda || contextoUsuario || "").toString().trim();
+    const descricaoFinal = [descricaoBase, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
 
     const produtoLike = {
       nome,
-      descricao: descricao || null,
+      descricao: descricaoFinal || null,
       preco: precoNum && !isNaN(precoNum) ? precoNum : null,
       link: null,
       categoria: null,
