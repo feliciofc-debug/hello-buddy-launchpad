@@ -17,6 +17,25 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
+
+// ============================================================
+// FEATURE 2 — Roteamento de modelo por tipo de tarefa
+// ============================================================
+// FAST = conversa normal (rápido/barato). DEEP = raciocínio pesado
+// (documento, código, multimodal). Decisão é pelo TIPO de fluxo,
+// nunca por heurística de palavra-chave no conteúdo.
+const MODEL_FAST = "google/gemini-2.5-flash";
+const MODEL_DEEP = "google/gemini-2.5-pro";
+
+type TaskContext = {
+  kind: "conversation" | "document" | "multimodal";
+};
+
+function escolherModelo(ctx: TaskContext): string {
+  const model = (ctx.kind === "document" || ctx.kind === "multimodal") ? MODEL_DEEP : MODEL_FAST;
+  console.log(`[model-router] kind=${ctx.kind} → ${model}`);
+  return model;
+}
 const WHATSAPP_PERMANENT_TOKEN = Deno.env.get("WHATSAPP_PERMANENT_TOKEN");
 const WHATSAPP_TEST_ACCESS_TOKEN = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
 
@@ -3047,7 +3066,8 @@ async function callGemini(
 
 
   // Modelo pro é mais confiável com áudio/imagem
-  const model = hasMedia ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash";
+  // Roteamento por tipo de fluxo (Feature 2): multimodal → DEEP, texto conversa → FAST.
+  const model = escolherModelo({ kind: hasMedia ? "multimodal" : "conversation" });
   let pendingImageUrl: string | undefined;
   let pendingSocialToken: string | undefined; // token de post aguardando confirmação — anexa <<SPLIT>>pode postar {token} no fim
 
@@ -3501,7 +3521,7 @@ async function processOne(queueId: string) {
               "Authorization": `Bearer ${LOVABLE_API_KEY}`,
             },
             body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
+              model: escolherModelo({ kind: "document" }),
               temperature: 0.5,
               messages: [
                 { role: "system", content: "Você é o Jarvis, assistente pessoal do Felício. Leia o documento enviado e comente com franqueza técnica e prática. Nunca invente informação. Nunca peça localização. Nunca ofereça buscar lugares." },
