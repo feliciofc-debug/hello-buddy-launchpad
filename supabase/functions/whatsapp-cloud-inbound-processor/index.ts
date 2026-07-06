@@ -3192,6 +3192,21 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "revisar_post_pendente",
+      description: "🛠️ USE quando houver um POST PENDENTE (aguardando 'pode postar') e o dono pedir AJUSTES NO TEXTO/SCRIPT antes de publicar. Ex: 'tira o ACABA HOJE', 'põe o preço 89,90', 'deixa mais curto', 'muda o tom pra profissional', 'adiciona que tem garantia', 'refaz mais leve'. Regenera o script aplicando o ajuste e MANTÉM o mesmo token, mídia, formato e redes — só o texto muda. NÃO reabre pergunta de contexto. NÃO use pra confirmar (use confirmar_postagem_redes) nem pra trocar rede/formato/mídia (aí é recriar via postar_midia_biblioteca).",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Token de 8 chars do post pendente." },
+          ajuste: { type: "string", description: "Instrução literal do dono do que mudar no texto (ex: 'tira o preço e deixa mais curto')." },
+        },
+        required: ["token", "ajuste"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "salvar_midia_biblioteca",
       description: "🔴 USE SEMPRE E IMEDIATAMENTE quando o cliente ENVIAR foto, vídeo ou áudio nesta mensagem — mesmo sem legenda. É a ação PADRÃO pra qualquer mídia recebida. Salva o arquivo na biblioteca de Mídias (/midias) da plataforma pra ele publicar/reusar depois. NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes — só arquiva e confirma. Passe em 'contexto' o que o cliente falou junto, ou string vazia se não falou nada.",
       parameters: {
