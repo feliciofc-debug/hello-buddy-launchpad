@@ -3502,22 +3502,22 @@ async function callGemini(
     if (!pendingSocialToken) return text;
     const token = pendingSocialToken;
     const cmd = `pode postar ${token}`;
-    // Limpa menções inline ao token (ex: "O token é *abc*") pra não poluir o preview,
-    // já que o comando vai isolado na próxima mensagem pra copiar/colar.
+    // Limpa qualquer menção inline ao token/comando pra reanexar de forma determinística.
     let cleaned = text
+      .replace(new RegExp(`pode postar\\s+\\*?${token}\\*?`, "gi"), "")
       .replace(new RegExp(`\\*?\\b${token}\\b\\*?`, "g"), "")
       .replace(/Posso publicar agora\??.*$/gim, "")
+      .replace(/Quer ajustar[^\n]*/gi, "")
       .replace(/O token[^\n.]*\.?/gi, "")
       .replace(/Token[:\s]*\.?/gi, "")
       .replace(/pode postar\s*$/gim, "")
       .replace(/[ \t]{2,}/g, " ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
-    const convite = `Quer ajustar algo antes de postar? (ex: deixar mais curto, tirar preço, mudar tom, tirar/incluir informação) É só me dizer o ajuste. Se estiver bom assim, responde:`;
-    if (cleaned.includes(cmd)) return cleaned;
+    const convite = `Quer ajustar algo antes de postar? Me diga o que mudar (ex: "mais curto", "foca em tecnologia AMZ", "tira o ACABA HOJE", "muda o tom"). Se estiver bom, responde:`;
     return `${cleaned}<<SPLIT>>${convite}<<SPLIT>>${cmd}`;
-
   };
+
 
   for (let step = 0; step < 4; step++) {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
