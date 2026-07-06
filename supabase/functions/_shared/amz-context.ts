@@ -11,13 +11,14 @@ import { ADMIN_AMZ_USER_ID } from "./agent-soul.ts";
 export const OWNER_PHONE = "5521967520706";
 export const AGENT_PHONE = "5521980804901";
 
-export type AmzAccess = "owner" | "client" | "stranger";
+export type AmzAccess = "owner" | "partner" | "client" | "stranger";
 
 export type AmzContext = {
   access: AmzAccess;
   contact: { phone: string; name?: string | null; email?: string | null } | null;
   block: string;
 };
+
 
 function normalizePhone(p: string): string {
   return (p || "").replace(/\D/g, "");
