@@ -3951,6 +3951,7 @@ async function processOne(queueId: string) {
     }
 
     const userText = extractText(row.payload);
+    let commercialContactForOwner: any = null;
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
 
@@ -4123,6 +4124,33 @@ async function processOne(queueId: string) {
       console.log(`[processor] media baixadas: ${media.length}`);
     }
 
+    if (row.from_number !== OWNER_PHONE && row.message_type === "audio") {
+      commercialContactForOwner = await findCommercialContactByPhone(userId, row.from_number);
+      if (commercialContactForOwner && media.some((m) => m.kind === "audio")) {
+        try {
+          const transcript = await transcribeAudioMedia(media);
+          if (transcript) {
+            inboundContent = `🎙️ Áudio transcrito: ${transcript}`;
+            await sb
+              .from("whatsapp_cloud_messages")
+              .update({ content: inboundContent })
+              .eq("conversation_id", conv.id)
+              .eq("wamid", row.wamid);
+            await notifyOwnerDeterministic({
+              userId,
+              fromNumber: row.from_number,
+              match: commercialContactForOwner,
+              text: transcript,
+              messageType: row.message_type,
+              source: "audio",
+            });
+          }
+        } catch (e) {
+          console.warn("[processor][audio-transcribe-headsup] falhou:", (e as Error).message);
+        }
+      }
+    }
+
     // Regra determinística: foto/vídeo enviado no WhatsApp vira mídia livre em /midias.
     // Não deixa a IA buscar produto parecido no catálogo nem preparar post com imagem errada.
     const freshLibraryMedia = media.filter((m) => m.kind === "image" || m.kind === "video");
@@ -4289,21 +4317,8 @@ async function processOne(queueId: string) {
     // PASSO 6.9 — Memória por contato (read-only): se o número está em
     // contatos_comerciais, injeta contexto pra Jarvis personalizar a resposta.
     let contactMemoryBlock = "";
-    let commercialContactForOwner: any = null;
     try {
-      const fromDigits = normalizePhoneBR(row.from_number);
-      const fromTail = fromDigits.slice(-10); // DDD+8 (ignora 9º dígito e 55)
-      if (fromTail.length >= 8) {
-        const { data: contatos } = await sb
-          .from("contatos_comerciais")
-          .select("nome, empresa, tipo_relacionamento, contexto, proximos_passos, permite_jarvis_contatar, tags, whatsapp")
-          .eq("user_id", userId)
-          .eq("ativo", true);
-        const match = (contatos ?? []).find((c: any) => {
-          const cd = normalizePhoneBR(c.whatsapp || "");
-          if (!cd) return false;
-          return cd === fromDigits || cd.slice(-10) === fromTail || cd.slice(-8) === fromTail.slice(-8);
-        });
+      const match = commercialContactForOwner ?? await findCommercialContactByPhone(userId, row.from_number);
         if (match) {
           commercialContactForOwner = match;
           const { data: recentMsgs } = await sb
@@ -4348,7 +4363,6 @@ async function processOne(queueId: string) {
             console.warn("[processor][headsup-owner] falhou:", (e as Error).message);
           }
         }
-      }
     } catch (e) {
       console.warn("[processor][contact-memory] falhou:", (e as Error).message);
     }
@@ -4497,7 +4511,15 @@ async function processOne(queueId: string) {
     // e produziu uma resposta, usa esse entendimento para avisar o dono também.
     if (commercialContactForOwner && !userText.trim() && media.some((m) => m.kind === "audio")) {
       try {
-        await notifyOwnerAboutCommercialReply({
+        const deterministicSent = await notifyOwnerDeterministic({
+          userId,
+          fromNumber: row.from_number,
+          match: commercialContactForOwner,
+          text: reply,
+          messageType: row.message_type,
+          source: "audio",
+        });
+        if (!deterministicSent) await notifyOwnerAboutCommercialReply({
           userId,
           fromNumber: row.from_number,
           match: commercialContactForOwner,
