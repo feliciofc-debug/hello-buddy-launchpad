@@ -3743,30 +3743,30 @@ async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
   const audio = media.find((m) => m.kind === "audio");
   if (!audio?.base64) return "";
 
-  const mime = (audio.mime || "audio/ogg").split(";")[0].trim() || "audio/ogg";
-  const bytes = base64Decode(audio.base64);
-  const ext = mime.includes("mpeg") || mime.includes("mp3") ? "mp3"
-    : mime.includes("wav") ? "wav"
-    : mime.includes("mp4") || mime.includes("m4a") ? "m4a"
-    : mime.includes("webm") ? "webm"
-    : mime.includes("flac") ? "flac"
-    : mime.includes("aac") ? "aac"
-    : "ogg";
-
-  const form = new FormData();
-  form.append("model", "openai/gpt-4o-transcribe");
-  form.append("file", new Blob([bytes], { type: mime }), `whatsapp-audio.${ext}`);
-
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+  const content = buildUserContent(
+    "Transcreva literalmente este áudio de WhatsApp em português do Brasil. Responda somente com a transcrição, sem comentários.",
+    [audio],
+  );
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
-    headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}` },
-    body: form,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: escolherModelo({ kind: "multimodal" }),
+      temperature: 0,
+      messages: [
+        { role: "system", content: "Você é um transcritor de áudios de WhatsApp. Nunca invente; se não entender, retorne exatamente: [áudio não compreendido]." },
+        { role: "user", content },
+      ],
+    }),
   });
   const txt = await res.text();
-  if (!res.ok) throw new Error(`transcribe ${res.status}: ${txt.slice(0, 200)}`);
+  if (!res.ok) throw new Error(`audio transcript ${res.status}: ${txt.slice(0, 200)}`);
   try {
     const json = JSON.parse(txt);
-    return String(json?.text || "").trim();
+    return String(json?.choices?.[0]?.message?.content || "").trim();
   } catch {
     return txt.trim();
   }
