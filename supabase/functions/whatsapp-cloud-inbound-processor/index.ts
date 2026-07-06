@@ -3513,8 +3513,10 @@ async function callGemini(
       .replace(/[ \t]{2,}/g, " ")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+    const convite = `Quer ajustar algo antes de postar? (ex: deixar mais curto, tirar preço, mudar tom, tirar/incluir informação) É só me dizer o ajuste. Se estiver bom assim, responde:`;
     if (cleaned.includes(cmd)) return cleaned;
-    return `${cleaned}<<SPLIT>>${cmd}`;
+    return `${cleaned}<<SPLIT>>${convite}<<SPLIT>>${cmd}`;
+
   };
 
   for (let step = 0; step < 4; step++) {
