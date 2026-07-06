@@ -1823,7 +1823,8 @@ REGRAS:
 - 2-4 bullets de benefício.
 ${ctaRegra}
 - 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
-- NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.`;
+- NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.
+${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique EXATAMENTE, mantendo o resto do post coerente): "${ajuste}"` : ""}`;
 
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
