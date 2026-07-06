@@ -1867,8 +1867,13 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function pendingPostMarker(token: string, productName?: string, formato: "feed" | "story" | "reels" = "feed"): string {
-  return `jarvis_token:${token};formato:${formato};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
+function pendingPostMarker(
+  token: string,
+  productName?: string,
+  formato: "feed" | "story" | "reels" = "feed",
+  midiaTipo: "foto" | "video" = "foto",
+): string {
+  return `jarvis_token:${token};formato:${formato};midia:${midiaTipo};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
 }
 
 function productNameFromPendingMarker(marker?: string | null): string {
@@ -1878,6 +1883,11 @@ function productNameFromPendingMarker(marker?: string | null): string {
 function formatoFromPendingMarker(marker?: string | null): "feed" | "story" | "reels" {
   const m = marker?.match(/;formato:(feed|story|reels)/i);
   return (m?.[1]?.toLowerCase() as "feed" | "story" | "reels") || "feed";
+}
+
+function midiaTipoFromPendingMarker(marker?: string | null): "foto" | "video" {
+  const m = marker?.match(/;midia:(foto|video)/i);
+  return (m?.[1]?.toLowerCase() as "foto" | "video") || "foto";
 }
 
 async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
@@ -1891,7 +1901,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     link_url: pending.produto?.link || null,
     status: "aguardando_confirmacao",
     scheduled_at: null,
-    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed"),
+    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto"),
     updated_at: new Date().toISOString(),
   }));
 
@@ -1932,6 +1942,8 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const scripts: Record<string, string> = {};
   for (const row of rows as any[]) scripts[row.platform] = row.post_text || "";
 
+  const midiaTipoReidratado = midiaTipoFromPendingMarker((rows[0] as any).error_message);
+
   return {
     produto: {
       id: (rows[0] as any).produto_id,
@@ -1939,13 +1951,15 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
       nome: productNameFromPendingMarker((rows[0] as any).error_message),
       imagem_url: (rows[0] as any).image_url,
       link: (rows[0] as any).link_url,
-    },
+      midia_tipo: midiaTipoReidratado,
+    } as any,
     tom: "urgencia",
     redes: (rows as any[]).map((r) => r.platform),
     scripts,
     userId,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     formato: formatoFromPendingMarker((rows[0] as any).error_message),
+    midiaTipo: midiaTipoReidratado,
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
   };
 }
