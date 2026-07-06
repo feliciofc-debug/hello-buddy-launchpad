@@ -2498,6 +2498,7 @@ async function toolConfirmarPostagemRedes(
     produto: { nome: p.produto.nome },
     redes_publicadas: resultados.filter((r) => r.ok).map((r) => r.rede),
     redes_falharam: resultados.filter((r) => !r.ok).map((r) => ({ rede: r.rede, status: r.status, erro: r.resposta?.error || r.resposta?.message })),
+    notas: resultados.filter((r) => r.ok && (r as any).nota).map((r) => (r as any).nota),
     detalhes: resultados,
   });
 }
