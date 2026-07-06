@@ -86,6 +86,50 @@ export async function buildAmzContext(
     return { access: "owner", contact: { phone, name: "Felicio Carega" }, block };
   }
 
+  // PARCEIRO COMERCIAL do dono (contatos_comerciais scoped ao Felicio)
+  // Marcelo Martins, Renata, sócios etc — atende como JARVIS, não como Pietro.
+  try {
+    const tail10 = phone.slice(-10);
+    const tail8 = phone.slice(-8);
+    const { data: parceiros } = await sb
+      .from("contatos_comerciais")
+      .select("nome, empresa, cargo, tipo_relacionamento, contexto, proximos_passos, whatsapp")
+      .eq("user_id", ADMIN_AMZ_USER_ID)
+      .eq("ativo", true);
+    const parceiro = (parceiros ?? []).find((c: any) => {
+      const cd = normalizePhone(c.whatsapp || "");
+      if (!cd) return false;
+      return cd === phone || cd.slice(-10) === tail10 || cd.slice(-8) === tail8;
+    });
+    if (parceiro) {
+      const primeiro = (parceiro.nome || "").split(" ")[0] || parceiro.nome || "";
+      const block = [
+        "=== CONTEXTO ESPECIAL — PARCEIRO COMERCIAL DO FELICIO ===",
+        `VOCÊ ESTÁ FALANDO COM ${parceiro.nome?.toUpperCase() ?? "PARCEIRO"} — parceiro/pessoa próxima do Felicio Carega (dono da AMZ).`,
+        parceiro.empresa ? `Empresa: ${parceiro.empresa}${parceiro.cargo ? ` — ${parceiro.cargo}` : ""}.` : null,
+        parceiro.tipo_relacionamento ? `Relação: ${parceiro.tipo_relacionamento}.` : null,
+        parceiro.contexto ? `Sobre ele (uso interno, não recitar): ${parceiro.contexto}` : null,
+        parceiro.proximos_passos ? `Próximos passos combinados: ${parceiro.proximos_passos}` : null,
+        "",
+        "IDENTIDADE COM PARCEIRO: seu nome aqui é JARVIS, assistente pessoal do Felicio.",
+        `• Cumprimente pelo primeiro nome ("${primeiro}") com naturalidade — vocês já se conhecem via Felicio.`,
+        "• Se perguntarem seu nome, responda 'Jarvis, assistente do Felício'. NUNCA se apresente como 'Pietro' pra ele — Pietro é o nome público que você usa com clientes/leads da AMZ.",
+        "• Tom: próximo, direto, cordial, sem discurso de venda, sem CTA de assinatura, sem mandar ele 'procurar o Felicio' (você JÁ é o canal do Felicio).",
+        "• Se ele pedir algo do Felicio (recado, agenda, confirmar reunião, status), anote/execute e diga que passa pro chefe. Se for pergunta sobre a plataforma AMZ, responde normalmente com base no FAQ abaixo.",
+        "• Se precisar, você pode dizer 'vou avisar o Felicio' — mas não empurre o WhatsApp dele como se ele fosse desconhecido.",
+        "",
+        AMZ_PLATFORM_FAQ,
+      ].filter(Boolean).join("\n");
+      return {
+        access: "partner",
+        contact: { phone, name: parceiro.nome ?? null },
+        block,
+      };
+    }
+  } catch (e) {
+    console.error("[amz-context] partner lookup:", e);
+  }
+
   // CLIENTE AMZ
   const { data: contact } = await sb
     .from("whatsapp_contacts")
@@ -109,6 +153,8 @@ export async function buildAmzContext(
     ].join("\n");
     return { access: "client", contact, block };
   }
+
+
 
   return { access: "stranger", contact: null, block: "" };
 }
