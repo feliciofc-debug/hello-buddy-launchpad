@@ -2369,8 +2369,9 @@ function formatSocialPostToolResult(raw: string): string {
     const scripts = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
       .join("\n\n");
+    const avisoReels = data?.aviso_reels ? `\n\n_ℹ️ ${data.aviso_reels}_` : "";
     // <<SPLIT>> marca quebra em MENSAGENS separadas no WhatsApp — o Felicio pediu o comando de confirmação isolado pra copiar/colar só o post.
-    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}<<SPLIT>>pode postar ${data.token}`;
+    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>pode postar ${data.token}`;
   }
 
   if (data?.status === "publicado") {
@@ -2381,8 +2382,11 @@ function formatSocialPostToolResult(raw: string): string {
     const falhas = Array.isArray(data.redes_falharam) && data.redes_falharam.length
       ? `\n\n❌ *Falhas:*\n${data.redes_falharam.map((f: any) => `• ${f.rede}${f.erro ? ` — ${f.erro}` : ""}`).join("\n")}`
       : "";
+    const notas = Array.isArray(data.notas) && data.notas.length
+      ? `\n\n${data.notas.map((n: string) => `ℹ️ ${n}`).join("\n")}`
+      : "";
     const header = redesArr.length ? "🎉 *POSTAGEM REALIZADA COM SUCESSO!* 🎉" : "⚠️ *POSTAGEM NÃO CONCLUÍDA*";
-    return `${header}\n\n📢 *${data.produto?.nome ?? "produto"}*\n\n${redesFmt}${falhas}`;
+    return `${header}\n\n📢 *${data.produto?.nome ?? "produto"}*\n\n${redesFmt}${notas}${falhas}`;
   }
 
   if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
