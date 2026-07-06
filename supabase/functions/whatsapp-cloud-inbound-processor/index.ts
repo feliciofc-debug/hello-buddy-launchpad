@@ -2573,6 +2573,11 @@ function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>,
     tipos.audio ? `${tipos.audio} áudio${tipos.audio > 1 ? "s" : ""}` : "",
   ].filter(Boolean).join(", ");
   const temFoto = (tipos.foto ?? 0) > 0;
+  const temVideo = (tipos.video ?? 0) > 0;
+  // VÍDEO: como não temos visão de vídeo, coletar rede+formato+legenda numa pergunta só (evita loop de contexto).
+  if (temVideo && !temFoto) {
+    return `Salvei ${partes} na biblioteca /midias. Como não consigo assistir vídeo, me diga tudo numa mensagem só: **onde publicar** (Instagram / Facebook / ambos), **formato** (Feed, Story ou Reels) e uma **legenda/contexto** (do que se trata). Ex.: "Reels no Insta e Face — Interruptor touch-screen Tramontina, chique e prático".`;
+  }
   if (temFoto && descricaoVisual?.trim()) {
     return `Oi chefe, salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
   }
@@ -4005,7 +4010,66 @@ async function processOne(queueId: string) {
       console.warn("[pietro][recent_media_hint] falhou:", (e as Error).message);
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock + recentMediaBlock + contactMemoryBlock;
+    // FIX contexto perdido do vídeo: se dono mandou APENAS texto e há vídeo recente (~15min) sem legenda do dono,
+    // persistir esse texto como contexto_original. Assim postar_midia_biblioteca vai achar contexto e não cair em video_sem_contexto.
+    let pendingConfirmBlock = "";
+    try {
+      const isDono = row.from_number === OWNER_PHONE;
+      if (isDono && media.length === 0 && (userText || "").trim().length > 0) {
+        const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const { data: recVid } = await sb
+          .from("midias_whatsapp")
+          .select("id, tipo, contexto_original, created_at")
+          .eq("user_id", userId)
+          .eq("tipo", "video")
+          .gte("created_at", cutoff)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const v0 = recVid?.[0];
+        const contextoAtual = (v0?.contexto_original || "").toString().trim();
+        // Considera "sem legenda do dono" se contexto está vazio OU só tem bloco [visão] (vídeo não tem visão, mas por segurança).
+        const semLegendaDono = !contextoAtual || /^\s*\[visão\]/i.test(contextoAtual);
+        const texto = (userText || "").trim();
+        // Evita gravar comandos puros de publicação como legenda.
+        const ehComandoPublicar = /^(publica[rl]?|posta[rl]?|manda|pode postar|pode publicar|confirma|confirmar|ok|sim)\b/i.test(texto);
+        if (v0 && semLegendaDono && !ehComandoPublicar && texto.length >= 3 && texto.length <= 400) {
+          await sb
+            .from("midias_whatsapp")
+            .update({ contexto_original: contextoAtual ? `${texto}\n\n${contextoAtual}` : texto })
+            .eq("id", v0.id);
+          console.log(`[pietro][video_contexto_persist] midia=${v0.id} len=${texto.length}`);
+        }
+      }
+
+      // FIX token não consumido: se há pending aguardando confirmação (últ 10min) e dono manda linguagem natural de publicar,
+      // instruir o LLM a chamar confirmar_postagem_redes com o token JÁ existente em vez de recriar do zero.
+      if (isDono) {
+        const cutoffPend = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const { data: pendRows } = await sb
+          .from("social_posts_queue")
+          .select("platform, error_message, created_at")
+          .eq("user_id", userId)
+          .eq("status", "aguardando_confirmacao")
+          .gte("created_at", cutoffPend)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        if (pendRows && pendRows.length > 0) {
+          const marker = (pendRows[0] as any).error_message as string | null;
+          const tokMatch = marker?.match(/jarvis_token:([a-f0-9]{8})/i);
+          const token = tokMatch?.[1];
+          if (token) {
+            const formato = formatoFromPendingMarker(marker);
+            const midiaTipo = midiaTipoFromPendingMarker(marker);
+            const redes = [...new Set(pendRows.map((r: any) => r.platform))].join(", ");
+            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO CONFIRMAÇÃO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- ⚡ Se o dono mandar QUALQUER comando de publicar em linguagem natural ("publica", "posta", "manda", "pode publicar", "pode postar", "vai", "confirma", "manda no reels", "posta no story", "sim"), chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}". NÃO chame postar_midia_biblioteca de novo — o post já está preparado, só falta confirmar.\n- Se o dono pedir mudança clara (trocar rede, mudar formato, refazer legenda), aí sim recrie via postar_midia_biblioteca.`;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[pietro][video_ctx_or_pending] falhou:", (e as Error).message);
+    }
+
+    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
