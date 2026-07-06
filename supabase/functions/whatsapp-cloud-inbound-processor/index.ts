@@ -2747,11 +2747,12 @@ async function toolPostarMidiaBiblioteca(
       midia_tipo: isVideo ? ("video" as const) : ("foto" as const),
     };
 
-    // Para vídeo, usamos legenda do dono como caption (não geramos por IA — sem visão).
-    // Para foto, mantém comportamento atual (gerar script por IA).
+    // Foto E vídeo: gerar script vendedor por IA usando o contexto do dono como INSUMO
+    // (não como legenda final). Vídeo sem visão automática usa apenas o contexto textual;
+    // foto usa contexto + descrição visual. Isso restaura a copy rica pro vídeo sem reabrir
+    // o loop de contexto (contexto já está persistido em midias_whatsapp.contexto_original).
     const scriptsEntries = await Promise.all(
       redes.map(async (r) => {
-        if (isVideo) return [r, legendaDono] as const;
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
         return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen)] as const;
       }),
