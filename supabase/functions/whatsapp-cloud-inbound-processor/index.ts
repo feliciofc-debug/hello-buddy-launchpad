@@ -4137,7 +4137,16 @@ async function processOne(queueId: string) {
         const texto = (userText || "").trim();
         // Evita gravar comandos puros de publicação como legenda.
         const ehComandoPublicar = /^(publica[rl]?|posta[rl]?|manda|pode postar|pode publicar|confirma|confirmar|ok|sim)\b/i.test(texto);
-        if (v0 && semLegendaDono && !ehComandoPublicar && texto.length >= 3 && texto.length <= 400) {
+        // Guard extra: se já há post pendente (últ 10 min), o texto do dono é ajuste/confirmação — NÃO virar contexto.
+        const { data: pendCheck } = await sb
+          .from("social_posts_queue")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("status", "aguardando_confirmacao")
+          .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+          .limit(1);
+        const temPending = (pendCheck?.length ?? 0) > 0;
+        if (v0 && semLegendaDono && !ehComandoPublicar && !temPending && texto.length >= 3 && texto.length <= 400) {
           await sb
             .from("midias_whatsapp")
             .update({ contexto_original: contextoAtual ? `${texto}\n\n${contextoAtual}` : texto })
