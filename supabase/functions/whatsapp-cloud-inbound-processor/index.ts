@@ -1784,14 +1784,33 @@ async function descreverImagemVisao(imageUrl: string): Promise<string> {
 
 
 
+// Pitch fixo da AMZ pra usar quando o post é sobre a MARCA (logo, institucional, arte da empresa).
+// Evita alucinação de "produto físico" e força a copy a falar das tecnologias reais da plataforma.
+const AMZ_BRAND_PITCH = `AMZ OFERTAS — Plataforma completa de atendimento inteligente + marketing automatizado com IA pra PMEs brasileiras.
+TECNOLOGIAS/ENTREGAS REAIS (use só o que couber, não invente):
+• WhatsApp Business API oficial com atendente IA 24/7 personalizado (Pietro/Jarvis) — fecha venda, tira dúvida, agenda, cobra.
+• Geração de conteúdo com IA: posts, Reels, Stories, carrosséis, imagens fotorrealistas com logo embutida.
+• Publicação automática em Instagram, Facebook e TikTok — direto do WhatsApp: manda foto + contexto, o Pietro monta a copy e posta.
+• Autopilot: agenda e publica 24/7 sem intervenção manual.
+• Catálogo de produtos com importação automática (Shopee, Amazon, Mercado Livre, Magalu).
+• CRM + Pipeline Kanban + multi-usuário + cobrança PIX recorrente + analytics em tempo real.
+• Marketplace público amzofertas.com.br/marketplace.
+• Multi-tenant com white-label pra agências.
+• LGPD compliant, backup diário, suporte direto com o fundador.
+DIFERENCIAIS: IA própria (não depende só de OpenAI), atendimento IA + marketing IA na MESMA plataforma, implantação sem time técnico.
+PLANO: R$ 597/mês (fundador) — trial mediante contato. Agência (white-label): negociação caso a caso.
+CTA padrão: "Chama no WhatsApp (21) 99537-9550 pra testar" ou "Agenda uma demo".`;
+
 // =========================================================
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
+
 async function gerarScriptRedesSociais(
-  produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null },
+  produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
   tom: string,
   rede: "facebook" | "instagram",
   ajuste?: string,
+  brandContext?: string,
 ): Promise<string> {
   const tomLabel = (tom || "urgencia").toLowerCase();
   const guia: Record<string, string> = {
@@ -1824,7 +1843,8 @@ REGRAS:
 ${ctaRegra}
 - 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
 - NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.
-${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique EXATAMENTE, mantendo o resto do post coerente): "${ajuste}"` : ""}`;
+${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique EXATAMENTE, mantendo o resto do post coerente): "${ajuste}"` : ""}
+${brandContext ? `\n🏢 CONTEXTO DA MARCA (use como BASE do post — a imagem/vídeo é da MARCA, não de um produto físico):\n${brandContext}\n\nEscreva o post FALANDO DAS TECNOLOGIAS E BENEFÍCIOS reais listados acima. NÃO invente "produto físico", NÃO use "maleta", "kit", "unidades", "estoque limitado" — é uma EMPRESA DE TECNOLOGIA. Foco em: o que a plataforma FAZ, quem ATENDE (PMEs), e o RESULTADO pro cliente (mais vendas, menos trabalho manual, IA 24/7). CTA de conversão: agendar demo, falar no WhatsApp, testar a plataforma.` : ""}`;
 
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -2386,8 +2406,9 @@ function formatSocialPostToolResult(raw: string): string {
       .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
       .join("\n\n");
     const avisoReels = data?.aviso_reels ? `\n\n_ℹ️ ${data.aviso_reels}_` : "";
-    // <<SPLIT>> marca quebra em MENSAGENS separadas no WhatsApp — o Felicio pediu o comando de confirmação isolado pra copiar/colar só o post.
-    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>pode postar ${data.token}`;
+    // 3 balões separados no WhatsApp: (1) preview, (2) convite de edição, (3) comando de confirmação isolado.
+    const convite = `Quer ajustar algo antes de postar? Me diga o que mudar (ex: "mais curto", "foca nas tecnologias da AMZ", "tira o ACABA HOJE", "muda o tom pra profissional"). Se estiver bom, responde:`;
+    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>${convite}<<SPLIT>>pode postar ${data.token}`;
   }
 
   if (data?.status === "publicado") {
@@ -2568,10 +2589,15 @@ async function toolRevisarPostPendente(
   }
 
   const tom = p.tom || "urgencia";
+  // Mantém o brand context nas revisões quando é conteúdo da marca AMZ.
+  const ctxLower = `${produtoLike?.nome || ""} ${produtoLike?.descricao || ""}`.toLowerCase();
+  const isBrandContent = /\bamz\s*ofertas\b|\bamz\b|amzofertas|\blogo\s*(da|do)?\s*(amz|empresa|marca)?\b|institucional|nossa\s+plataforma/i.test(ctxLower)
+    || produtoLike?.source === "midias_whatsapp";
+  const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
   const scriptsEntries = await Promise.all(
     p.redes.map(async (r) => {
       const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-      return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste)] as const;
+      return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
     }),
   );
   const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
@@ -2839,10 +2865,20 @@ async function toolPostarMidiaBiblioteca(
     // (não como legenda final). Vídeo sem visão automática usa apenas o contexto textual;
     // foto usa contexto + descrição visual. Isso restaura a copy rica pro vídeo sem reabrir
     // o loop de contexto (contexto já está persistido em midias_whatsapp.contexto_original).
+    // Detecta se a mídia é da MARCA AMZ (logo/institucional) — quando o contexto/descrição
+    // menciona AMZ, amzofertas, "logo", ou está vazio (dono só mandou a arte). Nesse caso
+    // injeta o brand context pro script falar das TECNOLOGIAS reais da plataforma, não
+    // alucinar produto físico ("maleta", "kit", "estoque").
+    const contextoLower = `${legendaDono} ${descricaoVisual}`.toLowerCase();
+    const isBrandContent = /\bamz\s*ofertas\b|\bamz\b|amzofertas|\blogo\s*(da|do)?\s*(amz|empresa|marca)?\b|institucional|nossa\s+plataforma/i.test(contextoLower)
+      || (!legendaDono.trim() && (!descricaoVisual || descricaoVisual.length < 40));
+    const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
+    if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
+
     const scriptsEntries = await Promise.all(
       redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen)] as const;
+        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
       }),
     );
     const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
