@@ -2571,10 +2571,15 @@ async function toolRevisarPostPendente(
   }
 
   const tom = p.tom || "urgencia";
+  // Mantém o brand context nas revisões quando é conteúdo da marca AMZ.
+  const ctxLower = `${produtoLike?.nome || ""} ${produtoLike?.descricao || ""}`.toLowerCase();
+  const isBrandContent = /\bamz\s*ofertas\b|\bamz\b|amzofertas|\blogo\s*(da|do)?\s*(amz|empresa|marca)?\b|institucional|nossa\s+plataforma/i.test(ctxLower)
+    || produtoLike?.source === "midias_whatsapp";
+  const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
   const scriptsEntries = await Promise.all(
     p.redes.map(async (r) => {
       const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-      return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste)] as const;
+      return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
     }),
   );
   const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
