@@ -1825,7 +1825,8 @@ REGRAS:
 ${ctaRegra}
 - 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
 - NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.
-${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique EXATAMENTE, mantendo o resto do post coerente): "${ajuste}"` : ""}`;
+${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique EXATAMENTE, mantendo o resto do post coerente): "${ajuste}"` : ""}
+${brandContext ? `\n🏢 CONTEXTO DA MARCA (use como BASE do post — a imagem/vídeo é da MARCA, não de um produto físico):\n${brandContext}\n\nEscreva o post FALANDO DAS TECNOLOGIAS E BENEFÍCIOS reais listados acima. NÃO invente "produto físico", NÃO use "maleta", "kit", "unidades", "estoque limitado" — é uma EMPRESA DE TECNOLOGIA. Foco em: o que a plataforma FAZ, quem ATENDE (PMEs), e o RESULTADO pro cliente (mais vendas, menos trabalho manual, IA 24/7). CTA de conversão: agendar demo, falar no WhatsApp, testar a plataforma.` : ""}`;
 
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
