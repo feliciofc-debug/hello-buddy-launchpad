@@ -1791,6 +1791,7 @@ async function gerarScriptRedesSociais(
   produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null },
   tom: string,
   rede: "facebook" | "instagram",
+  ajuste?: string,
 ): Promise<string> {
   const tomLabel = (tom || "urgencia").toLowerCase();
   const guia: Record<string, string> = {
