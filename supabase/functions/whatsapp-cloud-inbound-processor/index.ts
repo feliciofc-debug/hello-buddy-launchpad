@@ -3715,6 +3715,72 @@ async function logOwnerHeadsup(userId: string, content: string, wamid?: string |
     .eq("id", conversationId);
 }
 
+async function findCommercialContactByPhone(userId: string, phone: string): Promise<any | null> {
+  const fromDigits = normalizePhoneBR(phone);
+  const fromTail10 = fromDigits.slice(-10);
+  const fromTail8 = fromDigits.slice(-8);
+  if (!fromTail8) return null;
+
+  const { data, error } = await sb
+    .from("contatos_comerciais")
+    .select("nome, empresa, cargo, tipo_relacionamento, contexto, proximos_passos, permite_jarvis_contatar, tags, whatsapp")
+    .eq("user_id", userId)
+    .eq("ativo", true);
+
+  if (error) {
+    console.warn("[processor][commercial-contact-lookup] falhou:", error.message);
+    return null;
+  }
+
+  return (data ?? []).find((c: any) => {
+    const cd = normalizePhoneBR(c.whatsapp || "");
+    if (!cd) return false;
+    return cd === fromDigits || cd.slice(-10) === fromTail10 || cd.slice(-8) === fromTail8;
+  }) ?? null;
+}
+
+async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
+  const audio = media.find((m) => m.kind === "audio");
+  if (!audio?.base64) return "";
+
+  const content = buildUserContent(
+    "Transcreva literalmente este áudio de WhatsApp em português do Brasil. Responda somente com a transcrição, sem comentários.",
+    [audio],
+  );
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${LOVABLE_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: escolherModelo({ kind: "multimodal" }),
+      temperature: 0,
+      messages: [
+        { role: "system", content: "Você é um transcritor de áudios de WhatsApp. Nunca invente; se não entender, retorne exatamente: [áudio não compreendido]." },
+        { role: "user", content },
+      ],
+    }),
+  });
+  const txt = await res.text();
+  if (!res.ok) throw new Error(`audio transcript ${res.status}: ${txt.slice(0, 200)}`);
+  try {
+    const json = JSON.parse(txt);
+    return String(json?.choices?.[0]?.message?.content || "").trim();
+  } catch {
+    return txt.trim();
+  }
+}
+
+function confirmationNoticeFromReply(match: any, text: string, source: "texto" | "audio"): string | null {
+  const intent = classifyCommercialReply(text);
+  if (intent !== "confirmacao" && intent !== "remarcar") return null;
+  const badge = intent === "confirmacao" ? "✅ CONFIRMAÇÃO" : "⚠️ PRECISA REMARCAR";
+  const preview = text.trim().replace(/\s+/g, " ").slice(0, 500);
+  const primeiro = String(match?.nome || "contato").split(/\s+/)[0] || "contato";
+  return `${badge} — *${match?.nome || "Contato comercial"}*${match?.empresa ? ` (${match.empresa})` : ""} respondeu por ${source} sobre a reunião.\n\n"${preview}"\n\n_Pra responder é só me pedir aqui: "responde pro ${primeiro}: ..."_`;
+}
+
 async function notifyOwnerAboutCommercialReply(params: {
   userId: string;
   fromNumber: string;
@@ -3756,6 +3822,95 @@ async function notifyOwnerAboutCommercialReply(params: {
   const sentId = await sendWhatsApp(userId, OWNER_PHONE, heads);
   await logOwnerHeadsup(userId, heads, sentId);
   console.log(`[processor][headsup-owner] enviado (${badge}) para dono sobre ${match.nome}`);
+}
+
+async function notifyOwnerDeterministic(params: {
+  userId: string;
+  fromNumber: string;
+  match: any;
+  text: string;
+  messageType?: string | null;
+  source: "texto" | "audio";
+}): Promise<boolean> {
+  const clean = (params.text || "").trim().replace(/\s+/g, " ");
+  if (!clean || params.fromNumber === OWNER_PHONE) return false;
+  const notice = confirmationNoticeFromReply(params.match, clean, params.source);
+  if (!notice) return false;
+
+  const sigTag = `[jarvis-headsup:${params.match?.nome || "contato"}:${shortStableHash(`${params.fromNumber}|deterministic|${params.messageType || params.source}|${clean}`)}]`;
+  const cutoffNotif = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: recentOwnerMsgs } = await sb
+    .from("whatsapp_cloud_messages")
+    .select("content, created_at")
+    .eq("user_id", params.userId)
+    .eq("direction", "outbound")
+    .gte("created_at", cutoffNotif)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const jaNotificou = (recentOwnerMsgs ?? []).some((m: any) => String(m.content || "").includes(sigTag));
+  if (jaNotificou) return true;
+
+  const content = `${notice}\n${sigTag}`;
+  const sentId = await sendWhatsApp(params.userId, OWNER_PHONE, content);
+  await logOwnerHeadsup(params.userId, content, sentId);
+  console.log(`[processor][headsup-owner-deterministic] enviado para dono sobre ${params.match?.nome || params.fromNumber}`);
+  return true;
+}
+
+function isOwnerAskingCommercialReplyStatus(text: string): boolean {
+  const low = normalizeContactLookupText(text);
+  return /\b(respondeu|resposta|retorno|confirmou|confirmado|ok|deu ok|falou|mandou|reuniao|reuniao)\b/.test(low);
+}
+
+async function answerOwnerCommercialStatus(userId: string, text: string): Promise<string | null> {
+  if (!isOwnerAskingCommercialReplyStatus(text)) return null;
+  const contato = await inferContatoComercialFromText(text, userId);
+  if (!contato?.whatsapp) return null;
+
+  const targetDigits = normalizePhoneBR(contato.whatsapp);
+  const targetTail10 = targetDigits.slice(-10);
+  const targetTail8 = targetDigits.slice(-8);
+  const { data: convs } = await sb
+    .from("whatsapp_cloud_conversations")
+    .select("id, contact_number")
+    .eq("user_id", userId)
+    .order("last_message_at", { ascending: false })
+    .limit(500);
+  const contactConv = (convs ?? []).find((c: any) => {
+    const cd = normalizePhoneBR(c.contact_number || "");
+    return cd === targetDigits || cd.slice(-10) === targetTail10 || cd.slice(-8) === targetTail8;
+  });
+  if (!contactConv?.id) return `Ainda não encontrei conversa recente do ${contato.nome} no WhatsApp.`;
+
+  const { data: msgs } = await sb
+    .from("whatsapp_cloud_messages")
+    .select("direction, content, message_type, created_at")
+    .eq("conversation_id", contactConv.id)
+    .order("created_at", { ascending: false })
+    .limit(12);
+
+  const inbound = (msgs ?? []).find((m: any) => m.direction === "inbound");
+  if (!inbound) return `Ainda não identifiquei resposta do ${contato.nome}. Assim que ele responder, eu te aviso.`;
+
+  const afterInboundAssistant = (msgs ?? [])
+    .filter((m: any) => m.direction === "outbound" && new Date(m.created_at).getTime() >= new Date(inbound.created_at).getTime())
+    .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+  const evidence = `${inbound.content || ""}\n${afterInboundAssistant?.content || ""}`;
+  const intent = classifyCommercialReply(evidence);
+  const when = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(inbound.created_at));
+  const preview = String(inbound.content || "").replace(/^🎙️\s*Áudio transcrito:\s*/i, "").replace(/\s+/g, " ").slice(0, 420);
+  const assistantUnderstanding = String(afterInboundAssistant?.content || "").replace(/\s+/g, " ").slice(0, 420);
+
+  if (intent === "confirmacao") {
+    return `Sim, chefe — o ${contato.nome} respondeu e a reunião está confirmada.\n\nResposta (${when}): ${preview || "áudio recebido"}${assistantUnderstanding ? `\n\nEntendimento do Jarvis: ${assistantUnderstanding}` : ""}`;
+  }
+  if (intent === "remarcar") {
+    return `O ${contato.nome} respondeu (${when}), mas parece que precisa remarcar.\n\nResposta: ${preview || "áudio recebido"}${assistantUnderstanding ? `\n\nEntendimento do Jarvis: ${assistantUnderstanding}` : ""}`;
+  }
+  return `Sim, chefe — o ${contato.nome} respondeu (${when}).\n\nResposta: ${preview || "áudio recebido"}${assistantUnderstanding ? `\n\nEntendimento do Jarvis: ${assistantUnderstanding}` : ""}`;
 }
 
 async function processOne(queueId: string) {
@@ -3852,6 +4007,7 @@ async function processOne(queueId: string) {
     }
 
     const userText = extractText(row.payload);
+    let commercialContactForOwner: any = null;
     let inboundContent = userText || `(${row.message_type ?? "mídia"} sem legenda)`;
     const directNearbySearch = row.message_type === "text" ? detectNearbySearch(userText) : null;
 
@@ -3913,6 +4069,42 @@ async function processOne(queueId: string) {
         return { ok: true, amz_access: "stranger" };
       }
       amzContextBlock = amzCtx.block;
+    }
+
+    if (row.from_number === OWNER_PHONE && row.message_type === "text" && userText.trim()) {
+      const statusReply = await answerOwnerCommercialStatus(userId, userText);
+      if (statusReply) {
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: statusReply,
+            message_type: "text",
+          })
+          .select("id")
+          .single();
+
+        let sendError: string | null = null;
+        try {
+          const sentId = await sendWhatsApp(userId, row.from_number, statusReply);
+          if (sentId && outMsg?.id) {
+            await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+          }
+        } catch (e) {
+          sendError = String((e as Error).message ?? e);
+        }
+
+        await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+        if (sendError) {
+          await failQueue(row.id, `send_failed: ${sendError}`);
+          return { ok: false, reason: "send_failed", error: sendError };
+        }
+        await doneQueue(row.id);
+        return { ok: true, commercial_status_checked: true, reply_preview: statusReply.slice(0, 120) };
+      }
     }
 
     // Atalho determinístico: pedidos explícitos de lugar próximo não dependem da IA chamar tool.
@@ -4022,6 +4214,33 @@ async function processOne(queueId: string) {
     if (waAccessToken && ["image", "audio", "video", "document"].includes(row.message_type ?? "")) {
       media = await downloadAllMedia(row.payload, waAccessToken);
       console.log(`[processor] media baixadas: ${media.length}`);
+    }
+
+    if (row.from_number !== OWNER_PHONE && row.message_type === "audio") {
+      commercialContactForOwner = await findCommercialContactByPhone(userId, row.from_number);
+      if (commercialContactForOwner && media.some((m) => m.kind === "audio")) {
+        try {
+          const transcript = await transcribeAudioMedia(media);
+          if (transcript) {
+            inboundContent = `🎙️ Áudio transcrito: ${transcript}`;
+            await sb
+              .from("whatsapp_cloud_messages")
+              .update({ content: inboundContent })
+              .eq("conversation_id", conv.id)
+              .eq("wamid", row.wamid);
+            await notifyOwnerDeterministic({
+              userId,
+              fromNumber: row.from_number,
+              match: commercialContactForOwner,
+              text: transcript,
+              messageType: row.message_type,
+              source: "audio",
+            });
+          }
+        } catch (e) {
+          console.warn("[processor][audio-transcribe-headsup] falhou:", (e as Error).message);
+        }
+      }
     }
 
     // Regra determinística: foto/vídeo enviado no WhatsApp vira mídia livre em /midias.
@@ -4190,21 +4409,8 @@ async function processOne(queueId: string) {
     // PASSO 6.9 — Memória por contato (read-only): se o número está em
     // contatos_comerciais, injeta contexto pra Jarvis personalizar a resposta.
     let contactMemoryBlock = "";
-    let commercialContactForOwner: any = null;
     try {
-      const fromDigits = normalizePhoneBR(row.from_number);
-      const fromTail = fromDigits.slice(-10); // DDD+8 (ignora 9º dígito e 55)
-      if (fromTail.length >= 8) {
-        const { data: contatos } = await sb
-          .from("contatos_comerciais")
-          .select("nome, empresa, tipo_relacionamento, contexto, proximos_passos, permite_jarvis_contatar, tags, whatsapp")
-          .eq("user_id", userId)
-          .eq("ativo", true);
-        const match = (contatos ?? []).find((c: any) => {
-          const cd = normalizePhoneBR(c.whatsapp || "");
-          if (!cd) return false;
-          return cd === fromDigits || cd.slice(-10) === fromTail || cd.slice(-8) === fromTail.slice(-8);
-        });
+      const match = commercialContactForOwner ?? await findCommercialContactByPhone(userId, row.from_number);
         if (match) {
           commercialContactForOwner = match;
           const { data: recentMsgs } = await sb
@@ -4249,7 +4455,6 @@ async function processOne(queueId: string) {
             console.warn("[processor][headsup-owner] falhou:", (e as Error).message);
           }
         }
-      }
     } catch (e) {
       console.warn("[processor][contact-memory] falhou:", (e as Error).message);
     }
@@ -4398,7 +4603,15 @@ async function processOne(queueId: string) {
     // e produziu uma resposta, usa esse entendimento para avisar o dono também.
     if (commercialContactForOwner && !userText.trim() && media.some((m) => m.kind === "audio")) {
       try {
-        await notifyOwnerAboutCommercialReply({
+        const deterministicSent = await notifyOwnerDeterministic({
+          userId,
+          fromNumber: row.from_number,
+          match: commercialContactForOwner,
+          text: reply,
+          messageType: row.message_type,
+          source: "audio",
+        });
+        if (!deterministicSent) await notifyOwnerAboutCommercialReply({
           userId,
           fromNumber: row.from_number,
           match: commercialContactForOwner,
