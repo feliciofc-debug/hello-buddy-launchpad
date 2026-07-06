@@ -1788,10 +1788,11 @@ async function descreverImagemVisao(imageUrl: string): Promise<string> {
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
 async function gerarScriptRedesSociais(
-  produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null },
+  produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
   tom: string,
   rede: "facebook" | "instagram",
   ajuste?: string,
+  brandContext?: string,
 ): Promise<string> {
   const tomLabel = (tom || "urgencia").toLowerCase();
   const guia: Record<string, string> = {
