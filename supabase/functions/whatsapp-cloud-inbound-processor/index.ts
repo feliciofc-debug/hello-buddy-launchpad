@@ -2520,6 +2520,92 @@ async function toolConfirmarPostagemRedes(
 }
 
 
+// ---- revisar_post_pendente: regenera o script com um ajuste solicitado pelo dono, MANTENDO token/mídia/formato ----
+async function toolRevisarPostPendente(
+  args: { token: string; ajuste: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  pendingCleanup();
+  const token = (args?.token || "").trim().toLowerCase();
+  const ajuste = (args?.ajuste || "").toString().trim();
+  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  if (ajuste.length < 2) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
+
+  const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
+  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
+  if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
+
+  // Reconstroi produtoLike com descrição/contexto atual — não repergunta contexto.
+  let produtoLike: any = { ...p.produto };
+  const source = p.produto?.source;
+  try {
+    if (source === "midias_whatsapp" && p.produto?.id) {
+      const { data: midia } = await sb.from("midias_whatsapp").select("id, tipo, midia_url, contexto_original").eq("id", p.produto.id).single();
+      if (midia) {
+        const contextoRaw = (midia.contexto_original || "").toString();
+        const mVisao = contextoRaw.match(/\[visão\]\s*([\s\S]+)/i);
+        const descricaoVisual = mVisao ? mVisao[1].trim() : "";
+        const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
+        const isVideo = midia.tipo === "video";
+        const descricaoFinal = isVideo
+          ? contextoUsuario
+          : [contextoUsuario, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+        produtoLike = {
+          ...produtoLike,
+          nome: p.produto.nome,
+          descricao: descricaoFinal || null,
+          imagem_url: midia.midia_url,
+          midia_tipo: isVideo ? "video" : "foto",
+        };
+      }
+    } else if (source === "produtos" && p.produto?.id) {
+      const { data: prod } = await sb.from("produtos").select("*").eq("id", p.produto.id).single();
+      if (prod) produtoLike = { ...prod, source: "produtos" };
+    }
+  } catch (e) {
+    console.warn("[revisar_post] reload produto falhou:", (e as Error).message);
+  }
+
+  const tom = p.tom || "urgencia";
+  const scriptsEntries = await Promise.all(
+    p.redes.map(async (r) => {
+      const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+      return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste)] as const;
+    }),
+  );
+  const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+  // Atualiza social_posts_queue (mantém error_message/marker/token e status intactos).
+  if (p.queueRows?.length) {
+    await Promise.all(p.queueRows.map((row) => {
+      const novo = scripts[row.platform];
+      if (!novo) return Promise.resolve();
+      return sb.from("social_posts_queue")
+        .update({ post_text: novo, updated_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }));
+  }
+
+  // Atualiza cache em memória.
+  const atualizado: PendingSocialPost = { ...p, scripts };
+  PENDING_POSTS.set(token, atualizado);
+
+  return JSON.stringify({
+    status: "aguardando_confirmacao",
+    revisado: true,
+    token,
+    formato: p.formato || "feed",
+    redes: p.redes,
+    preview: scripts,
+    instrucoes: `Mostre o script REVISADO ao dono e pergunte "quer mais algum ajuste ou pode postar?". Se pedir novo ajuste, chame revisar_post_pendente de novo com o MESMO token="${token}". Se confirmar, chame confirmar_postagem_redes com token="${token}".`,
+  });
+}
+
+
+
+
+
 // ---- salvar_midia_biblioteca: pega a mídia enviada pelo cliente (foto/vídeo/áudio) e salva na biblioteca de Mídias ----
 async function salvarItemMidiaBiblioteca(
   media: MediaExtract,
