@@ -3661,6 +3661,103 @@ async function sendWhatsApp(user_id: string, to: string, message: string, imageU
   }
 }
 
+function shortStableHash(raw: string): string {
+  let h = 0;
+  for (let i = 0; i < raw.length; i += 1) h = Math.imul(31, h) + raw.charCodeAt(i) | 0;
+  return Math.abs(h).toString(36).slice(0, 8) || "0";
+}
+
+function classifyCommercialReply(raw: string): "confirmacao" | "remarcar" | "resposta" {
+  const low = normalizeContactLookupText(raw);
+  const isConfirma = /\b(confirm[a-z]*|pode ser|beleza|tudo certo|combinado|ok|okay|sim|fechado|ta bom|ta ok|perfeito|show|topo|combinamos|ate amanha|ate la|estarei|vou sim)\b/.test(low);
+  if (isConfirma) return "confirmacao";
+  const isRecusa = /\b(nao posso|nao vai dar|remarcar|desmarcar|adiar|outro dia|outro horario|imprevisto|cancelar)\b/.test(low);
+  if (isRecusa) return "remarcar";
+  return "resposta";
+}
+
+async function logOwnerHeadsup(userId: string, content: string, wamid?: string | null) {
+  const { data: existing } = await sb
+    .from("whatsapp_cloud_conversations")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("contact_number", OWNER_PHONE)
+    .maybeSingle();
+
+  let conversationId = existing?.id;
+  if (!conversationId) {
+    const { data: created } = await sb
+      .from("whatsapp_cloud_conversations")
+      .insert({
+        user_id: userId,
+        contact_number: OWNER_PHONE,
+        contact_name: "Felicio Carega",
+        status: "active",
+        last_message_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    conversationId = created?.id;
+  }
+
+  if (!conversationId) return;
+  await sb.from("whatsapp_cloud_messages").insert({
+    conversation_id: conversationId,
+    user_id: userId,
+    direction: "outbound",
+    sender: "agent",
+    content,
+    message_type: "text",
+    wamid: wamid ?? null,
+  });
+  await sb.from("whatsapp_cloud_conversations")
+    .update({ last_message_at: new Date().toISOString() })
+    .eq("id", conversationId);
+}
+
+async function notifyOwnerAboutCommercialReply(params: {
+  userId: string;
+  fromNumber: string;
+  match: any;
+  inboundText?: string;
+  aiSummaryText?: string;
+  messageType?: string | null;
+}) {
+  const { userId, fromNumber, match } = params;
+  if (!match || fromNumber === OWNER_PHONE) return;
+
+  const inbound = (params.inboundText || "").trim().replace(/\s+/g, " ");
+  const aiSummary = (params.aiSummaryText || "").trim().replace(/\s+/g, " ");
+  const basis = inbound || aiSummary || String(params.messageType || "mensagem");
+  if (!basis) return;
+
+  const intent = classifyCommercialReply(`${inbound}\n${aiSummary}`);
+  const badge = intent === "confirmacao" ? "✅ CONFIRMAÇÃO" : intent === "remarcar" ? "⚠️ PRECISA REMARCAR" : "📩 RESPOSTA";
+  const sigTag = `[jarvis-headsup:${match.nome}:${shortStableHash(`${fromNumber}|${params.messageType || "text"}|${basis}`)}]`;
+
+  const cutoffNotif = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: recentOwnerMsgs } = await sb
+    .from("whatsapp_cloud_messages")
+    .select("content, created_at")
+    .eq("user_id", userId)
+    .eq("direction", "outbound")
+    .gte("created_at", cutoffNotif)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const jaNotificou = (recentOwnerMsgs ?? []).some((m: any) => String(m.content || "").includes(sigTag));
+  if (jaNotificou) return;
+
+  const primeiro = String(match.nome || "contato").split(/\s+/)[0];
+  const preview = inbound
+    ? `"${inbound.slice(0, 400)}"`
+    : `Áudio recebido. Resumo do Jarvis: ${aiSummary.slice(0, 420) || "sem resumo disponível"}`;
+  const heads = `${badge} — *${match.nome}*${match.empresa ? ` (${match.empresa})` : ""} respondeu no WhatsApp:\n\n${preview}\n\n_Pra responder é só me pedir aqui: "responde pro ${primeiro}: ..."_\n${sigTag}`;
+
+  const sentId = await sendWhatsApp(userId, OWNER_PHONE, heads);
+  await logOwnerHeadsup(userId, heads, sentId);
+  console.log(`[processor][headsup-owner] enviado (${badge}) para dono sobre ${match.nome}`);
+}
+
 async function processOne(queueId: string) {
   const { data: claimed, error: claimErr } = await sb
     .from("whatsapp_cloud_inbound_queue")
@@ -4093,6 +4190,7 @@ async function processOne(queueId: string) {
     // PASSO 6.9 — Memória por contato (read-only): se o número está em
     // contatos_comerciais, injeta contexto pra Jarvis personalizar a resposta.
     let contactMemoryBlock = "";
+    let commercialContactForOwner: any = null;
     try {
       const fromDigits = normalizePhoneBR(row.from_number);
       const fromTail = fromDigits.slice(-10); // DDD+8 (ignora 9º dígito e 55)
@@ -4108,6 +4206,7 @@ async function processOne(queueId: string) {
           return cd === fromDigits || cd.slice(-10) === fromTail || cd.slice(-8) === fromTail.slice(-8);
         });
         if (match) {
+          commercialContactForOwner = match;
           const { data: recentMsgs } = await sb
             .from("whatsapp_cloud_messages")
             .select("direction, content, created_at")
@@ -4144,30 +4243,7 @@ async function processOne(queueId: string) {
           // o dono recebe um resumo imediato no WhatsApp dele.
           try {
             if (row.from_number !== OWNER_PHONE && userText && userText.trim().length > 0) {
-              // Dedup: se já notificamos sobre este mesmo texto nos últimos 10 min, pula.
-              const cutoffNotif = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-              const sigTag = `[jarvis-headsup:${match.nome}]`;
-              const { data: recentOwnerMsgs } = await sb
-                .from("whatsapp_cloud_messages")
-                .select("content, created_at")
-                .eq("user_id", userId)
-                .eq("direction", "outbound")
-                .gte("created_at", cutoffNotif)
-                .order("created_at", { ascending: false })
-                .limit(20);
-              const jaNotificou = (recentOwnerMsgs ?? []).some((m: any) => String(m.content || "").includes(sigTag));
-              if (!jaNotificou) {
-                // Detecta intenção de confirmação/recusa pra dar destaque
-                const low = userText.toLowerCase();
-                const isConfirma = /\b(confirm|confirmo|confirmado|pode ser|beleza|tudo certo|combinado|ok(?!\w)|okay|fechado|tá bom|tá ok|perfeito|show|topo|combinamos|até (amanhã|lá|hoje))\b/.test(low);
-                const isRecusa = /\b(não posso|nao posso|não vai dar|nao vai dar|remarcar|desmarcar|adiar|outro dia|outro horário|outro horario)\b/.test(low);
-                const badge = isConfirma ? "✅ CONFIRMAÇÃO" : isRecusa ? "⚠️ PRECISA REMARCAR" : "📩 RESPOSTA";
-                const preview = userText.trim().replace(/\s+/g, " ").slice(0, 400);
-                const primeiro = String(match.nome || "contato").split(/\s+/)[0];
-                const heads = `${badge} — *${match.nome}*${match.empresa ? ` (${match.empresa})` : ""} respondeu no WhatsApp:\n\n"${preview}"\n\n_Pra responder é só me pedir aqui: "responde pro ${primeiro}: ..."_\n${sigTag}`;
-                await sendWhatsApp(userId, OWNER_PHONE, heads);
-                console.log(`[processor][headsup-owner] enviado (${badge}) para dono sobre ${match.nome}`);
-              }
+              await notifyOwnerAboutCommercialReply({ userId, fromNumber: row.from_number, match, inboundText: userText, messageType: row.message_type });
             }
           } catch (e) {
             console.warn("[processor][headsup-owner] falhou:", (e as Error).message);
@@ -4317,6 +4393,23 @@ async function processOne(queueId: string) {
     // PASSO 9 — IA (multimodal)
     const userContent = buildUserContent(userText, media);
     const { text: reply, imageUrl: generatedImageUrl } = await callGemini(systemPromptWithDate, history, userContent, media.length > 0, { userId, fromNumber: row.from_number, media });
+
+    // Se o contato comercial respondeu por áudio, userText vem vazio. Agora que a IA ouviu
+    // e produziu uma resposta, usa esse entendimento para avisar o dono também.
+    if (commercialContactForOwner && !userText.trim() && media.some((m) => m.kind === "audio")) {
+      try {
+        await notifyOwnerAboutCommercialReply({
+          userId,
+          fromNumber: row.from_number,
+          match: commercialContactForOwner,
+          inboundText: "",
+          aiSummaryText: reply,
+          messageType: row.message_type,
+        });
+      } catch (e) {
+        console.warn("[processor][headsup-owner-audio] falhou:", (e as Error).message);
+      }
+    }
 
     // Incrementa quota
     await sb
