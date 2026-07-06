@@ -3549,7 +3549,7 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
-        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais") captureSocialToken(result);
+        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente") captureSocialToken(result);
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
