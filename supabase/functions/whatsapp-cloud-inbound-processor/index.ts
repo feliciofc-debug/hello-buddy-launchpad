@@ -1942,6 +1942,8 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const scripts: Record<string, string> = {};
   for (const row of rows as any[]) scripts[row.platform] = row.post_text || "";
 
+  const midiaTipoReidratado = midiaTipoFromPendingMarker((rows[0] as any).error_message);
+
   return {
     produto: {
       id: (rows[0] as any).produto_id,
@@ -1949,13 +1951,15 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
       nome: productNameFromPendingMarker((rows[0] as any).error_message),
       imagem_url: (rows[0] as any).image_url,
       link: (rows[0] as any).link_url,
-    },
+      midia_tipo: midiaTipoReidratado,
+    } as any,
     tom: "urgencia",
     redes: (rows as any[]).map((r) => r.platform),
     scripts,
     userId,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
     formato: formatoFromPendingMarker((rows[0] as any).error_message),
+    midiaTipo: midiaTipoReidratado,
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
   };
 }
