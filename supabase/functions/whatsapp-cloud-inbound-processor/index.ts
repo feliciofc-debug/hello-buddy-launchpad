@@ -1791,6 +1791,7 @@ async function gerarScriptRedesSociais(
   produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null },
   tom: string,
   rede: "facebook" | "instagram",
+  ajuste?: string,
 ): Promise<string> {
   const tomLabel = (tom || "urgencia").toLowerCase();
   const guia: Record<string, string> = {
@@ -1822,7 +1823,8 @@ REGRAS:
 - 2-4 bullets de benefício.
 ${ctaRegra}
 - 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
-- NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.`;
+- NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.
+${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique EXATAMENTE, mantendo o resto do post coerente): "${ajuste}"` : ""}`;
 
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -2518,6 +2520,92 @@ async function toolConfirmarPostagemRedes(
 }
 
 
+// ---- revisar_post_pendente: regenera o script com um ajuste solicitado pelo dono, MANTENDO token/mídia/formato ----
+async function toolRevisarPostPendente(
+  args: { token: string; ajuste: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  pendingCleanup();
+  const token = (args?.token || "").trim().toLowerCase();
+  const ajuste = (args?.ajuste || "").toString().trim();
+  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  if (ajuste.length < 2) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
+
+  const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
+  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
+  if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
+
+  // Reconstroi produtoLike com descrição/contexto atual — não repergunta contexto.
+  let produtoLike: any = { ...p.produto };
+  const source = p.produto?.source;
+  try {
+    if (source === "midias_whatsapp" && p.produto?.id) {
+      const { data: midia } = await sb.from("midias_whatsapp").select("id, tipo, midia_url, contexto_original").eq("id", p.produto.id).single();
+      if (midia) {
+        const contextoRaw = (midia.contexto_original || "").toString();
+        const mVisao = contextoRaw.match(/\[visão\]\s*([\s\S]+)/i);
+        const descricaoVisual = mVisao ? mVisao[1].trim() : "";
+        const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
+        const isVideo = midia.tipo === "video";
+        const descricaoFinal = isVideo
+          ? contextoUsuario
+          : [contextoUsuario, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+        produtoLike = {
+          ...produtoLike,
+          nome: p.produto.nome,
+          descricao: descricaoFinal || null,
+          imagem_url: midia.midia_url,
+          midia_tipo: isVideo ? "video" : "foto",
+        };
+      }
+    } else if (source === "produtos" && p.produto?.id) {
+      const { data: prod } = await sb.from("produtos").select("*").eq("id", p.produto.id).single();
+      if (prod) produtoLike = { ...prod, source: "produtos" };
+    }
+  } catch (e) {
+    console.warn("[revisar_post] reload produto falhou:", (e as Error).message);
+  }
+
+  const tom = p.tom || "urgencia";
+  const scriptsEntries = await Promise.all(
+    p.redes.map(async (r) => {
+      const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+      return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste)] as const;
+    }),
+  );
+  const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+  // Atualiza social_posts_queue (mantém error_message/marker/token e status intactos).
+  if (p.queueRows?.length) {
+    await Promise.all(p.queueRows.map((row) => {
+      const novo = scripts[row.platform];
+      if (!novo) return Promise.resolve();
+      return sb.from("social_posts_queue")
+        .update({ post_text: novo, updated_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }));
+  }
+
+  // Atualiza cache em memória.
+  const atualizado: PendingSocialPost = { ...p, scripts };
+  PENDING_POSTS.set(token, atualizado);
+
+  return JSON.stringify({
+    status: "aguardando_confirmacao",
+    revisado: true,
+    token,
+    formato: p.formato || "feed",
+    redes: p.redes,
+    preview: scripts,
+    instrucoes: `Mostre o script REVISADO ao dono e pergunte "quer mais algum ajuste ou pode postar?". Se pedir novo ajuste, chame revisar_post_pendente de novo com o MESMO token="${token}". Se confirmar, chame confirmar_postagem_redes com token="${token}".`,
+  });
+}
+
+
+
+
+
 // ---- salvar_midia_biblioteca: pega a mídia enviada pelo cliente (foto/vídeo/áudio) e salva na biblioteca de Mídias ----
 async function salvarItemMidiaBiblioteca(
   media: MediaExtract,
@@ -2787,7 +2875,7 @@ async function toolPostarMidiaBiblioteca(
       preview: scripts,
       aviso_formato: avisoFormato,
       aviso_reels: avisoReels,
-      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
+      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e no final pergunte EXPLICITAMENTE: "Quer ajustar algo antes de postar? (ex: tirar/incluir informação, mudar preço, deixar mais curto, mudar o tom) Ou responde 'pode postar' pra publicar já." Se o dono pedir AJUSTE no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. Se confirmar ('pode postar', 'manda', 'vai'), chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -3104,6 +3192,21 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "revisar_post_pendente",
+      description: "🛠️ USE quando houver um POST PENDENTE (aguardando 'pode postar') e o dono pedir AJUSTES NO TEXTO/SCRIPT antes de publicar. Ex: 'tira o ACABA HOJE', 'põe o preço 89,90', 'deixa mais curto', 'muda o tom pra profissional', 'adiciona que tem garantia', 'refaz mais leve'. Regenera o script aplicando o ajuste e MANTÉM o mesmo token, mídia, formato e redes — só o texto muda. NÃO reabre pergunta de contexto. NÃO use pra confirmar (use confirmar_postagem_redes) nem pra trocar rede/formato/mídia (aí é recriar via postar_midia_biblioteca).",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Token de 8 chars do post pendente." },
+          ajuste: { type: "string", description: "Instrução literal do dono do que mudar no texto (ex: 'tira o preço e deixa mais curto')." },
+        },
+        required: ["token", "ajuste"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "salvar_midia_biblioteca",
       description: "🔴 USE SEMPRE E IMEDIATAMENTE quando o cliente ENVIAR foto, vídeo ou áudio nesta mensagem — mesmo sem legenda. É a ação PADRÃO pra qualquer mídia recebida. Salva o arquivo na biblioteca de Mídias (/midias) da plataforma pra ele publicar/reusar depois. NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes — só arquiva e confirma. Passe em 'contexto' o que o cliente falou junto, ou string vazia se não falou nada.",
       parameters: {
@@ -3225,6 +3328,7 @@ async function runTool(
   if (name === "resumo_plataforma") return { result: await toolResumoPlataforma(ctx) };
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
+  if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
@@ -3445,7 +3549,7 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
-        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais") captureSocialToken(result);
+        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente") captureSocialToken(result);
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
@@ -4033,7 +4137,16 @@ async function processOne(queueId: string) {
         const texto = (userText || "").trim();
         // Evita gravar comandos puros de publicação como legenda.
         const ehComandoPublicar = /^(publica[rl]?|posta[rl]?|manda|pode postar|pode publicar|confirma|confirmar|ok|sim)\b/i.test(texto);
-        if (v0 && semLegendaDono && !ehComandoPublicar && texto.length >= 3 && texto.length <= 400) {
+        // Guard extra: se já há post pendente (últ 10 min), o texto do dono é ajuste/confirmação — NÃO virar contexto.
+        const { data: pendCheck } = await sb
+          .from("social_posts_queue")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("status", "aguardando_confirmacao")
+          .gte("created_at", new Date(Date.now() - 10 * 60 * 1000).toISOString())
+          .limit(1);
+        const temPending = (pendCheck?.length ?? 0) > 0;
+        if (v0 && semLegendaDono && !ehComandoPublicar && !temPending && texto.length >= 3 && texto.length <= 400) {
           await sb
             .from("midias_whatsapp")
             .update({ contexto_original: contextoAtual ? `${texto}\n\n${contextoAtual}` : texto })
@@ -4062,7 +4175,7 @@ async function processOne(queueId: string) {
             const formato = formatoFromPendingMarker(marker);
             const midiaTipo = midiaTipoFromPendingMarker(marker);
             const redes = [...new Set(pendRows.map((r: any) => r.platform))].join(", ");
-            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO CONFIRMAÇÃO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- ⚡ Se o dono mandar QUALQUER comando de publicar em linguagem natural ("publica", "posta", "manda", "pode publicar", "pode postar", "vai", "confirma", "manda no reels", "posta no story", "sim"), chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}". NÃO chame postar_midia_biblioteca de novo — o post já está preparado, só falta confirmar.\n- Se o dono pedir mudança clara (trocar rede, mudar formato, refazer legenda), aí sim recrie via postar_midia_biblioteca.`;
+            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO CONFIRMAÇÃO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n\nCOMO ROTEAR A PRÓXIMA MENSAGEM DO DONO:\n1. CONFIRMAÇÃO curta ("pode postar", "publica", "manda", "manda ver", "vai", "posta", "confirma", "sim", "ok", "tá bom, pode postar"): chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}".\n2. AJUSTE NO TEXTO/SCRIPT (qualquer instrução pra mudar copy: "tira o ACABA HOJE", "põe o preço 89,90", "deixa mais curto", "muda o tom pra profissional", "adiciona que tem garantia", "refaz mais leve", "tira o emoji", "coloca o CNPJ"): chame IMEDIATAMENTE revisar_post_pendente com token="${token}" e ajuste=<a instrução literal do dono>. NÃO recrie o post do zero, NÃO chame postar_midia_biblioteca, NÃO pergunte o contexto de novo (o contexto original já está salvo).\n3. MUDANÇA DE ESCOPO clara (trocar rede, mudar formato feed↔story↔reels, trocar de mídia): aí sim recrie via postar_midia_biblioteca.\n4. Ambíguo (ex: "tá bom, deixa mais curto"): trate como AJUSTE (regra 2) — só publique com confirmação explícita.\n- NÃO chame postar_midia_biblioteca só pra reformular texto — isso reabre loop de contexto e recria mídia. Use revisar_post_pendente.`;
           }
         }
       }
