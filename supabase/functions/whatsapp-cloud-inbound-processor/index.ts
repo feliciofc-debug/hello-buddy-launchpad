@@ -1867,8 +1867,13 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function pendingPostMarker(token: string, productName?: string, formato: "feed" | "story" | "reels" = "feed"): string {
-  return `jarvis_token:${token};formato:${formato};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
+function pendingPostMarker(
+  token: string,
+  productName?: string,
+  formato: "feed" | "story" | "reels" = "feed",
+  midiaTipo: "foto" | "video" = "foto",
+): string {
+  return `jarvis_token:${token};formato:${formato};midia:${midiaTipo};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
 }
 
 function productNameFromPendingMarker(marker?: string | null): string {
@@ -1878,6 +1883,11 @@ function productNameFromPendingMarker(marker?: string | null): string {
 function formatoFromPendingMarker(marker?: string | null): "feed" | "story" | "reels" {
   const m = marker?.match(/;formato:(feed|story|reels)/i);
   return (m?.[1]?.toLowerCase() as "feed" | "story" | "reels") || "feed";
+}
+
+function midiaTipoFromPendingMarker(marker?: string | null): "foto" | "video" {
+  const m = marker?.match(/;midia:(foto|video)/i);
+  return (m?.[1]?.toLowerCase() as "foto" | "video") || "foto";
 }
 
 async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
