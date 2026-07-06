@@ -1853,7 +1853,8 @@ type PendingSocialPost = {
   scripts: Record<string, string>;
   userId: string;
   createdAt: number;
-  formato?: "feed" | "story";
+  formato?: "feed" | "story" | "reels";
+  midiaTipo?: "foto" | "video";
   queueRows?: Array<{ id: string; platform: string }>;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
