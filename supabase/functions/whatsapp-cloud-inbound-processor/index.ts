@@ -2386,8 +2386,9 @@ function formatSocialPostToolResult(raw: string): string {
       .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
       .join("\n\n");
     const avisoReels = data?.aviso_reels ? `\n\n_ℹ️ ${data.aviso_reels}_` : "";
-    // <<SPLIT>> marca quebra em MENSAGENS separadas no WhatsApp — o Felicio pediu o comando de confirmação isolado pra copiar/colar só o post.
-    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>pode postar ${data.token}`;
+    // 3 balões separados no WhatsApp: (1) preview, (2) convite de edição, (3) comando de confirmação isolado.
+    const convite = `Quer ajustar algo antes de postar? Me diga o que mudar (ex: "mais curto", "foca nas tecnologias da AMZ", "tira o ACABA HOJE", "muda o tom pra profissional"). Se estiver bom, responde:`;
+    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>${convite}<<SPLIT>>pode postar ${data.token}`;
   }
 
   if (data?.status === "publicado") {
