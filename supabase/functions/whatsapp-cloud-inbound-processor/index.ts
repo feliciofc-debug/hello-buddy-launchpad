@@ -3098,16 +3098,16 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR (ou enviou logo antes) — mesmo que o texto atual não tenha mídia anexada. Ex: cliente manda foto de taças, depois escreve 'Jogo de 4 taças 29,99 para postar no face e insta'. Esta tool pega a ÚLTIMA mídia salva em /midias e gera o preview do post. ⛔ NÃO use postar_redes_sociais nesse caso — aquela é só pra produto do catálogo. Se o cliente informou nome/preço/legenda, passe nos parâmetros. FORMATO: se o dono disser 'story', 'stories', 'poste no story', 'coloca no story' → passe formato='story'. Se disser 'feed', 'no feed' ou NÃO especificar → passe formato='feed' (default). Nesta etapa story só funciona pra foto no Instagram.",
+      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo.",
       parameters: {
         type: "object",
         properties: {
-          legenda: { type: "string", description: "Texto/legenda que o cliente falou junto (ex: 'Jogo de 4 taças 29,99')." },
+          legenda: { type: "string", description: "Texto/legenda que o cliente falou junto." },
           nome: { type: "string", description: "Nome do produto/item, se informado." },
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
           redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
-          formato: { type: "string", enum: ["feed", "story"], description: "Formato do post. 'story' só suporta FOTO no Instagram nesta etapa; vídeo em story e story no Facebook entram nas próximas etapas. Default: 'feed'." },
+          formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
         },
       },
     },
