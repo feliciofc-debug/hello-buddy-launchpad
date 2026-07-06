@@ -4071,6 +4071,42 @@ async function processOne(queueId: string) {
       amzContextBlock = amzCtx.block;
     }
 
+    if (row.from_number === OWNER_PHONE && row.message_type === "text" && userText.trim()) {
+      const statusReply = await answerOwnerCommercialStatus(userId, userText);
+      if (statusReply) {
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: statusReply,
+            message_type: "text",
+          })
+          .select("id")
+          .single();
+
+        let sendError: string | null = null;
+        try {
+          const sentId = await sendWhatsApp(userId, row.from_number, statusReply);
+          if (sentId && outMsg?.id) {
+            await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+          }
+        } catch (e) {
+          sendError = String((e as Error).message ?? e);
+        }
+
+        await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+        if (sendError) {
+          await failQueue(row.id, `send_failed: ${sendError}`);
+          return { ok: false, reason: "send_failed", error: sendError };
+        }
+        await doneQueue(row.id);
+        return { ok: true, commercial_status_checked: true, reply_preview: statusReply.slice(0, 120) };
+      }
+    }
+
     // Atalho determinístico: pedidos explícitos de lugar próximo não dependem da IA chamar tool.
     // Isso evita respostas falsas de "permissão bloqueada" quando a localização já está salva.
     if (directNearbySearch && userId) {
