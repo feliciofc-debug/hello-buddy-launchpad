@@ -1302,16 +1302,34 @@ async function inferContatoComercialFromText(text: string, userId: string): Prom
     .select("*")
     .eq("user_id", userId)
     .eq("ativo", true)
-    .limit(80);
+    .order("nome", { ascending: true })
+    .limit(1000);
 
-  const matches = (data ?? []).filter((c: any) => {
+  const compactHaystack = haystack.trim();
+  const intro = compactHaystack.slice(0, 120);
+
+  const matches = (data ?? []).map((c: any) => {
     const nome = normalizeContactLookupText(c.nome || "");
-    if (!nome) return false;
+    if (!nome) return null;
     const firstName = nome.split(" ")[0];
-    return haystack.includes(` ${nome} `) || (firstName.length >= 4 && haystack.includes(` ${firstName} `));
-  });
+    let score = 0;
+    if (haystack.includes(` ${nome} `)) score += 30;
+    if (firstName.length >= 4 && haystack.includes(` ${firstName} `)) score += 10;
 
-  if (matches.length === 1) return matches[0];
+    // Mensagens compostas pelo Jarvis costumam começar com "Oi Marcelo..." e também
+    // citar "assistente do Felício". O alvo é o nome saudado no começo, não Felício.
+    if (firstName.length >= 4) {
+      const greeting = new RegExp(`^(oi|ola|olá|bom dia|boa tarde|boa noite)\\s+${firstName}\\b`, "i");
+      if (greeting.test(intro) || intro.includes(`${firstName},`)) score += 120;
+      if (new RegExp(`\\b(do|da|de|para o|pro)\\s+${firstName}\\b`, "i").test(compactHaystack)) score -= 80;
+    }
+
+    return score > 0 ? { contato: c, score } : null;
+  }).filter(Boolean) as Array<{ contato: any; score: number }>;
+
+  matches.sort((a, b) => b.score - a.score);
+  if (matches.length === 1) return matches[0].contato;
+  if (matches.length > 1 && matches[0].score >= matches[1].score + 40) return matches[0].contato;
   return null;
 }
 
@@ -1348,30 +1366,12 @@ async function toolEnviarMensagemContatoComercial(
   if (!mensagem) return JSON.stringify({ erro: "mensagem_obrigatoria", detalhe: "Componha o texto humanizado como o Jarvis falaria — gentil, se apresentando como 'Jarvis, assistente do Felício'." });
   if (mensagem.length < 20) return JSON.stringify({ erro: "mensagem_muito_curta", detalhe: "Texto humanizado mínimo 20 chars." });
 
-  // 1) Localizar o contato
+  // 1) Localizar o contato. Prioriza telefone/nome informado pelo dono; UUID só vem depois,
+  // porque modelo pode inventar ou reutilizar ID antigo de conversa.
   let contato: any = null;
-  if (args?.contato_id && /^[0-9a-f-]{36}$/i.test(args.contato_id)) {
-    const { data } = await sb.from("contatos_comerciais")
-      .select("*").eq("id", args.contato_id).eq("user_id", ctx.userId).maybeSingle();
-    contato = data;
-  }
-  // Fallback: se contato_id não achou (AI inventou UUID) ou não veio, tenta por nome
-  if (!contato && args?.nome_busca) {
-    const { data } = await sb.from("contatos_comerciais")
-      .select("*").eq("user_id", ctx.userId).eq("ativo", true)
-      .ilike("nome", `%${args.nome_busca.trim()}%`).limit(5);
-    if (data && data.length === 1) contato = data[0];
-    else if (data && data.length > 1) {
-      return JSON.stringify({
-        erro: "ambiguidade",
-        detalhe: "Vários contatos batem com esse nome. Confirme qual e chame de novo com contato_id.",
-        candidatos: data.map((c: any) => ({ id: c.id, nome: c.nome, empresa: c.empresa })),
-      });
-    }
-  }
 
-  // Fallback: whatsapp fornecido pelo dono (match pelos últimos 8-10 dígitos)
-  if (!contato && args?.whatsapp) {
+  // Telefone fornecido pelo dono (match pelos últimos 8-10 dígitos)
+  if (args?.whatsapp) {
     const digits = String(args.whatsapp).replace(/\D/g, "");
     if (digits.length >= 8) {
       const tail10 = digits.slice(-10);
@@ -1387,8 +1387,29 @@ async function toolEnviarMensagemContatoComercial(
     }
   }
 
+  // Nome informado pelo dono ou pelo próprio modelo no fallback
+  if (!contato && args?.nome_busca) {
+    const { data } = await sb.from("contatos_comerciais")
+      .select("*").eq("user_id", ctx.userId).eq("ativo", true)
+      .ilike("nome", `%${args.nome_busca.trim()}%`).limit(5);
+    if (data && data.length === 1) contato = data[0];
+    else if (data && data.length > 1) {
+      return JSON.stringify({
+        erro: "ambiguidade",
+        detalhe: "Vários contatos batem com esse nome. Confirme qual e chame de novo com contato_id.",
+        candidatos: data.map((c: any) => ({ id: c.id, nome: c.nome, empresa: c.empresa })),
+      });
+    }
+  }
+
+  if (!contato && args?.contato_id && /^[0-9a-f-]{36}$/i.test(args.contato_id)) {
+    const { data } = await sb.from("contatos_comerciais")
+      .select("*").eq("id", args.contato_id).eq("user_id", ctx.userId).maybeSingle();
+    contato = data;
+  }
+
   // Fallback extra: se o modelo ainda inventar UUID e não mandar nome_busca,
-  // tenta inferir pelo nome presente no texto composto (ex: "Oi Renata...").
+  // tenta inferir pelo nome-alvo no texto composto (ex: "Oi Marcelo...").
   if (!contato) {
     contato = await inferContatoComercialFromText(mensagem, ctx.userId);
   }
