@@ -2573,6 +2573,11 @@ function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>,
     tipos.audio ? `${tipos.audio} áudio${tipos.audio > 1 ? "s" : ""}` : "",
   ].filter(Boolean).join(", ");
   const temFoto = (tipos.foto ?? 0) > 0;
+  const temVideo = (tipos.video ?? 0) > 0;
+  // VÍDEO: como não temos visão de vídeo, coletar rede+formato+legenda numa pergunta só (evita loop de contexto).
+  if (temVideo && !temFoto) {
+    return `Salvei ${partes} na biblioteca /midias. Como não consigo assistir vídeo, me diga tudo numa mensagem só: **onde publicar** (Instagram / Facebook / ambos), **formato** (Feed, Story ou Reels) e uma **legenda/contexto** (do que se trata). Ex.: "Reels no Insta e Face — Interruptor touch-screen Tramontina, chique e prático".`;
+  }
   if (temFoto && descricaoVisual?.trim()) {
     return `Oi chefe, salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
   }
