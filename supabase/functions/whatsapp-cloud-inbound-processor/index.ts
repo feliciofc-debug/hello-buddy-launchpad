@@ -2842,10 +2842,20 @@ async function toolPostarMidiaBiblioteca(
     // (não como legenda final). Vídeo sem visão automática usa apenas o contexto textual;
     // foto usa contexto + descrição visual. Isso restaura a copy rica pro vídeo sem reabrir
     // o loop de contexto (contexto já está persistido em midias_whatsapp.contexto_original).
+    // Detecta se a mídia é da MARCA AMZ (logo/institucional) — quando o contexto/descrição
+    // menciona AMZ, amzofertas, "logo", ou está vazio (dono só mandou a arte). Nesse caso
+    // injeta o brand context pro script falar das TECNOLOGIAS reais da plataforma, não
+    // alucinar produto físico ("maleta", "kit", "estoque").
+    const contextoLower = `${legendaDono} ${descricaoVisual}`.toLowerCase();
+    const isBrandContent = /\bamz\s*ofertas\b|\bamz\b|amzofertas|\blogo\s*(da|do)?\s*(amz|empresa|marca)?\b|institucional|nossa\s+plataforma/i.test(contextoLower)
+      || (!legendaDono.trim() && (!descricaoVisual || descricaoVisual.length < 40));
+    const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
+    if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
+
     const scriptsEntries = await Promise.all(
       redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen)] as const;
+        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
       }),
     );
     const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
