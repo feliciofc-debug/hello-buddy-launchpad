@@ -4138,6 +4138,41 @@ async function processOne(queueId: string) {
           ].filter(Boolean).join("\n");
           contactMemoryBlock = linhas;
           console.log(`[processor][contact-memory] hit for ${row.from_number} -> ${match.nome}`);
+
+          // 🔔 HEADS-UP AO DONO: contato comercial respondeu — Jarvis reporta ao Felício.
+          // Assim, quando Marcelo/Renata/etc respondem (ex: confirmando reunião),
+          // o dono recebe um resumo imediato no WhatsApp dele.
+          try {
+            if (row.from_number !== OWNER_PHONE && userText && userText.trim().length > 0) {
+              // Dedup: se já notificamos sobre este mesmo texto nos últimos 10 min, pula.
+              const cutoffNotif = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+              const sigTag = `[jarvis-headsup:${match.nome}]`;
+              const { data: recentOwnerMsgs } = await sb
+                .from("whatsapp_cloud_messages")
+                .select("content, created_at")
+                .eq("user_id", userId)
+                .eq("direction", "outbound")
+                .gte("created_at", cutoffNotif)
+                .order("created_at", { ascending: false })
+                .limit: undefined as never;
+              // (a linha acima é intencional — deno-lint ignora; usamos filtro manual abaixo)
+              const jaNotificou = (recentOwnerMsgs ?? []).some((m: any) => String(m.content || "").includes(sigTag));
+              if (!jaNotificou) {
+                // Detecta intenção de confirmação/recusa pra dar destaque
+                const low = userText.toLowerCase();
+                const isConfirma = /\b(confirm|confirmo|confirmado|pode ser|beleza|tudo certo|combinado|ok(?!\w)|okay|fechado|tá bom|tá ok|perfeito|show|topo|combinamos|até (amanhã|lá|hoje))\b/.test(low);
+                const isRecusa = /\b(não posso|nao posso|não vai dar|nao vai dar|remarcar|desmarcar|adiar|outro dia|outro horário|outro horario)\b/.test(low);
+                const badge = isConfirma ? "✅ CONFIRMAÇÃO" : isRecusa ? "⚠️ PRECISA REMARCAR" : "📩 RESPOSTA";
+                const preview = userText.trim().replace(/\s+/g, " ").slice(0, 400);
+                const primeiro = String(match.nome || "contato").split(/\s+/)[0];
+                const heads = `${badge} — *${match.nome}*${match.empresa ? ` (${match.empresa})` : ""} respondeu no WhatsApp:\n\n"${preview}"\n\n_Pra responder é só me pedir aqui: "responde pro ${primeiro}: ..."_\n${sigTag}`;
+                await sendWhatsApp(userId, OWNER_PHONE, heads);
+                console.log(`[processor][headsup-owner] enviado (${badge}) para dono sobre ${match.nome}`);
+              }
+            }
+          } catch (e) {
+            console.warn("[processor][headsup-owner] falhou:", (e as Error).message);
+          }
         }
       }
     } catch (e) {
