@@ -1970,77 +1970,113 @@ async function updatePersistedSocialPostRows(pending: PendingSocialPost, resulta
 async function publicarEmRede(
   rede: string,
   script: string,
-  produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null },
+  produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null; midia_tipo?: "foto" | "video" },
   userId: string,
-  formato: "feed" | "story" = "feed",
-): Promise<{ rede: string; ok: boolean; status: number; resposta: any }> {
+  formato: "feed" | "story" | "reels" = "feed",
+): Promise<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }> {
   try {
-    // === STORY (Etapa 1: só imagem) ===
-    if (formato === "story") {
-      if (rede === "instagram") {
-        console.log(`[social-router] rede=instagram formato=story → meta-publish-story-image`);
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-image`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-          body: JSON.stringify({ user_id: userId, image_url: produto.imagem_url }),
+    const isVideo = produto.midia_tipo === "video";
+    const mediaUrl = produto.imagem_url; // pode ser URL de vídeo quando isVideo
+    const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
+
+    // === REELS (vídeo em IG/FB) ===
+    if (formato === "reels") {
+      if (!isVideo) return { rede, ok: false, status: 0, resposta: { error: "reels exige vídeo — envia um vídeo, não imagem" } };
+      if (rede === "tiktok") {
+        // TikTok trata vídeo direto — cai no branch tiktok abaixo
+      } else if (rede === "facebook" || rede === "instagram") {
+        console.log(`[social-router] rede=${rede} formato=reels → meta-publish-reels`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-reels`, {
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ platform: rede, video_url: mediaUrl, caption: script, user_id: userId }),
         });
         const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
-        // Repassa erro amigável (ex.: imagem não 9:16)
+        return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
+      }
+    }
+
+    // === STORY ===
+    if (formato === "story") {
+      if (isVideo) {
+        if (rede === "tiktok") return { rede, ok: false, status: 0, resposta: { error: "TikTok não tem formato story — ignorado" } };
+        console.log(`[social-router] rede=${rede} formato=story tipo=video → meta-publish-story`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story`, {
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ user_id: userId, video_url: mediaUrl, canais: [rede] }),
+        });
+        const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+        const chanResult = j?.[rede];
+        const chanOk = chanResult?.ok === true;
+        return { rede, ok: res.ok && chanOk, status: res.status, resposta: chanOk ? chanResult : { error: chanResult?.error || j?.error || `falha_${res.status}` } };
+      }
+      // Foto — comportamento anterior
+      if (rede === "instagram") {
+        console.log(`[social-router] rede=instagram formato=story tipo=foto → meta-publish-story-image`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-image`, {
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ user_id: userId, image_url: mediaUrl }),
+        });
+        const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
         if (!res.ok || j?.success === false) {
           const raw = String(j?.error || j?.message || `falha_${res.status}`);
-          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw)
-            ? "a imagem precisa ser vertical 9:16 pra story do Instagram"
-            : raw;
+          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw) ? "a imagem precisa ser vertical 9:16 pra story do Instagram" : raw;
           return { rede, ok: false, status: res.status, resposta: { ...j, error: amigavel } };
         }
         return { rede, ok: true, status: res.status, resposta: j };
       }
       if (rede === "facebook") {
-        console.log(`[social-router] rede=facebook formato=story → meta-publish-story-photo-fb`);
+        console.log(`[social-router] rede=facebook formato=story tipo=foto → meta-publish-story-photo-fb`);
         const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-photo-fb`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-          body: JSON.stringify({ user_id: userId, image_url: produto.imagem_url }),
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ user_id: userId, image_url: mediaUrl }),
         });
         const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
         if (!res.ok || j?.success === false) {
           const raw = String(j?.error || j?.message || `falha_${res.status}`);
-          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw)
-            ? "a imagem precisa ser vertical 9:16 pra story do Facebook"
-            : raw;
+          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw) ? "a imagem precisa ser vertical 9:16 pra story do Facebook" : raw;
           return { rede, ok: false, status: res.status, resposta: { ...j, error: amigavel } };
         }
         return { rede, ok: true, status: res.status, resposta: j };
       }
-      if (rede === "tiktok") {
-        return { rede, ok: false, status: 0, resposta: { error: "TikTok não tem formato story — ignorado" } };
-      }
+      if (rede === "tiktok") return { rede, ok: false, status: 0, resposta: { error: "TikTok não tem formato story — ignorado" } };
     }
 
-    // === FEED (comportamento original — inalterado) ===
+    // === FEED ===
     if (rede === "facebook") {
+      // FB aceita vídeo direto no feed via meta-publish-post (video_url).
+      const body: any = { user_id: userId, message: script };
+      if (isVideo) body.video_url = mediaUrl; else { body.image_url = mediaUrl; body.link_url = produto.link; }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-        body: JSON.stringify({ user_id: userId, message: script, image_url: produto.imagem_url, link_url: produto.link }),
+        method: "POST", headers: commonHeaders, body: JSON.stringify(body),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
     if (rede === "instagram") {
+      if (isVideo) {
+        // ⚠️ IG feed de vídeo ≡ Reels na Graph API desde 2022. Redirecionamos internamente pra Reels com aviso.
+        console.log(`[social-router] rede=instagram formato=feed tipo=video → redirecionado pra REELS (padrão Meta)`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-reels`, {
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ platform: "instagram", video_url: mediaUrl, caption: script, user_id: userId }),
+        });
+        const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+        return {
+          rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j,
+          nota: "No Instagram, vídeo no feed vira Reels (padrão da Meta) — publiquei como Reels.",
+        };
+      }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-        body: JSON.stringify({ user_id: userId, caption: script, image_url: produto.imagem_url }),
+        method: "POST", headers: commonHeaders,
+        body: JSON.stringify({ user_id: userId, caption: script, image_url: mediaUrl }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
     if (rede === "tiktok") {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-post-content`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-        body: JSON.stringify({ user_id: userId, content_type: "image", content_url: produto.imagem_url, title: script.slice(0, 2200), post_mode: "direct" }),
+        method: "POST", headers: commonHeaders,
+        body: JSON.stringify({ user_id: userId, content_type: isVideo ? "video" : "image", content_url: mediaUrl, title: script.slice(0, 2200), post_mode: "direct" }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
