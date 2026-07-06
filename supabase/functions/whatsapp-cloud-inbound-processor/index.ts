@@ -1784,9 +1784,27 @@ async function descreverImagemVisao(imageUrl: string): Promise<string> {
 
 
 
+// Pitch fixo da AMZ pra usar quando o post é sobre a MARCA (logo, institucional, arte da empresa).
+// Evita alucinação de "produto físico" e força a copy a falar das tecnologias reais da plataforma.
+const AMZ_BRAND_PITCH = `AMZ OFERTAS — Plataforma completa de atendimento inteligente + marketing automatizado com IA pra PMEs brasileiras.
+TECNOLOGIAS/ENTREGAS REAIS (use só o que couber, não invente):
+• WhatsApp Business API oficial com atendente IA 24/7 personalizado (Pietro/Jarvis) — fecha venda, tira dúvida, agenda, cobra.
+• Geração de conteúdo com IA: posts, Reels, Stories, carrosséis, imagens fotorrealistas com logo embutida.
+• Publicação automática em Instagram, Facebook e TikTok — direto do WhatsApp: manda foto + contexto, o Pietro monta a copy e posta.
+• Autopilot: agenda e publica 24/7 sem intervenção manual.
+• Catálogo de produtos com importação automática (Shopee, Amazon, Mercado Livre, Magalu).
+• CRM + Pipeline Kanban + multi-usuário + cobrança PIX recorrente + analytics em tempo real.
+• Marketplace público amzofertas.com.br/marketplace.
+• Multi-tenant com white-label pra agências.
+• LGPD compliant, backup diário, suporte direto com o fundador.
+DIFERENCIAIS: IA própria (não depende só de OpenAI), atendimento IA + marketing IA na MESMA plataforma, implantação sem time técnico.
+PLANO: R$ 597/mês (fundador) — trial mediante contato. Agência (white-label): negociação caso a caso.
+CTA padrão: "Chama no WhatsApp (21) 99537-9550 pra testar" ou "Agenda uma demo".`;
+
 // =========================================================
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
+
 async function gerarScriptRedesSociais(
   produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
   tom: string,
