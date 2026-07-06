@@ -3857,6 +3857,62 @@ async function notifyOwnerDeterministic(params: {
   return true;
 }
 
+function isOwnerAskingCommercialReplyStatus(text: string): boolean {
+  const low = normalizeContactLookupText(text);
+  return /\b(respondeu|resposta|retorno|confirmou|confirmado|ok|deu ok|falou|mandou|reuniao|reuniao)\b/.test(low);
+}
+
+async function answerOwnerCommercialStatus(userId: string, text: string): Promise<string | null> {
+  if (!isOwnerAskingCommercialReplyStatus(text)) return null;
+  const contato = await inferContatoComercialFromText(text, userId);
+  if (!contato?.whatsapp) return null;
+
+  const targetDigits = normalizePhoneBR(contato.whatsapp);
+  const targetTail10 = targetDigits.slice(-10);
+  const targetTail8 = targetDigits.slice(-8);
+  const { data: convs } = await sb
+    .from("whatsapp_cloud_conversations")
+    .select("id, contact_number")
+    .eq("user_id", userId)
+    .order("last_message_at", { ascending: false })
+    .limit(500);
+  const contactConv = (convs ?? []).find((c: any) => {
+    const cd = normalizePhoneBR(c.contact_number || "");
+    return cd === targetDigits || cd.slice(-10) === targetTail10 || cd.slice(-8) === targetTail8;
+  });
+  if (!contactConv?.id) return `Ainda não encontrei conversa recente do ${contato.nome} no WhatsApp.`;
+
+  const { data: msgs } = await sb
+    .from("whatsapp_cloud_messages")
+    .select("direction, content, message_type, created_at")
+    .eq("conversation_id", contactConv.id)
+    .order("created_at", { ascending: false })
+    .limit(12);
+
+  const inbound = (msgs ?? []).find((m: any) => m.direction === "inbound");
+  if (!inbound) return `Ainda não identifiquei resposta do ${contato.nome}. Assim que ele responder, eu te aviso.`;
+
+  const afterInboundAssistant = (msgs ?? [])
+    .filter((m: any) => m.direction === "outbound" && new Date(m.created_at).getTime() >= new Date(inbound.created_at).getTime())
+    .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+  const evidence = `${inbound.content || ""}\n${afterInboundAssistant?.content || ""}`;
+  const intent = classifyCommercialReply(evidence);
+  const when = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(inbound.created_at));
+  const preview = String(inbound.content || "").replace(/^🎙️\s*Áudio transcrito:\s*/i, "").replace(/\s+/g, " ").slice(0, 420);
+  const assistantUnderstanding = String(afterInboundAssistant?.content || "").replace(/\s+/g, " ").slice(0, 420);
+
+  if (intent === "confirmacao") {
+    return `Sim, chefe — o ${contato.nome} respondeu e a reunião está confirmada.\n\nResposta (${when}): ${preview || "áudio recebido"}${assistantUnderstanding ? `\n\nEntendimento do Jarvis: ${assistantUnderstanding}` : ""}`;
+  }
+  if (intent === "remarcar") {
+    return `O ${contato.nome} respondeu (${when}), mas parece que precisa remarcar.\n\nResposta: ${preview || "áudio recebido"}${assistantUnderstanding ? `\n\nEntendimento do Jarvis: ${assistantUnderstanding}` : ""}`;
+  }
+  return `Sim, chefe — o ${contato.nome} respondeu (${when}).\n\nResposta: ${preview || "áudio recebido"}${assistantUnderstanding ? `\n\nEntendimento do Jarvis: ${assistantUnderstanding}` : ""}`;
+}
+
 async function processOne(queueId: string) {
   const { data: claimed, error: claimErr } = await sb
     .from("whatsapp_cloud_inbound_queue")
