@@ -3715,6 +3715,72 @@ async function logOwnerHeadsup(userId: string, content: string, wamid?: string |
     .eq("id", conversationId);
 }
 
+async function findCommercialContactByPhone(userId: string, phone: string): Promise<any | null> {
+  const fromDigits = normalizePhoneBR(phone);
+  const fromTail10 = fromDigits.slice(-10);
+  const fromTail8 = fromDigits.slice(-8);
+  if (!fromTail8) return null;
+
+  const { data, error } = await sb
+    .from("contatos_comerciais")
+    .select("nome, empresa, cargo, tipo_relacionamento, contexto, proximos_passos, permite_jarvis_contatar, tags, whatsapp")
+    .eq("user_id", userId)
+    .eq("ativo", true);
+
+  if (error) {
+    console.warn("[processor][commercial-contact-lookup] falhou:", error.message);
+    return null;
+  }
+
+  return (data ?? []).find((c: any) => {
+    const cd = normalizePhoneBR(c.whatsapp || "");
+    if (!cd) return false;
+    return cd === fromDigits || cd.slice(-10) === fromTail10 || cd.slice(-8) === fromTail8;
+  }) ?? null;
+}
+
+async function transcribeAudioMedia(media: MediaExtract[]): Promise<string> {
+  const audio = media.find((m) => m.kind === "audio");
+  if (!audio?.base64) return "";
+
+  const mime = (audio.mime || "audio/ogg").split(";")[0].trim() || "audio/ogg";
+  const bytes = base64Decode(audio.base64);
+  const ext = mime.includes("mpeg") || mime.includes("mp3") ? "mp3"
+    : mime.includes("wav") ? "wav"
+    : mime.includes("mp4") || mime.includes("m4a") ? "m4a"
+    : mime.includes("webm") ? "webm"
+    : mime.includes("flac") ? "flac"
+    : mime.includes("aac") ? "aac"
+    : "ogg";
+
+  const form = new FormData();
+  form.append("model", "openai/gpt-4o-transcribe");
+  form.append("file", new Blob([bytes], { type: mime }), `whatsapp-audio.${ext}`);
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}` },
+    body: form,
+  });
+  const txt = await res.text();
+  if (!res.ok) throw new Error(`transcribe ${res.status}: ${txt.slice(0, 200)}`);
+  try {
+    const json = JSON.parse(txt);
+    return String(json?.text || "").trim();
+  } catch {
+    return txt.trim();
+  }
+}
+
+function confirmationNoticeFromReply(match: any, text: string, source: "texto" | "audio"): string | null {
+  const intent = classifyCommercialReply(text);
+  if (intent !== "confirmacao" && intent !== "remarcar") return null;
+  const badge = intent === "confirmacao" ? "✅ CONFIRMAÇÃO" : "⚠️ PRECISA REMARCAR";
+  const preview = text.trim().replace(/\s+/g, " ").slice(0, 500);
+  const primeiro = String(match?.nome || "contato").split(/\s+/)[0] || "contato";
+  return `${badge} — *${match?.nome || "Contato comercial"}*${match?.empresa ? ` (${match.empresa})` : ""} respondeu por ${source} sobre a reunião.\n\n"${preview}"\n\n_Pra responder é só me pedir aqui: "responde pro ${primeiro}: ..."_`;
+}
+
 async function notifyOwnerAboutCommercialReply(params: {
   userId: string;
   fromNumber: string;
@@ -3756,6 +3822,39 @@ async function notifyOwnerAboutCommercialReply(params: {
   const sentId = await sendWhatsApp(userId, OWNER_PHONE, heads);
   await logOwnerHeadsup(userId, heads, sentId);
   console.log(`[processor][headsup-owner] enviado (${badge}) para dono sobre ${match.nome}`);
+}
+
+async function notifyOwnerDeterministic(params: {
+  userId: string;
+  fromNumber: string;
+  match: any;
+  text: string;
+  messageType?: string | null;
+  source: "texto" | "audio";
+}): Promise<boolean> {
+  const clean = (params.text || "").trim().replace(/\s+/g, " ");
+  if (!clean || params.fromNumber === OWNER_PHONE) return false;
+  const notice = confirmationNoticeFromReply(params.match, clean, params.source);
+  if (!notice) return false;
+
+  const sigTag = `[jarvis-headsup:${params.match?.nome || "contato"}:${shortStableHash(`${params.fromNumber}|deterministic|${params.messageType || params.source}|${clean}`)}]`;
+  const cutoffNotif = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+  const { data: recentOwnerMsgs } = await sb
+    .from("whatsapp_cloud_messages")
+    .select("content, created_at")
+    .eq("user_id", params.userId)
+    .eq("direction", "outbound")
+    .gte("created_at", cutoffNotif)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const jaNotificou = (recentOwnerMsgs ?? []).some((m: any) => String(m.content || "").includes(sigTag));
+  if (jaNotificou) return true;
+
+  const content = `${notice}\n${sigTag}`;
+  const sentId = await sendWhatsApp(params.userId, OWNER_PHONE, content);
+  await logOwnerHeadsup(params.userId, content, sentId);
+  console.log(`[processor][headsup-owner-deterministic] enviado para dono sobre ${params.match?.nome || params.fromNumber}`);
+  return true;
 }
 
 async function processOne(queueId: string) {
