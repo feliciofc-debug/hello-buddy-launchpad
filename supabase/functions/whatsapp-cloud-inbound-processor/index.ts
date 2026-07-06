@@ -1336,6 +1336,7 @@ async function toolEnviarMensagemContatoComercial(
   args: {
     contato_id?: string;
     nome_busca?: string;
+    whatsapp?: string;
     mensagem?: string;
     data_hora_sp?: string;
     minutos_a_partir_de_agora?: number;
@@ -1366,6 +1367,23 @@ async function toolEnviarMensagemContatoComercial(
         detalhe: "Vários contatos batem com esse nome. Confirme qual e chame de novo com contato_id.",
         candidatos: data.map((c: any) => ({ id: c.id, nome: c.nome, empresa: c.empresa })),
       });
+    }
+  }
+
+  // Fallback: whatsapp fornecido pelo dono (match pelos últimos 8-10 dígitos)
+  if (!contato && args?.whatsapp) {
+    const digits = String(args.whatsapp).replace(/\D/g, "");
+    if (digits.length >= 8) {
+      const tail10 = digits.slice(-10);
+      const tail8 = digits.slice(-8);
+      const { data: todos } = await sb.from("contatos_comerciais")
+        .select("*").eq("user_id", ctx.userId).eq("ativo", true);
+      const match = (todos ?? []).find((c: any) => {
+        const cd = String(c.whatsapp || "").replace(/\D/g, "");
+        if (!cd) return false;
+        return cd === digits || cd.slice(-10) === tail10 || cd.slice(-8) === tail8;
+      });
+      if (match) contato = match;
     }
   }
 
