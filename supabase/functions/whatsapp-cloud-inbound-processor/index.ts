@@ -2875,7 +2875,7 @@ async function toolPostarMidiaBiblioteca(
       preview: scripts,
       aviso_formato: avisoFormato,
       aviso_reels: avisoReels,
-      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
+      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e no final pergunte EXPLICITAMENTE: "Quer ajustar algo antes de postar? (ex: tirar/incluir informação, mudar preço, deixar mais curto, mudar o tom) Ou responde 'pode postar' pra publicar já." Se o dono pedir AJUSTE no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. Se confirmar ('pode postar', 'manda', 'vai'), chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
