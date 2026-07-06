@@ -4154,8 +4154,7 @@ async function processOne(queueId: string) {
                 .eq("direction", "outbound")
                 .gte("created_at", cutoffNotif)
                 .order("created_at", { ascending: false })
-                .limit: undefined as never;
-              // (a linha acima é intencional — deno-lint ignora; usamos filtro manual abaixo)
+                .limit(20);
               const jaNotificou = (recentOwnerMsgs ?? []).some((m: any) => String(m.content || "").includes(sigTag));
               if (!jaNotificou) {
                 // Detecta intenção de confirmação/recusa pra dar destaque
