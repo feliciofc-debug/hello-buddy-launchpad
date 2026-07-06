@@ -2664,28 +2664,34 @@ async function toolPostarMidiaBiblioteca(
     const midia = midias?.[0];
     if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
 
-    // Etapa 1: story só de FOTO. Vídeo em story fica pra próxima etapa.
-    const formato: "feed" | "story" = (args?.formato || "feed").toString().toLowerCase() === "story" ? "story" : "feed";
-    if (formato === "story" && midia.tipo === "video") {
-      return JSON.stringify({
-        erro: "story de vídeo entra na próxima etapa. Por enquanto, story só de foto. Quer postar essa foto no story, ou este vídeo no feed?",
-      });
+    // Etapa 3: story de foto e vídeo, reels (só vídeo), feed (foto/vídeo).
+    const formatoRaw = (args?.formato || "feed").toString().toLowerCase();
+    const formato: "feed" | "story" | "reels" =
+      formatoRaw === "story" ? "story" : formatoRaw === "reels" ? "reels" : "feed";
+    const isVideo = midia.tipo === "video";
+    if (formato === "reels" && !isVideo) {
+      return JSON.stringify({ erro: "Reels só aceita vídeo. Envia um vídeo curto vertical (ideal ≥3s, 9:16) e peça de novo." });
     }
 
     const redesValidas = ["facebook", "instagram", "tiktok"];
-    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
+    let redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
       .map((r) => r.toLowerCase())
       .filter((r) => redesValidas.includes(r));
+    // TikTok não tem story — remove da lista pra story
+    if (formato === "story") redes = redes.filter((r) => r !== "tiktok");
+    // Reels só faz sentido em IG/FB
+    if (formato === "reels") redes = redes.filter((r) => r !== "tiktok");
+    if (redes.length === 0) return JSON.stringify({ erro: `nenhuma rede válida para formato ${formato}` });
     const tom = args?.tom || "urgencia";
 
     const precoNum = args?.preco != null ? Number(String(args.preco).replace(",", ".").replace(/[^\d.]/g, "")) : null;
 
-    // Extrai descrição visual já salva (se veio de salvar_midia_biblioteca) ou gera agora por visão.
+    // Extrai descrição visual já salva (se veio de salvar_midia_biblioteca) ou gera agora por visão (SÓ FOTO — vídeo não tem visão).
     const contextoRaw = (midia.contexto_original || "").toString();
     let descricaoVisual = "";
     const mVisao = contextoRaw.match(/\[visão\]\s*([\s\S]+)/i);
     if (mVisao) descricaoVisual = mVisao[1].trim();
-    if (!descricaoVisual && midia.tipo === "foto") {
+    if (!descricaoVisual && !isVideo) {
       descricaoVisual = await descreverImagemVisao(midia.midia_url);
       if (descricaoVisual) {
         await sb.from("midias_whatsapp").update({
@@ -2695,9 +2701,19 @@ async function toolPostarMidiaBiblioteca(
     }
     const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
 
-    const nome = (args?.nome || args?.legenda || contextoUsuario || "Produto").toString().trim().slice(0, 120);
-    const descricaoBase = (args?.legenda || contextoUsuario || "").toString().trim();
-    const descricaoFinal = [descricaoBase, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+    // VÍDEO precisa de contexto do dono (não temos visão de vídeo — não inventar descrição).
+    const legendaDono = (args?.legenda || contextoUsuario || "").toString().trim();
+    if (isVideo && !legendaDono) {
+      return JSON.stringify({
+        erro: "video_sem_contexto",
+        mensagem: "Não vejo o conteúdo do vídeo. Me manda a legenda/contexto (do que se trata?) que eu uso como texto do post.",
+      });
+    }
+
+    const nome = (args?.nome || legendaDono || "Produto").toString().trim().slice(0, 120);
+    const descricaoFinal = isVideo
+      ? legendaDono  // vídeo: usa direto o texto do dono, sem alucinar
+      : [legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
 
     const produtoLike = {
       nome,
@@ -2709,10 +2725,14 @@ async function toolPostarMidiaBiblioteca(
       ativo: true,
       source: "midias_whatsapp",
       id: midia.id,
+      midia_tipo: isVideo ? ("video" as const) : ("foto" as const),
     };
 
+    // Para vídeo, usamos legenda do dono como caption (não geramos por IA — sem visão).
+    // Para foto, mantém comportamento atual (gerar script por IA).
     const scriptsEntries = await Promise.all(
       redes.map(async (r) => {
+        if (isVideo) return [r, legendaDono] as const;
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
         return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen)] as const;
       }),
@@ -2720,13 +2740,20 @@ async function toolPostarMidiaBiblioteca(
     const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
     const avisoFormato = formato === "story"
-      ? `⚠️ Formato: STORY (foto precisa ser vertical 9:16 em ${redes.join(" e ")}).`
-      : `Formato: FEED.`;
+      ? `⚠️ Formato: STORY (${isVideo ? "vídeo" : "foto"} precisa ser vertical 9:16 em ${redes.join(" e ")}).`
+      : formato === "reels"
+        ? `Formato: REELS (vídeo vertical, ideal 9:16 ≥3s).`
+        : `Formato: FEED.`;
+
+    // Aviso IG-feed-vídeo≡Reels (transparência com o dono).
+    const avisoReels = (formato === "feed" && isVideo && redes.includes("instagram"))
+      ? "No Instagram, vídeo no feed é publicado como Reels (padrão da Meta) — vou postar como Reels."
+      : undefined;
 
     return JSON.stringify({
       status: "aguardando_confirmacao",
@@ -2739,6 +2766,7 @@ async function toolPostarMidiaBiblioteca(
       redes,
       preview: scripts,
       aviso_formato: avisoFormato,
+      aviso_reels: avisoReels,
       instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
