@@ -2682,9 +2682,7 @@ async function toolPostarMidiaBiblioteca(
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
     const avisoFormato = formato === "story"
-      ? (redes.includes("instagram")
-          ? `⚠️ Formato: STORY no Instagram (foto precisa ser vertical 9:16).${redes.includes("facebook") ? " Facebook story de foto ainda não é suportado — só Instagram nesta etapa." : ""}`
-          : `⚠️ Story de foto nesta etapa só publica no Instagram. Adicione 'instagram' nas redes.`)
+      ? `⚠️ Formato: STORY (foto precisa ser vertical 9:16 em ${redes.join(" e ")}).`
       : `Formato: FEED.`;
 
     return JSON.stringify({
