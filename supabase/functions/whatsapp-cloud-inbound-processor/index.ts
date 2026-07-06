@@ -1853,7 +1853,8 @@ type PendingSocialPost = {
   scripts: Record<string, string>;
   userId: string;
   createdAt: number;
-  formato?: "feed" | "story";
+  formato?: "feed" | "story" | "reels";
+  midiaTipo?: "foto" | "video";
   queueRows?: Array<{ id: string; platform: string }>;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
@@ -1866,7 +1867,7 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-function pendingPostMarker(token: string, productName?: string, formato: "feed" | "story" = "feed"): string {
+function pendingPostMarker(token: string, productName?: string, formato: "feed" | "story" | "reels" = "feed"): string {
   return `jarvis_token:${token};formato:${formato};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
 }
 
@@ -1874,9 +1875,9 @@ function productNameFromPendingMarker(marker?: string | null): string {
   return marker?.match(/;produto:(.*)$/)?.[1]?.trim() || "produto";
 }
 
-function formatoFromPendingMarker(marker?: string | null): "feed" | "story" {
-  const m = marker?.match(/;formato:(feed|story)/i);
-  return (m?.[1]?.toLowerCase() as "feed" | "story") || "feed";
+function formatoFromPendingMarker(marker?: string | null): "feed" | "story" | "reels" {
+  const m = marker?.match(/;formato:(feed|story|reels)/i);
+  return (m?.[1]?.toLowerCase() as "feed" | "story" | "reels") || "feed";
 }
 
 async function persistPendingSocialPost(token: string, pending: PendingSocialPost): Promise<Array<{ id: string; platform: string }>> {
@@ -1969,77 +1970,113 @@ async function updatePersistedSocialPostRows(pending: PendingSocialPost, resulta
 async function publicarEmRede(
   rede: string,
   script: string,
-  produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null },
+  produto: { nome: string; imagem_url: string; link?: string | null; descricao?: string | null; midia_tipo?: "foto" | "video" },
   userId: string,
-  formato: "feed" | "story" = "feed",
-): Promise<{ rede: string; ok: boolean; status: number; resposta: any }> {
+  formato: "feed" | "story" | "reels" = "feed",
+): Promise<{ rede: string; ok: boolean; status: number; resposta: any; nota?: string }> {
   try {
-    // === STORY (Etapa 1: só imagem) ===
-    if (formato === "story") {
-      if (rede === "instagram") {
-        console.log(`[social-router] rede=instagram formato=story → meta-publish-story-image`);
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-image`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-          body: JSON.stringify({ user_id: userId, image_url: produto.imagem_url }),
+    const isVideo = produto.midia_tipo === "video";
+    const mediaUrl = produto.imagem_url; // pode ser URL de vídeo quando isVideo
+    const commonHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } as const;
+
+    // === REELS (vídeo em IG/FB) ===
+    if (formato === "reels") {
+      if (!isVideo) return { rede, ok: false, status: 0, resposta: { error: "reels exige vídeo — envia um vídeo, não imagem" } };
+      if (rede === "tiktok") {
+        // TikTok trata vídeo direto — cai no branch tiktok abaixo
+      } else if (rede === "facebook" || rede === "instagram") {
+        console.log(`[social-router] rede=${rede} formato=reels → meta-publish-reels`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-reels`, {
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ platform: rede, video_url: mediaUrl, caption: script, user_id: userId }),
         });
         const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
-        // Repassa erro amigável (ex.: imagem não 9:16)
+        return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
+      }
+    }
+
+    // === STORY ===
+    if (formato === "story") {
+      if (isVideo) {
+        if (rede === "tiktok") return { rede, ok: false, status: 0, resposta: { error: "TikTok não tem formato story — ignorado" } };
+        console.log(`[social-router] rede=${rede} formato=story tipo=video → meta-publish-story`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story`, {
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ user_id: userId, video_url: mediaUrl, canais: [rede] }),
+        });
+        const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+        const chanResult = j?.[rede];
+        const chanOk = chanResult?.ok === true;
+        return { rede, ok: res.ok && chanOk, status: res.status, resposta: chanOk ? chanResult : { error: chanResult?.error || j?.error || `falha_${res.status}` } };
+      }
+      // Foto — comportamento anterior
+      if (rede === "instagram") {
+        console.log(`[social-router] rede=instagram formato=story tipo=foto → meta-publish-story-image`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-image`, {
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ user_id: userId, image_url: mediaUrl }),
+        });
+        const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
         if (!res.ok || j?.success === false) {
           const raw = String(j?.error || j?.message || `falha_${res.status}`);
-          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw)
-            ? "a imagem precisa ser vertical 9:16 pra story do Instagram"
-            : raw;
+          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw) ? "a imagem precisa ser vertical 9:16 pra story do Instagram" : raw;
           return { rede, ok: false, status: res.status, resposta: { ...j, error: amigavel } };
         }
         return { rede, ok: true, status: res.status, resposta: j };
       }
       if (rede === "facebook") {
-        console.log(`[social-router] rede=facebook formato=story → meta-publish-story-photo-fb`);
+        console.log(`[social-router] rede=facebook formato=story tipo=foto → meta-publish-story-photo-fb`);
         const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-story-photo-fb`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-          body: JSON.stringify({ user_id: userId, image_url: produto.imagem_url }),
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ user_id: userId, image_url: mediaUrl }),
         });
         const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
         if (!res.ok || j?.success === false) {
           const raw = String(j?.error || j?.message || `falha_${res.status}`);
-          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw)
-            ? "a imagem precisa ser vertical 9:16 pra story do Facebook"
-            : raw;
+          const amigavel = /9:16|aspect|proporç|vertical|format/i.test(raw) ? "a imagem precisa ser vertical 9:16 pra story do Facebook" : raw;
           return { rede, ok: false, status: res.status, resposta: { ...j, error: amigavel } };
         }
         return { rede, ok: true, status: res.status, resposta: j };
       }
-      if (rede === "tiktok") {
-        return { rede, ok: false, status: 0, resposta: { error: "TikTok não tem formato story — ignorado" } };
-      }
+      if (rede === "tiktok") return { rede, ok: false, status: 0, resposta: { error: "TikTok não tem formato story — ignorado" } };
     }
 
-    // === FEED (comportamento original — inalterado) ===
+    // === FEED ===
     if (rede === "facebook") {
+      // FB aceita vídeo direto no feed via meta-publish-post (video_url).
+      const body: any = { user_id: userId, message: script };
+      if (isVideo) body.video_url = mediaUrl; else { body.image_url = mediaUrl; body.link_url = produto.link; }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-post`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-        body: JSON.stringify({ user_id: userId, message: script, image_url: produto.imagem_url, link_url: produto.link }),
+        method: "POST", headers: commonHeaders, body: JSON.stringify(body),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
     if (rede === "instagram") {
+      if (isVideo) {
+        // ⚠️ IG feed de vídeo ≡ Reels na Graph API desde 2022. Redirecionamos internamente pra Reels com aviso.
+        console.log(`[social-router] rede=instagram formato=feed tipo=video → redirecionado pra REELS (padrão Meta)`);
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-reels`, {
+          method: "POST", headers: commonHeaders,
+          body: JSON.stringify({ platform: "instagram", video_url: mediaUrl, caption: script, user_id: userId }),
+        });
+        const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
+        return {
+          rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j,
+          nota: "No Instagram, vídeo no feed vira Reels (padrão da Meta) — publiquei como Reels.",
+        };
+      }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/meta-publish-instagram`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-        body: JSON.stringify({ user_id: userId, caption: script, image_url: produto.imagem_url }),
+        method: "POST", headers: commonHeaders,
+        body: JSON.stringify({ user_id: userId, caption: script, image_url: mediaUrl }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
     }
     if (rede === "tiktok") {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/tiktok-post-content`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-        body: JSON.stringify({ user_id: userId, content_type: "image", content_url: produto.imagem_url, title: script.slice(0, 2200), post_mode: "direct" }),
+        method: "POST", headers: commonHeaders,
+        body: JSON.stringify({ user_id: userId, content_type: isVideo ? "video" : "image", content_url: mediaUrl, title: script.slice(0, 2200), post_mode: "direct" }),
       });
       const txt = await res.text(); let j: any = {}; try { j = JSON.parse(txt); } catch {}
       return { rede, ok: res.ok && j?.success !== false, status: res.status, resposta: j };
@@ -2279,12 +2316,13 @@ function getPendingFormatChoice(userId: string): PendingFormatChoice | null {
 }
 function clearPendingFormatChoice(userId: string) { PENDING_FORMAT_CHOICES.delete(userId); }
 
-// Detecta resposta curta só com o formato: "feed", "story", "no story", "nos stories", "pode postar no feed" etc.
-function detectStandaloneFormatReply(text: string): "feed" | "story" | undefined {
+// Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.
+function detectStandaloneFormatReply(text: string): "feed" | "story" | "reels" | undefined {
   const n = normalizePt(compactSpaces(text || "")).replace(/[.!?]+$/g, "").trim();
   if (!n || n.length > 40) return undefined;
   if (/^(pode\s+postar\s+)?(no\s+|nos\s+|em\s+)?(o\s+|a\s+)?feed$/.test(n)) return "feed";
   if (/^(pode\s+postar\s+)?(no\s+|nos\s+|em\s+)?(o\s+|a\s+)?stor(y|ies|ie)$/.test(n)) return "story";
+  if (/^(pode\s+postar\s+(em\s+|no\s+|nos\s+)?)?(no\s+|nos\s+|em\s+)?(o\s+|a\s+|um\s+)?reels?$/.test(n)) return "reels";
   return undefined;
 }
 
@@ -2331,8 +2369,9 @@ function formatSocialPostToolResult(raw: string): string {
     const scripts = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
       .join("\n\n");
+    const avisoReels = data?.aviso_reels ? `\n\n_ℹ️ ${data.aviso_reels}_` : "";
     // <<SPLIT>> marca quebra em MENSAGENS separadas no WhatsApp — o Felicio pediu o comando de confirmação isolado pra copiar/colar só o post.
-    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}<<SPLIT>>pode postar ${data.token}`;
+    return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>pode postar ${data.token}`;
   }
 
   if (data?.status === "publicado") {
@@ -2343,8 +2382,11 @@ function formatSocialPostToolResult(raw: string): string {
     const falhas = Array.isArray(data.redes_falharam) && data.redes_falharam.length
       ? `\n\n❌ *Falhas:*\n${data.redes_falharam.map((f: any) => `• ${f.rede}${f.erro ? ` — ${f.erro}` : ""}`).join("\n")}`
       : "";
+    const notas = Array.isArray(data.notas) && data.notas.length
+      ? `\n\n${data.notas.map((n: string) => `ℹ️ ${n}`).join("\n")}`
+      : "";
     const header = redesArr.length ? "🎉 *POSTAGEM REALIZADA COM SUCESSO!* 🎉" : "⚠️ *POSTAGEM NÃO CONCLUÍDA*";
-    return `${header}\n\n📢 *${data.produto?.nome ?? "produto"}*\n\n${redesFmt}${falhas}`;
+    return `${header}\n\n📢 *${data.produto?.nome ?? "produto"}*\n\n${redesFmt}${notas}${falhas}`;
   }
 
   if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
@@ -2456,6 +2498,7 @@ async function toolConfirmarPostagemRedes(
     produto: { nome: p.produto.nome },
     redes_publicadas: resultados.filter((r) => r.ok).map((r) => r.rede),
     redes_falharam: resultados.filter((r) => !r.ok).map((r) => ({ rede: r.rede, status: r.status, erro: r.resposta?.error || r.resposta?.message })),
+    notas: resultados.filter((r) => r.ok && (r as any).nota).map((r) => (r as any).nota),
     detalhes: resultados,
   });
 }
@@ -2621,28 +2664,34 @@ async function toolPostarMidiaBiblioteca(
     const midia = midias?.[0];
     if (!midia) return JSON.stringify({ erro: "Não achei nenhuma mídia recente na biblioteca /midias. Peça pro cliente enviar a foto/vídeo primeiro." });
 
-    // Etapa 1: story só de FOTO. Vídeo em story fica pra próxima etapa.
-    const formato: "feed" | "story" = (args?.formato || "feed").toString().toLowerCase() === "story" ? "story" : "feed";
-    if (formato === "story" && midia.tipo === "video") {
-      return JSON.stringify({
-        erro: "story de vídeo entra na próxima etapa. Por enquanto, story só de foto. Quer postar essa foto no story, ou este vídeo no feed?",
-      });
+    // Etapa 3: story de foto e vídeo, reels (só vídeo), feed (foto/vídeo).
+    const formatoRaw = (args?.formato || "feed").toString().toLowerCase();
+    const formato: "feed" | "story" | "reels" =
+      formatoRaw === "story" ? "story" : formatoRaw === "reels" ? "reels" : "feed";
+    const isVideo = midia.tipo === "video";
+    if (formato === "reels" && !isVideo) {
+      return JSON.stringify({ erro: "Reels só aceita vídeo. Envia um vídeo curto vertical (ideal ≥3s, 9:16) e peça de novo." });
     }
 
     const redesValidas = ["facebook", "instagram", "tiktok"];
-    const redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
+    let redes = (args?.redes && args.redes.length > 0 ? args.redes : ["facebook", "instagram", "tiktok"])
       .map((r) => r.toLowerCase())
       .filter((r) => redesValidas.includes(r));
+    // TikTok não tem story — remove da lista pra story
+    if (formato === "story") redes = redes.filter((r) => r !== "tiktok");
+    // Reels só faz sentido em IG/FB
+    if (formato === "reels") redes = redes.filter((r) => r !== "tiktok");
+    if (redes.length === 0) return JSON.stringify({ erro: `nenhuma rede válida para formato ${formato}` });
     const tom = args?.tom || "urgencia";
 
     const precoNum = args?.preco != null ? Number(String(args.preco).replace(",", ".").replace(/[^\d.]/g, "")) : null;
 
-    // Extrai descrição visual já salva (se veio de salvar_midia_biblioteca) ou gera agora por visão.
+    // Extrai descrição visual já salva (se veio de salvar_midia_biblioteca) ou gera agora por visão (SÓ FOTO — vídeo não tem visão).
     const contextoRaw = (midia.contexto_original || "").toString();
     let descricaoVisual = "";
     const mVisao = contextoRaw.match(/\[visão\]\s*([\s\S]+)/i);
     if (mVisao) descricaoVisual = mVisao[1].trim();
-    if (!descricaoVisual && midia.tipo === "foto") {
+    if (!descricaoVisual && !isVideo) {
       descricaoVisual = await descreverImagemVisao(midia.midia_url);
       if (descricaoVisual) {
         await sb.from("midias_whatsapp").update({
@@ -2652,9 +2701,19 @@ async function toolPostarMidiaBiblioteca(
     }
     const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
 
-    const nome = (args?.nome || args?.legenda || contextoUsuario || "Produto").toString().trim().slice(0, 120);
-    const descricaoBase = (args?.legenda || contextoUsuario || "").toString().trim();
-    const descricaoFinal = [descricaoBase, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+    // VÍDEO precisa de contexto do dono (não temos visão de vídeo — não inventar descrição).
+    const legendaDono = (args?.legenda || contextoUsuario || "").toString().trim();
+    if (isVideo && !legendaDono) {
+      return JSON.stringify({
+        erro: "video_sem_contexto",
+        mensagem: "Não vejo o conteúdo do vídeo. Me manda a legenda/contexto (do que se trata?) que eu uso como texto do post.",
+      });
+    }
+
+    const nome = (args?.nome || legendaDono || "Produto").toString().trim().slice(0, 120);
+    const descricaoFinal = isVideo
+      ? legendaDono  // vídeo: usa direto o texto do dono, sem alucinar
+      : [legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
 
     const produtoLike = {
       nome,
@@ -2666,10 +2725,14 @@ async function toolPostarMidiaBiblioteca(
       ativo: true,
       source: "midias_whatsapp",
       id: midia.id,
+      midia_tipo: isVideo ? ("video" as const) : ("foto" as const),
     };
 
+    // Para vídeo, usamos legenda do dono como caption (não geramos por IA — sem visão).
+    // Para foto, mantém comportamento atual (gerar script por IA).
     const scriptsEntries = await Promise.all(
       redes.map(async (r) => {
+        if (isVideo) return [r, legendaDono] as const;
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
         return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen)] as const;
       }),
@@ -2677,13 +2740,20 @@ async function toolPostarMidiaBiblioteca(
     const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
     const avisoFormato = formato === "story"
-      ? `⚠️ Formato: STORY (foto precisa ser vertical 9:16 em ${redes.join(" e ")}).`
-      : `Formato: FEED.`;
+      ? `⚠️ Formato: STORY (${isVideo ? "vídeo" : "foto"} precisa ser vertical 9:16 em ${redes.join(" e ")}).`
+      : formato === "reels"
+        ? `Formato: REELS (vídeo vertical, ideal 9:16 ≥3s).`
+        : `Formato: FEED.`;
+
+    // Aviso IG-feed-vídeo≡Reels (transparência com o dono).
+    const avisoReels = (formato === "feed" && isVideo && redes.includes("instagram"))
+      ? "No Instagram, vídeo no feed é publicado como Reels (padrão da Meta) — vou postar como Reels."
+      : undefined;
 
     return JSON.stringify({
       status: "aguardando_confirmacao",
@@ -2696,6 +2766,7 @@ async function toolPostarMidiaBiblioteca(
       redes,
       preview: scripts,
       aviso_formato: avisoFormato,
+      aviso_reels: avisoReels,
       instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e peça 'pode postar'. Ao confirmar, chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
@@ -3027,16 +3098,16 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR (ou enviou logo antes) — mesmo que o texto atual não tenha mídia anexada. Ex: cliente manda foto de taças, depois escreve 'Jogo de 4 taças 29,99 para postar no face e insta'. Esta tool pega a ÚLTIMA mídia salva em /midias e gera o preview do post. ⛔ NÃO use postar_redes_sociais nesse caso — aquela é só pra produto do catálogo. Se o cliente informou nome/preço/legenda, passe nos parâmetros. FORMATO: se o dono disser 'story', 'stories', 'poste no story', 'coloca no story' → passe formato='story'. Se disser 'feed', 'no feed' ou NÃO especificar → passe formato='feed' (default). Nesta etapa story só funciona pra foto no Instagram.",
+      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo.",
       parameters: {
         type: "object",
         properties: {
-          legenda: { type: "string", description: "Texto/legenda que o cliente falou junto (ex: 'Jogo de 4 taças 29,99')." },
+          legenda: { type: "string", description: "Texto/legenda que o cliente falou junto." },
           nome: { type: "string", description: "Nome do produto/item, se informado." },
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
           redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
-          formato: { type: "string", enum: ["feed", "story"], description: "Formato do post. 'story' só suporta FOTO no Instagram nesta etapa; vídeo em story e story no Facebook entram nas próximas etapas. Default: 'feed'." },
+          formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
         },
       },
     },
@@ -3174,8 +3245,13 @@ async function callGemini(
     const pendingChoice = getPendingFormatChoice(toolCtx.userId);
     if (standaloneFormat && pendingChoice) {
       const midiaRecenteResume = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
-      if (midiaRecenteResume && midiaRecenteResume.tipo === "foto") {
-        console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")}`);
+      if (midiaRecenteResume) {
+        // Reels só faz sentido pra vídeo — bloqueia foto+reels aqui.
+        if (standaloneFormat === "reels" && midiaRecenteResume.tipo !== "video") {
+          clearPendingFormatChoice(toolCtx.userId);
+          return { text: "Reels só aceita vídeo — essa mídia é foto. Quer no *feed* ou no *story*?" };
+        }
+        console.log(`[pietro][pending_format_resume] formato=${standaloneFormat} redes=${pendingChoice.redes.join(",")} tipo=${midiaRecenteResume.tipo}`);
         clearPendingFormatChoice(toolCtx.userId);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: pendingChoice.legenda,
@@ -3196,8 +3272,9 @@ async function callGemini(
       if (midiaRecente) {
         const formatoDetectado = socialPost.formato;
         const isFoto = midiaRecente.tipo === "foto";
+        const isVideo = midiaRecente.tipo === "video";
 
-        // Etapa 2: FOTO sem formato explícito → PERGUNTA feed ou story e guarda pending.
+        // Etapa 2: FOTO sem formato explícito → pergunta feed OU story (2 opções).
         if (isFoto && !formatoDetectado) {
           const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
           setPendingFormatChoice(toolCtx.userId, {
@@ -3206,14 +3283,26 @@ async function callGemini(
             legenda: cleanMediaPostLegenda(userContent),
           });
           const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
-          const nota = redesAsk.includes("facebook") ? "\n\n_(no story de foto, por enquanto só o Instagram publica — Facebook story de foto entra na próxima etapa.)_" : "";
-          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk });
-          return { text: `Quer no *feed* ou no *story* do ${redeLabel}?${nota}` };
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "foto" });
+          return { text: `Quer no *feed* ou no *story* do ${redeLabel}?` };
         }
 
-        // Vídeo (ou reels declarado) segue o comportamento atual (sem perguntar).
+        // Etapa 3: VÍDEO sem formato explícito → pergunta feed / story / reels (3 opções).
+        if (isVideo && !formatoDetectado) {
+          const redesAsk = socialPost.redes.length > 0 ? socialPost.redes : ["instagram"];
+          setPendingFormatChoice(toolCtx.userId, {
+            redes: redesAsk,
+            tom: socialPost.tom,
+            legenda: cleanMediaPostLegenda(userContent),
+          });
+          const redeLabel = redesAsk.map((r) => r === "instagram" ? "Instagram" : r === "facebook" ? "Facebook" : r === "tiktok" ? "TikTok" : r).join(" e ");
+          console.log("[pietro][pending_format_choice_set]", { redes: redesAsk, tipo: "video" });
+          return { text: `Quer no *feed*, no *story* ou como *reels* do ${redeLabel}?` };
+        }
+
+        // Formato explícito → segue direto.
         const formato = formatoDetectado ?? "feed";
-        console.warn(`[pietro][forced_social_post] mídia recente em /midias → usando postar_midia_biblioteca id=${midiaRecente.id} formato=${formato}`);
+        console.warn(`[pietro][forced_social_post] mídia recente em /midias → usando postar_midia_biblioteca id=${midiaRecente.id} formato=${formato} tipo=${midiaRecente.tipo}`);
         const postResult = await toolPostarMidiaBiblioteca({
           legenda: cleanMediaPostLegenda(userContent),
           tom: socialPost.tom,
