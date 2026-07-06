@@ -2316,12 +2316,13 @@ function getPendingFormatChoice(userId: string): PendingFormatChoice | null {
 }
 function clearPendingFormatChoice(userId: string) { PENDING_FORMAT_CHOICES.delete(userId); }
 
-// Detecta resposta curta só com o formato: "feed", "story", "no story", "nos stories", "pode postar no feed" etc.
-function detectStandaloneFormatReply(text: string): "feed" | "story" | undefined {
+// Detecta resposta curta só com o formato: "feed", "story", "reels", "no story", "nos stories" etc.
+function detectStandaloneFormatReply(text: string): "feed" | "story" | "reels" | undefined {
   const n = normalizePt(compactSpaces(text || "")).replace(/[.!?]+$/g, "").trim();
   if (!n || n.length > 40) return undefined;
   if (/^(pode\s+postar\s+)?(no\s+|nos\s+|em\s+)?(o\s+|a\s+)?feed$/.test(n)) return "feed";
   if (/^(pode\s+postar\s+)?(no\s+|nos\s+|em\s+)?(o\s+|a\s+)?stor(y|ies|ie)$/.test(n)) return "story";
+  if (/^(pode\s+postar\s+(em\s+|no\s+|nos\s+)?)?(no\s+|nos\s+|em\s+)?(o\s+|a\s+|um\s+)?reels?$/.test(n)) return "reels";
   return undefined;
 }
 
