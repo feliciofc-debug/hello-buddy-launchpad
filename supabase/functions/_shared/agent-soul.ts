@@ -317,6 +317,25 @@ export async function buildTenantContext(
   const catalog = await loadCatalogForTenant(sb, cfg.user_id, userText);
   if (catalog) blocks.push(catalog);
 
+  // 🔒 BASE DE CONHECIMENTO REGULADA (segmento compartilhado, ex: Ademicon).
+  // Travas SEMPRE no TOPO do bloco de segmento; tópicos como material de consulta.
+  // FAIL-SAFE: se cfg tem segment_id mas não conseguimos carregar as travas,
+  // entra em MODO SEGURO — recusa falar do domínio regulado.
+  if (cfg.knowledge_segment_id) {
+    const seg = await loadKnowledgeSegment(sb, cfg.knowledge_segment_id);
+    if (seg) {
+      // Travas no início (prioridade máxima), tópicos logo depois.
+      blocks.unshift(seg.rulesBlock);
+      if (seg.topicsBlock) blocks.push(seg.topicsBlock);
+    } else {
+      // Fail-safe: base indisponível → modo seguro no topo, sem exceção.
+      console.warn(
+        `[agent-soul] FAIL-SAFE ativado: knowledge_segment_id=${cfg.knowledge_segment_id} não carregou travas. user_id=${cfg.user_id}`,
+      );
+      blocks.unshift(SEGMENT_FAILSAFE_BLOCK);
+    }
+  }
+
   // REGRA DE OURO do whitelabel — sempre por último pra sobrepor qualquer coisa
   // que a base de conhecimento do cliente possa ter (defesa em profundidade
   // contra prompt injection no campo knowledge_base).
