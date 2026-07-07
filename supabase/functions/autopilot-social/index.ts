@@ -10,6 +10,40 @@ const corsHeaders = {
 const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo'
 const ADMIN_DOMAINS = ['@atombrasildigital.com']
 
+// ---- Feature A.2: CTA de WhatsApp opt-in por produto (reutiliza lógica do inbound-processor) ----
+// Busca o número do agente DO TENANT (multi-tenant) — nunca hardcodar.
+async function buscarTelefoneAgenteTenant(
+  supabase: any,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from('whatsapp_config')
+      .select('display_phone')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const raw = (data?.display_phone || '').toString().replace(/\D/g, '')
+    if (raw && raw.length >= 10) return raw
+    return null
+  } catch (e) {
+    console.warn('[autopilot cta_whatsapp] falha buscando display_phone:', (e as Error).message)
+    return null
+  }
+}
+
+// Idempotente: remove qualquer CTA prévio e reaplica em SANDUÍCHE (topo + fim). Nunca triplica.
+function appendWhatsappCta(script: string, phoneDigits: string): string {
+  if (!script || !phoneDigits) return script
+  const ctaRegex = /\s*📱\s*Fale comigo no WhatsApp:\s*wa\.me\/\d+\s*/gi
+  const clean = script.replace(ctaRegex, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  const cta = `📱 Fale comigo no WhatsApp: wa.me/${phoneDigits}`
+  return `${cta}\n\n${clean}\n\n${cta}`
+}
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
