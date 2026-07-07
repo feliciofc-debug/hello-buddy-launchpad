@@ -5994,6 +5994,7 @@ export type Database = {
           imagem_url: string | null
           imagens: Json | null
           imagens_reel: Json | null
+          incluir_cta_whatsapp: boolean
           informacao_nutricional: string | null
           ingredientes: string | null
           link: string | null
@@ -6035,6 +6036,7 @@ export type Database = {
           imagem_url?: string | null
           imagens?: Json | null
           imagens_reel?: Json | null
+          incluir_cta_whatsapp?: boolean
           informacao_nutricional?: string | null
           ingredientes?: string | null
           link?: string | null
@@ -6076,6 +6078,7 @@ export type Database = {
           imagem_url?: string | null
           imagens?: Json | null
           imagens_reel?: Json | null
+          incluir_cta_whatsapp?: boolean
           informacao_nutricional?: string | null
           ingredientes?: string | null
           link?: string | null

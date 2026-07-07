@@ -10,6 +10,40 @@ const corsHeaders = {
 const SAO_PAULO_TIMEZONE = 'America/Sao_Paulo'
 const ADMIN_DOMAINS = ['@atombrasildigital.com']
 
+// ---- Feature A.2: CTA de WhatsApp opt-in por produto (reutiliza lógica do inbound-processor) ----
+// Busca o número do agente DO TENANT (multi-tenant) — nunca hardcodar.
+async function buscarTelefoneAgenteTenant(
+  supabase: any,
+  userId: string,
+): Promise<string | null> {
+  try {
+    const { data } = await supabase
+      .from('whatsapp_config')
+      .select('display_phone')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const raw = (data?.display_phone || '').toString().replace(/\D/g, '')
+    if (raw && raw.length >= 10) return raw
+    return null
+  } catch (e) {
+    console.warn('[autopilot cta_whatsapp] falha buscando display_phone:', (e as Error).message)
+    return null
+  }
+}
+
+// Idempotente: remove qualquer CTA prévio e reaplica em SANDUÍCHE (topo + fim). Nunca triplica.
+function appendWhatsappCta(script: string, phoneDigits: string): string {
+  if (!script || !phoneDigits) return script
+  const ctaRegex = /\s*📱\s*Fale comigo no WhatsApp:\s*wa\.me\/\d+\s*/gi
+  const clean = script.replace(ctaRegex, '\n').replace(/\n{3,}/g, '\n\n').trim()
+  const cta = `📱 Fale comigo no WhatsApp: wa.me/${phoneDigits}`
+  return `${cta}\n\n${clean}\n\n${cta}`
+}
+
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -155,7 +189,7 @@ serve(async (req) => {
 
         let query = supabase
           .from('produtos')
-          .select('id, user_id, nome, descricao, preco, imagem_url, link, link_marketplace, categoria, ativo, usa_textos_personalizados')
+          .select('id, user_id, nome, descricao, preco, imagem_url, link, link_marketplace, categoria, ativo, usa_textos_personalizados, incluir_cta_whatsapp')
           .eq('ativo', true)
           .eq('user_id', config.user_id)
           .order('created_at', { ascending: true })
@@ -391,6 +425,33 @@ serve(async (req) => {
               textoFacebook = `${textoFacebook}\n\n🔗 Compre aqui: ${linkProduto}`
               textoInstagram = `${textoInstagram}\n\n🔗 Link na bio ou acesse: ${linkProduto}`
             }
+
+            // ---- Feature A.2: CTA de WhatsApp por produto (opt-in via toggle no produto) ----
+            // Fail-safe: se por qualquer motivo não achar o telefone do tenant, posta SEM CTA
+            // (nunca trava o autopilot por causa disso — melhor post sem CTA que autopilot parado).
+            if ((produto as any).incluir_cta_whatsapp === true) {
+              try {
+                const telAgente = await buscarTelefoneAgenteTenant(supabase, config.user_id)
+                if (telAgente) {
+                  textoFacebook = appendWhatsappCta(textoFacebook, telAgente)
+                  textoInstagram = appendWhatsappCta(textoInstagram, telAgente)
+                  console.log('📱 [AUTOPILOT] CTA WhatsApp aplicado (sanduíche)', {
+                    produto_id: produto.id,
+                    user_id: config.user_id,
+                    tel_len: telAgente.length,
+                  })
+                } else {
+                  console.log('⚠️ [AUTOPILOT] Produto marcado com CTA WhatsApp, mas tenant sem display_phone ativo — postando SEM CTA (fail-safe)', {
+                    produto_id: produto.id,
+                    user_id: config.user_id,
+                  })
+                }
+              } catch (ctaErr) {
+                console.warn('⚠️ [AUTOPILOT] Falha ao aplicar CTA WhatsApp — postando SEM CTA:', (ctaErr as Error).message)
+              }
+            }
+
+
 
 
             const imagemUrl = config.incluir_imagem ? (produto.imagem_url || null) : null
