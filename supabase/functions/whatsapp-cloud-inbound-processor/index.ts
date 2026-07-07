@@ -1863,9 +1863,13 @@ async function buscarTelefoneAgenteTenant(userId: string): Promise<string | null
 
 function appendWhatsappCta(script: string, phoneDigits: string): string {
   if (!script || !phoneDigits) return script;
-  // Idempotente: se já tem wa.me/<numero>, não duplica.
-  if (new RegExp(`wa\\.me/${phoneDigits}`, "i").test(script)) return script;
-  return `${script.trimEnd()}\n\n📱 Fale comigo no WhatsApp: wa.me/${phoneDigits}`;
+  // Sanduíche idempotente: remove QUALQUER CTA "📱 Fale comigo no WhatsApp: wa.me/..."
+  // já presente (topo, meio ou fim, com qualquer número), e reaplica exatamente
+  // um CTA no início e um no fim. Evita triplicação em regenerações/revisões.
+  const ctaRegex = /\s*📱\s*Fale comigo no WhatsApp:\s*wa\.me\/\d+\s*/gi;
+  const clean = script.replace(ctaRegex, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const cta = `📱 Fale comigo no WhatsApp: wa.me/${phoneDigits}`;
+  return `${cta}\n\n${clean}\n\n${cta}`;
 }
 
 // Detecta pedido explícito do dono pra incluir CTA de WhatsApp no post.
@@ -3411,7 +3415,7 @@ const TOOLS = [
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
           redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
           formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
-          incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' no fim da legenda de todas as redes escolhidas. Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
+          incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' em SANDUÍCHE (no INÍCIO E no FIM) da legenda de todas as redes escolhidas. Idempotente: limpa CTA antigo antes de reaplicar (nunca triplica). Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
         },
       },
     },
