@@ -1840,6 +1840,44 @@ DIFERENCIAIS: IA própria (não depende só de OpenAI), atendimento IA + marketi
 PLANO: R$ 597/mês (fundador) — trial mediante contato. Agência (white-label): negociação caso a caso.
 CTA padrão: "Chama no WhatsApp (21) 99537-9550 pra testar" ou "Agenda uma demo".`;
 
+// ---- CTA de WhatsApp opt-in (Feature A) ----
+// Busca o número do agente DO TENANT (multi-tenant) — nunca hardcodar.
+async function buscarTelefoneAgenteTenant(userId: string): Promise<string | null> {
+  try {
+    const { data } = await sb
+      .from("whatsapp_config")
+      .select("display_phone, phone_number_id")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const raw = (data?.display_phone || "").toString().replace(/\D/g, "");
+    if (raw && raw.length >= 10) return raw;
+    return null;
+  } catch (e) {
+    console.warn("[cta_whatsapp] falha buscando display_phone:", (e as Error).message);
+    return null;
+  }
+}
+
+function appendWhatsappCta(script: string, phoneDigits: string): string {
+  if (!script || !phoneDigits) return script;
+  // Idempotente: se já tem wa.me/<numero>, não duplica.
+  if (new RegExp(`wa\\.me/${phoneDigits}`, "i").test(script)) return script;
+  return `${script.trimEnd()}\n\n📱 Fale comigo no WhatsApp: wa.me/${phoneDigits}`;
+}
+
+// Detecta pedido explícito do dono pra incluir CTA de WhatsApp no post.
+function detectWantsWhatsappCta(text: string): boolean {
+  const n = normalizePt(text || "");
+  if (!n) return false;
+  if (/\b(com|inclui|incluir|coloca|colocar|poe|por|adiciona|adicionar)\b.*\b(meu\s+)?whats(app)?\b/.test(n)) return true;
+  if (/\bcta\b.*\bwhats(app)?\b/.test(n)) return true;
+  if (/\bchama\s+(no|pelo)\s+whats(app)?\b/.test(n)) return true;
+  return false;
+}
+
 // =========================================================
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
