@@ -3003,10 +3003,23 @@ async function toolPostarMidiaBiblioteca(
         return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
       }),
     );
-    const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+    let scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+    // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
+    const incluirCta = !!args?.incluir_cta_whatsapp;
+    let ctaNota: string | undefined;
+    if (incluirCta) {
+      const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
+      if (telAgente) {
+        scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+        ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
+      } else {
+        ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
+      }
+    }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -3021,6 +3034,10 @@ async function toolPostarMidiaBiblioteca(
       ? "No Instagram, vídeo no feed é publicado como Reels (padrão da Meta) — vou postar como Reels."
       : undefined;
 
+    const perguntaCta = incluirCta
+      ? ""
+      : ` Pergunte TAMBÉM: "Quer incluir um 'Chama no WhatsApp' no post?" — se disser sim, chame revisar_post_pendente com token="${token}" e incluir_cta_whatsapp=true (não precisa passar ajuste).`;
+
     return JSON.stringify({
       status: "aguardando_confirmacao",
       fonte: "biblioteca_midias",
@@ -3033,7 +3050,9 @@ async function toolPostarMidiaBiblioteca(
       preview: scripts,
       aviso_formato: avisoFormato,
       aviso_reels: avisoReels,
-      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e no final pergunte EXPLICITAMENTE: "Quer ajustar algo antes de postar? (ex: tirar/incluir informação, mudar preço, deixar mais curto, mudar o tom) Ou responde 'pode postar' pra publicar já." Se o dono pedir AJUSTE no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. Se confirmar ('pode postar', 'manda', 'vai'), chame confirmar_postagem_redes com token="${token}".`,
+      cta_whatsapp: incluirCta,
+      cta_nota: ctaNota,
+      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e no final pergunte EXPLICITAMENTE: "Quer ajustar algo antes de postar? (ex: tirar/incluir informação, mudar preço, deixar mais curto, mudar o tom) Ou responde 'pode postar' pra publicar já."${perguntaCta} Se o dono pedir AJUSTE no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. Se confirmar ('pode postar', 'manda', 'vai'), chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
