@@ -849,6 +849,124 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_knowledge_rules: {
+        Row: {
+          ativa: boolean
+          created_at: string
+          id: string
+          motivo: string | null
+          ordem: number
+          regra: string
+          segment_id: string
+          updated_at: string
+        }
+        Insert: {
+          ativa?: boolean
+          created_at?: string
+          id?: string
+          motivo?: string | null
+          ordem?: number
+          regra: string
+          segment_id: string
+          updated_at?: string
+        }
+        Update: {
+          ativa?: boolean
+          created_at?: string
+          id?: string
+          motivo?: string | null
+          ordem?: number
+          regra?: string
+          segment_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_knowledge_rules_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "agent_knowledge_segments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agent_knowledge_segments: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          descricao: string | null
+          id: string
+          nome: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          nome: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          nome?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      agent_knowledge_topics: {
+        Row: {
+          ativa: boolean
+          conteudo_tecnico: string | null
+          created_at: string
+          exemplo: string | null
+          id: string
+          segment_id: string
+          tags: string[]
+          titulo: string
+          traducao_leve: string
+          updated_at: string
+        }
+        Insert: {
+          ativa?: boolean
+          conteudo_tecnico?: string | null
+          created_at?: string
+          exemplo?: string | null
+          id?: string
+          segment_id: string
+          tags?: string[]
+          titulo: string
+          traducao_leve: string
+          updated_at?: string
+        }
+        Update: {
+          ativa?: boolean
+          conteudo_tecnico?: string | null
+          created_at?: string
+          exemplo?: string | null
+          id?: string
+          segment_id?: string
+          tags?: string[]
+          titulo?: string
+          traducao_leve?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_knowledge_topics_segment_id_fkey"
+            columns: ["segment_id"]
+            isOneToOne: false
+            referencedRelation: "agent_knowledge_segments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_messages_quota: {
         Row: {
           created_at: string
@@ -8010,6 +8128,7 @@ export type Database = {
           id: string
           is_active: boolean
           knowledge_base: string | null
+          knowledge_segment_id: string | null
           persona: string | null
           tone: string | null
           updated_at: string
@@ -8024,6 +8143,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           knowledge_base?: string | null
+          knowledge_segment_id?: string | null
           persona?: string | null
           tone?: string | null
           updated_at?: string
@@ -8038,12 +8158,21 @@ export type Database = {
           id?: string
           is_active?: boolean
           knowledge_base?: string | null
+          knowledge_segment_id?: string | null
           persona?: string | null
           tone?: string | null
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_cloud_agent_config_knowledge_segment_id_fkey"
+            columns: ["knowledge_segment_id"]
+            isOneToOne: false
+            referencedRelation: "agent_knowledge_segments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       whatsapp_cloud_conversations: {
         Row: {
