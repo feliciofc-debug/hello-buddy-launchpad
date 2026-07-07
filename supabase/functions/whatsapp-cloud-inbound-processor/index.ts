@@ -1840,6 +1840,44 @@ DIFERENCIAIS: IA própria (não depende só de OpenAI), atendimento IA + marketi
 PLANO: R$ 597/mês (fundador) — trial mediante contato. Agência (white-label): negociação caso a caso.
 CTA padrão: "Chama no WhatsApp (21) 99537-9550 pra testar" ou "Agenda uma demo".`;
 
+// ---- CTA de WhatsApp opt-in (Feature A) ----
+// Busca o número do agente DO TENANT (multi-tenant) — nunca hardcodar.
+async function buscarTelefoneAgenteTenant(userId: string): Promise<string | null> {
+  try {
+    const { data } = await sb
+      .from("whatsapp_config")
+      .select("display_phone, phone_number_id")
+      .eq("user_id", userId)
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const raw = (data?.display_phone || "").toString().replace(/\D/g, "");
+    if (raw && raw.length >= 10) return raw;
+    return null;
+  } catch (e) {
+    console.warn("[cta_whatsapp] falha buscando display_phone:", (e as Error).message);
+    return null;
+  }
+}
+
+function appendWhatsappCta(script: string, phoneDigits: string): string {
+  if (!script || !phoneDigits) return script;
+  // Idempotente: se já tem wa.me/<numero>, não duplica.
+  if (new RegExp(`wa\\.me/${phoneDigits}`, "i").test(script)) return script;
+  return `${script.trimEnd()}\n\n📱 Fale comigo no WhatsApp: wa.me/${phoneDigits}`;
+}
+
+// Detecta pedido explícito do dono pra incluir CTA de WhatsApp no post.
+function detectWantsWhatsappCta(text: string): boolean {
+  const n = normalizePt(text || "");
+  if (!n) return false;
+  if (/\b(com|inclui|incluir|coloca|colocar|poe|por|adiciona|adicionar)\b.*\b(meu\s+)?whats(app)?\b/.test(n)) return true;
+  if (/\bcta\b.*\bwhats(app)?\b/.test(n)) return true;
+  if (/\bchama\s+(no|pelo)\s+whats(app)?\b/.test(n)) return true;
+  return false;
+}
+
 // =========================================================
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
@@ -1917,6 +1955,7 @@ type PendingSocialPost = {
   formato?: "feed" | "story" | "reels";
   midiaTipo?: "foto" | "video";
   queueRows?: Array<{ id: string; platform: string }>;
+  incluirCtaWhatsapp?: boolean;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -2487,7 +2526,7 @@ function detectSocialPostConfirmation(text: string): { token: string; cancelar?:
 }
 
 async function toolPostarRedesSociais(
-  args: { produto: string; tom?: string; redes?: string[] },
+  args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
@@ -2501,6 +2540,7 @@ async function toolPostarRedesSociais(
       .map((r) => r.toLowerCase())
       .filter((r) => redesValidas.includes(r));
     const tom = args?.tom || "urgencia";
+    const incluirCta = !!args?.incluir_cta_whatsapp;
 
     const { produto: prod, sugestoes, candidatos } = await buscarProdutoParaPostagem(q, ctx.userId);
 
@@ -2524,10 +2564,22 @@ async function toolPostarRedesSociais(
         return [r, await gerarScriptRedesSociais(prod, tom, redeGen)] as const;
       }),
     );
-    const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+    let scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+    // Feature A: CTA de WhatsApp (opt-in) — número dinâmico do tenant.
+    let ctaNota: string | undefined;
+    if (incluirCta) {
+      const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
+      if (telAgente) {
+        scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+        ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
+      } else {
+        ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
+      }
+    }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() };
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -2538,12 +2590,15 @@ async function toolPostarRedesSociais(
       tom,
       redes,
       preview: scripts,
-      instrucoes: `Mostre ao usuário o produto, tom, redes e os scripts (um por rede). Peça confirmação clara. Se confirmar, chame confirmar_postagem_redes com token="${token}". Se pedir mudanças, gere novo preview.`,
+      cta_whatsapp: incluirCta,
+      cta_nota: ctaNota,
+      instrucoes: `Mostre ao usuário o produto, tom, redes e os scripts (um por rede). ${incluirCta ? "" : "Antes de pedir confirmação, PERGUNTE: 'Quer incluir um Chama no WhatsApp no post?' — se disser sim, chame revisar_post_pendente com token='${token}' e incluir_cta_whatsapp=true. "}Peça confirmação clara. Se confirmar, chame confirmar_postagem_redes com token="${token}". Se pedir mudanças, gere novo preview via revisar_post_pendente.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
   }
 }
+
 
 async function toolConfirmarPostagemRedes(
   args: { token: string; cancelar?: boolean },
@@ -2582,15 +2637,16 @@ async function toolConfirmarPostagemRedes(
 
 // ---- revisar_post_pendente: regenera o script com um ajuste solicitado pelo dono, MANTENDO token/mídia/formato ----
 async function toolRevisarPostPendente(
-  args: { token: string; ajuste: string },
+  args: { token: string; ajuste?: string; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
   pendingCleanup();
   const token = (args?.token || "").trim().toLowerCase();
   const ajuste = (args?.ajuste || "").toString().trim();
+  const toggleCta = typeof args?.incluir_cta_whatsapp === "boolean";
   if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
-  if (ajuste.length < 2) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
+  if (ajuste.length < 2 && !toggleCta) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
 
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
   if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
@@ -2633,13 +2689,37 @@ async function toolRevisarPostPendente(
   const isBrandContent = /\bamz\s*ofertas\b|\bamz\b|amzofertas|\blogo\s*(da|do)?\s*(amz|empresa|marca)?\b|institucional|nossa\s+plataforma/i.test(ctxLower)
     || produtoLike?.source === "midias_whatsapp";
   const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
-  const scriptsEntries = await Promise.all(
-    p.redes.map(async (r) => {
-      const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-      return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
-    }),
-  );
-  const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+  // Se ajuste vazio (apenas toggle de CTA), reaproveita scripts atuais sem gerar tudo de novo.
+  let scripts: Record<string, string>;
+  if (ajuste.length < 2 && toggleCta) {
+    scripts = { ...p.scripts };
+    // Se o CTA anterior estava presente, remove antes de reaplicar.
+    scripts = Object.fromEntries(
+      Object.entries(scripts).map(([r, s]) => [r, (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd()])
+    );
+  } else {
+    const scriptsEntries = await Promise.all(
+      p.redes.map(async (r) => {
+        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
+      }),
+    );
+    scripts = Object.fromEntries(scriptsEntries);
+  }
+
+  // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
+  const incluirCta = toggleCta ? !!args?.incluir_cta_whatsapp : !!p.incluirCtaWhatsapp;
+  let ctaNota: string | undefined;
+  if (incluirCta) {
+    const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
+    if (telAgente) {
+      scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+      ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
+    } else {
+      ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
+    }
+  }
 
   // Atualiza social_posts_queue (mantém error_message/marker/token e status intactos).
   if (p.queueRows?.length) {
@@ -2653,7 +2733,7 @@ async function toolRevisarPostPendente(
   }
 
   // Atualiza cache em memória.
-  const atualizado: PendingSocialPost = { ...p, scripts };
+  const atualizado: PendingSocialPost = { ...p, scripts, incluirCtaWhatsapp: incluirCta };
   PENDING_POSTS.set(token, atualizado);
 
   return JSON.stringify({
@@ -2663,9 +2743,12 @@ async function toolRevisarPostPendente(
     formato: p.formato || "feed",
     redes: p.redes,
     preview: scripts,
+    cta_whatsapp: incluirCta,
+    cta_nota: ctaNota,
     instrucoes: `Mostre o script REVISADO ao dono e pergunte "quer mais algum ajuste ou pode postar?". Se pedir novo ajuste, chame revisar_post_pendente de novo com o MESMO token="${token}". Se confirmar, chame confirmar_postagem_redes com token="${token}".`,
   });
 }
+
 
 
 
@@ -2809,7 +2892,7 @@ async function toolSalvarMidiaBiblioteca(
 
 // ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
 async function toolPostarMidiaBiblioteca(
-  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string },
+  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
@@ -2920,10 +3003,23 @@ async function toolPostarMidiaBiblioteca(
         return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
       }),
     );
-    const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+    let scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+    // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
+    const incluirCta = !!args?.incluir_cta_whatsapp;
+    let ctaNota: string | undefined;
+    if (incluirCta) {
+      const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
+      if (telAgente) {
+        scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+        ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
+      } else {
+        ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
+      }
+    }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -2938,6 +3034,10 @@ async function toolPostarMidiaBiblioteca(
       ? "No Instagram, vídeo no feed é publicado como Reels (padrão da Meta) — vou postar como Reels."
       : undefined;
 
+    const perguntaCta = incluirCta
+      ? ""
+      : ` Pergunte TAMBÉM: "Quer incluir um 'Chama no WhatsApp' no post?" — se disser sim, chame revisar_post_pendente com token="${token}" e incluir_cta_whatsapp=true (não precisa passar ajuste).`;
+
     return JSON.stringify({
       status: "aguardando_confirmacao",
       fonte: "biblioteca_midias",
@@ -2950,7 +3050,9 @@ async function toolPostarMidiaBiblioteca(
       preview: scripts,
       aviso_formato: avisoFormato,
       aviso_reels: avisoReels,
-      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e no final pergunte EXPLICITAMENTE: "Quer ajustar algo antes de postar? (ex: tirar/incluir informação, mudar preço, deixar mais curto, mudar o tom) Ou responde 'pode postar' pra publicar já." Se o dono pedir AJUSTE no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. Se confirmar ('pode postar', 'manda', 'vai'), chame confirmar_postagem_redes com token="${token}".`,
+      cta_whatsapp: incluirCta,
+      cta_nota: ctaNota,
+      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e no final pergunte EXPLICITAMENTE: "Quer ajustar algo antes de postar? (ex: tirar/incluir informação, mudar preço, deixar mais curto, mudar o tom) Ou responde 'pode postar' pra publicar já."${perguntaCta} Se o dono pedir AJUSTE no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. Se confirmar ('pode postar', 'manda', 'vai'), chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -3245,6 +3347,7 @@ const TOOLS = [
           produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copy. Padrão: urgencia." },
           redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] }, description: "Redes. Padrão: todas as três." },
+          incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. Passe true SÓ SE o dono pediu explicitamente 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA do whatsapp', 'chama no whatsapp'. Nunca inclua automaticamente." },
         },
         required: ["produto"],
       },
@@ -3269,14 +3372,15 @@ const TOOLS = [
     type: "function",
     function: {
       name: "revisar_post_pendente",
-      description: "🛠️ USE quando houver um POST PENDENTE (aguardando 'pode postar') e o dono pedir AJUSTES NO TEXTO/SCRIPT antes de publicar. Ex: 'tira o ACABA HOJE', 'põe o preço 89,90', 'deixa mais curto', 'muda o tom pra profissional', 'adiciona que tem garantia', 'refaz mais leve'. Regenera o script aplicando o ajuste e MANTÉM o mesmo token, mídia, formato e redes — só o texto muda. NÃO reabre pergunta de contexto. NÃO use pra confirmar (use confirmar_postagem_redes) nem pra trocar rede/formato/mídia (aí é recriar via postar_midia_biblioteca).",
+      description: "🛠️ USE quando houver um POST PENDENTE (aguardando 'pode postar') e o dono pedir AJUSTES NO TEXTO/SCRIPT antes de publicar. Ex: 'tira o ACABA HOJE', 'põe o preço 89,90', 'deixa mais curto', 'muda o tom pra profissional'. TAMBÉM use pra LIGAR/DESLIGAR o CTA de WhatsApp no post pendente (passe incluir_cta_whatsapp=true/false; ajuste pode ser omitido nesse caso). Regenera o script aplicando o ajuste e MANTÉM o mesmo token, mídia, formato e redes.",
       parameters: {
         type: "object",
         properties: {
           token: { type: "string", description: "Token de 8 chars do post pendente." },
-          ajuste: { type: "string", description: "Instrução literal do dono do que mudar no texto (ex: 'tira o preço e deixa mais curto')." },
+          ajuste: { type: "string", description: "Instrução literal do dono do que mudar no texto (ex: 'tira o preço e deixa mais curto'). Pode ser omitido se for SÓ pra ligar/desligar o CTA de WhatsApp." },
+          incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. Passe true quando o dono pedir pra incluir 'Chama no WhatsApp' no post; false pra remover. Omita pra manter como estava." },
         },
-        required: ["token", "ajuste"],
+        required: ["token"],
       },
     },
   },
@@ -3297,7 +3401,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo.",
+      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
       parameters: {
         type: "object",
         properties: {
@@ -3307,6 +3411,7 @@ const TOOLS = [
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
           redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] } },
           formato: { type: "string", enum: ["feed", "story", "reels"], description: "'feed' (default), 'story' (foto/vídeo 9:16) ou 'reels' (só vídeo)." },
+          incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' no fim da legenda de todas as redes escolhidas. Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
         },
       },
     },
