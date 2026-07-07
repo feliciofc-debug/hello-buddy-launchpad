@@ -1704,6 +1704,33 @@ export default function MeusProdutos() {
                     </div>
                   )}
                   
+                  {/* Feature A.2: Toggle CTA de WhatsApp no autopilot (opt-in por produto) */}
+                  <div className="flex items-center justify-between p-3 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">📱 Incluir "Chama no WhatsApp" nos posts automáticos</span>
+                      <span className="text-xs text-muted-foreground">
+                        Adiciona o CTA com seu número no topo e no fim da legenda deste produto
+                      </span>
+                    </div>
+                    <Switch
+                      checked={!!(product as any).incluir_cta_whatsapp}
+                      onCheckedChange={async (checked) => {
+                        try {
+                          const { error } = await supabase
+                            .from('produtos')
+                            .update({ incluir_cta_whatsapp: checked } as any)
+                            .eq('id', product.id);
+                          if (error) throw error;
+                          setProducts(prev => prev.map(p => p.id === product.id ? ({ ...p, incluir_cta_whatsapp: checked } as any) : p));
+                          toast.success(checked ? 'CTA WhatsApp ativado para este produto' : 'CTA WhatsApp desativado');
+                        } catch (err: any) {
+                          console.error('Erro toggle CTA WhatsApp:', err);
+                          toast.error('Erro ao atualizar CTA WhatsApp');
+                        }
+                      }}
+                    />
+                  </div>
+
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">{t('products.category_label')}</span>
@@ -1716,6 +1743,7 @@ export default function MeusProdutos() {
                       </div>
                     )}
                   </div>
+
 
                   {/* BOTÕES DE AÇÃO */}
                   <div className="space-y-2 pt-4">
