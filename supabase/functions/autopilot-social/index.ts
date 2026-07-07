@@ -189,7 +189,7 @@ serve(async (req) => {
 
         let query = supabase
           .from('produtos')
-          .select('id, user_id, nome, descricao, preco, imagem_url, link, link_marketplace, categoria, ativo, usa_textos_personalizados')
+          .select('id, user_id, nome, descricao, preco, imagem_url, link, link_marketplace, categoria, ativo, usa_textos_personalizados, incluir_cta_whatsapp')
           .eq('ativo', true)
           .eq('user_id', config.user_id)
           .order('created_at', { ascending: true })
