@@ -2637,15 +2637,16 @@ async function toolConfirmarPostagemRedes(
 
 // ---- revisar_post_pendente: regenera o script com um ajuste solicitado pelo dono, MANTENDO token/mídia/formato ----
 async function toolRevisarPostPendente(
-  args: { token: string; ajuste: string },
+  args: { token: string; ajuste?: string; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
   pendingCleanup();
   const token = (args?.token || "").trim().toLowerCase();
   const ajuste = (args?.ajuste || "").toString().trim();
+  const toggleCta = typeof args?.incluir_cta_whatsapp === "boolean";
   if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
-  if (ajuste.length < 2) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
+  if (ajuste.length < 2 && !toggleCta) return JSON.stringify({ erro: "ajuste vazio — descreva o que mudar" });
 
   const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
   if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado. Refaça o pedido de postagem." });
@@ -2688,13 +2689,37 @@ async function toolRevisarPostPendente(
   const isBrandContent = /\bamz\s*ofertas\b|\bamz\b|amzofertas|\blogo\s*(da|do)?\s*(amz|empresa|marca)?\b|institucional|nossa\s+plataforma/i.test(ctxLower)
     || produtoLike?.source === "midias_whatsapp";
   const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
-  const scriptsEntries = await Promise.all(
-    p.redes.map(async (r) => {
-      const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-      return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
-    }),
-  );
-  const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+  // Se ajuste vazio (apenas toggle de CTA), reaproveita scripts atuais sem gerar tudo de novo.
+  let scripts: Record<string, string>;
+  if (ajuste.length < 2 && toggleCta) {
+    scripts = { ...p.scripts };
+    // Se o CTA anterior estava presente, remove antes de reaplicar.
+    scripts = Object.fromEntries(
+      Object.entries(scripts).map(([r, s]) => [r, (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd()])
+    );
+  } else {
+    const scriptsEntries = await Promise.all(
+      p.redes.map(async (r) => {
+        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
+        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
+      }),
+    );
+    scripts = Object.fromEntries(scriptsEntries);
+  }
+
+  // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
+  const incluirCta = toggleCta ? !!args?.incluir_cta_whatsapp : !!p.incluirCtaWhatsapp;
+  let ctaNota: string | undefined;
+  if (incluirCta) {
+    const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
+    if (telAgente) {
+      scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+      ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
+    } else {
+      ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
+    }
+  }
 
   // Atualiza social_posts_queue (mantém error_message/marker/token e status intactos).
   if (p.queueRows?.length) {
@@ -2708,7 +2733,7 @@ async function toolRevisarPostPendente(
   }
 
   // Atualiza cache em memória.
-  const atualizado: PendingSocialPost = { ...p, scripts };
+  const atualizado: PendingSocialPost = { ...p, scripts, incluirCtaWhatsapp: incluirCta };
   PENDING_POSTS.set(token, atualizado);
 
   return JSON.stringify({
@@ -2718,9 +2743,12 @@ async function toolRevisarPostPendente(
     formato: p.formato || "feed",
     redes: p.redes,
     preview: scripts,
+    cta_whatsapp: incluirCta,
+    cta_nota: ctaNota,
     instrucoes: `Mostre o script REVISADO ao dono e pergunte "quer mais algum ajuste ou pode postar?". Se pedir novo ajuste, chame revisar_post_pendente de novo com o MESMO token="${token}". Se confirmar, chame confirmar_postagem_redes com token="${token}".`,
   });
 }
+
 
 
 
