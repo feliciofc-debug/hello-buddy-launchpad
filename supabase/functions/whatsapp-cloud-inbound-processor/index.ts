@@ -3372,14 +3372,15 @@ const TOOLS = [
     type: "function",
     function: {
       name: "revisar_post_pendente",
-      description: "🛠️ USE quando houver um POST PENDENTE (aguardando 'pode postar') e o dono pedir AJUSTES NO TEXTO/SCRIPT antes de publicar. Ex: 'tira o ACABA HOJE', 'põe o preço 89,90', 'deixa mais curto', 'muda o tom pra profissional', 'adiciona que tem garantia', 'refaz mais leve'. Regenera o script aplicando o ajuste e MANTÉM o mesmo token, mídia, formato e redes — só o texto muda. NÃO reabre pergunta de contexto. NÃO use pra confirmar (use confirmar_postagem_redes) nem pra trocar rede/formato/mídia (aí é recriar via postar_midia_biblioteca).",
+      description: "🛠️ USE quando houver um POST PENDENTE (aguardando 'pode postar') e o dono pedir AJUSTES NO TEXTO/SCRIPT antes de publicar. Ex: 'tira o ACABA HOJE', 'põe o preço 89,90', 'deixa mais curto', 'muda o tom pra profissional'. TAMBÉM use pra LIGAR/DESLIGAR o CTA de WhatsApp no post pendente (passe incluir_cta_whatsapp=true/false; ajuste pode ser omitido nesse caso). Regenera o script aplicando o ajuste e MANTÉM o mesmo token, mídia, formato e redes.",
       parameters: {
         type: "object",
         properties: {
           token: { type: "string", description: "Token de 8 chars do post pendente." },
-          ajuste: { type: "string", description: "Instrução literal do dono do que mudar no texto (ex: 'tira o preço e deixa mais curto')." },
+          ajuste: { type: "string", description: "Instrução literal do dono do que mudar no texto (ex: 'tira o preço e deixa mais curto'). Pode ser omitido se for SÓ pra ligar/desligar o CTA de WhatsApp." },
+          incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. Passe true quando o dono pedir pra incluir 'Chama no WhatsApp' no post; false pra remover. Omita pra manter como estava." },
         },
-        required: ["token", "ajuste"],
+        required: ["token"],
       },
     },
   },
