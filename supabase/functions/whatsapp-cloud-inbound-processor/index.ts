@@ -1955,6 +1955,7 @@ type PendingSocialPost = {
   formato?: "feed" | "story" | "reels";
   midiaTipo?: "foto" | "video";
   queueRows?: Array<{ id: string; platform: string }>;
+  incluirCtaWhatsapp?: boolean;
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
