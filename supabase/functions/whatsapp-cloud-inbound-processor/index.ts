@@ -2526,7 +2526,7 @@ function detectSocialPostConfirmation(text: string): { token: string; cancelar?:
 }
 
 async function toolPostarRedesSociais(
-  args: { produto: string; tom?: string; redes?: string[] },
+  args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
@@ -2540,6 +2540,7 @@ async function toolPostarRedesSociais(
       .map((r) => r.toLowerCase())
       .filter((r) => redesValidas.includes(r));
     const tom = args?.tom || "urgencia";
+    const incluirCta = !!args?.incluir_cta_whatsapp;
 
     const { produto: prod, sugestoes, candidatos } = await buscarProdutoParaPostagem(q, ctx.userId);
 
@@ -2563,10 +2564,22 @@ async function toolPostarRedesSociais(
         return [r, await gerarScriptRedesSociais(prod, tom, redeGen)] as const;
       }),
     );
-    const scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+    let scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+
+    // Feature A: CTA de WhatsApp (opt-in) — número dinâmico do tenant.
+    let ctaNota: string | undefined;
+    if (incluirCta) {
+      const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
+      if (telAgente) {
+        scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+        ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
+      } else {
+        ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
+      }
+    }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now() };
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -2577,12 +2590,15 @@ async function toolPostarRedesSociais(
       tom,
       redes,
       preview: scripts,
-      instrucoes: `Mostre ao usuário o produto, tom, redes e os scripts (um por rede). Peça confirmação clara. Se confirmar, chame confirmar_postagem_redes com token="${token}". Se pedir mudanças, gere novo preview.`,
+      cta_whatsapp: incluirCta,
+      cta_nota: ctaNota,
+      instrucoes: `Mostre ao usuário o produto, tom, redes e os scripts (um por rede). ${incluirCta ? "" : "Antes de pedir confirmação, PERGUNTE: 'Quer incluir um Chama no WhatsApp no post?' — se disser sim, chame revisar_post_pendente com token='${token}' e incluir_cta_whatsapp=true. "}Peça confirmação clara. Se confirmar, chame confirmar_postagem_redes com token="${token}". Se pedir mudanças, gere novo preview via revisar_post_pendente.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
   }
 }
+
 
 async function toolConfirmarPostagemRedes(
   args: { token: string; cancelar?: boolean },
