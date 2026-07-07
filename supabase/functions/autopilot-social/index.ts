@@ -426,6 +426,33 @@ serve(async (req) => {
               textoInstagram = `${textoInstagram}\n\n🔗 Link na bio ou acesse: ${linkProduto}`
             }
 
+            // ---- Feature A.2: CTA de WhatsApp por produto (opt-in via toggle no produto) ----
+            // Fail-safe: se por qualquer motivo não achar o telefone do tenant, posta SEM CTA
+            // (nunca trava o autopilot por causa disso — melhor post sem CTA que autopilot parado).
+            if ((produto as any).incluir_cta_whatsapp === true) {
+              try {
+                const telAgente = await buscarTelefoneAgenteTenant(supabase, config.user_id)
+                if (telAgente) {
+                  textoFacebook = appendWhatsappCta(textoFacebook, telAgente)
+                  textoInstagram = appendWhatsappCta(textoInstagram, telAgente)
+                  console.log('📱 [AUTOPILOT] CTA WhatsApp aplicado (sanduíche)', {
+                    produto_id: produto.id,
+                    user_id: config.user_id,
+                    tel_len: telAgente.length,
+                  })
+                } else {
+                  console.log('⚠️ [AUTOPILOT] Produto marcado com CTA WhatsApp, mas tenant sem display_phone ativo — postando SEM CTA (fail-safe)', {
+                    produto_id: produto.id,
+                    user_id: config.user_id,
+                  })
+                }
+              } catch (ctaErr) {
+                console.warn('⚠️ [AUTOPILOT] Falha ao aplicar CTA WhatsApp — postando SEM CTA:', (ctaErr as Error).message)
+              }
+            }
+
+
+
 
             const imagemUrl = config.incluir_imagem ? (produto.imagem_url || null) : null
             console.log('🖼️ [AUTOPILOT] Payload base do post', {
