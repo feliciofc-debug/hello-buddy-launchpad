@@ -3347,6 +3347,7 @@ const TOOLS = [
           produto: { type: "string", description: "Nome, categoria ou palavra-chave do produto." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"], description: "Tom do copy. Padrão: urgencia." },
           redes: { type: "array", items: { type: "string", enum: ["facebook", "instagram", "tiktok"] }, description: "Redes. Padrão: todas as três." },
+          incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. Passe true SÓ SE o dono pediu explicitamente 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA do whatsapp', 'chama no whatsapp'. Nunca inclua automaticamente." },
         },
         required: ["produto"],
       },
