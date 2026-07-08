@@ -58,6 +58,7 @@ import VendedorPainel from "./pages/VendedorPainel";
 import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
 import ConfiguracoesWhatsApp from "./pages/ConfiguracoesWhatsApp";
 import AdminImportar from "./pages/AdminImportar";
+import AdminBaseConhecimento from "./pages/AdminBaseConhecimento";
 import LeadsImoveisEnriquecidos from "./pages/LeadsImoveisEnriquecidos";
 import SeguidoresConcorrentes from "./pages/SeguidoresConcorrentes";
 import PietroDashboard from "./pages/PietroDashboard";
