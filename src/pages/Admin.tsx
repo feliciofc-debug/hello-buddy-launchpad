@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag } from "lucide-react";
+import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag, BookOpen } from "lucide-react";
 import { FeatureFlagsTab } from "@/components/admin/FeatureFlagsTab";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
