@@ -157,6 +157,7 @@ const App = () => (
             <Route path="/admin/importar" element={<AdminImportar />} />
             
             <Route path="/admin/produtos" element={<AdminProdutos />} />
+            <Route path="/admin/base-conhecimento" element={<AdminBaseConhecimento />} />
             <Route path="/admin/wuzapi-instancias" element={<AdminWuzapiInstancias />} />
             <Route path="/configuracao-empresa" element={<ConfiguracaoEmpresa />} />
             <Route path="/ia-conversas" element={<IAConversas />} />
