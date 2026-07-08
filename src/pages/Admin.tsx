@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag } from "lucide-react";
+import { Shield, Trash2, AlertTriangle, CheckCircle, Clock, ArrowLeft, RefreshCw, Upload, Package, Users, ListChecks, Send, Flag, BookOpen } from "lucide-react";
 import { FeatureFlagsTab } from "@/components/admin/FeatureFlagsTab";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -316,6 +316,21 @@ export default function Admin() {
               <div>
                 <h3 className="font-semibold">Vendedores</h3>
                 <p className="text-sm text-muted-foreground">Gerenciar equipe</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card 
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate('/admin/base-conhecimento')}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-purple-500/10 rounded-lg">
+                <BookOpen className="h-6 w-6 text-purple-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Base de Conhecimento</h3>
+                <p className="text-sm text-muted-foreground">Travas e tópicos</p>
               </div>
             </CardContent>
           </Card>

@@ -58,6 +58,7 @@ import VendedorPainel from "./pages/VendedorPainel";
 import PoliticaPrivacidade from "./pages/PoliticaPrivacidade";
 import ConfiguracoesWhatsApp from "./pages/ConfiguracoesWhatsApp";
 import AdminImportar from "./pages/AdminImportar";
+import AdminBaseConhecimento from "./pages/AdminBaseConhecimento";
 import LeadsImoveisEnriquecidos from "./pages/LeadsImoveisEnriquecidos";
 import SeguidoresConcorrentes from "./pages/SeguidoresConcorrentes";
 import PietroDashboard from "./pages/PietroDashboard";
@@ -156,6 +157,7 @@ const App = () => (
             <Route path="/admin/importar" element={<AdminImportar />} />
             
             <Route path="/admin/produtos" element={<AdminProdutos />} />
+            <Route path="/admin/base-conhecimento" element={<AdminBaseConhecimento />} />
             <Route path="/admin/wuzapi-instancias" element={<AdminWuzapiInstancias />} />
             <Route path="/configuracao-empresa" element={<ConfiguracaoEmpresa />} />
             <Route path="/ia-conversas" element={<IAConversas />} />
