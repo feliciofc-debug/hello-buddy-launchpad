@@ -319,6 +319,21 @@ export default function Admin() {
               </div>
             </CardContent>
           </Card>
+
+          <Card 
+            className="cursor-pointer hover:border-primary/50 transition-colors"
+            onClick={() => navigate('/admin/base-conhecimento')}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="p-3 bg-purple-500/10 rounded-lg">
+                <BookOpen className="h-6 w-6 text-purple-500" />
+              </div>
+              <div>
+                <h3 className="font-semibold">Base de Conhecimento</h3>
+                <p className="text-sm text-muted-foreground">Travas e tópicos</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <Tabs defaultValue="deletions" className="w-full">
