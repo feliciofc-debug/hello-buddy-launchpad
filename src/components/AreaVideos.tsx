@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Upload, Video, Trash2, Play, Facebook, Instagram, BookOpen } from 'lucide-react';
+import { Upload, Video, Trash2, Play, Facebook, Instagram, BookOpen, Rocket } from 'lucide-react';
+import { AutopilotModal } from '@/components/AutopilotModal';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
@@ -43,6 +44,7 @@ export const AreaVideos = () => {
     title?: string;
     description?: string;
   } | null>(null);
+  const [autopilotOpen, setAutopilotOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleStoryPublished = async (
@@ -165,7 +167,16 @@ export const AreaVideos = () => {
     <div className="space-y-6">
       <ReelsGeradosGrid />
 
-      <h2 className="text-xl font-semibold pt-2">📹 Vídeos Enviados</h2>
+      <div className="flex items-center justify-between pt-2 gap-4 flex-wrap">
+        <h2 className="text-xl font-semibold">📹 Vídeos Enviados</h2>
+        <Button
+          onClick={() => setAutopilotOpen(true)}
+          className="bg-gradient-to-r from-primary to-purple-600 text-white"
+        >
+          <Rocket className="mr-2 h-4 w-4" />
+          Autopilot Social
+        </Button>
+      </div>
 
       {/* Upload area */}
       <Card className="border-dashed border-2 border-muted-foreground/30">
@@ -332,6 +343,8 @@ export const AreaVideos = () => {
           content={tiktokModalContent}
         />
       )}
+
+      <AutopilotModal open={autopilotOpen} onOpenChange={setAutopilotOpen} />
     </div>
   );
 };
