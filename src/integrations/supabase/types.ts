@@ -6014,6 +6014,7 @@ export type Database = {
       produto_videos: {
         Row: {
           criado_em: string | null
+          descricao_ia: string | null
           duracao_segundos: number | null
           facebook_post_id: string | null
           id: string
@@ -6037,6 +6038,7 @@ export type Database = {
         }
         Insert: {
           criado_em?: string | null
+          descricao_ia?: string | null
           duracao_segundos?: number | null
           facebook_post_id?: string | null
           id?: string
@@ -6060,6 +6062,7 @@ export type Database = {
         }
         Update: {
           criado_em?: string | null
+          descricao_ia?: string | null
           duracao_segundos?: number | null
           facebook_post_id?: string | null
           id?: string
