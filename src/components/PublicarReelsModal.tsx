@@ -492,7 +492,26 @@ export function PublicarReelsModal({
 
           {/* Descrição do vídeo para IA */}
           <div>
-            <Label className="text-sm font-medium">Sobre o que é esse vídeo? (opcional)</Label>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-sm font-medium">Sobre o que é esse vídeo? (opcional)</Label>
+              {videoId && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSalvarDescricao}
+                  disabled={savingDescricao}
+                  className="h-7 text-xs"
+                  title="Salvar para o Autopilot usar como contexto ao gerar legendas"
+                >
+                  {savingDescricao ? (
+                    <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Salvando</>
+                  ) : (
+                    <><Save className="mr-1 h-3 w-3" /> Salvar comentário</>
+                  )}
+                </Button>
+              )}
+            </div>
             <Textarea
               value={descricaoVideo}
               onChange={(e) => setDescricaoVideo(e.target.value)}
@@ -500,7 +519,13 @@ export function PublicarReelsModal({
               className="min-h-[60px] mt-1"
               rows={2}
             />
+            {videoId && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                💡 Salve o comentário para que o Autopilot da IA saiba do que se trata o vídeo ao gerar legendas automaticamente.
+              </p>
+            )}
           </div>
+
 
           {/* Botão gerar 3 opções */}
           <Button
