@@ -167,7 +167,16 @@ export const AreaVideos = () => {
     <div className="space-y-6">
       <ReelsGeradosGrid />
 
-      <h2 className="text-xl font-semibold pt-2">📹 Vídeos Enviados</h2>
+      <div className="flex items-center justify-between pt-2 gap-4 flex-wrap">
+        <h2 className="text-xl font-semibold">📹 Vídeos Enviados</h2>
+        <Button
+          onClick={() => setAutopilotOpen(true)}
+          className="bg-gradient-to-r from-primary to-purple-600 text-white"
+        >
+          <Rocket className="mr-2 h-4 w-4" />
+          Autopilot Social
+        </Button>
+      </div>
 
       {/* Upload area */}
       <Card className="border-dashed border-2 border-muted-foreground/30">
