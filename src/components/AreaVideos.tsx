@@ -343,6 +343,8 @@ export const AreaVideos = () => {
           content={tiktokModalContent}
         />
       )}
+
+      <AutopilotModal open={autopilotOpen} onOpenChange={setAutopilotOpen} />
     </div>
   );
 };
