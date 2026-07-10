@@ -44,6 +44,7 @@ export const AreaVideos = () => {
     title?: string;
     description?: string;
   } | null>(null);
+  const [autopilotOpen, setAutopilotOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleStoryPublished = async (
