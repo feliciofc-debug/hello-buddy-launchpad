@@ -62,6 +62,7 @@ export function PublicarReelsModal({
   const [agendar, setAgendar] = useState(false);
   const [scheduledDate, setScheduledDate] = useState<string>("");
   const [scheduledTime, setScheduledTime] = useState<string>("");
+  const [savingDescricao, setSavingDescricao] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasPreloadedVideo = !!videoUrl;
@@ -76,6 +77,19 @@ export function PublicarReelsModal({
       setAgendar(false);
       setScheduledDate("");
       setScheduledTime("");
+      // Carregar descrição salva do vídeo (usada pela IA no Autopilot)
+      if (videoId) {
+        (async () => {
+          const { data } = await supabase
+            .from("produto_videos" as any)
+            .select("descricao_ia")
+            .eq("id", videoId)
+            .maybeSingle();
+          if (data && (data as any).descricao_ia) {
+            setDescricaoVideo((data as any).descricao_ia);
+          }
+        })();
+      }
     } else {
       setCaptionOptions([]);
       setSelectedOption(null);
@@ -85,7 +99,28 @@ export function PublicarReelsModal({
         handleRemoveVideo();
       }
     }
-  }, [open, publicadoFacebook, publicadoInstagram]);
+  }, [open, publicadoFacebook, publicadoInstagram, videoId]);
+
+  const handleSalvarDescricao = async () => {
+    if (!videoId) {
+      toast.error("Não é possível salvar (vídeo não identificado)");
+      return;
+    }
+    setSavingDescricao(true);
+    try {
+      const { error } = await supabase
+        .from("produto_videos" as any)
+        .update({ descricao_ia: descricaoVideo.trim() || null })
+        .eq("id", videoId);
+      if (error) throw error;
+      toast.success("💾 Comentário salvo! A IA do Autopilot vai usar isso.");
+    } catch (err: any) {
+      console.error("[REELS] Erro ao salvar descrição:", err);
+      toast.error(err.message || "Erro ao salvar comentário");
+    } finally {
+      setSavingDescricao(false);
+    }
+  };
 
   // Validação client-side da duração do vídeo (Instagram: 3-90s, Facebook: até 900s)
   const validarDuracao = (): Promise<{ ok: boolean; error?: string }> => {
