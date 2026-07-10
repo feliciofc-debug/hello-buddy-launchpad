@@ -21,6 +21,7 @@ interface PublicarReelsModalProps {
   onOpenChange: (open: boolean) => void;
   videoUrl?: string | null;
   videoNome?: string | null;
+  videoId?: string | null;
   produto?: {
     id?: string;
     nome?: string;
@@ -42,6 +43,7 @@ export function PublicarReelsModal({
   onOpenChange,
   videoUrl,
   videoNome,
+  videoId,
   produto,
   publicadoFacebook = false,
   publicadoInstagram = false,
