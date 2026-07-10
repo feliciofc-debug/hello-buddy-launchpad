@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock } from "lucide-react";
+import { Upload, Video, Facebook, Instagram, Loader2, X, Sparkles, Check, Clock, CalendarClock, Save } from "lucide-react";
 
 interface PublishResult {
   facebook?: { ok: boolean; postId?: string; error?: string };
@@ -21,6 +21,7 @@ interface PublicarReelsModalProps {
   onOpenChange: (open: boolean) => void;
   videoUrl?: string | null;
   videoNome?: string | null;
+  videoId?: string | null;
   produto?: {
     id?: string;
     nome?: string;
@@ -42,6 +43,7 @@ export function PublicarReelsModal({
   onOpenChange,
   videoUrl,
   videoNome,
+  videoId,
   produto,
   publicadoFacebook = false,
   publicadoInstagram = false,
@@ -60,6 +62,7 @@ export function PublicarReelsModal({
   const [agendar, setAgendar] = useState(false);
   const [scheduledDate, setScheduledDate] = useState<string>("");
   const [scheduledTime, setScheduledTime] = useState<string>("");
+  const [savingDescricao, setSavingDescricao] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasPreloadedVideo = !!videoUrl;
@@ -74,6 +77,19 @@ export function PublicarReelsModal({
       setAgendar(false);
       setScheduledDate("");
       setScheduledTime("");
+      // Carregar descrição salva do vídeo (usada pela IA no Autopilot)
+      if (videoId) {
+        (async () => {
+          const { data } = await supabase
+            .from("produto_videos" as any)
+            .select("descricao_ia")
+            .eq("id", videoId)
+            .maybeSingle();
+          if (data && (data as any).descricao_ia) {
+            setDescricaoVideo((data as any).descricao_ia);
+          }
+        })();
+      }
     } else {
       setCaptionOptions([]);
       setSelectedOption(null);
@@ -83,7 +99,28 @@ export function PublicarReelsModal({
         handleRemoveVideo();
       }
     }
-  }, [open, publicadoFacebook, publicadoInstagram]);
+  }, [open, publicadoFacebook, publicadoInstagram, videoId]);
+
+  const handleSalvarDescricao = async () => {
+    if (!videoId) {
+      toast.error("Não é possível salvar (vídeo não identificado)");
+      return;
+    }
+    setSavingDescricao(true);
+    try {
+      const { error } = await supabase
+        .from("produto_videos" as any)
+        .update({ descricao_ia: descricaoVideo.trim() || null })
+        .eq("id", videoId);
+      if (error) throw error;
+      toast.success("💾 Comentário salvo! A IA do Autopilot vai usar isso.");
+    } catch (err: any) {
+      console.error("[REELS] Erro ao salvar descrição:", err);
+      toast.error(err.message || "Erro ao salvar comentário");
+    } finally {
+      setSavingDescricao(false);
+    }
+  };
 
   // Validação client-side da duração do vídeo (Instagram: 3-90s, Facebook: até 900s)
   const validarDuracao = (): Promise<{ ok: boolean; error?: string }> => {
@@ -455,7 +492,26 @@ export function PublicarReelsModal({
 
           {/* Descrição do vídeo para IA */}
           <div>
-            <Label className="text-sm font-medium">Sobre o que é esse vídeo? (opcional)</Label>
+            <div className="flex items-center justify-between mb-1">
+              <Label className="text-sm font-medium">Sobre o que é esse vídeo? (opcional)</Label>
+              {videoId && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSalvarDescricao}
+                  disabled={savingDescricao}
+                  className="h-7 text-xs"
+                  title="Salvar para o Autopilot usar como contexto ao gerar legendas"
+                >
+                  {savingDescricao ? (
+                    <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Salvando</>
+                  ) : (
+                    <><Save className="mr-1 h-3 w-3" /> Salvar comentário</>
+                  )}
+                </Button>
+              )}
+            </div>
             <Textarea
               value={descricaoVideo}
               onChange={(e) => setDescricaoVideo(e.target.value)}
@@ -463,7 +519,13 @@ export function PublicarReelsModal({
               className="min-h-[60px] mt-1"
               rows={2}
             />
+            {videoId && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                💡 Salve o comentário para que o Autopilot da IA saiba do que se trata o vídeo ao gerar legendas automaticamente.
+              </p>
+            )}
           </div>
+
 
           {/* Botão gerar 3 opções */}
           <Button

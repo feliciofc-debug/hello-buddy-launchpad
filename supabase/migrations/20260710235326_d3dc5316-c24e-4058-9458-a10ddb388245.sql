@@ -1,0 +1,1 @@
+ALTER TABLE public.produto_videos ADD COLUMN IF NOT EXISTS descricao_ia text;

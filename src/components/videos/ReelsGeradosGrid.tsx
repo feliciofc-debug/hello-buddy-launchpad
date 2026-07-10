@@ -348,6 +348,7 @@ export const ReelsGeradosGrid = () => {
           onOpenChange={(open) => !open && setPublishingReel(null)}
           videoUrl={publishingReel.video_url}
           videoNome={publishingReel.titulo || publishingReel.produtos?.nome || null}
+          videoId={publishingReel.id}
           produto={
             publishingReel.produtos
               ? {
