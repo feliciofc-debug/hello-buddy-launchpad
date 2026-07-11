@@ -320,6 +320,8 @@ export const AreaVideos = () => {
         onOpenChange={setShowReelsModal}
         videoUrl={selectedVideo?.video_url || null}
         videoNome={selectedVideo?.titulo || null}
+        videoId={selectedVideo?.id || null}
+        videoSource="videos_produtos"
         produto={null}
       />
 
