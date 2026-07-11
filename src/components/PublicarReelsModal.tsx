@@ -545,6 +545,21 @@ export function PublicarReelsModal({
             )}
           </div>
 
+          {/* Link do WhatsApp (opcional) — anexado automaticamente na legenda */}
+          <div>
+            <Label className="text-sm font-medium">Link do WhatsApp (opcional)</Label>
+            <Input
+              type="url"
+              value={whatsappLink}
+              onChange={(e) => setWhatsappLink(e.target.value)}
+              placeholder="https://wa.me/5511999999999"
+              className="mt-1"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              📱 Se preenchido, esse link vai ser adicionado no final da legenda toda vez que o vídeo for publicado (manual ou pelo Autopilot). Clique em "Salvar comentário" acima pra guardar.
+            </p>
+          </div>
+
 
           {/* Botão gerar 3 opções */}
           <Button
