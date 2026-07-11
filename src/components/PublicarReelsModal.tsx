@@ -22,6 +22,7 @@ interface PublicarReelsModalProps {
   videoUrl?: string | null;
   videoNome?: string | null;
   videoId?: string | null;
+  videoSource?: "produto_videos" | "videos_produtos";
   produto?: {
     id?: string;
     nome?: string;
@@ -44,6 +45,7 @@ export function PublicarReelsModal({
   videoUrl,
   videoNome,
   videoId,
+  videoSource = "produto_videos",
   produto,
   publicadoFacebook = false,
   publicadoInstagram = false,
@@ -94,19 +96,25 @@ export function PublicarReelsModal({
           }
         }
         if (videoId) {
-          const { data } = await supabase
-            .from("produto_videos" as any)
-            .select("descricao_ia, whatsapp_link")
+          const isUploadedVideo = videoSource === "videos_produtos";
+          const { data, error } = await supabase
+            .from(videoSource as any)
+            .select(isUploadedVideo ? "descricao" : "descricao_ia, whatsapp_link")
             .eq("id", videoId)
             .maybeSingle();
+          if (error) {
+            console.error("[REELS] Erro ao carregar comentário salvo:", error);
+          }
           if (data) {
-            if ((data as any).descricao_ia) setDescricaoVideo((data as any).descricao_ia);
-            const savedLink = (data as any).whatsapp_link;
+            setDescricaoVideo(((data as any).descricao_ia || (data as any).descricao || "") as string);
+            const savedLink = isUploadedVideo ? null : (data as any).whatsapp_link;
             setWhatsappLink(savedLink || defaultWhats);
           } else {
+            setDescricaoVideo("");
             setWhatsappLink(defaultWhats);
           }
         } else {
+          setDescricaoVideo("");
           setWhatsappLink(defaultWhats);
         }
       })();
@@ -121,7 +129,7 @@ export function PublicarReelsModal({
         handleRemoveVideo();
       }
     }
-  }, [open, publicadoFacebook, publicadoInstagram, videoId]);
+  }, [open, publicadoFacebook, publicadoInstagram, videoId, videoSource]);
 
   const handleSalvarDescricao = async () => {
     setSavingDescricao(true);
@@ -142,18 +150,43 @@ export function PublicarReelsModal({
           .eq("id", user.id);
       }
 
+      let comentarioSalvo = false;
+
       // Salva descrição + link no vídeo específico (se houver)
       if (videoId) {
-        const { error } = await supabase
-          .from("produto_videos" as any)
-          .update({
-            descricao_ia: descricaoVideo.trim() || null,
-            whatsapp_link: linkTrim || null,
-          })
+        const isUploadedVideo = videoSource === "videos_produtos";
+        const updatePayload = isUploadedVideo
+          ? { descricao: descricaoVideo.trim() || null }
+          : {
+              descricao_ia: descricaoVideo.trim() || null,
+              whatsapp_link: linkTrim || null,
+            };
+
+        let query = supabase
+          .from(videoSource as any)
+          .update(updatePayload as any)
           .eq("id", videoId);
+
+        if (user) {
+          query = query.eq("user_id", user.id);
+        }
+
+        const { data: savedRows, error } = await query
+          .select(isUploadedVideo ? "id, descricao" : "id, descricao_ia, whatsapp_link")
+          .limit(1);
+
         if (error) throw error;
+        if (!savedRows || savedRows.length === 0) {
+          throw new Error("Não consegui encontrar esse vídeo para salvar o comentário. Reabra o vídeo e tente novamente.");
+        }
+        comentarioSalvo = true;
       }
-      toast.success("💾 Salvo! O link do WhatsApp fica salvo pra próximos vídeos.");
+
+      toast.success(
+        comentarioSalvo
+          ? "💾 Comentário salvo neste vídeo. Pode fechar e abrir que ele continua aqui."
+          : "💾 Link do WhatsApp salvo como padrão."
+      );
     } catch (err: any) {
       console.error("[REELS] Erro ao salvar descrição:", err);
       toast.error(err.message || "Erro ao salvar comentário");
