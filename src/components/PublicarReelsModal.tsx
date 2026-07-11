@@ -111,12 +111,21 @@ export function PublicarReelsModal({
     }
     setSavingDescricao(true);
     try {
+      const linkTrim = whatsappLink.trim();
+      if (linkTrim && !/^https?:\/\//i.test(linkTrim)) {
+        toast.error("O link do WhatsApp precisa começar com http:// ou https://");
+        setSavingDescricao(false);
+        return;
+      }
       const { error } = await supabase
         .from("produto_videos" as any)
-        .update({ descricao_ia: descricaoVideo.trim() || null })
+        .update({
+          descricao_ia: descricaoVideo.trim() || null,
+          whatsapp_link: linkTrim || null,
+        })
         .eq("id", videoId);
       if (error) throw error;
-      toast.success("💾 Comentário salvo! A IA do Autopilot vai usar isso.");
+      toast.success("💾 Salvo! A IA do Autopilot vai usar o comentário e o link.");
     } catch (err: any) {
       console.error("[REELS] Erro ao salvar descrição:", err);
       toast.error(err.message || "Erro ao salvar comentário");
