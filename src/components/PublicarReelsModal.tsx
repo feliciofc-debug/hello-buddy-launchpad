@@ -245,6 +245,13 @@ export function PublicarReelsModal({
     setCaption(captionOptions[index]);
   };
 
+  const buildFinalCaption = (base: string) => {
+    const link = whatsappLink.trim();
+    if (!link) return base;
+    if (base.includes(link)) return base;
+    return `${base.trim()}\n\n📱 Fale com a gente no WhatsApp:\n${link}`;
+  };
+
   const handlePublish = async () => {
     const finalVideoUrl = hasPreloadedVideo ? videoUrl : null;
 
