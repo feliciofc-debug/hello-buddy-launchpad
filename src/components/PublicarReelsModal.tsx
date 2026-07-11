@@ -124,10 +124,6 @@ export function PublicarReelsModal({
   }, [open, publicadoFacebook, publicadoInstagram, videoId]);
 
   const handleSalvarDescricao = async () => {
-    if (!videoId) {
-      toast.error("Não é possível salvar (vídeo não identificado)");
-      return;
-    }
     setSavingDescricao(true);
     try {
       const linkTrim = whatsappLink.trim();
@@ -136,15 +132,28 @@ export function PublicarReelsModal({
         setSavingDescricao(false);
         return;
       }
-      const { error } = await supabase
-        .from("produto_videos" as any)
-        .update({
-          descricao_ia: descricaoVideo.trim() || null,
-          whatsapp_link: linkTrim || null,
-        })
-        .eq("id", videoId);
-      if (error) throw error;
-      toast.success("💾 Salvo! A IA do Autopilot vai usar o comentário e o link.");
+
+      // Sempre salva o link como padrão do usuário (persiste entre vídeos)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from("profiles")
+          .update({ whatsapp_link_default: linkTrim || null } as any)
+          .eq("id", user.id);
+      }
+
+      // Salva descrição + link no vídeo específico (se houver)
+      if (videoId) {
+        const { error } = await supabase
+          .from("produto_videos" as any)
+          .update({
+            descricao_ia: descricaoVideo.trim() || null,
+            whatsapp_link: linkTrim || null,
+          })
+          .eq("id", videoId);
+        if (error) throw error;
+      }
+      toast.success("💾 Salvo! O link do WhatsApp fica salvo pra próximos vídeos.");
     } catch (err: any) {
       console.error("[REELS] Erro ao salvar descrição:", err);
       toast.error(err.message || "Erro ao salvar comentário");
