@@ -53,6 +53,7 @@ export function PublicarReelsModal({
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [descricaoVideo, setDescricaoVideo] = useState("");
+  const [whatsappLink, setWhatsappLink] = useState("");
   const [postFacebook, setPostFacebook] = useState(!publicadoFacebook);
   const [postInstagram, setPostInstagram] = useState(!publicadoInstagram);
   const [uploading, setUploading] = useState(false);
