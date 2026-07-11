@@ -383,7 +383,7 @@ export function PublicarReelsModal({
           await supabase.from("social_posts_queue" as any).insert({
             user_id: user.id,
             platform,
-            post_text: caption,
+            post_text: buildFinalCaption(caption),
             status: "publicado",
             fb_post_id: result.post_id,
             published_at: new Date().toISOString(),
