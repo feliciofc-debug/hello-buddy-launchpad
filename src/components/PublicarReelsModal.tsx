@@ -96,6 +96,7 @@ export function PublicarReelsModal({
       setCaptionOptions([]);
       setSelectedOption(null);
       setDescricaoVideo("");
+      setWhatsappLink("");
       setCaption("");
       if (!hasPreloadedVideo) {
         handleRemoveVideo();
