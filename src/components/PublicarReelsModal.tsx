@@ -53,6 +53,7 @@ export function PublicarReelsModal({
   const [videoPreview, setVideoPreview] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [descricaoVideo, setDescricaoVideo] = useState("");
+  const [whatsappLink, setWhatsappLink] = useState("");
   const [postFacebook, setPostFacebook] = useState(!publicadoFacebook);
   const [postInstagram, setPostInstagram] = useState(!publicadoInstagram);
   const [uploading, setUploading] = useState(false);
@@ -82,11 +83,12 @@ export function PublicarReelsModal({
         (async () => {
           const { data } = await supabase
             .from("produto_videos" as any)
-            .select("descricao_ia")
+            .select("descricao_ia, whatsapp_link")
             .eq("id", videoId)
             .maybeSingle();
-          if (data && (data as any).descricao_ia) {
-            setDescricaoVideo((data as any).descricao_ia);
+          if (data) {
+            if ((data as any).descricao_ia) setDescricaoVideo((data as any).descricao_ia);
+            if ((data as any).whatsapp_link) setWhatsappLink((data as any).whatsapp_link);
           }
         })();
       }
@@ -94,6 +96,7 @@ export function PublicarReelsModal({
       setCaptionOptions([]);
       setSelectedOption(null);
       setDescricaoVideo("");
+      setWhatsappLink("");
       setCaption("");
       if (!hasPreloadedVideo) {
         handleRemoveVideo();
@@ -108,12 +111,21 @@ export function PublicarReelsModal({
     }
     setSavingDescricao(true);
     try {
+      const linkTrim = whatsappLink.trim();
+      if (linkTrim && !/^https?:\/\//i.test(linkTrim)) {
+        toast.error("O link do WhatsApp precisa começar com http:// ou https://");
+        setSavingDescricao(false);
+        return;
+      }
       const { error } = await supabase
         .from("produto_videos" as any)
-        .update({ descricao_ia: descricaoVideo.trim() || null })
+        .update({
+          descricao_ia: descricaoVideo.trim() || null,
+          whatsapp_link: linkTrim || null,
+        })
         .eq("id", videoId);
       if (error) throw error;
-      toast.success("💾 Comentário salvo! A IA do Autopilot vai usar isso.");
+      toast.success("💾 Salvo! A IA do Autopilot vai usar o comentário e o link.");
     } catch (err: any) {
       console.error("[REELS] Erro ao salvar descrição:", err);
       toast.error(err.message || "Erro ao salvar comentário");
@@ -233,6 +245,13 @@ export function PublicarReelsModal({
     setCaption(captionOptions[index]);
   };
 
+  const buildFinalCaption = (base: string) => {
+    const link = whatsappLink.trim();
+    if (!link) return base;
+    if (base.includes(link)) return base;
+    return `${base.trim()}\n\n📱 Fale com a gente no WhatsApp:\n${link}`;
+  };
+
   const handlePublish = async () => {
     const finalVideoUrl = hasPreloadedVideo ? videoUrl : null;
 
@@ -320,7 +339,7 @@ export function PublicarReelsModal({
           tipo: "reels",
           video_url: publishVideoUrl!,
           video_nome: videoNome || null,
-          caption,
+          caption: buildFinalCaption(caption),
           canais: platforms,
           produto_id: produto?.id || null,
           scheduled_for: scheduledFor.toISOString(),
@@ -344,7 +363,7 @@ export function PublicarReelsModal({
           body: {
             platform,
             video_url: publishVideoUrl,
-            caption: caption,
+            caption: buildFinalCaption(caption),
             user_id: user.id,
           },
         });
@@ -364,7 +383,7 @@ export function PublicarReelsModal({
           await supabase.from("social_posts_queue" as any).insert({
             user_id: user.id,
             platform,
-            post_text: caption,
+            post_text: buildFinalCaption(caption),
             status: "publicado",
             fb_post_id: result.post_id,
             published_at: new Date().toISOString(),
@@ -524,6 +543,21 @@ export function PublicarReelsModal({
                 💡 Salve o comentário para que o Autopilot da IA saiba do que se trata o vídeo ao gerar legendas automaticamente.
               </p>
             )}
+          </div>
+
+          {/* Link do WhatsApp (opcional) — anexado automaticamente na legenda */}
+          <div>
+            <Label className="text-sm font-medium">Link do WhatsApp (opcional)</Label>
+            <Input
+              type="url"
+              value={whatsappLink}
+              onChange={(e) => setWhatsappLink(e.target.value)}
+              placeholder="https://wa.me/5511999999999"
+              className="mt-1"
+            />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              📱 Se preenchido, esse link vai ser adicionado no final da legenda toda vez que o vídeo for publicado (manual ou pelo Autopilot). Clique em "Salvar comentário" acima pra guardar.
+            </p>
           </div>
 
 

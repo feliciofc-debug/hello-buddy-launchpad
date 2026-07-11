@@ -6035,6 +6035,7 @@ export type Database = {
           titulo: string | null
           user_id: string
           video_url: string
+          whatsapp_link: string | null
         }
         Insert: {
           criado_em?: string | null
@@ -6059,6 +6060,7 @@ export type Database = {
           titulo?: string | null
           user_id: string
           video_url: string
+          whatsapp_link?: string | null
         }
         Update: {
           criado_em?: string | null
@@ -6083,6 +6085,7 @@ export type Database = {
           titulo?: string | null
           user_id?: string
           video_url?: string
+          whatsapp_link?: string | null
         }
         Relationships: [
           {
