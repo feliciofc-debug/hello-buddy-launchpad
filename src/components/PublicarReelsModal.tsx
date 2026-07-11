@@ -79,8 +79,21 @@ export function PublicarReelsModal({
       setScheduledDate("");
       setScheduledTime("");
       // Carregar descrição salva do vídeo (usada pela IA no Autopilot)
-      if (videoId) {
-        (async () => {
+      // + fallback do whatsapp_link padrão do perfil do usuário
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        let defaultWhats = "";
+        if (user) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("whatsapp_link_default" as any)
+            .eq("id", user.id)
+            .maybeSingle();
+          if (prof && (prof as any).whatsapp_link_default) {
+            defaultWhats = (prof as any).whatsapp_link_default;
+          }
+        }
+        if (videoId) {
           const { data } = await supabase
             .from("produto_videos" as any)
             .select("descricao_ia, whatsapp_link")
@@ -88,10 +101,16 @@ export function PublicarReelsModal({
             .maybeSingle();
           if (data) {
             if ((data as any).descricao_ia) setDescricaoVideo((data as any).descricao_ia);
-            if ((data as any).whatsapp_link) setWhatsappLink((data as any).whatsapp_link);
+            const savedLink = (data as any).whatsapp_link;
+            setWhatsappLink(savedLink || defaultWhats);
+          } else {
+            setWhatsappLink(defaultWhats);
           }
-        })();
-      }
+        } else {
+          setWhatsappLink(defaultWhats);
+        }
+      })();
+
     } else {
       setCaptionOptions([]);
       setSelectedOption(null);
