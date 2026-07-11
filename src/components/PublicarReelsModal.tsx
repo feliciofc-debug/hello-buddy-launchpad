@@ -339,7 +339,7 @@ export function PublicarReelsModal({
           tipo: "reels",
           video_url: publishVideoUrl!,
           video_nome: videoNome || null,
-          caption,
+          caption: buildFinalCaption(caption),
           canais: platforms,
           produto_id: produto?.id || null,
           scheduled_for: scheduledFor.toISOString(),
