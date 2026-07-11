@@ -363,7 +363,7 @@ export function PublicarReelsModal({
           body: {
             platform,
             video_url: publishVideoUrl,
-            caption: caption,
+            caption: buildFinalCaption(caption),
             user_id: user.id,
           },
         });
