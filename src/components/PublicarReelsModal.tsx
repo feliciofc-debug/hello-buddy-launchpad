@@ -79,8 +79,21 @@ export function PublicarReelsModal({
       setScheduledDate("");
       setScheduledTime("");
       // Carregar descrição salva do vídeo (usada pela IA no Autopilot)
-      if (videoId) {
-        (async () => {
+      // + fallback do whatsapp_link padrão do perfil do usuário
+      (async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        let defaultWhats = "";
+        if (user) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("whatsapp_link_default" as any)
+            .eq("id", user.id)
+            .maybeSingle();
+          if (prof && (prof as any).whatsapp_link_default) {
+            defaultWhats = (prof as any).whatsapp_link_default;
+          }
+        }
+        if (videoId) {
           const { data } = await supabase
             .from("produto_videos" as any)
             .select("descricao_ia, whatsapp_link")
@@ -88,10 +101,16 @@ export function PublicarReelsModal({
             .maybeSingle();
           if (data) {
             if ((data as any).descricao_ia) setDescricaoVideo((data as any).descricao_ia);
-            if ((data as any).whatsapp_link) setWhatsappLink((data as any).whatsapp_link);
+            const savedLink = (data as any).whatsapp_link;
+            setWhatsappLink(savedLink || defaultWhats);
+          } else {
+            setWhatsappLink(defaultWhats);
           }
-        })();
-      }
+        } else {
+          setWhatsappLink(defaultWhats);
+        }
+      })();
+
     } else {
       setCaptionOptions([]);
       setSelectedOption(null);
@@ -105,10 +124,6 @@ export function PublicarReelsModal({
   }, [open, publicadoFacebook, publicadoInstagram, videoId]);
 
   const handleSalvarDescricao = async () => {
-    if (!videoId) {
-      toast.error("Não é possível salvar (vídeo não identificado)");
-      return;
-    }
     setSavingDescricao(true);
     try {
       const linkTrim = whatsappLink.trim();
@@ -117,15 +132,28 @@ export function PublicarReelsModal({
         setSavingDescricao(false);
         return;
       }
-      const { error } = await supabase
-        .from("produto_videos" as any)
-        .update({
-          descricao_ia: descricaoVideo.trim() || null,
-          whatsapp_link: linkTrim || null,
-        })
-        .eq("id", videoId);
-      if (error) throw error;
-      toast.success("💾 Salvo! A IA do Autopilot vai usar o comentário e o link.");
+
+      // Sempre salva o link como padrão do usuário (persiste entre vídeos)
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from("profiles")
+          .update({ whatsapp_link_default: linkTrim || null } as any)
+          .eq("id", user.id);
+      }
+
+      // Salva descrição + link no vídeo específico (se houver)
+      if (videoId) {
+        const { error } = await supabase
+          .from("produto_videos" as any)
+          .update({
+            descricao_ia: descricaoVideo.trim() || null,
+            whatsapp_link: linkTrim || null,
+          })
+          .eq("id", videoId);
+        if (error) throw error;
+      }
+      toast.success("💾 Salvo! O link do WhatsApp fica salvo pra próximos vídeos.");
     } catch (err: any) {
       console.error("[REELS] Erro ao salvar descrição:", err);
       toast.error(err.message || "Erro ao salvar comentário");
@@ -559,26 +587,19 @@ export function PublicarReelsModal({
             <p className="text-[10px] text-muted-foreground mt-1">
               📱 Se preenchido, esse link vai ser adicionado no final da legenda toda vez que o vídeo for publicado (manual ou pelo Autopilot).
             </p>
-            {videoId && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSalvarDescricao}
-                disabled={savingDescricao}
-                className="w-full mt-2"
-              >
-                {savingDescricao ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
-                ) : (
-                  <><Save className="mr-2 h-4 w-4" /> Salvar descrição e link do WhatsApp</>
-                )}
-              </Button>
-            )}
-            {!videoId && (
-              <p className="text-[10px] text-amber-600 mt-2">
-                ⚠️ Envie/selecione o vídeo primeiro para poder salvar essas informações.
-              </p>
-            )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSalvarDescricao}
+              disabled={savingDescricao}
+              className="w-full mt-2"
+            >
+              {savingDescricao ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+              ) : (
+                <><Save className="mr-2 h-4 w-4" /> Salvar link do WhatsApp como padrão</>
+              )}
+            </Button>
           </div>
 
 

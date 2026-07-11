@@ -6360,6 +6360,7 @@ export type Database = {
           validade_acesso: string | null
           valor_plano: number | null
           whatsapp: string
+          whatsapp_link_default: string | null
         }
         Insert: {
           acesso_bloqueado?: boolean
@@ -6387,6 +6388,7 @@ export type Database = {
           validade_acesso?: string | null
           valor_plano?: number | null
           whatsapp: string
+          whatsapp_link_default?: string | null
         }
         Update: {
           acesso_bloqueado?: boolean
@@ -6414,6 +6416,7 @@ export type Database = {
           validade_acesso?: string | null
           valor_plano?: number | null
           whatsapp?: string
+          whatsapp_link_default?: string | null
         }
         Relationships: []
       }
