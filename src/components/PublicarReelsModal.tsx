@@ -66,6 +66,7 @@ export function PublicarReelsModal({
   const [scheduledDate, setScheduledDate] = useState<string>("");
   const [scheduledTime, setScheduledTime] = useState<string>("");
   const [savingDescricao, setSavingDescricao] = useState(false);
+  const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const hasPreloadedVideo = !!videoUrl;
@@ -134,64 +135,75 @@ export function PublicarReelsModal({
   const handleSalvarDescricao = async () => {
     setSavingDescricao(true);
     try {
-      const linkTrim = whatsappLink.trim();
-      if (linkTrim && !/^https?:\/\//i.test(linkTrim)) {
-        toast.error("O link do WhatsApp precisa começar com http:// ou https://");
-        setSavingDescricao(false);
-        return;
-      }
-
-      // Sempre salva o link como padrão do usuário (persiste entre vídeos)
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await supabase
-          .from("profiles")
-          .update({ whatsapp_link_default: linkTrim || null } as any)
-          .eq("id", user.id);
+      if (!user) throw new Error("Usuário não autenticado");
+
+      if (!videoId) {
+        throw new Error("Este vídeo ainda não tem ID para salvar o comentário. Abra pela Área de Vídeos e tente novamente.");
       }
 
-      let comentarioSalvo = false;
+      const isUploadedVideo = videoSource === "videos_produtos";
+      const updatePayload = isUploadedVideo
+        ? { descricao: descricaoVideo.trim() || null }
+        : { descricao_ia: descricaoVideo.trim() || null };
 
-      // Salva descrição + link no vídeo específico (se houver)
-      if (videoId) {
-        const isUploadedVideo = videoSource === "videos_produtos";
-        const updatePayload = isUploadedVideo
-          ? { descricao: descricaoVideo.trim() || null }
-          : {
-              descricao_ia: descricaoVideo.trim() || null,
-              whatsapp_link: linkTrim || null,
-            };
+      const { data: savedRows, error } = await supabase
+        .from(videoSource as any)
+        .update(updatePayload as any)
+        .eq("id", videoId)
+        .eq("user_id", user.id)
+        .select(isUploadedVideo ? "id, descricao" : "id, descricao_ia")
+        .limit(1);
 
-        let query = supabase
-          .from(videoSource as any)
-          .update(updatePayload as any)
-          .eq("id", videoId);
-
-        if (user) {
-          query = query.eq("user_id", user.id);
-        }
-
-        const { data: savedRows, error } = await query
-          .select(isUploadedVideo ? "id, descricao" : "id, descricao_ia, whatsapp_link")
-          .limit(1);
-
-        if (error) throw error;
-        if (!savedRows || savedRows.length === 0) {
-          throw new Error("Não consegui encontrar esse vídeo para salvar o comentário. Reabra o vídeo e tente novamente.");
-        }
-        comentarioSalvo = true;
+      if (error) throw error;
+      if (!savedRows || savedRows.length === 0) {
+        throw new Error("Não consegui encontrar esse vídeo para salvar o comentário. Reabra o vídeo e tente novamente.");
       }
 
-      toast.success(
-        comentarioSalvo
-          ? "💾 Comentário salvo neste vídeo. Pode fechar e abrir que ele continua aqui."
-          : "💾 Link do WhatsApp salvo como padrão."
-      );
+      toast.success("💾 Comentário salvo neste vídeo. Pode fechar e abrir que ele continua aqui.");
     } catch (err: any) {
       console.error("[REELS] Erro ao salvar descrição:", err);
       toast.error(err.message || "Erro ao salvar comentário");
     } finally {
       setSavingDescricao(false);
+    }
+  };
+
+  const handleSalvarWhatsapp = async () => {
+    setSavingWhatsapp(true);
+    try {
+      const linkTrim = whatsappLink.trim();
+      if (linkTrim && !/^https?:\/\//i.test(linkTrim)) {
+        toast.error("O link do WhatsApp precisa começar com http:// ou https://");
+        return;
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Usuário não autenticado");
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ whatsapp_link_default: linkTrim || null } as any)
+        .eq("id", user.id);
+
+      if (profileError) throw profileError;
+
+      if (videoId && videoSource === "produto_videos") {
+        const { error: videoError } = await supabase
+          .from("produto_videos" as any)
+          .update({ whatsapp_link: linkTrim || null } as any)
+          .eq("id", videoId)
+          .eq("user_id", user.id);
+
+        if (videoError) throw videoError;
+      }
+
+      toast.success("💾 Link do WhatsApp salvo como padrão.");
+    } catch (err: any) {
+      console.error("[REELS] Erro ao salvar WhatsApp:", err);
+      toast.error(err.message || "Erro ao salvar link do WhatsApp");
+    } finally {
+      setSavingWhatsapp(false);
     }
   };
 
@@ -611,16 +623,16 @@ export function PublicarReelsModal({
               className="mt-1"
             />
             <p className="text-[10px] text-muted-foreground mt-1">
-              📱 Se preenchido, esse link vai ser adicionado no final da legenda toda vez que o vídeo for publicado (manual ou pelo Autopilot).
+              📱 Se preenchido, esse link entra no início e no final da legenda toda vez que o vídeo for publicado.
             </p>
             <Button
               type="button"
               size="sm"
-              onClick={handleSalvarDescricao}
-              disabled={savingDescricao}
+              onClick={handleSalvarWhatsapp}
+              disabled={savingWhatsapp}
               className="w-full mt-2"
             >
-              {savingDescricao ? (
+              {savingWhatsapp ? (
                 <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
               ) : (
                 <><Save className="mr-2 h-4 w-4" /> Salvar link do WhatsApp como padrão</>
