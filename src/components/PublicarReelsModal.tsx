@@ -587,26 +587,19 @@ export function PublicarReelsModal({
             <p className="text-[10px] text-muted-foreground mt-1">
               📱 Se preenchido, esse link vai ser adicionado no final da legenda toda vez que o vídeo for publicado (manual ou pelo Autopilot).
             </p>
-            {videoId && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSalvarDescricao}
-                disabled={savingDescricao}
-                className="w-full mt-2"
-              >
-                {savingDescricao ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
-                ) : (
-                  <><Save className="mr-2 h-4 w-4" /> Salvar descrição e link do WhatsApp</>
-                )}
-              </Button>
-            )}
-            {!videoId && (
-              <p className="text-[10px] text-amber-600 mt-2">
-                ⚠️ Envie/selecione o vídeo primeiro para poder salvar essas informações.
-              </p>
-            )}
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSalvarDescricao}
+              disabled={savingDescricao}
+              className="w-full mt-2"
+            >
+              {savingDescricao ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+              ) : (
+                <><Save className="mr-2 h-4 w-4" /> Salvar link do WhatsApp como padrão</>
+              )}
+            </Button>
           </div>
 
 
