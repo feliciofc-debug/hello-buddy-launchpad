@@ -248,8 +248,9 @@ export function PublicarReelsModal({
   const buildFinalCaption = (base: string) => {
     const link = whatsappLink.trim();
     if (!link) return base;
-    if (base.includes(link)) return base;
-    return `${base.trim()}\n\n📱 Fale com a gente no WhatsApp:\n${link}`;
+    const topo = `📱 Fale com a gente no WhatsApp:\n${link}\n\n`;
+    const rodape = `\n\n📱 Fale com a gente no WhatsApp:\n${link}`;
+    return `${topo}${base.trim()}${rodape}`;
   };
 
   const handlePublish = async () => {
