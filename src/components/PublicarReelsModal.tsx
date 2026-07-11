@@ -83,11 +83,12 @@ export function PublicarReelsModal({
         (async () => {
           const { data } = await supabase
             .from("produto_videos" as any)
-            .select("descricao_ia")
+            .select("descricao_ia, whatsapp_link")
             .eq("id", videoId)
             .maybeSingle();
-          if (data && (data as any).descricao_ia) {
-            setDescricaoVideo((data as any).descricao_ia);
+          if (data) {
+            if ((data as any).descricao_ia) setDescricaoVideo((data as any).descricao_ia);
+            if ((data as any).whatsapp_link) setWhatsappLink((data as any).whatsapp_link);
           }
         })();
       }
