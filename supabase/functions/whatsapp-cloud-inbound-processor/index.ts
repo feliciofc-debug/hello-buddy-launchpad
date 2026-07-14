@@ -3951,7 +3951,7 @@ async function notifyOwnerAboutCommercialReply(params: {
     : `Áudio recebido. Resumo do Jarvis: ${aiSummary.slice(0, 420) || "sem resumo disponível"}`;
   const heads = `${badge} — *${match.nome}*${match.empresa ? ` (${match.empresa})` : ""} respondeu no WhatsApp:\n\n${preview}\n\n_Pra responder é só me pedir aqui: "responde pro ${primeiro}: ..."_\n${sigTag}`;
 
-  const sentId = await sendWhatsApp(userId, OWNER_PHONE, heads);
+  const sentId = await sendWhatsApp(userId, tenantOwner.phone, heads);
   await logOwnerHeadsup(userId, heads, sentId);
   console.log(`[processor][headsup-owner] enviado (${badge}) para dono sobre ${match.nome}`);
 }
