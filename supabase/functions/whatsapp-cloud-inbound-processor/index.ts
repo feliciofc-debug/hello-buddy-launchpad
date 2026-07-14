@@ -4361,7 +4361,7 @@ async function processOne(queueId: string) {
       console.log(`[processor] media baixadas: ${media.length}`);
     }
 
-    if (row.from_number !== OWNER_PHONE && row.message_type === "audio") {
+    if (row.from_number !== tenantOwnerPhone && row.message_type === "audio") {
       commercialContactForOwner = await findCommercialContactByPhone(userId, row.from_number);
       if (commercialContactForOwner && media.some((m) => m.kind === "audio")) {
         try {
