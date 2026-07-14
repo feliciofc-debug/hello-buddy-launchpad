@@ -3965,7 +3965,8 @@ async function notifyOwnerDeterministic(params: {
   source: "texto" | "audio";
 }): Promise<boolean> {
   const clean = (params.text || "").trim().replace(/\s+/g, " ");
-  if (!clean || params.fromNumber === OWNER_PHONE) return false;
+  const tenantOwner = await resolveTenantOwner(sb, params.userId);
+  if (!clean || !tenantOwner.phone || params.fromNumber === tenantOwner.phone) return false;
   const notice = confirmationNoticeFromReply(params.match, clean, params.source);
   if (!notice) return false;
 
