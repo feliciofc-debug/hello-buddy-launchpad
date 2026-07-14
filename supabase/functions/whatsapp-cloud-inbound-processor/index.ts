@@ -4,7 +4,20 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
-import { buildAmzContext, STRANGER_MSG, OWNER_PHONE } from "../_shared/amz-context.ts";
+import { buildAmzContext, STRANGER_MSG, OWNER_PHONE, resolveTenantOwner } from "../_shared/amz-context.ts";
+
+// ---------------------------------------------------------------------------
+// Multi-tenant owner registry (populado no início de cada processMessage).
+// isOwner(ctx) usa este mapa em vez da constante global OWNER_PHONE, para que
+// o dono de UM tenant jamais seja reconhecido como dono de OUTRO.
+// ---------------------------------------------------------------------------
+const _tenantOwners = new Map<string, string | null>();
+function setTenantOwnerForCtx(userId: string, ownerPhone: string | null) {
+  _tenantOwners.set(userId, ownerPhone);
+}
+function getTenantOwnerForCtx(userId: string): string | null {
+  return _tenantOwners.get(userId) ?? null;
+}
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
 
@@ -1568,7 +1581,13 @@ async function toolCalcularRota(origem: string, destino: string, ctx: { userId: 
 }
 
 // ---- ADMIN (só Felicio) ----
-function isOwner(ctx: { fromNumber: string }): boolean { return ctx.fromNumber === OWNER_PHONE; }
+// isOwner é POR TENANT: compara fromNumber com o owner_phone do userId em contexto.
+// Fallback seguro: sem owner registrado, ninguém é dono.
+function isOwner(ctx: { userId?: string; fromNumber: string }): boolean {
+  if (!ctx.fromNumber) return false;
+  const owner = ctx.userId ? getTenantOwnerForCtx(ctx.userId) : null;
+  return !!owner && ctx.fromNumber === owner;
+}
 
 async function toolMetricasAmz(ctx: { fromNumber: string }): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
@@ -3786,11 +3805,14 @@ function classifyCommercialReply(raw: string): "confirmacao" | "remarcar" | "res
 }
 
 async function logOwnerHeadsup(userId: string, content: string, wamid?: string | null) {
+  const owner = await resolveTenantOwner(sb, userId);
+  if (!owner.phone) return; // sem dono configurado neste tenant → sem heads-up
+
   const { data: existing } = await sb
     .from("whatsapp_cloud_conversations")
     .select("id")
     .eq("user_id", userId)
-    .eq("contact_number", OWNER_PHONE)
+    .eq("contact_number", owner.phone)
     .maybeSingle();
 
   let conversationId = existing?.id;
@@ -3799,8 +3821,8 @@ async function logOwnerHeadsup(userId: string, content: string, wamid?: string |
       .from("whatsapp_cloud_conversations")
       .insert({
         user_id: userId,
-        contact_number: OWNER_PHONE,
-        contact_name: "Felicio Carega",
+        contact_number: owner.phone,
+        contact_name: owner.name ?? "Dono",
         status: "active",
         last_message_at: new Date().toISOString(),
       })
@@ -3899,7 +3921,8 @@ async function notifyOwnerAboutCommercialReply(params: {
   messageType?: string | null;
 }) {
   const { userId, fromNumber, match } = params;
-  if (!match || fromNumber === OWNER_PHONE) return;
+  const tenantOwner = await resolveTenantOwner(sb, userId);
+  if (!match || !tenantOwner.phone || fromNumber === tenantOwner.phone) return;
 
   const inbound = (params.inboundText || "").trim().replace(/\s+/g, " ");
   const aiSummary = (params.aiSummaryText || "").trim().replace(/\s+/g, " ");
@@ -3928,7 +3951,7 @@ async function notifyOwnerAboutCommercialReply(params: {
     : `Áudio recebido. Resumo do Jarvis: ${aiSummary.slice(0, 420) || "sem resumo disponível"}`;
   const heads = `${badge} — *${match.nome}*${match.empresa ? ` (${match.empresa})` : ""} respondeu no WhatsApp:\n\n${preview}\n\n_Pra responder é só me pedir aqui: "responde pro ${primeiro}: ..."_\n${sigTag}`;
 
-  const sentId = await sendWhatsApp(userId, OWNER_PHONE, heads);
+  const sentId = await sendWhatsApp(userId, tenantOwner.phone, heads);
   await logOwnerHeadsup(userId, heads, sentId);
   console.log(`[processor][headsup-owner] enviado (${badge}) para dono sobre ${match.nome}`);
 }
@@ -3942,7 +3965,8 @@ async function notifyOwnerDeterministic(params: {
   source: "texto" | "audio";
 }): Promise<boolean> {
   const clean = (params.text || "").trim().replace(/\s+/g, " ");
-  if (!clean || params.fromNumber === OWNER_PHONE) return false;
+  const tenantOwner = await resolveTenantOwner(sb, params.userId);
+  if (!clean || !tenantOwner.phone || params.fromNumber === tenantOwner.phone) return false;
   const notice = confirmationNoticeFromReply(params.match, clean, params.source);
   if (!notice) return false;
 
@@ -3960,7 +3984,7 @@ async function notifyOwnerDeterministic(params: {
   if (jaNotificou) return true;
 
   const content = `${notice}\n${sigTag}`;
-  const sentId = await sendWhatsApp(params.userId, OWNER_PHONE, content);
+  const sentId = await sendWhatsApp(params.userId, tenantOwner.phone, content);
   await logOwnerHeadsup(params.userId, content, sentId);
   console.log(`[processor][headsup-owner-deterministic] enviado para dono sobre ${params.match?.nome || params.fromNumber}`);
   return true;
@@ -4152,15 +4176,25 @@ async function processOne(queueId: string) {
       return { ok: true, handoff: true };
     }
 
-    // PASSO 6.5 — Modo AMZ: 3 níveis de acesso
-    const isAmzMode =
-      (agent as any).agent_mode === "amz" && userId === ADMIN_AMZ_USER_ID;
-    let amzContextBlock: string | undefined;
-    if (isAmzMode) {
-      const amzCtx = await buildAmzContext(sb, row.from_number);
-      console.log(`[processor][amz] from=${row.from_number} access=${amzCtx.access}`);
+    // PASSO 6.5 — Contexto por tenant (owner / partner / client / stranger)
+    // Resolve o dono DESTE tenant e registra pro isOwner(ctx) enxergar.
+    const _tenantOwner = await resolveTenantOwner(sb, userId);
+    const tenantOwnerPhone: string | null = _tenantOwner.phone;
+    setTenantOwnerForCtx(userId, tenantOwnerPhone);
 
-      if (amzCtx.access === "stranger") {
+    const isAmzTenant = userId === ADMIN_AMZ_USER_ID;
+    const isAmzMode = (agent as any).agent_mode === "amz" && isAmzTenant;
+
+    let amzContextBlock: string | undefined;
+    // Roda buildAmzContext quando: (a) é o tenant AMZ (comportamento clássico),
+    // ou (b) qualquer tenant que tenha owner_phone configurado — só pra
+    // reconhecer o dono e injetar o bloco minimalista.
+    if (isAmzMode || tenantOwnerPhone) {
+      const amzCtx = await buildAmzContext(sb, row.from_number, userId);
+      console.log(`[processor][ctx] tenant=${userId} from=${row.from_number} access=${amzCtx.access}`);
+
+      // STRANGER_MSG (redireciona pro Felicio) só faz sentido no tenant AMZ.
+      if (isAmzMode && amzCtx.access === "stranger") {
         try {
           await sendWhatsApp(userId, row.from_number, STRANGER_MSG);
           await sb.from("whatsapp_cloud_messages").insert({
@@ -4177,10 +4211,12 @@ async function processOne(queueId: string) {
         await doneQueue(row.id);
         return { ok: true, amz_access: "stranger" };
       }
-      amzContextBlock = amzCtx.block;
+      if (amzCtx.block) amzContextBlock = amzCtx.block;
     }
 
-    if (row.from_number === OWNER_PHONE && row.message_type === "text" && userText.trim()) {
+    // "answerOwnerCommercialStatus" é uma feature Jarvis específica pra Felicio
+    // consultar contatos comerciais dele — só faz sentido no tenant AMZ.
+    if (isAmzTenant && tenantOwnerPhone && row.from_number === tenantOwnerPhone && row.message_type === "text" && userText.trim()) {
       const statusReply = await answerOwnerCommercialStatus(userId, userText);
       if (statusReply) {
         const { data: outMsg } = await sb
@@ -4325,7 +4361,7 @@ async function processOne(queueId: string) {
       console.log(`[processor] media baixadas: ${media.length}`);
     }
 
-    if (row.from_number !== OWNER_PHONE && row.message_type === "audio") {
+    if (row.from_number !== tenantOwnerPhone && row.message_type === "audio") {
       commercialContactForOwner = await findCommercialContactByPhone(userId, row.from_number);
       if (commercialContactForOwner && media.some((m) => m.kind === "audio")) {
         try {
@@ -4557,7 +4593,7 @@ async function processOne(queueId: string) {
           // Assim, quando Marcelo/Renata/etc respondem (ex: confirmando reunião),
           // o dono recebe um resumo imediato no WhatsApp dele.
           try {
-            if (row.from_number !== OWNER_PHONE && userText && userText.trim().length > 0) {
+            if (row.from_number !== tenantOwnerPhone && userText && userText.trim().length > 0) {
               await notifyOwnerAboutCommercialReply({ userId, fromNumber: row.from_number, match, inboundText: userText, messageType: row.message_type });
             }
           } catch (e) {
@@ -4621,7 +4657,7 @@ async function processOne(queueId: string) {
     // persistir esse texto como contexto_original. Assim postar_midia_biblioteca vai achar contexto e não cair em video_sem_contexto.
     let pendingConfirmBlock = "";
     try {
-      const isDono = row.from_number === OWNER_PHONE;
+      const isDono = !!tenantOwnerPhone && row.from_number === tenantOwnerPhone;
       if (isDono && media.length === 0 && (userText || "").trim().length > 0) {
         const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         const { data: recVid } = await sb
