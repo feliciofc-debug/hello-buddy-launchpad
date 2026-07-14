@@ -8138,6 +8138,8 @@ export type Database = {
           is_active: boolean
           knowledge_base: string | null
           knowledge_segment_id: string | null
+          owner_name: string | null
+          owner_phone: string | null
           persona: string | null
           tone: string | null
           updated_at: string
@@ -8153,6 +8155,8 @@ export type Database = {
           is_active?: boolean
           knowledge_base?: string | null
           knowledge_segment_id?: string | null
+          owner_name?: string | null
+          owner_phone?: string | null
           persona?: string | null
           tone?: string | null
           updated_at?: string
@@ -8168,6 +8172,8 @@ export type Database = {
           is_active?: boolean
           knowledge_base?: string | null
           knowledge_segment_id?: string | null
+          owner_name?: string | null
+          owner_phone?: string | null
           persona?: string | null
           tone?: string | null
           updated_at?: string
