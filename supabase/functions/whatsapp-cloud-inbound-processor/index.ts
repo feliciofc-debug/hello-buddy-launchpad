@@ -3805,11 +3805,14 @@ function classifyCommercialReply(raw: string): "confirmacao" | "remarcar" | "res
 }
 
 async function logOwnerHeadsup(userId: string, content: string, wamid?: string | null) {
+  const owner = await resolveTenantOwner(sb, userId);
+  if (!owner.phone) return; // sem dono configurado neste tenant → sem heads-up
+
   const { data: existing } = await sb
     .from("whatsapp_cloud_conversations")
     .select("id")
     .eq("user_id", userId)
-    .eq("contact_number", OWNER_PHONE)
+    .eq("contact_number", owner.phone)
     .maybeSingle();
 
   let conversationId = existing?.id;
@@ -3818,8 +3821,8 @@ async function logOwnerHeadsup(userId: string, content: string, wamid?: string |
       .from("whatsapp_cloud_conversations")
       .insert({
         user_id: userId,
-        contact_number: OWNER_PHONE,
-        contact_name: "Felicio Carega",
+        contact_number: owner.phone,
+        contact_name: owner.name ?? "Dono",
         status: "active",
         last_message_at: new Date().toISOString(),
       })
