@@ -3921,7 +3921,8 @@ async function notifyOwnerAboutCommercialReply(params: {
   messageType?: string | null;
 }) {
   const { userId, fromNumber, match } = params;
-  if (!match || fromNumber === OWNER_PHONE) return;
+  const tenantOwner = await resolveTenantOwner(sb, userId);
+  if (!match || !tenantOwner.phone || fromNumber === tenantOwner.phone) return;
 
   const inbound = (params.inboundText || "").trim().replace(/\s+/g, " ");
   const aiSummary = (params.aiSummaryText || "").trim().replace(/\s+/g, " ");
