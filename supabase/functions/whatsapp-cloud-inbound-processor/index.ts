@@ -4657,7 +4657,7 @@ async function processOne(queueId: string) {
     // persistir esse texto como contexto_original. Assim postar_midia_biblioteca vai achar contexto e não cair em video_sem_contexto.
     let pendingConfirmBlock = "";
     try {
-      const isDono = row.from_number === OWNER_PHONE;
+      const isDono = !!tenantOwnerPhone && row.from_number === tenantOwnerPhone;
       if (isDono && media.length === 0 && (userText || "").trim().length > 0) {
         const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         const { data: recVid } = await sb
