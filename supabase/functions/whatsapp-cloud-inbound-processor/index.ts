@@ -4176,15 +4176,25 @@ async function processOne(queueId: string) {
       return { ok: true, handoff: true };
     }
 
-    // PASSO 6.5 — Modo AMZ: 3 níveis de acesso
-    const isAmzMode =
-      (agent as any).agent_mode === "amz" && userId === ADMIN_AMZ_USER_ID;
-    let amzContextBlock: string | undefined;
-    if (isAmzMode) {
-      const amzCtx = await buildAmzContext(sb, row.from_number);
-      console.log(`[processor][amz] from=${row.from_number} access=${amzCtx.access}`);
+    // PASSO 6.5 — Contexto por tenant (owner / partner / client / stranger)
+    // Resolve o dono DESTE tenant e registra pro isOwner(ctx) enxergar.
+    const _tenantOwner = await resolveTenantOwner(sb, userId);
+    const tenantOwnerPhone: string | null = _tenantOwner.phone;
+    setTenantOwnerForCtx(userId, tenantOwnerPhone);
 
-      if (amzCtx.access === "stranger") {
+    const isAmzTenant = userId === ADMIN_AMZ_USER_ID;
+    const isAmzMode = (agent as any).agent_mode === "amz" && isAmzTenant;
+
+    let amzContextBlock: string | undefined;
+    // Roda buildAmzContext quando: (a) é o tenant AMZ (comportamento clássico),
+    // ou (b) qualquer tenant que tenha owner_phone configurado — só pra
+    // reconhecer o dono e injetar o bloco minimalista.
+    if (isAmzMode || tenantOwnerPhone) {
+      const amzCtx = await buildAmzContext(sb, row.from_number, userId);
+      console.log(`[processor][ctx] tenant=${userId} from=${row.from_number} access=${amzCtx.access}`);
+
+      // STRANGER_MSG (redireciona pro Felicio) só faz sentido no tenant AMZ.
+      if (isAmzMode && amzCtx.access === "stranger") {
         try {
           await sendWhatsApp(userId, row.from_number, STRANGER_MSG);
           await sb.from("whatsapp_cloud_messages").insert({
@@ -4201,10 +4211,12 @@ async function processOne(queueId: string) {
         await doneQueue(row.id);
         return { ok: true, amz_access: "stranger" };
       }
-      amzContextBlock = amzCtx.block;
+      if (amzCtx.block) amzContextBlock = amzCtx.block;
     }
 
-    if (row.from_number === OWNER_PHONE && row.message_type === "text" && userText.trim()) {
+    // "answerOwnerCommercialStatus" é uma feature Jarvis específica pra Felicio
+    // consultar contatos comerciais dele — só faz sentido no tenant AMZ.
+    if (isAmzTenant && tenantOwnerPhone && row.from_number === tenantOwnerPhone && row.message_type === "text" && userText.trim()) {
       const statusReply = await answerOwnerCommercialStatus(userId, userText);
       if (statusReply) {
         const { data: outMsg } = await sb
