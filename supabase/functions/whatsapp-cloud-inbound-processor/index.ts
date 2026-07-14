@@ -4593,7 +4593,7 @@ async function processOne(queueId: string) {
           // Assim, quando Marcelo/Renata/etc respondem (ex: confirmando reunião),
           // o dono recebe um resumo imediato no WhatsApp dele.
           try {
-            if (row.from_number !== OWNER_PHONE && userText && userText.trim().length > 0) {
+            if (row.from_number !== tenantOwnerPhone && userText && userText.trim().length > 0) {
               await notifyOwnerAboutCommercialReply({ userId, fromNumber: row.from_number, match, inboundText: userText, messageType: row.message_type });
             }
           } catch (e) {
