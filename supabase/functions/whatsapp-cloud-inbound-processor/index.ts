@@ -1581,7 +1581,13 @@ async function toolCalcularRota(origem: string, destino: string, ctx: { userId: 
 }
 
 // ---- ADMIN (só Felicio) ----
-function isOwner(ctx: { fromNumber: string }): boolean { return ctx.fromNumber === OWNER_PHONE; }
+// isOwner é POR TENANT: compara fromNumber com o owner_phone do userId em contexto.
+// Fallback seguro: sem owner registrado, ninguém é dono.
+function isOwner(ctx: { userId?: string; fromNumber: string }): boolean {
+  if (!ctx.fromNumber) return false;
+  const owner = ctx.userId ? getTenantOwnerForCtx(ctx.userId) : null;
+  return !!owner && ctx.fromNumber === owner;
+}
 
 async function toolMetricasAmz(ctx: { fromNumber: string }): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
