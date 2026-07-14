@@ -4,7 +4,20 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
-import { buildAmzContext, STRANGER_MSG, OWNER_PHONE } from "../_shared/amz-context.ts";
+import { buildAmzContext, STRANGER_MSG, OWNER_PHONE, resolveTenantOwner } from "../_shared/amz-context.ts";
+
+// ---------------------------------------------------------------------------
+// Multi-tenant owner registry (populado no início de cada processMessage).
+// isOwner(ctx) usa este mapa em vez da constante global OWNER_PHONE, para que
+// o dono de UM tenant jamais seja reconhecido como dono de OUTRO.
+// ---------------------------------------------------------------------------
+const _tenantOwners = new Map<string, string | null>();
+function setTenantOwnerForCtx(userId: string, ownerPhone: string | null) {
+  _tenantOwners.set(userId, ownerPhone);
+}
+function getTenantOwnerForCtx(userId: string): string | null {
+  return _tenantOwners.get(userId) ?? null;
+}
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
 
