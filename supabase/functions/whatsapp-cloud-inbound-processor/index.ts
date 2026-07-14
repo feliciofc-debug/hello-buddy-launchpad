@@ -3984,7 +3984,7 @@ async function notifyOwnerDeterministic(params: {
   if (jaNotificou) return true;
 
   const content = `${notice}\n${sigTag}`;
-  const sentId = await sendWhatsApp(params.userId, OWNER_PHONE, content);
+  const sentId = await sendWhatsApp(params.userId, tenantOwner.phone, content);
   await logOwnerHeadsup(params.userId, content, sentId);
   console.log(`[processor][headsup-owner-deterministic] enviado para dono sobre ${params.match?.nome || params.fromNumber}`);
   return true;
