@@ -3649,9 +3649,13 @@ async function callGemini(
   ];
 
   if (!hasMedia && typeof userContent === "string") {
+    const remetenteEhDono = isOwner(toolCtx);
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
     const postConfirmation = detectSocialPostConfirmation(userContent);
     if (postConfirmation) {
+      if (!remetenteEhDono) {
+        return { text: "Essa publicação só pode ser autorizada pelo responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+      }
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
       return { text: formatSocialPostToolResult(confirmResult) };
@@ -3661,7 +3665,7 @@ async function callGemini(
     // retoma o post pendente (redes/tom/legenda guardados) sem precisar reenviar a foto.
     const standaloneFormat = detectStandaloneFormatReply(userContent);
     const pendingChoice = getPendingFormatChoice(toolCtx.userId);
-    if (standaloneFormat && pendingChoice) {
+    if (remetenteEhDono && standaloneFormat && pendingChoice) {
       const midiaRecenteResume = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
       if (midiaRecenteResume) {
         // Reels só faz sentido pra vídeo — bloqueia foto+reels aqui.
@@ -3685,6 +3689,9 @@ async function callGemini(
 
     const socialPost = detectSocialPostIntent(userContent);
     if (socialPost) {
+      if (!remetenteEhDono) {
+        return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
+      }
       console.log("[pietro][forced_social_post]", socialPost);
       const midiaRecente = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
       if (midiaRecente) {
