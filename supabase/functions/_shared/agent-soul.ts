@@ -366,7 +366,7 @@ async function loadCatalogForTenant(
 ): Promise<string | null> {
   const { data: produtos, error } = await sb
     .from("produtos")
-    .select("id, nome, descricao, preco, categoria, marketplace, link_afiliado")
+    .select("id, nome, descricao, preco, categoria, link")
     .eq("user_id", tenantUserId) // 🛡️ ISOLAMENTO POR TENANT
     .limit(500);
 
