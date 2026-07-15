@@ -2530,6 +2530,7 @@ function formatSocialPostToolResult(raw: string): string {
   if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
 
   if (data?.erro) {
+    if (data?.mensagem) return data.mensagem;
     const sugestoes = Array.isArray(data.sugestoes_do_catalogo) && data.sugestoes_do_catalogo.length
       ? `\n\nSugestões mais próximas:\n${data.sugestoes_do_catalogo.map((s: string) => `• ${s}`).join("\n")}`
       : "";
@@ -2553,7 +2554,7 @@ async function toolPostarRedesSociais(
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
-    if (!isOwner(ctx)) return JSON.stringify({ erro: "Publicação em redes sociais liberada apenas para o dono (Felicio) nesta fase. Em breve para todos os clientes PJ." });
+    if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
@@ -2627,7 +2628,7 @@ async function toolConfirmarPostagemRedes(
   args: { token: string; cancelar?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
-  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
   const token = (args?.token || "").trim().toLowerCase();
   if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
@@ -2663,7 +2664,7 @@ async function toolRevisarPostPendente(
   args: { token: string; ajuste?: string; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
-  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
   const token = (args?.token || "").trim().toLowerCase();
   const ajuste = (args?.ajuste || "").toString().trim();
@@ -2820,7 +2821,7 @@ async function salvarItemMidiaBiblioteca(
 }
 
 
-function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>, descricaoVisual?: string): string {
+function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>, descricaoVisual?: string, remetenteEhDono = false): string {
   const total = salvos.length;
   const tipos = salvos.reduce((acc, item) => {
     acc[item.tipo] = (acc[item.tipo] ?? 0) + 1;
@@ -2833,12 +2834,18 @@ function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>,
   ].filter(Boolean).join(", ");
   const temFoto = (tipos.foto ?? 0) > 0;
   const temVideo = (tipos.video ?? 0) > 0;
+  if (!remetenteEhDono) {
+    if (temFoto && descricaoVisual?.trim()) {
+      return `Recebi ${partes || "a mídia"}. A imagem mostra: ${descricaoVisual.trim()}\n\nSe você quiser, eu encaminho isso para o responsável.`;
+    }
+    return `Recebi ${partes || "a mídia"}. Se você quiser, eu encaminho isso para o responsável.`;
+  }
   // VÍDEO: como não temos visão de vídeo, coletar rede+formato+legenda numa pergunta só (evita loop de contexto).
   if (temVideo && !temFoto) {
     return `Salvei ${partes} na biblioteca /midias. Como não consigo assistir vídeo, me diga tudo numa mensagem só: **onde publicar** (Instagram / Facebook / ambos), **formato** (Feed, Story ou Reels) e uma **legenda/contexto** (do que se trata). Ex.: "Reels no Insta e Face — Interruptor touch-screen Tramontina, chique e prático".`;
   }
   if (temFoto && descricaoVisual?.trim()) {
-    return `Oi chefe, salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
+    return `Salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
   }
   const instrucao = temFoto
     ? " INSTRUÇÃO PRO ASSISTENTE: analise VISUALMENTE a(s) imagem(ns) que o cliente acabou de mandar (você as recebeu no conteúdo desta mensagem) e descreva em 1-2 frases o que aparece nela (produto, cena, cor, contexto). Depois confirme que salvou. NÃO responda genericamente — mostre que viu a foto."
@@ -2887,6 +2894,7 @@ async function toolSalvarMidiaBiblioteca(
 
   try {
     const contexto = (args?.contexto || "").trim();
+    const remetenteEhDono = !!ctx.fromNumber && isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber });
     const salvos = await Promise.all(medias.map((m) => salvarItemMidiaBiblioteca(m, ctx, contexto)));
 
     // Descreve a(s) foto(s) por visão pra Jarvis conseguir comentar o que viu e pra alimentar futura copy.
@@ -2903,9 +2911,11 @@ async function toolSalvarMidiaBiblioteca(
       midia_ids: salvos.map((s) => s.id),
       tipos: salvos.map((s) => s.tipo),
       descricao_visual: descricaoVisual || undefined,
-      mensagem: respostaMidiaSalva(salvos, descricaoVisual),
+      mensagem: respostaMidiaSalva(salvos, descricaoVisual, remetenteEhDono),
       instrucao_assistente: descricaoVisual
-        ? `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Comente 1-2 linhas confirmando o que viu (produto/tema/cor/texto principal) antes de dizer que salvou em /midias. NÃO responda genérico.`
+        ? remetenteEhDono
+          ? `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Comente 1-2 linhas confirmando o que viu (produto/tema/cor/texto principal) antes de dizer que salvou em /midias. NÃO responda genérico.`
+          : `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Responda como atendimento a CLIENTE/CONTATO: nunca chame de chefe/dono, nunca pergunte onde postar e nunca ofereça publicar em redes. Se fizer sentido, ofereça encaminhar para o responsável.`
         : undefined,
     });
   } catch (e) {
@@ -2919,7 +2929,7 @@ async function toolPostarMidiaBiblioteca(
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
-    if (!isOwner(ctx)) return JSON.stringify({ erro: "Publicação em redes sociais liberada apenas para o dono (Felicio) nesta fase." });
+    if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
 
     // Busca a última mídia salva pelo dono (foto/vídeo), ainda não publicada
@@ -3411,7 +3421,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "salvar_midia_biblioteca",
-      description: "🔴 USE SEMPRE E IMEDIATAMENTE quando o cliente ENVIAR foto, vídeo ou áudio nesta mensagem — mesmo sem legenda. É a ação PADRÃO pra qualquer mídia recebida. Salva o arquivo na biblioteca de Mídias (/midias) da plataforma pra ele publicar/reusar depois. NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes — só arquiva e confirma. Passe em 'contexto' o que o cliente falou junto, ou string vazia se não falou nada.",
+      description: "🔴 USE quando receber foto, vídeo ou áudio nesta mensagem — mesmo sem legenda — para arquivar na biblioteca de Mídias (/midias). NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes. Se o remetente NÃO for dono/responsável, nunca fale de publicar/reusar nem pergunte rede/formato; apenas confirme recebimento e, se fizer sentido, ofereça encaminhar ao responsável. Passe em 'contexto' o que foi falado junto, ou string vazia se não falou nada.",
       parameters: {
         type: "object",
         properties: {
@@ -3424,7 +3434,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
+      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Nunca use para cliente/contato. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
       parameters: {
         type: "object",
         properties: {
@@ -3640,9 +3650,13 @@ async function callGemini(
   ];
 
   if (!hasMedia && typeof userContent === "string") {
+    const remetenteEhDono = isOwner(toolCtx);
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
     const postConfirmation = detectSocialPostConfirmation(userContent);
     if (postConfirmation) {
+      if (!remetenteEhDono) {
+        return { text: "Essa publicação só pode ser autorizada pelo responsável da conta. Posso encaminhar seu pedido para ele, se quiser." };
+      }
       console.log("[pietro][forced_social_confirm]", postConfirmation);
       const confirmResult = await toolConfirmarPostagemRedes(postConfirmation, toolCtx);
       return { text: formatSocialPostToolResult(confirmResult) };
@@ -3652,7 +3666,7 @@ async function callGemini(
     // retoma o post pendente (redes/tom/legenda guardados) sem precisar reenviar a foto.
     const standaloneFormat = detectStandaloneFormatReply(userContent);
     const pendingChoice = getPendingFormatChoice(toolCtx.userId);
-    if (standaloneFormat && pendingChoice) {
+    if (remetenteEhDono && standaloneFormat && pendingChoice) {
       const midiaRecenteResume = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
       if (midiaRecenteResume) {
         // Reels só faz sentido pra vídeo — bloqueia foto+reels aqui.
@@ -3676,6 +3690,9 @@ async function callGemini(
 
     const socialPost = detectSocialPostIntent(userContent);
     if (socialPost) {
+      if (!remetenteEhDono) {
+        return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
+      }
       console.log("[pietro][forced_social_post]", socialPost);
       const midiaRecente = await buscarMidiaRecenteParaPostagem(toolCtx.userId);
       if (midiaRecente) {
@@ -4710,8 +4727,11 @@ async function processOne(queueId: string) {
       hour: "2-digit", minute: "2-digit",
     }).format(new Date());
     const dateBlock = `\n\nCONTEXTO TEMPORAL (IMPORTANTE):\n- Data e hora atual em São Paulo: ${nowSP}.\n- Use SEMPRE esta data como referência de "hoje", "ontem", "esta semana", "este ano".\n- Para qualquer pergunta sobre notícias, eventos, cotações, clima, preços, jogos, agenda ou "o que está acontecendo", chame pesquisar_web com termos incluindo o ano/mês atual e passe recencia="d" (últimas 24h) ou "w" (última semana) quando fizer sentido. NUNCA responda de memória sobre fatos recentes.`;
+    const inboundFromOwner = !!tenantOwnerPhone && row.from_number === tenantOwnerPhone;
     const mediaBlock = media.length > 0
-      ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O cliente ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio enviado pelo cliente é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que o cliente falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada pelo cliente.\n- É PROIBIDO buscar/casar essa mídia com produto do estoque/catálogo. Não invente produto.\n- Depois de salvar, responda curto: confirma que salvou na biblioteca /midias e diz que ele pode publicar/reusar por lá quando quiser. Não peça mais informação.`
+      ? inboundFromOwner
+        ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
+        : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia.\n- É PROIBIDO chamar o remetente de "chefe", "dono" ou tratar como responsável.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Se o cliente pediu para mandar ao responsável/dono/Marcelo, chame encaminhar_recado_ao_dono.\n- Se ele só enviou a mídia, responda curto dizendo que recebeu; no máximo ofereça encaminhar para o responsável.`
       : "";
 
     // Detecta mídia recente em /midias (últimos 15 min) — se cliente pedir postar, usa ela em vez do catálogo
@@ -4728,7 +4748,9 @@ async function processOne(queueId: string) {
         .limit(1);
       const m0 = recMid?.[0];
       if (m0 && media.length === 0) {
-        recentMediaBlock = `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO (ex: pegar um "mop" aleatório quando a foto enviada era outra coisa). postar_redes_sociais é exclusiva pra quando o dono cita um PRODUTO do catálogo pelo nome SEM ter enviado mídia.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`;
+          recentMediaBlock = inboundFromOwner
+            ? `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Contexto salvo: "${m0.contexto_original ?? "sem contexto"}".\n- Se o dono pedir pra POSTAR/DIVULGAR agora em QUALQUER formato (feed, story, stories, reels), a mídia a publicar é ESTA que ele acabou de enviar — chame IMEDIATAMENTE postar_midia_biblioteca passando legenda/nome/preço do texto atual e formato='story' se ele citar story/stories (senão 'feed').\n- ⛔ NUNCA chame postar_redes_sociais nesse caso — aquela tool busca PRODUTO no CATÁLOGO e vai devolver item ERRADO.\n- ⛔ NÃO chame buscar_estoque/consultar_estoque nesse caso.`
+            : `\n\nMÍDIA RECENTE NA BIBLIOTECA /midias (últimos 15 min):\n- Tipo: ${m0.tipo}. Foi enviada por CLIENTE/CONTATO, não pelo responsável.\n- NÃO ofereça postar/divulgar, NÃO pergunte rede/formato e NÃO chame ferramentas de publicação.\n- Se o cliente pedir encaminhamento ao responsável, use encaminhar_recado_ao_dono.`;
       }
     } catch (e) {
       console.warn("[pietro][recent_media_hint] falhou:", (e as Error).message);
