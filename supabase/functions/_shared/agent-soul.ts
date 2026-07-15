@@ -388,7 +388,7 @@ async function loadCatalogForTenant(
     const cat = p.categoria ? ` [${p.categoria}]` : "";
     const link = p.link_afiliado ? `\n  Link: ${p.link_afiliado}` : "";
     const desc = p.descricao ? `\n  ${String(p.descricao).slice(0, 150)}` : "";
-    return `${i + 1}. ${p.titulo}${cat}${preco}${desc}${link}`;
+    return `${i + 1}. ${p.nome}${cat}${preco}${desc}${link}`;
   });
 
   return [
