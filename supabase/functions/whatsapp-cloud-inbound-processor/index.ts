@@ -3439,17 +3439,97 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "encaminhar_recado_ao_dono",
+      description: "📨 USE quando o cliente/contato pedir explicitamente pra você MANDAR RECADO, AVISO, MENSAGEM ou FOTO pro DONO do agente (ex: 'manda pro Marcelo', 'passa isso pro chefe', 'avisa o dono', 'encaminha essa foto pra ele'). Envia o recado (texto + a última foto que o cliente mandou, se houver) pro WhatsApp do dono do tenant automaticamente — você NÃO precisa saber o número dele. Só use quando o pedido for CLARO; não use pra conversas normais. Sempre confirme pro cliente que já mandou.",
+      parameters: {
+        type: "object",
+        properties: {
+          recado: {
+            type: "string",
+            description: "Texto do recado, JÁ HUMANIZADO, como se você (o agente) estivesse avisando o dono. Ex: 'Chefe, o cliente Felício (21 96752-0706) mandou essa foto e pediu pra você dar uma olhada.' Inclua nome/telefone do cliente e o conteúdo/pedido dele. Mínimo 15 caracteres.",
+          },
+          incluir_ultima_foto: {
+            type: "boolean",
+            description: "true = anexa a última FOTO que o cliente enviou nesta conversa. false ou ausente = só texto.",
+          },
+        },
+        required: ["recado"],
+      },
+    },
+  },
 
 ];
 
 
+// ---- encaminhar_recado_ao_dono: cliente/contato pede pra encaminhar recado/foto pro dono do tenant ----
+async function toolEncaminharRecadoAoDono(
+  args: { recado?: string; incluir_ultima_foto?: boolean },
+  ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
+): Promise<string> {
+  const recado = (args?.recado || "").trim();
+  if (!recado || recado.length < 15) {
+    return JSON.stringify({ erro: "recado_invalido", detalhe: "Componha o recado humanizado (mínimo 15 chars), incluindo nome/telefone do cliente e o que ele pediu." });
+  }
+
+  // Owner do tenant atual
+  const owner = await resolveTenantOwner(sb, ctx.userId);
+  if (!owner?.phone) {
+    return JSON.stringify({ erro: "dono_nao_configurado", detalhe: "Este agente não tem owner_phone configurado em whatsapp_cloud_agent_config." });
+  }
+  // Não encaminha pro próprio remetente (evita loop se o dono se autotestar)
+  if (owner.phone === ctx.fromNumber) {
+    return JSON.stringify({ erro: "remetente_e_o_dono", detalhe: "O próprio dono está mandando — nada pra encaminhar." });
+  }
+
+  // Anexar última foto se solicitado
+  let imageUrl: string | undefined;
+  if (args?.incluir_ultima_foto) {
+    const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
+    if (img?.base64) {
+      try {
+        const bytes = base64Decode(img.base64);
+        const mime = img.mime || "image/jpeg";
+        const ext = mime.split("/")[1]?.split(";")[0] || "jpg";
+        const fileName = `midias/${ctx.userId}/recado-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
+        if (!upErr) {
+          const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
+          imageUrl = pub?.publicUrl;
+        } else {
+          console.warn("[encaminhar_recado] upload falhou:", upErr.message);
+        }
+      } catch (e) {
+        console.warn("[encaminhar_recado] falhou ao processar imagem:", (e as Error).message);
+      }
+    }
+  }
+
+  try {
+    const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
+    return JSON.stringify({
+      ok: true,
+      enviado_para: owner.name || "dono",
+      com_foto: !!imageUrl,
+      message_id: messageId,
+      instrucao: "Confirme pro cliente em 1 linha que você já entregou o recado (e a foto, se houver). Não recite o texto do recado nem o telefone do dono.",
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: "falha_ao_enviar", detalhe: String((e as Error).message).slice(0, 200) });
+  }
+}
+
+
 async function runTool(
+
   name: string,
   args: any,
   ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
 ): Promise<{ result: string; imageUrl?: string }> {
   const hasFreshLibraryMedia = (ctx.media ?? []).some((m) => m.kind === "image" || m.kind === "video");
-  if (hasFreshLibraryMedia && name !== "salvar_midia_biblioteca") {
+  if (hasFreshLibraryMedia && name !== "salvar_midia_biblioteca" && name !== "encaminhar_recado_ao_dono") {
     console.warn(`[pietro][media_guard] bloqueando tool ${name}; mídia nova deve ir para /midias`);
     const result = await toolSalvarMidiaBiblioteca({ contexto: args?.contexto ?? args?.produto ?? args?.query ?? "" }, ctx);
     return { result };
@@ -3535,6 +3615,7 @@ async function runTool(
   if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
+  if (name === "encaminhar_recado_ao_dono") return { result: await toolEncaminharRecadoAoDono(args ?? {}, ctx) };
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
 
