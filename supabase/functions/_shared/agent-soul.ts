@@ -366,7 +366,7 @@ async function loadCatalogForTenant(
 ): Promise<string | null> {
   const { data: produtos, error } = await sb
     .from("produtos")
-    .select("id, nome, descricao, preco, categoria, marketplace, link_afiliado")
+    .select("id, nome, descricao, preco, categoria, link")
     .eq("user_id", tenantUserId) // 🛡️ ISOLAMENTO POR TENANT
     .limit(500);
 
@@ -386,7 +386,7 @@ async function loadCatalogForTenant(
   const lines = selected.map((p: any, i: number) => {
     const preco = p.preco ? ` — R$ ${Number(p.preco).toFixed(2)}` : "";
     const cat = p.categoria ? ` [${p.categoria}]` : "";
-    const link = p.link_afiliado ? `\n  Link: ${p.link_afiliado}` : "";
+    const link = p.link ? `\n  Link: ${p.link}` : "";
     const desc = p.descricao ? `\n  ${String(p.descricao).slice(0, 150)}` : "";
     return `${i + 1}. ${p.nome}${cat}${preco}${desc}${link}`;
   });
