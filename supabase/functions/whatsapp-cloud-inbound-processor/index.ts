@@ -3421,7 +3421,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "salvar_midia_biblioteca",
-      description: "🔴 USE SEMPRE E IMEDIATAMENTE quando o cliente ENVIAR foto, vídeo ou áudio nesta mensagem — mesmo sem legenda. É a ação PADRÃO pra qualquer mídia recebida. Salva o arquivo na biblioteca de Mídias (/midias) da plataforma pra ele publicar/reusar depois. NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes — só arquiva e confirma. Passe em 'contexto' o que o cliente falou junto, ou string vazia se não falou nada.",
+      description: "🔴 USE quando receber foto, vídeo ou áudio nesta mensagem — mesmo sem legenda — para arquivar na biblioteca de Mídias (/midias). NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes. Se o remetente NÃO for dono/responsável, nunca fale de publicar/reusar nem pergunte rede/formato; apenas confirme recebimento e, se fizer sentido, ofereça encaminhar ao responsável. Passe em 'contexto' o que foi falado junto, ou string vazia se não falou nada.",
       parameters: {
         type: "object",
         properties: {
@@ -3434,7 +3434,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE quando o cliente pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
+      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Nunca use para cliente/contato. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
       parameters: {
         type: "object",
         properties: {
