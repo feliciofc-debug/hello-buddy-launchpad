@@ -3497,6 +3497,7 @@ async function toolEncaminharRecadoAoDono(
   // Anexar última foto se solicitado
   let imageUrl: string | undefined;
   if (args?.incluir_ultima_foto) {
+    // 1) Foto que veio nessa mesma mensagem
     const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
     if (img?.base64) {
       try {
@@ -3515,7 +3516,29 @@ async function toolEncaminharRecadoAoDono(
         console.warn("[encaminhar_recado] falhou ao processar imagem:", (e as Error).message);
       }
     }
+    // 2) Fallback: última foto enviada por ESTE remetente nos últimos 30 min (caso o cliente tenha mandado a foto antes e agora só confirmado)
+    if (!imageUrl) {
+      try {
+        const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+        const { data: recent } = await sb
+          .from("midias_whatsapp")
+          .select("midia_url, created_at")
+          .eq("user_id", ctx.userId)
+          .eq("telefone_origem", ctx.fromNumber)
+          .eq("tipo", "foto")
+          .gte("created_at", cutoff)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (recent && recent[0]?.midia_url) {
+          imageUrl = recent[0].midia_url;
+          console.log("[encaminhar_recado] usando foto recente da biblioteca:", imageUrl);
+        }
+      } catch (e) {
+        console.warn("[encaminhar_recado] fallback biblioteca falhou:", (e as Error).message);
+      }
+    }
   }
+
 
   try {
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
