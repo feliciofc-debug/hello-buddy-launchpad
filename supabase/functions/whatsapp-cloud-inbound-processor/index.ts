@@ -2530,6 +2530,7 @@ function formatSocialPostToolResult(raw: string): string {
   if (data?.status === "cancelado") return "Preview cancelado. Não publiquei nada.";
 
   if (data?.erro) {
+    if (data?.mensagem) return data.mensagem;
     const sugestoes = Array.isArray(data.sugestoes_do_catalogo) && data.sugestoes_do_catalogo.length
       ? `\n\nSugestões mais próximas:\n${data.sugestoes_do_catalogo.map((s: string) => `• ${s}`).join("\n")}`
       : "";
