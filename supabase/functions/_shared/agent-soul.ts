@@ -366,7 +366,7 @@ async function loadCatalogForTenant(
 ): Promise<string | null> {
   const { data: produtos, error } = await sb
     .from("produtos")
-    .select("id, titulo, descricao, preco, categoria, marketplace, link_afiliado")
+    .select("id, nome, descricao, preco, categoria, marketplace, link_afiliado")
     .eq("user_id", tenantUserId) // 🛡️ ISOLAMENTO POR TENANT
     .limit(500);
 
@@ -388,7 +388,7 @@ async function loadCatalogForTenant(
     const cat = p.categoria ? ` [${p.categoria}]` : "";
     const link = p.link_afiliado ? `\n  Link: ${p.link_afiliado}` : "";
     const desc = p.descricao ? `\n  ${String(p.descricao).slice(0, 150)}` : "";
-    return `${i + 1}. ${p.titulo}${cat}${preco}${desc}${link}`;
+    return `${i + 1}. ${p.nome}${cat}${preco}${desc}${link}`;
   });
 
   return [
@@ -421,7 +421,7 @@ function rankByKeywords(produtos: any[], userText: string, topN: number): any[] 
 
   const scored = produtos.map((p) => {
     const haystack = (
-      (p.titulo ?? "") +
+      (p.nome ?? "") +
       " " +
       (p.descricao ?? "") +
       " " +
