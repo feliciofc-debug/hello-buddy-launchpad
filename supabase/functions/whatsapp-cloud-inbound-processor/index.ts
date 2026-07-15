@@ -3615,6 +3615,7 @@ async function toolEncaminharRecadoAoDono(
 
   try {
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
+    await logOwnerHeadsup(ctx.userId, imageUrl ? `${recado}\n\n[foto anexada]` : recado, messageId);
     return JSON.stringify({
       ok: true,
       enviado_para: owner.name || "dono",
