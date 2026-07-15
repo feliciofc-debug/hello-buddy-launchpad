@@ -3464,7 +3464,66 @@ const TOOLS = [
 ];
 
 
+// ---- encaminhar_recado_ao_dono: cliente/contato pede pra encaminhar recado/foto pro dono do tenant ----
+async function toolEncaminharRecadoAoDono(
+  args: { recado?: string; incluir_ultima_foto?: boolean },
+  ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
+): Promise<string> {
+  const recado = (args?.recado || "").trim();
+  if (!recado || recado.length < 15) {
+    return JSON.stringify({ erro: "recado_invalido", detalhe: "Componha o recado humanizado (mínimo 15 chars), incluindo nome/telefone do cliente e o que ele pediu." });
+  }
+
+  // Owner do tenant atual
+  const owner = await resolveTenantOwner(sb, ctx.userId);
+  if (!owner?.phone) {
+    return JSON.stringify({ erro: "dono_nao_configurado", detalhe: "Este agente não tem owner_phone configurado em whatsapp_cloud_agent_config." });
+  }
+  // Não encaminha pro próprio remetente (evita loop se o dono se autotestar)
+  if (owner.phone === ctx.fromNumber) {
+    return JSON.stringify({ erro: "remetente_e_o_dono", detalhe: "O próprio dono está mandando — nada pra encaminhar." });
+  }
+
+  // Anexar última foto se solicitado
+  let imageUrl: string | undefined;
+  if (args?.incluir_ultima_foto) {
+    const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
+    if (img?.base64) {
+      try {
+        const bytes = base64Decode(img.base64);
+        const mime = img.mime || "image/jpeg";
+        const ext = mime.split("/")[1]?.split(";")[0] || "jpg";
+        const fileName = `midias/${ctx.userId}/recado-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error: upErr } = await sb.storage.from("produtos").upload(fileName, bytes, { contentType: mime, upsert: true });
+        if (!upErr) {
+          const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
+          imageUrl = pub?.publicUrl;
+        } else {
+          console.warn("[encaminhar_recado] upload falhou:", upErr.message);
+        }
+      } catch (e) {
+        console.warn("[encaminhar_recado] falhou ao processar imagem:", (e as Error).message);
+      }
+    }
+  }
+
+  try {
+    const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
+    return JSON.stringify({
+      ok: true,
+      enviado_para: owner.name || "dono",
+      com_foto: !!imageUrl,
+      message_id: messageId,
+      instrucao: "Confirme pro cliente em 1 linha que você já entregou o recado (e a foto, se houver). Não recite o texto do recado nem o telefone do dono.",
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: "falha_ao_enviar", detalhe: String((e as Error).message).slice(0, 200) });
+  }
+}
+
+
 async function runTool(
+
   name: string,
   args: any,
   ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
