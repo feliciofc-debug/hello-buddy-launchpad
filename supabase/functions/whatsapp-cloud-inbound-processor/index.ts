@@ -5023,6 +5023,7 @@ async function processOne(queueId: string) {
     // Bloco de identidade do RESPONSÁVEL (dono do tenant) — injeta quando quem fala é CLIENTE/CONTATO (não o dono).
     // Sem isso, o agente não sabe quem é "Marcelo/Felício/chefe" e cai em respostas do tipo "não sei qual Marcelo".
     let ownerHintBlock = "";
+    const _fromNumForPrompt = String(row.from_number || "");
     if (!inboundFromOwner && _tenantOwner?.name) {
       const nomeCompleto = _tenantOwner.name.trim();
       const primeiroNome = nomeCompleto.split(/\s+/)[0] || nomeCompleto;
