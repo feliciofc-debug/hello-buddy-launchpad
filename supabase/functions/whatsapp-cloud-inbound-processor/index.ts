@@ -2928,7 +2928,7 @@ async function toolPostarMidiaBiblioteca(
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
-    if (!isOwner(ctx)) return JSON.stringify({ erro: "Publicação em redes sociais liberada apenas para o dono (Felicio) nesta fase." });
+    if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
 
     // Busca a última mídia salva pelo dono (foto/vídeo), ainda não publicada
