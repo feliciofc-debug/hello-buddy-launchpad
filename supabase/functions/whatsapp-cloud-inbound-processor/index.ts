@@ -1307,6 +1307,79 @@ function normalizeContactLookupText(raw: string): string {
     .trim();
 }
 
+function ownerFirstName(ownerName?: string | null): string {
+  const first = String(ownerName || "").trim().split(/\s+/)[0];
+  return first || "responsável";
+}
+
+function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): boolean {
+  const low = normalizeContactLookupText(raw);
+  if (!low) return false;
+  const ownerFirst = normalizeContactLookupText(ownerFirstName(ownerName));
+  const hasRecipient = new RegExp(`\\b(${[
+    "responsavel",
+    "dono",
+    "chefe",
+    "gerente",
+    "equipe",
+    "consultor",
+    "atendente",
+    ownerFirst,
+  ].filter(Boolean).join("|")})\\b`, "i").test(low);
+  const hasForwardVerb = /\b(manda|mandar|mande|mandei|envia|enviar|envie|encaminha|encaminhar|encaminhe|passa|passe|repassa|repassar|avisa|avisar|avise|pede|pedir|peca|solicita|solicitar|chama|chamar|falar|contato|retorno|retornar)\b/i.test(low);
+  const hasBusinessAsk = /\b(foto|imagem|recado|mensagem|duvida|plano|orcamento|proposta|simulacao|consorcio|carta|credito|parcela|prazo)\b/i.test(low);
+  const teamShouldReply = /\b(equipe|consultor|gerente|responsavel|atendente)\b.*\b(me\s+(enviar|enviarem|mandar|mandarem|retornar|retornarem|chamar|chamarem)|entrar em contato|falar comigo)\b/i.test(low);
+  return (hasRecipient && (hasForwardVerb || hasBusinessAsk)) || teamShouldReply;
+}
+
+function isOwnerHandoffQuestion(raw: string): boolean {
+  const low = normalizeContactLookupText(raw);
+  if (!low) return false;
+  const commercialTopic = /\b(consorcio|plano|carta|credito|parcela|parcelamento|prazo|meses|taxa|simulacao|proposta|orcamento|contemplacao|ademicon)\b/i.test(low);
+  const asksForDecision = /\b(consigo|consegue|pode|posso|tem|existe|quanto|qual|como|fazer|faz|da pra|da para|quero|preciso|me passa|me envia|me manda)\b/i.test(low) || /\?/.test(raw);
+  const needsHuman = /\b(\d+\s*meses|100\s*meses|plano|proposta|orcamento|simulacao|equipe|consultor|responsavel)\b/i.test(low);
+  return commercialTopic && asksForDecision && needsHuman;
+}
+
+function buildOwnerForwardMessage(params: {
+  ownerName?: string | null;
+  contactName?: string | null;
+  fromNumber: string;
+  pedido?: string | null;
+  descricaoVisual?: string | null;
+  messageType?: string | null;
+}): string {
+  const dono = ownerFirstName(params.ownerName);
+  const cliente = params.contactName?.trim() || "cliente";
+  const pedido = (params.pedido || "").trim();
+  const descricao = (params.descricaoVisual || "").trim();
+  const partes = [
+    `${dono}, o ${cliente} (${params.fromNumber}) precisa de retorno no WhatsApp.`,
+    pedido ? `Mensagem do cliente: "${pedido.slice(0, 700)}".` : null,
+    descricao ? `A foto enviada mostra: ${descricao.slice(0, 900)}.` : null,
+    !pedido && !descricao ? `Tipo recebido: ${params.messageType || "mensagem"}.` : null,
+  ].filter(Boolean);
+  return partes.join("\n\n");
+}
+
+async function recentForwardRequestFromConversation(
+  conversationId: string,
+  ownerName?: string | null,
+): Promise<string | null> {
+  const cutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const { data } = await sb
+    .from("whatsapp_cloud_messages")
+    .select("content, created_at")
+    .eq("conversation_id", conversationId)
+    .eq("direction", "inbound")
+    .eq("message_type", "text")
+    .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  const found = (data ?? []).find((m: any) => isExplicitOwnerForwardIntent(String(m.content || ""), ownerName));
+  return found?.content ?? null;
+}
+
 async function inferContatoComercialFromText(text: string, userId: string): Promise<any | null> {
   const haystack = ` ${normalizeContactLookupText(text)} `;
   if (!haystack.trim()) return null;
@@ -3542,6 +3615,7 @@ async function toolEncaminharRecadoAoDono(
 
   try {
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
+    await logOwnerHeadsup(ctx.userId, imageUrl ? `${recado}\n\n[foto anexada]` : recado, messageId);
     return JSON.stringify({
       ok: true,
       enviado_para: owner.name || "dono",
@@ -3624,6 +3698,22 @@ async function runTool(
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
+  if ((name === "listar_contatos_comerciais" || name === "enviar_mensagem_contato_comercial") && !isOwner(ctx)) {
+    if (name === "enviar_mensagem_contato_comercial") {
+      return {
+        result: await toolEncaminharRecadoAoDono({
+          recado: buildOwnerForwardMessage({
+            ownerName: (await resolveTenantOwner(sb, ctx.userId)).name,
+            fromNumber: ctx.fromNumber,
+            pedido: args?.mensagem || args?.recado || "Cliente pediu contato/retorno do responsável.",
+            messageType: "text",
+          }),
+          incluir_ultima_foto: !!args?.incluir_ultima_foto,
+        }, ctx),
+      };
+    }
+    return { result: JSON.stringify({ erro: "ferramenta_restrita_ao_dono", detalhe: "Cliente não lista contatos comerciais; encaminhe o pedido ao responsável do tenant." }) };
+  }
   if (name === "listar_contatos_comerciais") return { result: await toolListarContatosComerciais(args ?? {}, ctx) };
   if (name === "enviar_mensagem_contato_comercial") return { result: await toolEnviarMensagemContatoComercial(args ?? {}, ctx) };
   if (name === "salvar_nota") return { result: await toolSalvarNota(args?.conteudo ?? "", args?.tags, ctx) };
@@ -4521,7 +4611,31 @@ async function processOne(queueId: string) {
       } catch (e) {
         console.warn("[processor][fresh_media_visao] falhou:", (e as Error).message);
       }
-      const reply = respostaMidiaSalva(salvos, descricaoVisual);
+      const pendingForwardRequest = row.from_number !== tenantOwnerPhone
+        ? await recentForwardRequestFromConversation(conv.id, _tenantOwner?.name)
+        : null;
+      const shouldForwardToOwner = row.from_number !== tenantOwnerPhone && !!tenantOwnerPhone && (
+        isExplicitOwnerForwardIntent(userText, _tenantOwner?.name) || !!pendingForwardRequest
+      );
+      const imageUrlToOwner = salvos.find((s) => s.tipo === "foto")?.url;
+      let ownerForwarded = false;
+      if (shouldForwardToOwner) {
+        const recado = buildOwnerForwardMessage({
+          ownerName: _tenantOwner?.name,
+          contactName,
+          fromNumber: row.from_number,
+          pedido: userText || pendingForwardRequest || contexto,
+          descricaoVisual,
+          messageType: row.message_type,
+        });
+        const sentOwnerId = await sendWhatsApp(userId, tenantOwnerPhone!, recado, imageUrlToOwner);
+        await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
+        ownerForwarded = true;
+        console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner}`);
+      }
+      const reply = ownerForwarded
+        ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}.`
+        : respostaMidiaSalva(salvos, descricaoVisual);
 
       const { data: outMsg } = await sb
         .from("whatsapp_cloud_messages")
@@ -4555,6 +4669,65 @@ async function processOne(queueId: string) {
 
       await doneQueue(row.id);
       return { ok: true, saved_to_midias: true, midia_ids: salvos.map((s) => s.id), reply_preview: reply.slice(0, 120) };
+    }
+
+    // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
+    // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
+    // Encaminha direto para owner_phone do tenant (Marcelo: número diferente do agente).
+    if (row.from_number !== tenantOwnerPhone && row.message_type === "text" && userText.trim() && tenantOwnerPhone) {
+      const explicitForward = isExplicitOwnerForwardIntent(userText, _tenantOwner?.name);
+      const humanNeeded = isOwnerHandoffQuestion(userText);
+      if (explicitForward || humanNeeded) {
+        let imageUrlToOwner: string | undefined;
+        if (explicitForward) {
+          const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+          const { data: recent } = await sb
+            .from("midias_whatsapp")
+            .select("midia_url, created_at")
+            .eq("user_id", userId)
+            .eq("telefone_origem", row.from_number)
+            .eq("tipo", "foto")
+            .gte("created_at", cutoff)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          imageUrlToOwner = recent?.[0]?.midia_url || undefined;
+        }
+        const recado = buildOwnerForwardMessage({
+          ownerName: _tenantOwner?.name,
+          contactName,
+          fromNumber: row.from_number,
+          pedido: userText,
+          messageType: row.message_type,
+        });
+        const sentOwnerId = await sendWhatsApp(userId, tenantOwnerPhone, recado, imageUrlToOwner);
+        await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
+        console.log(`[processor][owner-forward-direct-text] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} reason=${explicitForward ? "explicit" : "human_needed"}`);
+
+        const reply = humanNeeded && !explicitForward
+          ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar.`
+          : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}.`;
+
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: reply,
+            message_type: "text",
+          })
+          .select("id")
+          .single();
+
+        const sentClientId = await sendWhatsApp(userId, row.from_number, reply);
+        if (sentClientId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentClientId }).eq("id", outMsg.id);
+        }
+        await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+        await doneQueue(row.id);
+        return { ok: true, owner_forwarded_direct: true, forwarded_to: tenantOwnerPhone, reply_preview: reply.slice(0, 120) };
+      }
     }
 
     // PASSO 6.8 — DOCUMENTOS (.md, .txt, .json, .pdf) → ler e COMENTAR
@@ -4853,7 +5026,7 @@ async function processOne(queueId: string) {
     if (!inboundFromOwner && _tenantOwner?.name) {
       const nomeCompleto = _tenantOwner.name.trim();
       const primeiroNome = nomeCompleto.split(/\s+/)[0] || nomeCompleto;
-      ownerHintBlock = `\n\n=== RESPONSÁVEL DESTE ATENDIMENTO (LEIA ANTES DE RESPONDER) ===\n- O DONO/CHEFE/RESPONSÁVEL deste agente é **${nomeCompleto}** (chamado geralmente de "${primeiroNome}").\n- Quando o cliente disser "manda pro ${primeiroNome}", "passa pro chefe", "avisa o dono", "encaminha pra ele", "passe para a equipe", "passa pro gerente", "pede pra equipe/consultor me mandar", "pede um orçamento/plano", ou QUALQUER pedido pra que alguém DA CASA responda/envie algo — chame IMEDIATAMENTE \`encaminhar_recado_ao_dono\` com um recado humanizado (incluindo nome/telefone do cliente e o que ele quer). NÃO chame listar_contatos_comerciais, NÃO tente "identificar qual ${primeiroNome}", NÃO peça sobrenome — o responsável já está configurado no sistema e a ferramenta sabe pra quem mandar.\n- É PROIBIDO responder ao cliente coisas como "não consegui identificar qual ${primeiroNome}", "tem vários com esse nome", "me confirma o nome completo dele" — isso é falha grave de atendimento. Se o cliente pediu pra passar algo pra dentro da casa, você JÁ SABE pra quem: é ${primeiroNome}.\n- Depois de chamar \`encaminhar_recado_ao_dono\`, confirme pro cliente em UMA linha ("Certo, já passei pro ${primeiroNome}, ele te retorna."). Não recite o texto do recado nem número de ninguém.`;
+      ownerHintBlock = `\n\n=== RESPONSÁVEL DESTE ATENDIMENTO (LEIA ANTES DE RESPONDER) ===\n- O DONO/CHEFE/RESPONSÁVEL deste agente é **${nomeCompleto}** (chamado geralmente de "${primeiroNome}").\n- Quando o cliente disser "manda pro ${primeiroNome}", "passa pro chefe", "avisa o dono", "encaminha pra ele", "passe para a equipe", "passa pro gerente", "pede pra equipe/consultor me mandar", "pede um orçamento/plano", ou QUALQUER pedido pra que alguém DA CASA responda/envie algo — chame IMEDIATAMENTE \`encaminhar_recado_ao_dono\` com um recado humanizado (incluindo nome/telefone do cliente e o que ele quer). NÃO chame \`enviar_mensagem_contato_comercial\`, NÃO chame listar_contatos_comerciais, NÃO tente "identificar qual ${primeiroNome}", NÃO peça sobrenome — o responsável já está configurado no sistema e a ferramenta sabe pra quem mandar.\n- É PROIBIDO responder ao cliente coisas como "não consegui identificar qual ${primeiroNome}", "tem vários com esse nome", "me confirma o nome completo dele" — isso é falha grave de atendimento. Se o cliente pediu pra passar algo pra dentro da casa, você JÁ SABE pra quem: é ${primeiroNome}.\n- Depois de chamar \`encaminhar_recado_ao_dono\`, confirme pro cliente em UMA linha ("Certo, já passei pro ${primeiroNome}, ele te retorna."). Não recite o texto do recado nem número de ninguém.`;
     }
     const systemPromptWithDate = systemPrompt + dateBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
