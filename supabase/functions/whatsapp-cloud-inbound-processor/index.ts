@@ -2820,7 +2820,7 @@ async function salvarItemMidiaBiblioteca(
 }
 
 
-function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>, descricaoVisual?: string): string {
+function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>, descricaoVisual?: string, remetenteEhDono = false): string {
   const total = salvos.length;
   const tipos = salvos.reduce((acc, item) => {
     acc[item.tipo] = (acc[item.tipo] ?? 0) + 1;
@@ -2833,12 +2833,18 @@ function respostaMidiaSalva(salvos: Array<{ tipo: "foto" | "video" | "audio" }>,
   ].filter(Boolean).join(", ");
   const temFoto = (tipos.foto ?? 0) > 0;
   const temVideo = (tipos.video ?? 0) > 0;
+  if (!remetenteEhDono) {
+    if (temFoto && descricaoVisual?.trim()) {
+      return `Recebi ${partes || "a mídia"}. A imagem mostra: ${descricaoVisual.trim()}\n\nSe você quiser, eu encaminho isso para o responsável.`;
+    }
+    return `Recebi ${partes || "a mídia"}. Se você quiser, eu encaminho isso para o responsável.`;
+  }
   // VÍDEO: como não temos visão de vídeo, coletar rede+formato+legenda numa pergunta só (evita loop de contexto).
   if (temVideo && !temFoto) {
     return `Salvei ${partes} na biblioteca /midias. Como não consigo assistir vídeo, me diga tudo numa mensagem só: **onde publicar** (Instagram / Facebook / ambos), **formato** (Feed, Story ou Reels) e uma **legenda/contexto** (do que se trata). Ex.: "Reels no Insta e Face — Interruptor touch-screen Tramontina, chique e prático".`;
   }
   if (temFoto && descricaoVisual?.trim()) {
-    return `Oi chefe, salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
+    return `Salvei ${partes || "a mídia"} na biblioteca /midias. Estou vendo uma imagem que mostra: ${descricaoVisual.trim()}\n\nO que você quer que eu faça com ela? Posso preparar a legenda e o post para as redes.`;
   }
   const instrucao = temFoto
     ? " INSTRUÇÃO PRO ASSISTENTE: analise VISUALMENTE a(s) imagem(ns) que o cliente acabou de mandar (você as recebeu no conteúdo desta mensagem) e descreva em 1-2 frases o que aparece nela (produto, cena, cor, contexto). Depois confirme que salvou. NÃO responda genericamente — mostre que viu a foto."
@@ -2887,6 +2893,7 @@ async function toolSalvarMidiaBiblioteca(
 
   try {
     const contexto = (args?.contexto || "").trim();
+    const remetenteEhDono = !!ctx.fromNumber && isOwner({ userId: ctx.userId, fromNumber: ctx.fromNumber });
     const salvos = await Promise.all(medias.map((m) => salvarItemMidiaBiblioteca(m, ctx, contexto)));
 
     // Descreve a(s) foto(s) por visão pra Jarvis conseguir comentar o que viu e pra alimentar futura copy.
@@ -2903,9 +2910,11 @@ async function toolSalvarMidiaBiblioteca(
       midia_ids: salvos.map((s) => s.id),
       tipos: salvos.map((s) => s.tipo),
       descricao_visual: descricaoVisual || undefined,
-      mensagem: respostaMidiaSalva(salvos, descricaoVisual),
+      mensagem: respostaMidiaSalva(salvos, descricaoVisual, remetenteEhDono),
       instrucao_assistente: descricaoVisual
-        ? `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Comente 1-2 linhas confirmando o que viu (produto/tema/cor/texto principal) antes de dizer que salvou em /midias. NÃO responda genérico.`
+        ? remetenteEhDono
+          ? `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Comente 1-2 linhas confirmando o que viu (produto/tema/cor/texto principal) antes de dizer que salvou em /midias. NÃO responda genérico.`
+          : `Você VIU a imagem. Ela mostra: "${descricaoVisual}". Responda como atendimento a CLIENTE/CONTATO: nunca chame de chefe/dono, nunca pergunte onde postar e nunca ofereça publicar em redes. Se fizer sentido, ofereça encaminhar para o responsável.`
         : undefined,
     });
   } catch (e) {
