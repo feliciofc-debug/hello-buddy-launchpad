@@ -4847,7 +4847,15 @@ async function processOne(queueId: string) {
       console.warn("[pietro][video_ctx_or_pending] falhou:", (e as Error).message);
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock;
+    // Bloco de identidade do RESPONSÁVEL (dono do tenant) — injeta quando quem fala é CLIENTE/CONTATO (não o dono).
+    // Sem isso, o agente não sabe quem é "Marcelo/Felício/chefe" e cai em respostas do tipo "não sei qual Marcelo".
+    let ownerHintBlock = "";
+    if (!inboundFromOwner && _tenantOwner?.name) {
+      const nomeCompleto = _tenantOwner.name.trim();
+      const primeiroNome = nomeCompleto.split(/\s+/)[0] || nomeCompleto;
+      ownerHintBlock = `\n\n=== RESPONSÁVEL DESTE ATENDIMENTO (LEIA ANTES DE RESPONDER) ===\n- O DONO/CHEFE/RESPONSÁVEL deste agente é **${nomeCompleto}** (chamado geralmente de "${primeiroNome}").\n- Quando o cliente disser "manda pro ${primeiroNome}", "passa pro chefe", "avisa o dono", "encaminha pra ele", "passe para a equipe", "passa pro gerente", "pede pra equipe/consultor me mandar", "pede um orçamento/plano", ou QUALQUER pedido pra que alguém DA CASA responda/envie algo — chame IMEDIATAMENTE \`encaminhar_recado_ao_dono\` com um recado humanizado (incluindo nome/telefone do cliente e o que ele quer). NÃO chame listar_contatos_comerciais, NÃO tente "identificar qual ${primeiroNome}", NÃO peça sobrenome — o responsável já está configurado no sistema e a ferramenta sabe pra quem mandar.\n- É PROIBIDO responder ao cliente coisas como "não consegui identificar qual ${primeiroNome}", "tem vários com esse nome", "me confirma o nome completo dele" — isso é falha grave de atendimento. Se o cliente pediu pra passar algo pra dentro da casa, você JÁ SABE pra quem: é ${primeiroNome}.\n- Depois de chamar \`encaminhar_recado_ao_dono\`, confirme pro cliente em UMA linha ("Certo, já passei pro ${primeiroNome}, ele te retorna."). Não recite o texto do recado nem número de ninguém.`;
+    }
+    const systemPromptWithDate = systemPrompt + dateBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
