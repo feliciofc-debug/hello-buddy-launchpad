@@ -3621,7 +3621,7 @@ async function toolEncaminharRecadoAoDono(
       enviado_para: owner.name || "dono",
       com_foto: !!imageUrl,
       message_id: messageId,
-      instrucao: "Confirme pro cliente em 1 linha que você já entregou o recado (e a foto, se houver). Não recite o texto do recado nem o telefone do dono.",
+      instrucao: `Confirme pro cliente de forma humanizada em 2 linhas curtas: (1) que você JÁ ENVIOU o recado${imageUrl ? " e a foto" : ""} para ${owner.name || "o responsável"} agora (pode dizer "acabei de mandar aqui pra ele"), (2) ofereça continuar ajudando enquanto isso: "enquanto ${owner.name || "ele"} te retorna, se quiser já posso ir adiantando sobre consórcio com você — te explico planos, valores, prazos — e depois ${owner.name || "ele"} finaliza o atendimento, pode ser?". Não recite o texto do recado nem telefone.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: "falha_ao_enviar", detalhe: String((e as Error).message).slice(0, 200) });
