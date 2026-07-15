@@ -3439,6 +3439,27 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "encaminhar_recado_ao_dono",
+      description: "📨 USE quando o cliente/contato pedir explicitamente pra você MANDAR RECADO, AVISO, MENSAGEM ou FOTO pro DONO do agente (ex: 'manda pro Marcelo', 'passa isso pro chefe', 'avisa o dono', 'encaminha essa foto pra ele'). Envia o recado (texto + a última foto que o cliente mandou, se houver) pro WhatsApp do dono do tenant automaticamente — você NÃO precisa saber o número dele. Só use quando o pedido for CLARO; não use pra conversas normais. Sempre confirme pro cliente que já mandou.",
+      parameters: {
+        type: "object",
+        properties: {
+          recado: {
+            type: "string",
+            description: "Texto do recado, JÁ HUMANIZADO, como se você (o agente) estivesse avisando o dono. Ex: 'Chefe, o cliente Felício (21 96752-0706) mandou essa foto e pediu pra você dar uma olhada.' Inclua nome/telefone do cliente e o conteúdo/pedido dele. Mínimo 15 caracteres.",
+          },
+          incluir_ultima_foto: {
+            type: "boolean",
+            description: "true = anexa a última FOTO que o cliente enviou nesta conversa. false ou ausente = só texto.",
+          },
+        },
+        required: ["recado"],
+      },
+    },
+  },
 
 ];
 
