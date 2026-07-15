@@ -2553,7 +2553,7 @@ async function toolPostarRedesSociais(
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
-    if (!isOwner(ctx)) return JSON.stringify({ erro: "Publicação em redes sociais liberada apenas para o dono (Felicio) nesta fase. Em breve para todos os clientes PJ." });
+    if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta. Posso encaminhar o pedido para ele, se quiser." });
     pendingCleanup();
     const q = (args?.produto || "").trim();
     if (!q) return JSON.stringify({ erro: "informe qual produto postar" });
@@ -2627,7 +2627,7 @@ async function toolConfirmarPostagemRedes(
   args: { token: string; cancelar?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
-  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
   const token = (args?.token || "").trim().toLowerCase();
   if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
@@ -2663,7 +2663,7 @@ async function toolRevisarPostPendente(
   args: { token: string; ajuste?: string; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
-  if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
   pendingCleanup();
   const token = (args?.token || "").trim().toLowerCase();
   const ajuste = (args?.ajuste || "").toString().trim();
