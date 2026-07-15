@@ -3698,6 +3698,22 @@ async function runTool(
   if (name === "consultar_clima") return { result: await toolConsultarClima(args?.local ?? "", ctx) };
   if (name === "cotacao_moeda") return { result: await toolCotacaoMoeda(args?.par ?? "") };
   if (name === "criar_lembrete") return { result: await toolCriarLembrete(args ?? {}, ctx) };
+  if ((name === "listar_contatos_comerciais" || name === "enviar_mensagem_contato_comercial") && !isOwner(ctx)) {
+    if (name === "enviar_mensagem_contato_comercial") {
+      return {
+        result: await toolEncaminharRecadoAoDono({
+          recado: buildOwnerForwardMessage({
+            ownerName: (await resolveTenantOwner(sb, ctx.userId)).name,
+            fromNumber: ctx.fromNumber,
+            pedido: args?.mensagem || args?.recado || "Cliente pediu contato/retorno do responsável.",
+            messageType: "text",
+          }),
+          incluir_ultima_foto: !!args?.incluir_ultima_foto,
+        }, ctx),
+      };
+    }
+    return { result: JSON.stringify({ erro: "ferramenta_restrita_ao_dono", detalhe: "Cliente não lista contatos comerciais; encaminhe o pedido ao responsável do tenant." }) };
+  }
   if (name === "listar_contatos_comerciais") return { result: await toolListarContatosComerciais(args ?? {}, ctx) };
   if (name === "enviar_mensagem_contato_comercial") return { result: await toolEnviarMensagemContatoComercial(args ?? {}, ctx) };
   if (name === "salvar_nota") return { result: await toolSalvarNota(args?.conteudo ?? "", args?.tags, ctx) };
