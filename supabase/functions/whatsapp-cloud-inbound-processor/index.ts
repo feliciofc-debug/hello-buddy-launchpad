@@ -1307,6 +1307,79 @@ function normalizeContactLookupText(raw: string): string {
     .trim();
 }
 
+function ownerFirstName(ownerName?: string | null): string {
+  const first = String(ownerName || "").trim().split(/\s+/)[0];
+  return first || "responsável";
+}
+
+function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): boolean {
+  const low = normalizeContactLookupText(raw);
+  if (!low) return false;
+  const ownerFirst = normalizeContactLookupText(ownerFirstName(ownerName));
+  const hasRecipient = new RegExp(`\\b(${[
+    "responsavel",
+    "dono",
+    "chefe",
+    "gerente",
+    "equipe",
+    "consultor",
+    "atendente",
+    ownerFirst,
+  ].filter(Boolean).join("|")})\\b`, "i").test(low);
+  const hasForwardVerb = /\b(manda|mandar|mande|mandei|envia|enviar|envie|encaminha|encaminhar|encaminhe|passa|passe|repassa|repassar|avisa|avisar|avise|pede|pedir|peca|solicita|solicitar|chama|chamar|falar|contato|retorno|retornar)\b/i.test(low);
+  const hasBusinessAsk = /\b(foto|imagem|recado|mensagem|duvida|plano|orcamento|proposta|simulacao|consorcio|carta|credito|parcela|prazo)\b/i.test(low);
+  const teamShouldReply = /\b(equipe|consultor|gerente|responsavel|atendente)\b.*\b(me\s+(enviar|enviarem|mandar|mandarem|retornar|retornarem|chamar|chamarem)|entrar em contato|falar comigo)\b/i.test(low);
+  return (hasRecipient && (hasForwardVerb || hasBusinessAsk)) || teamShouldReply;
+}
+
+function isOwnerHandoffQuestion(raw: string): boolean {
+  const low = normalizeContactLookupText(raw);
+  if (!low) return false;
+  const commercialTopic = /\b(consorcio|plano|carta|credito|parcela|parcelamento|prazo|meses|taxa|simulacao|proposta|orcamento|contemplacao|ademicon)\b/i.test(low);
+  const asksForDecision = /\b(consigo|consegue|pode|posso|tem|existe|quanto|qual|como|fazer|faz|da pra|da para|quero|preciso|me passa|me envia|me manda)\b/i.test(low) || /\?/.test(raw);
+  const needsHuman = /\b(\d+\s*meses|100\s*meses|plano|proposta|orcamento|simulacao|equipe|consultor|responsavel)\b/i.test(low);
+  return commercialTopic && asksForDecision && needsHuman;
+}
+
+function buildOwnerForwardMessage(params: {
+  ownerName?: string | null;
+  contactName?: string | null;
+  fromNumber: string;
+  pedido?: string | null;
+  descricaoVisual?: string | null;
+  messageType?: string | null;
+}): string {
+  const dono = ownerFirstName(params.ownerName);
+  const cliente = params.contactName?.trim() || "cliente";
+  const pedido = (params.pedido || "").trim();
+  const descricao = (params.descricaoVisual || "").trim();
+  const partes = [
+    `${dono}, o ${cliente} (${params.fromNumber}) precisa de retorno no WhatsApp.`,
+    pedido ? `Mensagem do cliente: "${pedido.slice(0, 700)}".` : null,
+    descricao ? `A foto enviada mostra: ${descricao.slice(0, 900)}.` : null,
+    !pedido && !descricao ? `Tipo recebido: ${params.messageType || "mensagem"}.` : null,
+  ].filter(Boolean);
+  return partes.join("\n\n");
+}
+
+async function recentForwardRequestFromConversation(
+  conversationId: string,
+  ownerName?: string | null,
+): Promise<string | null> {
+  const cutoff = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const { data } = await sb
+    .from("whatsapp_cloud_messages")
+    .select("content, created_at")
+    .eq("conversation_id", conversationId)
+    .eq("direction", "inbound")
+    .eq("message_type", "text")
+    .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(5);
+  const found = (data ?? []).find((m: any) => isExplicitOwnerForwardIntent(String(m.content || ""), ownerName));
+  return found?.content ?? null;
+}
+
 async function inferContatoComercialFromText(text: string, userId: string): Promise<any | null> {
   const haystack = ` ${normalizeContactLookupText(text)} `;
   if (!haystack.trim()) return null;
