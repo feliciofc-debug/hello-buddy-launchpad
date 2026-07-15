@@ -4595,7 +4595,31 @@ async function processOne(queueId: string) {
       } catch (e) {
         console.warn("[processor][fresh_media_visao] falhou:", (e as Error).message);
       }
-      const reply = respostaMidiaSalva(salvos, descricaoVisual);
+      const pendingForwardRequest = row.from_number !== tenantOwnerPhone
+        ? await recentForwardRequestFromConversation(conv.id, _tenantOwner?.name)
+        : null;
+      const shouldForwardToOwner = row.from_number !== tenantOwnerPhone && !!tenantOwnerPhone && (
+        isExplicitOwnerForwardIntent(userText, _tenantOwner?.name) || !!pendingForwardRequest
+      );
+      const imageUrlToOwner = salvos.find((s) => s.tipo === "foto")?.url;
+      let ownerForwarded = false;
+      if (shouldForwardToOwner) {
+        const recado = buildOwnerForwardMessage({
+          ownerName: _tenantOwner?.name,
+          contactName,
+          fromNumber: row.from_number,
+          pedido: userText || pendingForwardRequest || contexto,
+          descricaoVisual,
+          messageType: row.message_type,
+        });
+        const sentOwnerId = await sendWhatsApp(userId, tenantOwnerPhone!, recado, imageUrlToOwner);
+        await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
+        ownerForwarded = true;
+        console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner}`);
+      }
+      const reply = ownerForwarded
+        ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}.`
+        : respostaMidiaSalva(salvos, descricaoVisual);
 
       const { data: outMsg } = await sb
         .from("whatsapp_cloud_messages")
@@ -4629,6 +4653,65 @@ async function processOne(queueId: string) {
 
       await doneQueue(row.id);
       return { ok: true, saved_to_midias: true, midia_ids: salvos.map((s) => s.id), reply_preview: reply.slice(0, 120) };
+    }
+
+    // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
+    // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
+    // Encaminha direto para owner_phone do tenant (Marcelo: número diferente do agente).
+    if (row.from_number !== tenantOwnerPhone && row.message_type === "text" && userText.trim() && tenantOwnerPhone) {
+      const explicitForward = isExplicitOwnerForwardIntent(userText, _tenantOwner?.name);
+      const humanNeeded = isOwnerHandoffQuestion(userText);
+      if (explicitForward || humanNeeded) {
+        let imageUrlToOwner: string | undefined;
+        if (explicitForward) {
+          const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+          const { data: recent } = await sb
+            .from("midias_whatsapp")
+            .select("midia_url, created_at")
+            .eq("user_id", userId)
+            .eq("telefone_origem", row.from_number)
+            .eq("tipo", "foto")
+            .gte("created_at", cutoff)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          imageUrlToOwner = recent?.[0]?.midia_url || undefined;
+        }
+        const recado = buildOwnerForwardMessage({
+          ownerName: _tenantOwner?.name,
+          contactName,
+          fromNumber: row.from_number,
+          pedido: userText,
+          messageType: row.message_type,
+        });
+        const sentOwnerId = await sendWhatsApp(userId, tenantOwnerPhone, recado, imageUrlToOwner);
+        await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
+        console.log(`[processor][owner-forward-direct-text] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} reason=${explicitForward ? "explicit" : "human_needed"}`);
+
+        const reply = humanNeeded && !explicitForward
+          ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar.`
+          : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}.`;
+
+        const { data: outMsg } = await sb
+          .from("whatsapp_cloud_messages")
+          .insert({
+            conversation_id: conv.id,
+            user_id: userId,
+            direction: "outbound",
+            sender: "agent",
+            content: reply,
+            message_type: "text",
+          })
+          .select("id")
+          .single();
+
+        const sentClientId = await sendWhatsApp(userId, row.from_number, reply);
+        if (sentClientId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentClientId }).eq("id", outMsg.id);
+        }
+        await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+        await doneQueue(row.id);
+        return { ok: true, owner_forwarded_direct: true, forwarded_to: tenantOwnerPhone, reply_preview: reply.slice(0, 120) };
+      }
     }
 
     // PASSO 6.8 — DOCUMENTOS (.md, .txt, .json, .pdf) → ler e COMENTAR
