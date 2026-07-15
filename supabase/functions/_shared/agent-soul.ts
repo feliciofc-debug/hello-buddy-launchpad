@@ -421,7 +421,7 @@ function rankByKeywords(produtos: any[], userText: string, topN: number): any[] 
 
   const scored = produtos.map((p) => {
     const haystack = (
-      (p.titulo ?? "") +
+      (p.nome ?? "") +
       " " +
       (p.descricao ?? "") +
       " " +
