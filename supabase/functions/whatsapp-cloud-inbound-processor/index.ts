@@ -4706,9 +4706,10 @@ async function processOne(queueId: string) {
         await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
         console.log(`[processor][owner-forward-direct-text] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} reason=${explicitForward ? "explicit" : "human_needed"}`);
 
+        const proto = buildForwardProof(sentOwnerId);
         const reply = humanNeeded && !explicitForward
-          ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar.`
-          : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}.`;
+          ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar. ${proto}`
+          : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${proto}`;
 
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
