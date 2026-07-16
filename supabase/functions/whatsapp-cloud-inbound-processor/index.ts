@@ -1312,6 +1312,22 @@ function ownerFirstName(ownerName?: string | null): string {
   return first || "responsável";
 }
 
+function buildForwardProof(wamid?: string | null): string {
+  const now = new Date();
+  // Horário São Paulo (UTC-3)
+  const sp = new Date(now.getTime() - 3 * 3600 * 1000);
+  const hh = String(sp.getUTCHours()).padStart(2, "0");
+  const mm = String(sp.getUTCMinutes()).padStart(2, "0");
+  let proto = "";
+  if (wamid) {
+    const clean = String(wamid).replace(/[^A-Za-z0-9]/g, "");
+    proto = clean.slice(-6).toUpperCase();
+  }
+  if (!proto) proto = Math.random().toString(36).slice(-6).toUpperCase();
+  return `(protocolo #${proto} · ${hh}:${mm})`;
+}
+
+
 function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): boolean {
   const low = normalizeContactLookupText(raw);
   if (!low) return false;
