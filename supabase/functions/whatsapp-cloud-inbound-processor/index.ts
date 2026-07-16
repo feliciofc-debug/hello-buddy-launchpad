@@ -1312,6 +1312,22 @@ function ownerFirstName(ownerName?: string | null): string {
   return first || "responsável";
 }
 
+function buildForwardProof(wamid?: string | null): string {
+  const now = new Date();
+  // Horário São Paulo (UTC-3)
+  const sp = new Date(now.getTime() - 3 * 3600 * 1000);
+  const hh = String(sp.getUTCHours()).padStart(2, "0");
+  const mm = String(sp.getUTCMinutes()).padStart(2, "0");
+  let proto = "";
+  if (wamid) {
+    const clean = String(wamid).replace(/[^A-Za-z0-9]/g, "");
+    proto = clean.slice(-6).toUpperCase();
+  }
+  if (!proto) proto = Math.random().toString(36).slice(-6).toUpperCase();
+  return `(protocolo #${proto} · ${hh}:${mm})`;
+}
+
+
 function isExplicitOwnerForwardIntent(raw: string, ownerName?: string | null): boolean {
   const low = normalizeContactLookupText(raw);
   if (!low) return false;
@@ -3616,12 +3632,14 @@ async function toolEncaminharRecadoAoDono(
   try {
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
     await logOwnerHeadsup(ctx.userId, imageUrl ? `${recado}\n\n[foto anexada]` : recado, messageId);
+    const proof = buildForwardProof(messageId);
     return JSON.stringify({
       ok: true,
       enviado_para: owner.name || "dono",
       com_foto: !!imageUrl,
       message_id: messageId,
-      instrucao: `Confirme pro cliente de forma humanizada em 2 linhas curtas: (1) que você JÁ ENVIOU o recado${imageUrl ? " e a foto" : ""} para ${owner.name || "o responsável"} agora (pode dizer "acabei de mandar aqui pra ele"), (2) ofereça continuar ajudando enquanto isso: "enquanto ${owner.name || "ele"} te retorna, se quiser já posso ir adiantando sobre consórcio com você — te explico planos, valores, prazos — e depois ${owner.name || "ele"} finaliza o atendimento, pode ser?". Não recite o texto do recado nem telefone.`,
+      protocolo: proof,
+      instrucao: `Confirme pro cliente de forma humanizada em 2 linhas curtas: (1) que você JÁ ENVIOU o recado${imageUrl ? " e a foto" : ""} para ${owner.name || "o responsável"} agora — TERMINE essa linha EXATAMENTE com este comprovante entre parênteses: ${proof}. (2) ofereça continuar ajudando enquanto isso: "enquanto ${owner.name || "ele"} te retorna, se quiser já posso ir adiantando sobre consórcio com você — te explico planos, valores, prazos — e depois ${owner.name || "ele"} finaliza o atendimento, pode ser?". Não recite o texto do recado nem telefone, mas o comprovante ${proof} é OBRIGATÓRIO na primeira linha (é a prova pro cliente que o encaminhamento foi feito).`,
     });
   } catch (e) {
     return JSON.stringify({ erro: "falha_ao_enviar", detalhe: String((e as Error).message).slice(0, 200) });
@@ -4619,6 +4637,7 @@ async function processOne(queueId: string) {
       );
       const imageUrlToOwner = salvos.find((s) => s.tipo === "foto")?.url;
       let ownerForwarded = false;
+      let ownerForwardWamid: string | null = null;
       if (shouldForwardToOwner) {
         const recado = buildOwnerForwardMessage({
           ownerName: _tenantOwner?.name,
@@ -4631,10 +4650,12 @@ async function processOne(queueId: string) {
         const sentOwnerId = await sendWhatsApp(userId, tenantOwnerPhone!, recado, imageUrlToOwner);
         await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
         ownerForwarded = true;
-        console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner}`);
+        ownerForwardWamid = sentOwnerId || null;
+        console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} wamid=${sentOwnerId}`);
       }
+      const protoOwner = ownerForwarded ? buildForwardProof(ownerForwardWamid) : "";
       const reply = ownerForwarded
-        ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}.`
+        ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${protoOwner}`
         : respostaMidiaSalva(salvos, descricaoVisual);
 
       const { data: outMsg } = await sb
@@ -4703,9 +4724,10 @@ async function processOne(queueId: string) {
         await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
         console.log(`[processor][owner-forward-direct-text] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} reason=${explicitForward ? "explicit" : "human_needed"}`);
 
+        const proto = buildForwardProof(sentOwnerId);
         const reply = humanNeeded && !explicitForward
-          ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar.`
-          : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}.`;
+          ? `Vou confirmar isso com ${ownerFirstName(_tenantOwner?.name)} e pedir para ele te retornar. ${proto}`
+          : `Certo, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${proto}`;
 
         const { data: outMsg } = await sb
           .from("whatsapp_cloud_messages")
