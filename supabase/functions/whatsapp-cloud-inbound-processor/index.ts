@@ -4754,6 +4754,171 @@ async function processOne(queueId: string) {
     // PASSO 6.8 — DOCUMENTOS (.md, .txt, .json, .pdf) → ler e COMENTAR
     // Regra: nunca chamar tools, nunca buscar lugares, nunca postar. Só análise.
     const docMedia = media.filter((m) => m.kind === "document");
+    const senderIsClient = !!tenantOwnerPhone && row.from_number !== tenantOwnerPhone;
+
+    // === CLIENTE mandou documento (RG/CNH/comprovante/PDF/imagem-doc) ===
+    // Silvester deve LER de verdade (vision multimodal), extrair dados
+    // estruturados, salvar no dossiê e responder de forma natural — não
+    // devolver análise técnica genérica tipo "certificado digital MP 2.200".
+    if (docMedia.length > 0 && senderIsClient) {
+      const doc = docMedia[0];
+      const label = doc.filename || `arquivo ${doc.mime}`;
+
+      const clientVisionPrompt = `Você é o Silvester, pré-atendente do consultor de consórcio Marcelo. O cliente acabou de mandar um documento por WhatsApp. LEIA o documento (imagem/PDF) e devolva JSON PURO (sem markdown) neste formato:
+
+{
+  "tipo": "rg" | "cnh" | "comprovante_residencia" | "comprovante_renda" | "ir" | "foto_bem" | "outro",
+  "legivel": true | false,
+  "resumo_humano": "1 frase curta pro cliente confirmando o que você viu, ex: 'Recebi sua CNH, João Silva, tudo legível'",
+  "dados": {
+    "nome_completo": "...", "cpf": "...", "rg": "...", "data_nascimento": "YYYY-MM-DD",
+    "profissao": "...", "renda_mensal": 0,
+    "endereco_logradouro": "...", "endereco_numero": "...", "endereco_bairro": "...",
+    "endereco_cidade": "...", "endereco_estado": "UF", "endereco_cep": "..."
+  }
+}
+
+Regras:
+- OMITA chaves que não aparecem no documento (não invente).
+- CPF só dígitos (11). Datas ISO YYYY-MM-DD. renda_mensal em número.
+- Se estiver borrado/ilegível: legivel=false e no resumo_humano peça pra reenviar mais nítido.
+- Se for CNH-e / QR-code de validação sem dados pessoais visíveis: legivel=false, resumo_humano="O arquivo é só o QR de validação da CNH-e — não mostra os dados. Consegue mandar uma foto da frente e verso da CNH?"
+- Devolva JSON PURO.`;
+
+      let vision: any = { tipo: "outro", legivel: false, resumo_humano: `Recebi *${label}*, mas não consegui ler.` };
+      try {
+        const vr = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
+          body: JSON.stringify({
+            model: MODEL_DEEP,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "text", text: clientVisionPrompt },
+                doc.mime.includes("pdf")
+                  ? { type: "file", file: { filename: label, file_data: `data:${doc.mime};base64,${doc.base64}` } }
+                  : { type: "image_url", image_url: { url: `data:${doc.mime};base64,${doc.base64}` } },
+              ],
+            }],
+          }),
+        });
+        if (vr.ok) {
+          const vj = await vr.json();
+          const raw = vj?.choices?.[0]?.message?.content ?? "{}";
+          const cleaned = raw.replace(/```json\s*|\s*```/g, "").trim();
+          try { vision = JSON.parse(cleaned); } catch { /* keep default */ }
+        } else {
+          console.error("[processor][client-doc] vision falhou", vr.status, (await vr.text()).slice(0, 300));
+        }
+      } catch (e) {
+        console.error("[processor][client-doc] vision erro", (e as Error).message);
+      }
+
+      // Grava dossiê + documento (best-effort)
+      try {
+        let dossie: any = null;
+        const { data: existing } = await sb
+          .from("silvester_dossies")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("telefone_cliente", row.from_number)
+          .maybeSingle();
+        if (existing) dossie = existing;
+        else {
+          const { data: created } = await sb
+            .from("silvester_dossies")
+            .insert({ user_id: userId, telefone_cliente: row.from_number, nome_completo: vision?.dados?.nome_completo ?? null, status: "coletando" })
+            .select("*")
+            .single();
+          dossie = created;
+        }
+
+        if (dossie) {
+          // upload no storage (se bucket existir)
+          let storagePath: string | null = null;
+          try {
+            const ext = doc.mime.includes("pdf") ? "pdf" : doc.mime.includes("png") ? "png" : "jpg";
+            const path = `${userId}/${dossie.id}/${crypto.randomUUID()}.${ext}`;
+            const bin = Uint8Array.from(atob(doc.base64), (c) => c.charCodeAt(0));
+            const { error: upErr } = await sb.storage.from("silvester-docs").upload(path, bin, { contentType: doc.mime, upsert: false });
+            if (!upErr) storagePath = path;
+          } catch (e) {
+            console.warn("[processor][client-doc] upload falhou", (e as Error).message);
+          }
+
+          await sb.from("silvester_documentos").insert({
+            dossie_id: dossie.id,
+            user_id: userId,
+            tipo: vision?.tipo ?? "outro",
+            storage_path: storagePath,
+            mime_type: doc.mime,
+            ocr_texto: vision?.resumo_humano ?? null,
+            dados_extraidos: vision?.dados ?? {},
+            status_validacao: vision?.legivel === false ? "ilegivel" : "validado",
+            observacoes_ia: vision?.resumo_humano ?? null,
+            wamid: row.wamid ?? null,
+            processed_at: new Date().toISOString(),
+          });
+
+          const patch: Record<string, any> = {};
+          for (const [k, v] of Object.entries(vision?.dados ?? {})) {
+            if (v === null || v === undefined) continue;
+            if (typeof v === "string" && v.trim() === "") continue;
+            patch[k] = v;
+          }
+          if (Object.keys(patch).length > 0) {
+            await sb.from("silvester_dossies").update(patch).eq("id", dossie.id);
+          }
+        }
+      } catch (e) {
+        console.warn("[processor][client-doc] persist dossie falhou", (e as Error).message);
+      }
+
+      const primeiroNome = ownerFirstName(_tenantOwner?.name) || "o Marcelo";
+      const humano = (vision?.resumo_humano || "").trim();
+      let reply: string;
+      if (vision?.legivel === false) {
+        reply = humano || `Recebi *${label}*, mas não consegui ler direito. Consegue mandar de novo mais nítido?`;
+      } else {
+        const nomeVisto = vision?.dados?.nome_completo ? ` (${vision.dados.nome_completo})` : "";
+        reply = humano
+          ? `${humano} Já anexei no seu cadastro pra ${primeiroNome} usar na proposta. 👍`
+          : `Recebi seu documento${nomeVisto} e já anexei no seu cadastro pra ${primeiroNome}. Obrigado!`;
+      }
+
+      const { data: outMsg } = await sb
+        .from("whatsapp_cloud_messages")
+        .insert({
+          conversation_id: conv.id,
+          user_id: userId,
+          direction: "outbound",
+          sender: "agent",
+          content: reply,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+
+      let sendError: string | null = null;
+      try {
+        const sentId = await sendWhatsApp(userId, row.from_number, reply);
+        if (sentId && outMsg?.id) {
+          await sb.from("whatsapp_cloud_messages").update({ wamid: sentId }).eq("id", outMsg.id);
+        }
+      } catch (e) {
+        sendError = String((e as Error).message ?? e);
+      }
+      await sb.from("whatsapp_cloud_conversations").update({ last_message_at: new Date().toISOString() }).eq("id", conv.id);
+
+      if (sendError) {
+        await failQueue(row.id, `send_failed: ${sendError}`);
+        return { ok: false, reason: "send_failed", error: sendError };
+      }
+      await doneQueue(row.id);
+      return { ok: true, client_doc_processed: true, tipo: vision?.tipo, legivel: vision?.legivel };
+    }
+
     if (docMedia.length > 0) {
       const doc = docMedia[0]; // trata 1 por vez (o mais comum no WhatsApp)
       const extracted = await extractDocumentText(doc.base64, doc.mime, doc.filename);
