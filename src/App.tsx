@@ -192,6 +192,8 @@ const App = () => (
             <Route path="/whatsapp-painel" element={<WhatsAppPainel />} />
             <Route path="/recados-marcelo" element={<RecadosResponsavel />} />
             <Route path="/recados-responsavel" element={<RecadosResponsavel />} />
+            <Route path="/dossies" element={<Dossies />} />
+            <Route path="/silvester-dossies" element={<Dossies />} />
             
             {/* TikTok OAuth Callback */}
             <Route path="/tiktok/callback" element={<TikTokCallback />} />
