@@ -4816,30 +4816,30 @@ Regras:
       }
 
       // Grava dossiê + documento (best-effort)
+      let dossieAtual: any = null;
       try {
-        let dossie: any = null;
         const { data: existing } = await sb
           .from("silvester_dossies")
           .select("*")
           .eq("user_id", userId)
           .eq("telefone_cliente", row.from_number)
           .maybeSingle();
-        if (existing) dossie = existing;
+        if (existing) dossieAtual = existing;
         else {
           const { data: created } = await sb
             .from("silvester_dossies")
             .insert({ user_id: userId, telefone_cliente: row.from_number, nome_completo: vision?.dados?.nome_completo ?? null, status: "coletando" })
             .select("*")
             .single();
-          dossie = created;
+          dossieAtual = created;
         }
 
-        if (dossie) {
+        if (dossieAtual) {
           // upload no storage (se bucket existir)
           let storagePath: string | null = null;
           try {
             const ext = doc.mime.includes("pdf") ? "pdf" : doc.mime.includes("png") ? "png" : "jpg";
-            const path = `${userId}/${dossie.id}/${crypto.randomUUID()}.${ext}`;
+            const path = `${userId}/${dossieAtual.id}/${crypto.randomUUID()}.${ext}`;
             const bin = Uint8Array.from(atob(doc.base64), (c) => c.charCodeAt(0));
             const { error: upErr } = await sb.storage.from("silvester-docs").upload(path, bin, { contentType: doc.mime, upsert: false });
             if (!upErr) storagePath = path;
@@ -4848,7 +4848,7 @@ Regras:
           }
 
           await sb.from("silvester_documentos").insert({
-            dossie_id: dossie.id,
+            dossie_id: dossieAtual.id,
             user_id: userId,
             tipo: vision?.tipo ?? "outro",
             storage_path: storagePath,
@@ -4868,7 +4868,10 @@ Regras:
             patch[k] = v;
           }
           if (Object.keys(patch).length > 0) {
-            await sb.from("silvester_dossies").update(patch).eq("id", dossie.id);
+            await sb.from("silvester_dossies").update(patch).eq("id", dossieAtual.id);
+            // Recarrega para ter os dados atualizados em memória
+            const { data: fresh } = await sb.from("silvester_dossies").select("*").eq("id", dossieAtual.id).maybeSingle();
+            if (fresh) dossieAtual = fresh;
           }
         }
       } catch (e) {
@@ -4878,16 +4881,7 @@ Regras:
       const primeiroNome = ownerFirstName(_tenantOwner?.name) || "o Marcelo";
       const humano = (vision?.resumo_humano || "").trim();
 
-      // Recarrega dossiê atualizado para decidir handoff automático
-      let dossieAtual: any = dossie;
-      try {
-        const { data: fresh } = await sb
-          .from("silvester_dossies")
-          .select("*")
-          .eq("id", dossie?.id)
-          .maybeSingle();
-        if (fresh) dossieAtual = fresh;
-      } catch (_) { /* noop */ }
+
 
       const temNome = !!(dossieAtual?.nome_completo && String(dossieAtual.nome_completo).trim());
       const temCpf = !!(dossieAtual?.cpf && String(dossieAtual.cpf).trim());
