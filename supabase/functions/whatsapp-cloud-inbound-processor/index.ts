@@ -3632,12 +3632,14 @@ async function toolEncaminharRecadoAoDono(
   try {
     const messageId = await sendWhatsApp(ctx.userId, owner.phone, recado, imageUrl);
     await logOwnerHeadsup(ctx.userId, imageUrl ? `${recado}\n\n[foto anexada]` : recado, messageId);
+    const proof = buildForwardProof(messageId);
     return JSON.stringify({
       ok: true,
       enviado_para: owner.name || "dono",
       com_foto: !!imageUrl,
       message_id: messageId,
-      instrucao: `Confirme pro cliente de forma humanizada em 2 linhas curtas: (1) que você JÁ ENVIOU o recado${imageUrl ? " e a foto" : ""} para ${owner.name || "o responsável"} agora (pode dizer "acabei de mandar aqui pra ele"), (2) ofereça continuar ajudando enquanto isso: "enquanto ${owner.name || "ele"} te retorna, se quiser já posso ir adiantando sobre consórcio com você — te explico planos, valores, prazos — e depois ${owner.name || "ele"} finaliza o atendimento, pode ser?". Não recite o texto do recado nem telefone.`,
+      protocolo: proof,
+      instrucao: `Confirme pro cliente de forma humanizada em 2 linhas curtas: (1) que você JÁ ENVIOU o recado${imageUrl ? " e a foto" : ""} para ${owner.name || "o responsável"} agora — TERMINE essa linha EXATAMENTE com este comprovante entre parênteses: ${proof}. (2) ofereça continuar ajudando enquanto isso: "enquanto ${owner.name || "ele"} te retorna, se quiser já posso ir adiantando sobre consórcio com você — te explico planos, valores, prazos — e depois ${owner.name || "ele"} finaliza o atendimento, pode ser?". Não recite o texto do recado nem telefone, mas o comprovante ${proof} é OBRIGATÓRIO na primeira linha (é a prova pro cliente que o encaminhamento foi feito).`,
     });
   } catch (e) {
     return JSON.stringify({ erro: "falha_ao_enviar", detalhe: String((e as Error).message).slice(0, 200) });
