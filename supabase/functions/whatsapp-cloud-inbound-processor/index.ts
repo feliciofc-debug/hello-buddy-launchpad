@@ -4526,22 +4526,21 @@ async function processOne(queueId: string) {
       return { ok: true, direct_nearby: true, reply_preview: reply.slice(0, 120) };
     }
 
-    // PASSO 8 — Janela 24h
-    const { data: lastInbound } = await sb
-      .from("whatsapp_cloud_messages")
-      .select("created_at")
-      .eq("conversation_id", conv.id)
-      .eq("direction", "inbound")
-      .order("created_at", { ascending: false })
-      .limit(2);
-    const previousInbound = lastInbound?.[1]?.created_at;
-    if (previousInbound) {
-      const ageMs = Date.now() - new Date(previousInbound).getTime();
+    // PASSO 8 — Janela 24h (WhatsApp Cloud)
+    // A regra da Meta: o negócio pode responder livremente por 24h APÓS a última
+    // mensagem do usuário. Qualquer inbound recém-chegado RESETA a janela — então
+    // referenciamos o inbound ATUAL (row.created_at), não o anterior. O dono do
+    // agente é sempre exempto: responder pro próprio Marcelo não pode ser bloqueado.
+    if (row.from_number !== tenantOwnerPhone) {
+      const currentInboundTs = (row as any).created_at ? new Date((row as any).created_at).getTime() : Date.now();
+      const ageMs = Date.now() - currentInboundTs;
       if (ageMs > 24 * 60 * 60 * 1000) {
+        console.warn(`[processor][24h] inbound antigo demais (${Math.round(ageMs/3600000)}h) — bloqueando resposta`);
         await failQueue(row.id, "outside_24h_window");
         return { ok: false, reason: "outside_24h_window" };
       }
     }
+
 
     // PASSO 4.5 — Quota
     let { data: quota } = await sb
