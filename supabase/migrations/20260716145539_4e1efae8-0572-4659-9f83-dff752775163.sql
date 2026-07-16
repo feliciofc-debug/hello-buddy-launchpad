@@ -1,0 +1,1 @@
+UPDATE whatsapp_cloud_conversations SET status='active' WHERE id='3d1dc4fb-bfe6-4639-a443-f0f097eee9ac' AND status='handoff';
