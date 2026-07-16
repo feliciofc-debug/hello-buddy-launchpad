@@ -4877,9 +4877,59 @@ Regras:
 
       const primeiroNome = ownerFirstName(_tenantOwner?.name) || "o Marcelo";
       const humano = (vision?.resumo_humano || "").trim();
+
+      // Recarrega dossiê atualizado para decidir handoff automático
+      let dossieAtual: any = dossie;
+      try {
+        const { data: fresh } = await sb
+          .from("silvester_dossies")
+          .select("*")
+          .eq("id", dossie?.id)
+          .maybeSingle();
+        if (fresh) dossieAtual = fresh;
+      } catch (_) { /* noop */ }
+
+      const temNome = !!(dossieAtual?.nome_completo && String(dossieAtual.nome_completo).trim());
+      const temCpf = !!(dossieAtual?.cpf && String(dossieAtual.cpf).trim());
+      const temIdentidade = !!(dossieAtual?.rg || vision?.tipo === "cnh" || vision?.tipo === "rg");
+      const jaEncaminhado = dossieAtual?.status === "enviado";
+      const deveEncaminhar = !jaEncaminhado && temNome && temCpf && temIdentidade && !!tenantOwnerPhone;
+
+      let ownerForwardWamid: string | null = null;
+      if (deveEncaminhar) {
+        try {
+          const linhas: string[] = [];
+          linhas.push(`👋 Oi ${primeiroNome}, aqui é o Silvester.`);
+          linhas.push(`Novo cliente interessado em consórcio, pré-atendimento concluído:`);
+          linhas.push("");
+          linhas.push(`👤 *Nome:* ${dossieAtual.nome_completo}`);
+          if (dossieAtual.cpf) linhas.push(`🆔 *CPF:* ${dossieAtual.cpf}`);
+          if (dossieAtual.rg) linhas.push(`📄 *RG:* ${dossieAtual.rg}`);
+          if (dossieAtual.data_nascimento) linhas.push(`🎂 *Nascimento:* ${dossieAtual.data_nascimento}`);
+          if (dossieAtual.profissao) linhas.push(`💼 *Profissão:* ${dossieAtual.profissao}`);
+          if (dossieAtual.renda_mensal) linhas.push(`💰 *Renda:* ${dossieAtual.renda_mensal}`);
+          linhas.push(`📱 *WhatsApp:* ${row.from_number}`);
+          linhas.push("");
+          linhas.push(`Documentos anexados no dossiê. Pode assumir o atendimento quando puder. 🙌`);
+          const recado = linhas.join("\n");
+          ownerForwardWamid = await sendWhatsApp(userId, tenantOwnerPhone!, recado);
+          await logOwnerHeadsup(userId, recado, ownerForwardWamid);
+          await sb.from("silvester_dossies").update({ status: "enviado" }).eq("id", dossieAtual.id);
+          await sb.from("whatsapp_cloud_conversations").update({ status: "handoff" }).eq("id", conv.id);
+          console.log(`[processor][silvester][handoff] dossiê ${dossieAtual.id} enviado para ${tenantOwnerPhone} wamid=${ownerForwardWamid}`);
+        } catch (e) {
+          console.warn("[processor][silvester][handoff] falhou:", (e as Error).message);
+        }
+      }
+
       let reply: string;
       if (vision?.legivel === false) {
         reply = humano || `Recebi *${label}*, mas não consegui ler direito. Consegue mandar de novo mais nítido?`;
+      } else if (deveEncaminhar && ownerForwardWamid) {
+        const proto = buildForwardProof(ownerForwardWamid);
+        reply = `${humano ? humano + "\n\n" : ""}Prontinho, Felício! Já encaminhei seu cadastro completo pro ${primeiroNome} agora — nome, CPF e documento. ${proto}\n\nEle vai te retornar em instantes com a proposta. 🙌`;
+      } else if (deveEncaminhar) {
+        reply = `${humano ? humano + "\n\n" : ""}Anexei no seu cadastro. Vou avisar o ${primeiroNome} agora mesmo pra ele te retornar. 🙌`;
       } else {
         const nomeVisto = vision?.dados?.nome_completo ? ` (${vision.dados.nome_completo})` : "";
         reply = humano
@@ -4915,6 +4965,7 @@ Regras:
         await failQueue(row.id, `send_failed: ${sendError}`);
         return { ok: false, reason: "send_failed", error: sendError };
       }
+
       await doneQueue(row.id);
       return { ok: true, client_doc_processed: true, tipo: vision?.tipo, legivel: vision?.legivel };
     }
