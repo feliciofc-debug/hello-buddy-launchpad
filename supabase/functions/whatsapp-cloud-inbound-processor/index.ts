@@ -5050,6 +5050,57 @@ async function processOne(queueId: string) {
       const primeiroNome = nomeCompleto.split(/\s+/)[0] || nomeCompleto;
       ownerHintBlock = `\n\n=== RESPONSÁVEL DESTE ATENDIMENTO (LEIA ANTES DE RESPONDER) ===\n- O DONO/CHEFE/RESPONSÁVEL deste agente é **${nomeCompleto}** (chamado geralmente de "${primeiroNome}").\n- Quando o cliente disser "manda pro ${primeiroNome}", "passa pro chefe", "avisa o dono", "encaminha pra ele", "passe para a equipe", "passa pro gerente", "pede pra equipe/consultor me mandar", "pede um orçamento/plano", ou QUALQUER pedido pra que alguém DA CASA responda/envie algo — chame IMEDIATAMENTE \`encaminhar_recado_ao_dono\` com um recado humanizado (incluindo nome/telefone do cliente e o que ele quer). NÃO chame \`enviar_mensagem_contato_comercial\`, NÃO chame listar_contatos_comerciais, NÃO tente "identificar qual ${primeiroNome}", NÃO peça sobrenome — o responsável já está configurado no sistema e a ferramenta sabe pra quem mandar.\n- É PROIBIDO responder ao cliente coisas como "não consegui identificar qual ${primeiroNome}", "tem vários com esse nome", "me confirma o nome completo dele" — isso é falha grave de atendimento. Se o cliente pediu pra passar algo pra dentro da casa, você JÁ SABE pra quem: é ${primeiroNome}.\n\n=== COMO CONFIRMAR O ENVIO E OFERECER ATENDIMENTO PARALELO ===\n- ANTES de chamar \`encaminhar_recado_ao_dono\`, avise o cliente com naturalidade: "Vou já enviar seu recado pro ${primeiroNome} agora."\n- DEPOIS que a ferramenta \`encaminhar_recado_ao_dono\` retornar \`ok: true\`, você tem CERTEZA que o recado foi entregue no WhatsApp do ${primeiroNome}. Confirme pro cliente em 2 linhas curtas e humanizadas:\n   1) "Prontinho, acabei de mandar seu recado${"" /* menção à foto se houver */} aqui pro ${primeiroNome} — assim que ele puder, te retorna."\n   2) "Enquanto isso, se você quiser, posso ir te adiantando sobre consórcio (planos, valores, prazos, como funciona) — e quando o ${primeiroNome} entrar, ele finaliza o atendimento com você. Prefere assim ou prefere aguardar ele?"\n- Se o cliente responder que quer ir adiantando com você, ATENDA NORMALMENTE sobre consórcio (usando conhecimento do negócio / base de dados). Se preferir esperar o ${primeiroNome}, tudo bem — só se coloque à disposição.\n- Se a ferramenta retornar erro (\`ok\` diferente de true), NÃO minta dizendo que enviou. Diga: "Tive um problema pra entregar agora, vou tentar de novo em instantes" e reporte o problema com \`encaminhar_recado_ao_dono\` novamente na próxima oportunidade.\n- Nunca recite o texto do recado nem o telefone de ninguém.\n\n=== COLETA NATURAL DE DADOS DO CLIENTE (OBRIGATÓRIO, SEM BLOQUEAR ATENDIMENTO) ===\n- Logo no início da conversa (na 1ª ou 2ª resposta sua), de forma leve e humanizada, pergunte:\n  1) o **NOME** do cliente ("posso saber seu nome?" / "com quem eu falo?"),\n  2) **COMO ELE ESTÁ / o que precisa** ("tudo bem? me conta rapidinho o que você tá precisando"),\n  3) o **MELHOR TELEFONE de contato** ("pra registrar aqui, o melhor telefone pra te retornar é esse mesmo do WhatsApp — ${_fromNumForPrompt} — ou prefere outro?").\n- Se o cliente NÃO responder essas perguntas, **NÃO recuse nem trave o atendimento** — siga ajudando normalmente. Só reforce uma vez, gentilmente, se fizer sentido.\n- Guarde mentalmente nome + telefone que o cliente informar. O telefone default é o próprio número do WhatsApp dele (${_fromNumForPrompt}).\n- SEMPRE que chamar \`encaminhar_recado_ao_dono\`, o campo \`recado\` DEVE conter, no topo, duas linhas fixas:\n    Nome: <nome informado, ou "não informado">\n    Telefone: <telefone informado pelo cliente; se ele não informou, use ${_fromNumForPrompt}>\n  Depois disso, escreva em 1-3 linhas o que o cliente quer que ${primeiroNome} veja/responda. Isso é obrigatório — ${primeiroNome} precisa saber pra quem ligar.\n\n=== MONTAGEM PROATIVA DO DOSSIÊ DE CONSÓRCIO (ADIANTAR A PROPOSTA DO ${primeiroNome}) ===\n- O objetivo desta conversa NÃO é só passar recado — é MONTAR o DOSSIÊ do cliente pra que ${primeiroNome} já receba a proposta pronta pra fechar.\n- Ao longo da conversa (uma pergunta por vez, natural, sem parecer questionário), colete:\n  • Interesse: tipo de bem (auto/moto/caminhão/imóvel/serviço), valor da carta desejado, prazo em meses, se topa dar lance.\n  • Perfil financeiro: profissão, renda mensal aproximada, estado civil.\n  • Contato: e-mail (opcional), cidade/estado.\n- PEÇA DOCUMENTOS de forma natural, um por vez, começando pelos essenciais: "Pra ${primeiroNome} já te preparar a melhor proposta, você consegue me mandar uma foto do RG ou CNH? É bem rápido." Depois: comprovante de residência, comprovante de renda (holerite/extrato), e por último a declaração de IR se tiver.\n- QUALQUER foto/imagem/PDF que o cliente mandar (RG, CNH, comprovante, holerite, IR, foto do carro/imóvel), aceite com entusiasmo: "Recebi, obrigado! Já vou passar pro ${primeiroNome}." A extração automática já roda em segundo plano — você NÃO precisa comentar OCR nem confirmar dados extraídos linha por linha.\n- Se o cliente falar renda/CPF/nome/valor da carta EM TEXTO, ótimo — a extração pega automaticamente. Só CONFIRME de leve: "Anotei aqui, ${primeiroNome} vai ver."\n- Se o cliente já mandou 1 doc, agradeça e SIGA pedindo o próximo naturalmente: "Perfeito! Agora, se puder me mandar também um comprovante de residência (conta de luz/água serve), a gente adianta bastante."\n- NUNCA trate o cliente como formulário. Sempre humanizado, ritmo de conversa. Mas SEMPRE tenha em mente: quanto mais dado/doc você juntar, mais rápido ${primeiroNome} fecha.`;
     }
+
+    // === SILVESTER DOSSIÊ — fire-and-forget ===
+    // Para conversas com CLIENTE (não-dono), dispara extração/atualização de dossiê em background.
+    // Não bloqueia a resposta ao cliente. Roda para texto E mídia.
+    if (!inboundFromOwner && tenantOwnerPhone) {
+      try {
+        // Coleta mídias JÁ salvas (fotos/PDFs) da biblioteca dessa conversa (últimos 10min)
+        const cutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const { data: recentMidias } = await sb
+          .from("midias_whatsapp")
+          .select("midia_url, tipo, created_at, telefone_origem")
+          .eq("user_id", userId)
+          .eq("telefone_origem", row.from_number)
+          .in("tipo", ["foto"])
+          .gte("created_at", cutoff)
+          .order("created_at", { ascending: false })
+          .limit(5);
+        const mediaPayload = (recentMidias ?? []).map((m: any) => ({ url: m.midia_url }));
+
+        // Coleta últimas mensagens de texto do cliente (para extração de dados)
+        const { data: recentTexts } = await sb
+          .from("whatsapp_cloud_messages")
+          .select("content, direction, created_at")
+          .eq("conversation_id", conv.id)
+          .eq("direction", "inbound")
+          .order("created_at", { ascending: false })
+          .limit(8);
+        const textoConversa = (recentTexts ?? []).reverse().map((m: any) => m.content).filter(Boolean).join("\n");
+
+        const payload = {
+          user_id: userId,
+          telefone_cliente: row.from_number,
+          nome_cliente: contactName || null,
+          owner_phone: tenantOwnerPhone,
+          media: mediaPayload,
+          texto_conversa: textoConversa,
+        };
+        // fire-and-forget
+        fetch(`${SUPABASE_URL}/functions/v1/silvester-extract-document`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${SERVICE_KEY}`,
+          },
+          body: JSON.stringify(payload),
+        }).then((r) => console.log(`[silvester-hook] fired status=${r.status}`)).catch((e) => console.warn("[silvester-hook] err", (e as Error).message));
+      } catch (e) {
+        console.warn("[silvester-hook] setup falhou:", (e as Error).message);
+      }
+    }
+
     const systemPromptWithDate = systemPrompt + dateBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
