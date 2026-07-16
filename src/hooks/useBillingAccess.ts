@@ -8,6 +8,7 @@ const BLOCKED_EMAILS = new Set<string>([
   'solemar89@hotmail.com',
   'carolribeiro@barraworld.com',
   'blindattablindados@gmail.com',
+  'kauane.alves@zh3.com.br',
 ]);
 
 export interface BillingAccessState {
