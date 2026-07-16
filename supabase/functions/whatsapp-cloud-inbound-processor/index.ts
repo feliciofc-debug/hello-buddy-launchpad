@@ -4909,7 +4909,9 @@ Regras:
           ownerForwardWamid = await sendWhatsApp(userId, tenantOwnerPhone!, recado);
           await logOwnerHeadsup(userId, recado, ownerForwardWamid);
           await sb.from("silvester_dossies").update({ status: "enviado" }).eq("id", dossieAtual.id);
-          await sb.from("whatsapp_cloud_conversations").update({ status: "handoff" }).eq("id", conv.id);
+          // NÃO mutamos o bot (status="handoff") aqui: o cliente ainda pode
+          // agradecer/perguntar coisas simples ("obrigado", "quanto tempo?", etc.)
+          // e o Silvester precisa responder com naturalidade até o Marcelo assumir.
           console.log(`[processor][silvester][handoff] dossiê ${dossieAtual.id} enviado para ${tenantOwnerPhone} wamid=${ownerForwardWamid}`);
         } catch (e) {
           console.warn("[processor][silvester][handoff] falhou:", (e as Error).message);
