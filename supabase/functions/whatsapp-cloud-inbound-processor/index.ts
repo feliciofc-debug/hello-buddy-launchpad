@@ -4619,6 +4619,7 @@ async function processOne(queueId: string) {
       );
       const imageUrlToOwner = salvos.find((s) => s.tipo === "foto")?.url;
       let ownerForwarded = false;
+      let ownerForwardWamid: string | null = null;
       if (shouldForwardToOwner) {
         const recado = buildOwnerForwardMessage({
           ownerName: _tenantOwner?.name,
@@ -4631,9 +4632,10 @@ async function processOne(queueId: string) {
         const sentOwnerId = await sendWhatsApp(userId, tenantOwnerPhone!, recado, imageUrlToOwner);
         await logOwnerHeadsup(userId, imageUrlToOwner ? `${recado}\n\n[foto anexada]` : recado, sentOwnerId);
         ownerForwarded = true;
-        console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner}`);
+        ownerForwardWamid = sentOwnerId || null;
+        console.log(`[processor][owner-forward-direct-media] enviado para ${tenantOwnerPhone} com_foto=${!!imageUrlToOwner} wamid=${sentOwnerId}`);
       }
-      const protoOwner = ownerForwarded ? buildForwardProof(undefined) : "";
+      const protoOwner = ownerForwarded ? buildForwardProof(ownerForwardWamid) : "";
       const reply = ownerForwarded
         ? `Recebi ${salvos.length === 1 ? "a foto" : "as mídias"}${descricaoVisual ? `. A imagem mostra: ${descricaoVisual.trim()}` : ""}\n\nCerto, já encaminhei para ${ownerFirstName(_tenantOwner?.name)}. ${protoOwner}`
         : respostaMidiaSalva(salvos, descricaoVisual);
