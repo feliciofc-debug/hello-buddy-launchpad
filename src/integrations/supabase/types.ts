@@ -6905,6 +6905,167 @@ export type Database = {
         }
         Relationships: []
       }
+      silvester_documentos: {
+        Row: {
+          created_at: string
+          dados_extraidos: Json | null
+          dossie_id: string
+          id: string
+          mime_type: string | null
+          observacoes_ia: string | null
+          ocr_texto: string | null
+          processed_at: string | null
+          status_validacao: string
+          storage_path: string
+          tamanho_bytes: number | null
+          tipo: string
+          user_id: string
+          wamid: string | null
+        }
+        Insert: {
+          created_at?: string
+          dados_extraidos?: Json | null
+          dossie_id: string
+          id?: string
+          mime_type?: string | null
+          observacoes_ia?: string | null
+          ocr_texto?: string | null
+          processed_at?: string | null
+          status_validacao?: string
+          storage_path: string
+          tamanho_bytes?: number | null
+          tipo?: string
+          user_id: string
+          wamid?: string | null
+        }
+        Update: {
+          created_at?: string
+          dados_extraidos?: Json | null
+          dossie_id?: string
+          id?: string
+          mime_type?: string | null
+          observacoes_ia?: string | null
+          ocr_texto?: string | null
+          processed_at?: string | null
+          status_validacao?: string
+          storage_path?: string
+          tamanho_bytes?: number | null
+          tipo?: string
+          user_id?: string
+          wamid?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "silvester_documentos_dossie_id_fkey"
+            columns: ["dossie_id"]
+            isOneToOne: false
+            referencedRelation: "silvester_dossies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      silvester_dossies: {
+        Row: {
+          completeness_score: number
+          completo_notified_at: string | null
+          cpf: string | null
+          created_at: string
+          data_nascimento: string | null
+          email: string | null
+          endereco_bairro: string | null
+          endereco_cep: string | null
+          endereco_cidade: string | null
+          endereco_complemento: string | null
+          endereco_estado: string | null
+          endereco_logradouro: string | null
+          endereco_numero: string | null
+          estado_civil: string | null
+          id: string
+          interesse_aceita_lance: boolean | null
+          interesse_bem: string | null
+          interesse_observacoes: string | null
+          interesse_prazo_meses: number | null
+          interesse_valor_carta: number | null
+          nome_completo: string | null
+          notas_internas: string | null
+          parcial_notified_at: string | null
+          profissao: string | null
+          renda_mensal: number | null
+          rg: string | null
+          status: string
+          telefone_alternativo: string | null
+          telefone_cliente: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completeness_score?: number
+          completo_notified_at?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_nascimento?: string | null
+          email?: string | null
+          endereco_bairro?: string | null
+          endereco_cep?: string | null
+          endereco_cidade?: string | null
+          endereco_complemento?: string | null
+          endereco_estado?: string | null
+          endereco_logradouro?: string | null
+          endereco_numero?: string | null
+          estado_civil?: string | null
+          id?: string
+          interesse_aceita_lance?: boolean | null
+          interesse_bem?: string | null
+          interesse_observacoes?: string | null
+          interesse_prazo_meses?: number | null
+          interesse_valor_carta?: number | null
+          nome_completo?: string | null
+          notas_internas?: string | null
+          parcial_notified_at?: string | null
+          profissao?: string | null
+          renda_mensal?: number | null
+          rg?: string | null
+          status?: string
+          telefone_alternativo?: string | null
+          telefone_cliente: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completeness_score?: number
+          completo_notified_at?: string | null
+          cpf?: string | null
+          created_at?: string
+          data_nascimento?: string | null
+          email?: string | null
+          endereco_bairro?: string | null
+          endereco_cep?: string | null
+          endereco_cidade?: string | null
+          endereco_complemento?: string | null
+          endereco_estado?: string | null
+          endereco_logradouro?: string | null
+          endereco_numero?: string | null
+          estado_civil?: string | null
+          id?: string
+          interesse_aceita_lance?: boolean | null
+          interesse_bem?: string | null
+          interesse_observacoes?: string | null
+          interesse_prazo_meses?: number | null
+          interesse_valor_carta?: number | null
+          nome_completo?: string | null
+          notas_internas?: string | null
+          parcial_notified_at?: string | null
+          profissao?: string | null
+          renda_mensal?: number | null
+          rg?: string | null
+          status?: string
+          telefone_alternativo?: string | null
+          telefone_cliente?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       social_posts_queue: {
         Row: {
           created_at: string | null
