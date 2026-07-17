@@ -32,9 +32,19 @@ serve(async (req) => {
     const categLower = categoria.toLowerCase();
     const ehConsorcio = /consorci|consórci/.test(nomeLower + ' ' + descLower + ' ' + categLower);
 
+    // Extrai nomes próprios do briefing (heurística: sequência de palavras Capitalizadas)
+    const nomesDetectados: string[] = [];
+    if (temBriefing) {
+      const matches = descricao.match(/\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+){0,3}\b/g) || [];
+      const stop = new Set(['Consórcio','Consorcio','Ademicon','Facebook','Instagram','WhatsApp','Brasil','Rio','São','Paulo','Janeiro']);
+      for (const m of matches) {
+        if (!stop.has(m) && !nomesDetectados.includes(m)) nomesDetectados.push(m);
+      }
+    }
+
     const blocoBriefing = temBriefing
-      ? `\n========================================\n⚠️ BRIEFING DO CLIENTE (FONTE ÚNICA DE VERDADE):\n"${descricao}"\n\nREGRAS ABSOLUTAS SOBRE O BRIEFING:\n1. Use SOMENTE fatos, nomes, pessoas, contextos e chamadas que estão explicitamente no briefing ou nos campos do produto abaixo. NÃO invente nada.\n2. Se o briefing citar uma PESSOA (ex: quem indica, quem é o especialista/consultor, quem aparece no vídeo, cliente, atleta, celebridade), essa pessoa DEVE aparecer nominalmente em TODAS as 9 variações, com o papel descrito no briefing.\n3. Se o briefing descrever um FORMATO específico (vídeo, depoimento, indicação, homenagem, agradecimento, story reagindo, etc), TODAS as variações devem tratar o post como sendo esse formato — nunca contradizer.\n4. NÃO troque, abrevie nem substitua nomes próprios. Se o briefing diz "Marcelo Martins", use "Marcelo Martins" (ou "Marcelo") — nunca outro nome.\n5. Respeite o TOM do briefing (institucional, agradecimento, indicação, comemorativo, educativo). NÃO force pitch de venda se o briefing não pede.\n========================================\n`
-      : '';
+      ? `\n========================================\n⚠️ BRIEFING DO CLIENTE (FONTE ÚNICA DE VERDADE):\n"${descricao}"\n\n${nomesDetectados.length ? `NOMES PRÓPRIOS DETECTADOS NO BRIEFING (ÚNICOS PERMITIDOS): ${nomesDetectados.join(', ')}\n` : ''}REGRAS ABSOLUTAS SOBRE O BRIEFING:\n1. Use SOMENTE fatos, nomes, pessoas, contextos e chamadas que estão explicitamente no briefing ou nos campos do produto abaixo. NÃO invente NADA.\n2. Se o briefing citar uma PESSOA (ex: quem indica, quem é o especialista/consultor, quem aparece no vídeo, cliente, atleta, celebridade), essa pessoa DEVE aparecer nominalmente em TODAS as 9 variações, com o papel descrito no briefing.\n3. É TERMINANTEMENTE PROIBIDO usar QUALQUER nome próprio que NÃO esteja na lista de nomes detectados acima. Nada de "Felício", "João", "Maria", "Ana", "Carlos" ou qualquer outro nome — só os nomes literais do briefing.\n4. NÃO troque, abrevie nem substitua nomes próprios. Se o briefing diz "Marcelo Martins", use "Marcelo Martins" (ou "Marcelo") — nunca outro nome.\n5. Respeite o TOM do briefing (institucional, agradecimento, indicação, comemorativo, educativo). NÃO force pitch de venda se o briefing não pede.\n6. Se o briefing descreve um VÍDEO/DEPOIMENTO/INDICAÇÃO de alguém, TODAS as 9 variações devem citar essa pessoa e esse formato — nunca contradizer.\n========================================\n`
+      : `\n========================================\n⚠️ SEM BRIEFING ESPECÍFICO. REGRAS:\n- É PROIBIDO inventar nome próprio de pessoa (consultor, cliente, especialista). NÃO escreva "Felício", "João", "Marcelo" nem qualquer nome — o post fala do produto, não de uma pessoa.\n- Fale apenas do produto e seus benefícios reais listados abaixo.\n========================================\n`;
 
     const blocoAntiInvencao = `\n🚫 PROIBIDO INVENTAR (regra dura, vale para TODAS as 9 variações):\n- Preços, descontos, "de/por", % OFF, cupom, frete grátis que não estejam nos campos do produto.\n- Prazos artificiais: "só hoje", "últimas horas", "acaba meia-noite", "contagem regressiva" — a menos que o briefing explicitamente peça.\n- Escassez de estoque: "estoque limitado", "últimas unidades", "poucas peças", "vagas limitadas", "restam X" — NUNCA usar.\n${ehConsorcio ? '- Este produto é CONSÓRCIO: é PROIBIDO qualquer linguagem de estoque, unidades, peças, "compre agora que acaba", pronta-entrega. Consórcio trabalha com carta de crédito, assembleias mensais, contemplação por sorteio/lance, parcelas — use APENAS esse vocabulário. Fale de planejamento, poder de compra, parcela que cabe no bolso, sonho do imóvel/veículo, contemplação.\n' : ''}- Depoimentos, números de clientes, prêmios, garantias que não estejam no briefing.\n- Nomes de pessoas que não estejam no briefing. Se o briefing cita um nome, use EXATAMENTE esse nome.\n`;
 
@@ -94,7 +104,7 @@ Retorne APENAS um JSON válido no formato:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-2.5-pro',
         messages: [
           {
             role: 'system',
@@ -150,7 +160,47 @@ Retorne APENAS um JSON válido no formato:
     console.log('JSON limpo para parse:', jsonStr);
 
     const resultado = JSON.parse(jsonStr);
-    
+
+    // === Sanitização pós-IA: remove nomes inventados ===
+    const nomesPermitidosLower = new Set(nomesDetectados.flatMap(n => n.toLowerCase().split(/\s+/)));
+    const blacklistNomes = ['felício','felicio','joão','joao','maria','ana','carlos','pedro','lucas','bruno','rafael','fernando','patrícia','patricia','juliana'];
+    const nomesGenericos = /\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]{2,}\b/g;
+
+    const sanitizar = (s: string): string => {
+      if (typeof s !== 'string') return s;
+      let out = s;
+      // Remove nomes da blacklist se não estiverem permitidos
+      for (const bad of blacklistNomes) {
+        if (!nomesPermitidosLower.has(bad)) {
+          const re = new RegExp(`\\b${bad}\\b[,]?\\s*`, 'gi');
+          out = out.replace(re, '');
+        }
+      }
+      // Se briefing tem nomes permitidos, substitui qualquer nome próprio não-permitido pelo primeiro nome permitido
+      if (nomesDetectados.length > 0) {
+        const primeiro = nomesDetectados[0].split(/\s+/)[0];
+        out = out.replace(nomesGenericos, (m) => {
+          const low = m.toLowerCase();
+          if (nomesPermitidosLower.has(low)) return m;
+          // palavras comuns que começam com maiúscula (início de frase, marcas conhecidas) não trocamos
+          const permitidosContexto = ['Consórcio','Consorcio','Ademicon','Instagram','Facebook','WhatsApp','Brasil','Você','Voce','Rio','São','Paulo','Marcelo','Martins'];
+          if (permitidosContexto.includes(m)) return m;
+          // troca apenas se parecer nome próprio isolado (heurística: 4+ letras)
+          if (m.length >= 4 && blacklistNomes.includes(low)) return primeiro;
+          return m;
+        });
+      }
+      return out.replace(/\s{2,}/g, ' ').trim();
+    };
+
+    for (const plat of ['instagram','facebook','story']) {
+      if (resultado[plat]) {
+        for (const opc of ['opcaoA','opcaoB','opcaoC']) {
+          if (resultado[plat][opc]) resultado[plat][opc] = sanitizar(resultado[plat][opc]);
+        }
+      }
+    }
+
     console.log(`Posts gerados com sucesso para 3 plataformas`);
 
     return new Response(
