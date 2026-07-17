@@ -27,12 +27,19 @@ serve(async (req) => {
     const beneficios = (produto.beneficios || '').toString().trim();
     const categoria = (produto.categoria || '').toString().trim();
 
+    const nomeLower = (produto.nome || '').toLowerCase();
+    const descLower = descricao.toLowerCase();
+    const categLower = categoria.toLowerCase();
+    const ehConsorcio = /consorci|consórci/.test(nomeLower + ' ' + descLower + ' ' + categLower);
+
     const blocoBriefing = temBriefing
-      ? `\n========================================\n⚠️ BRIEFING DO CLIENTE (PRIORIDADE MÁXIMA):\n"${descricao}"\n\nIMPORTANTE: Esta descrição representa a INTENÇÃO do cliente sobre como o produto deve ser comunicado. Respeite o TOM (comemorativo, agradecimento, promocional, educativo, informativo, etc) e a TEMÁTICA (data sazonal, evento específico, campanha, homenagem) presentes no briefing. NÃO invente urgência, desconto ou pitch de venda se o briefing não pedir. NÃO ignore o contexto fornecido. Se for uma data comemorativa ou homenagem, mantenha esse tom em TODAS as 9 variações — adaptando apenas o formato (mais curto/longo, mais visual/textual), nunca a intenção.\n========================================\n`
+      ? `\n========================================\n⚠️ BRIEFING DO CLIENTE (FONTE ÚNICA DE VERDADE):\n"${descricao}"\n\nREGRAS ABSOLUTAS SOBRE O BRIEFING:\n1. Use SOMENTE fatos, nomes, pessoas, contextos e chamadas que estão explicitamente no briefing ou nos campos do produto abaixo. NÃO invente nada.\n2. Se o briefing citar uma PESSOA (ex: quem indica, quem é o especialista/consultor, quem aparece no vídeo, cliente, atleta, celebridade), essa pessoa DEVE aparecer nominalmente em TODAS as 9 variações, com o papel descrito no briefing.\n3. Se o briefing descrever um FORMATO específico (vídeo, depoimento, indicação, homenagem, agradecimento, story reagindo, etc), TODAS as variações devem tratar o post como sendo esse formato — nunca contradizer.\n4. NÃO troque, abrevie nem substitua nomes próprios. Se o briefing diz "Marcelo Martins", use "Marcelo Martins" (ou "Marcelo") — nunca outro nome.\n5. Respeite o TOM do briefing (institucional, agradecimento, indicação, comemorativo, educativo). NÃO force pitch de venda se o briefing não pede.\n========================================\n`
       : '';
 
+    const blocoAntiInvencao = `\n🚫 PROIBIDO INVENTAR (regra dura, vale para TODAS as 9 variações):\n- Preços, descontos, "de/por", % OFF, cupom, frete grátis que não estejam nos campos do produto.\n- Prazos artificiais: "só hoje", "últimas horas", "acaba meia-noite", "contagem regressiva" — a menos que o briefing explicitamente peça.\n- Escassez de estoque: "estoque limitado", "últimas unidades", "poucas peças", "vagas limitadas", "restam X" — NUNCA usar.\n${ehConsorcio ? '- Este produto é CONSÓRCIO: é PROIBIDO qualquer linguagem de estoque, unidades, peças, "compre agora que acaba", pronta-entrega. Consórcio trabalha com carta de crédito, assembleias mensais, contemplação por sorteio/lance, parcelas — use APENAS esse vocabulário. Fale de planejamento, poder de compra, parcela que cabe no bolso, sonho do imóvel/veículo, contemplação.\n' : ''}- Depoimentos, números de clientes, prêmios, garantias que não estejam no briefing.\n- Nomes de pessoas que não estejam no briefing. Se o briefing cita um nome, use EXATAMENTE esse nome.\n`;
+
     const prompt = `Crie posts para o seguinte produto:
-${blocoBriefing}
+${blocoBriefing}${blocoAntiInvencao}
 Produto: ${produto.nome}
 ${produto.preco ? `Preço: R$ ${produto.preco}` : ''}
 ${categoria ? `Categoria: ${categoria}` : ''}
@@ -42,23 +49,24 @@ ${produto.rating ? `Avaliação: ${produto.rating} estrelas (${produto.reviews} 
 ${produto.comissao ? `Comissão: R$ ${produto.comissao}` : ''}
 
 ${temBriefing
-  ? 'Gere 9 variações de posts (3 por formato) SEMPRE respeitando o tom e a temática do briefing acima. As "variações" são de FORMATO/ABORDAGEM, nunca contradizem a intenção do cliente:'
+  ? 'Gere 9 variações de posts (3 por formato) SEMPRE respeitando fielmente o briefing acima (pessoas citadas, formato, tom). As "variações" são de FORMATO/ABORDAGEM, nunca contradizem o briefing:'
   : 'Gere 9 variações de posts, 3 para cada tipo:'}
 
 INSTAGRAM (3 variações):
-- Opção A: Estilo direto/urgente com call-to-action forte
-- Opção B: Estilo storytelling, conte uma história
-- Opção C: Estilo educativo, ensine algo relacionado ao produto
+- Opção A: Direto, com CTA claro (sem inventar urgência/escassez)
+- Opção B: Storytelling — conte a história descrita no briefing
+- Opção C: Educativo — ensine algo real sobre o tema${ehConsorcio ? ' (consórcio, planejamento, contemplação)' : ''}
 
 FACEBOOK (3 variações):
 - Opção A: Casual/amigável, tom de conversa
-- Opção B: Profissional/informativo com dados e benefícios
-- Opção C: Promocional/vendedor com senso de urgência
+- Opção B: Profissional/informativo, com benefícios reais do briefing
+- Opção C: Chamada para ação forte${ehConsorcio ? ' focada em simulação/atendimento com o consultor citado no briefing (nunca escassez)' : ' (sem inventar prazo/estoque)'}
 
 STORY INSTAGRAM (3 variações, MAX 80 caracteres cada):
 - Opção A: Curto e impactante com emoji
 - Opção B: Pergunta interativa para engajamento
-- Opção C: Contagem regressiva ou urgência
+- Opção C: Convite direto pra falar com o consultor/especialista citado no briefing
+
 
 Retorne APENAS um JSON válido no formato:
 {
