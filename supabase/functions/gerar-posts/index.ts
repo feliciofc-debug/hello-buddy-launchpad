@@ -160,7 +160,47 @@ Retorne APENAS um JSON válido no formato:
     console.log('JSON limpo para parse:', jsonStr);
 
     const resultado = JSON.parse(jsonStr);
-    
+
+    // === Sanitização pós-IA: remove nomes inventados ===
+    const nomesPermitidosLower = new Set(nomesDetectados.flatMap(n => n.toLowerCase().split(/\s+/)));
+    const blacklistNomes = ['felício','felicio','joão','joao','maria','ana','carlos','pedro','lucas','bruno','rafael','fernando','patrícia','patricia','juliana'];
+    const nomesGenericos = /\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]{2,}\b/g;
+
+    const sanitizar = (s: string): string => {
+      if (typeof s !== 'string') return s;
+      let out = s;
+      // Remove nomes da blacklist se não estiverem permitidos
+      for (const bad of blacklistNomes) {
+        if (!nomesPermitidosLower.has(bad)) {
+          const re = new RegExp(`\\b${bad}\\b[,]?\\s*`, 'gi');
+          out = out.replace(re, '');
+        }
+      }
+      // Se briefing tem nomes permitidos, substitui qualquer nome próprio não-permitido pelo primeiro nome permitido
+      if (nomesDetectados.length > 0) {
+        const primeiro = nomesDetectados[0].split(/\s+/)[0];
+        out = out.replace(nomesGenericos, (m) => {
+          const low = m.toLowerCase();
+          if (nomesPermitidosLower.has(low)) return m;
+          // palavras comuns que começam com maiúscula (início de frase, marcas conhecidas) não trocamos
+          const permitidosContexto = ['Consórcio','Consorcio','Ademicon','Instagram','Facebook','WhatsApp','Brasil','Você','Voce','Rio','São','Paulo','Marcelo','Martins'];
+          if (permitidosContexto.includes(m)) return m;
+          // troca apenas se parecer nome próprio isolado (heurística: 4+ letras)
+          if (m.length >= 4 && blacklistNomes.includes(low)) return primeiro;
+          return m;
+        });
+      }
+      return out.replace(/\s{2,}/g, ' ').trim();
+    };
+
+    for (const plat of ['instagram','facebook','story']) {
+      if (resultado[plat]) {
+        for (const opc of ['opcaoA','opcaoB','opcaoC']) {
+          if (resultado[plat][opc]) resultado[plat][opc] = sanitizar(resultado[plat][opc]);
+        }
+      }
+    }
+
     console.log(`Posts gerados com sucesso para 3 plataformas`);
 
     return new Response(
