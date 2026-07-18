@@ -52,6 +52,8 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
       <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 15, letterSpacing: 2 }}>DESLIZE →</span>
       <ProgressDots current={0} total={totalSlides} activeColor="#FFFFFF" inactiveColor="rgba(255,255,255,0.3)" />
     </div>
+
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', top: 40, left: 60, maxWidth: 140, maxHeight: 70, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }} />}
   </div>
 );
 
