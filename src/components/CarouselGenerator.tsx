@@ -43,6 +43,8 @@ export const CarouselGenerator = () => {
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [renderedImages, setRenderedImages] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
+  const [whatsappLink, setWhatsappLink] = useState("");
+
   const [activeSlide, setActiveSlide] = useState(0);
   const [publishing, setPublishing] = useState(false);
   const [savingProduct, setSavingProduct] = useState(false);
