@@ -2114,11 +2114,14 @@ async function gerarScriptRedesSociais(
 // Cache em memória + persistência no banco para posts pendentes.
 // Edge Functions podem trocar de instância entre o preview e a confirmação; só Map em memória perde o token.
 const SOCIAL_CONFIRMATION_TTL_MS = 2 * 60 * 60 * 1000;
+type PostVariantes = { A: string; B: string; C: string };
 type PendingSocialPost = {
   produto: any;
   tom: string;
   redes: string[];
-  scripts: Record<string, string>;
+  scripts: Record<string, string>; // variante ATIVA por rede (default: A)
+  variantes?: Record<string, PostVariantes>; // 3 opções por rede
+  variantSelecionada?: "A" | "B" | "C"; // default "A"
   userId: string;
   createdAt: number;
   formato?: "feed" | "story" | "reels";
