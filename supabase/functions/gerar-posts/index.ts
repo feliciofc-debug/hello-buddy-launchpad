@@ -104,7 +104,7 @@ Retorne APENAS um JSON válido no formato:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
+        model: 'google/gemini-2.5-flash',
         messages: [
           {
             role: 'system',
@@ -116,7 +116,8 @@ Retorne APENAS um JSON válido no formato:
           }
         ],
         temperature: 0.9,
-        max_tokens: 1500
+        max_tokens: 4000,
+        response_format: { type: 'json_object' }
       }),
     });
 
