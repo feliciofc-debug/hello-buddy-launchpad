@@ -2668,8 +2668,16 @@ function formatSocialPostToolResult(raw: string): string {
       : redes.map((r) => `━━━ *${r.toUpperCase()}* ━━━\n${bloco(variantes[r] || {})}`).join("\n\n");
     const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
     const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
-    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C* — ou "pode postar" pra ir com a A.\nSe quiser ajustar (mais curto, tirar preço, mudar tom), me diga.`;
-    return `Preparei 3 opções pra você escolher 👇${aviso}${avisoReels}<<SPLIT>>${preview}<<SPLIT>>${pergunta}<<SPLIT>>pode postar ${data.token}`;
+    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C*.`;
+    return `Preparei 3 opções 👇${aviso}${avisoReels}<<SPLIT>>${preview}<<SPLIT>>${pergunta}`;
+  }
+
+  if (data?.status === "variante_selecionada") {
+    const opcao = data?.opcao_ativa || "A";
+    const preview = Object.entries(data.preview ?? {})
+      .map(([rede, script]) => `*${String(rede).toUpperCase()}*\n${script}`)
+      .join("\n\n");
+    return `✅ Opção *${opcao}* selecionada.<<SPLIT>>${preview}<<SPLIT>>Posso publicar agora? Responde *sim* pra postar ou me diga o ajuste.`;
   }
 
   if (data?.status === "aguardando_confirmacao") {
@@ -4155,6 +4163,14 @@ async function callGemini(
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
+        // Short-circuit determinístico do fluxo A/B/C — evita a IA reescrever/repetir textos.
+        try {
+          const parsed = JSON.parse(result);
+          const st = parsed?.status;
+          if (st === "aguardando_escolha_variante" || st === "variante_selecionada") {
+            return { text: formatSocialPostToolResult(result), imageUrl: pendingImageUrl };
+          }
+        } catch { /* ignore */ }
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
