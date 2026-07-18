@@ -2786,6 +2786,14 @@ function detectSocialVariantChoice(text: string): "A" | "B" | "C" | null {
   return (m?.[1]?.toUpperCase() as "A" | "B" | "C" | undefined) || null;
 }
 
+function detectPlainSocialPostConfirmation(text: string): { cancelar?: boolean } | null {
+  const normalized = normalizePt(text || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  if (/^(cancela|cancelar|nao posta|nao publicar|descarta|deixa pra la)$/.test(normalized)) return { cancelar: true };
+  if (/^(sim|ok|ta bom|tudo certo|pode|pode postar|posta|postar|publica|publique|confirmo|confirma|manda|manda ver|vai|aprovado|pode publicar agora)$/.test(normalized)) return {};
+  return null;
+}
+
 async function findLatestPendingSocialToken(userId: string): Promise<string | null> {
   const cutoff = new Date(Date.now() - SOCIAL_CONFIRMATION_TTL_MS).toISOString();
   const { data, error } = await sb
