@@ -1994,46 +1994,73 @@ function detectWantsWhatsappCta(text: string): boolean {
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
 
-async function gerarScriptRedesSociais(
+// Gera 3 OPÇÕES (A/B/C) de post curto e engajador — mesmo estilo da plataforma /gerar-posts.
+// A = direto/CTA claro | B = storytelling | C = educativo/interativo
+async function gerarTresOpcoesRedeSocial(
   produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
   tom: string,
   rede: "facebook" | "instagram",
   ajuste?: string,
   brandContext?: string,
-): Promise<string> {
-  const tomLabel = (tom || "urgencia").toLowerCase();
+): Promise<{ A: string; B: string; C: string }> {
+  const tomLabel = (tom || "beneficio").toLowerCase();
   const guia: Record<string, string> = {
-    urgencia: "Tom de URGÊNCIA e escassez. Use gatilhos como '⚡ ÚLTIMAS UNIDADES', 'ACABA HOJE', 'estoque limitado', contagem regressiva. CTA forte: 'Corre no link!'",
-    escassez: "Tom de escassez pura. Foque em 'poucas unidades', 'apenas hoje', 'antes que acabe'.",
-    "black-friday": "Tom BLACK FRIDAY: desconto agressivo, 'menor preço do ano', 'oferta relâmpago'.",
-    "prova-social": "Foque em prova social: 'milhares já compraram', 'avaliação 5 estrelas', 'top vendas'.",
-    beneficio: "Foque nos benefícios reais e transformação que o produto entrega.",
+    urgencia: "Tom com senso de oportunidade (SEM inventar escassez de estoque, contagem regressiva ou 'acaba hoje'). Foco no valor.",
+    escassez: "Tom de oportunidade real (SEM inventar 'últimas unidades' ou 'só hoje' se não estiver no briefing).",
+    "black-friday": "Tom promocional festivo (só cite desconto se o preço/oferta estiver informado).",
+    "prova-social": "Prova social real, sem números inventados. Se briefing citar depoimento/pessoa, use.",
+    beneficio: "Foque em benefícios reais e transformação. Tom leve, conversacional.",
+    institucional: "Tom institucional/agradecimento/indicação — sem pitch forçado.",
   };
-  const guiaTom = guia[tomLabel] ?? guia["urgencia"];
+  const guiaTom = guia[tomLabel] ?? guia["beneficio"];
   const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "";
-  const limite = rede === "instagram" ? 2200 : 1500;
+  const limite = 600; // ← curto e engajador, como a plataforma
   const temLink = !!(produto.link && /^https?:\/\//i.test(produto.link));
-  const ctaRegra = temLink
-    ? `- CTA claro no fim ("👉 Link na bio" para IG, "👉 Compre aqui: ${produto.link}" para FB).`
-    : `- CTA de engajamento no fim (ex: "👉 Chama no direct pra garantir", "Comenta EU QUERO", "Manda mensagem"). NÃO invente link, NÃO escreva "link na bio" se não existir link — foque em contato direto/interesse.`;
-  const prompt = `Você é copywriter de e-commerce. Crie um post para ${rede.toUpperCase()} vendendo/divulgando este produto.
-${guiaTom}
+  const ctaBase = temLink
+    ? (rede === "instagram" ? `CTA no fim: "👉 Link na bio"` : `CTA no fim: "👉 Compre aqui: ${produto.link}"`)
+    : `CTA de engajamento (chama no direct/WhatsApp, "comenta EU QUERO"). NÃO invente link nem "link na bio".`;
 
-PRODUTO: ${produto.nome}
-${produto.descricao ? `CONTEXTO/CONTEÚDO DA IMAGEM: ${produto.descricao}\n(IMPORTANTE: a legenda DEVE conversar com o que está na imagem — nunca contrarie ou ignore o conteúdo visual descrito acima.)` : ""}
-${preco ? `PREÇO: ${preco}` : "PREÇO: (não informar valor no post)"}
-${produto.categoria ? `CATEGORIA: ${produto.categoria}` : ""}
-${temLink ? "" : "OBS: este produto NÃO tem link de compra — é post institucional/lifestyle/engajamento."}
+  const descLower = `${produto.nome} ${produto.descricao || ""} ${produto.categoria || ""}`.toLowerCase();
+  const ehConsorcio = /consorci|consórci|carta\s+de\s+cr[eé]dito/.test(descLower);
+  const regraConsorcio = ehConsorcio
+    ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
+    : "";
 
-REGRAS:
-- Máx ${limite} caracteres.
-- Comece com 1 linha impactante e emoji.
-- 2-4 bullets de benefício.
-${ctaRegra}
-- 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
-- NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.
-${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique EXATAMENTE, mantendo o resto do post coerente): "${ajuste}"` : ""}
-${brandContext ? `\n🏢 CONTEXTO DA MARCA (use como BASE do post — a imagem/vídeo é da MARCA, não de um produto físico):\n${brandContext}\n\nEscreva o post FALANDO DAS TECNOLOGIAS E BENEFÍCIOS reais listados acima. NÃO invente "produto físico", NÃO use "maleta", "kit", "unidades", "estoque limitado" — é uma EMPRESA DE TECNOLOGIA. Foco em: o que a plataforma FAZ, quem ATENDE (PMEs), e o RESULTADO pro cliente (mais vendas, menos trabalho manual, IA 24/7). CTA de conversão: agendar demo, falar no WhatsApp, testar a plataforma.` : ""}`;
+  const prompt = `Você é copywriter sênior de redes sociais. Crie 3 VARIAÇÕES CURTAS de post para ${rede.toUpperCase()} sobre o produto/tema abaixo.
+${guiaTom}${regraConsorcio}
+
+DADOS:
+- Nome/tema: ${produto.nome}
+${produto.descricao ? `- Contexto/imagem: ${produto.descricao}\n  (a legenda DEVE conversar com esse contexto — nunca contrarie o visual)` : ""}
+${preco ? `- Preço: ${preco}` : "- Preço: não citar valor"}
+${produto.categoria ? `- Categoria: ${produto.categoria}` : ""}
+${temLink ? `- Link: ${produto.link}` : "- SEM link (post de engajamento/institucional)"}
+
+REGRAS DURAS (valem pra TODAS as 3 opções):
+- Máximo ${limite} caracteres por opção (curto, direto, engajador — nada de textão).
+- 1ª linha impactante com emoji.
+- 1-3 bullets curtos ou frases curtas de benefício (nada de parágrafo longo).
+- ${ctaBase}
+- 5-8 hashtags no fim, relevantes, separadas por espaço.
+- NUNCA invente: preço, desconto, "%", "só hoje", "estoque", "últimas unidades", "vagas limitadas", depoimentos, números de clientes.
+- Se briefing cita PESSOA nomeada (consultor/atleta/cliente), use essa pessoa nas 3 opções.
+- Sem markdown, sem "Aqui está:", sem aspas envolvendo o post.
+
+ÂNGULOS OBRIGATÓRIOS (uma opção por ângulo):
+- Opção A — DIRETA/CTA: apresenta e chama pra ação (o que é + benefício-chave + CTA).
+- Opção B — STORYTELLING: começa com uma cena, dor, curiosidade ou história real do contexto; termina no CTA suave.
+- Opção C — INTERATIVA/EDUCATIVA: pergunta que engaja OU mini-ensinamento sobre o tema (dica, mito x verdade, "sabia que…"), com CTA leve no fim.
+
+${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique nas 3 opções, mantendo os ângulos): "${ajuste}"` : ""}
+${brandContext ? `\n🏢 CONTEXTO DA MARCA (BASE — não é produto físico):\n${brandContext}\n\nFale das tecnologias/benefícios reais. NÃO use "maleta/kit/unidades/estoque". CTA: agendar demo, falar no WhatsApp, testar a plataforma.` : ""}
+
+Responda APENAS com JSON válido nesta forma exata:
+{"A":"texto da opção A","B":"texto da opção B","C":"texto da opção C"}`;
+
+  const fallback = (): { A: string; B: string; C: string } => {
+    const base = `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n${(produto.descricao || "").slice(0, 200)}\n\n${temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!"}`.slice(0, limite);
+    return { A: base, B: base, C: base };
+  };
 
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -2041,27 +2068,60 @@ ${brandContext ? `\n🏢 CONTEXTO DA MARCA (use como BASE do post — a imagem/v
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          { role: "system", content: "Você retorna APENAS JSON válido, sem markdown, sem texto extra." },
+          { role: "user", content: prompt },
+        ],
         temperature: 0.9,
+        max_tokens: 3500,
+        response_format: { type: "json_object" },
       }),
     });
+    if (!res.ok) {
+      console.error("[postar_redes] gemini !ok:", res.status, await res.text());
+      return fallback();
+    }
     const data = await res.json();
-    const txt = data?.choices?.[0]?.message?.content?.trim() || "";
-    return txt.slice(0, limite);
+    let txt = (data?.choices?.[0]?.message?.content || "").trim();
+    txt = txt.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) return fallback();
+    const parsed = JSON.parse(m[0].replace(/,(\s*[}\]])/g, "$1"));
+    const clean = (s: unknown) => (typeof s === "string" ? s.trim().slice(0, limite) : "");
+    const A = clean(parsed.A) || clean(parsed.opcaoA);
+    const B = clean(parsed.B) || clean(parsed.opcaoB);
+    const C = clean(parsed.C) || clean(parsed.opcaoC);
+    if (!A || !B || !C) return fallback();
+    return { A, B, C };
   } catch (e) {
-    console.error("[postar_redes] gerar script falhou:", e);
-    return `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n${produto.descricao ?? ""}\n\n${temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!"}`.slice(0, limite);
+    console.error("[postar_redes] gerar 3 opções falhou:", e);
+    return fallback();
   }
+}
+
+// Wrapper compat: devolve UMA string (a opção A) — mantém API antiga viva pra qualquer chamador residual.
+async function gerarScriptRedesSociais(
+  produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
+  tom: string,
+  rede: "facebook" | "instagram",
+  ajuste?: string,
+  brandContext?: string,
+): Promise<string> {
+  const { A } = await gerarTresOpcoesRedeSocial(produto, tom, rede, ajuste, brandContext);
+  return A;
 }
 
 // Cache em memória + persistência no banco para posts pendentes.
 // Edge Functions podem trocar de instância entre o preview e a confirmação; só Map em memória perde o token.
 const SOCIAL_CONFIRMATION_TTL_MS = 2 * 60 * 60 * 1000;
+type PostVariantes = { A: string; B: string; C: string };
 type PendingSocialPost = {
   produto: any;
   tom: string;
   redes: string[];
-  scripts: Record<string, string>;
+  scripts: Record<string, string>; // variante ATIVA por rede (default: A)
+  variantes?: Record<string, PostVariantes>; // 3 opções por rede
+  variantSelecionada?: "A" | "B" | "C"; // default "A"
   userId: string;
   createdAt: number;
   formato?: "feed" | "story" | "reels";
@@ -2670,21 +2730,27 @@ async function toolPostarRedesSociais(
       return JSON.stringify({ erro: `produto "${prod.nome}" não tem imagem cadastrada — Instagram/TikTok exigem imagem`, sugestoes_do_catalogo: sugestoes });
     }
 
-    // Gera scripts em paralelo (uma vez só) para preview
-    const scriptsEntries = await Promise.all(
+    // Gera 3 OPÇÕES (A/B/C) por rede em paralelo — estilo plataforma /gerar-posts
+    const variantesEntries = await Promise.all(
       redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarScriptRedesSociais(prod, tom, redeGen)] as const;
+        return [r, await gerarTresOpcoesRedeSocial(prod, tom, redeGen)] as const;
       }),
     );
-    let scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+    let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
+    let scripts: Record<string, string> = Object.fromEntries(variantesEntries.map(([r, v]) => [r, v.A]));
 
-    // Feature A: CTA de WhatsApp (opt-in) — número dinâmico do tenant.
+    // Feature A: CTA de WhatsApp (opt-in) — número dinâmico do tenant. Aplica em TODAS as variantes.
     let ctaNota: string | undefined;
     if (incluirCta) {
       const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
       if (telAgente) {
-        scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+        variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
+          A: appendWhatsappCta(v.A, telAgente),
+          B: appendWhatsappCta(v.B, telAgente),
+          C: appendWhatsappCta(v.C, telAgente),
+        }]));
+        scripts = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, v.A]));
         ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
       } else {
         ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
@@ -2692,20 +2758,21 @@ async function toolPostarRedesSociais(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
     return JSON.stringify({
-      status: "aguardando_confirmacao",
+      status: "aguardando_escolha_variante",
       token,
       produto: { nome: prod.nome, preco: prod.preco, imagem_url: prod.imagem_url, link: prod.link },
       tom,
       redes,
-      preview: scripts,
+      variantes, // { facebook: {A,B,C}, instagram: {A,B,C}, ... }
+      opcao_ativa: "A",
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Mostre ao usuário o produto, tom, redes e os scripts (um por rede). ${incluirCta ? "" : "Antes de pedir confirmação, PERGUNTE: 'Quer incluir um Chama no WhatsApp no post?' — se disser sim, chame revisar_post_pendente com token='${token}' e incluir_cta_whatsapp=true. "}Peça confirmação clara. Se confirmar, chame confirmar_postagem_redes com token="${token}". Se pedir mudanças, gere novo preview via revisar_post_pendente.`,
+      instrucoes: `Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*. Ou 'pode postar' pra publicar a A."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -2803,38 +2870,53 @@ async function toolRevisarPostPendente(
     || produtoLike?.source === "midias_whatsapp";
   const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
 
-  // Se ajuste vazio (apenas toggle de CTA), reaproveita scripts atuais sem gerar tudo de novo.
-  let scripts: Record<string, string>;
+  // Se ajuste vazio (apenas toggle de CTA), reaproveita variantes atuais sem regerar.
+  let variantes: Record<string, PostVariantes>;
+  const selecionada: "A" | "B" | "C" = p.variantSelecionada || "A";
   if (ajuste.length < 2 && toggleCta) {
-    scripts = { ...p.scripts };
-    // Se o CTA anterior estava presente, remove antes de reaplicar.
-    scripts = Object.fromEntries(
-      Object.entries(scripts).map(([r, s]) => [r, (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd()])
-    );
+    // Remove CTA anterior de todas as variantes; será reaplicado abaixo se incluirCta.
+    const stripCta = (s: string) => (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd();
+    if (p.variantes) {
+      variantes = Object.fromEntries(Object.entries(p.variantes).map(([r, v]) => [r, {
+        A: stripCta(v.A), B: stripCta(v.B), C: stripCta(v.C),
+      }]));
+    } else {
+      // Compat: sem variantes antigas, usa scripts atuais como A/B/C iguais.
+      variantes = Object.fromEntries(Object.entries(p.scripts).map(([r, s]) => [r, { A: stripCta(s), B: stripCta(s), C: stripCta(s) }]));
+    }
   } else {
-    const scriptsEntries = await Promise.all(
+    // Regenera 3 NOVAS opções aplicando o ajuste.
+    const varEntries = await Promise.all(
       p.redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
+        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
       }),
     );
-    scripts = Object.fromEntries(scriptsEntries);
+    variantes = Object.fromEntries(varEntries);
   }
 
-  // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
+  // Feature A: CTA de WhatsApp (opt-in) — aplica em TODAS as variantes.
   const incluirCta = toggleCta ? !!args?.incluir_cta_whatsapp : !!p.incluirCtaWhatsapp;
   let ctaNota: string | undefined;
   if (incluirCta) {
     const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
     if (telAgente) {
-      scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+      variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
+        A: appendWhatsappCta(v.A, telAgente),
+        B: appendWhatsappCta(v.B, telAgente),
+        C: appendWhatsappCta(v.C, telAgente),
+      }]));
       ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
     } else {
       ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
     }
   }
 
-  // Atualiza social_posts_queue (mantém error_message/marker/token e status intactos).
+  const scripts: Record<string, string> = Object.fromEntries(
+    Object.entries(variantes).map(([r, v]) => [r, v[selecionada] || v.A])
+  );
+
+  // Atualiza social_posts_queue.
   if (p.queueRows?.length) {
     await Promise.all(p.queueRows.map((row) => {
       const novo = scripts[row.platform];
@@ -2845,20 +2927,63 @@ async function toolRevisarPostPendente(
     }));
   }
 
-  // Atualiza cache em memória.
-  const atualizado: PendingSocialPost = { ...p, scripts, incluirCtaWhatsapp: incluirCta };
+  const atualizado: PendingSocialPost = { ...p, scripts, variantes, variantSelecionada: selecionada, incluirCtaWhatsapp: incluirCta };
   PENDING_POSTS.set(token, atualizado);
 
   return JSON.stringify({
-    status: "aguardando_confirmacao",
+    status: "aguardando_escolha_variante",
     revisado: true,
     token,
     formato: p.formato || "feed",
     redes: p.redes,
-    preview: scripts,
+    variantes,
+    opcao_ativa: selecionada,
     cta_whatsapp: incluirCta,
     cta_nota: ctaNota,
-    instrucoes: `Mostre o script REVISADO ao dono e pergunte "quer mais algum ajuste ou pode postar?". Se pedir novo ajuste, chame revisar_post_pendente de novo com o MESMO token="${token}". Se confirmar, chame confirmar_postagem_redes com token="${token}".`,
+    instrucoes: `Mostre as 3 OPÇÕES A/B/C REVISADAS de forma clara (uma por bloco). Pergunte: "Ficou melhor? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser mais um ajuste, é só me dizer." Se responder A/B/C: chame escolher_variante_post. Se pedir novo ajuste: chame revisar_post_pendente de novo com token="${token}". Se confirmar: chame confirmar_postagem_redes com token="${token}".`,
+  });
+}
+
+// ---- escolher_variante_post: swap barato da opção ativa (A/B/C), sem regerar IA ----
+async function toolEscolherVariantePost(
+  args: { token: string; opcao: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
+  pendingCleanup();
+  const token = (args?.token || "").trim().toLowerCase();
+  const opcaoRaw = (args?.opcao || "").toString().trim().toUpperCase();
+  const opcao = (opcaoRaw.match(/[ABC]/)?.[0] || "") as "A" | "B" | "C" | "";
+  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  if (!opcao) return JSON.stringify({ erro: "opção inválida — use A, B ou C" });
+
+  const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
+  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado" });
+  if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
+  if (!p.variantes) return JSON.stringify({ erro: "esse post não tem variantes — use confirmar_postagem_redes direto" });
+
+  const scripts: Record<string, string> = Object.fromEntries(
+    Object.entries(p.variantes).map(([r, v]) => [r, v[opcao] || v.A])
+  );
+
+  if (p.queueRows?.length) {
+    await Promise.all(p.queueRows.map((row) => {
+      const novo = scripts[row.platform];
+      if (!novo) return Promise.resolve();
+      return sb.from("social_posts_queue")
+        .update({ post_text: novo, updated_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }));
+  }
+
+  PENDING_POSTS.set(token, { ...p, scripts, variantSelecionada: opcao });
+
+  return JSON.stringify({
+    status: "variante_selecionada",
+    token,
+    opcao_ativa: opcao,
+    preview: scripts,
+    instrucoes: `Confirme rapidinho: "Beleza, vou publicar a *Opção ${opcao}*. Pode postar?" Se o dono confirmar ('pode postar', 'sim', 'manda'), chame confirmar_postagem_redes com token="${token}". Se ele pedir ajuste, chame revisar_post_pendente.`,
   });
 }
 
@@ -3119,13 +3244,14 @@ async function toolPostarMidiaBiblioteca(
     const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
     if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
 
-    const scriptsEntries = await Promise.all(
+    const variantesEntries = await Promise.all(
       redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
+        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
       }),
     );
-    let scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+    let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
+    let scripts: Record<string, string> = Object.fromEntries(variantesEntries.map(([r, v]) => [r, v.A]));
 
     // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
     const incluirCta = !!args?.incluir_cta_whatsapp;
@@ -3133,7 +3259,12 @@ async function toolPostarMidiaBiblioteca(
     if (incluirCta) {
       const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
       if (telAgente) {
-        scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+        variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
+          A: appendWhatsappCta(v.A, telAgente),
+          B: appendWhatsappCta(v.B, telAgente),
+          C: appendWhatsappCta(v.C, telAgente),
+        }]));
+        scripts = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, v.A]));
         ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
       } else {
         ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
@@ -3141,7 +3272,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -3158,10 +3289,10 @@ async function toolPostarMidiaBiblioteca(
 
     const perguntaCta = incluirCta
       ? ""
-      : ` Pergunte TAMBÉM: "Quer incluir um 'Chama no WhatsApp' no post?" — se disser sim, chame revisar_post_pendente com token="${token}" e incluir_cta_whatsapp=true (não precisa passar ajuste).`;
+      : ` Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir (revisar_post_pendente com incluir_cta_whatsapp=true).`;
 
     return JSON.stringify({
-      status: "aguardando_confirmacao",
+      status: "aguardando_escolha_variante",
       fonte: "biblioteca_midias",
       token,
       formato,
@@ -3169,12 +3300,13 @@ async function toolPostarMidiaBiblioteca(
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
       tom,
       redes,
-      preview: scripts,
+      variantes,
+      opcao_ativa: "A",
       aviso_formato: avisoFormato,
       aviso_reels: avisoReels,
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e no final pergunte EXPLICITAMENTE: "Quer ajustar algo antes de postar? (ex: tirar/incluir informação, mudar preço, deixar mais curto, mudar o tom) Ou responde 'pode postar' pra publicar já."${perguntaCta} Se o dono pedir AJUSTE no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. Se confirmar ('pode postar', 'manda', 'vai'), chame confirmar_postagem_redes com token="${token}".`,
+      instrucoes: `Diga o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e mostre as 3 OPÇÕES A/B/C do texto de forma clara e separada, usando os textos de \`variantes\`. Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser ajustar algo (mais curto, mudar tom, tirar preço), me diga."${perguntaCta} Quando o dono responder "A"/"B"/"C"/"opção X", chame escolher_variante_post com token="${token}" e opcao=<letra>. Se pedir ajuste no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal>. Se confirmar ("pode postar"), chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -3509,6 +3641,21 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "escolher_variante_post",
+      description: "🎯 USE quando o dono responder 'A', 'B', 'C', 'opção B', 'a segunda', 'quero a C' etc para ESCOLHER qual das 3 variantes do post pendente vai publicar. Troca a variante ativa (sem chamar IA). Depois pergunte se pode postar.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Token de 8 chars do post pendente." },
+          opcao: { type: "string", description: "Letra da opção escolhida: A, B ou C." },
+        },
+        required: ["token", "opcao"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "salvar_midia_biblioteca",
       description: "🔴 USE quando receber foto, vídeo ou áudio nesta mensagem — mesmo sem legenda — para arquivar na biblioteca de Mídias (/midias). NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes. Se o remetente NÃO for dono/responsável, nunca fale de publicar/reusar nem pergunte rede/formato; apenas confirme recebimento e, se fizer sentido, ofereça encaminhar ao responsável. Passe em 'contexto' o que foi falado junto, ou string vazia se não falou nada.",
       parameters: {
@@ -3754,6 +3901,7 @@ async function runTool(
   if (name === "postar_redes_sociais") return { result: await toolPostarRedesSociais(args ?? {}, ctx) };
   if (name === "confirmar_postagem_redes") return { result: await toolConfirmarPostagemRedes(args ?? {}, ctx) };
   if (name === "revisar_post_pendente") return { result: await toolRevisarPostPendente(args ?? {}, ctx) };
+  if (name === "escolher_variante_post") return { result: await toolEscolherVariantePost(args ?? {}, ctx) };
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "encaminhar_recado_ao_dono") return { result: await toolEncaminharRecadoAoDono(args ?? {}, ctx) };
@@ -3984,7 +4132,7 @@ async function callGemini(
         console.log(`[pietro][tool] ${name}`, args);
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
-        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente") captureSocialToken(result);
+        if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
@@ -5245,7 +5393,7 @@ Regras:
             const formato = formatoFromPendingMarker(marker);
             const midiaTipo = midiaTipoFromPendingMarker(marker);
             const redes = [...new Set(pendRows.map((r: any) => r.platform))].join(", ");
-            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO CONFIRMAÇÃO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n\nCOMO ROTEAR A PRÓXIMA MENSAGEM DO DONO:\n1. CONFIRMAÇÃO curta ("pode postar", "publica", "manda", "manda ver", "vai", "posta", "confirma", "sim", "ok", "tá bom, pode postar"): chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}".\n2. AJUSTE NO TEXTO/SCRIPT (qualquer instrução pra mudar copy: "tira o ACABA HOJE", "põe o preço 89,90", "deixa mais curto", "muda o tom pra profissional", "adiciona que tem garantia", "refaz mais leve", "tira o emoji", "coloca o CNPJ"): chame IMEDIATAMENTE revisar_post_pendente com token="${token}" e ajuste=<a instrução literal do dono>. NÃO recrie o post do zero, NÃO chame postar_midia_biblioteca, NÃO pergunte o contexto de novo (o contexto original já está salvo).\n3. MUDANÇA DE ESCOPO clara (trocar rede, mudar formato feed↔story↔reels, trocar de mídia): aí sim recrie via postar_midia_biblioteca.\n4. Ambíguo (ex: "tá bom, deixa mais curto"): trate como AJUSTE (regra 2) — só publique com confirmação explícita.\n- NÃO chame postar_midia_biblioteca só pra reformular texto — isso reabre loop de contexto e recria mídia. Use revisar_post_pendente.`;
+            pendingConfirmBlock = `\n\nPOST PENDENTE AGUARDANDO ESCOLHA DE VARIANTE OU CONFIRMAÇÃO (últimos 10 min):\n- token: ${token}\n- formato: ${formato}\n- mídia: ${midiaTipo}\n- redes: ${redes}\n- variante ativa: A (default) — o dono pode trocar pra B ou C.\n\nCOMO ROTEAR A PRÓXIMA MENSAGEM DO DONO:\n1. ESCOLHA DE VARIANTE ("A", "B", "C", "a", "b", "c", "opção A", "opção B", "opção C", "a primeira", "a segunda", "a terceira", "quero a B", "gostei da C"): chame IMEDIATAMENTE escolher_variante_post com token="${token}" e opcao=<A|B|C>. Depois pergunte "pode postar?".\n2. CONFIRMAÇÃO curta ("pode postar", "publica", "manda", "manda ver", "vai", "posta", "confirma", "sim", "ok", "tá bom, pode postar"): chame IMEDIATAMENTE confirmar_postagem_redes com token="${token}" (publica a variante ativa).\n3. AJUSTE NO TEXTO/SCRIPT ("tira o ACABA HOJE", "põe o preço 89,90", "deixa mais curto", "muda o tom pra profissional", "adiciona que tem garantia", "refaz mais leve", "tira o emoji"): chame IMEDIATAMENTE revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. NÃO recrie o post do zero, NÃO chame postar_midia_biblioteca.\n4. MUDANÇA DE ESCOPO clara (trocar rede, mudar formato feed↔story↔reels, trocar de mídia): aí sim recrie via postar_midia_biblioteca.\n5. Ambíguo ("tá bom, deixa mais curto"): trate como AJUSTE (regra 3) — só publique com confirmação explícita.\n- NÃO chame postar_midia_biblioteca só pra reformular texto ou trocar variante — use as tools acima.`;
           }
         }
       }
