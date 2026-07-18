@@ -2651,6 +2651,27 @@ function formatSocialPostToolResult(raw: string): string {
   let data: any = null;
   try { data = JSON.parse(raw); } catch { return raw; }
 
+  // Novo fluxo: 3 opções A/B/C
+  if (data?.status === "aguardando_escolha_variante") {
+    const redes: string[] = Array.isArray(data.redes) ? data.redes : [];
+    const variantes = data.variantes || {};
+    // Se todas redes têm o mesmo texto por variante, mostra 1 vez só. Senão mostra por rede.
+    const primeira = redes[0];
+    const v0 = variantes[primeira] || { A: "", B: "", C: "" };
+    const allEqual = redes.every((r) => {
+      const v = variantes[r] || {};
+      return v.A === v0.A && v.B === v0.B && v.C === v0.C;
+    });
+    const bloco = (v: any) => `*Opção A — Direta*\n${v.A || ""}\n\n*Opção B — História*\n${v.B || ""}\n\n*Opção C — Interativa*\n${v.C || ""}`;
+    const preview = allEqual
+      ? bloco(v0)
+      : redes.map((r) => `━━━ *${r.toUpperCase()}* ━━━\n${bloco(variantes[r] || {})}`).join("\n\n");
+    const aviso = data?.aviso_formato ? `\n\n_${data.aviso_formato}_` : "";
+    const avisoReels = data?.aviso_reels ? `\n_ℹ️ ${data.aviso_reels}_` : "";
+    const pergunta = `Qual você prefere? Responde *A*, *B* ou *C* — ou "pode postar" pra ir com a A.\nSe quiser ajustar (mais curto, tirar preço, mudar tom), me diga.`;
+    return `Preparei 3 opções pra você escolher 👇${aviso}${avisoReels}<<SPLIT>>${preview}<<SPLIT>>${pergunta}<<SPLIT>>pode postar ${data.token}`;
+  }
+
   if (data?.status === "aguardando_confirmacao") {
     const scripts = Object.entries(data.preview ?? {})
       .map(([rede, script]) => `*${rede.toUpperCase()}*\n${script}`)
@@ -2660,6 +2681,7 @@ function formatSocialPostToolResult(raw: string): string {
     const convite = `Quer ajustar algo antes de postar? Me diga o que mudar (ex: "mais curto", "foca nas tecnologias da AMZ", "tira o ACABA HOJE", "muda o tom pra profissional"). Se estiver bom, responde:`;
     return `Perfeito, Felicio. Encontrei: *${data.produto?.nome ?? "produto"}*\n\n${scripts}${avisoReels}<<SPLIT>>${convite}<<SPLIT>>pode postar ${data.token}`;
   }
+
 
   if (data?.status === "publicado") {
     const redesArr = Array.isArray(data.redes_publicadas) ? data.redes_publicadas : [];
