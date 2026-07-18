@@ -51,6 +51,38 @@ export const CarouselGenerator = () => {
   const productInputRef = useRef<HTMLInputElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-carrega logo e nome da empresa do perfil (converte para data URL para evitar taint do canvas)
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        if (!userData.user) return;
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("logo_reel_url, nome_fantasia, nome")
+          .eq("id", userData.user.id)
+          .maybeSingle();
+        if (!profile) return;
+        const nome = (profile as any).nome_fantasia || (profile as any).nome;
+        setBusinessName((prev) => prev || nome || "");
+        const logoUrl = (profile as any).logo_reel_url;
+        if (logoUrl) {
+          try {
+            const resp = await fetch(logoUrl, { cache: "no-store" });
+            const blob = await resp.blob();
+            const reader = new FileReader();
+            reader.onloadend = () => setLogoImage((prev) => prev || (reader.result as string));
+            reader.readAsDataURL(blob);
+          } catch (e) {
+            console.warn("[CarouselGenerator] falha ao pré-carregar logo:", e);
+          }
+        }
+      } catch (e) {
+        console.warn("[CarouselGenerator] falha ao carregar perfil:", e);
+      }
+    })();
+  }, []);
+
   const handleMultiImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
