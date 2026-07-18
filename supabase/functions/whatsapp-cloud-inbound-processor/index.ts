@@ -3641,6 +3641,21 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "escolher_variante_post",
+      description: "🎯 USE quando o dono responder 'A', 'B', 'C', 'opção B', 'a segunda', 'quero a C' etc para ESCOLHER qual das 3 variantes do post pendente vai publicar. Troca a variante ativa (sem chamar IA). Depois pergunte se pode postar.",
+      parameters: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "Token de 8 chars do post pendente." },
+          opcao: { type: "string", description: "Letra da opção escolhida: A, B ou C." },
+        },
+        required: ["token", "opcao"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "salvar_midia_biblioteca",
       description: "🔴 USE quando receber foto, vídeo ou áudio nesta mensagem — mesmo sem legenda — para arquivar na biblioteca de Mídias (/midias). NÃO tenta casar com produto do catálogo, NÃO publica direto, NÃO pergunta antes. Se o remetente NÃO for dono/responsável, nunca fale de publicar/reusar nem pergunte rede/formato; apenas confirme recebimento e, se fizer sentido, ofereça encaminhar ao responsável. Passe em 'contexto' o que foi falado junto, ou string vazia se não falou nada.",
       parameters: {
