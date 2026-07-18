@@ -2730,21 +2730,27 @@ async function toolPostarRedesSociais(
       return JSON.stringify({ erro: `produto "${prod.nome}" não tem imagem cadastrada — Instagram/TikTok exigem imagem`, sugestoes_do_catalogo: sugestoes });
     }
 
-    // Gera scripts em paralelo (uma vez só) para preview
-    const scriptsEntries = await Promise.all(
+    // Gera 3 OPÇÕES (A/B/C) por rede em paralelo — estilo plataforma /gerar-posts
+    const variantesEntries = await Promise.all(
       redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarScriptRedesSociais(prod, tom, redeGen)] as const;
+        return [r, await gerarTresOpcoesRedeSocial(prod, tom, redeGen)] as const;
       }),
     );
-    let scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+    let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
+    let scripts: Record<string, string> = Object.fromEntries(variantesEntries.map(([r, v]) => [r, v.A]));
 
-    // Feature A: CTA de WhatsApp (opt-in) — número dinâmico do tenant.
+    // Feature A: CTA de WhatsApp (opt-in) — número dinâmico do tenant. Aplica em TODAS as variantes.
     let ctaNota: string | undefined;
     if (incluirCta) {
       const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
       if (telAgente) {
-        scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+        variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
+          A: appendWhatsappCta(v.A, telAgente),
+          B: appendWhatsappCta(v.B, telAgente),
+          C: appendWhatsappCta(v.C, telAgente),
+        }]));
+        scripts = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, v.A]));
         ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
       } else {
         ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
@@ -2752,20 +2758,21 @@ async function toolPostarRedesSociais(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
+    const pending: PendingSocialPost = { produto: prod, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
     return JSON.stringify({
-      status: "aguardando_confirmacao",
+      status: "aguardando_escolha_variante",
       token,
       produto: { nome: prod.nome, preco: prod.preco, imagem_url: prod.imagem_url, link: prod.link },
       tom,
       redes,
-      preview: scripts,
+      variantes, // { facebook: {A,B,C}, instagram: {A,B,C}, ... }
+      opcao_ativa: "A",
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Mostre ao usuário o produto, tom, redes e os scripts (um por rede). ${incluirCta ? "" : "Antes de pedir confirmação, PERGUNTE: 'Quer incluir um Chama no WhatsApp no post?' — se disser sim, chame revisar_post_pendente com token='${token}' e incluir_cta_whatsapp=true. "}Peça confirmação clara. Se confirmar, chame confirmar_postagem_redes com token="${token}". Se pedir mudanças, gere novo preview via revisar_post_pendente.`,
+      instrucoes: `Mostre as 3 OPÇÕES (A, B, C) de forma clara, uma em cada bloco separado, usando os textos de \`variantes\` (se houver mais de uma rede, mostre por rede — mas se o texto for parecido entre redes, mostre 1 vez só). Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C*. Ou 'pode postar' pra publicar a A."\n${incluirCta ? "" : "Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir. "}Quando o dono responder "A" / "B" / "C" / "opção B" etc, chame escolher_variante_post com token="${token}" e opcao=<letra>. Se ele mandar ajuste de texto, chame revisar_post_pendente. Se confirmar ('pode postar'), chame confirmar_postagem_redes.`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
