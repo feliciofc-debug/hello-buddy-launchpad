@@ -61,6 +61,8 @@ export const DarkPremiumCover: React.FC<SlideTemplateProps> = ({ title, body, pr
       <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 16, fontWeight: 500, letterSpacing: 2 }}>DESLIZE PARA VER →</span>
       <ProgressDots current={0} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.2)" />
     </div>
+
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', top: 40, left: 60, maxWidth: 140, maxHeight: 70, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.4))' }} />}
   </div>
 );
 

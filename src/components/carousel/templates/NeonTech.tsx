@@ -59,6 +59,8 @@ export const NeonTechCover: React.FC<SlideTemplateProps> = ({ title, body, prima
       <span style={{ color: `${primaryColor}80`, fontSize: 14, letterSpacing: 3, fontFamily: "system-ui, -apple-system, monospace" }}>[ SWIPE → ]</span>
       <ProgressDots current={0} total={totalSlides} activeColor={primaryColor} inactiveColor="rgba(255,255,255,0.1)" />
     </div>
+
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', top: 40, left: 60, maxWidth: 140, maxHeight: 70, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))' }} />}
   </div>
 );
 

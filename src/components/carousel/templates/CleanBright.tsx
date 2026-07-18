@@ -51,6 +51,8 @@ export const CleanBrightCover: React.FC<SlideTemplateProps> = ({ title, body, pr
       <span style={{ color: '#94A3B8', fontSize: 15, letterSpacing: 2 }}>DESLIZE →</span>
       <ProgressDots current={0} total={totalSlides} activeColor={primaryColor} inactiveColor="#E2E8F0" />
     </div>
+
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', top: 40, left: 60, maxWidth: 140, maxHeight: 70, objectFit: 'contain' }} />}
   </div>
 );
 
