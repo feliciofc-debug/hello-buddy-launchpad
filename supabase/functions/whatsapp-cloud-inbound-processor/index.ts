@@ -2870,38 +2870,53 @@ async function toolRevisarPostPendente(
     || produtoLike?.source === "midias_whatsapp";
   const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
 
-  // Se ajuste vazio (apenas toggle de CTA), reaproveita scripts atuais sem gerar tudo de novo.
-  let scripts: Record<string, string>;
+  // Se ajuste vazio (apenas toggle de CTA), reaproveita variantes atuais sem regerar.
+  let variantes: Record<string, PostVariantes>;
+  const selecionada: "A" | "B" | "C" = p.variantSelecionada || "A";
   if (ajuste.length < 2 && toggleCta) {
-    scripts = { ...p.scripts };
-    // Se o CTA anterior estava presente, remove antes de reaplicar.
-    scripts = Object.fromEntries(
-      Object.entries(scripts).map(([r, s]) => [r, (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd()])
-    );
+    // Remove CTA anterior de todas as variantes; será reaplicado abaixo se incluirCta.
+    const stripCta = (s: string) => (s || "").replace(/\n{1,2}📱 Fale comigo no WhatsApp:.*$/i, "").trimEnd();
+    if (p.variantes) {
+      variantes = Object.fromEntries(Object.entries(p.variantes).map(([r, v]) => [r, {
+        A: stripCta(v.A), B: stripCta(v.B), C: stripCta(v.C),
+      }]));
+    } else {
+      // Compat: sem variantes antigas, usa scripts atuais como A/B/C iguais.
+      variantes = Object.fromEntries(Object.entries(p.scripts).map(([r, s]) => [r, { A: stripCta(s), B: stripCta(s), C: stripCta(s) }]));
+    }
   } else {
-    const scriptsEntries = await Promise.all(
+    // Regenera 3 NOVAS opções aplicando o ajuste.
+    const varEntries = await Promise.all(
       p.redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
+        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
       }),
     );
-    scripts = Object.fromEntries(scriptsEntries);
+    variantes = Object.fromEntries(varEntries);
   }
 
-  // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
+  // Feature A: CTA de WhatsApp (opt-in) — aplica em TODAS as variantes.
   const incluirCta = toggleCta ? !!args?.incluir_cta_whatsapp : !!p.incluirCtaWhatsapp;
   let ctaNota: string | undefined;
   if (incluirCta) {
     const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
     if (telAgente) {
-      scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+      variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
+        A: appendWhatsappCta(v.A, telAgente),
+        B: appendWhatsappCta(v.B, telAgente),
+        C: appendWhatsappCta(v.C, telAgente),
+      }]));
       ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
     } else {
       ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
     }
   }
 
-  // Atualiza social_posts_queue (mantém error_message/marker/token e status intactos).
+  const scripts: Record<string, string> = Object.fromEntries(
+    Object.entries(variantes).map(([r, v]) => [r, v[selecionada] || v.A])
+  );
+
+  // Atualiza social_posts_queue.
   if (p.queueRows?.length) {
     await Promise.all(p.queueRows.map((row) => {
       const novo = scripts[row.platform];
@@ -2912,20 +2927,63 @@ async function toolRevisarPostPendente(
     }));
   }
 
-  // Atualiza cache em memória.
-  const atualizado: PendingSocialPost = { ...p, scripts, incluirCtaWhatsapp: incluirCta };
+  const atualizado: PendingSocialPost = { ...p, scripts, variantes, variantSelecionada: selecionada, incluirCtaWhatsapp: incluirCta };
   PENDING_POSTS.set(token, atualizado);
 
   return JSON.stringify({
-    status: "aguardando_confirmacao",
+    status: "aguardando_escolha_variante",
     revisado: true,
     token,
     formato: p.formato || "feed",
     redes: p.redes,
-    preview: scripts,
+    variantes,
+    opcao_ativa: selecionada,
     cta_whatsapp: incluirCta,
     cta_nota: ctaNota,
-    instrucoes: `Mostre o script REVISADO ao dono e pergunte "quer mais algum ajuste ou pode postar?". Se pedir novo ajuste, chame revisar_post_pendente de novo com o MESMO token="${token}". Se confirmar, chame confirmar_postagem_redes com token="${token}".`,
+    instrucoes: `Mostre as 3 OPÇÕES A/B/C REVISADAS de forma clara (uma por bloco). Pergunte: "Ficou melhor? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser mais um ajuste, é só me dizer." Se responder A/B/C: chame escolher_variante_post. Se pedir novo ajuste: chame revisar_post_pendente de novo com token="${token}". Se confirmar: chame confirmar_postagem_redes com token="${token}".`,
+  });
+}
+
+// ---- escolher_variante_post: swap barato da opção ativa (A/B/C), sem regerar IA ----
+async function toolEscolherVariantePost(
+  args: { token: string; opcao: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  if (!isOwner(ctx)) return JSON.stringify({ erro: "acao_restrita_ao_responsavel", mensagem: "Essa ação é restrita ao responsável da conta." });
+  pendingCleanup();
+  const token = (args?.token || "").trim().toLowerCase();
+  const opcaoRaw = (args?.opcao || "").toString().trim().toUpperCase();
+  const opcao = (opcaoRaw.match(/[ABC]/)?.[0] || "") as "A" | "B" | "C" | "";
+  if (!/^[a-f0-9]{8}$/.test(token)) return JSON.stringify({ erro: "token inválido" });
+  if (!opcao) return JSON.stringify({ erro: "opção inválida — use A, B ou C" });
+
+  const p = PENDING_POSTS.get(token) ?? (await loadPendingSocialPost(token, ctx.userId));
+  if (!p) return JSON.stringify({ erro: "token não encontrado ou expirado" });
+  if (p.userId !== ctx.userId) return JSON.stringify({ erro: "token pertence a outro usuário" });
+  if (!p.variantes) return JSON.stringify({ erro: "esse post não tem variantes — use confirmar_postagem_redes direto" });
+
+  const scripts: Record<string, string> = Object.fromEntries(
+    Object.entries(p.variantes).map(([r, v]) => [r, v[opcao] || v.A])
+  );
+
+  if (p.queueRows?.length) {
+    await Promise.all(p.queueRows.map((row) => {
+      const novo = scripts[row.platform];
+      if (!novo) return Promise.resolve();
+      return sb.from("social_posts_queue")
+        .update({ post_text: novo, updated_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }));
+  }
+
+  PENDING_POSTS.set(token, { ...p, scripts, variantSelecionada: opcao });
+
+  return JSON.stringify({
+    status: "variante_selecionada",
+    token,
+    opcao_ativa: opcao,
+    preview: scripts,
+    instrucoes: `Confirme rapidinho: "Beleza, vou publicar a *Opção ${opcao}*. Pode postar?" Se o dono confirmar ('pode postar', 'sim', 'manda'), chame confirmar_postagem_redes com token="${token}". Se ele pedir ajuste, chame revisar_post_pendente.`,
   });
 }
 
