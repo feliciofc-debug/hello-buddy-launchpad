@@ -513,6 +513,19 @@ REGRAS:
               <Textarea value={caption} onChange={e => setCaption(e.target.value)} className="min-h-[100px] text-sm" />
             </div>
 
+            {/* WhatsApp link */}
+            <div className="space-y-2">
+              <Label className="font-semibold">📲 Link do WhatsApp (será anexado à legenda)</Label>
+              <input
+                type="text"
+                value={whatsappLink}
+                onChange={e => setWhatsappLink(e.target.value)}
+                placeholder="https://wa.me/5521999999999"
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              />
+            </div>
+
+
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3">
               <Button onClick={downloadAll} size="lg" className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700">
