@@ -3186,13 +3186,14 @@ async function toolPostarMidiaBiblioteca(
     const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
     if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
 
-    const scriptsEntries = await Promise.all(
+    const variantesEntries = await Promise.all(
       redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarScriptRedesSociais(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
+        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
       }),
     );
-    let scripts: Record<string, string> = Object.fromEntries(scriptsEntries);
+    let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
+    let scripts: Record<string, string> = Object.fromEntries(variantesEntries.map(([r, v]) => [r, v.A]));
 
     // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
     const incluirCta = !!args?.incluir_cta_whatsapp;
@@ -3200,7 +3201,12 @@ async function toolPostarMidiaBiblioteca(
     if (incluirCta) {
       const telAgente = await buscarTelefoneAgenteTenant(ctx.userId);
       if (telAgente) {
-        scripts = Object.fromEntries(Object.entries(scripts).map(([r, s]) => [r, appendWhatsappCta(s, telAgente)]));
+        variantes = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, {
+          A: appendWhatsappCta(v.A, telAgente),
+          B: appendWhatsappCta(v.B, telAgente),
+          C: appendWhatsappCta(v.C, telAgente),
+        }]));
+        scripts = Object.fromEntries(Object.entries(variantes).map(([r, v]) => [r, v.A]));
         ctaNota = `CTA de WhatsApp incluído (wa.me/${telAgente}).`;
       } else {
         ctaNota = "Não achei o número do agente pra montar o CTA — post sai sem CTA.";
@@ -3208,7 +3214,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -3225,10 +3231,10 @@ async function toolPostarMidiaBiblioteca(
 
     const perguntaCta = incluirCta
       ? ""
-      : ` Pergunte TAMBÉM: "Quer incluir um 'Chama no WhatsApp' no post?" — se disser sim, chame revisar_post_pendente com token="${token}" e incluir_cta_whatsapp=true (não precisa passar ajuste).`;
+      : ` Se ainda não incluiu CTA de WhatsApp, pergunte também se quer incluir (revisar_post_pendente com incluir_cta_whatsapp=true).`;
 
     return JSON.stringify({
-      status: "aguardando_confirmacao",
+      status: "aguardando_escolha_variante",
       fonte: "biblioteca_midias",
       token,
       formato,
@@ -3236,12 +3242,13 @@ async function toolPostarMidiaBiblioteca(
       produto: { nome: produtoLike.nome, preco: produtoLike.preco, imagem_url: produtoLike.imagem_url },
       tom,
       redes,
-      preview: scripts,
+      variantes,
+      opcao_ativa: "A",
       aviso_formato: avisoFormato,
       aviso_reels: avisoReels,
       cta_whatsapp: incluirCta,
       cta_nota: ctaNota,
-      instrucoes: `Mostre o preview, DEIXE CLARO o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e no final pergunte EXPLICITAMENTE: "Quer ajustar algo antes de postar? (ex: tirar/incluir informação, mudar preço, deixar mais curto, mudar o tom) Ou responde 'pode postar' pra publicar já."${perguntaCta} Se o dono pedir AJUSTE no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal do dono>. Se confirmar ('pode postar', 'manda', 'vai'), chame confirmar_postagem_redes com token="${token}".`,
+      instrucoes: `Diga o formato ("vou postar como ${formato.toUpperCase()}" — cite as redes) e mostre as 3 OPÇÕES A/B/C do texto de forma clara e separada, usando os textos de \`variantes\`. Formato exemplo:\n\n*Opção A — Direta*\n<texto A>\n\n*Opção B — História*\n<texto B>\n\n*Opção C — Interativa*\n<texto C>\n\nDepois pergunte: "Qual você prefere? Responde *A*, *B* ou *C* — ou 'pode postar' pra ir com a A. Se quiser ajustar algo (mais curto, mudar tom, tirar preço), me diga."${perguntaCta} Quando o dono responder "A"/"B"/"C"/"opção X", chame escolher_variante_post com token="${token}" e opcao=<letra>. Se pedir ajuste no texto, chame revisar_post_pendente com token="${token}" e ajuste=<instrução literal>. Se confirmar ("pode postar"), chame confirmar_postagem_redes com token="${token}".`,
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
