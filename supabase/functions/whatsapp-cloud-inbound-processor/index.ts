@@ -2776,6 +2776,56 @@ function detectSocialPostConfirmation(text: string): { token: string; cancelar?:
   return null;
 }
 
+function detectSocialVariantChoice(text: string): "A" | "B" | "C" | null {
+  const normalized = normalizePt(text || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const compact = normalized.replace(/\s+/g, "");
+  if (/^(a|opcaoa|opcao1|primeira|aprimeira|queroa|gosteidaa|ficaa|vaidea)$/.test(compact)) return "A";
+  if (/^(b|opcaob|opcao2|segunda|asegunda|querob|gosteidab|ficab|vaideb)$/.test(compact)) return "B";
+  if (/^(c|opcaoc|opcao3|terceira|aterceira|queroc|gosteidac|ficac|vaidec)$/.test(compact)) return "C";
+  const m = normalized.match(/\b(?:opcao|opção|quero|gostei da|fica com|vai de|seleciona|escolhe)\s*([abc])\b/i);
+  return (m?.[1]?.toUpperCase() as "A" | "B" | "C" | undefined) || null;
+}
+
+async function findLatestPendingSocialToken(userId: string): Promise<string | null> {
+  const cutoff = new Date(Date.now() - SOCIAL_CONFIRMATION_TTL_MS).toISOString();
+  const { data, error } = await sb
+    .from("social_posts_queue")
+    .select("error_message, updated_at, created_at")
+    .eq("user_id", userId)
+    .eq("status", "aguardando_confirmacao")
+    .like("error_message", "jarvis_token:%")
+    .gte("created_at", cutoff)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.warn("[social_pending][latest_token_error]", error.message);
+    return null;
+  }
+  return data?.[0]?.error_message?.match(/jarvis_token:([a-f0-9]{8})/i)?.[1]?.toLowerCase() || null;
+}
+
+async function updatePendingSocialPostMarker(token: string, pending: PendingSocialPost): Promise<void> {
+  const marker = pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto", {
+    variantes: pending.variantes,
+    variantSelecionada: pending.variantSelecionada,
+    incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
+    tom: pending.tom,
+  });
+  const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
+  if (rowIds.length > 0) {
+    await sb.from("social_posts_queue")
+      .update({ error_message: marker, updated_at: new Date().toISOString() })
+      .in("id", rowIds);
+  } else {
+    await sb.from("social_posts_queue")
+      .update({ error_message: marker, updated_at: new Date().toISOString() })
+      .eq("user_id", pending.userId)
+      .eq("status", "aguardando_confirmacao")
+      .like("error_message", `jarvis_token:${token}%`);
+  }
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
