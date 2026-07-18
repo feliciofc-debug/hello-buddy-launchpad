@@ -2257,25 +2257,30 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const scripts: Record<string, string> = {};
   for (const row of rows as any[]) scripts[row.platform] = row.post_text || "";
 
-  const midiaTipoReidratado = midiaTipoFromPendingMarker((rows[0] as any).error_message);
+  const marker = (rows[0] as any).error_message;
+  const state = decodePendingPostState(marker);
+  const midiaTipoReidratado = midiaTipoFromPendingMarker(marker);
 
   return {
     produto: {
       id: (rows[0] as any).produto_id,
       source: (rows[0] as any).produto_source,
-      nome: productNameFromPendingMarker((rows[0] as any).error_message),
+      nome: productNameFromPendingMarker(marker),
       imagem_url: (rows[0] as any).image_url,
       link: (rows[0] as any).link_url,
       midia_tipo: midiaTipoReidratado,
     } as any,
-    tom: "urgencia",
+    tom: state?.tom || "urgencia",
     redes: (rows as any[]).map((r) => r.platform),
     scripts,
     userId,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
-    formato: formatoFromPendingMarker((rows[0] as any).error_message),
+    formato: formatoFromPendingMarker(marker),
     midiaTipo: midiaTipoReidratado,
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
+    variantes: state?.variantes,
+    variantSelecionada: state?.variantSelecionada,
+    incluirCtaWhatsapp: state?.incluirCtaWhatsapp,
   };
 }
 
