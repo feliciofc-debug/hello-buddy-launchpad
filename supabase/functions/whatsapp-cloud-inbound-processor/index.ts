@@ -1994,46 +1994,73 @@ function detectWantsWhatsappCta(text: string): boolean {
 // Postagem em redes sociais (Facebook + Instagram) via Jarvis
 // =========================================================
 
-async function gerarScriptRedesSociais(
+// Gera 3 OPÇÕES (A/B/C) de post curto e engajador — mesmo estilo da plataforma /gerar-posts.
+// A = direto/CTA claro | B = storytelling | C = educativo/interativo
+async function gerarTresOpcoesRedeSocial(
   produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
   tom: string,
   rede: "facebook" | "instagram",
   ajuste?: string,
   brandContext?: string,
-): Promise<string> {
-  const tomLabel = (tom || "urgencia").toLowerCase();
+): Promise<{ A: string; B: string; C: string }> {
+  const tomLabel = (tom || "beneficio").toLowerCase();
   const guia: Record<string, string> = {
-    urgencia: "Tom de URGÊNCIA e escassez. Use gatilhos como '⚡ ÚLTIMAS UNIDADES', 'ACABA HOJE', 'estoque limitado', contagem regressiva. CTA forte: 'Corre no link!'",
-    escassez: "Tom de escassez pura. Foque em 'poucas unidades', 'apenas hoje', 'antes que acabe'.",
-    "black-friday": "Tom BLACK FRIDAY: desconto agressivo, 'menor preço do ano', 'oferta relâmpago'.",
-    "prova-social": "Foque em prova social: 'milhares já compraram', 'avaliação 5 estrelas', 'top vendas'.",
-    beneficio: "Foque nos benefícios reais e transformação que o produto entrega.",
+    urgencia: "Tom com senso de oportunidade (SEM inventar escassez de estoque, contagem regressiva ou 'acaba hoje'). Foco no valor.",
+    escassez: "Tom de oportunidade real (SEM inventar 'últimas unidades' ou 'só hoje' se não estiver no briefing).",
+    "black-friday": "Tom promocional festivo (só cite desconto se o preço/oferta estiver informado).",
+    "prova-social": "Prova social real, sem números inventados. Se briefing citar depoimento/pessoa, use.",
+    beneficio: "Foque em benefícios reais e transformação. Tom leve, conversacional.",
+    institucional: "Tom institucional/agradecimento/indicação — sem pitch forçado.",
   };
-  const guiaTom = guia[tomLabel] ?? guia["urgencia"];
+  const guiaTom = guia[tomLabel] ?? guia["beneficio"];
   const preco = produto.preco ? `R$ ${Number(produto.preco).toFixed(2).replace(".", ",")}` : "";
-  const limite = rede === "instagram" ? 2200 : 1500;
+  const limite = 600; // ← curto e engajador, como a plataforma
   const temLink = !!(produto.link && /^https?:\/\//i.test(produto.link));
-  const ctaRegra = temLink
-    ? `- CTA claro no fim ("👉 Link na bio" para IG, "👉 Compre aqui: ${produto.link}" para FB).`
-    : `- CTA de engajamento no fim (ex: "👉 Chama no direct pra garantir", "Comenta EU QUERO", "Manda mensagem"). NÃO invente link, NÃO escreva "link na bio" se não existir link — foque em contato direto/interesse.`;
-  const prompt = `Você é copywriter de e-commerce. Crie um post para ${rede.toUpperCase()} vendendo/divulgando este produto.
-${guiaTom}
+  const ctaBase = temLink
+    ? (rede === "instagram" ? `CTA no fim: "👉 Link na bio"` : `CTA no fim: "👉 Compre aqui: ${produto.link}"`)
+    : `CTA de engajamento (chama no direct/WhatsApp, "comenta EU QUERO"). NÃO invente link nem "link na bio".`;
 
-PRODUTO: ${produto.nome}
-${produto.descricao ? `CONTEXTO/CONTEÚDO DA IMAGEM: ${produto.descricao}\n(IMPORTANTE: a legenda DEVE conversar com o que está na imagem — nunca contrarie ou ignore o conteúdo visual descrito acima.)` : ""}
-${preco ? `PREÇO: ${preco}` : "PREÇO: (não informar valor no post)"}
-${produto.categoria ? `CATEGORIA: ${produto.categoria}` : ""}
-${temLink ? "" : "OBS: este produto NÃO tem link de compra — é post institucional/lifestyle/engajamento."}
+  const descLower = `${produto.nome} ${produto.descricao || ""} ${produto.categoria || ""}`.toLowerCase();
+  const ehConsorcio = /consorci|consórci|carta\s+de\s+cr[eé]dito/.test(descLower);
+  const regraConsorcio = ehConsorcio
+    ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
+    : "";
 
-REGRAS:
-- Máx ${limite} caracteres.
-- Comece com 1 linha impactante e emoji.
-- 2-4 bullets de benefício.
-${ctaRegra}
-- 6-10 hashtags no final (separadas por espaço), relevantes ao produto.
-- NUNCA use markdown, aspas, colchetes ou "Aqui está seu post:". Devolva SÓ o texto pronto.
-${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique EXATAMENTE, mantendo o resto do post coerente): "${ajuste}"` : ""}
-${brandContext ? `\n🏢 CONTEXTO DA MARCA (use como BASE do post — a imagem/vídeo é da MARCA, não de um produto físico):\n${brandContext}\n\nEscreva o post FALANDO DAS TECNOLOGIAS E BENEFÍCIOS reais listados acima. NÃO invente "produto físico", NÃO use "maleta", "kit", "unidades", "estoque limitado" — é uma EMPRESA DE TECNOLOGIA. Foco em: o que a plataforma FAZ, quem ATENDE (PMEs), e o RESULTADO pro cliente (mais vendas, menos trabalho manual, IA 24/7). CTA de conversão: agendar demo, falar no WhatsApp, testar a plataforma.` : ""}`;
+  const prompt = `Você é copywriter sênior de redes sociais. Crie 3 VARIAÇÕES CURTAS de post para ${rede.toUpperCase()} sobre o produto/tema abaixo.
+${guiaTom}${regraConsorcio}
+
+DADOS:
+- Nome/tema: ${produto.nome}
+${produto.descricao ? `- Contexto/imagem: ${produto.descricao}\n  (a legenda DEVE conversar com esse contexto — nunca contrarie o visual)` : ""}
+${preco ? `- Preço: ${preco}` : "- Preço: não citar valor"}
+${produto.categoria ? `- Categoria: ${produto.categoria}` : ""}
+${temLink ? `- Link: ${produto.link}` : "- SEM link (post de engajamento/institucional)"}
+
+REGRAS DURAS (valem pra TODAS as 3 opções):
+- Máximo ${limite} caracteres por opção (curto, direto, engajador — nada de textão).
+- 1ª linha impactante com emoji.
+- 1-3 bullets curtos ou frases curtas de benefício (nada de parágrafo longo).
+- ${ctaBase}
+- 5-8 hashtags no fim, relevantes, separadas por espaço.
+- NUNCA invente: preço, desconto, "%", "só hoje", "estoque", "últimas unidades", "vagas limitadas", depoimentos, números de clientes.
+- Se briefing cita PESSOA nomeada (consultor/atleta/cliente), use essa pessoa nas 3 opções.
+- Sem markdown, sem "Aqui está:", sem aspas envolvendo o post.
+
+ÂNGULOS OBRIGATÓRIOS (uma opção por ângulo):
+- Opção A — DIRETA/CTA: apresenta e chama pra ação (o que é + benefício-chave + CTA).
+- Opção B — STORYTELLING: começa com uma cena, dor, curiosidade ou história real do contexto; termina no CTA suave.
+- Opção C — INTERATIVA/EDUCATIVA: pergunta que engaja OU mini-ensinamento sobre o tema (dica, mito x verdade, "sabia que…"), com CTA leve no fim.
+
+${ajuste ? `\n🎯 AJUSTE OBRIGATÓRIO DO DONO (aplique nas 3 opções, mantendo os ângulos): "${ajuste}"` : ""}
+${brandContext ? `\n🏢 CONTEXTO DA MARCA (BASE — não é produto físico):\n${brandContext}\n\nFale das tecnologias/benefícios reais. NÃO use "maleta/kit/unidades/estoque". CTA: agendar demo, falar no WhatsApp, testar a plataforma.` : ""}
+
+Responda APENAS com JSON válido nesta forma exata:
+{"A":"texto da opção A","B":"texto da opção B","C":"texto da opção C"}`;
+
+  const fallback = (): { A: string; B: string; C: string } => {
+    const base = `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n${(produto.descricao || "").slice(0, 200)}\n\n${temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!"}`.slice(0, limite);
+    return { A: base, B: base, C: base };
+  };
 
   try {
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -2041,17 +2068,47 @@ ${brandContext ? `\n🏢 CONTEXTO DA MARCA (use como BASE do post — a imagem/v
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          { role: "system", content: "Você retorna APENAS JSON válido, sem markdown, sem texto extra." },
+          { role: "user", content: prompt },
+        ],
         temperature: 0.9,
+        max_tokens: 3500,
+        response_format: { type: "json_object" },
       }),
     });
+    if (!res.ok) {
+      console.error("[postar_redes] gemini !ok:", res.status, await res.text());
+      return fallback();
+    }
     const data = await res.json();
-    const txt = data?.choices?.[0]?.message?.content?.trim() || "";
-    return txt.slice(0, limite);
+    let txt = (data?.choices?.[0]?.message?.content || "").trim();
+    txt = txt.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    const m = txt.match(/\{[\s\S]*\}/);
+    if (!m) return fallback();
+    const parsed = JSON.parse(m[0].replace(/,(\s*[}\]])/g, "$1"));
+    const clean = (s: unknown) => (typeof s === "string" ? s.trim().slice(0, limite) : "");
+    const A = clean(parsed.A) || clean(parsed.opcaoA);
+    const B = clean(parsed.B) || clean(parsed.opcaoB);
+    const C = clean(parsed.C) || clean(parsed.opcaoC);
+    if (!A || !B || !C) return fallback();
+    return { A, B, C };
   } catch (e) {
-    console.error("[postar_redes] gerar script falhou:", e);
-    return `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n${produto.descricao ?? ""}\n\n${temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!"}`.slice(0, limite);
+    console.error("[postar_redes] gerar 3 opções falhou:", e);
+    return fallback();
   }
+}
+
+// Wrapper compat: devolve UMA string (a opção A) — mantém API antiga viva pra qualquer chamador residual.
+async function gerarScriptRedesSociais(
+  produto: { nome: string; descricao?: string | null; preco?: number | null; link?: string | null; categoria?: string | null; source?: string | null },
+  tom: string,
+  rede: "facebook" | "instagram",
+  ajuste?: string,
+  brandContext?: string,
+): Promise<string> {
+  const { A } = await gerarTresOpcoesRedeSocial(produto, tom, rede, ajuste, brandContext);
+  return A;
 }
 
 // Cache em memória + persistência no banco para posts pendentes.
