@@ -250,9 +250,13 @@ REGRAS:
         const { data: urlData } = supabase.storage.from("carousels").getPublicUrl(filename);
         uploadedUrls.push(urlData.publicUrl);
       }
+      const finalCaption = whatsappLink.trim()
+        ? `${caption}\n\n📲 Fale conosco no WhatsApp: ${whatsappLink.trim()}`
+        : caption;
       const { error } = await supabase.functions.invoke("meta-publish-carousel", {
-        body: { user_id: userData.user.id, image_urls: uploadedUrls, caption },
+        body: { user_id: userData.user.id, image_urls: uploadedUrls, caption: finalCaption },
       });
+
       if (error) throw error;
       toast.success("🎉 Carrossel publicado no Instagram!");
     } catch (err: any) { toast.error(err.message || "Erro ao publicar"); }
