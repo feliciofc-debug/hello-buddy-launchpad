@@ -59,12 +59,16 @@ export const CarouselGenerator = () => {
         if (!userData.user) return;
         const { data: profile } = await supabase
           .from("profiles")
-          .select("logo_reel_url, nome_fantasia, nome")
+          .select("logo_reel_url, nome_fantasia, nome, whatsapp, whatsapp_link_default")
           .eq("id", userData.user.id)
           .maybeSingle();
         if (!profile) return;
         const nome = (profile as any).nome_fantasia || (profile as any).nome;
         setBusinessName((prev) => prev || nome || "");
+        const wa = (profile as any).whatsapp_link_default
+          || ((profile as any).whatsapp ? `https://wa.me/${String((profile as any).whatsapp).replace(/\D/g, "")}` : "");
+        if (wa) setWhatsappLink((prev) => prev || wa);
+
         const logoUrl = (profile as any).logo_reel_url;
         if (logoUrl) {
           try {
