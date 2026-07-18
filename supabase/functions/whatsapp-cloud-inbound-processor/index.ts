@@ -4163,6 +4163,14 @@ async function callGemini(
         const { result, imageUrl } = await runTool(name, args, toolCtx);
         if (imageUrl) pendingImageUrl = imageUrl;
         if (name === "postar_midia_biblioteca" || name === "postar_redes_sociais" || name === "revisar_post_pendente" || name === "escolher_variante_post") captureSocialToken(result);
+        // Short-circuit determinístico do fluxo A/B/C — evita a IA reescrever/repetir textos.
+        try {
+          const parsed = JSON.parse(result);
+          const st = parsed?.status;
+          if (st === "aguardando_escolha_variante" || st === "variante_selecionada") {
+            return { text: formatSocialPostToolResult(result), imageUrl: pendingImageUrl };
+          }
+        } catch { /* ignore */ }
         messages.push({ role: "tool", tool_call_id: tc.id, content: result });
       }
       continue;
