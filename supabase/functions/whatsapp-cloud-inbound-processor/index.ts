@@ -3065,6 +3065,7 @@ async function toolRevisarPostPendente(
 
   const atualizado: PendingSocialPost = { ...p, scripts, variantes, variantSelecionada: selecionada, incluirCtaWhatsapp: incluirCta };
   PENDING_POSTS.set(token, atualizado);
+  await updatePendingSocialPostMarker(token, atualizado);
 
   return JSON.stringify({
     status: "aguardando_escolha_variante",
@@ -3113,6 +3114,7 @@ async function toolEscolherVariantePost(
   }
 
   PENDING_POSTS.set(token, { ...p, scripts, variantSelecionada: opcao });
+  await updatePendingSocialPostMarker(token, { ...p, scripts, variantSelecionada: opcao });
 
   return JSON.stringify({
     status: "variante_selecionada",
