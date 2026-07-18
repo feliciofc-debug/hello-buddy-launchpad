@@ -43,6 +43,8 @@ export const CarouselGenerator = () => {
   const [slides, setSlides] = useState<SlideData[]>([]);
   const [renderedImages, setRenderedImages] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
+  const [whatsappLink, setWhatsappLink] = useState("");
+
   const [activeSlide, setActiveSlide] = useState(0);
   const [publishing, setPublishing] = useState(false);
   const [savingProduct, setSavingProduct] = useState(false);
@@ -59,12 +61,16 @@ export const CarouselGenerator = () => {
         if (!userData.user) return;
         const { data: profile } = await supabase
           .from("profiles")
-          .select("logo_reel_url, nome_fantasia, nome")
+          .select("logo_reel_url, nome_fantasia, nome, whatsapp, whatsapp_link_default")
           .eq("id", userData.user.id)
           .maybeSingle();
         if (!profile) return;
         const nome = (profile as any).nome_fantasia || (profile as any).nome;
         setBusinessName((prev) => prev || nome || "");
+        const wa = (profile as any).whatsapp_link_default
+          || ((profile as any).whatsapp ? `https://wa.me/${String((profile as any).whatsapp).replace(/\D/g, "")}` : "");
+        if (wa) setWhatsappLink((prev) => prev || wa);
+
         const logoUrl = (profile as any).logo_reel_url;
         if (logoUrl) {
           try {
@@ -244,9 +250,13 @@ REGRAS:
         const { data: urlData } = supabase.storage.from("carousels").getPublicUrl(filename);
         uploadedUrls.push(urlData.publicUrl);
       }
+      const finalCaption = whatsappLink.trim()
+        ? `${caption}\n\n📲 Fale conosco no WhatsApp: ${whatsappLink.trim()}`
+        : caption;
       const { error } = await supabase.functions.invoke("meta-publish-carousel", {
-        body: { user_id: userData.user.id, image_urls: uploadedUrls, caption },
+        body: { user_id: userData.user.id, image_urls: uploadedUrls, caption: finalCaption },
       });
+
       if (error) throw error;
       toast.success("🎉 Carrossel publicado no Instagram!");
     } catch (err: any) { toast.error(err.message || "Erro ao publicar"); }
@@ -502,6 +512,19 @@ REGRAS:
               <Label className="font-semibold">📝 Legenda do post</Label>
               <Textarea value={caption} onChange={e => setCaption(e.target.value)} className="min-h-[100px] text-sm" />
             </div>
+
+            {/* WhatsApp link */}
+            <div className="space-y-2">
+              <Label className="font-semibold">📲 Link do WhatsApp (será anexado à legenda)</Label>
+              <input
+                type="text"
+                value={whatsappLink}
+                onChange={e => setWhatsappLink(e.target.value)}
+                placeholder="https://wa.me/5521999999999"
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              />
+            </div>
+
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3">

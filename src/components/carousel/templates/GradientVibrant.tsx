@@ -53,7 +53,7 @@ export const GradientVibrantCover: React.FC<SlideTemplateProps> = ({ title, body
       <ProgressDots current={0} total={totalSlides} activeColor="#FFFFFF" inactiveColor="rgba(255,255,255,0.3)" />
     </div>
 
-    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', top: 40, left: 60, maxWidth: 140, maxHeight: 70, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }} />}
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', top: 40, left: 60, maxWidth: 240, maxHeight: 120, objectFit: 'contain', filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.3))' }} />}
   </div>
 );
 
@@ -131,7 +131,7 @@ export const GradientVibrantContent: React.FC<SlideTemplateProps> = ({ title, bo
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={number || 0} total={totalSlides} activeColor="#FFFFFF" inactiveColor="rgba(255,255,255,0.3)" />
     </div>
-    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 180, maxHeight: 85, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
 
@@ -163,6 +163,6 @@ export const GradientVibrantCTA: React.FC<SlideTemplateProps> = ({ title, body, 
     <div style={{ position: 'absolute', bottom: 50, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
       <ProgressDots current={totalSlides - 1} total={totalSlides} activeColor="#FFFFFF" inactiveColor="rgba(255,255,255,0.3)" />
     </div>
-    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 100, maxHeight: 45, objectFit: 'contain', opacity: 0.7 }} />}
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', bottom: 50, right: 60, maxWidth: 180, maxHeight: 85, objectFit: 'contain', opacity: 0.7 }} />}
   </div>
 );
