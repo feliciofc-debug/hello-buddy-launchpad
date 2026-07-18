@@ -2139,13 +2139,51 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+type PendingPostMarkerState = {
+  variantes?: Record<string, PostVariantes>;
+  variantSelecionada?: "A" | "B" | "C";
+  incluirCtaWhatsapp?: boolean;
+  tom?: string;
+};
+
+function encodePendingPostState(state?: PendingPostMarkerState): string {
+  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom)) return "";
+  try {
+    const json = JSON.stringify(state);
+    const bytes = new TextEncoder().encode(json);
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  } catch (e) {
+    console.warn("[social_pending][state_encode_error]", (e as Error).message);
+    return "";
+  }
+}
+
+function decodePendingPostState(marker?: string | null): PendingPostMarkerState | null {
+  const encoded = marker?.match(/;state:([^;]+)/)?.[1];
+  if (!encoded) return null;
+  try {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(encoded.length / 4) * 4, "=");
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) {
+    console.warn("[social_pending][state_decode_error]", (e as Error).message);
+    return null;
+  }
+}
+
 function pendingPostMarker(
   token: string,
   productName?: string,
   formato: "feed" | "story" | "reels" = "feed",
   midiaTipo: "foto" | "video" = "foto",
+  state?: PendingPostMarkerState,
 ): string {
-  return `jarvis_token:${token};formato:${formato};midia:${midiaTipo};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
+  const encodedState = encodePendingPostState(state);
+  const statePart = encodedState ? `;state:${encodedState}` : "";
+  return `jarvis_token:${token};formato:${formato};midia:${midiaTipo}${statePart};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
 }
 
 function productNameFromPendingMarker(marker?: string | null): string {
@@ -2173,7 +2211,12 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     link_url: pending.produto?.link || null,
     status: "aguardando_confirmacao",
     scheduled_at: null,
-    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto"),
+    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto", {
+      variantes: pending.variantes,
+      variantSelecionada: pending.variantSelecionada,
+      incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
+      tom: pending.tom,
+    }),
     updated_at: new Date().toISOString(),
   }));
 
