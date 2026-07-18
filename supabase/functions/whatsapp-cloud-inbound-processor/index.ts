@@ -4068,6 +4068,23 @@ async function callGemini(
 
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
+    const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
+
+    // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
+    const variantChoice = latestPendingSocialToken ? detectSocialVariantChoice(userContent) : null;
+    if (variantChoice) {
+      console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
+      const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
+      return { text: formatSocialPostToolResult(variantResult) };
+    }
+
+    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
+    if (plainPostConfirmation) {
+      console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
+      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken!, cancelar: plainPostConfirmation.cancelar }, toolCtx);
+      return { text: formatSocialPostToolResult(confirmResult) };
+    }
+
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
     const postConfirmation = detectSocialPostConfirmation(userContent);
     if (postConfirmation) {
