@@ -2139,13 +2139,51 @@ function isUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+type PendingPostMarkerState = {
+  variantes?: Record<string, PostVariantes>;
+  variantSelecionada?: "A" | "B" | "C";
+  incluirCtaWhatsapp?: boolean;
+  tom?: string;
+};
+
+function encodePendingPostState(state?: PendingPostMarkerState): string {
+  if (!state || (!state.variantes && !state.variantSelecionada && state.incluirCtaWhatsapp === undefined && !state.tom)) return "";
+  try {
+    const json = JSON.stringify(state);
+    const bytes = new TextEncoder().encode(json);
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  } catch (e) {
+    console.warn("[social_pending][state_encode_error]", (e as Error).message);
+    return "";
+  }
+}
+
+function decodePendingPostState(marker?: string | null): PendingPostMarkerState | null {
+  const encoded = marker?.match(/;state:([^;]+)/)?.[1];
+  if (!encoded) return null;
+  try {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(encoded.length / 4) * 4, "=");
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) {
+    console.warn("[social_pending][state_decode_error]", (e as Error).message);
+    return null;
+  }
+}
+
 function pendingPostMarker(
   token: string,
   productName?: string,
   formato: "feed" | "story" | "reels" = "feed",
   midiaTipo: "foto" | "video" = "foto",
+  state?: PendingPostMarkerState,
 ): string {
-  return `jarvis_token:${token};formato:${formato};midia:${midiaTipo};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
+  const encodedState = encodePendingPostState(state);
+  const statePart = encodedState ? `;state:${encodedState}` : "";
+  return `jarvis_token:${token};formato:${formato};midia:${midiaTipo}${statePart};produto:${(productName || "produto").replace(/[\n\r]+/g, " ").slice(0, 160)}`;
 }
 
 function productNameFromPendingMarker(marker?: string | null): string {
@@ -2173,7 +2211,12 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
     link_url: pending.produto?.link || null,
     status: "aguardando_confirmacao",
     scheduled_at: null,
-    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto"),
+    error_message: pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto", {
+      variantes: pending.variantes,
+      variantSelecionada: pending.variantSelecionada,
+      incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
+      tom: pending.tom,
+    }),
     updated_at: new Date().toISOString(),
   }));
 
@@ -2214,25 +2257,30 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
   const scripts: Record<string, string> = {};
   for (const row of rows as any[]) scripts[row.platform] = row.post_text || "";
 
-  const midiaTipoReidratado = midiaTipoFromPendingMarker((rows[0] as any).error_message);
+  const marker = (rows[0] as any).error_message;
+  const state = decodePendingPostState(marker);
+  const midiaTipoReidratado = midiaTipoFromPendingMarker(marker);
 
   return {
     produto: {
       id: (rows[0] as any).produto_id,
       source: (rows[0] as any).produto_source,
-      nome: productNameFromPendingMarker((rows[0] as any).error_message),
+      nome: productNameFromPendingMarker(marker),
       imagem_url: (rows[0] as any).image_url,
       link: (rows[0] as any).link_url,
       midia_tipo: midiaTipoReidratado,
     } as any,
-    tom: "urgencia",
+    tom: state?.tom || "urgencia",
     redes: (rows as any[]).map((r) => r.platform),
     scripts,
     userId,
     createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
-    formato: formatoFromPendingMarker((rows[0] as any).error_message),
+    formato: formatoFromPendingMarker(marker),
     midiaTipo: midiaTipoReidratado,
     queueRows: (rows as any[]).map((r) => ({ id: r.id, platform: r.platform })),
+    variantes: state?.variantes,
+    variantSelecionada: state?.variantSelecionada,
+    incluirCtaWhatsapp: state?.incluirCtaWhatsapp,
   };
 }
 
@@ -2728,6 +2776,64 @@ function detectSocialPostConfirmation(text: string): { token: string; cancelar?:
   return null;
 }
 
+function detectSocialVariantChoice(text: string): "A" | "B" | "C" | null {
+  const normalized = normalizePt(text || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const compact = normalized.replace(/\s+/g, "");
+  if (/^(a|opcaoa|opcao1|primeira|aprimeira|queroa|gosteidaa|ficaa|vaidea)$/.test(compact)) return "A";
+  if (/^(b|opcaob|opcao2|segunda|asegunda|querob|gosteidab|ficab|vaideb)$/.test(compact)) return "B";
+  if (/^(c|opcaoc|opcao3|terceira|aterceira|queroc|gosteidac|ficac|vaidec)$/.test(compact)) return "C";
+  const m = normalized.match(/\b(?:opcao|opção|quero|gostei da|fica com|vai de|seleciona|escolhe)\s*([abc])\b/i);
+  return (m?.[1]?.toUpperCase() as "A" | "B" | "C" | undefined) || null;
+}
+
+function detectPlainSocialPostConfirmation(text: string): { cancelar?: boolean } | null {
+  const normalized = normalizePt(text || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  if (/^(cancela|cancelar|nao posta|nao publicar|descarta|deixa pra la)$/.test(normalized)) return { cancelar: true };
+  if (/^(sim|ok|ta bom|tudo certo|pode|pode postar|posta|postar|publica|publique|confirmo|confirma|manda|manda ver|vai|aprovado|pode publicar agora)$/.test(normalized)) return {};
+  return null;
+}
+
+async function findLatestPendingSocialToken(userId: string): Promise<string | null> {
+  const cutoff = new Date(Date.now() - SOCIAL_CONFIRMATION_TTL_MS).toISOString();
+  const { data, error } = await sb
+    .from("social_posts_queue")
+    .select("error_message, updated_at, created_at")
+    .eq("user_id", userId)
+    .eq("status", "aguardando_confirmacao")
+    .like("error_message", "jarvis_token:%")
+    .gte("created_at", cutoff)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.warn("[social_pending][latest_token_error]", error.message);
+    return null;
+  }
+  return data?.[0]?.error_message?.match(/jarvis_token:([a-f0-9]{8})/i)?.[1]?.toLowerCase() || null;
+}
+
+async function updatePendingSocialPostMarker(token: string, pending: PendingSocialPost): Promise<void> {
+  const marker = pendingPostMarker(token, pending.produto?.nome, pending.formato || "feed", pending.midiaTipo || (pending.produto as any)?.midia_tipo || "foto", {
+    variantes: pending.variantes,
+    variantSelecionada: pending.variantSelecionada,
+    incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
+    tom: pending.tom,
+  });
+  const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
+  if (rowIds.length > 0) {
+    await sb.from("social_posts_queue")
+      .update({ error_message: marker, updated_at: new Date().toISOString() })
+      .in("id", rowIds);
+  } else {
+    await sb.from("social_posts_queue")
+      .update({ error_message: marker, updated_at: new Date().toISOString() })
+      .eq("user_id", pending.userId)
+      .eq("status", "aguardando_confirmacao")
+      .like("error_message", `jarvis_token:${token}%`);
+  }
+}
+
 async function toolPostarRedesSociais(
   args: { produto: string; tom?: string; redes?: string[]; incluir_cta_whatsapp?: boolean },
   ctx: { userId: string; fromNumber: string },
@@ -2959,6 +3065,7 @@ async function toolRevisarPostPendente(
 
   const atualizado: PendingSocialPost = { ...p, scripts, variantes, variantSelecionada: selecionada, incluirCtaWhatsapp: incluirCta };
   PENDING_POSTS.set(token, atualizado);
+  await updatePendingSocialPostMarker(token, atualizado);
 
   return JSON.stringify({
     status: "aguardando_escolha_variante",
@@ -3007,6 +3114,7 @@ async function toolEscolherVariantePost(
   }
 
   PENDING_POSTS.set(token, { ...p, scripts, variantSelecionada: opcao });
+  await updatePendingSocialPostMarker(token, { ...p, scripts, variantSelecionada: opcao });
 
   return JSON.stringify({
     status: "variante_selecionada",
@@ -3960,6 +4068,23 @@ async function callGemini(
 
   if (!hasMedia && typeof userContent === "string") {
     const remetenteEhDono = isOwner(toolCtx);
+    const latestPendingSocialToken = remetenteEhDono ? await findLatestPendingSocialToken(toolCtx.userId) : null;
+
+    // Fluxo A/B/C: resolve seleção e confirmação direto no código, sem depender da IA.
+    const variantChoice = latestPendingSocialToken ? detectSocialVariantChoice(userContent) : null;
+    if (variantChoice) {
+      console.log("[pietro][forced_social_variant_choice]", { token: latestPendingSocialToken, opcao: variantChoice });
+      const variantResult = await toolEscolherVariantePost({ token: latestPendingSocialToken!, opcao: variantChoice }, toolCtx);
+      return { text: formatSocialPostToolResult(variantResult) };
+    }
+
+    const plainPostConfirmation = latestPendingSocialToken ? detectPlainSocialPostConfirmation(userContent) : null;
+    if (plainPostConfirmation) {
+      console.log("[pietro][forced_social_plain_confirm]", { token: latestPendingSocialToken, cancelar: !!plainPostConfirmation.cancelar });
+      const confirmResult = await toolConfirmarPostagemRedes({ token: latestPendingSocialToken!, cancelar: plainPostConfirmation.cancelar }, toolCtx);
+      return { text: formatSocialPostToolResult(confirmResult) };
+    }
+
     // 0) Postagem em redes sociais: atalho determinístico para não deixar o modelo "prometer" preview sem chamar a tool.
     const postConfirmation = detectSocialPostConfirmation(userContent);
     if (postConfirmation) {
