@@ -59,6 +59,8 @@ export const ElegantSerifCover: React.FC<SlideTemplateProps> = ({ title, body, p
     <div style={{ position: 'absolute', bottom: 60, left: 0, right: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
       <ProgressDots current={0} total={totalSlides} activeColor={primaryColor || gold} inactiveColor="#D4D0C8" />
     </div>
+
+    {logoUrl && <img src={logoUrl} alt="Logo" style={{ position: 'absolute', top: 40, left: 60, maxWidth: 140, maxHeight: 70, objectFit: 'contain', opacity: 0.85 }} />}
   </div>
 );
 
