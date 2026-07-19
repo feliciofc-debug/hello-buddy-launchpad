@@ -9353,6 +9353,10 @@ export type Database = {
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
       unaccent: { Args: { "": string }; Returns: string }
+      update_billing_subscription_amount: {
+        Args: { p_amount: number; p_subscription_id: string }
+        Returns: boolean
+      }
       vendedor_definir_senha: {
         Args: { p_senha: string; p_vendedor_id: string }
         Returns: undefined
