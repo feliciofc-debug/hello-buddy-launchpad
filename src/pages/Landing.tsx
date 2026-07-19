@@ -269,8 +269,8 @@ function Landing() {
                 <div className="text-6xl mb-4">🚀</div>
                 <h3 className="text-3xl font-bold mb-4">AMZ OFERTAS PRO</h3>
 
-                <div className="text-5xl font-bold text-green-400 mb-2">
-                  R$ 597<span className="text-xl text-gray-400">/mês</span>
+                <div className="text-3xl font-bold text-green-400 mb-2">
+                  Consulte um especialista
                 </div>
               </div>
 
