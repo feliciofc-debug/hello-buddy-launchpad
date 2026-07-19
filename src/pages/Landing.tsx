@@ -100,7 +100,7 @@ function Landing() {
                   onClick={() => navigate('/cadastro')}
                   className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-orange-500 to-pink-500 hover:shadow-2xl text-white text-lg px-8 py-6 rounded-lg font-bold transition transform hover:scale-105"
                 >
-                  🚀 Contratar Agora · R$ 597/mês
+                  🚀 Fale com um Consultor
                 </button>
                 <a
                   href="https://wa.me/5521995379550?text=Ol%C3%A1!%20Tenho%20interesse%20em%20conhecer%20a%20AMZ%20Ofertas.%20Minha%20vitrine%20Shopee:%20"
@@ -269,8 +269,8 @@ function Landing() {
                 <div className="text-6xl mb-4">🚀</div>
                 <h3 className="text-3xl font-bold mb-4">AMZ OFERTAS PRO</h3>
 
-                <div className="text-5xl font-bold text-green-400 mb-2">
-                  R$ 597<span className="text-xl text-gray-400">/mês</span>
+                <div className="text-3xl font-bold text-green-400 mb-2">
+                  Consulte um especialista
                 </div>
               </div>
 
@@ -464,7 +464,7 @@ function Landing() {
             </a>
           </div>
           <p className="mt-6 text-slate-400">
-            R$ 597/mês · Cancele quando quiser · Configuração em 48h
+            Cancele quando quiser · Configuração em 48h
           </p>
         </div>
       </section>
