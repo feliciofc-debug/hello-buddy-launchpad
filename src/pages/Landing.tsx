@@ -464,7 +464,7 @@ function Landing() {
             </a>
           </div>
           <p className="mt-6 text-slate-400">
-            R$ 597/mês · Cancele quando quiser · Configuração em 48h
+            Cancele quando quiser · Configuração em 48h
           </p>
         </div>
       </section>
