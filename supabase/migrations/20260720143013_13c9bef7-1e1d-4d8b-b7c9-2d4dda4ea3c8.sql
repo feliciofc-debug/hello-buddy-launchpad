@@ -1,0 +1,1 @@
+UPDATE public.billing_subscriptions SET status='active', next_billing_date='2099-12-31' WHERE id='f3019e9e-5e0d-4bbe-8d49-67f06f08f139';
