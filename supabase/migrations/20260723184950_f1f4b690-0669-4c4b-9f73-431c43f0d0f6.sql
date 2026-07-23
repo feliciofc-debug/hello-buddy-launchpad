@@ -1,0 +1,1 @@
+UPDATE public.billing_subscriptions SET status='cancelled' WHERE customer_id IN (SELECT id FROM public.billing_customers WHERE email='eduardaalpaixao@gmail.com'); UPDATE public.subscriptions SET status='canceled' WHERE user_id='8f577fc8-2d84-42ff-add5-7006fe6c727d';
