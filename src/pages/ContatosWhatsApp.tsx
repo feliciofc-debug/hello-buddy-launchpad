@@ -611,7 +611,7 @@ export default function ContatosWhatsApp() {
                 <span>→</span>
                 <span>4. Baixe o CSV</span>
               </div>
-              <Button asChild variant="outline" className="mt-4 border-white/20 text-white hover:bg-white/10" size="sm">
+              <Button asChild className="mt-4 bg-orange-500 hover:bg-orange-600 text-white font-semibold shadow-lg" size="sm">
                 <a href="/AMZ-Extrator-v2.zip" download>
                   <Download className="h-4 w-4 mr-2" />
                   Baixar Extensão
