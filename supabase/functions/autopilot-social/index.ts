@@ -605,6 +605,136 @@ serve(async (req) => {
           }
         }
 
+        // ============================================================
+        // 🎥 BLOCO NOVO: AUTOPILOT DE VÍDEOS (REELS)
+        // Agenda vídeos do usuário na tabela videos_agendados como reels.
+        // Só roda se config.postar_videos = true e usuário tiver vídeos.
+        // ============================================================
+        let videosAgendadosHoje = 0
+        let novoVideoIndex = config.ultimo_video_index || 0
+
+        if ((config as any).postar_videos === true) {
+          try {
+            const { data: videosDisponiveis } = await supabase
+              .from('videos_produtos')
+              .select('id, user_id, titulo, descricao, video_url, produto_id')
+              .eq('user_id', config.user_id)
+              .eq('status', 'disponivel')
+              .order('created_at', { ascending: true })
+              .order('id', { ascending: true })
+
+            console.log(`🎥 [AUTOPILOT VIDEOS] Vídeos encontrados: ${videosDisponiveis?.length || 0}`)
+
+            if (videosDisponiveis && videosDisponiveis.length > 0) {
+              let vStart = config.ultimo_video_index || 0
+              if (vStart >= videosDisponiveis.length) {
+                if (config.repetir_ciclo) {
+                  console.log('🔁 [AUTOPILOT VIDEOS] Reiniciando ciclo de vídeos')
+                  vStart = 0
+                } else {
+                  console.log('✅ [AUTOPILOT VIDEOS] Todos os vídeos já foram postados; pulando bloco de vídeos')
+                  vStart = -1
+                }
+              }
+
+              if (vStart >= 0) {
+                const videosQtd = Math.min((config as any).videos_por_dia || 1, videosDisponiveis.length - vStart)
+                const videosHoje = videosDisponiveis.slice(vStart, vStart + videosQtd)
+                const horariosVideos = calcularHorarios(config.horario_inicio, config.horario_fim, videosQtd, nowSaoPaulo)
+
+                const canais: string[] = []
+                if (config.postar_facebook) canais.push('facebook')
+                if (config.postar_instagram) canais.push('instagram')
+
+                if (canais.length === 0) {
+                  console.log('⚠️ [AUTOPILOT VIDEOS] Nenhum canal habilitado — pulando vídeos')
+                } else {
+                  for (let vi = 0; vi < videosHoje.length; vi++) {
+                    const video = videosHoje[vi]
+                    const horarioVid = horariosVideos[vi]
+
+                    try {
+                      // Anti-duplicação: pular se este vídeo já foi agendado/publicado nas últimas 12h
+                      const { data: agendadosRecentes } = await supabase
+                        .from('videos_agendados')
+                        .select('id, status')
+                        .eq('user_id', config.user_id)
+                        .eq('video_url', video.video_url)
+                        .in('status', ['pendente', 'processando', 'publicado'])
+                        .gte('scheduled_for', new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString())
+
+                      if (agendadosRecentes && agendadosRecentes.length > 0) {
+                        console.log('⏭️ [AUTOPILOT VIDEOS] Vídeo já agendado recentemente, pulando', { video_id: video.id })
+                        continue
+                      }
+
+                      // Caption: usa descrição/título; tenta IA se ligada
+                      let caption = video.descricao || video.titulo || ''
+                      if (!caption && config.gerar_texto_ia && video.produto_id) {
+                        try {
+                          const controllerV = new AbortController()
+                          const timeoutV = setTimeout(() => controllerV.abort(), 12000)
+                          const respV = await fetch(`${SUPABASE_URL}/functions/v1/gerar-posts`, {
+                            method: 'POST',
+                            headers: {
+                              'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+                              'Content-Type': 'application/json',
+                              'apikey': SUPABASE_SERVICE_ROLE_KEY,
+                            },
+                            signal: controllerV.signal,
+                            body: JSON.stringify({ produto_id: video.produto_id, user_id: config.user_id }),
+                          })
+                          clearTimeout(timeoutV)
+                          const dataV = await respV.json().catch(() => ({} as any))
+                          caption = dataV?.posts?.instagram?.opcaoA || dataV?.posts?.facebook?.opcaoA || caption
+                        } catch (capErr) {
+                          console.warn('⚠️ [AUTOPILOT VIDEOS] IA caption falhou, usando fallback:', (capErr as Error).message)
+                        }
+                      }
+                      if (!caption) {
+                        caption = video.titulo || 'Confira esse vídeo! 🎬'
+                      }
+
+                      const { error: vidErr } = await supabase
+                        .from('videos_agendados')
+                        .insert({
+                          user_id: config.user_id,
+                          tipo: 'reels',
+                          video_url: video.video_url,
+                          video_nome: video.titulo,
+                          caption,
+                          canais,
+                          produto_id: video.produto_id || null,
+                          scheduled_for: horarioVid.toISOString(),
+                          status: 'pendente',
+                          tentativas: 0,
+                          metadata: { source: 'autopilot', autopilot_config_id: config.id },
+                        })
+
+                      if (vidErr) {
+                        console.error('❌ [AUTOPILOT VIDEOS] Erro insert reels:', vidErr)
+                      } else {
+                        videosAgendadosHoje++
+                        console.log('🎬 [AUTOPILOT VIDEOS] Reels agendado', {
+                          video_id: video.id,
+                          canais,
+                          horario_sp: formatSaoPauloIso(horarioVid),
+                        })
+                      }
+                    } catch (vErr) {
+                      console.error('❌ [AUTOPILOT VIDEOS] Erro no vídeo, continuando:', (vErr as Error).message)
+                      continue
+                    }
+                  }
+                  novoVideoIndex = vStart + videosQtd
+                }
+              }
+            }
+          } catch (videosErr) {
+            console.error('❌ [AUTOPILOT VIDEOS] Erro no bloco de vídeos (fail-open):', (videosErr as Error).message)
+          }
+        }
+
         const novoIndex = startIndex + postsHoje
         const proximaExecucao = calcularProximoDiaValido(nowSaoPaulo, config.dias_semana || [], config.horario_inicio)
 
@@ -612,12 +742,14 @@ serve(async (req) => {
           .from('autopilot_config')
           .update({
             ultimo_produto_index: novoIndex,
+            ultimo_video_index: novoVideoIndex,
             ultima_execucao: now.toISOString(),
             proxima_execucao: proximaExecucao.toISOString(),
-            total_publicados: (config.total_publicados || 0) + postsHoje,
+            total_publicados: (config.total_publicados || 0) + postsHoje + videosAgendadosHoje,
             updated_at: now.toISOString(),
           })
           .eq('id', config.id)
+
 
         if (updateResult.error) {
           console.error('❌ [AUTOPILOT] Erro atualizando config:', updateResult.error)
