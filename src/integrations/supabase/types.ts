@@ -1050,6 +1050,7 @@ export type Database = {
           nome: string
           postar_facebook: boolean | null
           postar_instagram: boolean | null
+          postar_videos: boolean
           posts_por_dia: number
           produto_fonte: string
           produto_ids: string[] | null
@@ -1058,8 +1059,10 @@ export type Database = {
           total_publicados: number | null
           ultima_execucao: string | null
           ultimo_produto_index: number | null
+          ultimo_video_index: number
           updated_at: string | null
           user_id: string
+          videos_por_dia: number
         }
         Insert: {
           ativo?: boolean | null
@@ -1077,6 +1080,7 @@ export type Database = {
           nome?: string
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
+          postar_videos?: boolean
           posts_por_dia?: number
           produto_fonte?: string
           produto_ids?: string[] | null
@@ -1085,8 +1089,10 @@ export type Database = {
           total_publicados?: number | null
           ultima_execucao?: string | null
           ultimo_produto_index?: number | null
+          ultimo_video_index?: number
           updated_at?: string | null
           user_id: string
+          videos_por_dia?: number
         }
         Update: {
           ativo?: boolean | null
@@ -1104,6 +1110,7 @@ export type Database = {
           nome?: string
           postar_facebook?: boolean | null
           postar_instagram?: boolean | null
+          postar_videos?: boolean
           posts_por_dia?: number
           produto_fonte?: string
           produto_ids?: string[] | null
@@ -1112,8 +1119,10 @@ export type Database = {
           total_publicados?: number | null
           ultima_execucao?: string | null
           ultimo_produto_index?: number | null
+          ultimo_video_index?: number
           updated_at?: string | null
           user_id?: string
+          videos_por_dia?: number
         }
         Relationships: []
       }
