@@ -57,7 +57,9 @@ export const AutopilotConfig = () => {
       await Promise.all([
         loadConfig(user.id),
         loadProdutos(user.id),
+        loadVideosCount(user.id),
       ]);
+
     } finally {
       setLoading(false);
     }
