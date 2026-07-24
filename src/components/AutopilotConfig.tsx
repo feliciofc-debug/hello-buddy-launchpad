@@ -493,6 +493,55 @@ export const AutopilotConfig = () => {
         </Card>
       </div>
 
+      {/* 🎥 Seção Vídeos (Reels automáticos) */}
+      <Card className="border-purple-500/40">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Video className="h-4 w-4 text-purple-600" /> Vídeos (Reels automáticos)
+            <Badge variant="secondary" className="ml-2">{totalVideos} disponíveis</Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-sm">Publicar meus vídeos como Reels automaticamente</Label>
+              <p className="text-[11px] text-muted-foreground">
+                O autopilot pega os vídeos da aba "Vídeos Enviados" e agenda como Reels no Facebook/Instagram nos horários configurados acima.
+              </p>
+            </div>
+            <Switch
+              checked={config.postar_videos}
+              onCheckedChange={(v) => setConfig(prev => ({ ...prev, postar_videos: v }))}
+            />
+          </div>
+
+          {config.postar_videos && (
+            <div className="space-y-2 pl-3 border-l-2 border-purple-500/40">
+              <Label>Reels por dia</Label>
+              <Select
+                value={String(config.videos_por_dia)}
+                onValueChange={(v) => setConfig(prev => ({ ...prev, videos_por_dia: parseInt(v) }))}
+              >
+                <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+                <SelectContent className="bg-background">
+                  <SelectItem value="1">1 Reel por dia</SelectItem>
+                  <SelectItem value="2">2 Reels por dia</SelectItem>
+                  <SelectItem value="3">3 Reels por dia</SelectItem>
+                  <SelectItem value="5">5 Reels por dia</SelectItem>
+                </SelectContent>
+              </Select>
+              {totalVideos === 0 && (
+                <p className="text-[11px] text-orange-500">
+                  ⚠️ Nenhum vídeo disponível. Faça upload em "Vídeos Enviados" para o autopilot pegar.
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+
+
 
 
       {/* Botão salvar */}
