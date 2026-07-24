@@ -109,6 +109,15 @@ export const AutopilotConfig = () => {
     }
   };
 
+  const loadVideosCount = async (userId: string) => {
+    const { count } = await supabase
+      .from("videos_produtos" as any)
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "disponivel");
+    setTotalVideos(count || 0);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -133,8 +142,11 @@ export const AutopilotConfig = () => {
         repetir_ciclo: config.repetir_ciclo,
         ativo: config.ativo,
         modo_geracao: config.modo_geracao,
+        postar_videos: config.postar_videos,
+        videos_por_dia: config.videos_por_dia,
         updated_at: new Date().toISOString(),
       };
+
 
       if (config.id) {
         const { error } = await supabase
