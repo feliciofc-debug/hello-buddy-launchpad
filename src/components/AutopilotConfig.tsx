@@ -9,11 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Loader2, Rocket, Facebook, Instagram, Calendar, Clock, Package, Sparkles, Play, Pause, Brain } from "lucide-react";
+import { Loader2, Rocket, Facebook, Instagram, Calendar, Clock, Package, Sparkles, Play, Pause, Brain, Video } from "lucide-react";
 
 export const AutopilotConfig = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [totalVideos, setTotalVideos] = useState(0);
   const [config, setConfig] = useState({
     id: null as string | null,
     nome: "Meu Autopilot",
@@ -34,7 +35,10 @@ export const AutopilotConfig = () => {
     total_publicados: 0,
     ultimo_produto_index: 0,
     modo_geracao: "padrao" as "padrao" | "engajamento",
+    postar_videos: false,
+    videos_por_dia: 1,
   });
+
   const [totalProdutos, setTotalProdutos] = useState(0);
   const [categorias, setCategorias] = useState<string[]>([]);
 
