@@ -35,15 +35,13 @@ serve(async (req) => {
       throw new Error('WhatsApp não configurado. Vá em WhatsApp → Configuração para conectar.')
     }
 
-    // Prioridade para tenant permanente: token permanente separado OU token já salvo no secret antigo
-    const permanentToken = Deno.env.get('WHATSAPP_PERMANENT_TOKEN')
+    // Isolamento multi-tenant: sempre usa o token salvo no row do tenant.
+    // Única exceção: número sandbox oficial de dev/teste continua com token global.
     const testAccessToken = Deno.env.get('WHATSAPP_TEST_ACCESS_TOKEN')
-    const isSystemUserTenant = config.connection_method === 'system_user_permanent'
-    const accessToken = isSystemUserTenant && (permanentToken || testAccessToken)
-      ? (permanentToken || testAccessToken)
-      : (config.phone_number_id === '1156251107576181' && testAccessToken
-        ? testAccessToken
-        : config.access_token)
+    const SANDBOX_PHONE_ID = '1156251107576181'
+    const accessToken = config.phone_number_id === SANDBOX_PHONE_ID && testAccessToken
+      ? testAccessToken
+      : config.access_token
 
 
     if (!accessToken) {
