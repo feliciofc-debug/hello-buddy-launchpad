@@ -751,12 +751,14 @@ _Escolha quantidade e finalize!_ ✅`;
     // Calcular próxima execução COM LOGS
     const calcularProximaExecucao = () => {
       const agora = new Date();
-      const [h, m] = horarios[0].split(':').map(Number);
-      
+      // Ordena horários e usa o primeiro como fallback
+      const horariosOrdenados = [...horarios].sort();
+      const [h, m] = horariosOrdenados[0].split(':').map(Number);
+
       console.log('🕐 Calculando próxima execução:', {
         frequencia,
         dataInicio,
-        horarios,
+        horarios: horariosOrdenados,
         diasSemana,
         agoraLocal: agora.toLocaleString('pt-BR'),
         agoraISO: agora.toISOString()
@@ -770,9 +772,23 @@ _Escolha quantidade e finalize!_ ✅`;
         proximaExec.setMinutes(proximaExec.getMinutes() + 2);
         console.log('🧪 TESTE - executar em 2 minutos:', proximaExec.toLocaleString('pt-BR'));
       } else if (frequencia === 'uma_vez') {
-        proximaExec = new Date(dataInicio);
-        proximaExec.setHours(h, m, 0, 0);
-        console.log('📅 Uma vez - usando data escolhida:', proximaExec.toLocaleString('pt-BR'));
+        // ✅ FIX A: uma_vez agora aponta pro primeiro horário ÚTIL do dia (>= agora)
+        // Se todos os horários do dia já passaram, usa o primeiro (executor tem janela de recuperação de 2h)
+        const dataBase = new Date(dataInicio);
+        let escolhido: Date | null = null;
+        for (const horario of horariosOrdenados) {
+          const [hh, mm] = horario.split(':').map(Number);
+          const cand = new Date(dataBase);
+          cand.setHours(hh, mm, 0, 0);
+          if (cand > agora) { escolhido = cand; break; }
+        }
+        if (!escolhido) {
+          escolhido = new Date(dataBase);
+          escolhido.setHours(h, m, 0, 0);
+        }
+        proximaExec = escolhido;
+        console.log(`📅 Uma vez - ${horariosOrdenados.length} horário(s) programado(s), próximo: ${proximaExec.toLocaleString('pt-BR')}`);
+
       } else if (frequencia === 'diario') {
         proximaExec = new Date(dataInicio);
         proximaExec.setHours(h, m, 0, 0);
@@ -1007,6 +1023,12 @@ _Escolha quantidade e finalize!_ ✅`;
 
               <div>
                 <Label>Horários do Dia</Label>
+                {frequencia === 'uma_vez' && horarios.length > 1 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ℹ️ Todos os {horarios.length} horários serão disparados no mesmo dia ({new Date(dataInicio).toLocaleDateString('pt-BR')}). Não precisa duplicar a campanha.
+                  </p>
+                )}
+
                 {horarios.map((h, idx) => (
                   <div key={idx} className="flex gap-2 items-center mt-2">
                     <Input 
