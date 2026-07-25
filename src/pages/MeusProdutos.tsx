@@ -788,7 +788,7 @@ export default function MeusProdutos() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
-  const [duplicateCards, setDuplicateCards] = useState<{id: string; product: Product}[]>([]);
+  
   const [isFacebookModalOpen, setIsFacebookModalOpen] = useState(false);
   const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
@@ -1775,15 +1775,6 @@ export default function MeusProdutos() {
                             </Button>
                           )}
                         </div>
-                        <Button 
-                          variant="outline"
-                          size="sm" 
-                          className="w-full gap-2 border-primary text-primary hover:bg-primary/10"
-                          onClick={() => setDuplicateCards(prev => [...prev, { id: crypto.randomUUID(), product }])}
-                        >
-                          <Copy className="w-4 h-4" />
-                          {t('products.duplicate_campaign')}
-                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -1964,15 +1955,6 @@ export default function MeusProdutos() {
                             Post on TikTok
                           </Button>
                         )}
-                        <Button 
-                          variant="outline"
-                          size="sm" 
-                          className="w-full gap-2 border-primary text-primary hover:bg-primary/10"
-                          onClick={() => setDuplicateCards(prev => [...prev, { id: crypto.randomUUID(), product }])}
-                        >
-                          <Copy className="w-4 h-4" />
-                          {t('products.duplicate_campaign')}
-                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -2009,49 +1991,6 @@ export default function MeusProdutos() {
               </Card>
               </div>
 
-              {/* CARDS DUPLICAR ao lado no grid */}
-              {duplicateCards.filter(dc => dc.product.id === product.id).map(dc => (
-                <Card key={dc.id} className="border-primary/40 shadow-lg flex flex-col justify-between">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Copy className="h-4 w-4 text-primary" />
-                        {t('products.new_campaign')}
-                      </CardTitle>
-                      <Button variant="ghost" size="sm" onClick={() => setDuplicateCards(prev => prev.filter(c => c.id !== dc.id))}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-3 flex-1 flex flex-col">
-                    <div className="flex items-center gap-3 p-2 bg-muted/50 rounded-lg">
-                      {product.imagem_url && (
-                        <img src={product.imagem_url} alt={product.nome} className="w-12 h-12 object-cover rounded" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{product.nome}</p>
-                        {product.preco && (
-                          <p className="text-xs text-primary font-bold">R$ {product.preco.toFixed(2)}</p>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-muted-foreground">
-                      {t('products.new_campaign_desc')}
-                    </p>
-
-                    <div className="flex-1" />
-
-                    <Button 
-                      className="w-full gap-2"
-                      onClick={() => handleCreateCampaign(product)}
-                    >
-                      <Rocket className="w-4 h-4" />
-                      {t('products.create_campaign')}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
               </React.Fragment>
             ))}
           </div>
