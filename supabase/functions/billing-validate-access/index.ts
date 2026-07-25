@@ -34,10 +34,18 @@ serve(async (req) => {
     }
 
     if (!customer) {
+      // FAIL-OPEN: sem registro em billing_customers, libera acesso (parceiros/cortesia/onboarding).
+      // Nunca bloqueia autopilot/plataforma por ausência de cadastro billing.
       return new Response(JSON.stringify({
-        active: false, plan: `Mensal R$ ${MONTHLY_AMOUNT}`, message: 'Cliente não encontrado',
+        active: true,
+        reason: 'no_billing_record_fail_open',
+        plan: `Mensal R$ ${MONTHLY_AMOUNT}`,
+        message: 'Cliente sem cadastro billing — acesso liberado (fail-open)',
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
+    // Se existe customer mas nenhuma subscription, também é fail-open (parceiro sem cobrança ativa).
+    // Só bloqueia se subscription existe e está vencida/cancelada.
 
     const { data: sub } = await supabase
       .from('billing_subscriptions')
