@@ -1023,6 +1023,12 @@ _Escolha quantidade e finalize!_ ✅`;
 
               <div>
                 <Label>Horários do Dia</Label>
+                {frequencia === 'uma_vez' && horarios.length > 1 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    ℹ️ Todos os {horarios.length} horários serão disparados no mesmo dia ({new Date(dataInicio).toLocaleDateString('pt-BR')}). Não precisa duplicar a campanha.
+                  </p>
+                )}
+
                 {horarios.map((h, idx) => (
                   <div key={idx} className="flex gap-2 items-center mt-2">
                     <Input 
