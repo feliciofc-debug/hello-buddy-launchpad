@@ -451,7 +451,18 @@ export default function ContatosListasPJ() {
                         </div>
                       ) : (
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm truncate">{lista.nome}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-sm truncate">{lista.nome}</p>
+                            {isEspelhoGrupo(lista.nome) ? (
+                              <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 shrink-0">
+                                Espelho de grupo
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-600 border-slate-200 shrink-0">
+                                Lista manual/CSV
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {lista.total_membros} contatos • {new Date(lista.created_at).toLocaleDateString("pt-BR")}
                           </p>
