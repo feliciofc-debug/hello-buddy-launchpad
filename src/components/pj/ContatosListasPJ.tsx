@@ -22,6 +22,17 @@ import ImportContatosPJ from "./ImportContatosPJ";
 import EnviosProgramadosPJ from "./EnviosProgramadosPJ";
 import CriarGrupoWhatsAppPJ from "./CriarGrupoWhatsAppPJ";
 
+// Normaliza nome de lista/grupo para casar espelho "📱 X" com grupo "X"
+// (remove prefixo espelho, faz trim + lowercase + colapsa espaços)
+const normalizeNomeLista = (s: string | null | undefined): string =>
+  (s ?? "")
+    .replace(/^📱\s*/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+const isEspelhoGrupo = (nome: string | null | undefined): boolean =>
+  !!nome && nome.trim().startsWith("📱");
+
 interface ListaItem {
   id: string;
   nome: string;
@@ -440,7 +451,18 @@ export default function ContatosListasPJ() {
                         </div>
                       ) : (
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm truncate">{lista.nome}</p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-sm truncate">{lista.nome}</p>
+                            {isEspelhoGrupo(lista.nome) ? (
+                              <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 shrink-0">
+                                Espelho de grupo
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-600 border-slate-200 shrink-0">
+                                Lista manual/CSV
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">
                             {lista.total_membros} contatos • {new Date(lista.created_at).toLocaleDateString("pt-BR")}
                           </p>
@@ -560,14 +582,36 @@ export default function ContatosListasPJ() {
             </Card>
           ) : (
             <div className="space-y-2">
-              {grupos.map((grupo) => (
+              {grupos.map((grupo) => {
+                // Lookup do espelho por nome normalizado (trim + lowercase + sem prefixo 📱)
+                const alvoNorm = normalizeNomeLista(grupo.nome);
+                const espelho = listas.find((l) => normalizeNomeLista(l.nome) === alvoNorm);
+                const temEspelho = !!espelho;
+                const countLabel = temEspelho
+                  ? `${espelho!.total_membros} membros importados`
+                  : `~${grupo.participantes_count} (estimativa)`;
+                const countTitle = temEspelho
+                  ? "Contagem exata a partir do espelho da lista"
+                  : "Importe o grupo para ver a contagem exata";
+                return (
                 <Card key={grupo.id} className="group hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm truncate">{grupo.nome}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {grupo.participantes_count} membros • {new Date(grupo.created_at).toLocaleDateString("pt-BR")}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-sm truncate">{grupo.nome}</p>
+                          {temEspelho ? (
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 shrink-0">
+                              Importado
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 shrink-0">
+                              Só sync
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground" title={countTitle}>
+                          {countLabel} • {new Date(grupo.created_at).toLocaleDateString("pt-BR")}
                         </p>
                       </div>
                       <div className="flex gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
@@ -583,7 +627,7 @@ export default function ContatosListasPJ() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              );})}
             </div>
           )}
         </div>
