@@ -295,6 +295,7 @@ export default function DashboardMetricas() {
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
     { id: 'contatos-comerciais', icon: Briefcase, label: 'Contatos Comerciais', path: '/pj/contatos-comerciais' },
+    { id: 'clientes-segmentos', icon: Users, label: 'Clientes e Segmentos', path: '/pj/listas-contatos' },
     // { id: 'integracoes', icon: Plug, label: t('nav.integrations', 'Integrações'), path: '/integracoes' }, // Oculto - reativar removendo o comentário
     { id: 'configuracoes', icon: Settings, label: t('nav.settings'), path: '/configuracoes' },
     ...(userEmail === 'expo@atombrasildigital.com'
@@ -302,7 +303,7 @@ export default function DashboardMetricas() {
       : []),
   ];
 
-  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || isMenuAllowed(item.id));
+  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || item.id === 'clientes-segmentos' || isMenuAllowed(item.id));
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
