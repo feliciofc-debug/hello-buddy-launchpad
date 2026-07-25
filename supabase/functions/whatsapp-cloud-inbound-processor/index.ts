@@ -4621,9 +4621,11 @@ async function processOne(queueId: string) {
       .maybeSingle();
     if (cfg) {
       if (!userId) userId = cfg.user_id;
-      const isSystemUserTenant = cfg.connection_method === "system_user_permanent";
-      waAccessToken = isSystemUserTenant && (WHATSAPP_PERMANENT_TOKEN || WHATSAPP_TEST_ACCESS_TOKEN)
-        ? (WHATSAPP_PERMANENT_TOKEN || WHATSAPP_TEST_ACCESS_TOKEN)!
+      // Isolamento multi-tenant: sempre usa o token salvo no row do tenant.
+      // Única exceção: número sandbox oficial de dev/teste continua com token global.
+      const SANDBOX_PHONE_ID = "1156251107576181";
+      waAccessToken = cfg.phone_number_id === SANDBOX_PHONE_ID && WHATSAPP_TEST_ACCESS_TOKEN
+        ? WHATSAPP_TEST_ACCESS_TOKEN
         : cfg.access_token ?? null;
     }
     if (!userId) {
