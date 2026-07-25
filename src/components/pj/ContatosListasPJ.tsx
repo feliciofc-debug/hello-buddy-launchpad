@@ -627,7 +627,7 @@ export default function ContatosListasPJ() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+              );})}
             </div>
           )}
         </div>
