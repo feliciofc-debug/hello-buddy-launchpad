@@ -588,7 +588,8 @@ function resolveExecutedSlot(
 function calcularProximaExecucao(
   frequencia: string,
   horarios: string[],
-  diasSemana: number[]
+  diasSemana: number[],
+  dataInicio?: string | null
 ): string | null {
   const timeZone = 'America/Sao_Paulo';
   const now = new Date();
@@ -613,7 +614,19 @@ function calcularProximaExecucao(
 
   const horariosOrdenados = [...horariosNormalizados].sort();
 
-  if (frequencia === 'uma_vez') return null;
+  // ✅ FIX A: uma_vez agora suporta múltiplos horários no MESMO dia (data_inicio).
+  // Retorna próximo horário > agora se dataInicio == hoje; senão null (encerra).
+  if (frequencia === 'uma_vez') {
+    const dataInicioStr = dataInicio ? String(dataInicio).slice(0, 10) : null;
+    if (dataInicioStr && dataInicioStr === currentDate) {
+      const proximo = horariosOrdenados.find((h: string) => h > horaAtual);
+      if (proximo) {
+        return new Date(`${currentDate}T${proximo}:00-03:00`).toISOString();
+      }
+    }
+    return null;
+  }
+
 
   const proximoHorarioHoje = horariosOrdenados.find((h: string) => h > horaAtual);
 
