@@ -396,7 +396,8 @@ serve(async (req) => {
           proximaExecucao = calcularProximaExecucao(
             campanha.frequencia,
             campanha.horarios,
-            campanha.dias_semana
+            campanha.dias_semana,
+            campanha.data_inicio
           );
         }
 
@@ -409,9 +410,24 @@ serve(async (req) => {
         };
 
         if (campanha.frequencia === 'uma_vez') {
-          updateData.ativa = false;
-          updateData.status = 'encerrada';
+          // ✅ FIX A + KILL-SWITCH: uma_vez só encerra quando:
+          //   (a) não há mais nenhum horário futuro no dia (proximaExecucao === null), OU
+          //   (b) currentDate > data_inicio (o dia da campanha já passou)
+          // Isso evita que a campanha vire zumbi se um horário falhar.
+          const dataInicioStr = campanha.data_inicio ? String(campanha.data_inicio).slice(0, 10) : null;
+          const passouDoDia = dataInicioStr ? currentDate > dataInicioStr : false;
+
+          if (!proximaExecucao || passouDoDia) {
+            updateData.ativa = false;
+            updateData.status = 'encerrada';
+            updateData.proxima_execucao = null;
+            console.log(`🔒 Campanha uma_vez encerrada: proxima=${proximaExecucao} passouDoDia=${passouDoDia} dataInicio=${dataInicioStr} currentDate=${currentDate}`);
+          } else {
+            updateData.ativa = true;
+            console.log(`▶️ Campanha uma_vez mantida ativa, próximo horário hoje: ${proximaExecucao}`);
+          }
         }
+
 
         await supabase
           .from("campanhas_recorrentes")
