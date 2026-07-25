@@ -22,6 +22,17 @@ import ImportContatosPJ from "./ImportContatosPJ";
 import EnviosProgramadosPJ from "./EnviosProgramadosPJ";
 import CriarGrupoWhatsAppPJ from "./CriarGrupoWhatsAppPJ";
 
+// Normaliza nome de lista/grupo para casar espelho "📱 X" com grupo "X"
+// (remove prefixo espelho, faz trim + lowercase + colapsa espaços)
+const normalizeNomeLista = (s: string | null | undefined): string =>
+  (s ?? "")
+    .replace(/^📱\s*/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+const isEspelhoGrupo = (nome: string | null | undefined): boolean =>
+  !!nome && nome.trim().startsWith("📱");
+
 interface ListaItem {
   id: string;
   nome: string;
