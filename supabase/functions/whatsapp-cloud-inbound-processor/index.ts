@@ -49,7 +49,7 @@ function escolherModelo(ctx: TaskContext): string {
   console.log(`[model-router] kind=${ctx.kind} → ${model}`);
   return model;
 }
-const WHATSAPP_PERMANENT_TOKEN = Deno.env.get("WHATSAPP_PERMANENT_TOKEN");
+
 const WHATSAPP_TEST_ACCESS_TOKEN = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
 
 const sb = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
