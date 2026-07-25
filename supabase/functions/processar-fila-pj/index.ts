@@ -376,19 +376,19 @@ async function processarItem(
         .eq("user_id", item.user_id)
         .maybeSingle();
 
-      // Prioridade de token idêntica ao whatsapp-send-message:
-      // System User permanente > secret de teste vivo > token do banco.
-      const permanentToken = Deno.env.get("WHATSAPP_PERMANENT_TOKEN");
+      // Isolamento multi-tenant: sempre usa o token salvo no row do tenant.
+      // Única exceção: número sandbox oficial de dev/teste continua com token global.
       const testAccessToken = Deno.env.get("WHATSAPP_TEST_ACCESS_TOKEN");
-      const isSystemUserTenant = waCfg?.connection_method === "system_user_permanent";
-      const cloudToken = isSystemUserTenant && (permanentToken || testAccessToken)
-        ? (permanentToken || testAccessToken)!
+      const SANDBOX_PHONE_ID = "1156251107576181";
+      const isSandbox = waCfg?.phone_number_id === SANDBOX_PHONE_ID;
+      const cloudToken = isSandbox && testAccessToken
+        ? testAccessToken
         : waCfg?.access_token;
 
       if (waCfg?.is_active && waCfg?.phone_number_id && cloudToken) {
         await supabase.from("fila_atendimento_pj").update({ status: "processando" }).eq("id", item.id);
 
-        console.log(`🌐 [PJ-FILA] Enviando via Meta Cloud API (phone_number_id=${waCfg.phone_number_id}, token_source=${isSystemUserTenant ? (permanentToken ? 'permanent_secret' : 'test_secret') : 'db'})`);
+        console.log(`🌐 [PJ-FILA] Enviando via Meta Cloud API (phone_number_id=${waCfg.phone_number_id}, token_source=${isSandbox ? 'sandbox_secret' : 'db'})`);
         const r = await enviarViaCloudAPI(
           waCfg.phone_number_id,
           cloudToken,
