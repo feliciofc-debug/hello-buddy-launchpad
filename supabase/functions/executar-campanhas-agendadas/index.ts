@@ -579,10 +579,28 @@ serve(async (req) => {
                 }
               }
 
-              const mensagemPersonalizada = campanha.mensagem_template
-                .replace(/\{\{nome\}\}|\{nome\}/gi, nome)
-                .replace(/\{\{produto\}\}|\{produto\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{preco\}\}|\{preco\}/gi, produtoParaEnviar?.preco?.toString() || "");
+              const mensagemPersonalizada = (campanha.mensagem_template || '')
+                .replace(/\{\{?\s*nome\s*\}?\}/gi, nome)
+                .replace(/\{\{?\s*produto\s*\}?\}/gi, produtoParaEnviar?.nome || "")
+                .replace(/\{\{?\s*preco\s*\}?\}/gi, formatPriceBRL(produtoParaEnviar?.preco));
+
+              // 🛡️ DEFENSIVA: nunca dispara mensagem vazia (autopilot ou não)
+              if (!mensagemPersonalizada.trim()) {
+                console.error(`🚫 [DEFENSIVA] Mensagem vazia após replaces — pulando ${phone} (campanha ${campanha.id})`);
+                errosEnvio++;
+                processados++;
+                if (isAutopilot) {
+                  await registrarEnvio(supabase, {
+                    user_id: campanha.user_id,
+                    campanha_id: campanha.id,
+                    whatsapp: phone,
+                    sucesso: false,
+                    erro: 'mensagem_vazia_apos_replaces',
+                    tipo: 'autopilot',
+                  });
+                }
+                continue;
+              }
 
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
                 body: {
