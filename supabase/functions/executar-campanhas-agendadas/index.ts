@@ -660,6 +660,20 @@ serve(async (req) => {
           }
         }
 
+        // GUARDRAIL: gateway offline → mantém próximo slot; se null, força amanhã (evita proxima_execucao no passado)
+        if (isAutopilot && gatewayDown && !proximaExecucao) {
+          const primeiroHorario = (campanha.horarios && campanha.horarios[0]) || '09:00';
+          const amanha = calcularProximoDiaExecucao(
+            campanha.frequencia === 'semanal' ? 'semanal' : 'diario',
+            primeiroHorario,
+            campanha.dias_semana || []
+          );
+          if (amanha) {
+            proximaExecucao = amanha;
+            console.log(`🚨 [AUTOPILOT] gateway offline — sem slot hoje, reagendado pra ${amanha}`);
+          }
+        }
+
 
         // Atualizar campanha
         const updateData: any = {
