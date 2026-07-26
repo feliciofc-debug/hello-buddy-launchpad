@@ -7,9 +7,19 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { Rocket, Plus, X, Loader2, AlertTriangle, Package, Users, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { getSaoPauloNow, combineSaoPauloDateTimeToIso, toSaoPauloDateKey } from '@/lib/sao-paulo-time';
+
+const DEFAULT_TEMPLATE = 'Oi {nome}! Achei esse produto e lembrei de você: {produto} por {preco} 🛒';
+
+// Verifica se o template tem texto real além dos placeholders
+function templateHasRealText(tpl: string): boolean {
+  const stripped = tpl.replace(/\{\{?\s*(nome|produto|preco)\s*\}?\}/gi, '').trim();
+  return stripped.length > 0;
+}
 
 interface AutopilotWhatsAppConfigProps {
   open: boolean;
