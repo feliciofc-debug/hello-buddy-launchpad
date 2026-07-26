@@ -795,6 +795,7 @@ export default function MeusProdutos() {
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
   const [instagramProduct, setInstagramProduct] = useState<Product | null>(null);
   const [isAutopilotOpen, setIsAutopilotOpen] = useState(false);
+  const [isAutopilotWppOpen, setIsAutopilotWppOpen] = useState(false);
   const [isReelsModalOpen, setIsReelsModalOpen] = useState(false);
   const [reelsProduct, setReelsProduct] = useState<Product | null>(null);
   const [isSimultaneoModalOpen, setIsSimultaneoModalOpen] = useState(false);
