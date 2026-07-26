@@ -477,7 +477,7 @@ serve(async (req) => {
         const gruposPJIds = (gruposPJ || []).map(g => g.id);
         const listasNormaisIds = (campanha.listas_ids || []).filter((id: string) => !gruposPJIds.includes(id));
         
-        if (listasNormaisIds.length > 0 && !capAtingido) {
+        if (listasNormaisIds.length > 0 && !capAtingido && !gatewayDown) {
           // ✅ Buscar contatos de AMBAS as tabelas: whatsapp_groups E pj_listas_categoria/pj_lista_membros
           const { data: listas } = await supabase
             .from("whatsapp_groups")
