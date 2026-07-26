@@ -17,6 +17,18 @@ function normalizePhone(phone: string): string {
   return digits;
 }
 
+// Formata número como moeda BR: 17.5 → "R$ 17,50"
+function formatPriceBRL(preco: any): string {
+  if (preco === null || preco === undefined || preco === '') return '';
+  const n = typeof preco === 'number' ? preco : parseFloat(String(preco).replace(',', '.'));
+  if (!isFinite(n)) return '';
+  try {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
+  } catch {
+    return `R$ ${n.toFixed(2).replace('.', ',')}`;
+  }
+}
+
 function buildPhoneVariants(phone: string): string[] {
   const normalized = normalizePhone(phone);
   if (!normalized) return [];
@@ -401,12 +413,30 @@ serve(async (req) => {
             try {
               console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
 
-              const mensagemGrupo = campanha.mensagem_template
-                .replace(/\{\{nome\}\}/gi, 'pessoal')
+              const mensagemGrupo = (campanha.mensagem_template || '')
+                .replace(/\{\{?\s*nome\s*\}?\}/gi, 'pessoal')
                 .replace(/Olá\s+,/gi, 'Olá pessoal,')
                 .replace(/Oi\s+,/gi, 'Oi pessoal,')
-                .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
+                .replace(/\{\{?\s*produto\s*\}?\}/gi, produtoParaEnviar?.nome || "")
+                .replace(/\{\{?\s*preco\s*\}?\}/gi, formatPriceBRL(produtoParaEnviar?.preco));
+
+              // 🛡️ DEFENSIVA: nunca dispara mensagem vazia (autopilot ou não)
+              if (!mensagemGrupo.trim()) {
+                console.error(`🚫 [DEFENSIVA] Mensagem vazia após replaces — pulando grupo ${grupo.nome} (campanha ${campanha.id})`);
+                errosEnvio++;
+                processados++;
+                if (isAutopilot) {
+                  await registrarEnvio(supabase, {
+                    user_id: campanha.user_id,
+                    campanha_id: campanha.id,
+                    whatsapp: grupo.grupo_jid,
+                    sucesso: false,
+                    erro: 'mensagem_vazia_apos_replaces',
+                    tipo: 'autopilot_grupo',
+                  });
+                }
+                continue;
+              }
 
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
                 body: {
@@ -549,10 +579,28 @@ serve(async (req) => {
                 }
               }
 
-              const mensagemPersonalizada = campanha.mensagem_template
-                .replace(/\{\{nome\}\}|\{nome\}/gi, nome)
-                .replace(/\{\{produto\}\}|\{produto\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{preco\}\}|\{preco\}/gi, produtoParaEnviar?.preco?.toString() || "");
+              const mensagemPersonalizada = (campanha.mensagem_template || '')
+                .replace(/\{\{?\s*nome\s*\}?\}/gi, nome)
+                .replace(/\{\{?\s*produto\s*\}?\}/gi, produtoParaEnviar?.nome || "")
+                .replace(/\{\{?\s*preco\s*\}?\}/gi, formatPriceBRL(produtoParaEnviar?.preco));
+
+              // 🛡️ DEFENSIVA: nunca dispara mensagem vazia (autopilot ou não)
+              if (!mensagemPersonalizada.trim()) {
+                console.error(`🚫 [DEFENSIVA] Mensagem vazia após replaces — pulando ${phone} (campanha ${campanha.id})`);
+                errosEnvio++;
+                processados++;
+                if (isAutopilot) {
+                  await registrarEnvio(supabase, {
+                    user_id: campanha.user_id,
+                    campanha_id: campanha.id,
+                    whatsapp: phone,
+                    sucesso: false,
+                    erro: 'mensagem_vazia_apos_replaces',
+                    tipo: 'autopilot',
+                  });
+                }
+                continue;
+              }
 
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
                 body: {
