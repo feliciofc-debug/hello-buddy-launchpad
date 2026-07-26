@@ -413,12 +413,30 @@ serve(async (req) => {
             try {
               console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
 
-              const mensagemGrupo = campanha.mensagem_template
-                .replace(/\{\{nome\}\}/gi, 'pessoal')
+              const mensagemGrupo = (campanha.mensagem_template || '')
+                .replace(/\{\{?\s*nome\s*\}?\}/gi, 'pessoal')
                 .replace(/Olá\s+,/gi, 'Olá pessoal,')
                 .replace(/Oi\s+,/gi, 'Oi pessoal,')
-                .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
+                .replace(/\{\{?\s*produto\s*\}?\}/gi, produtoParaEnviar?.nome || "")
+                .replace(/\{\{?\s*preco\s*\}?\}/gi, formatPriceBRL(produtoParaEnviar?.preco));
+
+              // 🛡️ DEFENSIVA: nunca dispara mensagem vazia (autopilot ou não)
+              if (!mensagemGrupo.trim()) {
+                console.error(`🚫 [DEFENSIVA] Mensagem vazia após replaces — pulando grupo ${grupo.nome} (campanha ${campanha.id})`);
+                errosEnvio++;
+                processados++;
+                if (isAutopilot) {
+                  await registrarEnvio(supabase, {
+                    user_id: campanha.user_id,
+                    campanha_id: campanha.id,
+                    whatsapp: grupo.grupo_jid,
+                    sucesso: false,
+                    erro: 'mensagem_vazia_apos_replaces',
+                    tipo: 'autopilot_grupo',
+                  });
+                }
+                continue;
+              }
 
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
                 body: {
