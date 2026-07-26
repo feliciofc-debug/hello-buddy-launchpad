@@ -1965,6 +1965,7 @@ export type Database = {
       campanhas_recorrentes: {
         Row: {
           ativa: boolean | null
+          autopilot: boolean
           categoria_rotacao: string | null
           created_at: string | null
           data_inicio: string
@@ -1991,6 +1992,7 @@ export type Database = {
         }
         Insert: {
           ativa?: boolean | null
+          autopilot?: boolean
           categoria_rotacao?: string | null
           created_at?: string | null
           data_inicio: string
@@ -2017,6 +2019,7 @@ export type Database = {
         }
         Update: {
           ativa?: boolean | null
+          autopilot?: boolean
           categoria_rotacao?: string | null
           created_at?: string | null
           data_inicio?: string
