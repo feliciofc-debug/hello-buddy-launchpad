@@ -418,13 +418,17 @@ serve(async (req) => {
                 }
               });
 
-              const sucesso = !sendError && sendResult?.success;
+              const outcome = classifySendOutcome(sendError, sendResult);
+              const sucesso = outcome === 'ok';
               if (sucesso) {
                 enviados++;
+                gatewayFailStreak = 0;
                 console.log(`✅ Enviado para grupo PJ ${grupo.nome}`);
               } else {
-                console.error(`❌ Erro ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
+                console.error(`❌ Erro (${outcome}) ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
                 errosEnvio++;
+                if (outcome === 'gateway') gatewayFailStreak++;
+                else gatewayFailStreak = 0;
               }
               processados++;
 
