@@ -443,6 +443,12 @@ serve(async (req) => {
                 });
               }
 
+              if (isAutopilot && gatewayFailStreak >= GATEWAY_FAIL_THRESHOLD) {
+                console.log(`🚨 [AUTOPILOT] Gateway offline (${gatewayFailStreak} falhas seguidas) — pausando envios de grupos e reagendando para próximo slot`);
+                gatewayDown = true;
+                break;
+              }
+
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
               const delayGrupo = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
               console.log(`⏱️ Aguardando ${delayGrupo}ms antes do próximo envio...`);
