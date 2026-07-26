@@ -410,7 +410,7 @@ serve(async (req) => {
         const gruposPJIds = (gruposPJ || []).map(g => g.id);
         const listasNormaisIds = (campanha.listas_ids || []).filter((id: string) => !gruposPJIds.includes(id));
         
-        if (listasNormaisIds.length > 0) {
+        if (listasNormaisIds.length > 0 && !capAtingido) {
           // ✅ Buscar contatos de AMBAS as tabelas: whatsapp_groups E pj_listas_categoria/pj_lista_membros
           const { data: listas } = await supabase
             .from("whatsapp_groups")
@@ -418,26 +418,44 @@ serve(async (req) => {
             .in("id", listasNormaisIds);
 
           const contatosWhatsappGroups = listas?.flatMap((l: any) => l.phone_numbers || []) || [];
-          
+
           // ✅ NOVO: Buscar também de pj_lista_membros (listas PJ criadas na interface)
           const { data: membrosPJ } = await supabase
             .from("pj_lista_membros")
             .select("telefone, nome")
             .in("lista_id", listasNormaisIds);
-          
+
           const contatosPJListas = (membrosPJ || []).map((m: any) => m.telefone).filter(Boolean);
-          
-          // Mesclar sem duplicatas + normalizar formato para lookup consistente
-          const todosContatosSet = new Set(
-            [...contatosWhatsappGroups, ...contatosPJListas]
-              .map((p: any) => normalizePhone(String(p || '')))
-              .filter(Boolean)
-          );
-          const todosContatos = Array.from(todosContatosSet);
-          
-          console.log(`📞 Total de contatos: ${todosContatos.length} (whatsapp_groups: ${contatosWhatsappGroups.length}, pj_listas: ${contatosPJListas.length})`);
+
+          // Dedup canônico por telefone normalizado
+          const dedupSet = new Set<string>();
+          for (const raw of [...contatosWhatsappGroups, ...contatosPJListas]) {
+            const n = normalizePhone(String(raw || ''));
+            if (n) dedupSet.add(n);
+          }
+          const todosContatos = Array.from(dedupSet);
+
+          const totalBruto = contatosWhatsappGroups.length + contatosPJListas.length;
+          console.log(`📞 Autopilot=${isAutopilot} | dedup: ${totalBruto} → ${todosContatos.length} contatos (wg:${contatosWhatsappGroups.length}, pj:${contatosPJListas.length})`);
 
           for (const phone of todosContatos) {
+            // AUTOPILOT: recheck a cada 10 TENTATIVAS (sucesso+falha)
+            if (isAutopilot && processados > 0 && processados % 10 === 0) {
+              const [nCamp, nNum] = await Promise.all([
+                contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
+                contarEnviosHoje(supabase, { user_id: campanha.user_id }, diaSP),
+              ]);
+              if (nNum >= capNumero) {
+                console.log(`🛑 [AUTOPILOT] recheck contatos — teto NÚMERO ${nNum}/${capNumero} — para tudo (reagenda amanhã)`);
+                capAtingido = true;
+                break;
+              }
+              if (nCamp >= capCampanha) {
+                console.log(`🛑 [AUTOPILOT] recheck contatos — teto CAMPANHA ${nCamp}/${capCampanha} — para esta campanha`);
+                break;
+              }
+            }
+
             try {
               const phoneVariants = buildPhoneVariants(String(phone));
 
@@ -451,11 +469,10 @@ serve(async (req) => {
                 .not("nome", "is", null)
                 .limit(1)
                 .maybeSingle();
-              
+
               if (contact?.nome?.trim()) {
                 nome = contact.nome.trim();
               } else {
-                // Fallback: buscar nome de pj_lista_membros (comparando telefones normalizados)
                 const membroPJ = (membrosPJ || []).find((m: any) => {
                   const telMembro = normalizePhone(String(m.telefone || ''));
                   return phoneVariants.includes(telMembro);
@@ -476,16 +493,30 @@ serve(async (req) => {
                   message: mensagemPersonalizada,
                   imageUrl: imagemUrl,
                   userId: campanha.user_id,
-                  skipProtection: true
+                  skipProtection: true,
+                  useQueue: isAutopilot,   // AUTOPILOT força jitter via fila; manual mantém direto
                 }
               });
 
-              if (!sendError && sendResult?.success) {
+              const sucesso = !sendError && sendResult?.success;
+              if (sucesso) {
                 enviados++;
                 console.log(`✅ Enviado para ${phone} (${nome})`);
               } else {
                 console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult);
                 errosEnvio++;
+              }
+              processados++;
+
+              if (isAutopilot) {
+                await registrarEnvio(supabase, {
+                  user_id: campanha.user_id,
+                  campanha_id: campanha.id,
+                  whatsapp: phone,
+                  sucesso,
+                  erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
+                  tipo: 'autopilot',
+                });
               }
 
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
@@ -496,9 +527,21 @@ serve(async (req) => {
             } catch (error) {
               console.error(`❌ Erro ao processar ${phone}:`, error);
               errosEnvio++;
+              processados++;
+              if (isAutopilot) {
+                await registrarEnvio(supabase, {
+                  user_id: campanha.user_id,
+                  campanha_id: campanha.id,
+                  whatsapp: phone,
+                  sucesso: false,
+                  erro: String((error as any)?.message || error),
+                  tipo: 'autopilot',
+                });
+              }
             }
           }
         }
+
 
         console.log(`📊 Campanha ${campanha.nome}: ${enviados} enviados, ${errosEnvio} erros`);
 
