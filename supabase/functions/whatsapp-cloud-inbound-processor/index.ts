@@ -4724,6 +4724,249 @@ async function processOne(queueId: string) {
     const tenantOwnerPhone: string | null = _tenantOwner.phone;
     setTenantOwnerForCtx(userId, tenantOwnerPhone);
 
+    // =====================================================================
+    // OPT-IN GATE (Fase 1 — Meta oficial)
+    // Roda ANTES de qualquer fluxo do Silvester/Jarvis/AMZ.
+    // Responsabilidades:
+    //   1) STOP/opt-out UNIVERSAL — sempre respeita PARE/SAIR/STOP/DESCADASTRAR,
+    //      independente do status atual (exigência Meta + LGPD).
+    //   2) Captura de resposta ao convite (SIM/NÃO) quando o convite foi
+    //      enviado nas últimas 168h.
+    //   3) Higiene: convites > 7 dias sem resposta viram "expirado" (não
+    //      ficam presos em "convite_enviado" pra sempre).
+    // Falha do gate NUNCA bloqueia atendimento — try/catch envolve tudo e
+    // qualquer exceção só loga e segue o fluxo normal.
+    //
+    // NOTA IMPORTANTE (Fase 2): o Template 1 (convite) DEVE usar exatamente
+    // estes IDs nos quick-reply buttons: "OPTIN_SIM" e "OPTIN_NAO".
+    // Se mudar aqui, atualizar o template na Meta na mesma PR.
+    // =====================================================================
+    try {
+      const isOwnerInbound = !!tenantOwnerPhone && row.from_number === tenantOwnerPhone;
+      if (!isOwnerInbound && row.from_number) {
+        const rawText = (userText || "").toString();
+        const normalized = rawText
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .trim();
+        const buttonId: string = row.payload?.interactive?.button_reply?.id ?? "";
+
+        const STOP_TOKENS = new Set([
+          "pare", "parar", "sair", "stop", "cancelar", "descadastrar",
+          "descadastrar-me", "remover", "nao quero", "não quero",
+        ]);
+        const SIM_TOKENS = new Set([
+          "sim", "s", "ok", "pode", "pode sim", "aceito", "confirmo",
+          "quero", "aceitar", "confirmar",
+        ]);
+        const NAO_TOKENS_SOFT = new Set(["nao", "não", "n"]);
+
+        const isStopButton = buttonId === "OPTIN_NAO" ||
+          buttonId === "OPTIN_STOP" ||
+          buttonId === "STOP";
+        const isStopText = STOP_TOKENS.has(normalized);
+        const isSimButton = buttonId === "OPTIN_SIM";
+        const isSimText = SIM_TOKENS.has(normalized);
+        const isSoftNao = NAO_TOKENS_SOFT.has(normalized);
+
+        // Helper: registra log de auditoria (best-effort)
+        const logOptIn = async (
+          status: "confirmado" | "recusado" | "expirado",
+          origem: string,
+          extra: Record<string, unknown> = {},
+        ) => {
+          try {
+            await sb.from("opt_in_log").insert({
+              user_id: userId,
+              telefone: row.from_number,
+              status_novo: status,
+              origem,
+              canal: "whatsapp_cloud",
+              texto_original: rawText.slice(0, 500),
+              payload_extra: {
+                button_id: buttonId || null,
+                message_type: row.message_type,
+                ...extra,
+              },
+            });
+          } catch (e) {
+            console.warn("[opt-in-gate][log] falhou:", (e as Error).message);
+          }
+        };
+
+        // --- (1) STOP/opt-out UNIVERSAL — vale SEMPRE ----------------------
+        // Independe do status atual do membro (ou de existir membro).
+        // Só não redispara se já estiver "recusado".
+        if (isStopButton || isStopText) {
+          // Busca QUALQUER registro do membro nesse tenant (para atualizar).
+          const { data: membros } = await sb
+            .from("pj_lista_membros")
+            .select("id, opt_in_status")
+            .eq("user_id", userId)
+            .eq("telefone", row.from_number);
+
+          const jaRecusado = (membros || []).some(m => m.opt_in_status === "recusado");
+          const nowIso = new Date().toISOString();
+
+          if (!jaRecusado) {
+            if (membros && membros.length > 0) {
+              await sb
+                .from("pj_lista_membros")
+                .update({
+                  opt_in_status: "recusado",
+                  opt_in_origem: "stop_universal",
+                  opt_in_em: nowIso,
+                })
+                .eq("user_id", userId)
+                .eq("telefone", row.from_number);
+            } else {
+              // Sem membro cadastrado — cria um marcador de recusa para
+              // garantir que campanhas futuras respeitem o opt-out.
+              await sb.from("pj_lista_membros").insert({
+                user_id: userId,
+                telefone: row.from_number,
+                opt_in_status: "recusado",
+                opt_in_origem: "stop_universal_sem_membro",
+                opt_in_em: nowIso,
+              });
+            }
+            await logOptIn("recusado", "stop_universal");
+          }
+
+          // Resposta de despedida (dentro da janela 24h — texto livre, ok).
+          try {
+            const despedida = "Combinado, não vamos mais te enviar campanhas. Se mudar de ideia, é só chamar aqui. 👋";
+            await sendWhatsApp(userId, row.from_number, despedida);
+            await sb.from("whatsapp_cloud_messages").insert({
+              conversation_id: conv.id,
+              user_id: userId,
+              direction: "outbound",
+              sender: "agent",
+              content: despedida,
+              message_type: "text",
+            });
+          } catch (e) {
+            console.warn("[opt-in-gate][stop][reply] falhou:", (e as Error).message);
+          }
+
+          console.log(`[opt-in-gate] STOP universal aplicado tenant=${userId} from=${row.from_number} ja_recusado=${jaRecusado}`);
+          await doneQueue(row.id);
+          return { ok: true, opt_in_gate: "recusado_stop_universal" };
+        }
+
+        // --- (2) Captura de resposta ao convite ---------------------------
+        // Só olha membros com convite enviado.
+        const { data: membrosConvidados } = await sb
+          .from("pj_lista_membros")
+          .select("id, opt_in_status, convite_enviado_em")
+          .eq("user_id", userId)
+          .eq("telefone", row.from_number)
+          .eq("opt_in_status", "convite_enviado");
+
+        if (membrosConvidados && membrosConvidados.length > 0) {
+          const SETE_DIAS_MS = 7 * 24 * 60 * 60 * 1000;
+          const agora = Date.now();
+
+          // Separa dentro/fora da janela de 7 dias.
+          const dentroJanela: typeof membrosConvidados = [];
+          const foraJanela: typeof membrosConvidados = [];
+          for (const m of membrosConvidados) {
+            const enviadoEm = m.convite_enviado_em ? new Date(m.convite_enviado_em).getTime() : 0;
+            if (enviadoEm && (agora - enviadoEm) <= SETE_DIAS_MS) dentroJanela.push(m);
+            else foraJanela.push(m);
+          }
+
+          // --- (3) Higiene: expira quem passou de 7 dias sem responder ---
+          if (foraJanela.length > 0) {
+            const ids = foraJanela.map(m => m.id);
+            await sb
+              .from("pj_lista_membros")
+              .update({ opt_in_status: "expirado" })
+              .in("id", ids);
+            await logOptIn("expirado", "janela_7d_sem_resposta", { membros_expirados: ids.length });
+            console.log(`[opt-in-gate] ${ids.length} convite(s) expirados tenant=${userId} from=${row.from_number}`);
+          }
+
+          if (dentroJanela.length > 0) {
+            const idsDentro = dentroJanela.map(m => m.id);
+            const nowIso = new Date().toISOString();
+
+            if (isSimButton || isSimText) {
+              await sb
+                .from("pj_lista_membros")
+                .update({
+                  opt_in_status: "confirmado",
+                  opt_in_origem: isSimButton ? "convite_botao_sim" : "convite_texto_sim",
+                  opt_in_em: nowIso,
+                })
+                .in("id", idsDentro);
+              await logOptIn("confirmado", isSimButton ? "convite_botao_sim" : "convite_texto_sim");
+
+              try {
+                const boasVindas = "Show! Você está na lista. 🎉 Em breve mandaremos novidades e ofertas selecionadas.";
+                await sendWhatsApp(userId, row.from_number, boasVindas);
+                await sb.from("whatsapp_cloud_messages").insert({
+                  conversation_id: conv.id,
+                  user_id: userId,
+                  direction: "outbound",
+                  sender: "agent",
+                  content: boasVindas,
+                  message_type: "text",
+                });
+              } catch (e) {
+                console.warn("[opt-in-gate][sim][reply] falhou:", (e as Error).message);
+              }
+
+              console.log(`[opt-in-gate] SIM capturado tenant=${userId} from=${row.from_number} membros=${idsDentro.length}`);
+              await doneQueue(row.id);
+              return { ok: true, opt_in_gate: "confirmado" };
+            }
+
+            if (isSoftNao) {
+              // "não" no convite = recusa suave (não é STOP universal, mas
+              // deve ser respeitada dentro do fluxo de convite).
+              await sb
+                .from("pj_lista_membros")
+                .update({
+                  opt_in_status: "recusado",
+                  opt_in_origem: "convite_texto_nao",
+                  opt_in_em: nowIso,
+                })
+                .in("id", idsDentro);
+              await logOptIn("recusado", "convite_texto_nao");
+
+              try {
+                const despedida = "Combinado, não vamos te incomodar. Se mudar de ideia, é só chamar aqui. 👋";
+                await sendWhatsApp(userId, row.from_number, despedida);
+                await sb.from("whatsapp_cloud_messages").insert({
+                  conversation_id: conv.id,
+                  user_id: userId,
+                  direction: "outbound",
+                  sender: "agent",
+                  content: despedida,
+                  message_type: "text",
+                });
+              } catch (e) {
+                console.warn("[opt-in-gate][nao][reply] falhou:", (e as Error).message);
+              }
+
+              console.log(`[opt-in-gate] NÃO capturado tenant=${userId} from=${row.from_number} membros=${idsDentro.length}`);
+              await doneQueue(row.id);
+              return { ok: true, opt_in_gate: "recusado_convite" };
+            }
+            // Se não classificou SIM/NÃO, NÃO consome — deixa o Silvester/Jarvis
+            // responder normalmente e mantém convite_enviado (dentro da janela).
+          }
+        }
+      }
+    } catch (e) {
+      // Falha do gate NUNCA deve derrubar o atendimento.
+      console.error("[opt-in-gate] falha (seguindo fluxo normal):", (e as Error).message);
+    }
+    // ================== FIM OPT-IN GATE ==================================
+
+
     const isAmzTenant = userId === ADMIN_AMZ_USER_ID;
     const isAmzMode = (agent as any).agent_mode === "amz" && isAmzTenant;
 
