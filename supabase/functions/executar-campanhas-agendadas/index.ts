@@ -622,9 +622,10 @@ serve(async (req) => {
 
         console.log(`📊 Campanha ${campanha.nome}: ${enviados} enviados, ${errosEnvio} erros`);
 
-        // ✅ SÓ ATUALIZA SE ENVIOU PELO MENOS 1 MENSAGEM
+        // ✅ SÓ ATUALIZA SE ENVIOU PELO MENOS 1 MENSAGEM — EXCETO se cap batido ou gateway offline
+        // (nesse caso PRECISAMOS reagendar para evitar loop com proxima_execucao no passado)
         const totalAlvos = (gruposPJ?.length || 0) + (listasNormaisIds.length > 0 ? 1 : 0);
-        if (enviados === 0 && totalAlvos > 0) {
+        if (enviados === 0 && totalAlvos > 0 && !capAtingido && !gatewayDown) {
           console.log(`⚠️ Campanha ${campanha.nome} - Nenhuma mensagem enviada, NÃO atualizando ultima_execucao`);
           continue;
         }
