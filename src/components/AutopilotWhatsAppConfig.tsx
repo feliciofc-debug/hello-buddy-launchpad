@@ -137,25 +137,37 @@ export function AutopilotWhatsAppConfig({ open, onOpenChange, produtoInicial, on
       && horarios.length > 0
       && horarios.every(h => /^\d{2}:\d{2}$/.test(h))
       && maxEnviosDia > 0
-      && (frequencia !== 'semanal' || diasSemana.length > 0);
-  }, [produtosSelecionados, listasSelecionadas, gruposSelecionados, horarios, maxEnviosDia, frequencia, diasSemana]);
+      && (frequencia !== 'semanal' || diasSemana.length > 0)
+      && templateHasRealText(mensagemTemplate);
+  }, [produtosSelecionados, listasSelecionadas, gruposSelecionados, horarios, maxEnviosDia, frequencia, diasSemana, mensagemTemplate]);
 
   const handleSave = async () => {
     if (!canSave) return;
+    // Trava (a): não salva com template vazio/só placeholders
+    if (!templateHasRealText(mensagemTemplate)) {
+      toast.error('A mensagem não pode ficar vazia. Escreva algo além dos placeholders.');
+      return;
+    }
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Usuário não autenticado');
 
       const horariosOrdenados = [...horarios].sort();
-      const [h, m] = horariosOrdenados[0].split(':').map(Number);
-      const proxima = new Date();
-      proxima.setHours(h, m, 0, 0);
-      if (proxima.getTime() < Date.now()) proxima.setDate(proxima.getDate() + 1);
+      // Timezone SP: usa helper do projeto, mesmo que o executor usa
+      const agoraSP = getSaoPauloNow();
+      const primeiroHorario = horariosOrdenados[0];
+      // Constrói ISO em fuso SP para hoje; se já passou, vai para amanhã
+      let proximaIso = combineSaoPauloDateTimeToIso(agoraSP, primeiroHorario);
+      if (new Date(proximaIso).getTime() <= Date.now()) {
+        const amanhaSP = new Date(agoraSP);
+        amanhaSP.setDate(amanhaSP.getDate() + 1);
+        proximaIso = combineSaoPauloDateTimeToIso(amanhaSP, primeiroHorario);
+      }
 
       const payload = {
         user_id: user.id,
-        nome: nome || `Autopilot WhatsApp ${new Date().toLocaleDateString('pt-BR')}`,
+        nome: nome || `Autopilot WhatsApp ${toSaoPauloDateKey(agoraSP)}`,
         produto_id: produtosSelecionados[0], // NOT NULL — primeiro é o "base"
         produtos_ids: produtosSelecionados,
         ultimo_produto_index: 0,
@@ -164,13 +176,13 @@ export function AutopilotWhatsAppConfig({ open, onOpenChange, produtoInicial, on
         frequencia,
         horarios: horariosOrdenados,
         dias_semana: frequencia === 'semanal' ? diasSemana : [0, 1, 2, 3, 4, 5, 6],
-        data_inicio: new Date().toISOString().slice(0, 10),
-        mensagem_template: '', // template gerado pelo executor autopilot
+        data_inicio: toSaoPauloDateKey(agoraSP),
+        mensagem_template: mensagemTemplate.trim(),
         max_envios_dia: maxEnviosDia,
         autopilot: true,
         ativa: true,
         status: 'ativa',
-        proxima_execucao: proxima.toISOString(),
+        proxima_execucao: proximaIso,
       };
 
       const { error } = await supabase.from('campanhas_recorrentes').insert(payload as any);
@@ -186,6 +198,7 @@ export function AutopilotWhatsAppConfig({ open, onOpenChange, produtoInicial, on
       setGruposSelecionados([]);
       setHorarios(['10:00']);
       setMaxEnviosDia(DEFAULT_CAP);
+      setMensagemTemplate(DEFAULT_TEMPLATE);
     } catch (err: any) {
       console.error('Erro ao salvar autopilot:', err);
       toast.error(err.message || 'Erro ao salvar');
