@@ -33,6 +33,51 @@ function buildPhoneVariants(phone: string): string[] {
   return [...new Set(variants.filter(Boolean))];
 }
 
+// ============================================================
+// AUTOPILOT WHATSAPP — trava dupla (campanha + número) helpers
+// ============================================================
+function dateKeySP(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d);
+}
+
+async function contarEnviosHoje(
+  supabase: any,
+  filtro: { campanha_id?: string; user_id?: string },
+  diaSP: string
+): Promise<number> {
+  let q = supabase
+    .from('historico_envios')
+    .select('id', { count: 'exact', head: true })
+    .eq('envio_dia_sp', diaSP);
+  if (filtro.campanha_id) q = q.eq('campanha_id', filtro.campanha_id);
+  if (filtro.user_id)     q = q.eq('user_id',     filtro.user_id);
+  const { count, error } = await q;
+  if (error) { console.error('❌ COUNT historico_envios:', error); return 0; }
+  return count || 0;
+}
+
+async function registrarEnvio(
+  supabase: any,
+  args: { user_id: string; campanha_id: string; whatsapp: string; sucesso: boolean; erro?: string; tipo?: string }
+) {
+  try {
+    await supabase.from('historico_envios').insert({
+      user_id: args.user_id,
+      campanha_id: args.campanha_id,
+      whatsapp: args.whatsapp,             // NOT NULL — phone ou grupo_jid
+      sucesso: args.sucesso,               // reusa coluna existente
+      erro: args.erro || null,
+      tipo: args.tipo || 'autopilot',
+      envio_dia_sp: dateKeySP(),           // coluna nova — indexada
+    });
+  } catch (e) {
+    console.error('❌ registrarEnvio falhou:', e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
