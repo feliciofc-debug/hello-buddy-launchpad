@@ -347,6 +347,27 @@ export function AutopilotWhatsAppConfig({ open, onOpenChange, produtoInicial, on
               )}
             </div>
 
+            {/* Mensagem */}
+            <div className="p-4 bg-muted/30 rounded-lg">
+              <Label className="text-base font-semibold">Mensagem</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Placeholders: <code className="bg-muted px-1 rounded">{'{nome}'}</code>{' '}
+                <code className="bg-muted px-1 rounded">{'{produto}'}</code>{' '}
+                <code className="bg-muted px-1 rounded">{'{preco}'}</code> (formatado como R$ 17,50)
+              </p>
+              <Textarea
+                className="mt-2 min-h-[90px]"
+                value={mensagemTemplate}
+                onChange={(e) => setMensagemTemplate(e.target.value)}
+                placeholder={DEFAULT_TEMPLATE}
+              />
+              {!templateHasRealText(mensagemTemplate) && (
+                <p className="text-xs text-destructive mt-1">
+                  A mensagem precisa ter texto além dos placeholders.
+                </p>
+              )}
+            </div>
+
             {/* Trava de volume */}
             <div className="p-4 bg-muted/30 rounded-lg">
               <Label className="text-base font-semibold">Trava de volume</Label>
