@@ -3482,6 +3482,7 @@ export type Database = {
       historico_envios: {
         Row: {
           campanha_id: string | null
+          envio_dia_sp: string | null
           erro: string | null
           id: string
           mensagem: string | null
@@ -3493,6 +3494,7 @@ export type Database = {
         }
         Insert: {
           campanha_id?: string | null
+          envio_dia_sp?: string | null
           erro?: string | null
           id?: string
           mensagem?: string | null
@@ -3504,6 +3506,7 @@ export type Database = {
         }
         Update: {
           campanha_id?: string | null
+          envio_dia_sp?: string | null
           erro?: string | null
           id?: string
           mensagem?: string | null
@@ -5524,6 +5527,7 @@ export type Database = {
           imagens_ia_mes_atual: number
           limite_envios: number | null
           limite_imagens_ia_mes: number
+          max_envios_dia_numero: number
           mes_referencia: string | null
           mes_referencia_ia: string
           nome_assistente: string | null
@@ -5548,6 +5552,7 @@ export type Database = {
           imagens_ia_mes_atual?: number
           limite_envios?: number | null
           limite_imagens_ia_mes?: number
+          max_envios_dia_numero?: number
           mes_referencia?: string | null
           mes_referencia_ia?: string
           nome_assistente?: string | null
@@ -5572,6 +5577,7 @@ export type Database = {
           imagens_ia_mes_atual?: number
           limite_envios?: number | null
           limite_imagens_ia_mes?: number
+          max_envios_dia_numero?: number
           mes_referencia?: string | null
           mes_referencia_ia?: string
           nome_assistente?: string | null
