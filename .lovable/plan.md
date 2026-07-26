@@ -1,117 +1,160 @@
+# Fase 1 revisada — Opt-in via 2 templates Meta
 
-# Plano — Migração para Meta Oficial (Templates + Opt-in obrigatório)
-
-Nada será codificado antes da tua aprovação. Abaixo, o mapa do que já existe, o que falta, e a ordem sugerida por valor rápido × baixo consumo de crédito.
-
----
-
-## 1) O que já existe vs. o que falta
-
-**Já pronto (reaproveitável — não perdemos nada):**
-- `whatsapp-send-message` **já sabe mandar template** (`type: 'template'`) via `graph.facebook.com/v25.0/{phone_id}/messages`. Hoje só usa `name` + `language` (sem componentes/variáveis).
-- Tabela `whatsapp_config` por tenant (phone_number_id + access_token permanente já rotacionado no AMZ).
-- Tabela `opt_ins` + edge functions `registrar-optin` e `sincronizar-optins-retroativo` — infra de consentimento **já existe**.
-- Todo o motor visual: modal de campanha, segmentos, espelhos de grupo, múltiplos horários, Autopilot, travas de volume, dedup por telefone. **Continua igual.**
-
-**Falta construir:**
-- **A.** Suporte a `components` (variáveis `{{1}}`, `{{2}}`, header com imagem) no `whatsapp-send-message`.
-- **B.** Gestão de templates: CRUD + submissão à Meta via Message Template API (`/{WABA_ID}/message_templates`) + consulta de status (APPROVED/PENDING/REJECTED).
-- **C.** Campo `opt_in` em `pj_lista_membros` (ou join contra `opt_ins`/`whatsapp_contacts`) + filtro obrigatório no executor.
-- **D.** Trocar o "correio" no `executar-campanhas-agendadas`: de `send-wuzapi-message-pj` (Baileys) para `whatsapp-send-message` (Meta template).
-- **E.** Aposentar Baileys e fechar `anon` em `fila_atendimento_pj` / `gateway_status` (resolve os 2 fixes de segurança pendentes).
+Você acertou a leitura da regra. A primeira mensagem também é *business-initiated*, então também precisa ser template aprovado. Abaixo está o fluxo redondo, encaixado na Fase 1, **sem código ainda**.
 
 ---
 
-## 2) Fases (ordem por valor rápido × custo baixo)
+## 1) Máquina de estados do opt-in
 
-### FASE 1 — Opt-in como fonte de verdade (baixo esforço, valor imediato)
-Antes de qualquer envio oficial, garantir que a base está limpa.
+Campo novo em `pj_lista_membros` (e espelhado em `whatsapp_contacts` pra visão global):
 
-- Adicionar coluna `opt_in boolean default false` + `opt_in_origem text` + `opt_in_em timestamptz` em `pj_lista_membros`.
-- Backfill via `sincronizar-optins-retroativo` (já existe) para marcar quem já tem opt-in em `opt_ins` ou `whatsapp_contacts`.
-- UI em "Clientes e Segmentos": badge verde "✅ Opt-in" / cinza "⚠️ Sem opt-in", filtro "só com opt-in", ação em massa "Registrar opt-in manual (declaro que tenho consentimento)".
-- Preview do modal de campanha passa a mostrar: `X destinatários totais → Y com opt-in → serão enviados: Y`.
+```text
+opt_in_status  ∈  { pendente, convite_enviado, confirmado, recusado, expirado }
+opt_in_origem  text     (ex: 'convite_template', 'inbound_manual', 'retroativo_jarvis')
+opt_in_em      timestamptz
+convite_enviado_em     timestamptz
+convite_template_id    uuid   (qual template de convite foi usado)
+```
 
-**Esforço:** pequeno. **Crédito:** baixo. **Valor:** sua base já fica pronta pro dia da virada.
+Transições:
 
----
+```text
+pendente ──(dispara Template 1)──▶ convite_enviado
+convite_enviado ──(inbound "SIM"/aceite)──▶ confirmado
+convite_enviado ──(inbound "NÃO"/"SAIR"/"PARE")──▶ recusado
+convite_enviado ──(7 dias sem resposta)──▶ expirado   [pode ser reengajado 1x]
+confirmado ──(inbound "SAIR"/"PARE" a qualquer momento)──▶ recusado
+```
 
-### FASE 2 — Gestão de Templates (média, é o coração da migração)
-Tela nova: `Configurações → Templates WhatsApp`.
-
-- CRUD local em nova tabela `whatsapp_templates` (nome, categoria MARKETING/UTILITY, idioma, body, header, botões, status Meta, motivo de rejeição).
-- Edge function `whatsapp-template-submit` — cria/atualiza template via `POST /{WABA_ID}/message_templates` usando o token do tenant.
-- Edge function `whatsapp-template-sync` — puxa status atual via `GET /{WABA_ID}/message_templates` e grava no banco.
-- UI: criar → preview com variáveis (`{{1}}=nome`, `{{2}}=produto`, `{{3}}=preço`) → submeter → ver status (Pendente/Aprovado/Rejeitado com motivo) → botão "Sincronizar status".
-- Precisamos guardar `waba_id` por tenant em `whatsapp_config` (adicionar coluna se não existir).
-
-**Esforço:** médio. **Crédito:** médio. **Valor:** sem isso não há campanha oficial.
-
----
-
-### FASE 3 — Adaptar `whatsapp-send-message` para componentes
-- Aceitar `template_components: [{ type: 'body', parameters: [{type:'text', text:'...'}] }, { type:'header', parameters:[{type:'image', image:{link:'...'}}] }]`.
-- Aceitar `template_id` (do nosso banco) para o executor não precisar montar payload à mão.
-
-**Esforço:** pequeno. **Crédito:** baixo.
+Regra dura no executor: **só dispara Template 2 (campanha) se `opt_in_status = 'confirmado'`**. Ponto.
 
 ---
 
-### FASE 4 — Migrar o executor + modal de campanha (a virada)
-- `CriarCampanhaWhatsAppModal` e `AutopilotWhatsAppConfig`: em vez de campo "template livre", passa a ter **seletor de template aprovado** (filtra `status='APPROVED'`) + mapeamento das variáveis (`{{1}} → nome do contato`, `{{2}} → produto`, `{{3}} → preço`) + preview do texto final.
-- `executar-campanhas-agendadas`:
-  - filtra destinatários **exigindo `opt_in=true`**;
-  - troca chamada de `send-wuzapi-message-pj` por `whatsapp-send-message` com `template_id` + `template_components` + `image_url` (do produto);
-  - **travas de volume, dedup, jitter, kill-switch de reagendamento — tudo continua igual**;
-  - guardrail de "chip offline" some (é oficial), mas mantemos o de erro Meta (24h token, template revogado, etc.).
-- Flag `usar_meta_oficial boolean default true` em `campanhas_recorrentes` — permite conviver com Baileys durante a transição (roll-back se algo travar).
+## 2) Os dois templates na plataforma
 
-**Esforço:** médio. **Crédito:** médio. **Valor:** aqui você já roda campanha 100% oficial.
+Nova tabela `whatsapp_templates` (Fase 2 no plano original, mas já defino o schema aqui pra Fase 1 saber onde apontar):
 
----
+```text
+whatsapp_templates
+├─ id, user_id, waba_id
+├─ nome_meta            (nome exato submetido à Meta, snake_case)
+├─ tipo_uso             ∈ { convite_optin, campanha, transacional }
+├─ categoria_meta       ∈ { UTILITY, MARKETING, AUTHENTICATION }
+├─ idioma               ('pt_BR')
+├─ body_text            (com {{1}}, {{2}}...)
+├─ header               (jsonb: text ou image)
+├─ botoes               (jsonb: quick_reply "SIM"/"NÃO" no convite; url/call no campanha)
+├─ variaveis_map        (jsonb: {{1}}: 'nome_contato', {{2}}: 'nome_empresa'...)
+├─ status_meta          ∈ { rascunho, pendente, aprovado, rejeitado, pausado }
+├─ motivo_rejeicao_meta text
+└─ meta_template_id     text   (id retornado pela Meta)
+```
 
-### FASE 5 — Aposentar Baileys + fechar buracos de segurança
-Só executar quando Fase 4 estiver rodando estável por alguns dias.
+`tipo_uso` é o pulo do gato: o executor de campanha filtra `tipo_uso='campanha'`, e a rotina de convite filtra `tipo_uso='convite_optin'`. Uma UI, dois caminhos.
 
-- Remover botão "Gateway WhatsApp" / instâncias WuzAPI do menu (esconder, não deletar código ainda).
-- Desativar cron/queue do `fila_atendimento_pj` para autopilot.
-- **Migração de segurança final:** revogar `anon` em `fila_atendimento_pj` e `gateway_status` → **fecha os 2 fixes pendentes do scanner** de vez.
-- Deletar tabelas WuzAPI num ciclo seguinte, após período de observação.
+**Template 1 — Convite (categoria UTILITY na Meta):**
+- Body: "Olá {{1}}! Aqui é a {{2}}. Podemos te enviar nossas novidades e ofertas? Responda **SIM** para confirmar ou **NÃO** para não receber."
+- Botões *quick reply*: `[SIM]` `[NÃO]` — a Meta permite e melhora conversão + facilita parsing.
+- Sugestão de submeter como **UTILITY** (não Marketing) porque o conteúdo é serviço/consentimento, não oferta. Aprova mais rápido e cai em janela de serviço.
 
-**Esforço:** pequeno. **Crédito:** baixo. **Valor:** fecha segurança + simplifica manutenção.
-
----
-
-## 3) O que continua exatamente igual (reaproveitamento)
-
-- ✅ Modal de campanha, seleção de produtos e segmentos, múltiplos horários, modo `uma_vez`/`diário`.
-- ✅ Botão "📱 Campanha WhatsApp" e "Autopilot WhatsApp" no card de produto.
-- ✅ Segmentos, espelhos de grupo, dedup por telefone normalizado.
-- ✅ Travas: `max_envios_dia` por campanha, teto por número (300), kill-switch, reagendamento em SP.
-- ✅ `historico_envios`, `campanha_execucoes`, dashboards.
-- ✅ JARVIS e Silvester (atendimento) — já são 100% Meta oficial, não muda nada.
-
-**Só troca o "correio" por baixo do capô + adiciona filtro de opt-in + seletor de template.**
+**Template 2 — Campanha (categoria MARKETING):**
+- Body com variáveis do produto (`{{1}}=nome`, `{{2}}=produto`, `{{3}}=preço`).
+- Header com imagem do produto.
+- Botão CTA "Ver oferta" (URL).
 
 ---
 
-## 4) Recomendação de execução dentro do crédito apertado
+## 3) Captura do "SIM" — reaproveitando o inbound-processor
 
-Sugestão para caber num orçamento enxuto sem perder valor:
+**Sim, dá pra reaproveitar o `whatsapp-cloud-inbound-processor`.** Ele já recebe todo inbound do tenant. Só precisamos de um novo bloco no início do handler, **antes do fluxo do Silvester/Jarvis**:
 
-1. **Fase 1 primeiro** (opt-in) — barato, deixa a base pronta. Se o crédito acabar aqui, a plataforma continua funcionando com Baileys e você já ganhou governança.
-2. **Fase 2 + 3 juntas** (templates + suporte a components) — é o investimento principal.
-3. **Fase 4** (virada do executor) — com flag para roll-back.
-4. **Fase 5** (aposentar Baileys) — só depois de dias de estabilidade.
+```text
+optInGate(mensagem_inbound):
+  1. procura em pj_lista_membros um registro com esse telefone
+     E opt_in_status='convite_enviado'
+     E convite_enviado_em > now() - interval '7 days'
 
-**Enquanto migra, Baileys fica ligado** — nada de vácuo de campanha.
+  2. se achou, tenta classificar a resposta:
+     - button_reply id='SIM' → confirmado
+     - button_reply id='NAO' → recusado
+     - texto normalizado (unaccent+lower+trim) em
+       {'sim','s','ok','pode','pode sim','aceito','confirmo','quero'} → confirmado
+     - texto em {'nao','n','pare','sair','parar','stop','cancelar','descadastrar'} → recusado
+     - qualquer outra coisa → NÃO consome o inbound, deixa fluir pro Silvester/Jarvis normalmente
+       (mas mantém convite_enviado até expirar)
+
+  3. atualiza opt_in_status, opt_in_em, opt_in_origem
+  4. dispara mensagem de confirmação dentro da janela de 24h (texto livre, não é template):
+     - se confirmado: "Show! Você está na lista. 🎉 Em breve novidades."
+     - se recusado: "Combinado, não vamos te incomodar. Se mudar de ideia, é só chamar aqui."
+  5. registra em opt_in_log (auditoria: quem, quando, canal, texto original)
+```
+
+Ponto fino: quando o cliente clica no botão "SAIR"/"PARE" **em qualquer momento** (mesmo já `confirmado`), o mesmo gate marca `recusado` e envia confirmação. Compliance-friendly.
+
+Segundo ponto fino: o gate roda **antes** do Silvester/Jarvis, então o "SIM" não vira uma conversa comercial acidental. Se a mensagem não bate com o gate, segue o fluxo normal.
 
 ---
 
-## 5) Perguntas que preciso te confirmar antes de codar a Fase 1
+## 4) Rotina de convite (novo edge function `enviar-convite-optin`)
 
-1. **Opt-in retroativo**: posso considerar que **quem já mandou mensagem inbound pro Jarvis/Silvester** (existe em `whatsapp_contacts` ou `pietro_conversations`) tem opt-in implícito? Ou você quer opt-in **explícito** (formulário/link) pra 100% dos contatos, sem retroativo?
-2. **WABA ID**: você tem o `waba_id` do AMZ à mão? (é diferente do `phone_number_id`). Precisamos dele pra Fase 2. Se não tiver, te mostro onde pegar no Business Manager.
-3. **Roll-back**: mantemos flag `usar_meta_oficial` por campanha (default true) para poder voltar pro Baileys num caso extremo, ou você quer corte seco (sem flag)?
+- Roda sob demanda quando o usuário clica **"Enviar convite de opt-in"** em uma lista/segmento.
+- Também roda em batch controlado (autopilot de convite) — mesmo motor de trava de volume/jitter que já existe.
+- Só envia pra `opt_in_status IN ('pendente', 'expirado')`.
+- Usa `whatsapp-send-message` com `template_id` de `tipo_uso='convite_optin'` e `status_meta='aprovado'`.
+- Marca `opt_in_status='convite_enviado'` + `convite_enviado_em=now()`.
+- **Reaproveita todas as travas atuais:** cap por número (300), jitter, dedup por telefone, kill-switch.
+- Cron diário limpa expirados (`convite_enviado_em < now()-7d` → `expirado`).
 
-Me confirma esses 3 pontos + qual fase autoriza começar, e eu executo só o autorizado.
+---
+
+## 5) UI da Fase 1
+
+Página "Clientes e Segmentos" ganha:
+
+- **Badge de opt-in por contato:** 🟢 Confirmado / 🟡 Convite enviado (há 2d) / ⚪ Pendente / 🔴 Recusado / ⏰ Expirado
+- **Filtros:** "Só confirmados" / "Pendentes de convite" / "Convite expirado"
+- **Ação em massa:** "Enviar convite de opt-in para X pendentes" → abre modal com preview do template 1 aprovado, contagem, e trava de volume.
+- **Backfill retroativo:** botão "Marcar como confirmado quem já falou comigo no Jarvis/Silvester" — usa `whatsapp_contacts`+`pietro_conversations` como fonte, marca `opt_in_origem='retroativo_inbound'`. Isso responde à pergunta 1 do plano original: **retroativo por inbound é opt-in implícito válido** (a pessoa iniciou conversa com você — regra da Meta permite).
+
+Preview do modal de campanha (que já existe) passa a mostrar:
+
+```text
+Destinatários totais:   1.240
+Com opt-in confirmado:    312   ← serão enviados
+Pendentes de convite:     680   [Enviar convite antes]
+Recusados / expirados:    248   ← ignorados
+```
+
+---
+
+## 6) O que muda no plano original
+
+- **Fase 1 cresce um pouco:** agora inclui o schema de `whatsapp_templates` (só o schema + seed do template de convite, submissão à Meta fica na Fase 2), o edge function `enviar-convite-optin`, e o novo bloco `optInGate` no inbound-processor.
+- **Fase 2** continua sendo a UI completa de gestão de templates (CRUD, submissão, sincronização de status) — mas o template de convite já vai estar cadastrado desde a Fase 1 pra você conseguir rodar convite antes mesmo da UI completa ficar pronta.
+- **Fase 4 (virada do executor)** ganha uma linha só: `WHERE opt_in_status='confirmado'` no filtro de destinatários. Zero complexidade extra.
+- **Fase 5** não muda.
+
+---
+
+## 7) Ordem sugerida dentro da Fase 1 (do mais barato pro mais caro)
+
+1. Migração: campos de opt-in em `pj_lista_membros` + tabela `whatsapp_templates` + tabela `opt_in_log`.
+2. Backfill retroativo (SQL puro, sem UI ainda) — marca quem já falou com Jarvis/Silvester como `confirmado`.
+3. Bloco `optInGate` no `whatsapp-cloud-inbound-processor` — só a lógica de captura (ainda sem UI de disparo).
+4. Seed manual do Template 1 de convite (uma vez, via SQL) enquanto Fase 2 não entrega o CRUD.
+5. Edge function `enviar-convite-optin` + botão "Enviar convite" na UI de segmentos.
+6. Badges e filtros na página "Clientes e Segmentos".
+7. Preview de destinatários no modal de campanha (só o card informativo — o filtro real entra na Fase 4).
+
+Se o crédito apertar depois do passo 3, você **já tem base limpa retroativa + captura automática de novos aceites** rodando, mesmo sem UI. É o mínimo viável blindado.
+
+---
+
+## 8) Três perguntas do plano original — decisões pendentes
+
+1. **Retroativo:** confirmo tratar inbound histórico (`whatsapp_contacts` + `pietro_conversations` + `opt_ins` já existente) como `confirmado` com origem `retroativo_inbound`? **Recomendo sim** — é aderente à regra da Meta ("cliente iniciou conversa").
+2. **WABA ID do AMZ:** você tem em mãos? Precisamos guardar em `whatsapp_config` (nova coluna `waba_id`) já na migração da Fase 1, mesmo que a submissão de template só role na Fase 2.
+3. **Flag de roll-back** `usar_meta_oficial` por campanha: mantenho ou corte seco na Fase 4? Recomendo manter — barato e salva o dia se der ruim.
+
+Me confirma esses 3 pontos + libera "codar Fase 1 nessa ordem", e eu executo só o autorizado.

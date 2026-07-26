@@ -5252,6 +5252,45 @@ export type Database = {
           },
         ]
       }
+      opt_in_log: {
+        Row: {
+          created_at: string
+          id: string
+          message_id: string | null
+          metadata: Json
+          origem: string
+          status_anterior: string | null
+          status_novo: string
+          telefone: string
+          texto_inbound: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          metadata?: Json
+          origem: string
+          status_anterior?: string | null
+          status_novo: string
+          telefone: string
+          texto_inbound?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          metadata?: Json
+          origem?: string
+          status_anterior?: string | null
+          status_novo?: string
+          telefone?: string
+          texto_inbound?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       opt_ins: {
         Row: {
           created_at: string | null
@@ -5811,29 +5850,51 @@ export type Database = {
       pj_lista_membros: {
         Row: {
           adicionado_em: string | null
+          convite_enviado_em: string | null
+          convite_template_id: string | null
           id: string
           lead_id: string | null
           lista_id: string | null
           nome: string | null
+          opt_in_em: string | null
+          opt_in_origem: string | null
+          opt_in_status: string
           telefone: string | null
         }
         Insert: {
           adicionado_em?: string | null
+          convite_enviado_em?: string | null
+          convite_template_id?: string | null
           id?: string
           lead_id?: string | null
           lista_id?: string | null
           nome?: string | null
+          opt_in_em?: string | null
+          opt_in_origem?: string | null
+          opt_in_status?: string
           telefone?: string | null
         }
         Update: {
           adicionado_em?: string | null
+          convite_enviado_em?: string | null
+          convite_template_id?: string | null
           id?: string
           lead_id?: string | null
           lista_id?: string | null
           nome?: string | null
+          opt_in_em?: string | null
+          opt_in_origem?: string | null
+          opt_in_status?: string
           telefone?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "pj_lista_membros_convite_template_fk"
+            columns: ["convite_template_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "pj_lista_membros_lista_id_fkey"
             columns: ["lista_id"]
@@ -8995,6 +9056,63 @@ export type Database = {
           titulo?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_templates: {
+        Row: {
+          body_text: string
+          botoes: Json | null
+          categoria_meta: string
+          created_at: string
+          header: Json | null
+          id: string
+          idioma: string
+          meta_template_id: string | null
+          motivo_rejeicao_meta: string | null
+          nome_meta: string
+          status_meta: string
+          tipo_uso: string
+          updated_at: string
+          user_id: string
+          variaveis_map: Json
+          waba_id: string | null
+        }
+        Insert: {
+          body_text: string
+          botoes?: Json | null
+          categoria_meta: string
+          created_at?: string
+          header?: Json | null
+          id?: string
+          idioma?: string
+          meta_template_id?: string | null
+          motivo_rejeicao_meta?: string | null
+          nome_meta: string
+          status_meta?: string
+          tipo_uso: string
+          updated_at?: string
+          user_id: string
+          variaveis_map?: Json
+          waba_id?: string | null
+        }
+        Update: {
+          body_text?: string
+          botoes?: Json | null
+          categoria_meta?: string
+          created_at?: string
+          header?: Json | null
+          id?: string
+          idioma?: string
+          meta_template_id?: string | null
+          motivo_rejeicao_meta?: string | null
+          nome_meta?: string
+          status_meta?: string
+          tipo_uso?: string
+          updated_at?: string
+          user_id?: string
+          variaveis_map?: Json
+          waba_id?: string | null
         }
         Relationships: []
       }
