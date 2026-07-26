@@ -568,6 +568,21 @@ serve(async (req) => {
           );
         }
 
+        // AUTOPILOT: teto do NÚMERO atingido → força reagendar pra amanhã (via helper com Intl SP, sem offset hardcoded)
+        if (isAutopilot && capAtingido) {
+          const primeiroHorario = (campanha.horarios && campanha.horarios[0]) || '09:00';
+          const amanha = calcularProximoDiaExecucao(
+            campanha.frequencia === 'semanal' ? 'semanal' : 'diario',
+            primeiroHorario,
+            campanha.dias_semana || []
+          );
+          if (amanha) {
+            proximaExecucao = amanha;
+            console.log(`🌙 [AUTOPILOT] teto do NÚMERO atingido — reagendado pra ${amanha}`);
+          }
+        }
+
+
         // Atualizar campanha
         const updateData: any = {
           ultima_execucao: now.toISOString(),
