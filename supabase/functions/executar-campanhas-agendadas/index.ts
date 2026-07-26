@@ -565,13 +565,17 @@ serve(async (req) => {
                 }
               });
 
-              const sucesso = !sendError && sendResult?.success;
+              const outcome = classifySendOutcome(sendError, sendResult);
+              const sucesso = outcome === 'ok';
               if (sucesso) {
                 enviados++;
+                gatewayFailStreak = 0;
                 console.log(`✅ Enviado para ${phone} (${nome})`);
               } else {
-                console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult);
+                console.error(`❌ Erro (${outcome}) ao enviar para ${phone}:`, sendError || sendResult);
                 errosEnvio++;
+                if (outcome === 'gateway') gatewayFailStreak++;
+                else gatewayFailStreak = 0;
               }
               processados++;
 
@@ -584,6 +588,12 @@ serve(async (req) => {
                   erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
                   tipo: 'autopilot',
                 });
+              }
+
+              if (isAutopilot && gatewayFailStreak >= GATEWAY_FAIL_THRESHOLD) {
+                console.log(`🚨 [AUTOPILOT] Gateway offline (${gatewayFailStreak} falhas seguidas) — pausando campanha ${campanha.nome} e reagendando`);
+                gatewayDown = true;
+                break;
               }
 
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
