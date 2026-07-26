@@ -292,6 +292,9 @@ serve(async (req) => {
 
         let enviados = 0;
         let errosEnvio = 0;
+        let processados = 0;   // AUTOPILOT: sucesso+falha (base do recheck e da trava — tentativa conta pro ban)
+        let capAtingido = false; // AUTOPILOT: sinaliza cap do NÚMERO batido — força reagendamento pra amanhã
+
         
         // ✅ OBTER PRODUTO (rotação ou fixo)
         let produtoParaEnviar = campanha.produtos;
