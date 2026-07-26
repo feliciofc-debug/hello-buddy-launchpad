@@ -1463,6 +1463,13 @@ export default function MeusProdutos() {
                 <Rocket className="w-4 h-4" />
                 {t('products.autopilot')}
               </Button>
+              <Button
+                onClick={() => setIsAutopilotWppOpen(true)}
+                className="gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+              >
+                <Rocket className="w-4 h-4" />
+                Autopilot WhatsApp
+              </Button>
               <Button onClick={openAddModal} className="gap-2">
                 <Plus className="w-4 h-4" />
                 {t('products.add_product')}
