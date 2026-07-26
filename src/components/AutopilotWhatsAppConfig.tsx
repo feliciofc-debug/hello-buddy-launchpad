@@ -53,6 +53,7 @@ export function AutopilotWhatsAppConfig({ open, onOpenChange, produtoInicial, on
   const [horarios, setHorarios] = useState<string[]>(['10:00']);
   const [diasSemana, setDiasSemana] = useState<number[]>([1, 2, 3, 4, 5]);
   const [maxEnviosDia, setMaxEnviosDia] = useState<number>(DEFAULT_CAP);
+  const [mensagemTemplate, setMensagemTemplate] = useState<string>(DEFAULT_TEMPLATE);
 
   useEffect(() => {
     if (!open) return;
