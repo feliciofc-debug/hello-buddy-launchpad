@@ -134,6 +134,39 @@ serve(async (req) => {
 
     for (const campanha of campanhas || []) {
       try {
+        // ============================================================
+        // AUTOPILOT — detecção + travas pré-loop (só se autopilot=true)
+        // ============================================================
+        const isAutopilot = campanha.autopilot === true;
+        const diaSP = dateKeySP(now);
+        let capNumero = Number.POSITIVE_INFINITY;
+        let capCampanha = Number.POSITIVE_INFINITY;
+
+        if (isAutopilot) {
+          const { data: cfg } = await supabase
+            .from('pj_clientes_config')
+            .select('max_envios_dia_numero')
+            .eq('user_id', campanha.user_id)
+            .maybeSingle();
+          capNumero = Number(cfg?.max_envios_dia_numero ?? 300);
+          capCampanha = Number(campanha.max_envios_dia ?? 200);
+
+          const [enviadosNumero, enviadosCamp] = await Promise.all([
+            contarEnviosHoje(supabase, { user_id: campanha.user_id }, diaSP),
+            contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
+          ]);
+
+          if (enviadosNumero >= capNumero) {
+            console.log(`🛑 [AUTOPILOT] Tenant ${campanha.user_id} atingiu teto do NÚMERO (${enviadosNumero}/${capNumero}) — pulando ${campanha.nome}`);
+            continue;
+          }
+          if (enviadosCamp >= capCampanha) {
+            console.log(`🛑 [AUTOPILOT] Campanha ${campanha.nome} atingiu teto (${enviadosCamp}/${capCampanha}) — pulando`);
+            continue;
+          }
+          console.log(`🎯 [AUTOPILOT] ${campanha.nome} | camp ${enviadosCamp}/${capCampanha} | num ${enviadosNumero}/${capNumero}`);
+        }
+
         // ✅ VERIFICAR SE JÁ FOI EXECUTADA NOS ÚLTIMOS 2 MINUTOS (evitar duplicata com browser)
         if (campanha.ultima_execucao) {
           const diffMs = now.getTime() - new Date(campanha.ultima_execucao).getTime();
