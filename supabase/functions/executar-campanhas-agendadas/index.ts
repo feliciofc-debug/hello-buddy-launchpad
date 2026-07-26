@@ -194,12 +194,28 @@ serve(async (req) => {
             contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
           ]);
 
-          if (enviadosNumero >= capNumero) {
-            console.log(`🛑 [AUTOPILOT] Tenant ${campanha.user_id} atingiu teto do NÚMERO (${enviadosNumero}/${capNumero}) — pulando ${campanha.nome}`);
-            continue;
-          }
-          if (enviadosCamp >= capCampanha) {
-            console.log(`🛑 [AUTOPILOT] Campanha ${campanha.nome} atingiu teto (${enviadosCamp}/${capCampanha}) — pulando`);
+          if (enviadosNumero >= capNumero || enviadosCamp >= capCampanha) {
+            const motivo = enviadosNumero >= capNumero
+              ? `NÚMERO ${enviadosNumero}/${capNumero}`
+              : `CAMPANHA ${enviadosCamp}/${capCampanha}`;
+            console.log(`🛑 [AUTOPILOT] Pré-loop cap batido (${motivo}) — reagendando ${campanha.nome} para amanhã`);
+            const primeiroHorario = (campanha.horarios && campanha.horarios[0]) || '09:00';
+            const amanha = calcularProximoDiaExecucao(
+              campanha.frequencia === 'semanal' ? 'semanal' : 'diario',
+              primeiroHorario,
+              campanha.dias_semana || []
+            );
+            if (amanha) {
+              await supabase
+                .from('campanhas_recorrentes')
+                .update({
+                  ultima_execucao: now.toISOString(),
+                  proxima_execucao: amanha,
+                  status: 'ativa',
+                })
+                .eq('id', campanha.id);
+              console.log(`🌙 [AUTOPILOT] proxima_execucao=${amanha}`);
+            }
             continue;
           }
           console.log(`🎯 [AUTOPILOT] ${campanha.nome} | camp ${enviadosCamp}/${capCampanha} | num ${enviadosNumero}/${capNumero}`);
