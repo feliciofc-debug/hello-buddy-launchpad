@@ -324,31 +324,62 @@ serve(async (req) => {
           console.log(`👥 Enviando para ${gruposPJ.length} grupos PJ`);
           
           for (const grupo of gruposPJ) {
+            // AUTOPILOT: recheck a cada 10 TENTATIVAS (sucesso+falha) — falha conta pro ban
+            if (isAutopilot && processados > 0 && processados % 10 === 0) {
+              const [nCamp, nNum] = await Promise.all([
+                contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
+                contarEnviosHoje(supabase, { user_id: campanha.user_id }, diaSP),
+              ]);
+              if (nNum >= capNumero) {
+                console.log(`🛑 [AUTOPILOT] recheck grupos — teto NÚMERO ${nNum}/${capNumero} — para tudo (reagenda amanhã)`);
+                capAtingido = true;
+                break;
+              }
+              if (nCamp >= capCampanha) {
+                console.log(`🛑 [AUTOPILOT] recheck grupos — teto CAMPANHA ${nCamp}/${capCampanha} — para esta campanha`);
+                break;
+              }
+            }
+
             try {
               console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
-              
+
               const mensagemGrupo = campanha.mensagem_template
                 .replace(/\{\{nome\}\}/gi, 'pessoal')
                 .replace(/Olá\s+,/gi, 'Olá pessoal,')
                 .replace(/Oi\s+,/gi, 'Oi pessoal,')
                 .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
                 .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
-              
+
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
                 body: {
                   userId: campanha.user_id,
                   groupJid: grupo.grupo_jid,
                   message: mensagemGrupo,
-                  imageUrl: imagemUrl
+                  imageUrl: imagemUrl,
+                  useQueue: isAutopilot,   // AUTOPILOT força jitter via fila
                 }
               });
 
-              if (!sendError && sendResult?.success) {
+              const sucesso = !sendError && sendResult?.success;
+              if (sucesso) {
                 enviados++;
                 console.log(`✅ Enviado para grupo PJ ${grupo.nome}`);
               } else {
                 console.error(`❌ Erro ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
                 errosEnvio++;
+              }
+              processados++;
+
+              if (isAutopilot) {
+                await registrarEnvio(supabase, {
+                  user_id: campanha.user_id,
+                  campanha_id: campanha.id,
+                  whatsapp: grupo.grupo_jid,
+                  sucesso,
+                  erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
+                  tipo: 'autopilot_grupo',
+                });
               }
 
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
@@ -359,8 +390,20 @@ serve(async (req) => {
             } catch (error) {
               console.error(`❌ Erro ao processar grupo PJ ${grupo.nome}:`, error);
               errosEnvio++;
+              processados++;
+              if (isAutopilot) {
+                await registrarEnvio(supabase, {
+                  user_id: campanha.user_id,
+                  campanha_id: campanha.id,
+                  whatsapp: grupo.grupo_jid,
+                  sucesso: false,
+                  erro: String((error as any)?.message || error),
+                  tipo: 'autopilot_grupo',
+                });
+              }
             }
           }
+
         }
 
         // ✅ PROCESSAR LISTAS NORMAIS - excluir IDs que são grupos PJ
