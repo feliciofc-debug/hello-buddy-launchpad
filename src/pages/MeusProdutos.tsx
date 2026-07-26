@@ -29,6 +29,7 @@ import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
 import { AutopilotModal } from '@/components/AutopilotModal';
+import { AutopilotWhatsAppConfig } from '@/components/AutopilotWhatsAppConfig';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
