@@ -188,6 +188,26 @@ Deno.serve(async (req) => {
     for (const entry of entries) {
       const changes = Array.isArray(entry?.changes) ? entry.changes : [];
       for (const change of changes) {
+        // Fase 2 · Bloco A — sincroniza status de template quando a Meta avisa
+        if (change?.field === "message_template_status_update") {
+          const v = change.value ?? {};
+          const metaId = v.message_template_id ? String(v.message_template_id) : null;
+          if (metaId) {
+            const evt = String(v.event ?? "").toUpperCase();
+            const status_meta =
+              evt === "APPROVED" ? "aprovado" :
+              evt === "REJECTED" ? "rejeitado" :
+              (evt === "PAUSED" || evt === "DISABLED") ? "pausado" :
+              "pendente";
+            const { error: tplErr } = await supabase
+              .from("whatsapp_templates")
+              .update({ status_meta, motivo_rejeicao_meta: v.reason ?? null })
+              .eq("meta_template_id", metaId);
+            if (tplErr) console.error("[wa-cloud-webhook] template status update error", tplErr);
+          }
+          continue;
+        }
+
         const value = change?.value;
         if (!value) continue;
         // Ignorar statuses (entrega/leitura). Só processar messages.
