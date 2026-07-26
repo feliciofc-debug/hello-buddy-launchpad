@@ -78,6 +78,44 @@ async function registrarEnvio(
   }
 }
 
+// Classifica falha do send-wuzapi-message-pj:
+// - 'gateway'   → instância WuzAPI/Baileys offline, timeout, 5xx, SQLite locked, erro de invoke
+// - 'number'    → resposta 2xx do gateway com success:false (número inválido, etc.)
+// - 'ok'        → sucesso
+function classifySendOutcome(sendError: any, sendResult: any): 'ok' | 'gateway' | 'number' {
+  if (!sendError && sendResult?.success === true) return 'ok';
+
+  // Erro na invocação da edge function (rede, deploy, timeout) = gateway
+  if (sendError) return 'gateway';
+
+  // instanceStatus explícito com connected:false
+  if (sendResult?.instanceStatus && sendResult.instanceStatus.connected === false) return 'gateway';
+
+  // Erro genérico no wrapper
+  const errStr = String(sendResult?.error || '').toLowerCase();
+  if (errStr.includes('sqlite') || errStr.includes('locked') ||
+      errStr.includes('offline') || errStr.includes('instance') ||
+      errStr.includes('container') || errStr.includes('gateway') ||
+      errStr.includes('timeout') || errStr.includes('econn')) {
+    return 'gateway';
+  }
+
+  // Detalhar por item (results[])
+  const results = Array.isArray(sendResult?.results) ? sendResult.results : [];
+  const anyGatewayHttp = results.some((r: any) => {
+    const st = Number(r?.status ?? 200);
+    if (st === 0 || st >= 500) return true;
+    const rErr = String(r?.error || r?.response?.error || '').toLowerCase();
+    return rErr.includes('sqlite') || rErr.includes('locked') ||
+           rErr.includes('offline') || rErr.includes('instance') ||
+           rErr.includes('container') || rErr.includes('timeout');
+  });
+  if (anyGatewayHttp) return 'gateway';
+
+  // Caso contrário: falha de negócio (número inválido/etc.)
+  return 'number';
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
