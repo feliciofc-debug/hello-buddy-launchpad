@@ -66,7 +66,7 @@ export function AutopilotWhatsAppConfig({ open, onOpenChange, produtoInicial, on
 
       const [prodRes, listasRes, gruposRes, cfgRes] = await Promise.all([
         supabase.from('produtos').select('id, nome, categoria').eq('user_id', user.id).order('nome'),
-        supabase.from('pj_listas_categoria').select('id, nome, total_membros, grupo_jid_espelho').eq('user_id', user.id).order('nome'),
+        supabase.from('pj_listas_categoria').select('id, nome, total_membros').eq('user_id', user.id).order('nome'),
         supabase.from('pj_grupos_whatsapp').select('id, nome, grupo_jid, participantes_count').eq('user_id', user.id).order('nome'),
         supabase.from('whatsapp_config').select('max_envios_dia_numero').eq('user_id', user.id).maybeSingle(),
       ]);
@@ -76,7 +76,7 @@ export function AutopilotWhatsAppConfig({ open, onOpenChange, produtoInicial, on
         id: l.id,
         nome: l.nome,
         total: l.total_membros || 0,
-        espelho: !!l.grupo_jid_espelho,
+        espelho: false,
       })));
       setGrupos((gruposRes.data || []).map((g: any) => ({
         id: g.id,
