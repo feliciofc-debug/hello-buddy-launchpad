@@ -78,6 +78,44 @@ async function registrarEnvio(
   }
 }
 
+// Classifica falha do send-wuzapi-message-pj:
+// - 'gateway'   → instância WuzAPI/Baileys offline, timeout, 5xx, SQLite locked, erro de invoke
+// - 'number'    → resposta 2xx do gateway com success:false (número inválido, etc.)
+// - 'ok'        → sucesso
+function classifySendOutcome(sendError: any, sendResult: any): 'ok' | 'gateway' | 'number' {
+  if (!sendError && sendResult?.success === true) return 'ok';
+
+  // Erro na invocação da edge function (rede, deploy, timeout) = gateway
+  if (sendError) return 'gateway';
+
+  // instanceStatus explícito com connected:false
+  if (sendResult?.instanceStatus && sendResult.instanceStatus.connected === false) return 'gateway';
+
+  // Erro genérico no wrapper
+  const errStr = String(sendResult?.error || '').toLowerCase();
+  if (errStr.includes('sqlite') || errStr.includes('locked') ||
+      errStr.includes('offline') || errStr.includes('instance') ||
+      errStr.includes('container') || errStr.includes('gateway') ||
+      errStr.includes('timeout') || errStr.includes('econn')) {
+    return 'gateway';
+  }
+
+  // Detalhar por item (results[])
+  const results = Array.isArray(sendResult?.results) ? sendResult.results : [];
+  const anyGatewayHttp = results.some((r: any) => {
+    const st = Number(r?.status ?? 200);
+    if (st === 0 || st >= 500) return true;
+    const rErr = String(r?.error || r?.response?.error || '').toLowerCase();
+    return rErr.includes('sqlite') || rErr.includes('locked') ||
+           rErr.includes('offline') || rErr.includes('instance') ||
+           rErr.includes('container') || rErr.includes('timeout');
+  });
+  if (anyGatewayHttp) return 'gateway';
+
+  // Caso contrário: falha de negócio (número inválido/etc.)
+  return 'number';
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -156,12 +194,28 @@ serve(async (req) => {
             contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
           ]);
 
-          if (enviadosNumero >= capNumero) {
-            console.log(`🛑 [AUTOPILOT] Tenant ${campanha.user_id} atingiu teto do NÚMERO (${enviadosNumero}/${capNumero}) — pulando ${campanha.nome}`);
-            continue;
-          }
-          if (enviadosCamp >= capCampanha) {
-            console.log(`🛑 [AUTOPILOT] Campanha ${campanha.nome} atingiu teto (${enviadosCamp}/${capCampanha}) — pulando`);
+          if (enviadosNumero >= capNumero || enviadosCamp >= capCampanha) {
+            const motivo = enviadosNumero >= capNumero
+              ? `NÚMERO ${enviadosNumero}/${capNumero}`
+              : `CAMPANHA ${enviadosCamp}/${capCampanha}`;
+            console.log(`🛑 [AUTOPILOT] Pré-loop cap batido (${motivo}) — reagendando ${campanha.nome} para amanhã`);
+            const primeiroHorario = (campanha.horarios && campanha.horarios[0]) || '09:00';
+            const amanha = calcularProximoDiaExecucao(
+              campanha.frequencia === 'semanal' ? 'semanal' : 'diario',
+              primeiroHorario,
+              campanha.dias_semana || []
+            );
+            if (amanha) {
+              await supabase
+                .from('campanhas_recorrentes')
+                .update({
+                  ultima_execucao: now.toISOString(),
+                  proxima_execucao: amanha,
+                  status: 'ativa',
+                })
+                .eq('id', campanha.id);
+              console.log(`🌙 [AUTOPILOT] proxima_execucao=${amanha}`);
+            }
             continue;
           }
           console.log(`🎯 [AUTOPILOT] ${campanha.nome} | camp ${enviadosCamp}/${capCampanha} | num ${enviadosNumero}/${capNumero}`);
@@ -294,6 +348,9 @@ serve(async (req) => {
         let errosEnvio = 0;
         let processados = 0;   // AUTOPILOT: sucesso+falha (base do recheck e da trava — tentativa conta pro ban)
         let capAtingido = false; // AUTOPILOT: sinaliza cap do NÚMERO batido — força reagendamento pra amanhã
+        let gatewayFailStreak = 0;      // GUARDRAIL: falhas de gateway consecutivas
+        let gatewayDown = false;        // GUARDRAIL: pausa quando streak >= GATEWAY_FAIL_THRESHOLD
+        const GATEWAY_FAIL_THRESHOLD = 5;
 
         
         // ✅ OBTER PRODUTO (rotação ou fixo)
@@ -361,13 +418,17 @@ serve(async (req) => {
                 }
               });
 
-              const sucesso = !sendError && sendResult?.success;
+              const outcome = classifySendOutcome(sendError, sendResult);
+              const sucesso = outcome === 'ok';
               if (sucesso) {
                 enviados++;
+                gatewayFailStreak = 0;
                 console.log(`✅ Enviado para grupo PJ ${grupo.nome}`);
               } else {
-                console.error(`❌ Erro ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
+                console.error(`❌ Erro (${outcome}) ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
                 errosEnvio++;
+                if (outcome === 'gateway') gatewayFailStreak++;
+                else gatewayFailStreak = 0;
               }
               processados++;
 
@@ -380,6 +441,12 @@ serve(async (req) => {
                   erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
                   tipo: 'autopilot_grupo',
                 });
+              }
+
+              if (isAutopilot && gatewayFailStreak >= GATEWAY_FAIL_THRESHOLD) {
+                console.log(`🚨 [AUTOPILOT] Gateway offline (${gatewayFailStreak} falhas seguidas) — pausando envios de grupos e reagendando para próximo slot`);
+                gatewayDown = true;
+                break;
               }
 
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
@@ -410,7 +477,7 @@ serve(async (req) => {
         const gruposPJIds = (gruposPJ || []).map(g => g.id);
         const listasNormaisIds = (campanha.listas_ids || []).filter((id: string) => !gruposPJIds.includes(id));
         
-        if (listasNormaisIds.length > 0 && !capAtingido) {
+        if (listasNormaisIds.length > 0 && !capAtingido && !gatewayDown) {
           // ✅ Buscar contatos de AMBAS as tabelas: whatsapp_groups E pj_listas_categoria/pj_lista_membros
           const { data: listas } = await supabase
             .from("whatsapp_groups")
@@ -498,13 +565,17 @@ serve(async (req) => {
                 }
               });
 
-              const sucesso = !sendError && sendResult?.success;
+              const outcome = classifySendOutcome(sendError, sendResult);
+              const sucesso = outcome === 'ok';
               if (sucesso) {
                 enviados++;
+                gatewayFailStreak = 0;
                 console.log(`✅ Enviado para ${phone} (${nome})`);
               } else {
-                console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult);
+                console.error(`❌ Erro (${outcome}) ao enviar para ${phone}:`, sendError || sendResult);
                 errosEnvio++;
+                if (outcome === 'gateway') gatewayFailStreak++;
+                else gatewayFailStreak = 0;
               }
               processados++;
 
@@ -517,6 +588,12 @@ serve(async (req) => {
                   erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
                   tipo: 'autopilot',
                 });
+              }
+
+              if (isAutopilot && gatewayFailStreak >= GATEWAY_FAIL_THRESHOLD) {
+                console.log(`🚨 [AUTOPILOT] Gateway offline (${gatewayFailStreak} falhas seguidas) — pausando campanha ${campanha.nome} e reagendando`);
+                gatewayDown = true;
+                break;
               }
 
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
@@ -545,9 +622,10 @@ serve(async (req) => {
 
         console.log(`📊 Campanha ${campanha.nome}: ${enviados} enviados, ${errosEnvio} erros`);
 
-        // ✅ SÓ ATUALIZA SE ENVIOU PELO MENOS 1 MENSAGEM
+        // ✅ SÓ ATUALIZA SE ENVIOU PELO MENOS 1 MENSAGEM — EXCETO se cap batido ou gateway offline
+        // (nesse caso PRECISAMOS reagendar para evitar loop com proxima_execucao no passado)
         const totalAlvos = (gruposPJ?.length || 0) + (listasNormaisIds.length > 0 ? 1 : 0);
-        if (enviados === 0 && totalAlvos > 0) {
+        if (enviados === 0 && totalAlvos > 0 && !capAtingido && !gatewayDown) {
           console.log(`⚠️ Campanha ${campanha.nome} - Nenhuma mensagem enviada, NÃO atualizando ultima_execucao`);
           continue;
         }
@@ -579,6 +657,20 @@ serve(async (req) => {
           if (amanha) {
             proximaExecucao = amanha;
             console.log(`🌙 [AUTOPILOT] teto do NÚMERO atingido — reagendado pra ${amanha}`);
+          }
+        }
+
+        // GUARDRAIL: gateway offline → mantém próximo slot; se null, força amanhã (evita proxima_execucao no passado)
+        if (isAutopilot && gatewayDown && !proximaExecucao) {
+          const primeiroHorario = (campanha.horarios && campanha.horarios[0]) || '09:00';
+          const amanha = calcularProximoDiaExecucao(
+            campanha.frequencia === 'semanal' ? 'semanal' : 'diario',
+            primeiroHorario,
+            campanha.dias_semana || []
+          );
+          if (amanha) {
+            proximaExecucao = amanha;
+            console.log(`🚨 [AUTOPILOT] gateway offline — sem slot hoje, reagendado pra ${amanha}`);
           }
         }
 
