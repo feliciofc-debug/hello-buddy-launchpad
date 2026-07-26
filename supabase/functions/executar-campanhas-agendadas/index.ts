@@ -33,6 +33,51 @@ function buildPhoneVariants(phone: string): string[] {
   return [...new Set(variants.filter(Boolean))];
 }
 
+// ============================================================
+// AUTOPILOT WHATSAPP — trava dupla (campanha + número) helpers
+// ============================================================
+function dateKeySP(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(d);
+}
+
+async function contarEnviosHoje(
+  supabase: any,
+  filtro: { campanha_id?: string; user_id?: string },
+  diaSP: string
+): Promise<number> {
+  let q = supabase
+    .from('historico_envios')
+    .select('id', { count: 'exact', head: true })
+    .eq('envio_dia_sp', diaSP);
+  if (filtro.campanha_id) q = q.eq('campanha_id', filtro.campanha_id);
+  if (filtro.user_id)     q = q.eq('user_id',     filtro.user_id);
+  const { count, error } = await q;
+  if (error) { console.error('❌ COUNT historico_envios:', error); return 0; }
+  return count || 0;
+}
+
+async function registrarEnvio(
+  supabase: any,
+  args: { user_id: string; campanha_id: string; whatsapp: string; sucesso: boolean; erro?: string; tipo?: string }
+) {
+  try {
+    await supabase.from('historico_envios').insert({
+      user_id: args.user_id,
+      campanha_id: args.campanha_id,
+      whatsapp: args.whatsapp,             // NOT NULL — phone ou grupo_jid
+      sucesso: args.sucesso,               // reusa coluna existente
+      erro: args.erro || null,
+      tipo: args.tipo || 'autopilot',
+      envio_dia_sp: dateKeySP(),           // coluna nova — indexada
+    });
+  } catch (e) {
+    console.error('❌ registrarEnvio falhou:', e);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -89,6 +134,39 @@ serve(async (req) => {
 
     for (const campanha of campanhas || []) {
       try {
+        // ============================================================
+        // AUTOPILOT — detecção + travas pré-loop (só se autopilot=true)
+        // ============================================================
+        const isAutopilot = campanha.autopilot === true;
+        const diaSP = dateKeySP(now);
+        let capNumero = Number.POSITIVE_INFINITY;
+        let capCampanha = Number.POSITIVE_INFINITY;
+
+        if (isAutopilot) {
+          const { data: cfg } = await supabase
+            .from('pj_clientes_config')
+            .select('max_envios_dia_numero')
+            .eq('user_id', campanha.user_id)
+            .maybeSingle();
+          capNumero = Number(cfg?.max_envios_dia_numero ?? 300);
+          capCampanha = Number(campanha.max_envios_dia ?? 200);
+
+          const [enviadosNumero, enviadosCamp] = await Promise.all([
+            contarEnviosHoje(supabase, { user_id: campanha.user_id }, diaSP),
+            contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
+          ]);
+
+          if (enviadosNumero >= capNumero) {
+            console.log(`🛑 [AUTOPILOT] Tenant ${campanha.user_id} atingiu teto do NÚMERO (${enviadosNumero}/${capNumero}) — pulando ${campanha.nome}`);
+            continue;
+          }
+          if (enviadosCamp >= capCampanha) {
+            console.log(`🛑 [AUTOPILOT] Campanha ${campanha.nome} atingiu teto (${enviadosCamp}/${capCampanha}) — pulando`);
+            continue;
+          }
+          console.log(`🎯 [AUTOPILOT] ${campanha.nome} | camp ${enviadosCamp}/${capCampanha} | num ${enviadosNumero}/${capNumero}`);
+        }
+
         // ✅ VERIFICAR SE JÁ FOI EXECUTADA NOS ÚLTIMOS 2 MINUTOS (evitar duplicata com browser)
         if (campanha.ultima_execucao) {
           const diffMs = now.getTime() - new Date(campanha.ultima_execucao).getTime();
@@ -214,6 +292,9 @@ serve(async (req) => {
 
         let enviados = 0;
         let errosEnvio = 0;
+        let processados = 0;   // AUTOPILOT: sucesso+falha (base do recheck e da trava — tentativa conta pro ban)
+        let capAtingido = false; // AUTOPILOT: sinaliza cap do NÚMERO batido — força reagendamento pra amanhã
+
         
         // ✅ OBTER PRODUTO (rotação ou fixo)
         let produtoParaEnviar = campanha.produtos;
@@ -243,31 +324,62 @@ serve(async (req) => {
           console.log(`👥 Enviando para ${gruposPJ.length} grupos PJ`);
           
           for (const grupo of gruposPJ) {
+            // AUTOPILOT: recheck a cada 10 TENTATIVAS (sucesso+falha) — falha conta pro ban
+            if (isAutopilot && processados > 0 && processados % 10 === 0) {
+              const [nCamp, nNum] = await Promise.all([
+                contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
+                contarEnviosHoje(supabase, { user_id: campanha.user_id }, diaSP),
+              ]);
+              if (nNum >= capNumero) {
+                console.log(`🛑 [AUTOPILOT] recheck grupos — teto NÚMERO ${nNum}/${capNumero} — para tudo (reagenda amanhã)`);
+                capAtingido = true;
+                break;
+              }
+              if (nCamp >= capCampanha) {
+                console.log(`🛑 [AUTOPILOT] recheck grupos — teto CAMPANHA ${nCamp}/${capCampanha} — para esta campanha`);
+                break;
+              }
+            }
+
             try {
               console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
-              
+
               const mensagemGrupo = campanha.mensagem_template
                 .replace(/\{\{nome\}\}/gi, 'pessoal')
                 .replace(/Olá\s+,/gi, 'Olá pessoal,')
                 .replace(/Oi\s+,/gi, 'Oi pessoal,')
                 .replace(/\{\{produto\}\}/gi, produtoParaEnviar?.nome || "")
                 .replace(/\{\{preco\}\}/gi, produtoParaEnviar?.preco?.toString() || "");
-              
+
               const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
                 body: {
                   userId: campanha.user_id,
                   groupJid: grupo.grupo_jid,
                   message: mensagemGrupo,
-                  imageUrl: imagemUrl
+                  imageUrl: imagemUrl,
+                  useQueue: isAutopilot,   // AUTOPILOT força jitter via fila
                 }
               });
 
-              if (!sendError && sendResult?.success) {
+              const sucesso = !sendError && sendResult?.success;
+              if (sucesso) {
                 enviados++;
                 console.log(`✅ Enviado para grupo PJ ${grupo.nome}`);
               } else {
                 console.error(`❌ Erro ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
                 errosEnvio++;
+              }
+              processados++;
+
+              if (isAutopilot) {
+                await registrarEnvio(supabase, {
+                  user_id: campanha.user_id,
+                  campanha_id: campanha.id,
+                  whatsapp: grupo.grupo_jid,
+                  sucesso,
+                  erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
+                  tipo: 'autopilot_grupo',
+                });
               }
 
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
@@ -278,15 +390,27 @@ serve(async (req) => {
             } catch (error) {
               console.error(`❌ Erro ao processar grupo PJ ${grupo.nome}:`, error);
               errosEnvio++;
+              processados++;
+              if (isAutopilot) {
+                await registrarEnvio(supabase, {
+                  user_id: campanha.user_id,
+                  campanha_id: campanha.id,
+                  whatsapp: grupo.grupo_jid,
+                  sucesso: false,
+                  erro: String((error as any)?.message || error),
+                  tipo: 'autopilot_grupo',
+                });
+              }
             }
           }
+
         }
 
         // ✅ PROCESSAR LISTAS NORMAIS - excluir IDs que são grupos PJ
         const gruposPJIds = (gruposPJ || []).map(g => g.id);
         const listasNormaisIds = (campanha.listas_ids || []).filter((id: string) => !gruposPJIds.includes(id));
         
-        if (listasNormaisIds.length > 0) {
+        if (listasNormaisIds.length > 0 && !capAtingido) {
           // ✅ Buscar contatos de AMBAS as tabelas: whatsapp_groups E pj_listas_categoria/pj_lista_membros
           const { data: listas } = await supabase
             .from("whatsapp_groups")
@@ -294,26 +418,44 @@ serve(async (req) => {
             .in("id", listasNormaisIds);
 
           const contatosWhatsappGroups = listas?.flatMap((l: any) => l.phone_numbers || []) || [];
-          
+
           // ✅ NOVO: Buscar também de pj_lista_membros (listas PJ criadas na interface)
           const { data: membrosPJ } = await supabase
             .from("pj_lista_membros")
             .select("telefone, nome")
             .in("lista_id", listasNormaisIds);
-          
+
           const contatosPJListas = (membrosPJ || []).map((m: any) => m.telefone).filter(Boolean);
-          
-          // Mesclar sem duplicatas + normalizar formato para lookup consistente
-          const todosContatosSet = new Set(
-            [...contatosWhatsappGroups, ...contatosPJListas]
-              .map((p: any) => normalizePhone(String(p || '')))
-              .filter(Boolean)
-          );
-          const todosContatos = Array.from(todosContatosSet);
-          
-          console.log(`📞 Total de contatos: ${todosContatos.length} (whatsapp_groups: ${contatosWhatsappGroups.length}, pj_listas: ${contatosPJListas.length})`);
+
+          // Dedup canônico por telefone normalizado
+          const dedupSet = new Set<string>();
+          for (const raw of [...contatosWhatsappGroups, ...contatosPJListas]) {
+            const n = normalizePhone(String(raw || ''));
+            if (n) dedupSet.add(n);
+          }
+          const todosContatos = Array.from(dedupSet);
+
+          const totalBruto = contatosWhatsappGroups.length + contatosPJListas.length;
+          console.log(`📞 Autopilot=${isAutopilot} | dedup: ${totalBruto} → ${todosContatos.length} contatos (wg:${contatosWhatsappGroups.length}, pj:${contatosPJListas.length})`);
 
           for (const phone of todosContatos) {
+            // AUTOPILOT: recheck a cada 10 TENTATIVAS (sucesso+falha)
+            if (isAutopilot && processados > 0 && processados % 10 === 0) {
+              const [nCamp, nNum] = await Promise.all([
+                contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
+                contarEnviosHoje(supabase, { user_id: campanha.user_id }, diaSP),
+              ]);
+              if (nNum >= capNumero) {
+                console.log(`🛑 [AUTOPILOT] recheck contatos — teto NÚMERO ${nNum}/${capNumero} — para tudo (reagenda amanhã)`);
+                capAtingido = true;
+                break;
+              }
+              if (nCamp >= capCampanha) {
+                console.log(`🛑 [AUTOPILOT] recheck contatos — teto CAMPANHA ${nCamp}/${capCampanha} — para esta campanha`);
+                break;
+              }
+            }
+
             try {
               const phoneVariants = buildPhoneVariants(String(phone));
 
@@ -327,11 +469,10 @@ serve(async (req) => {
                 .not("nome", "is", null)
                 .limit(1)
                 .maybeSingle();
-              
+
               if (contact?.nome?.trim()) {
                 nome = contact.nome.trim();
               } else {
-                // Fallback: buscar nome de pj_lista_membros (comparando telefones normalizados)
                 const membroPJ = (membrosPJ || []).find((m: any) => {
                   const telMembro = normalizePhone(String(m.telefone || ''));
                   return phoneVariants.includes(telMembro);
@@ -352,16 +493,30 @@ serve(async (req) => {
                   message: mensagemPersonalizada,
                   imageUrl: imagemUrl,
                   userId: campanha.user_id,
-                  skipProtection: true
+                  skipProtection: true,
+                  useQueue: isAutopilot,   // AUTOPILOT força jitter via fila; manual mantém direto
                 }
               });
 
-              if (!sendError && sendResult?.success) {
+              const sucesso = !sendError && sendResult?.success;
+              if (sucesso) {
                 enviados++;
                 console.log(`✅ Enviado para ${phone} (${nome})`);
               } else {
                 console.error(`❌ Erro ao enviar para ${phone}:`, sendError || sendResult);
                 errosEnvio++;
+              }
+              processados++;
+
+              if (isAutopilot) {
+                await registrarEnvio(supabase, {
+                  user_id: campanha.user_id,
+                  campanha_id: campanha.id,
+                  whatsapp: phone,
+                  sucesso,
+                  erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
+                  tipo: 'autopilot',
+                });
               }
 
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
@@ -372,9 +527,21 @@ serve(async (req) => {
             } catch (error) {
               console.error(`❌ Erro ao processar ${phone}:`, error);
               errosEnvio++;
+              processados++;
+              if (isAutopilot) {
+                await registrarEnvio(supabase, {
+                  user_id: campanha.user_id,
+                  campanha_id: campanha.id,
+                  whatsapp: phone,
+                  sucesso: false,
+                  erro: String((error as any)?.message || error),
+                  tipo: 'autopilot',
+                });
+              }
             }
           }
         }
+
 
         console.log(`📊 Campanha ${campanha.nome}: ${enviados} enviados, ${errosEnvio} erros`);
 
@@ -400,6 +567,21 @@ serve(async (req) => {
             campanha.data_inicio
           );
         }
+
+        // AUTOPILOT: teto do NÚMERO atingido → força reagendar pra amanhã (via helper com Intl SP, sem offset hardcoded)
+        if (isAutopilot && capAtingido) {
+          const primeiroHorario = (campanha.horarios && campanha.horarios[0]) || '09:00';
+          const amanha = calcularProximoDiaExecucao(
+            campanha.frequencia === 'semanal' ? 'semanal' : 'diario',
+            primeiroHorario,
+            campanha.dias_semana || []
+          );
+          if (amanha) {
+            proximaExecucao = amanha;
+            console.log(`🌙 [AUTOPILOT] teto do NÚMERO atingido — reagendado pra ${amanha}`);
+          }
+        }
+
 
         // Atualizar campanha
         const updateData: any = {
