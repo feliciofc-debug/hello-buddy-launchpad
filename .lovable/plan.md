@@ -1,120 +1,117 @@
 
-# Fase 2 — Auditoria + Plano (sem deploy)
+# Plano — Migração para Meta Oficial (Templates + Opt-in obrigatório)
 
-## Respostas A–D
-
-**A) Menu lateral.** Confirmado: `src/pages/DashboardMetricas.tsx` linhas 290–303 têm o `menuItemsAll` e NÃO existe item "Clientes e Segmentos". O item deve ser inserido entre `whatsapp` e `contatos-comerciais` (linha 297), com `path: '/pj/listas'`, `id: 'clientes-segmentos'`. A tela que hoje lista `pj_listas_categoria` + membros é `src/components/pj/ContatosListasPJ.tsx`, renderizada por `src/pages/pj/ListasContatosPJ.tsx` na rota `/pj/listas`. `ContatosWhatsApp.tsx` é a tela de importação (grava, não navega/lista de forma consolidada). `ClientesManager` é outra coisa (CRM de clientes, não segmentos).
-
-**B) Surfacing.** `ContatosListasPJ` já busca `pj_listas_categoria` (linha 120), grupos de `pj_grupos_whatsapp` (linha 158) e membros de `pj_lista_membros`. Os espelhos de grupo criados na Fase 1 (nome com prefixo `📱`) já entram automaticamente porque são rows normais de `pj_listas_categoria`. O que falta pra fechar surfacing: **chip de origem visível** (lista/grupo/espelho) e contagem real via `COUNT` (hoje mostra `total_membros` cache, que a Fase 1 já recalcula, mas a tela não diferencia visualmente).
-
-**C) Alvos no modal de campanha.** `CriarCampanhaWhatsAppModal` (linhas 199–290) já carrega TRÊS fontes:
-- `pj_listas_categoria` (prefixo `📋`) — inclui os espelhos de grupo `📱` da Fase 1
-- `pj_grupos_whatsapp` com `grupo_jid` (prefixo `👥`) — grupo real
-- `afiliado_lista_membros` (prefixo `📂`) — legado
-
-Problema conhecido: **um grupo importado pela Fase 1 aparece 2× no seletor** — uma como grupo real (`👥`) e outra como espelho (`📱`). Precisa deduplicar visualmente ou marcar o espelho como "membros individuais" pra o usuário não selecionar os dois e disparar em dobro.
-
-**D) Autopilot.** `AutopilotModal` + `AutopilotConfig` cuidam SÓ de redes sociais (Facebook/Instagram/Reels via `autopilot_config`). NÃO existe autopilot de WhatsApp. Recorrência de WhatsApp existe: tabela `campanhas_recorrentes` + edge function `executar-campanhas-agendadas` (cron via `process_scheduled_campaigns` no banco, já ativo). Hoje é criada manualmente pelo modal (`CriarCampanhaWhatsAppModal` grava em `campanhas_recorrentes` quando frequência ≠ uma-vez).
-
-**⚠️ Achado crítico sobre token.** `executar-campanhas-agendadas` linha 349 dispara via `send-wuzapi-message-pj` (gateway local Baileys, por `userId`) — NÃO usa Meta Cloud, então o token do tenant é o `.exe` local por `user_id`, não o `whatsapp_config.access_token`. Isso é OK e já é multi-tenant por natureza (cada tenant tem seu gateway/porta). A guardrail "token do tenant" da Fase 2 se traduz aqui como: **campanhas do autopilot WhatsApp devem sempre passar por `send-wuzapi-message-pj` com `userId` do dono da campanha, jamais um userId hardcoded ou global**.
-
-Fluxo de resposta: `whatsapp-cloud-inbound-processor` cobre Meta Cloud. Baileys tem seu próprio inbound (não olhei aqui, mas fora do escopo desta feature — respostas seguem o caminho existente).
+Nada será codificado antes da tua aprovação. Abaixo, o mapa do que já existe, o que falta, e a ordem sugerida por valor rápido × baixo consumo de crédito.
 
 ---
 
-## BLOCO 1 — Surfacing (rápido)
+## 1) O que já existe vs. o que falta
 
-### Diff 1.1 — `src/pages/DashboardMetricas.tsx`
+**Já pronto (reaproveitável — não perdemos nada):**
+- `whatsapp-send-message` **já sabe mandar template** (`type: 'template'`) via `graph.facebook.com/v25.0/{phone_id}/messages`. Hoje só usa `name` + `language` (sem componentes/variáveis).
+- Tabela `whatsapp_config` por tenant (phone_number_id + access_token permanente já rotacionado no AMZ).
+- Tabela `opt_ins` + edge functions `registrar-optin` e `sincronizar-optins-retroativo` — infra de consentimento **já existe**.
+- Todo o motor visual: modal de campanha, segmentos, espelhos de grupo, múltiplos horários, Autopilot, travas de volume, dedup por telefone. **Continua igual.**
 
-Inserir item no `menuItemsAll` (após `whatsapp`, antes de `contatos-comerciais`, linha 297):
-
-```tsx
-{ id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
-{ id: 'clientes-segmentos', icon: Users, label: 'Clientes e Segmentos', path: '/pj/listas' },
-{ id: 'contatos-comerciais', icon: Briefcase, label: 'Contatos Comerciais', path: '/pj/contatos-comerciais' },
-```
-
-Adicionar `Users` ao import de `lucide-react` (arquivo já usa muitos ícones, checar se já está). Respeita `isMenuAllowed('clientes-segmentos')` automaticamente pelo filtro linha 305 — precisa garantir que `useClientMenus` retorna `true` por default (ou adicionar `'clientes-segmentos'` à whitelist default do hook).
-
-### Diff 1.2 — `src/components/pj/ContatosListasPJ.tsx`
-
-Adicionar coluna/badge de **origem** em cada linha da lista:
-- Nome começa com `📱 ` → badge secundário "Espelho de grupo"
-- Row veio de `pj_grupos_whatsapp` → badge "Grupo WhatsApp"
-- Resto → badge "Lista manual/CSV"
-
-Uma helper `getOrigin(item)` local + `<Badge>` do shadcn. Nenhuma alteração de query.
-
-### Diff 1.3 — `src/hooks/useClientMenus.ts` (se necessário)
-
-Garantir que `'clientes-segmentos'` está na whitelist default. Se o hook já libera tudo por default, este diff é no-op.
+**Falta construir:**
+- **A.** Suporte a `components` (variáveis `{{1}}`, `{{2}}`, header com imagem) no `whatsapp-send-message`.
+- **B.** Gestão de templates: CRUD + submissão à Meta via Message Template API (`/{WABA_ID}/message_templates`) + consulta de status (APPROVED/PENDING/REJECTED).
+- **C.** Campo `opt_in` em `pj_lista_membros` (ou join contra `opt_ins`/`whatsapp_contacts`) + filtro obrigatório no executor.
+- **D.** Trocar o "correio" no `executar-campanhas-agendadas`: de `send-wuzapi-message-pj` (Baileys) para `whatsapp-send-message` (Meta template).
+- **E.** Aposentar Baileys e fechar `anon` em `fila_atendimento_pj` / `gateway_status` (resolve os 2 fixes de segurança pendentes).
 
 ---
 
-## BLOCO 2 — Produto → disparo (curto)
+## 2) Fases (ordem por valor rápido × custo baixo)
 
-### Diff 2.1 — `src/components/CriarCampanhaWhatsAppModal.tsx`
+### FASE 1 — Opt-in como fonte de verdade (baixo esforço, valor imediato)
+Antes de qualquer envio oficial, garantir que a base está limpa.
 
-**Deduplicação de alvos.** Quando um grupo real (`pj_grupos_whatsapp`) tem espelho correspondente em `pj_listas_categoria` (nome com `📱 <mesmo nome>`), marcar o espelho na UI com badge "(individual — evitar se já selecionou o grupo)" e adicionar validação client-side: se usuário selecionar grupo `👥 X` **e** espelho `📱 X`, avisar antes de disparar.
+- Adicionar coluna `opt_in boolean default false` + `opt_in_origem text` + `opt_in_em timestamptz` em `pj_lista_membros`.
+- Backfill via `sincronizar-optins-retroativo` (já existe) para marcar quem já tem opt-in em `opt_ins` ou `whatsapp_contacts`.
+- UI em "Clientes e Segmentos": badge verde "✅ Opt-in" / cinza "⚠️ Sem opt-in", filtro "só com opt-in", ação em massa "Registrar opt-in manual (declaro que tenho consentimento)".
+- Preview do modal de campanha passa a mostrar: `X destinatários totais → Y com opt-in → serão enviados: Y`.
 
-Match por: strip prefixos e comparar nome normalizado (`nome.replace(/^📱 /, '').trim()` vs `grupo.nome.trim()`).
-
-Nada muda no dispatch (continua queue-only via `inserir_campanha_fila` + gateway local por `userId`).
-
-### Diff 2.2 — `src/pages/MeusProdutos.tsx`
-
-Já existe botão que abre `CriarCampanhaWhatsAppModal` com `produto_id` (linhas 1271, 2163–2166). Nada a fazer estrutural — apenas confirmar que o `produto_id` está sendo passado no state ao abrir (auditar o handler que seta `isCampanhaWhatsAppOpen` — se não passa `produto_id`, adicionar).
+**Esforço:** pequeno. **Crédito:** baixo. **Valor:** sua base já fica pronta pro dia da virada.
 
 ---
 
-## BLOCO 3 — Autopilot WhatsApp (novo, modo CONTROLADO)
+### FASE 2 — Gestão de Templates (média, é o coração da migração)
+Tela nova: `Configurações → Templates WhatsApp`.
 
-Reutiliza 100% da infra existente: `campanhas_recorrentes` + `executar-campanhas-agendadas` + `send-wuzapi-message-pj`. **Sem nova tabela, sem novo cron.**
+- CRUD local em nova tabela `whatsapp_templates` (nome, categoria MARKETING/UTILITY, idioma, body, header, botões, status Meta, motivo de rejeição).
+- Edge function `whatsapp-template-submit` — cria/atualiza template via `POST /{WABA_ID}/message_templates` usando o token do tenant.
+- Edge function `whatsapp-template-sync` — puxa status atual via `GET /{WABA_ID}/message_templates` e grava no banco.
+- UI: criar → preview com variáveis (`{{1}}=nome`, `{{2}}=produto`, `{{3}}=preço`) → submeter → ver status (Pendente/Aprovado/Rejeitado com motivo) → botão "Sincronizar status".
+- Precisamos guardar `waba_id` por tenant em `whatsapp_config` (adicionar coluna se não existir).
 
-### Diff 3.1 — Novo componente `src/components/AutopilotWhatsAppConfig.tsx`
-
-Espelho do `AutopilotConfig` (redes sociais), mas grava em `campanhas_recorrentes`. Config:
-
-- **Produtos alvo** (multi-select de `produtos` do user)
-- **Segmentos alvo** (multi-select de `pj_listas_categoria` + `pj_grupos_whatsapp`, com dedup do Bloco 2)
-- **Cadência**: `frequencia` (`diaria` | `semanal`), `dias_semana[]`, `horarios[]` (usa colunas já existentes de `campanhas_recorrentes`)
-- **Trava de volume**: novo campo local `max_envios_dia` — persiste em `campanhas_recorrentes.metadata` (JSONB) ou nova coluna se necessário. **Auditar `campanhas_recorrentes` primeiro** — se já tem `limite_envios_dia`, reusa; senão, migration mínima:
-  ```sql
-  ALTER TABLE public.campanhas_recorrentes
-    ADD COLUMN IF NOT EXISTS max_envios_dia integer;
-  ```
-- **Toggle ativo/pausado** (usa `campanhas_recorrentes.ativa`).
-
-### Diff 3.2 — Enforcement da trava no `executar-campanhas-agendadas`
-
-Antes do loop de envio (linha ~340), somar quantos envios essa `campanha_recorrente_id` já fez HOJE (via `historico_envios` filtrado por `campanha_id` + `DATE(created_at) = CURRENT_DATE`) e cortar em `max_envios_dia`. Se estourou, `continue` pra próxima campanha, log claro.
-
-### Diff 3.3 — Novo modal `src/components/AutopilotWhatsAppModal.tsx`
-
-Espelho do `AutopilotModal` (rocket → whatsapp icon). Wrapper simples do config.
-
-### Diff 3.4 — `src/pages/MeusProdutos.tsx`
-
-Botão "Autopilot WhatsApp" ao lado do "Autopilot Social" existente. Abre o novo modal.
-
-### Guardrails obrigatórios (todos no diff 3.2)
-
-1. **Token do tenant**: dispatch continua chamando `send-wuzapi-message-pj` com `userId: campanha.user_id`. Nunca hardcode.
-2. **Trava real**: `max_envios_dia` verificada por SUM real do histórico do dia (não campo cache).
-3. **Anti-duplicação de contato**: quando `listas_ids` inclui grupo real + espelho do mesmo grupo, deduplicar por telefone normalizado ANTES de inserir na fila (o loop atual já usa `todosContatosSet` linha 312 — verificar se dedup por `normalizePhoneNumber` é efetivo). Reforçar com normalização explícita antes do `Set`.
-4. **Ativação exige config completa**: UI só deixa marcar `ativa=true` se `produtos ≥ 1` E `segmentos ≥ 1` E `horarios ≥ 1` E `max_envios_dia > 0`.
+**Esforço:** médio. **Crédito:** médio. **Valor:** sem isso não há campanha oficial.
 
 ---
 
-## Ordem de aplicação (após seu OK)
+### FASE 3 — Adaptar `whatsapp-send-message` para componentes
+- Aceitar `template_components: [{ type: 'body', parameters: [{type:'text', text:'...'}] }, { type:'header', parameters:[{type:'image', image:{link:'...'}}] }]`.
+- Aceitar `template_id` (do nosso banco) para o executor não precisar montar payload à mão.
 
-1. **Bloco 1** (surfacing) — isolado, zero risco.
-2. **Bloco 2** (dedup no modal) — só UI.
-3. **Bloco 3.2** primeiro (enforcement backend) → deploy → depois 3.1/3.3/3.4 (UI) — assim a trava existe antes de qualquer autopilot ser criado.
+**Esforço:** pequeno. **Crédito:** baixo.
 
-## Não faço agora
+---
 
-Nada. Aguardo review linha a linha, especialmente:
-- Existe `max_envios_dia` (ou similar) em `campanhas_recorrentes`? Se sim, evita migration.
-- Confirmar que `useClientMenus` libera `clientes-segmentos` por default (ou aceitar diff 1.3).
-- Você quer o Autopilot WhatsApp acessível também no menu lateral, ou só via botão no /meus-produtos?
+### FASE 4 — Migrar o executor + modal de campanha (a virada)
+- `CriarCampanhaWhatsAppModal` e `AutopilotWhatsAppConfig`: em vez de campo "template livre", passa a ter **seletor de template aprovado** (filtra `status='APPROVED'`) + mapeamento das variáveis (`{{1}} → nome do contato`, `{{2}} → produto`, `{{3}} → preço`) + preview do texto final.
+- `executar-campanhas-agendadas`:
+  - filtra destinatários **exigindo `opt_in=true`**;
+  - troca chamada de `send-wuzapi-message-pj` por `whatsapp-send-message` com `template_id` + `template_components` + `image_url` (do produto);
+  - **travas de volume, dedup, jitter, kill-switch de reagendamento — tudo continua igual**;
+  - guardrail de "chip offline" some (é oficial), mas mantemos o de erro Meta (24h token, template revogado, etc.).
+- Flag `usar_meta_oficial boolean default true` em `campanhas_recorrentes` — permite conviver com Baileys durante a transição (roll-back se algo travar).
+
+**Esforço:** médio. **Crédito:** médio. **Valor:** aqui você já roda campanha 100% oficial.
+
+---
+
+### FASE 5 — Aposentar Baileys + fechar buracos de segurança
+Só executar quando Fase 4 estiver rodando estável por alguns dias.
+
+- Remover botão "Gateway WhatsApp" / instâncias WuzAPI do menu (esconder, não deletar código ainda).
+- Desativar cron/queue do `fila_atendimento_pj` para autopilot.
+- **Migração de segurança final:** revogar `anon` em `fila_atendimento_pj` e `gateway_status` → **fecha os 2 fixes pendentes do scanner** de vez.
+- Deletar tabelas WuzAPI num ciclo seguinte, após período de observação.
+
+**Esforço:** pequeno. **Crédito:** baixo. **Valor:** fecha segurança + simplifica manutenção.
+
+---
+
+## 3) O que continua exatamente igual (reaproveitamento)
+
+- ✅ Modal de campanha, seleção de produtos e segmentos, múltiplos horários, modo `uma_vez`/`diário`.
+- ✅ Botão "📱 Campanha WhatsApp" e "Autopilot WhatsApp" no card de produto.
+- ✅ Segmentos, espelhos de grupo, dedup por telefone normalizado.
+- ✅ Travas: `max_envios_dia` por campanha, teto por número (300), kill-switch, reagendamento em SP.
+- ✅ `historico_envios`, `campanha_execucoes`, dashboards.
+- ✅ JARVIS e Silvester (atendimento) — já são 100% Meta oficial, não muda nada.
+
+**Só troca o "correio" por baixo do capô + adiciona filtro de opt-in + seletor de template.**
+
+---
+
+## 4) Recomendação de execução dentro do crédito apertado
+
+Sugestão para caber num orçamento enxuto sem perder valor:
+
+1. **Fase 1 primeiro** (opt-in) — barato, deixa a base pronta. Se o crédito acabar aqui, a plataforma continua funcionando com Baileys e você já ganhou governança.
+2. **Fase 2 + 3 juntas** (templates + suporte a components) — é o investimento principal.
+3. **Fase 4** (virada do executor) — com flag para roll-back.
+4. **Fase 5** (aposentar Baileys) — só depois de dias de estabilidade.
+
+**Enquanto migra, Baileys fica ligado** — nada de vácuo de campanha.
+
+---
+
+## 5) Perguntas que preciso te confirmar antes de codar a Fase 1
+
+1. **Opt-in retroativo**: posso considerar que **quem já mandou mensagem inbound pro Jarvis/Silvester** (existe em `whatsapp_contacts` ou `pietro_conversations`) tem opt-in implícito? Ou você quer opt-in **explícito** (formulário/link) pra 100% dos contatos, sem retroativo?
+2. **WABA ID**: você tem o `waba_id` do AMZ à mão? (é diferente do `phone_number_id`). Precisamos dele pra Fase 2. Se não tiver, te mostro onde pegar no Business Manager.
+3. **Roll-back**: mantemos flag `usar_meta_oficial` por campanha (default true) para poder voltar pro Baileys num caso extremo, ou você quer corte seco (sem flag)?
+
+Me confirma esses 3 pontos + qual fase autoriza começar, e eu executo só o autorizado.
