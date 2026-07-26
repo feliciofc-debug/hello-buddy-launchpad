@@ -17,6 +17,18 @@ function normalizePhone(phone: string): string {
   return digits;
 }
 
+// Formata número como moeda BR: 17.5 → "R$ 17,50"
+function formatPriceBRL(preco: any): string {
+  if (preco === null || preco === undefined || preco === '') return '';
+  const n = typeof preco === 'number' ? preco : parseFloat(String(preco).replace(',', '.'));
+  if (!isFinite(n)) return '';
+  try {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(n);
+  } catch {
+    return `R$ ${n.toFixed(2).replace('.', ',')}`;
+  }
+}
+
 function buildPhoneVariants(phone: string): string[] {
   const normalized = normalizePhone(phone);
   if (!normalized) return [];
