@@ -1974,6 +1974,7 @@ export type Database = {
           id: string
           intervalo_minutos: number | null
           listas_ids: string[]
+          max_envios_dia: number
           mensagem_template: string
           nome: string
           pj_grupos_ids: string[] | null
@@ -1999,6 +2000,7 @@ export type Database = {
           id?: string
           intervalo_minutos?: number | null
           listas_ids: string[]
+          max_envios_dia?: number
           mensagem_template: string
           nome: string
           pj_grupos_ids?: string[] | null
@@ -2024,6 +2026,7 @@ export type Database = {
           id?: string
           intervalo_minutos?: number | null
           listas_ids?: string[]
+          max_envios_dia?: number
           mensagem_template?: string
           nome?: string
           pj_grupos_ids?: string[] | null
@@ -3475,30 +3478,36 @@ export type Database = {
       }
       historico_envios: {
         Row: {
+          campanha_id: string | null
           erro: string | null
           id: string
           mensagem: string | null
           sucesso: boolean | null
           timestamp: string | null
           tipo: string | null
+          user_id: string | null
           whatsapp: string
         }
         Insert: {
+          campanha_id?: string | null
           erro?: string | null
           id?: string
           mensagem?: string | null
           sucesso?: boolean | null
           timestamp?: string | null
           tipo?: string | null
+          user_id?: string | null
           whatsapp: string
         }
         Update: {
+          campanha_id?: string | null
           erro?: string | null
           id?: string
           mensagem?: string | null
           sucesso?: boolean | null
           timestamp?: string | null
           tipo?: string | null
+          user_id?: string | null
           whatsapp?: string
         }
         Relationships: []
