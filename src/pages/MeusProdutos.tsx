@@ -2148,6 +2148,10 @@ export default function MeusProdutos() {
         open={isAutopilotOpen}
         onOpenChange={setIsAutopilotOpen}
       />
+      <AutopilotWhatsAppConfig
+        open={isAutopilotWppOpen}
+        onOpenChange={setIsAutopilotWppOpen}
+      />
       {reelsProduct && (
         <PublicarReelsModal
           open={isReelsModalOpen}
