@@ -29,6 +29,7 @@ import StockIntegrations from '@/components/StockIntegrations';
 import { PostarFacebookModal } from '@/components/PostarFacebookModal';
 import { PostarInstagramModal } from '@/components/PostarInstagramModal';
 import { AutopilotModal } from '@/components/AutopilotModal';
+import { AutopilotWhatsAppConfig } from '@/components/AutopilotWhatsAppConfig';
 import { PublicarReelsModal } from '@/components/PublicarReelsModal';
 import { PublicarSimultaneoModal } from '@/components/PublicarSimultaneoModal';
 import { AreaVideos } from '@/components/AreaVideos';
@@ -794,6 +795,7 @@ export default function MeusProdutos() {
   const [isInstagramModalOpen, setIsInstagramModalOpen] = useState(false);
   const [instagramProduct, setInstagramProduct] = useState<Product | null>(null);
   const [isAutopilotOpen, setIsAutopilotOpen] = useState(false);
+  const [isAutopilotWppOpen, setIsAutopilotWppOpen] = useState(false);
   const [isReelsModalOpen, setIsReelsModalOpen] = useState(false);
   const [reelsProduct, setReelsProduct] = useState<Product | null>(null);
   const [isSimultaneoModalOpen, setIsSimultaneoModalOpen] = useState(false);
@@ -1460,6 +1462,13 @@ export default function MeusProdutos() {
               >
                 <Rocket className="w-4 h-4" />
                 {t('products.autopilot')}
+              </Button>
+              <Button
+                onClick={() => setIsAutopilotWppOpen(true)}
+                className="gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+              >
+                <Rocket className="w-4 h-4" />
+                Autopilot WhatsApp
               </Button>
               <Button onClick={openAddModal} className="gap-2">
                 <Plus className="w-4 h-4" />
@@ -2138,6 +2147,10 @@ export default function MeusProdutos() {
       <AutopilotModal
         open={isAutopilotOpen}
         onOpenChange={setIsAutopilotOpen}
+      />
+      <AutopilotWhatsAppConfig
+        open={isAutopilotWppOpen}
+        onOpenChange={setIsAutopilotWppOpen}
       />
       {reelsProduct && (
         <PublicarReelsModal
