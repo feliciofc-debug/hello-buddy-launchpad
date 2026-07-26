@@ -348,6 +348,9 @@ serve(async (req) => {
         let errosEnvio = 0;
         let processados = 0;   // AUTOPILOT: sucesso+falha (base do recheck e da trava — tentativa conta pro ban)
         let capAtingido = false; // AUTOPILOT: sinaliza cap do NÚMERO batido — força reagendamento pra amanhã
+        let gatewayFailStreak = 0;      // GUARDRAIL: falhas de gateway consecutivas
+        let gatewayDown = false;        // GUARDRAIL: pausa quando streak >= GATEWAY_FAIL_THRESHOLD
+        const GATEWAY_FAIL_THRESHOLD = 5;
 
         
         // ✅ OBTER PRODUTO (rotação ou fixo)
