@@ -21,6 +21,8 @@ import { toast } from "sonner";
 import ImportContatosPJ from "./ImportContatosPJ";
 import EnviosProgramadosPJ from "./EnviosProgramadosPJ";
 import CriarGrupoWhatsAppPJ from "./CriarGrupoWhatsAppPJ";
+import EnviarConviteOptinModal from "./EnviarConviteOptinModal";
+import { Send } from "lucide-react";
 
 // Normaliza nome de lista/grupo para casar espelho "📱 X" com grupo "X"
 // (remove prefixo espelho, faz trim + lowercase + colapsa espaços)
