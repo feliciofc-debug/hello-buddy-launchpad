@@ -820,6 +820,16 @@ export default function ContatosListasPJ() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {conviteTarget && (
+        <EnviarConviteOptinModal
+          open={!!conviteTarget}
+          onClose={() => setConviteTarget(null)}
+          listaId={conviteTarget.id}
+          listaNome={conviteTarget.nome}
+          onDisparoConcluido={() => loadListas()}
+        />
+      )}
     </div>
   );
 }
