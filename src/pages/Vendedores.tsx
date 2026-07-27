@@ -45,7 +45,7 @@ export default function Vendedores() {
   const loadVendedores = async () => {
     const { data, error } = await supabase
       .from('vendedores')
-      .select('*')
+      .select('id, nome, email, foto_url, especialidade, meta_mensal, comissao_percentual, ativo, whatsapp, created_at')
       .order('created_at', { ascending: false });
 
     if (!error) setVendedores(data || []);
@@ -59,7 +59,14 @@ export default function Vendedores() {
     }
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Usuário não autenticado');
+        return;
+      }
+
       const payload = {
+        user_id: user.id,
         nome: formData.nome,
         email: formData.email,
         especialidade: formData.especialidade || null,
