@@ -116,6 +116,9 @@ export default function ContatosListasPJ() {
   const [newMemberNome, setNewMemberNome] = useState("");
   const [newMemberTelefone, setNewMemberTelefone] = useState("");
 
+  // Convite opt-in modal
+  const [conviteTarget, setConviteTarget] = useState<{ id: string; nome: string } | null>(null);
+
   useEffect(() => { loadUser(); }, []);
 
   const loadUser = async () => {
