@@ -152,18 +152,28 @@ export default function ContatosListasPJ() {
 
     const { data: membrosData } = await supabase
       .from("pj_lista_membros")
-      .select("lista_id")
+      .select("lista_id, opt_in_status")
       .in("lista_id", listaIds);
 
-    const membrosCountByLista = (membrosData || []).reduce<Record<string, number>>((acc, membro) => {
-      if (!membro.lista_id) return acc;
-      acc[membro.lista_id] = (acc[membro.lista_id] || 0) + 1;
-      return acc;
-    }, {});
+    const membrosCountByLista: Record<string, number> = {};
+    const confirmadosByLista: Record<string, number> = {};
+    const pendentesByLista: Record<string, number> = {};
+    const recusadosByLista: Record<string, number> = {};
+    (membrosData || []).forEach((m: any) => {
+      if (!m.lista_id) return;
+      membrosCountByLista[m.lista_id] = (membrosCountByLista[m.lista_id] || 0) + 1;
+      const s = m.opt_in_status;
+      if (s === "confirmado") confirmadosByLista[m.lista_id] = (confirmadosByLista[m.lista_id] || 0) + 1;
+      else if (s === "recusado") recusadosByLista[m.lista_id] = (recusadosByLista[m.lista_id] || 0) + 1;
+      else pendentesByLista[m.lista_id] = (pendentesByLista[m.lista_id] || 0) + 1;
+    });
 
     const listasComContagemReal: ListaItem[] = data.map((lista) => ({
       ...lista,
       total_membros: membrosCountByLista[lista.id] ?? lista.total_membros ?? 0,
+      optin_confirmados: confirmadosByLista[lista.id] ?? 0,
+      optin_pendentes: pendentesByLista[lista.id] ?? 0,
+      optin_recusados: recusadosByLista[lista.id] ?? 0,
     }));
 
     setListas(listasComContagemReal);
