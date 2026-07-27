@@ -21,6 +21,8 @@ import { toast } from "sonner";
 import ImportContatosPJ from "./ImportContatosPJ";
 import EnviosProgramadosPJ from "./EnviosProgramadosPJ";
 import CriarGrupoWhatsAppPJ from "./CriarGrupoWhatsAppPJ";
+import EnviarConviteOptinModal from "./EnviarConviteOptinModal";
+import { Send } from "lucide-react";
 
 // Normaliza nome de lista/grupo para casar espelho "📱 X" com grupo "X"
 // (remove prefixo espelho, faz trim + lowercase + colapsa espaços)
@@ -39,6 +41,9 @@ interface ListaItem {
   descricao?: string | null;
   total_membros: number;
   created_at: string;
+  optin_confirmados?: number;
+  optin_pendentes?: number;
+  optin_recusados?: number;
 }
 
 interface GrupoItem {
@@ -111,6 +116,9 @@ export default function ContatosListasPJ() {
   const [newMemberNome, setNewMemberNome] = useState("");
   const [newMemberTelefone, setNewMemberTelefone] = useState("");
 
+  // Convite opt-in modal
+  const [conviteTarget, setConviteTarget] = useState<{ id: string; nome: string } | null>(null);
+
   useEffect(() => { loadUser(); }, []);
 
   const loadUser = async () => {
@@ -147,18 +155,28 @@ export default function ContatosListasPJ() {
 
     const { data: membrosData } = await supabase
       .from("pj_lista_membros")
-      .select("lista_id")
+      .select("lista_id, opt_in_status")
       .in("lista_id", listaIds);
 
-    const membrosCountByLista = (membrosData || []).reduce<Record<string, number>>((acc, membro) => {
-      if (!membro.lista_id) return acc;
-      acc[membro.lista_id] = (acc[membro.lista_id] || 0) + 1;
-      return acc;
-    }, {});
+    const membrosCountByLista: Record<string, number> = {};
+    const confirmadosByLista: Record<string, number> = {};
+    const pendentesByLista: Record<string, number> = {};
+    const recusadosByLista: Record<string, number> = {};
+    (membrosData || []).forEach((m: any) => {
+      if (!m.lista_id) return;
+      membrosCountByLista[m.lista_id] = (membrosCountByLista[m.lista_id] || 0) + 1;
+      const s = m.opt_in_status;
+      if (s === "confirmado") confirmadosByLista[m.lista_id] = (confirmadosByLista[m.lista_id] || 0) + 1;
+      else if (s === "recusado") recusadosByLista[m.lista_id] = (recusadosByLista[m.lista_id] || 0) + 1;
+      else pendentesByLista[m.lista_id] = (pendentesByLista[m.lista_id] || 0) + 1;
+    });
 
     const listasComContagemReal: ListaItem[] = data.map((lista) => ({
       ...lista,
       total_membros: membrosCountByLista[lista.id] ?? lista.total_membros ?? 0,
+      optin_confirmados: confirmadosByLista[lista.id] ?? 0,
+      optin_pendentes: pendentesByLista[lista.id] ?? 0,
+      optin_recusados: recusadosByLista[lista.id] ?? 0,
     }));
 
     setListas(listasComContagemReal);
@@ -466,10 +484,24 @@ export default function ContatosListasPJ() {
                           <p className="text-xs text-muted-foreground">
                             {lista.total_membros} contatos • {new Date(lista.created_at).toLocaleDateString("pt-BR")}
                           </p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                              ✅ {lista.optin_confirmados ?? 0} confirmados
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                              ⏳ {lista.optin_pendentes ?? 0} pendentes
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] bg-red-50 text-red-700 border-red-200">
+                              🚫 {lista.optin_recusados ?? 0} recusados
+                            </Badge>
+                          </div>
                         </div>
                       )}
                       {editingListaId !== lista.id && (
                         <div className="flex gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" title="Enviar convite de opt-in" onClick={() => setConviteTarget({ id: lista.id, nome: lista.nome })}>
+                            <Send className="h-3.5 w-3.5" />
+                          </Button>
                           <Button size="icon" variant="ghost" className="h-8 w-8" title="Editar nome" onClick={() => startEditLista(lista)}>
                             <Edit2 className="h-3.5 w-3.5" />
                           </Button>
@@ -788,6 +820,16 @@ export default function ContatosListasPJ() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {conviteTarget && (
+        <EnviarConviteOptinModal
+          open={!!conviteTarget}
+          onClose={() => setConviteTarget(null)}
+          listaId={conviteTarget.id}
+          listaNome={conviteTarget.nome}
+          onDisparoConcluido={() => loadListas()}
+        />
+      )}
     </div>
   );
 }
