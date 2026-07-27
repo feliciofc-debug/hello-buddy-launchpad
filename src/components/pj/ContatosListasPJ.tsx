@@ -484,10 +484,24 @@ export default function ContatosListasPJ() {
                           <p className="text-xs text-muted-foreground">
                             {lista.total_membros} contatos • {new Date(lista.created_at).toLocaleDateString("pt-BR")}
                           </p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                            <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
+                              ✅ {lista.optin_confirmados ?? 0} confirmados
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                              ⏳ {lista.optin_pendentes ?? 0} pendentes
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] bg-red-50 text-red-700 border-red-200">
+                              🚫 {lista.optin_recusados ?? 0} recusados
+                            </Badge>
+                          </div>
                         </div>
                       )}
                       {editingListaId !== lista.id && (
                         <div className="flex gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-blue-600" title="Enviar convite de opt-in" onClick={() => setConviteTarget({ id: lista.id, nome: lista.nome })}>
+                            <Send className="h-3.5 w-3.5" />
+                          </Button>
                           <Button size="icon" variant="ghost" className="h-8 w-8" title="Editar nome" onClick={() => startEditLista(lista)}>
                             <Edit2 className="h-3.5 w-3.5" />
                           </Button>
