@@ -41,6 +41,9 @@ interface ListaItem {
   descricao?: string | null;
   total_membros: number;
   created_at: string;
+  optin_confirmados?: number;
+  optin_pendentes?: number;
+  optin_recusados?: number;
 }
 
 interface GrupoItem {
