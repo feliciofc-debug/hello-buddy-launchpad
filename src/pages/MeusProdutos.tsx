@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram, Video, Download } from 'lucide-react';
+import { Package, Search, Plus, Pencil, Trash2, Rocket, ArrowLeft, Sun, Moon, Upload, Image as ImageIcon, X, Play, Pause, Plug, Megaphone, Copy, Clock, Calendar, Facebook, Instagram, Video, Download, Send } from 'lucide-react';
 import { ProductImageCarousel } from '@/components/ProductImageCarousel';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -1762,9 +1762,11 @@ export default function MeusProdutos() {
                           <Button 
                             size="sm" 
                             variant="outline"
+                            className="gap-2"
                             onClick={() => handleEditCampaign(product)}
                           >
-                            {t('products.edit_campaign')}
+                            <Send className="w-4 h-4" />
+                            📱 Campanha WhatsApp
                           </Button>
                           {product.campanha.ativa ? (
                             <Button 
@@ -1896,8 +1898,8 @@ export default function MeusProdutos() {
                           className="w-full gap-2"
                           onClick={() => handleCreateCampaign(product)}
                         >
-                          <Rocket className="w-4 h-4" />
-                          {t('products.create_campaign')}
+                          <Send className="w-4 h-4" />
+                          📱 Campanha WhatsApp
                         </Button>
                         <Button
                           variant="outline"
