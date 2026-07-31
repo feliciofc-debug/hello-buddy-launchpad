@@ -2339,6 +2339,57 @@ export type Database = {
         }
         Relationships: []
       }
+      comexia_pagamentos: {
+        Row: {
+          acesso_liberado: boolean
+          amount: number
+          created_at: string
+          documento: string | null
+          email: string | null
+          id: string
+          mp_payment_id: string
+          nome: string | null
+          notificado: boolean
+          payment_date: string
+          raw: Json | null
+          status: string
+          telefone: string | null
+          updated_at: string
+        }
+        Insert: {
+          acesso_liberado?: boolean
+          amount: number
+          created_at?: string
+          documento?: string | null
+          email?: string | null
+          id?: string
+          mp_payment_id: string
+          nome?: string | null
+          notificado?: boolean
+          payment_date?: string
+          raw?: Json | null
+          status?: string
+          telefone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          acesso_liberado?: boolean
+          amount?: number
+          created_at?: string
+          documento?: string | null
+          email?: string | null
+          id?: string
+          mp_payment_id?: string
+          nome?: string | null
+          notificado?: boolean
+          payment_date?: string
+          raw?: Json | null
+          status?: string
+          telefone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       comissoes: {
         Row: {
           afiliado_id: string | null
