@@ -4759,7 +4759,7 @@ async function processOne(queueId: string) {
     // Se mudar aqui, atualizar o template na Meta na mesma PR.
     // =====================================================================
     try {
-      const isOwnerInbound = !!tenantOwnerPhone && row.from_number === tenantOwnerPhone;
+      const isOwnerInbound = fromIsOwner;
       if (!isOwnerInbound && row.from_number) {
         const rawText = (userText || "").toString();
         const normalized = rawText
@@ -5004,7 +5004,7 @@ async function processOne(queueId: string) {
 
     // "answerOwnerCommercialStatus" é uma feature Jarvis específica pra Felicio
     // consultar contatos comerciais dele — só faz sentido no tenant AMZ.
-    if (isAmzTenant && tenantOwnerPhone && row.from_number === tenantOwnerPhone && row.message_type === "text" && userText.trim()) {
+    if (isAmzTenant && fromIsOwner && row.message_type === "text" && userText.trim()) {
       const statusReply = await answerOwnerCommercialStatus(userId, userText);
       if (statusReply) {
         const { data: outMsg } = await sb
@@ -5090,7 +5090,7 @@ async function processOne(queueId: string) {
     // mensagem do usuário. Qualquer inbound recém-chegado RESETA a janela — então
     // referenciamos o inbound ATUAL (row.created_at), não o anterior. O dono do
     // agente é sempre exempto: responder pro próprio Marcelo não pode ser bloqueado.
-    if (row.from_number !== tenantOwnerPhone) {
+    if (!fromIsOwner) {
       const currentInboundTs = (row as any).created_at ? new Date((row as any).created_at).getTime() : Date.now();
       const ageMs = Date.now() - currentInboundTs;
       if (ageMs > 24 * 60 * 60 * 1000) {
@@ -5148,7 +5148,7 @@ async function processOne(queueId: string) {
       console.log(`[processor] media baixadas: ${media.length}`);
     }
 
-    if (row.from_number !== tenantOwnerPhone && row.message_type === "audio") {
+    if (!fromIsOwner && row.message_type === "audio") {
       commercialContactForOwner = await findCommercialContactByPhone(userId, row.from_number);
       if (commercialContactForOwner && media.some((m) => m.kind === "audio")) {
         try {
@@ -5187,10 +5187,10 @@ async function processOne(queueId: string) {
       } catch (e) {
         console.warn("[processor][fresh_media_visao] falhou:", (e as Error).message);
       }
-      const pendingForwardRequest = row.from_number !== tenantOwnerPhone
+      const pendingForwardRequest = !fromIsOwner
         ? await recentForwardRequestFromConversation(conv.id, _tenantOwner?.name)
         : null;
-      const shouldForwardToOwner = row.from_number !== tenantOwnerPhone && !!tenantOwnerPhone && (
+      const shouldForwardToOwner = !fromIsOwner && !!tenantOwnerPhone && (
         isExplicitOwnerForwardIntent(userText, _tenantOwner?.name) || !!pendingForwardRequest
       );
       const imageUrlToOwner = salvos.find((s) => s.tipo === "foto")?.url;
@@ -5253,7 +5253,7 @@ async function processOne(queueId: string) {
     // Atalho determinístico: quando cliente pede equipe/responsável/Marcelo ou faz
     // pergunta comercial que exige retorno humano, NÃO deixa a IA procurar contato.
     // Encaminha direto para owner_phone do tenant (Marcelo: número diferente do agente).
-    if (row.from_number !== tenantOwnerPhone && row.message_type === "text" && userText.trim() && tenantOwnerPhone) {
+    if (!fromIsOwner && row.message_type === "text" && userText.trim() && tenantOwnerPhone) {
       const explicitForward = isExplicitOwnerForwardIntent(userText, _tenantOwner?.name);
       const humanNeeded = isOwnerHandoffQuestion(userText);
       if (explicitForward || humanNeeded) {
@@ -5313,7 +5313,7 @@ async function processOne(queueId: string) {
     // PASSO 6.8 — DOCUMENTOS (.md, .txt, .json, .pdf) → ler e COMENTAR
     // Regra: nunca chamar tools, nunca buscar lugares, nunca postar. Só análise.
     const docMedia = media.filter((m) => m.kind === "document");
-    const senderIsClient = !!tenantOwnerPhone && row.from_number !== tenantOwnerPhone;
+    const senderIsClient = !!tenantOwnerPhone && !fromIsOwner;
 
     // === CLIENTE mandou documento (RG/CNH/comprovante/PDF/imagem-doc) ===
     // Silvester deve LER de verdade (vision multimodal), extrair dados
@@ -5679,7 +5679,7 @@ Regras:
           // Assim, quando Marcelo/Renata/etc respondem (ex: confirmando reunião),
           // o dono recebe um resumo imediato no WhatsApp dele.
           try {
-            if (row.from_number !== tenantOwnerPhone && userText && userText.trim().length > 0) {
+            if (!fromIsOwner && userText && userText.trim().length > 0) {
               await notifyOwnerAboutCommercialReply({ userId, fromNumber: row.from_number, match, inboundText: userText, messageType: row.message_type });
             }
           } catch (e) {
@@ -5715,7 +5715,7 @@ Regras:
       hour: "2-digit", minute: "2-digit",
     }).format(new Date());
     const dateBlock = `\n\nCONTEXTO TEMPORAL (IMPORTANTE):\n- Data e hora atual em São Paulo: ${nowSP}.\n- Use SEMPRE esta data como referência de "hoje", "ontem", "esta semana", "este ano".\n- Para qualquer pergunta sobre notícias, eventos, cotações, clima, preços, jogos, agenda ou "o que está acontecendo", chame pesquisar_web com termos incluindo o ano/mês atual e passe recencia="d" (últimas 24h) ou "w" (última semana) quando fizer sentido. NUNCA responda de memória sobre fatos recentes.`;
-    const inboundFromOwner = !!tenantOwnerPhone && row.from_number === tenantOwnerPhone;
+    const inboundFromOwner = fromIsOwner;
     const mediaBlock = media.length > 0
       ? inboundFromOwner
         ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
@@ -5748,7 +5748,7 @@ Regras:
     // persistir esse texto como contexto_original. Assim postar_midia_biblioteca vai achar contexto e não cair em video_sem_contexto.
     let pendingConfirmBlock = "";
     try {
-      const isDono = !!tenantOwnerPhone && row.from_number === tenantOwnerPhone;
+      const isDono = fromIsOwner;
       if (isDono && media.length === 0 && (userText || "").trim().length > 0) {
         const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         const { data: recVid } = await sb
