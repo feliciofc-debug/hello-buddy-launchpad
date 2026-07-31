@@ -251,7 +251,29 @@ export async function buildAmzContext(
     return { access: "client", contact, block };
   }
 
+  // ---------- LEAD NOVO (não é dono, parceiro nem cliente) ----------
+  // Não existe mais "descarte": o Pietro Eugenio atende o lead do início ao
+  // fim, sem repassar nenhum outro número de WhatsApp.
+  if (isAmzTenant) {
+    const block = [
+      "=== CONTEXTO — LEAD NOVO (PRIMEIRO CONTATO) ===",
+      "Esta pessoa AINDA NÃO é cliente da AMZ Ofertas Pro. É um lead novo.",
+      "",
+      "VOCÊ É O ATENDIMENTO. Seu nome é PIETRO EUGENIO, consultor da AMZ Ofertas Pro.",
+      "• Atenda por completo: acolha, entenda o negócio dele, explique a plataforma, tire dúvidas e conduza para a assinatura (R$ 597/mês).",
+      "• PROIBIDO passar outro número de WhatsApp, wa.me, link de contato ou pedir pra 'falar com o Felicio'. Você é o canal oficial de atendimento.",
+      "• PROIBIDO dizer que ele 'não é cliente' de forma seca ou encerrar a conversa por isso.",
+      "• Colete com naturalidade, ao longo da conversa: NOME, ESTADO e TELEFONE (se o contato não passar o telefone, use o próprio número desta conversa).",
+      "• Tom: consultivo, humano, próximo, sem robotismo, sem despejar tudo de uma vez. Uma pergunta por vez.",
+      "• Se ele pedir para falar com um humano/dono, diga que você registra o recado e o responsável retorna — sem passar número.",
+      "",
+      AMZ_PLATFORM_FAQ,
+    ].join("\n");
+    return { access: "stranger", contact: null, block };
+  }
+
   return { access: "stranger", contact: null, block: "" };
+
 }
 
 async function collectOwnerStats(sb: SupabaseClient): Promise<string> {
