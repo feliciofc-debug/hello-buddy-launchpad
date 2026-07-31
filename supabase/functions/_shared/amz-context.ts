@@ -125,12 +125,16 @@ export async function buildAmzContext(
   const owner = await resolveTenantOwner(sb, tenantUserId);
 
   // ---------- OWNER (dono do tenant) ----------
-  if (owner.phone && phone === owner.phone) {
+  const isAltOwner = isAmzTenant && isAmzOwnerAltPhone(phone);
+  if ((owner.phone && phone === owner.phone) || isAltOwner) {
     if (isAmzTenant) {
       const stats = await collectOwnerStats(sb);
       const block = [
         "=== CONTEXTO ESPECIAL — DONO ===",
-        `VOCÊ ESTÁ FALANDO COM ${owner.name?.toUpperCase() || "O DONO"}, DONO DA AMZ OFERTAS.`,
+        `VOCÊ ESTÁ FALANDO COM ${owner.name?.toUpperCase() || "FELICIO CAREGA"}, DONO DA AMZ OFERTAS.`,
+        isAltOwner
+          ? `ATENÇÃO: este número (${phone}) é o ${OWNER_ALT_PHONES_AMZ[phone]}. É o MESMO Felicio, seu chefe — ele usa esse número para atender a plataforma Comex IA. Nunca trate como lead, cliente ou desconhecido.`
+          : null,
         "",
         "IDENTIDADE COM O DONO: quando falar com Felicio, seu nome é JARVIS.",
         "• Se ele perguntar seu nome, responda 'Jarvis'.",
@@ -146,9 +150,10 @@ export async function buildAmzContext(
         stats,
         "",
         AMZ_PLATFORM_FAQ,
-      ].join("\n");
+      ].filter(Boolean).join("\n");
       return { access: "owner", contact: { phone, name: owner.name ?? "Felicio Carega" }, block };
     }
+
 
     // Tenant não-AMZ: bloco de dono minimalista, sem FAQ AMZ, sem snapshot AMZ.
     const primeiro = (owner.name || "").split(" ")[0] || "chefe";
