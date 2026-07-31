@@ -23,6 +23,18 @@ import { ADMIN_AMZ_USER_ID } from "./agent-soul.ts";
 export const OWNER_PHONE = "5521967520706";
 export const AGENT_PHONE = "5521980804901";
 
+// Números ADICIONAIS do Felicio no tenant AMZ. O 5521995379550 é o número
+// comercial dele que atende a plataforma Comex IA — é o MESMO dono, então
+// precisa ser reconhecido como chefe (nunca como lead/cliente).
+export const OWNER_ALT_PHONES_AMZ: Record<string, string> = {
+  "5521995379550": "número comercial do Felicio (plataforma Comex IA)",
+};
+
+export function isAmzOwnerAltPhone(phone: string): boolean {
+  return Object.prototype.hasOwnProperty.call(OWNER_ALT_PHONES_AMZ, normalizePhone(phone));
+}
+
+
 export type AmzAccess = "owner" | "partner" | "client" | "stranger";
 
 export type AmzContext = {
@@ -113,12 +125,16 @@ export async function buildAmzContext(
   const owner = await resolveTenantOwner(sb, tenantUserId);
 
   // ---------- OWNER (dono do tenant) ----------
-  if (owner.phone && phone === owner.phone) {
+  const isAltOwner = isAmzTenant && isAmzOwnerAltPhone(phone);
+  if ((owner.phone && phone === owner.phone) || isAltOwner) {
     if (isAmzTenant) {
       const stats = await collectOwnerStats(sb);
       const block = [
         "=== CONTEXTO ESPECIAL — DONO ===",
-        `VOCÊ ESTÁ FALANDO COM ${owner.name?.toUpperCase() || "O DONO"}, DONO DA AMZ OFERTAS.`,
+        `VOCÊ ESTÁ FALANDO COM ${owner.name?.toUpperCase() || "FELICIO CAREGA"}, DONO DA AMZ OFERTAS.`,
+        isAltOwner
+          ? `ATENÇÃO: este número (${phone}) é o ${OWNER_ALT_PHONES_AMZ[phone]}. É o MESMO Felicio, seu chefe — ele usa esse número para atender a plataforma Comex IA. Nunca trate como lead, cliente ou desconhecido.`
+          : null,
         "",
         "IDENTIDADE COM O DONO: quando falar com Felicio, seu nome é JARVIS.",
         "• Se ele perguntar seu nome, responda 'Jarvis'.",
@@ -134,9 +150,10 @@ export async function buildAmzContext(
         stats,
         "",
         AMZ_PLATFORM_FAQ,
-      ].join("\n");
+      ].filter(Boolean).join("\n");
       return { access: "owner", contact: { phone, name: owner.name ?? "Felicio Carega" }, block };
     }
+
 
     // Tenant não-AMZ: bloco de dono minimalista, sem FAQ AMZ, sem snapshot AMZ.
     const primeiro = (owner.name || "").split(" ")[0] || "chefe";
@@ -234,7 +251,29 @@ export async function buildAmzContext(
     return { access: "client", contact, block };
   }
 
+  // ---------- LEAD NOVO (não é dono, parceiro nem cliente) ----------
+  // Não existe mais "descarte": o Pietro Eugenio atende o lead do início ao
+  // fim, sem repassar nenhum outro número de WhatsApp.
+  if (isAmzTenant) {
+    const block = [
+      "=== CONTEXTO — LEAD NOVO (PRIMEIRO CONTATO) ===",
+      "Esta pessoa AINDA NÃO é cliente da AMZ Ofertas Pro. É um lead novo.",
+      "",
+      "VOCÊ É O ATENDIMENTO. Seu nome é PIETRO EUGENIO, consultor da AMZ Ofertas Pro.",
+      "• Atenda por completo: acolha, entenda o negócio dele, explique a plataforma, tire dúvidas e conduza para a assinatura (R$ 597/mês).",
+      "• PROIBIDO passar outro número de WhatsApp, wa.me, link de contato ou pedir pra 'falar com o Felicio'. Você é o canal oficial de atendimento.",
+      "• PROIBIDO dizer que ele 'não é cliente' de forma seca ou encerrar a conversa por isso.",
+      "• Colete com naturalidade, ao longo da conversa: NOME, ESTADO e TELEFONE (se o contato não passar o telefone, use o próprio número desta conversa).",
+      "• Tom: consultivo, humano, próximo, sem robotismo, sem despejar tudo de uma vez. Uma pergunta por vez.",
+      "• Se ele pedir para falar com um humano/dono, diga que você registra o recado e o responsável retorna — sem passar número.",
+      "",
+      AMZ_PLATFORM_FAQ,
+    ].join("\n");
+    return { access: "stranger", contact: null, block };
+  }
+
   return { access: "stranger", contact: null, block: "" };
+
 }
 
 async function collectOwnerStats(sb: SupabaseClient): Promise<string> {
