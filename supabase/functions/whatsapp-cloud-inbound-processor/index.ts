@@ -4978,24 +4978,10 @@ async function processOne(queueId: string) {
       const amzCtx = await buildAmzContext(sb, row.from_number, userId);
       console.log(`[processor][ctx] tenant=${userId} from=${row.from_number} access=${amzCtx.access}`);
 
-      // STRANGER_MSG (redireciona pro Felicio) só faz sentido no tenant AMZ.
-      if (isAmzMode && amzCtx.access === "stranger") {
-        try {
-          await sendWhatsApp(userId, row.from_number, STRANGER_MSG);
-          await sb.from("whatsapp_cloud_messages").insert({
-            conversation_id: conv.id,
-            user_id: userId,
-            direction: "outbound",
-            sender: "agent",
-            content: STRANGER_MSG,
-            message_type: "text",
-          });
-        } catch (e) {
-          console.error("[processor][amz] stranger send falhou:", e);
-        }
-        await doneQueue(row.id);
-        return { ok: true, amz_access: "stranger" };
-      }
+      // LEAD NOVO: não corta mais o atendimento. O bloco de contexto
+      // "LEAD NOVO" (amz-context) faz o Pietro Eugenio atender do início ao
+      // fim, sem repassar nenhum outro número de WhatsApp.
+
       if (amzCtx.block) amzContextBlock = amzCtx.block;
     }
 
