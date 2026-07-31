@@ -4,20 +4,26 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
-import { buildAmzContext, STRANGER_MSG, OWNER_PHONE, resolveTenantOwner } from "../_shared/amz-context.ts";
+import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
 // isOwner(ctx) usa este mapa em vez da constante global OWNER_PHONE, para que
 // o dono de UM tenant jamais seja reconhecido como dono de OUTRO.
+// Guarda uma LISTA: no tenant AMZ o Felicio tem mais de um número (pessoal +
+// comercial da Comex IA) e todos valem como dono.
 // ---------------------------------------------------------------------------
-const _tenantOwners = new Map<string, string | null>();
-function setTenantOwnerForCtx(userId: string, ownerPhone: string | null) {
-  _tenantOwners.set(userId, ownerPhone);
+const _tenantOwners = new Map<string, string[]>();
+function setTenantOwnerForCtx(userId: string, ownerPhones: (string | null)[]) {
+  _tenantOwners.set(userId, ownerPhones.filter((p): p is string => !!p));
 }
 function getTenantOwnerForCtx(userId: string): string | null {
-  return _tenantOwners.get(userId) ?? null;
+  return _tenantOwners.get(userId)?.[0] ?? null;
 }
+function getTenantOwnersForCtx(userId: string): string[] {
+  return _tenantOwners.get(userId) ?? [];
+}
+
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
 
