@@ -4729,7 +4729,17 @@ async function processOne(queueId: string) {
     // Resolve o dono DESTE tenant e registra pro isOwner(ctx) enxergar.
     const _tenantOwner = await resolveTenantOwner(sb, userId);
     const tenantOwnerPhone: string | null = _tenantOwner.phone;
-    setTenantOwnerForCtx(userId, tenantOwnerPhone);
+    // No tenant AMZ o Felicio tem mais de um número (pessoal + comercial da
+    // Comex IA). Todos contam como dono; o encaminhamento continua indo para
+    // o número principal (tenantOwnerPhone).
+    const isAmzTenantEarly = userId === ADMIN_AMZ_USER_ID;
+    const ownerNumbers: string[] = [
+      tenantOwnerPhone,
+      ...(isAmzTenantEarly && isAmzOwnerAltPhone(row.from_number) ? [row.from_number] : []),
+    ].filter((p): p is string => !!p);
+    setTenantOwnerForCtx(userId, ownerNumbers);
+    const fromIsOwner = ownerNumbers.includes(row.from_number);
+
 
     // =====================================================================
     // OPT-IN GATE (Fase 1 — Meta oficial)
