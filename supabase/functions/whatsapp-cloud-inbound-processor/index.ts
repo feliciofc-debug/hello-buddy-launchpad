@@ -1680,9 +1680,10 @@ async function toolCalcularRota(origem: string, destino: string, ctx: { userId: 
 // Fallback seguro: sem owner registrado, ninguém é dono.
 function isOwner(ctx: { userId?: string; fromNumber: string }): boolean {
   if (!ctx.fromNumber) return false;
-  const owner = ctx.userId ? getTenantOwnerForCtx(ctx.userId) : null;
-  return !!owner && ctx.fromNumber === owner;
+  const owners = ctx.userId ? getTenantOwnersForCtx(ctx.userId) : [];
+  return owners.includes(ctx.fromNumber);
 }
+
 
 async function toolMetricasAmz(ctx: { fromNumber: string }): Promise<string> {
   if (!isOwner(ctx)) return JSON.stringify({ erro: "ferramenta_restrita_ao_dono" });
