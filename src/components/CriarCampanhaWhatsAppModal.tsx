@@ -154,6 +154,7 @@ export function CriarCampanhaWhatsAppModal({
   const [salvandoModelo, setSalvandoModelo] = useState(false);
   const [verificandoModelo, setVerificandoModelo] = useState(false);
   const [enviandoAutorizacoes, setEnviandoAutorizacoes] = useState(false);
+  const [confirmAutorizacaoOpen, setConfirmAutorizacaoOpen] = useState(false);
   const [modeloEnviadoAgora, setModeloEnviadoAgora] = useState(false);
 
   const fetchTemplates = async () => {
