@@ -543,10 +543,14 @@ REGRAS GERAIS:
   const blocks: string[] = [PERSONALITY_CORE, "", TOOLS_HINT, ""];
   if (mode === "amz") {
     blocks.push(AMZ_KNOWLEDGE);
+    // Fail-safe de papel: só entra em VENDA se explicitamente "sales".
+    // Qualquer outro valor (inclusive ausente/desconhecido) → SUPORTE.
+    blocks.push("", amzAudience === "sales" ? AMZ_SALES_BLOCK : AMZ_SUPPORT_BLOCK);
     if (amzContextBlock && amzContextBlock.trim().length > 0) {
       blocks.push("", amzContextBlock.trim());
     }
   } else {
+
     blocks.push(await buildTenantContext(sb, cfg, userText));
   }
 
