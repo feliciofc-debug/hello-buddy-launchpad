@@ -12,7 +12,16 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { salvarCampanhaNaBiblioteca } from '@/lib/bibliotecaCampanhas';
 
+/** Normalização canônica de telefone (módulo, usada também no render) */
+function normalizarTelefoneUI(phone: string) {
+  const somenteDigitos = (phone || '').replace(/\D/g, '');
+  if (!somenteDigitos) return '';
+  if (somenteDigitos.length === 10 || somenteDigitos.length === 11) return `55${somenteDigitos}`;
+  return somenteDigitos;
+}
+
 interface WhatsAppGroup {
+
   id: string;
   group_id?: string;
   group_name: string;
