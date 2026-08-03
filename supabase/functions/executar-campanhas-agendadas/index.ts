@@ -356,13 +356,37 @@ serve(async (req) => {
 
         console.log(`✅ Executando campanha: ${campanha.nome} (modo: ${isIntervaloMode ? 'intervalo' : 'horário fixo'})`);
 
+        // ============================================================
+        // META OFICIAL — GATE DE TEMPLATE APROVADO
+        // Sem template aprovado não existe campanha (regra da Meta).
+        // ============================================================
+        if (!campanha.template_id) {
+          console.log(`🚫 [META] Campanha ${campanha.nome} sem template_id — pulando (configure um template aprovado)`);
+          continue;
+        }
+
+        const { data: tplCampanha } = await supabase
+          .from('whatsapp_templates')
+          .select('id, nome_meta, idioma, tipo_uso, status_meta, variaveis_map')
+          .eq('id', campanha.template_id)
+          .eq('user_id', campanha.user_id)
+          .maybeSingle();
+
+        if (!tplCampanha) {
+          console.log(`🚫 [META] Template ${campanha.template_id} não encontrado para o tenant — pulando ${campanha.nome}`);
+          continue;
+        }
+        if (tplCampanha.status_meta !== 'aprovado') {
+          console.log(`🚫 [META] Template ${tplCampanha.nome_meta} não aprovado (status=${tplCampanha.status_meta}) — pulando ${campanha.nome}`);
+          continue;
+        }
+
         let enviados = 0;
         let errosEnvio = 0;
         let processados = 0;   // AUTOPILOT: sucesso+falha (base do recheck e da trava — tentativa conta pro ban)
         let capAtingido = false; // AUTOPILOT: sinaliza cap do NÚMERO batido — força reagendamento pra amanhã
-        let gatewayFailStreak = 0;      // GUARDRAIL: falhas de gateway consecutivas
-        let gatewayDown = false;        // GUARDRAIL: pausa quando streak >= GATEWAY_FAIL_THRESHOLD
-        const GATEWAY_FAIL_THRESHOLD = 5;
+        let gatewayDown = false;        // GUARDRAIL: pausa em falha estrutural da Meta (token/template/config)
+
 
         
         // ✅ OBTER PRODUTO (rotação ou fixo)
