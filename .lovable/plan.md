@@ -1,136 +1,96 @@
+# Migração definitiva: Baileys/gateway local → Meta Cloud API oficial
 
-# Fase 2 — Bloco A: Gestão de Templates Meta
+Decisão registrada: **todo disparo (campanha, autopilot, convite) passa a ser 100% Meta Cloud API oficial**, com token do tenant lido de `whatsapp_config`. O gateway local (.exe / WuzAPI / Baileys), a fila `fila_atendimento_pj` e o `gateway_status` saem do caminho de envio.
 
-Escopo isolado: só cadastro/submissão/status de templates. **Não** toca em opt-in gate, executor de campanha, agente. Sem deploy até OK.
+Diagnóstico confirmado na auditoria: o executor `executar-campanhas-agendadas` chama `send-wuzapi-message-pj` (linha 605) e `send-wuzapi-group-message-pj` (linha 441), e o modal de campanha grava na fila via RPC `inserir_campanha_fila`. Ou seja: a campanha saía pelo correio errado — "sem erro", mas sem entrega.
 
----
-
-## 1) Arquivos a criar / editar
-
-**Novos:**
-- `src/pages/pj/WhatsAppTemplatesPJ.tsx` — tela de listagem + modal de criação.
-- `src/components/pj/TemplateFormModal.tsx` — form controlado (nome, idioma, categoria, tipo_uso, body, botões).
-- `supabase/functions/whatsapp-template-submit/index.ts` — submete à Meta (POST `/{waba_id}/message_templates`).
-- `supabase/functions/whatsapp-template-refresh/index.ts` — puxa status atual da Meta (GET `/{waba_id}/message_templates?name=...`).
-
-**Editados:**
-- `src/App.tsx` — rota `/pj/whatsapp-templates`.
-- `src/pages/DashboardMetricas.tsx` — item de menu "Templates WhatsApp" (id `whatsapp-templates`, filho lógico do bloco WhatsApp).
-- `supabase/functions/whatsapp-cloud-webhook/index.ts` — captura webhook `message_template_status_update` e sincroniza `status_meta` + `motivo_rejeicao_meta` (assinatura Meta permite: campo `message_template_status_update` na subscription do WABA).
+Nada aqui é executado ainda. Sem deploy.
 
 ---
 
-## 2) Chamadas à Meta Cloud API
+## Fase 1 — Disparo de campanha via Meta oficial
 
-Todas usam **token do tenant** lido de `whatsapp_config` via `user_id` (nunca env global). Graph version `v25.0` (mesmo padrão do `get-meta-public-config`).
+Novo caminho único de envio:
 
-### 2.1 Submeter template — `whatsapp-template-submit`
-Input (JSON, JWT do usuário obrigatório):
-```json
-{ "template_id": "<uuid em whatsapp_templates>" }
+```text
+campanhas_recorrentes / campanha manual
+        ↓
+executar-campanhas-agendadas  (pg_cron)
+        ↓
+whatsapp-cloud-send-template  (NOVA, única saída de envio)
+        ↓
+POST graph.facebook.com/v25.0/{phone_number_id}/messages   type=template
+        ↓  token/phone_number_id do tenant (whatsapp_config, .eq user_id)
+WhatsApp do contato
 ```
 
-Passos:
-1. `auth.getUser()` do JWT → `user_id`.
-2. Lê `whatsapp_templates` where `id = template_id AND user_id = user.id`. Se `status_meta != 'rascunho'` → 400.
-3. Lê `whatsapp_config` where `user_id = user.id`. Extrai `waba_id`, `access_token`.
-4. Monta body:
-```json
-{
-  "name": "<nome_meta>",
-  "language": "<idioma>",
-  "category": "<UTILITY|MARKETING|AUTHENTICATION>",
-  "components": [
-    { "type": "BODY", "text": "<body_text>" },
-    // se tipo_uso='convite_optin': BOTÕES quick reply
-    { "type": "BUTTONS", "buttons": [
-        { "type": "QUICK_REPLY", "text": "SIM" },
-        { "type": "QUICK_REPLY", "text": "NÃO" }
-    ]},
-    // se header definido: { "type":"HEADER","format":"TEXT|IMAGE", ... }
-  ]
-}
-```
-5. `POST https://graph.facebook.com/v25.0/{waba_id}/message_templates` com `Authorization: Bearer {access_token}`.
-6. Sucesso → grava `meta_template_id`, `status_meta='pendente'`, `motivo_rejeicao_meta=null`.
-7. Erro (Graph API) → retorna HTTP 200 com `{success:false, error, error_user_msg}` (padrão do projeto p/ erros Meta).
+O que muda:
 
-Sobre os IDs de botão: a Meta usa `payload` opcional em quick reply; convencionamos que o **inbound** interpreta pelo texto ("SIM"/"NÃO") — o `optInGate` já cobre isso via normalização de texto e também os `OPTIN_SIM`/`OPTIN_NAO` (payload será setado no envio, não no template).
+1. **Nova edge function `whatsapp-cloud-send-template`** — envio unitário por template aprovado, reaproveitando exatamente o padrão já validado em `enviar-convite-optin` (mesma leitura de `waba_id / phone_number_id / access_token / is_active`, mesmo endpoint, mesmo tratamento de erro).
+2. **Campanha passa a exigir template aprovado** (`whatsapp_templates` com `tipo_uso = 'campanha'` e `status_meta = 'APPROVED'`). A tela de templates da Fase 2 já cobre criação/submissão/refresh; só falta permitir o `tipo_uso = campanha` na seleção.
+3. **`CriarCampanhaWhatsAppModal`** deixa de gravar na fila (`inserir_campanha_fila`) e passa a: selecionar template aprovado → mapear variáveis (ex. `{{nome}}`) → mostrar preview dos destinatários elegíveis → disparar via a nova função.
+4. **Opt-in obrigatório mantido e reforçado**: filtro só para `opt_in` **confirmado**, mais o filtro de STOP universal — a mesma regra do convite. Contato sem opt-in confirmado nunca entra na lista de envio (aparece no preview como bloqueado, com motivo).
+5. **Travas preservadas**: `max_envios_dia` da campanha e `max_envios_dia_numero` continuam valendo; o "chip offline" (pausa após 5 falhas) é substituído por pausa em erro de token/permissão da Meta. Jitter/fila anti-bloqueio deixa de existir — na Meta oficial não é necessário.
+6. **Grupos**: a Meta Cloud API **não envia para grupos de WhatsApp**. O disparo para `grupos_transmissao` / `pj_grupos_whatsapp` deixa de ter caminho oficial e será desabilitado na UI com aviso claro, em vez de falhar em silêncio. Campanha para grupo passa a ser lista de contatos individuais com opt-in.
 
-### 2.2 Refresh manual — `whatsapp-template-refresh`
-Input:
-```json
-{ "template_id": "<uuid>" }   // ou { "user_id_all": true } p/ sync em massa
-```
-1. Lê template + `waba_id` + `access_token` do tenant.
-2. `GET https://graph.facebook.com/v25.0/{waba_id}/message_templates?name={nome_meta}&language={idioma}` (Bearer token).
-3. Atualiza `status_meta` (`APPROVED→aprovado`, `PENDING→pendente`, `REJECTED→rejeitado`, `PAUSED→pausado`) e `motivo_rejeicao_meta` (se `rejected_reason`).
+## Fase 2 — Remoção do Baileys (lista antes de remover)
 
-### 2.3 Webhook automático (bônus, dá pra fazer sim)
-No `whatsapp-cloud-webhook`, hoje o loop lê `change.value.messages`. Adicionar antes disso um branch:
-```
-if (change.field === "message_template_status_update") {
-  const v = change.value;
-  // v: { event: "APPROVED|REJECTED|PAUSED", message_template_id, message_template_name, message_template_language, reason? }
-  await supabase.from("whatsapp_templates")
-    .update({ status_meta: mapStatus(v.event), motivo_rejeicao_meta: v.reason ?? null })
-    .eq("meta_template_id", String(v.message_template_id));
-  continue;
-}
-```
-Requer que na config do webhook na Meta, o campo `message_template_status_update` esteja marcado (além de `messages`). Se não estiver, o botão "Atualizar status" cobre — os dois convivem.
+Nada é apagado antes da sua aprovação item por item. Proposta de classificação:
 
----
+**A. Remover do caminho de envio (código de produção):**
+- `supabase/functions/executar-campanhas-agendadas` → troca de destino (não é removida)
+- `supabase/functions/send-wuzapi-message-pj`, `send-wuzapi-group-message-pj`, `send-wuzapi-message`, `send-wuzapi-message-afiliado`, `send-wuzapi-group-message`, `wuzapi-send`
+- `supabase/functions/processar-fila-pj`, `processar-fila-afiliado`
+- `supabase/functions/executar-envio-programado-pj`, `executar-envio-programado`, `execute-campaign`, `whatsapp-bulk-send`, `send-whatsapp-prospeccao`
+- RPC `inserir_campanha_fila` (deixa de ser chamada; drop só na Fase 3)
 
-## 3) UI — `/pj/whatsapp-templates`
+**B. Conexão/QR/instância do gateway (fica órfão sem Baileys):**
+- `criar-instancia-wuzapi-pj`, `criar-instancia-wuzapi-afiliado`, `generate-qrcode`, `get-qr-code`, `wuzapi-qrcode`, `check-connection`, `check-whatsapp-status`, `disconnect-whatsapp`, `trocar-numero-whatsapp`, `validate-whatsapp`, `validate-whatsapp-pj`, `verificar-status-wuzapi-afiliado`
+- grupos via gateway: `create-whatsapp-group`, `create-whatsapp-group-pj`, `list-whatsapp-groups`, `list-whatsapp-groups-pj`, `get-group-participants`, `generate-group-invite-link`, `group-settings-pj`, `group-settings-afiliado`, `get-whatsapp-chats`
 
-Tabela com colunas: Nome · Tipo (Convite/Campanha) · Categoria · Idioma · Status (badge colorido) · Meta ID · Ações.
+**C. Webhooks do gateway (substituídos por `whatsapp-cloud-webhook`):**
+- `wuzapi-webhook`, `wuzapi-webhook-pj`, `wuzapi-webhook-afiliados`, `wuzapi-webhook-cobranca`, `wuzapi-webhook-debug`
 
-Badges:
-- `rascunho` cinza · `pendente` amarelo · `aprovado` verde · `rejeitado` vermelho (tooltip com `motivo_rejeicao_meta`) · `pausado` laranja.
+**D. Diagnóstico/teste (lixo puro):**
+- `diagnostico-wuzapi`, `diagnostico-portas-wuzapi`, `test-wuzapi-direct`, `test-wuzapi-check-formats`, `verificar-contabo-wuzapi`, `corrigir-webhook-contabo`, `verificar-webhook-wuzapi`
+- `scripts/install-wuzapi*.sh`, `scripts/install-locaweb.sh`
 
-Ações por linha:
-- **Editar** (só se `rascunho`) → abre `TemplateFormModal`.
-- **Submeter à Meta** (só se `rascunho`) → chama `whatsapp-template-submit`.
-- **Atualizar status** (se `pendente|aprovado|pausado`) → chama `whatsapp-template-refresh`.
-- **Duplicar** (qualquer status) → cria novo `rascunho`.
+**E. Frontend a remover ou desativar:**
+- Painéis do gateway: `src/pages/GatewayWhatsApp.tsx`, `src/pages/AdminWuzapiInstancias.tsx`, `src/pages/OnboardingWhatsApp.tsx`, `src/pages/SophiaDispatcher.tsx` + `src/components/sophia/*` (GatewayStatusCard, FilaContadores, HistoricoEnvios, CampanhasList, IniciarCampanhaModal)
+- Debug/teste: `DiagnosticoWuzapi`, `TestarEnvioWuzapi`, `TestarWuzapiDireto`, `TestarFilaAntiBloqueioModal`, `LogsEnvioWuzapi`, `WhatsAppDebugPanel`, `WhatsAppDiagnostics`, `DebugPayloads`, `TesteEnvioImagemDebug`
+- Conexão por QR: `WhatsAppConnection`, `WhatsAppConnectionPJ`, `AfiliadoWhatsAppConnection` → substituídos pelo `ConectarWhatsAppCloud` (já existente)
+- Rotas correspondentes em `src/App.tsx`
 
-Botão global "**Atualizar todos**" → refresh em massa.
+Entrego essa lista com contagem de referências por arquivo antes de encostar em qualquer um. Fluxos de afiliado seguem desativados por política e só entram na remoção como limpeza.
 
-Modal `TemplateFormModal`:
-- Nome Meta (snake_case, valida `/^[a-z0-9_]+$/`)
-- Idioma (default `pt_BR`)
-- **Tipo de uso** (radio): `Convite (opt-in)` / `Campanha`
-- Categoria (auto: convite → `UTILITY`, campanha → `MARKETING`; editável)
-- Body text (textarea, com dica de `{{1}}`, `{{2}}`)
-- Preview lateral do WhatsApp
-- Se convite: mostra "Botões: [SIM] [NÃO] (adicionados automaticamente)" desabilitado
-- Se campanha: header opcional (texto ou imagem URL) + botão CTA URL opcional
+## Fase 3 — Limpeza de segurança e tabelas órfãs
+
+Depois que nada mais escreve nessas tabelas:
+1. Fechar `anon` em `fila_atendimento_pj` (4.588 linhas) e `gateway_status` (1 linha) — resolve os 2 fixes de segurança adiados.
+2. Arquivar/dropar as órfãs: `fila_atendimento_pj`, `fila_atendimento_afiliado`, `gateway_status`, `wuzapi_instances`, `wuzapi_tokens_afiliados`, `logs_envio` do gateway. Proposta: primeiro revogar `anon` (imediato, reversível), dropar só num segundo momento com sua autorização.
+3. Remover jobs `pg_cron` que chamam `processar-fila-*` e `executar-envio-programado*`.
+4. Drop da RPC `inserir_campanha_fila` por último.
+
+## Fase 4 — Confirmação de não-regressão do JARVIS/Silvester
+
+O atendimento **já é Meta oficial** e não é tocado. Ele roda por:
+`whatsapp-cloud-webhook` → `whatsapp_cloud_inbound_queue` → `whatsapp-cloud-inbound-processor` → Graph API.
+
+Nenhum item das listas A–E faz parte desse caminho. Checagem explícita antes de remover: `whatsapp-cloud-inbound-processor` e `_shared/amz-context.ts` mencionam "wuzapi" apenas em comentário/legado — confirmo linha por linha e mostro o resultado antes de qualquer remoção. O `optInGate`, o reconhecimento dos números do dono e o encaminhamento de recado ficam intactos.
 
 ---
 
-## 4) Guardrails já embutidos
+## Ordem de execução proposta
 
-- Token sempre lido de `whatsapp_config.access_token` por `user_id` do JWT. Nunca `Deno.env`.
-- Se `waba_id` ou `access_token` faltarem no tenant → 400 com mensagem clara "Conecte o WhatsApp Cloud antes de cadastrar templates".
-- `whatsapp_template_submit` só aceita `rascunho`. Reenvio depois de rejeitado exige duplicar.
-- RLS de `whatsapp_templates` já criada na Fase 1 — nada de novo.
+1. Fase 1 (nova função de envio + executor + modal + gate de opt-in) — validar com 1 envio real de template aprovado
+2. Confirmar entrega real, e só então Fase 2 (remoção, em lotes, com lista aprovada)
+3. Fase 3 (segurança/RLS primeiro, drops depois)
+4. Fase 4 como checagem obrigatória antes de cada lote da Fase 2
 
----
+## Detalhes técnicos
 
-## 5) Como valida antes de aprovar Bloco B/C
-
-1. Cria um template convite `convite_optin_amz_v1` (UTILITY, pt_BR, corpo "Olá {{1}}! ... SIM/NÃO").
-2. Submete → vê `status_meta='pendente'` e `meta_template_id` gravado.
-3. Espera aprovação da Meta (minutos) → webhook OU botão "Atualizar" muda para `aprovado`.
-4. Só depois disso Bloco B (`enviar-convite-optin`) tem base p/ trabalhar.
-
----
-
-## 6) Fora do escopo do Bloco A (fica pra depois)
-
-- Edge function `enviar-convite-optin` (Bloco B).
-- Botão "Enviar convite" na tela de segmentos + contadores (Bloco C).
-- Envio de campanha via template Meta (Fase 4).
-
-Aprova o Bloco A que eu já aplico os arquivos e mando pra revisão sem deployar. Deploy só no seu OK final.
+- Endpoint único: `POST https://graph.facebook.com/v25.0/{phone_number_id}/messages`, `type: "template"`, `template.name = whatsapp_templates.nome_meta`, `language.code = idioma` (default `pt_BR`).
+- Credenciais sempre por tenant: `whatsapp_config` filtrado por `user_id` (regra de isolamento já vigente). Nunca fallback para conta admin.
+- Erros da Meta seguem a convenção do projeto: HTTP 200 com `{ success: false, motivo }`, sem estourar o executor.
+- `historico_envios` / `whatsapp_bulk_sends` continuam registrando, passando a gravar `canal = 'meta_cloud'` e `template_id`.
+- Limitação a assumir: sem template aprovado não existe campanha. Texto livre em massa não é possível na Meta — só dentro da janela de 24h de conversa iniciada pelo cliente (que é o caso do atendimento, já coberto).
