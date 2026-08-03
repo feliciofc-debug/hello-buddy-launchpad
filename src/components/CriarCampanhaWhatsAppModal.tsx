@@ -130,8 +130,21 @@ export function CriarCampanhaWhatsAppModal({
   // META OFICIAL — TEMPLATES APROVADOS (obrigatório para campanha)
   // ============================================================
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
+  const [templatesCampanhaTodos, setTemplatesCampanhaTodos] = useState<TemplateMeta[]>([]);
+  const [templateConvite, setTemplateConvite] = useState<TemplateMeta | null>(null);
   const [templateSelecionado, setTemplateSelecionado] = useState<string>('');
   const templateAtivo = templates.find((t) => t.id === templateSelecionado) || null;
+
+  // ============================================================
+  // FLUXO GUIADO (linguagem de usuário leigo)
+  // Nada de "template", "Meta", "opt-in", "WABA" na tela.
+  // Camada de UX por cima das regras — não fura nenhum guardrail.
+  // ============================================================
+  const [textoModelo, setTextoModelo] = useState('');
+  const [salvandoModelo, setSalvandoModelo] = useState(false);
+  const [verificandoModelo, setVerificandoModelo] = useState(false);
+  const [enviandoAutorizacoes, setEnviandoAutorizacoes] = useState(false);
+  const [modeloEnviadoAgora, setModeloEnviadoAgora] = useState(false);
 
   const fetchTemplates = async () => {
     try {
@@ -142,23 +155,35 @@ export function CriarCampanhaWhatsAppModal({
         .from('whatsapp_templates')
         .select('id, nome_meta, idioma, body_text, variaveis_map, status_meta, tipo_uso')
         .eq('user_id', user.id)
-        .eq('tipo_uso', 'campanha')
-        .eq('status_meta', 'aprovado')
+        .in('tipo_uso', ['campanha', 'convite'])
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('⚠️ Erro ao buscar templates aprovados:', error);
+        console.error('⚠️ Erro ao buscar mensagens modelo:', error);
         setTemplates([]);
+        setTemplatesCampanhaTodos([]);
+        setTemplateConvite(null);
         return;
       }
 
-      setTemplates((data || []) as TemplateMeta[]);
-      if ((data || []).length === 1) setTemplateSelecionado(data![0].id);
+      const todos = (data || []) as TemplateMeta[];
+      const campanha = todos.filter((t) => t.tipo_uso === 'campanha');
+      const aprovados = campanha.filter((t) => t.status_meta === 'aprovado');
+
+      setTemplatesCampanhaTodos(campanha);
+      setTemplates(aprovados);
+      setTemplateConvite(
+        todos.find((t) => t.tipo_uso === 'convite' && t.status_meta === 'aprovado') || null
+      );
+      if (aprovados.length === 1) setTemplateSelecionado(aprovados[0].id);
     } catch (e) {
-      console.error('❌ Erro ao carregar templates:', e);
+      console.error('❌ Erro ao carregar mensagens modelo:', e);
       setTemplates([]);
+      setTemplatesCampanhaTodos([]);
+      setTemplateConvite(null);
     }
   };
+
 
   /** Chaves de variável do template, na ordem {{1}}, {{2}}, ... */
   const chavesTemplate = (tpl: TemplateMeta | null): string[] => {
