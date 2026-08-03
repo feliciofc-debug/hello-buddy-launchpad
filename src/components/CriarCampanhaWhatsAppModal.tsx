@@ -117,6 +117,87 @@ export function CriarCampanhaWhatsAppModal({
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [vendedorSelecionado, setVendedorSelecionado] = useState<string>('');
 
+  // ============================================================
+  // META OFICIAL — TEMPLATES APROVADOS (obrigatório para campanha)
+  // ============================================================
+  const [templates, setTemplates] = useState<TemplateMeta[]>([]);
+  const [templateSelecionado, setTemplateSelecionado] = useState<string>('');
+  const templateAtivo = templates.find((t) => t.id === templateSelecionado) || null;
+
+  const fetchTemplates = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('whatsapp_templates')
+        .select('id, nome_meta, idioma, body_text, variaveis_map, status_meta, tipo_uso')
+        .eq('user_id', user.id)
+        .eq('tipo_uso', 'campanha')
+        .eq('status_meta', 'aprovado')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('⚠️ Erro ao buscar templates aprovados:', error);
+        setTemplates([]);
+        return;
+      }
+
+      setTemplates((data || []) as TemplateMeta[]);
+      if ((data || []).length === 1) setTemplateSelecionado(data![0].id);
+    } catch (e) {
+      console.error('❌ Erro ao carregar templates:', e);
+      setTemplates([]);
+    }
+  };
+
+  /** Chaves de variável do template, na ordem {{1}}, {{2}}, ... */
+  const chavesTemplate = (tpl: TemplateMeta | null): string[] => {
+    const map = tpl?.variaveis_map;
+    if (Array.isArray(map)) return map.map((k: any) => String(k));
+    if (map && typeof map === 'object') {
+      return Object.keys(map)
+        .sort((a, b) => Number(a) - Number(b))
+        .map((k) => String((map as any)[k]));
+    }
+    return [];
+  };
+
+  /** De onde vem cada variável (mapeamento fixo e auditável) */
+  const valorDaVariavel = (chave: string, nomeContato: string): string => {
+    const k = chave.replace(/[{}\s]/g, '').toLowerCase();
+    if (k === 'nome') return nomeContato || 'Cliente';
+    if (k === 'produto') return produto.nome || '';
+    if (k === 'preco') return produto.preco != null ? `R$ ${Number(produto.preco).toFixed(2)}` : '';
+    return '';
+  };
+
+  const montarVariaveisTemplate = (tpl: TemplateMeta | null, nomeContato: string): string[] =>
+    chavesTemplate(tpl).map((chave) => valorDaVariavel(chave, nomeContato));
+
+  /** Preview do texto final do template com as variáveis já substituídas */
+  const previewTemplate = (): string => {
+    if (!templateAtivo?.body_text) return '';
+    const valores = montarVariaveisTemplate(templateAtivo, 'Maria');
+    let texto = templateAtivo.body_text;
+    valores.forEach((valor, idx) => {
+      texto = texto.replace(new RegExp(`\\{\\{\\s*${idx + 1}\\s*\\}\\}`, 'g'), valor);
+    });
+    return texto
+      .replace(/\{\{\s*nome\s*\}\}/gi, valorDaVariavel('nome', 'Maria'))
+      .replace(/\{\{\s*produto\s*\}\}/gi, valorDaVariavel('produto', ''))
+      .replace(/\{\{\s*preco\s*\}\}/gi, valorDaVariavel('preco', ''));
+  };
+
+  // Preview de destinatários: X de Y vão receber (Z sem opt-in)
+  const destinosSelecionadosObj = listas.filter((l) => listasSelecionadas.includes(l.id));
+  const totalContatosSelecionados = destinosSelecionadosObj.reduce((acc, l) => acc + (l.member_count || 0), 0);
+  const totalConfirmadosSelecionados = new Set(
+    destinosSelecionadosObj.flatMap((l) => (l.phone_numbers || []).map(normalizarTelefoneUI))
+  ).size;
+  const totalSemOptin = Math.max(0, totalContatosSelecionados - totalConfirmadosSelecionados);
+
+
   useEffect(() => {
     console.log('⚙️ useEffect EXECUTADO', { open });
     if (open) {
