@@ -232,9 +232,10 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
           <Button variant="outline" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={handleIniciar} disabled={loading}>
-            {loading ? "Criando..." : `🚀 Criar Campanha (${parseContatos(contatosRaw).length} contatos)`}
+          <Button onClick={handleIniciar} disabled title="Envio pausado — migrando para o canal oficial">
+            ❄️ Envio pausado (canal oficial em migração)
           </Button>
+
         </DialogFooter>
       </DialogContent>
     </Dialog>
