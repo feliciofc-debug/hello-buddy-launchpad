@@ -231,6 +231,165 @@ export function CriarCampanhaWhatsAppModal({
   ).size;
   const totalSemOptin = Math.max(0, totalContatosSelecionados - totalConfirmadosSelecionados);
 
+  // ============================================================
+  // ETAPA DO FLUXO GUIADO
+  // A = ainda não tem mensagem modelo liberada e nada em análise
+  // B = mensagem em análise
+  // C = mensagem liberada, mas contatos escolhidos sem autorização
+  // D = tudo pronto
+  // ============================================================
+  const temModeloLiberado = templates.length > 0;
+  const temModeloEmAnalise = templatesCampanhaTodos.some((t) => t.status_meta === 'pendente');
+  const etapa: 'A' | 'B' | 'C' | 'D' = !temModeloLiberado
+    ? (temModeloEmAnalise ? 'B' : 'A')
+    : (listasSelecionadas.length > 0 && totalConfirmadosSelecionados === 0 ? 'C' : 'D');
+
+  /** Texto amigável → formato aceito pelo WhatsApp ({{1}}, {{2}}...) */
+  const CHIPS: { label: string; chave: string }[] = [
+    { label: '[nome do cliente]', chave: 'nome' },
+    { label: '[produto]', chave: 'produto' },
+    { label: '[preço]', chave: 'preco' },
+  ];
+
+  const converterTextoModelo = (texto: string) => {
+    const ordem: string[] = [];
+    let corpo = texto;
+    // percorre o texto na ordem real de aparição
+    const regex = new RegExp(CHIPS.map((c) => c.label.replace(/[[\]]/g, '\\$&')).join('|'), 'g');
+    corpo = corpo.replace(regex, (achado) => {
+      const chip = CHIPS.find((c) => c.label === achado)!;
+      ordem.push(chip.chave);
+      return `{{${ordem.length}}}`;
+    });
+    return { corpo, ordem };
+  };
+
+  const previewModeloAmigavel = () =>
+    textoModelo
+      .replace(/\[nome do cliente\]/g, 'Maria')
+      .replace(/\[produto\]/g, produto.nome || 'seu produto')
+      .replace(
+        /\[preço\]/g,
+        produto.preco != null ? `R$ ${Number(produto.preco).toFixed(2)}` : 'R$ —'
+      );
+
+  const inserirChip = (label: string) => setTextoModelo((atual) => `${atual}${label}`);
+
+  /** Cria a "mensagem modelo" e envia pra análise do WhatsApp (sem jargão na tela) */
+  const criarEEnviarModelo = async () => {
+    try {
+      setSalvandoModelo(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Faça login novamente');
+
+      const { corpo, ordem } = converterTextoModelo(textoModelo.trim());
+      if (!corpo) {
+        toast.error('Escreva a mensagem que você quer enviar');
+        return;
+      }
+
+      const nomeMeta = `campanha_${Date.now()}`;
+      const variaveis_map = ordem.reduce<Record<string, string>>((acc, chave, idx) => {
+        acc[String(idx + 1)] = chave;
+        return acc;
+      }, {});
+
+      const { data: novo, error: erroInsert } = await supabase
+        .from('whatsapp_templates')
+        .insert({
+          user_id: user.id,
+          nome_meta: nomeMeta,
+          idioma: 'pt_BR',
+          categoria_meta: 'MARKETING',
+          tipo_uso: 'campanha',
+          status_meta: 'rascunho',
+          body_text: corpo,
+          variaveis_map,
+        })
+        .select()
+        .single();
+
+      if (erroInsert) throw erroInsert;
+
+      const { data: submit, error: erroSubmit } = await supabase.functions.invoke(
+        'whatsapp-template-submit',
+        { body: { template_id: novo.id } }
+      );
+
+      if (erroSubmit || (submit as any)?.success === false) {
+        const msg = (submit as any)?.error || erroSubmit?.message || '';
+        toast.error(
+          `Não conseguimos enviar sua mensagem pra análise agora. ${msg ? `Motivo: ${msg}` : 'Tente novamente em instantes.'}`
+        );
+        await fetchTemplates();
+        return;
+      }
+
+      setModeloEnviadoAgora(true);
+      toast.success('✅ Enviamos sua mensagem para análise do WhatsApp!');
+      await fetchTemplates();
+    } catch (e: any) {
+      console.error('Erro ao criar mensagem modelo:', e);
+      toast.error(e?.message || 'Não conseguimos criar sua mensagem agora');
+    } finally {
+      setSalvandoModelo(false);
+    }
+  };
+
+  /** Consulta se a análise do WhatsApp já liberou */
+  const verificarModelo = async () => {
+    try {
+      setVerificandoModelo(true);
+      const { error } = await supabase.functions.invoke('whatsapp-template-refresh', {
+        body: { all: true },
+      });
+      if (error) throw error;
+      await fetchTemplates();
+      toast.success('Status atualizado');
+    } catch (e: any) {
+      toast.error('Não conseguimos verificar agora. Tente de novo em instantes.');
+    } finally {
+      setVerificandoModelo(false);
+    }
+  };
+
+  /** Pede autorização aos contatos que ainda não autorizaram */
+  const pedirAutorizacoes = async () => {
+    try {
+      setEnviandoAutorizacoes(true);
+
+      if (!templateConvite) {
+        toast.error(
+          'Antes de pedir autorização, sua mensagem de convite também precisa passar pela análise do WhatsApp. Fale com o suporte para liberar.'
+        );
+        return;
+      }
+
+      let enviados = 0;
+      for (const listaId of listasSelecionadas) {
+        const { data, error } = await supabase.functions.invoke('enviar-convite-optin', {
+          body: { lista_id: listaId, template_id: templateConvite.id },
+        });
+        if (error || (data as any)?.success === false) {
+          console.error('Falha ao pedir autorização:', listaId, error || data);
+          continue;
+        }
+        enviados += Number((data as any)?.enviados || 0);
+      }
+
+      if (enviados === 0) {
+        toast.warning('Nenhum convite novo foi enviado agora. Tente novamente mais tarde.');
+      } else {
+        toast.success(`Perguntamos a ${enviados} contato(s) se aceitam receber suas mensagens.`);
+      }
+      await fetchListas();
+    } catch (e: any) {
+      toast.error('Não conseguimos pedir as autorizações agora.');
+    } finally {
+      setEnviandoAutorizacoes(false);
+    }
+  };
+
 
   useEffect(() => {
     console.log('⚙️ useEffect EXECUTADO', { open });
