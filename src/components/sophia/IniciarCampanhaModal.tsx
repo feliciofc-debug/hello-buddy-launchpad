@@ -58,7 +58,15 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
       .filter((c) => c.phone.length >= 10);
   };
 
+  // ❄️ SOPHIA CONGELADA: envio desligado (migração para o canal oficial Meta).
+  // Nenhum disparo é feito daqui — a tela permanece apenas como histórico/leitura.
   const handleIniciar = async () => {
+    toast.info("Envio da Sophia pausado — migrando para o canal oficial (Meta Cloud API).");
+    return;
+  };
+
+  const handleIniciarLegado = async () => {
+
     if (!nome.trim()) {
       toast.error("Dê um nome para a campanha");
       return;
