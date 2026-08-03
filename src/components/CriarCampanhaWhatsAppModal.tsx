@@ -890,10 +890,22 @@ _Escolha quantidade e finalize!_ ✅`;
     try {
       setIsLoading(true);
 
-      if (listasSelecionadas.length === 0) {
-        toast.error('Selecione pelo menos uma lista de transmissão');
+      if (!templateSelecionado || !templateAtivo || templateAtivo.status_meta !== 'aprovado') {
+        toast.error('Selecione um template de campanha aprovado pela Meta');
         return;
       }
+
+      if (listasSelecionadas.length === 0) {
+        toast.error('Selecione pelo menos uma lista/segmento');
+        return;
+      }
+
+      if (totalConfirmadosSelecionados === 0) {
+        toast.error('Nenhum contato com opt-in confirmado nos destinos selecionados');
+        return;
+      }
+
+
 
       if (frequencia === 'agora') {
         await enviarCampanhaAgora();
