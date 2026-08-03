@@ -48,7 +48,14 @@ export default function SophiaDispatcher() {
           </Button>
         </div>
 
-        {/* Gateway Status + Contadores */}
+        {/* Aviso de congelamento */}
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          ❄️ <strong>Envio pausado — migrando para o canal oficial</strong> (WhatsApp Cloud API da
+          Meta). Esta tela está em modo <strong>leitura/histórico</strong>: você continua vendo
+          campanhas e envios anteriores, mas novos disparos pela Sophia estão desligados.
+        </div>
+
+
         <div className="grid md:grid-cols-2 gap-6">
           <GatewayStatusCard userId={user.id} />
           <FilaContadores userId={user.id} />

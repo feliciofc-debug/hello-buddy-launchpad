@@ -716,23 +716,9 @@ serve(async (req) => {
       console.error('❌ [AFILIADO] Erro ao chamar envio programado:', epError);
     }
 
-    // ✅ PROCESSAR FILA DE ATENDIMENTO ANTI-BLOQUEIO
-    let filaAtendimentoResult = null;
-    try {
-      console.log('📤 [FILA] Processando fila de atendimento anti-bloqueio...');
-      const { data, error } = await supabase.functions.invoke('processar-fila-afiliado', {
-        body: {}
-      });
-      
-      if (error) {
-        console.error('❌ [FILA] Erro ao processar fila:', error);
-      } else {
-        filaAtendimentoResult = data;
-        console.log('✅ [FILA] Fila processada:', data);
-      }
-    } catch (filaError) {
-      console.error('❌ [FILA] Erro ao chamar processar-fila-afiliado:', filaError);
-    }
+    // 🚫 REMOVIDO: fila anti-bloqueio do Baileys (processar-fila-afiliado).
+    // Migração definitiva para Meta Cloud API oficial — nenhuma fila local é processada aqui.
+
 
     return new Response(
       JSON.stringify({
@@ -740,8 +726,8 @@ serve(async (req) => {
         executadas,
         erros,
         total: campanhas?.length || 0,
-        envioProgramado: envioProgramadoResult,
-        filaAtendimento: filaAtendimentoResult
+        envioProgramado: envioProgramadoResult
+
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

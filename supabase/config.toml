@@ -7,8 +7,6 @@ verify_jwt = false
 [functions.ebook-airfryer]
 verify_jwt = false
 
-[functions.execute-campaign]
-verify_jwt = false
 
 [functions.wuzapi-webhook]
 verify_jwt = false
