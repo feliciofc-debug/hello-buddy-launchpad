@@ -512,8 +512,12 @@ export async function buildSystemPrompt(
   cfg: TenantAgentConfig,
   userText: string,
   amzContextBlock?: string,
+  // Papel do modo AMZ. DEFAULT = "support": no ambíguo, atende (nunca vende).
+  // Só passe "sales" quando o contato for LEAD NOVO confirmado.
+  amzAudience: AmzAudience = "support",
 ): Promise<{ systemPrompt: string; mode: AgentMode }> {
   const mode = resolveAgentMode(cfg.agent_mode, cfg.user_id);
+
 
   const TOOLS_HINT = `
 FERRAMENTAS DISPONÍVEIS (use quando fizer sentido, sem pedir permissão):
