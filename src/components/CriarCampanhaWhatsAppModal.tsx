@@ -179,8 +179,14 @@ _Escolha quantidade e finalize!_ ✅`);
     }
   }, [open, produto, campanhaExistente]);
 
+  // ============================================================
+  // DESTINOS DE CAMPANHA — SOMENTE LISTAS/SEGMENTOS PJ
+  // Grupos de WhatsApp foram descartados: a Meta Cloud API não envia
+  // para grupos e grupo não tem opt-in individual (regra da Fase 1).
+  // Cada lista traz também a contagem de opt-in CONFIRMADO.
+  // ============================================================
   const fetchListas = async () => {
-    console.log('📋 Buscando listas de transmissão e grupos...');
+    console.log('📋 Buscando listas/segmentos PJ (grupos não são destino de campanha)...');
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -188,30 +194,6 @@ _Escolha quantidade e finalize!_ ✅`);
         return;
       }
 
-      // Buscar listas manuais
-      const { data: manualListas, error: manualError } = await supabase
-        .from('whatsapp_groups')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (manualError) {
-        console.error('⚠️ Erro ao buscar listas manuais:', manualError);
-      }
-
-      // Buscar listas automáticas por categoria (apenas do usuário logado)
-      const { data: autoListas, error: autoError } = await supabase
-        .from('afiliado_listas_categoria')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('ativa', true)
-        .order('total_membros', { ascending: false });
-
-      if (autoError) {
-        console.error('⚠️ Erro ao buscar listas automáticas:', autoError);
-      }
-
-      // Buscar listas PJ (pj_listas_categoria)
       const { data: pjListas, error: pjError } = await supabase
         .from('pj_listas_categoria')
         .select('id, nome, total_membros')
@@ -223,99 +205,31 @@ _Escolha quantidade e finalize!_ ✅`);
         console.error('⚠️ Erro ao buscar listas PJ:', pjError);
       }
 
-      // Buscar grupos PJ (destino de grupo real)
-      const { data: pjGrupos, error: pjGruposError } = await supabase
-        .from('pj_grupos_whatsapp')
-        .select('id, nome, grupo_jid, participantes_count')
-        .eq('user_id', user.id)
-        .eq('ativo', true)
-        .not('grupo_jid', 'is', null)
-        .order('created_at', { ascending: false });
-
-      if (pjGruposError) {
-        console.error('⚠️ Erro ao buscar grupos PJ:', pjGruposError);
-      }
-
-      // Para cada lista automática (afiliado), buscar os telefones dos membros
-      const listasAutoComTelefones = await Promise.all(
-        (autoListas || []).filter(l => (l.total_membros || 0) > 0).map(async (lista) => {
-          const { data: membros } = await supabase
-            .from('afiliado_lista_membros')
-            .select('lead_id')
-            .eq('lista_id', lista.id);
-          
-          const leadIds = membros?.map(m => m.lead_id) || [];
-          let phoneNumbers: string[] = [];
-          
-          if (leadIds.length > 0) {
-            const { data: leads } = await supabase
-              .from('leads_ebooks')
-              .select('phone')
-              .in('id', leadIds);
-            
-            phoneNumbers = leads?.map(l => l.phone) || [];
-          }
-          
-          return {
-            id: lista.id,
-            group_id: lista.id,
-            group_name: `📂 ${lista.nome}`,
-            member_count: lista.total_membros || 0,
-            phone_numbers: phoneNumbers,
-            source: 'afiliado_lista',
-            group_jid: null,
-          } as WhatsAppGroup;
-        })
-      );
-
-      // Para cada lista PJ, buscar os telefones dos membros
-      const listasPJComTelefones = await Promise.all(
+      const listasPJComTelefones: WhatsAppGroup[] = await Promise.all(
         (pjListas || []).map(async (lista) => {
           const { data: membros } = await supabase
             .from('pj_lista_membros')
-            .select('telefone')
+            .select('telefone, opt_in_status')
             .eq('lista_id', lista.id);
-          
+
+          const todos = (membros || []).filter((m: any) => m.telefone);
+          const confirmados = todos.filter((m: any) => m.opt_in_status === 'confirmado');
+
           return {
             id: lista.id,
             group_id: lista.id,
             group_name: `📋 ${lista.nome}`,
-            member_count: lista.total_membros || membros?.length || 0,
-            phone_numbers: membros?.map(m => m.telefone) || [],
+            member_count: todos.length || lista.total_membros || 0,
+            phone_numbers: confirmados.map((m: any) => m.telefone),
             source: 'pj_lista',
             group_jid: null,
           } as WhatsAppGroup;
         })
       );
 
-      const gruposPJComoDestinos: WhatsAppGroup[] = (pjGrupos || []).map((grupo) => ({
-        id: grupo.id,
-        group_id: grupo.id,
-        group_name: `👥 ${grupo.nome}`,
-        member_count: grupo.participantes_count || 0,
-        phone_numbers: [],
-        source: 'pj_grupo',
-        group_jid: grupo.grupo_jid,
-      }));
+      console.log(`✅ ${listasPJComTelefones.length} lista(s)/segmento(s) carregados`);
+      setListas(listasPJComTelefones);
 
-      // Combinar todas as listas
-      const todasListas: WhatsAppGroup[] = [
-        ...listasAutoComTelefones,
-        ...listasPJComTelefones,
-        ...gruposPJComoDestinos,
-        ...(manualListas || []).map((g): WhatsAppGroup => ({
-          id: g.id,
-          group_id: g.group_id,
-          group_name: g.group_name,
-          member_count: g.member_count || 0,
-          phone_numbers: g.phone_numbers || [],
-          source: 'whatsapp_group',
-          group_jid: g.group_id || null,
-        }))
-      ];
-
-      console.log(`✅ ${todasListas.length} destinos carregados (${listasAutoComTelefones.length} afiliado + ${listasPJComTelefones.length} listas PJ + ${gruposPJComoDestinos.length} grupos PJ + ${manualListas?.length || 0} manuais)`);
-      setListas(todasListas);
     } catch (error) {
       console.error('❌ ERRO ao buscar listas:', error);
       toast.error('Erro ao carregar listas');
