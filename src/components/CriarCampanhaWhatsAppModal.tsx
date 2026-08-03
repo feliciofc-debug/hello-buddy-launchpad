@@ -1152,6 +1152,97 @@ _Escolha quantidade e finalize!_ ✅`;
             </div>
           </div>
 
+          {/* ESTADO A — ainda não tem mensagem modelo liberada */}
+          {etapa === 'A' && !modeloEnviadoAgora && (
+            <div className="p-4 rounded-lg border bg-background space-y-4">
+              <div>
+                <p className="text-sm font-semibold">Vamos preparar sua primeira mensagem</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Para enviar campanhas no WhatsApp com segurança, o WhatsApp precisa aprovar sua
+                  mensagem uma vez. É rápido — vamos criar agora.
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-sm">Sua mensagem</Label>
+                <Textarea
+                  value={textoModelo}
+                  onChange={(e) => setTextoModelo(e.target.value)}
+                  rows={5}
+                  className="mt-2"
+                />
+                <div className="flex gap-2 flex-wrap mt-2">
+                  {CHIPS.map((chip) => (
+                    <Button
+                      key={chip.chave}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => inserirChip(chip.label)}
+                    >
+                      {chip.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Clique nos botões acima para inserir o nome do cliente, o produto e o preço — eles são
+                  preenchidos automaticamente em cada envio.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg border bg-muted/30">
+                <p className="text-xs font-medium mb-2">Como o cliente vai ver:</p>
+                <p className="text-sm whitespace-pre-wrap">{previewModeloAmigavel() || '—'}</p>
+              </div>
+
+              <Button onClick={criarEEnviarModelo} disabled={salvandoModelo} className="w-full">
+                {salvandoModelo ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando para análise...
+                  </>
+                ) : (
+                  'Criar e enviar pra análise'
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* ESTADO A concluído / ESTADO B — mensagem em análise */}
+          {((etapa === 'A' && modeloEnviadoAgora) || etapa === 'B') && (
+            <div className="p-4 rounded-lg border bg-background space-y-3">
+              {modeloEnviadoAgora ? (
+                <p className="text-sm font-semibold">
+                  ✅ Enviamos sua mensagem pra análise do WhatsApp.
+                </p>
+              ) : (
+                <p className="text-sm font-semibold">
+                  ⏳ Sua mensagem está em análise pelo WhatsApp.
+                </p>
+              )}
+              <p className="text-sm text-muted-foreground">
+                Costuma levar de alguns minutos até 1 dia. Assim que liberar, você já pode enviar — e nós
+                avisamos.
+              </p>
+              <Button
+                variant="outline"
+                onClick={verificarModelo}
+                disabled={verificandoModelo}
+                className="w-full"
+              >
+                {verificandoModelo ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                  </>
+                ) : (
+                  'Verificar agora'
+                )}
+              </Button>
+            </div>
+          )}
+
+          {(etapa === 'C' || etapa === 'D') && (
+          <>
+
           {/* 1. FREQUÊNCIA */}
           <div>
             <Label className="text-lg font-semibold">1. Escolha a Frequência</Label>
