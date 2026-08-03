@@ -579,28 +579,10 @@ serve(async (req) => {
                 }
               }
 
-              const mensagemPersonalizada = (campanha.mensagem_template || '')
-                .replace(/\{\{?\s*nome\s*\}?\}/gi, nome)
-                .replace(/\{\{?\s*produto\s*\}?\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{?\s*preco\s*\}?\}/gi, formatPriceBRL(produtoParaEnviar?.preco));
+              // Meta oficial: o conteúdo é o TEMPLATE aprovado.
+              // mensagem_template deixa de ser usada no envio (fica só como referência interna).
 
-              // 🛡️ DEFENSIVA: nunca dispara mensagem vazia (autopilot ou não)
-              if (!mensagemPersonalizada.trim()) {
-                console.error(`🚫 [DEFENSIVA] Mensagem vazia após replaces — pulando ${phone} (campanha ${campanha.id})`);
-                errosEnvio++;
-                processados++;
-                if (isAutopilot) {
-                  await registrarEnvio(supabase, {
-                    user_id: campanha.user_id,
-                    campanha_id: campanha.id,
-                    whatsapp: phone,
-                    sucesso: false,
-                    erro: 'mensagem_vazia_apos_replaces',
-                    tipo: 'autopilot',
-                  });
-                }
-                continue;
-              }
+
 
               // ✅ META OFICIAL — única saída de envio (Baileys/WuzAPI removido)
               const variaveis = buildTemplateParams(tplCampanha, {
