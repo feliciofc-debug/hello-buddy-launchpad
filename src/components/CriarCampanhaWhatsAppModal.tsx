@@ -1,5 +1,15 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -144,6 +154,7 @@ export function CriarCampanhaWhatsAppModal({
   const [salvandoModelo, setSalvandoModelo] = useState(false);
   const [verificandoModelo, setVerificandoModelo] = useState(false);
   const [enviandoAutorizacoes, setEnviandoAutorizacoes] = useState(false);
+  const [confirmAutorizacaoOpen, setConfirmAutorizacaoOpen] = useState(false);
   const [modeloEnviadoAgora, setModeloEnviadoAgora] = useState(false);
 
   const fetchTemplates = async () => {
@@ -1198,30 +1209,33 @@ _Escolha quantidade e finalize!_ ✅`;
               <Button onClick={criarEEnviarModelo} disabled={salvandoModelo} className="w-full">
                 {salvandoModelo ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando para análise...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
                   </>
                 ) : (
-                  'Criar e enviar pra análise'
+                  'Criar mensagem'
                 )}
               </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Você só precisa fazer isso uma vez. Depois é só escolher o produto e enviar.
+              </p>
             </div>
           )}
 
-          {/* ESTADO A concluído / ESTADO B — mensagem em análise */}
+          {/* ESTADO A concluído / ESTADO B — mensagem aguardando liberação */}
           {((etapa === 'A' && modeloEnviadoAgora) || etapa === 'B') && (
             <div className="p-4 rounded-lg border bg-background space-y-3">
               {modeloEnviadoAgora ? (
                 <p className="text-sm font-semibold">
-                  ✅ Enviamos sua mensagem pra análise do WhatsApp.
+                  ✅ Sua mensagem foi criada e já está a caminho da liberação.
                 </p>
               ) : (
                 <p className="text-sm font-semibold">
-                  ⏳ Sua mensagem está em análise pelo WhatsApp.
+                  ⏳ Sua mensagem está aguardando liberação do WhatsApp.
                 </p>
               )}
               <p className="text-sm text-muted-foreground">
                 Costuma levar de alguns minutos até 1 dia. Assim que liberar, você já pode enviar — e nós
-                avisamos.
+                avisamos. Pode fechar esta janela: quando voltar, o próximo passo aparece automaticamente.
               </p>
               <Button
                 variant="outline"
@@ -1231,10 +1245,10 @@ _Escolha quantidade e finalize!_ ✅`;
               >
                 {verificandoModelo ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Atualizando...
                   </>
                 ) : (
-                  'Verificar agora'
+                  'Já liberou? Atualizar status'
                 )}
               </Button>
             </div>
@@ -1453,7 +1467,11 @@ _Escolha quantidade e finalize!_ ✅`;
               <p className="text-sm font-medium">
                 {totalConfirmadosSelecionados} de {totalContatosSelecionados} contatos autorizados
               </p>
-              <Button onClick={pedirAutorizacoes} disabled={enviandoAutorizacoes} className="w-full">
+              <Button
+                onClick={() => setConfirmAutorizacaoOpen(true)}
+                disabled={enviandoAutorizacoes}
+                className="w-full"
+              >
                 {enviandoAutorizacoes ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Perguntando aos contatos...
@@ -1466,6 +1484,31 @@ _Escolha quantidade e finalize!_ ✅`;
                 Vamos perguntar aos seus contatos se aceitam receber suas mensagens. Quem responder que
                 sim já entra na próxima campanha.
               </p>
+
+              <AlertDialog open={confirmAutorizacaoOpen} onOpenChange={setConfirmAutorizacaoOpen}>
+                <AlertDialogContent className="bg-background">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirmar pedido de autorização</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Vamos enviar uma mensagem perguntando aos seus{' '}
+                      {Math.max(0, totalContatosSelecionados - totalConfirmadosSelecionados)} contatos se
+                      aceitam receber suas ofertas. Quem responder SIM entra na sua lista. Esta ainda não é
+                      a sua campanha de vendas. Confirmar?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Voltar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        setConfirmAutorizacaoOpen(false);
+                        pedirAutorizacoes();
+                      }}
+                    >
+                      Sim, perguntar aos contatos
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           )}
 
