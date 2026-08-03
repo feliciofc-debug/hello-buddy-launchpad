@@ -5712,6 +5712,8 @@ Regras:
       },
       userText || "",
       amzContextBlock,
+      amzAudience,
+
     );
     // Injeta DATA/HORA atual (São Paulo) no system prompt — evita respostas desatualizadas
     const nowSP = new Intl.DateTimeFormat("pt-BR", {
