@@ -90,43 +90,38 @@ async function registrarEnvio(
   }
 }
 
-// Classifica falha do send-wuzapi-message-pj:
-// - 'gateway'   → instância WuzAPI/Baileys offline, timeout, 5xx, SQLite locked, erro de invoke
-// - 'number'    → resposta 2xx do gateway com success:false (número inválido, etc.)
-// - 'ok'        → sucesso
-function classifySendOutcome(sendError: any, sendResult: any): 'ok' | 'gateway' | 'number' {
+// Classifica a resposta do whatsapp-cloud-send-template (Meta Cloud API):
+// - 'ok'      → enviado
+// - 'fatal'   → falha estrutural (token, template, config) → PAUSA a campanha
+// - 'contato' → falha do destinatário (número inválido) ou rede → segue para o próximo
+function classifyMetaOutcome(sendError: any, sendResult: any): 'ok' | 'fatal' | 'contato' {
   if (!sendError && sendResult?.success === true) return 'ok';
+  const categoria = String(sendResult?.categoria || '');
+  if (categoria === 'token' || categoria === 'template' || categoria === 'config') return 'fatal';
+  return 'contato';
+}
 
-  // Erro na invocação da edge function (rede, deploy, timeout) = gateway
-  if (sendError) return 'gateway';
+// Monta os parâmetros do BODY do template na ordem {{1}}, {{2}}, ...
+// variaveis_map aceita array (["nome","produto"]) ou objeto ({"1":"nome"}).
+function buildTemplateParams(
+  tpl: any,
+  valores: Record<string, string>
+): string[] {
+  const map = tpl?.variaveis_map;
+  let chaves: string[] = [];
 
-  // instanceStatus explícito com connected:false
-  if (sendResult?.instanceStatus && sendResult.instanceStatus.connected === false) return 'gateway';
-
-  // Erro genérico no wrapper
-  const errStr = String(sendResult?.error || '').toLowerCase();
-  if (errStr.includes('sqlite') || errStr.includes('locked') ||
-      errStr.includes('offline') || errStr.includes('instance') ||
-      errStr.includes('container') || errStr.includes('gateway') ||
-      errStr.includes('timeout') || errStr.includes('econn')) {
-    return 'gateway';
+  if (Array.isArray(map)) {
+    chaves = map.map((k: any) => String(k));
+  } else if (map && typeof map === 'object') {
+    chaves = Object.keys(map)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((k) => String(map[k]));
   }
 
-  // Detalhar por item (results[])
-  const results = Array.isArray(sendResult?.results) ? sendResult.results : [];
-  const anyGatewayHttp = results.some((r: any) => {
-    const st = Number(r?.status ?? 200);
-    if (st === 0 || st >= 500) return true;
-    const rErr = String(r?.error || r?.response?.error || '').toLowerCase();
-    return rErr.includes('sqlite') || rErr.includes('locked') ||
-           rErr.includes('offline') || rErr.includes('instance') ||
-           rErr.includes('container') || rErr.includes('timeout');
-  });
-  if (anyGatewayHttp) return 'gateway';
-
-  // Caso contrário: falha de negócio (número inválido/etc.)
-  return 'number';
+  if (chaves.length === 0) return [];
+  return chaves.map((k) => valores[k.replace(/[{}\s]/g, '').toLowerCase()] ?? '');
 }
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
