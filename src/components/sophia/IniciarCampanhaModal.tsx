@@ -171,6 +171,13 @@ export function IniciarCampanhaModal({ open, onClose, userId }: Props) {
           <DialogTitle>🎯 Nova Campanha — Sophia</DialogTitle>
         </DialogHeader>
 
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          ❄️ <strong>Envio pausado</strong> — a Sophia está migrando para o canal oficial
+          (WhatsApp Cloud API da Meta). As campanhas antigas continuam visíveis como histórico,
+          mas novos disparos estão desligados.
+        </div>
+
+
         <div className="space-y-4">
           <div>
             <Label>Nome da Campanha</Label>
