@@ -12,15 +12,39 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { salvarCampanhaNaBiblioteca } from '@/lib/bibliotecaCampanhas';
 
+/** Normalização canônica de telefone (módulo, usada também no render) */
+function normalizarTelefoneUI(phone: string) {
+  const somenteDigitos = (phone || '').replace(/\D/g, '');
+  if (!somenteDigitos) return '';
+  if (somenteDigitos.length === 10 || somenteDigitos.length === 11) return `55${somenteDigitos}`;
+  return somenteDigitos;
+}
+
 interface WhatsAppGroup {
+
   id: string;
   group_id?: string;
   group_name: string;
   member_count: number;
   phone_numbers: string[];
-  source: 'whatsapp_group' | 'afiliado_lista' | 'pj_lista' | 'pj_grupo';
+  /**
+   * Grupos de WhatsApp NÃO são mais destino de campanha:
+   * a Meta Cloud API não envia para grupos e grupo não tem opt-in individual.
+   */
+  source: 'pj_lista';
   group_jid?: string | null;
 }
+
+interface TemplateMeta {
+  id: string;
+  nome_meta: string;
+  idioma: string | null;
+  body_text: string | null;
+  variaveis_map: any;
+  status_meta: string;
+  tipo_uso: string;
+}
+
 
 interface Vendedor {
   id: string;
@@ -102,13 +126,96 @@ export function CriarCampanhaWhatsAppModal({
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [vendedorSelecionado, setVendedorSelecionado] = useState<string>('');
 
+  // ============================================================
+  // META OFICIAL — TEMPLATES APROVADOS (obrigatório para campanha)
+  // ============================================================
+  const [templates, setTemplates] = useState<TemplateMeta[]>([]);
+  const [templateSelecionado, setTemplateSelecionado] = useState<string>('');
+  const templateAtivo = templates.find((t) => t.id === templateSelecionado) || null;
+
+  const fetchTemplates = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('whatsapp_templates')
+        .select('id, nome_meta, idioma, body_text, variaveis_map, status_meta, tipo_uso')
+        .eq('user_id', user.id)
+        .eq('tipo_uso', 'campanha')
+        .eq('status_meta', 'aprovado')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('⚠️ Erro ao buscar templates aprovados:', error);
+        setTemplates([]);
+        return;
+      }
+
+      setTemplates((data || []) as TemplateMeta[]);
+      if ((data || []).length === 1) setTemplateSelecionado(data![0].id);
+    } catch (e) {
+      console.error('❌ Erro ao carregar templates:', e);
+      setTemplates([]);
+    }
+  };
+
+  /** Chaves de variável do template, na ordem {{1}}, {{2}}, ... */
+  const chavesTemplate = (tpl: TemplateMeta | null): string[] => {
+    const map = tpl?.variaveis_map;
+    if (Array.isArray(map)) return map.map((k: any) => String(k));
+    if (map && typeof map === 'object') {
+      return Object.keys(map)
+        .sort((a, b) => Number(a) - Number(b))
+        .map((k) => String((map as any)[k]));
+    }
+    return [];
+  };
+
+  /** De onde vem cada variável (mapeamento fixo e auditável) */
+  const valorDaVariavel = (chave: string, nomeContato: string): string => {
+    const k = chave.replace(/[{}\s]/g, '').toLowerCase();
+    if (k === 'nome') return nomeContato || 'Cliente';
+    if (k === 'produto') return produto.nome || '';
+    if (k === 'preco') return produto.preco != null ? `R$ ${Number(produto.preco).toFixed(2)}` : '';
+    return '';
+  };
+
+  const montarVariaveisTemplate = (tpl: TemplateMeta | null, nomeContato: string): string[] =>
+    chavesTemplate(tpl).map((chave) => valorDaVariavel(chave, nomeContato));
+
+  /** Preview do texto final do template com as variáveis já substituídas */
+  const previewTemplate = (): string => {
+    if (!templateAtivo?.body_text) return '';
+    const valores = montarVariaveisTemplate(templateAtivo, 'Maria');
+    let texto = templateAtivo.body_text;
+    valores.forEach((valor, idx) => {
+      texto = texto.replace(new RegExp(`\\{\\{\\s*${idx + 1}\\s*\\}\\}`, 'g'), valor);
+    });
+    return texto
+      .replace(/\{\{\s*nome\s*\}\}/gi, valorDaVariavel('nome', 'Maria'))
+      .replace(/\{\{\s*produto\s*\}\}/gi, valorDaVariavel('produto', ''))
+      .replace(/\{\{\s*preco\s*\}\}/gi, valorDaVariavel('preco', ''));
+  };
+
+  // Preview de destinatários: X de Y vão receber (Z sem opt-in)
+  const destinosSelecionadosObj = listas.filter((l) => listasSelecionadas.includes(l.id));
+  const totalContatosSelecionados = destinosSelecionadosObj.reduce((acc, l) => acc + (l.member_count || 0), 0);
+  const totalConfirmadosSelecionados = new Set(
+    destinosSelecionadosObj.flatMap((l) => (l.phone_numbers || []).map(normalizarTelefoneUI))
+  ).size;
+  const totalSemOptin = Math.max(0, totalContatosSelecionados - totalConfirmadosSelecionados);
+
+
   useEffect(() => {
     console.log('⚙️ useEffect EXECUTADO', { open });
     if (open) {
       try {
-        console.log('🔄 Iniciando fetch de listas e vendedores...');
+        console.log('🔄 Iniciando fetch de listas, vendedores e templates aprovados...');
         fetchListas();
         fetchVendedores();
+        fetchTemplates();
+
         
         // Se tem campanha existente, carregar dados dela
         if (campanhaExistente) {
@@ -164,8 +271,14 @@ _Escolha quantidade e finalize!_ ✅`);
     }
   }, [open, produto, campanhaExistente]);
 
+  // ============================================================
+  // DESTINOS DE CAMPANHA — SOMENTE LISTAS/SEGMENTOS PJ
+  // Grupos de WhatsApp foram descartados: a Meta Cloud API não envia
+  // para grupos e grupo não tem opt-in individual (regra da Fase 1).
+  // Cada lista traz também a contagem de opt-in CONFIRMADO.
+  // ============================================================
   const fetchListas = async () => {
-    console.log('📋 Buscando listas de transmissão e grupos...');
+    console.log('📋 Buscando listas/segmentos PJ (grupos não são destino de campanha)...');
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -173,30 +286,6 @@ _Escolha quantidade e finalize!_ ✅`);
         return;
       }
 
-      // Buscar listas manuais
-      const { data: manualListas, error: manualError } = await supabase
-        .from('whatsapp_groups')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (manualError) {
-        console.error('⚠️ Erro ao buscar listas manuais:', manualError);
-      }
-
-      // Buscar listas automáticas por categoria (apenas do usuário logado)
-      const { data: autoListas, error: autoError } = await supabase
-        .from('afiliado_listas_categoria')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('ativa', true)
-        .order('total_membros', { ascending: false });
-
-      if (autoError) {
-        console.error('⚠️ Erro ao buscar listas automáticas:', autoError);
-      }
-
-      // Buscar listas PJ (pj_listas_categoria)
       const { data: pjListas, error: pjError } = await supabase
         .from('pj_listas_categoria')
         .select('id, nome, total_membros')
@@ -208,99 +297,31 @@ _Escolha quantidade e finalize!_ ✅`);
         console.error('⚠️ Erro ao buscar listas PJ:', pjError);
       }
 
-      // Buscar grupos PJ (destino de grupo real)
-      const { data: pjGrupos, error: pjGruposError } = await supabase
-        .from('pj_grupos_whatsapp')
-        .select('id, nome, grupo_jid, participantes_count')
-        .eq('user_id', user.id)
-        .eq('ativo', true)
-        .not('grupo_jid', 'is', null)
-        .order('created_at', { ascending: false });
-
-      if (pjGruposError) {
-        console.error('⚠️ Erro ao buscar grupos PJ:', pjGruposError);
-      }
-
-      // Para cada lista automática (afiliado), buscar os telefones dos membros
-      const listasAutoComTelefones = await Promise.all(
-        (autoListas || []).filter(l => (l.total_membros || 0) > 0).map(async (lista) => {
-          const { data: membros } = await supabase
-            .from('afiliado_lista_membros')
-            .select('lead_id')
-            .eq('lista_id', lista.id);
-          
-          const leadIds = membros?.map(m => m.lead_id) || [];
-          let phoneNumbers: string[] = [];
-          
-          if (leadIds.length > 0) {
-            const { data: leads } = await supabase
-              .from('leads_ebooks')
-              .select('phone')
-              .in('id', leadIds);
-            
-            phoneNumbers = leads?.map(l => l.phone) || [];
-          }
-          
-          return {
-            id: lista.id,
-            group_id: lista.id,
-            group_name: `📂 ${lista.nome}`,
-            member_count: lista.total_membros || 0,
-            phone_numbers: phoneNumbers,
-            source: 'afiliado_lista',
-            group_jid: null,
-          } as WhatsAppGroup;
-        })
-      );
-
-      // Para cada lista PJ, buscar os telefones dos membros
-      const listasPJComTelefones = await Promise.all(
+      const listasPJComTelefones: WhatsAppGroup[] = await Promise.all(
         (pjListas || []).map(async (lista) => {
           const { data: membros } = await supabase
             .from('pj_lista_membros')
-            .select('telefone')
+            .select('telefone, opt_in_status')
             .eq('lista_id', lista.id);
-          
+
+          const todos = (membros || []).filter((m: any) => m.telefone);
+          const confirmados = todos.filter((m: any) => m.opt_in_status === 'confirmado');
+
           return {
             id: lista.id,
             group_id: lista.id,
             group_name: `📋 ${lista.nome}`,
-            member_count: lista.total_membros || membros?.length || 0,
-            phone_numbers: membros?.map(m => m.telefone) || [],
+            member_count: todos.length || lista.total_membros || 0,
+            phone_numbers: confirmados.map((m: any) => m.telefone),
             source: 'pj_lista',
             group_jid: null,
           } as WhatsAppGroup;
         })
       );
 
-      const gruposPJComoDestinos: WhatsAppGroup[] = (pjGrupos || []).map((grupo) => ({
-        id: grupo.id,
-        group_id: grupo.id,
-        group_name: `👥 ${grupo.nome}`,
-        member_count: grupo.participantes_count || 0,
-        phone_numbers: [],
-        source: 'pj_grupo',
-        group_jid: grupo.grupo_jid,
-      }));
+      console.log(`✅ ${listasPJComTelefones.length} lista(s)/segmento(s) carregados`);
+      setListas(listasPJComTelefones);
 
-      // Combinar todas as listas
-      const todasListas: WhatsAppGroup[] = [
-        ...listasAutoComTelefones,
-        ...listasPJComTelefones,
-        ...gruposPJComoDestinos,
-        ...(manualListas || []).map((g): WhatsAppGroup => ({
-          id: g.id,
-          group_id: g.group_id,
-          group_name: g.group_name,
-          member_count: g.member_count || 0,
-          phone_numbers: g.phone_numbers || [],
-          source: 'whatsapp_group',
-          group_jid: g.group_id || null,
-        }))
-      ];
-
-      console.log(`✅ ${todasListas.length} destinos carregados (${listasAutoComTelefones.length} afiliado + ${listasPJComTelefones.length} listas PJ + ${gruposPJComoDestinos.length} grupos PJ + ${manualListas?.length || 0} manuais)`);
-      setListas(todasListas);
     } catch (error) {
       console.error('❌ ERRO ao buscar listas:', error);
       toast.error('Erro ao carregar listas');
@@ -524,60 +545,56 @@ _Escolha quantidade e finalize!_ ✅`;
     
     console.log('📦 Produto:', produto.nome);
 
-    // Separar destinos de contato x destinos de grupo
-    const destinosSelecionados = listas.filter((lista) => listasSelecionadas.includes(lista.id));
-    const gruposSelecionados = destinosSelecionados.filter(
-      (destino): destino is WhatsAppGroup & { group_jid: string } => destino.source === 'pj_grupo' && !!destino.group_jid,
-    );
-    const listasContatoIds = destinosSelecionados
-      .filter((destino) => destino.source !== 'pj_grupo')
-      .map((destino) => destino.id);
-
-    // Buscar contatos das listas selecionadas (whatsapp_groups + pj_lista_membros + afiliado_lista_membros)
-    let todosContatos: string[] = [];
-
-    if (listasContatoIds.length > 0) {
-      // 1. Buscar de whatsapp_groups (listas manuais)
-      const { data: listasData } = await supabase
-        .from('whatsapp_groups')
-        .select('phone_numbers')
-        .in('id', listasContatoIds);
-      todosContatos.push(...(listasData?.flatMap(l => l.phone_numbers || []) || []));
-
-      // 2. Buscar de pj_lista_membros (listas PJ)
-      const { data: membrosPJ } = await supabase
-        .from('pj_lista_membros')
-        .select('telefone')
-        .in('lista_id', listasContatoIds);
-      todosContatos.push(...(membrosPJ?.map(m => m.telefone) || []));
-
-      // 3. Buscar de afiliado_lista_membros -> leads_ebooks (listas afiliado)
-      const { data: membrosAfiliado } = await supabase
-        .from('afiliado_lista_membros')
-        .select('lead_id')
-        .in('lista_id', listasContatoIds);
-      if (membrosAfiliado && membrosAfiliado.length > 0) {
-        const leadIds = membrosAfiliado.map(m => m.lead_id);
-        const { data: leads } = await supabase
-          .from('leads_ebooks')
-          .select('phone')
-          .in('id', leadIds);
-        todosContatos.push(...(leads?.map(l => l.phone) || []));
-      }
-    }
-
-    // Deduplicar + normalizar telefone para melhorar resolução de nome
-    todosContatos = [...new Set(todosContatos.map(normalizarTelefone))].filter(Boolean);
-    console.log('📋 Total contatos (deduplicados):', todosContatos.length);
-    console.log('👥 Total grupos selecionados:', gruposSelecionados.length);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    if (todosContatos.length === 0 && gruposSelecionados.length === 0) {
-      toast.error('Nenhum contato ou grupo válido encontrado nos destinos selecionados');
+    // ============================================================
+    // DISPARO 100% META CLOUD API OFICIAL
+    // - template aprovado obrigatório
+    // - só contatos com opt-in CONFIRMADO
+    // - sem Baileys / sem fila_atendimento_pj
+    // ============================================================
+    if (!templateSelecionado || !templateAtivo || templateAtivo.status_meta !== 'aprovado') {
+      toast.error('Selecione um template de campanha APROVADO pela Meta');
       return;
     }
 
-    // Criar campanha temporária para salvar na biblioteca ANTES de enviar
+    const listasContatoIds = listas
+      .filter((lista) => listasSelecionadas.includes(lista.id))
+      .map((lista) => lista.id);
+
+    if (listasContatoIds.length === 0) {
+      toast.error('Selecione pelo menos uma lista/segmento');
+      return;
+    }
+
+    const { data: membros } = await supabase
+      .from('pj_lista_membros')
+      .select('telefone, nome, opt_in_status')
+      .in('lista_id', listasContatoIds);
+
+    // Dedup canônico + separação por opt-in
+    const mapaContatos = new Map<string, { nome: string; status: string }>();
+    for (const m of membros || []) {
+      const tel = normalizarTelefone(String(m.telefone || ''));
+      if (!tel) continue;
+      const anterior = mapaContatos.get(tel);
+      // 'recusado' (STOP) sempre prevalece
+      const status = anterior?.status === 'recusado' || m.opt_in_status === 'recusado'
+        ? 'recusado'
+        : (m.opt_in_status === 'confirmado' || anterior?.status === 'confirmado' ? 'confirmado' : (m.opt_in_status || 'pendente'));
+      mapaContatos.set(tel, { nome: (m.nome || anterior?.nome || '').trim(), status });
+    }
+
+    const totalBruto = mapaContatos.size;
+    const confirmados = Array.from(mapaContatos.entries()).filter(([, v]) => v.status === 'confirmado');
+    const semOptin = totalBruto - confirmados.length;
+
+    console.log(`📋 Destinatários: ${confirmados.length} de ${totalBruto} com opt-in confirmado (${semOptin} sem opt-in)`);
+
+    if (confirmados.length === 0) {
+      toast.error(`Nenhum contato com opt-in confirmado (${totalBruto} sem opt-in). Envie o convite de opt-in primeiro.`);
+      return;
+    }
+
+    // Registrar a campanha (histórico/biblioteca) já no canal oficial
     const { data: campanhaTemp, error: erroCampanha } = await supabase
       .from('campanhas_recorrentes')
       .insert({
@@ -588,7 +605,9 @@ _Escolha quantidade e finalize!_ ✅`;
         frequencia: 'uma_vez',
         data_inicio: new Date().toISOString().split('T')[0],
         horarios: ['00:00'],
-        mensagem_template: mensagem,
+        mensagem_template: templateAtivo.body_text || '',
+        template_id: templateSelecionado,
+        canal: 'meta_oficial',
         ativa: false,
         status: 'enviada',
         vendedor_id: vendedorSelecionado || null
@@ -597,10 +616,7 @@ _Escolha quantidade e finalize!_ ✅`;
       .single();
 
     if (erroCampanha) {
-      console.error('❌ Erro ao criar campanha:', erroCampanha);
-    } else {
-      console.log('✅ Campanha salva:', campanhaTemp?.id);
-      console.log('✅ Campanha vendedor_id:', campanhaTemp?.vendedor_id);
+      console.error('❌ Erro ao criar registro da campanha:', erroCampanha);
     }
 
     if (campanhaTemp) {
@@ -615,132 +631,76 @@ _Escolha quantidade e finalize!_ ✅`;
         campanha: {
           id: campanhaTemp.id,
           nome: campanhaTemp.nome,
-          mensagem_template: mensagem,
+          mensagem_template: templateAtivo.body_text || '',
           frequencia: 'agora',
           listas_ids: listasSelecionadas
         }
       });
     }
 
-    // INSERIR NA FILA para o dispatcher local processar (RPC única)
-    const totalDestinos = todosContatos.length + gruposSelecionados.length;
-    toast.success(`🚀 Inserindo ${totalDestinos} destino(s) na fila de envio...`);
+    toast.success(`🚀 Enviando ${confirmados.length} mensagem(ns) via WhatsApp oficial...`);
 
-    const contatosPayload: Array<Record<string, any>> = [];
+    let enviados = 0;
+    let falhas = 0;
 
-    for (const phone of todosContatos) {
-      let nomeContato = '';
-
-      try {
-        nomeContato = await resolverNomeContato(phone, user.id, listasContatoIds);
-      } catch (nomeError) {
-        console.warn('[CAMPANHA] Falha ao resolver nome do contato, usando vazio:', phone, nomeError);
+    for (const [phone, info] of confirmados) {
+      let nomeContato = info.nome;
+      if (!nomeContato) {
+        try {
+          nomeContato = await resolverNomeContato(phone, user.id, listasContatoIds);
+        } catch {
+          nomeContato = 'Cliente';
+        }
       }
 
-      const mensagemFormatada = mensagem
-        .replace(/\{\{nome\}\}/gi, nomeContato || '')
-        .replace(/\{\{produto\}\}/gi, produto.nome)
-        .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
+      const variaveis = montarVariaveisTemplate(templateAtivo, nomeContato);
 
-      contatosPayload.push({
-        phone,
-        name: nomeContato || '',
-        mensagem: mensagemFormatada,
-        campanha_id: campanhaTemp?.id || null,
-        lead_source: 'campanha_produtos',
-        imagem_url: produto.imagem_url || null,
-        tipo_mensagem: 'campanha',
-        prioridade: 5,
-        scheduled_at: new Date().toISOString(),
-        metadata: {
-          produto_id: produto.id,
-          produto_nome: produto.nome,
-          produto_preco: produto.preco,
-          vendedor_id: vendedorSelecionado || null,
-        },
-      });
+      const { data: sendResult, error: sendError } = await supabase.functions.invoke(
+        'whatsapp-cloud-send-template',
+        {
+          body: {
+            user_id: user.id,
+            to: phone,
+            template_id: templateSelecionado,
+            variaveis,
+            campanha_id: campanhaTemp?.id || null,
+            tipo: 'campanha',
+          },
+        }
+      );
+
+      if (!sendError && (sendResult as any)?.success) {
+        enviados++;
+      } else {
+        falhas++;
+        console.error('❌ Falha no envio oficial:', phone, sendError || sendResult);
+        const categoria = String((sendResult as any)?.categoria || '');
+        if (categoria === 'token' || categoria === 'template' || categoria === 'config') {
+          toast.error(`Erro de configuração da Meta (${categoria}) — envio interrompido`);
+          break;
+        }
+      }
     }
 
-    for (const grupo of gruposSelecionados) {
-      const mensagemGrupo = mensagem
-        .replace(/\{\{nome\}\}/gi, 'Pessoal')
-        .replace(/\{\{produto\}\}/gi, produto.nome)
-        .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
-
-      contatosPayload.push({
-        phone: grupo.group_jid,
-        name: grupo.group_name,
-        mensagem: mensagemGrupo,
-        campanha_id: campanhaTemp?.id || null,
-        lead_source: 'campanha_produtos_grupo',
-        imagem_url: produto.imagem_url || null,
-        tipo_mensagem: 'campanha',
-        prioridade: 5,
-        scheduled_at: new Date().toISOString(),
-        metadata: {
-          produto_id: produto.id,
-          produto_nome: produto.nome,
-          produto_preco: produto.preco,
-          vendedor_id: vendedorSelecionado || null,
-          destination_type: 'grupo_whatsapp',
-          grupo_id: grupo.id,
-          grupo_jid: grupo.group_jid,
-          grupo_nome: grupo.group_name,
-        },
-      });
-    }
-
-    console.log('[CAMPANHA] Disparando para', contatosPayload.length, 'contatos');
-
-    const { data: rpcData, error: rpcError } = await supabase.rpc('inserir_campanha_fila', {
-      p_user_id: user.id,
-      p_contatos: contatosPayload,
-      p_mensagem: mensagem,
-      p_imagem_url: produto.imagem_url || null,
-      p_lead_source: 'campanha_produtos',
-      p_campanha_id: campanhaTemp?.id || null,
-      p_metadata: {
-        produto_id: produto.id,
-        produto_nome: produto.nome,
-        produto_preco: produto.preco,
-        vendedor_id: vendedorSelecionado || null,
-      },
-    });
-
-    console.log('[CAMPANHA] Resultado:', { data: rpcData, error: rpcError });
-
-    if (rpcError) {
-      console.error('ERRO RPC inserir_campanha_fila:', rpcError);
-      throw rpcError;
-    }
-
-    const inseridos = Number((rpcData as { inseridos?: number } | null)?.inseridos ?? 0);
-    const falhas = Number((rpcData as { falhas?: number } | null)?.falhas ?? 0);
-
-    if (inseridos === 0) {
-      throw new Error('Nenhum contato foi inserido na fila_atendimento_pj');
-    }
-
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`✅ ${inseridos}/${totalDestinos} destinos inseridos na fila`);
-    console.log(`⚠️ Falhas: ${falhas}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    // Atualizar campanha com total
     if (campanhaTemp?.id) {
       await supabase
         .from('campanhas_recorrentes')
-        .update({ total_enviados: inseridos })
+        .update({ total_enviados: enviados })
         .eq('id', campanhaTemp.id);
     }
 
+    if (enviados === 0) {
+      throw new Error('Nenhuma mensagem foi aceita pela Meta. Verifique token e template.');
+    }
+
     if (falhas > 0) {
-      toast.warning(`⚠️ ${inseridos} inseridos e ${falhas} falharam. Veja o console para detalhes.`);
+      toast.warning(`⚠️ ${enviados} enviada(s) e ${falhas} falha(s). Veja o console.`);
       return;
     }
 
-    toast.success(`✅ ${inseridos} destino(s) na fila! O gateway local fará o envio.`);
+    toast.success(`✅ ${enviados} mensagem(ns) enviada(s) pela API oficial da Meta!`);
   };
+
 
   const salvarCampanhaRecorrente = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -860,11 +820,14 @@ _Escolha quantidade e finalize!_ ✅`;
           data_inicio: dataInicio,
           horarios: horarios,
           dias_semana: diasSemana,
-          mensagem_template: mensagem,
+          mensagem_template: templateAtivo?.body_text || '',
+          template_id: templateSelecionado,
+          canal: 'meta_oficial',
           ativa: true,
           proxima_execucao: proximaExecucao,
           vendedor_id: vendedorSelecionado || null
         })
+
         .eq('id', campanhaExistente.id)
         .select()
         .single();
@@ -885,12 +848,15 @@ _Escolha quantidade e finalize!_ ✅`;
           data_inicio: dataInicio,
           horarios: horarios,
           dias_semana: diasSemana,
-          mensagem_template: mensagem,
+          mensagem_template: templateAtivo?.body_text || '',
+          template_id: templateSelecionado,
+          canal: 'meta_oficial',
           ativa: true,
           proxima_execucao: proximaExecucao,
           status: 'ativa',
           vendedor_id: vendedorSelecionado || null
         })
+
         .select()
         .single();
 
@@ -924,10 +890,22 @@ _Escolha quantidade e finalize!_ ✅`;
     try {
       setIsLoading(true);
 
-      if (listasSelecionadas.length === 0) {
-        toast.error('Selecione pelo menos uma lista de transmissão');
+      if (!templateSelecionado || !templateAtivo || templateAtivo.status_meta !== 'aprovado') {
+        toast.error('Selecione um template de campanha aprovado pela Meta');
         return;
       }
+
+      if (listasSelecionadas.length === 0) {
+        toast.error('Selecione pelo menos uma lista/segmento');
+        return;
+      }
+
+      if (totalConfirmadosSelecionados === 0) {
+        toast.error('Nenhum contato com opt-in confirmado nos destinos selecionados');
+        return;
+      }
+
+
 
       if (frequencia === 'agora') {
         await enviarCampanhaAgora();
@@ -1105,12 +1083,15 @@ _Escolha quantidade e finalize!_ ✅`;
             </p>
           </div>
 
-          {/* 3. LISTAS DE TRANSMISSÃO */}
+          {/* 3. LISTAS / SEGMENTOS (grupos não são destino de campanha) */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">3. Selecione Lista(s) de Transmissão</Label>
+            <Label className="text-lg font-semibold">3. Selecione Lista(s) / Segmento(s)</Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              Grupos de WhatsApp não são destino de campanha: a API oficial da Meta não envia para grupos e grupo não tem opt-in individual.
+            </p>
             {listas.length === 0 ? (
               <p className="text-sm text-muted-foreground mt-3">
-                Nenhuma lista criada ainda. Crie listas na página de WhatsApp Marketing.
+                Nenhuma lista/segmento criado ainda. Crie em "Clientes e Segmentos".
               </p>
             ) : (
               <div className="space-y-2 mt-3">
@@ -1121,114 +1102,96 @@ _Escolha quantidade e finalize!_ ✅`;
                       onCheckedChange={() => toggleLista(lista.id)}
                     />
                     <Label className="cursor-pointer flex-1">
-                      {lista.group_name} ({lista.member_count} contatos)
+                      {lista.group_name} — {lista.phone_numbers.length} de {lista.member_count} com opt-in
                     </Label>
                   </div>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* 4. MENSAGEM */}
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-3 block">4. Mensagem</Label>
-            
-            {/* Campo de sugestões + Botão IA */}
-            <div className="flex gap-2 mb-4">
-              <Input
-                value={sugestaoIA}
-                onChange={(e) => setSugestaoIA(e.target.value)}
-                placeholder="Ex: promoção no Mundial, pão quentinho saindo agora, padaria Recreio..."
-                className="flex-1"
-              />
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={gerarPostsIA}
-                disabled={isGenerating}
-                className="gap-2 whitespace-nowrap"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Gerando...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Gerar com IA
-                  </>
-                )}
-              </Button>
-            </div>
-
-            {/* Posts gerados pela IA */}
-            {postsGerados && (
-              <div className="mb-4 space-y-3">
-                <p className="text-sm font-medium text-muted-foreground">✨ Escolha uma variação:</p>
-                
-                <div 
-                  onClick={() => selecionarPost(postsGerados.urgencia)}
-                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold bg-red-100 text-red-700 px-2 py-0.5 rounded">🔥 URGÊNCIA</span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{postsGerados.urgencia}</p>
-                </div>
-
-                <div 
-                  onClick={() => selecionarPost(postsGerados.beneficio)}
-                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded">✅ BENEFÍCIO</span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{postsGerados.beneficio}</p>
-                </div>
-
-                <div 
-                  onClick={() => selecionarPost(postsGerados.promocional)}
-                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold bg-orange-100 text-orange-700 px-2 py-0.5 rounded">🎁 PROMOCIONAL</span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{postsGerados.promocional}</p>
-                </div>
+            {/* PREVIEW DE DESTINATÁRIOS — só quem tem opt-in confirmado recebe */}
+            {listasSelecionadas.length > 0 && (
+              <div className="mt-4 p-3 rounded-lg border bg-background">
+                <p className="text-sm font-medium">
+                  ✅ {totalConfirmadosSelecionados} de {totalContatosSelecionados} vão receber
+                  {totalSemOptin > 0 && ` (${totalSemOptin} sem opt-in)`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Somente contatos com opt-in confirmado recebem campanha. Para os demais, envie o convite de opt-in
+                  na área de contatos — sem confirmação, a Meta não permite o envio.
+                </p>
               </div>
             )}
-
-            <Textarea
-              value={mensagem}
-              onChange={(e) => setMensagem(e.target.value)}
-              placeholder="Olá {{nome}}! Confira nosso produto..."
-              rows={8}
-            />
-            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-              <p className="text-xs font-medium mb-2">💡 Variáveis disponíveis:</p>
-              <div className="flex gap-2 flex-wrap">
-                <code 
-                  className="text-xs bg-white dark:bg-slate-800 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700" 
-                  onClick={() => setMensagem(mensagem + '{{nome}}')}
-                >
-                  {'{{nome}}'}
-                </code>
-                <code 
-                  className="text-xs bg-white dark:bg-slate-800 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700" 
-                  onClick={() => setMensagem(mensagem + '{{produto}}')}
-                >
-                  {'{{produto}}'}
-                </code>
-                <code 
-                  className="text-xs bg-white dark:bg-slate-800 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700" 
-                  onClick={() => setMensagem(mensagem + '{{preco}}')}
-                >
-                  {'{{preco}}'}
-                </code>
-              </div>
-            </div>
           </div>
+
+
+          {/* 4. TEMPLATE APROVADO PELA META (conteúdo da campanha) */}
+          <div className="p-4 bg-muted/30 rounded-lg">
+            <Label className="text-lg font-semibold mb-1 block">4. Template aprovado (Meta oficial)</Label>
+            <p className="text-xs text-muted-foreground mb-3">
+              Campanha em massa pela API oficial só sai com template pré-aprovado pela Meta. Texto livre não é permitido.
+            </p>
+
+            {templates.length === 0 ? (
+              <div className="p-3 rounded-lg border border-destructive/40 bg-destructive/5">
+                <p className="text-sm font-medium">Nenhum template de campanha aprovado</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Crie e submeta um template do tipo "campanha" e aguarde a aprovação da Meta.
+                </p>
+                <a
+                  href="/pj/whatsapp-templates"
+                  className="text-xs underline mt-2 inline-block"
+                >
+                  Ir para Templates WhatsApp →
+                </a>
+              </div>
+            ) : (
+              <>
+                <Select value={templateSelecionado} onValueChange={setTemplateSelecionado}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione o template aprovado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        ✅ {t.nome_meta} ({t.idioma || 'pt_BR'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {templateAtivo && (
+                  <div className="mt-4 space-y-3">
+                    {/* MAPEAMENTO DE VARIÁVEIS */}
+                    {chavesTemplate(templateAtivo).length > 0 && (
+                      <div className="p-3 rounded-lg border bg-background">
+                        <p className="text-xs font-medium mb-2">Variáveis do template:</p>
+                        <div className="space-y-1">
+                          {chavesTemplate(templateAtivo).map((chave, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs">
+                              <code className="px-1.5 py-0.5 rounded bg-muted">{`{{${idx + 1}}}`} {chave}</code>
+                              <span className="text-muted-foreground">
+                                {chave.toLowerCase().includes('nome')
+                                  ? 'vem do contato'
+                                  : `vem do produto: ${valorDaVariavel(chave, '') || '—'}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PREVIEW DA MENSAGEM FINAL */}
+                    <div className="p-3 rounded-lg border bg-background">
+                      <p className="text-xs font-medium mb-2">Preview (exemplo com contato "Maria"):</p>
+                      <p className="text-sm whitespace-pre-wrap">{previewTemplate() || '—'}</p>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
 
           {/* BOTÕES */}
           <div className="flex gap-2 justify-end pt-4">
