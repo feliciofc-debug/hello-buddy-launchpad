@@ -200,6 +200,10 @@ que você não conseguiu classificar com certeza).
 // ----------------------------------------------------------------------------
 export type AgentMode = "whitelabel" | "amz";
 
+// Papel do agente dentro do modo AMZ. "support" é o default seguro.
+export type AmzAudience = "sales" | "support";
+
+
 export type TenantAgentConfig = {
   user_id: string;
   agent_mode?: string | null;
