@@ -602,47 +602,42 @@ serve(async (req) => {
                 continue;
               }
 
-              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+              // ✅ META OFICIAL — única saída de envio (Baileys/WuzAPI removido)
+              const variaveis = buildTemplateParams(tplCampanha, {
+                nome,
+                produto: produtoParaEnviar?.nome || '',
+                preco: formatPriceBRL(produtoParaEnviar?.preco),
+              });
+
+              const { data: sendResult, error: sendError } = await supabase.functions.invoke('whatsapp-cloud-send-template', {
                 body: {
-                  phoneNumbers: [phone],
-                  message: mensagemPersonalizada,
-                  imageUrl: imagemUrl,
-                  userId: campanha.user_id,
-                  skipProtection: true,
-                  useQueue: isAutopilot,   // AUTOPILOT força jitter via fila; manual mantém direto
+                  user_id: campanha.user_id,
+                  to: phone,
+                  template_id: campanha.template_id,
+                  variaveis,
+                  campanha_id: campanha.id,
+                  tipo: isAutopilot ? 'autopilot' : 'campanha',
                 }
               });
 
-              const outcome = classifySendOutcome(sendError, sendResult);
+              const outcome = classifyMetaOutcome(sendError, sendResult);
               const sucesso = outcome === 'ok';
               if (sucesso) {
                 enviados++;
-                gatewayFailStreak = 0;
-                console.log(`✅ Enviado para ${phone} (${nome})`);
+                console.log(`✅ [META] Enviado para ${phone} (${nome}) msg=${sendResult?.message_id}`);
               } else {
-                console.error(`❌ Erro (${outcome}) ao enviar para ${phone}:`, sendError || sendResult);
+                console.error(`❌ [META] Falha (${outcome}) ao enviar para ${phone}:`, sendError || sendResult);
                 errosEnvio++;
-                if (outcome === 'gateway') gatewayFailStreak++;
-                else gatewayFailStreak = 0;
               }
               processados++;
 
-              if (isAutopilot) {
-                await registrarEnvio(supabase, {
-                  user_id: campanha.user_id,
-                  campanha_id: campanha.id,
-                  whatsapp: phone,
-                  sucesso,
-                  erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
-                  tipo: 'autopilot',
-                });
-              }
-
-              if (isAutopilot && gatewayFailStreak >= GATEWAY_FAIL_THRESHOLD) {
-                console.log(`🚨 [AUTOPILOT] Gateway offline (${gatewayFailStreak} falhas seguidas) — pausando campanha ${campanha.nome} e reagendando`);
+              // FALHA ESTRUTURAL (token/template/config): pausa a campanha imediatamente.
+              if (outcome === 'fatal') {
+                console.log(`🚨 [META] Falha estrutural (${sendResult?.motivo || sendError?.message}) — pausando campanha ${campanha.nome} e reagendando`);
                 gatewayDown = true;
                 break;
               }
+
 
               // Delay aleatório entre 3-7 segundos (simula comportamento humano)
               const delayContato = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
