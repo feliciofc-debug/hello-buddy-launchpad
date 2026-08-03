@@ -529,11 +529,22 @@ serve(async (req) => {
           // Só entra na campanha telefone com pelo menos UM registro
           // opt_in_status='confirmado' neste tenant, e NENHUM 'recusado'.
           // ============================================================
-          const { data: optinRows } = await supabase
-            .from("pj_lista_membros")
-            .select("telefone, opt_in_status")
-            .eq("user_id", campanha.user_id)
-            .in("opt_in_status", ["confirmado", "recusado"]);
+          // pj_lista_membros não tem user_id — o escopo do tenant vem das listas dele.
+          const { data: listasDoTenant } = await supabase
+            .from("pj_listas_categoria")
+            .select("id")
+            .eq("user_id", campanha.user_id);
+
+          const listaIdsTenant = (listasDoTenant || []).map((l: any) => l.id);
+
+          const { data: optinRows } = listaIdsTenant.length
+            ? await supabase
+                .from("pj_lista_membros")
+                .select("telefone, opt_in_status")
+                .in("lista_id", listaIdsTenant)
+                .in("opt_in_status", ["confirmado", "recusado"])
+            : { data: [] as any[] };
+
 
           const confirmados = new Set<string>();
           const recusados = new Set<string>();
