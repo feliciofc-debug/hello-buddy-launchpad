@@ -1467,7 +1467,11 @@ _Escolha quantidade e finalize!_ ✅`;
               <p className="text-sm font-medium">
                 {totalConfirmadosSelecionados} de {totalContatosSelecionados} contatos autorizados
               </p>
-              <Button onClick={pedirAutorizacoes} disabled={enviandoAutorizacoes} className="w-full">
+              <Button
+                onClick={() => setConfirmAutorizacaoOpen(true)}
+                disabled={enviandoAutorizacoes}
+                className="w-full"
+              >
                 {enviandoAutorizacoes ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Perguntando aos contatos...
@@ -1480,6 +1484,31 @@ _Escolha quantidade e finalize!_ ✅`;
                 Vamos perguntar aos seus contatos se aceitam receber suas mensagens. Quem responder que
                 sim já entra na próxima campanha.
               </p>
+
+              <AlertDialog open={confirmAutorizacaoOpen} onOpenChange={setConfirmAutorizacaoOpen}>
+                <AlertDialogContent className="bg-background">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirmar pedido de autorização</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Vamos enviar uma mensagem perguntando aos seus{' '}
+                      {Math.max(0, totalContatosSelecionados - totalConfirmadosSelecionados)} contatos se
+                      aceitam receber suas ofertas. Quem responder SIM entra na sua lista. Esta ainda não é
+                      a sua campanha de vendas. Confirmar?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Voltar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => {
+                        setConfirmAutorizacaoOpen(false);
+                        pedirAutorizacoes();
+                      }}
+                    >
+                      Sim, perguntar aos contatos
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           )}
 
