@@ -698,24 +698,7 @@ serve(async (req) => {
 
     console.log(`✅ Execução concluída: ${executadas} campanhas executadas, ${erros} erros`);
 
-    // ✅ TAMBÉM DISPARA O ENVIO PROGRAMADO DE AFILIADOS
-    let envioProgramadoResult = null;
-    try {
-      console.log('📤 [AFILIADO] Disparando executar-envio-programado...');
-      const { data, error } = await supabase.functions.invoke('executar-envio-programado', {
-        body: {}
-      });
-      
-      if (error) {
-        console.error('❌ [AFILIADO] Erro no envio programado:', error);
-      } else {
-        envioProgramadoResult = data;
-        console.log('✅ [AFILIADO] Envio programado executado:', data);
-      }
-    } catch (epError) {
-      console.error('❌ [AFILIADO] Erro ao chamar envio programado:', epError);
-    }
-
+    // 🚫 REMOVIDO: chamada ao executar-envio-programado (afiliado/Baileys).
     // 🚫 REMOVIDO: fila anti-bloqueio do Baileys (processar-fila-afiliado).
     // Migração definitiva para Meta Cloud API oficial — nenhuma fila local é processada aqui.
 
@@ -725,8 +708,8 @@ serve(async (req) => {
         success: true,
         executadas,
         erros,
-        total: campanhas?.length || 0,
-        envioProgramado: envioProgramadoResult
+        total: campanhas?.length || 0
+
 
       }),
       {

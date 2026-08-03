@@ -9558,7 +9558,6 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      process_scheduled_campaigns: { Args: never; Returns: undefined }
       read_email_batch: {
         Args: { batch_size: number; queue_name: string; vt: number }
         Returns: {
