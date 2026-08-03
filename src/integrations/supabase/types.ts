@@ -1966,6 +1966,7 @@ export type Database = {
         Row: {
           ativa: boolean | null
           autopilot: boolean
+          canal: string
           categoria_rotacao: string | null
           created_at: string | null
           data_inicio: string
@@ -1983,6 +1984,7 @@ export type Database = {
           produtos_ids: string[] | null
           proxima_execucao: string | null
           status: string | null
+          template_id: string | null
           total_enviados: number | null
           ultima_execucao: string | null
           ultimo_produto_index: number | null
@@ -1993,6 +1995,7 @@ export type Database = {
         Insert: {
           ativa?: boolean | null
           autopilot?: boolean
+          canal?: string
           categoria_rotacao?: string | null
           created_at?: string | null
           data_inicio: string
@@ -2010,6 +2013,7 @@ export type Database = {
           produtos_ids?: string[] | null
           proxima_execucao?: string | null
           status?: string | null
+          template_id?: string | null
           total_enviados?: number | null
           ultima_execucao?: string | null
           ultimo_produto_index?: number | null
@@ -2020,6 +2024,7 @@ export type Database = {
         Update: {
           ativa?: boolean | null
           autopilot?: boolean
+          canal?: string
           categoria_rotacao?: string | null
           created_at?: string | null
           data_inicio?: string
@@ -2037,6 +2042,7 @@ export type Database = {
           produtos_ids?: string[] | null
           proxima_execucao?: string | null
           status?: string | null
+          template_id?: string | null
           total_enviados?: number | null
           ultima_execucao?: string | null
           ultimo_produto_index?: number | null
@@ -2050,6 +2056,13 @@ export type Database = {
             columns: ["produto_id"]
             isOneToOne: false
             referencedRelation: "produtos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campanhas_recorrentes_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_templates"
             referencedColumns: ["id"]
           },
           {
@@ -3533,11 +3546,14 @@ export type Database = {
       historico_envios: {
         Row: {
           campanha_id: string | null
+          canal: string | null
           envio_dia_sp: string | null
           erro: string | null
           id: string
           mensagem: string | null
+          message_id: string | null
           sucesso: boolean | null
+          template_id: string | null
           timestamp: string | null
           tipo: string | null
           user_id: string | null
@@ -3545,11 +3561,14 @@ export type Database = {
         }
         Insert: {
           campanha_id?: string | null
+          canal?: string | null
           envio_dia_sp?: string | null
           erro?: string | null
           id?: string
           mensagem?: string | null
+          message_id?: string | null
           sucesso?: boolean | null
+          template_id?: string | null
           timestamp?: string | null
           tipo?: string | null
           user_id?: string | null
@@ -3557,11 +3576,14 @@ export type Database = {
         }
         Update: {
           campanha_id?: string | null
+          canal?: string | null
           envio_dia_sp?: string | null
           erro?: string | null
           id?: string
           mensagem?: string | null
+          message_id?: string | null
           sucesso?: boolean | null
+          template_id?: string | null
           timestamp?: string | null
           tipo?: string | null
           user_id?: string | null

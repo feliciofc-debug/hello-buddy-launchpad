@@ -90,43 +90,38 @@ async function registrarEnvio(
   }
 }
 
-// Classifica falha do send-wuzapi-message-pj:
-// - 'gateway'   → instância WuzAPI/Baileys offline, timeout, 5xx, SQLite locked, erro de invoke
-// - 'number'    → resposta 2xx do gateway com success:false (número inválido, etc.)
-// - 'ok'        → sucesso
-function classifySendOutcome(sendError: any, sendResult: any): 'ok' | 'gateway' | 'number' {
+// Classifica a resposta do whatsapp-cloud-send-template (Meta Cloud API):
+// - 'ok'      → enviado
+// - 'fatal'   → falha estrutural (token, template, config) → PAUSA a campanha
+// - 'contato' → falha do destinatário (número inválido) ou rede → segue para o próximo
+function classifyMetaOutcome(sendError: any, sendResult: any): 'ok' | 'fatal' | 'contato' {
   if (!sendError && sendResult?.success === true) return 'ok';
+  const categoria = String(sendResult?.categoria || '');
+  if (categoria === 'token' || categoria === 'template' || categoria === 'config') return 'fatal';
+  return 'contato';
+}
 
-  // Erro na invocação da edge function (rede, deploy, timeout) = gateway
-  if (sendError) return 'gateway';
+// Monta os parâmetros do BODY do template na ordem {{1}}, {{2}}, ...
+// variaveis_map aceita array (["nome","produto"]) ou objeto ({"1":"nome"}).
+function buildTemplateParams(
+  tpl: any,
+  valores: Record<string, string>
+): string[] {
+  const map = tpl?.variaveis_map;
+  let chaves: string[] = [];
 
-  // instanceStatus explícito com connected:false
-  if (sendResult?.instanceStatus && sendResult.instanceStatus.connected === false) return 'gateway';
-
-  // Erro genérico no wrapper
-  const errStr = String(sendResult?.error || '').toLowerCase();
-  if (errStr.includes('sqlite') || errStr.includes('locked') ||
-      errStr.includes('offline') || errStr.includes('instance') ||
-      errStr.includes('container') || errStr.includes('gateway') ||
-      errStr.includes('timeout') || errStr.includes('econn')) {
-    return 'gateway';
+  if (Array.isArray(map)) {
+    chaves = map.map((k: any) => String(k));
+  } else if (map && typeof map === 'object') {
+    chaves = Object.keys(map)
+      .sort((a, b) => Number(a) - Number(b))
+      .map((k) => String(map[k]));
   }
 
-  // Detalhar por item (results[])
-  const results = Array.isArray(sendResult?.results) ? sendResult.results : [];
-  const anyGatewayHttp = results.some((r: any) => {
-    const st = Number(r?.status ?? 200);
-    if (st === 0 || st >= 500) return true;
-    const rErr = String(r?.error || r?.response?.error || '').toLowerCase();
-    return rErr.includes('sqlite') || rErr.includes('locked') ||
-           rErr.includes('offline') || rErr.includes('instance') ||
-           rErr.includes('container') || rErr.includes('timeout');
-  });
-  if (anyGatewayHttp) return 'gateway';
-
-  // Caso contrário: falha de negócio (número inválido/etc.)
-  return 'number';
+  if (chaves.length === 0) return [];
+  return chaves.map((k) => valores[k.replace(/[{}\s]/g, '').toLowerCase()] ?? '');
 }
+
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -356,13 +351,37 @@ serve(async (req) => {
 
         console.log(`✅ Executando campanha: ${campanha.nome} (modo: ${isIntervaloMode ? 'intervalo' : 'horário fixo'})`);
 
+        // ============================================================
+        // META OFICIAL — GATE DE TEMPLATE APROVADO
+        // Sem template aprovado não existe campanha (regra da Meta).
+        // ============================================================
+        if (!campanha.template_id) {
+          console.log(`🚫 [META] Campanha ${campanha.nome} sem template_id — pulando (configure um template aprovado)`);
+          continue;
+        }
+
+        const { data: tplCampanha } = await supabase
+          .from('whatsapp_templates')
+          .select('id, nome_meta, idioma, tipo_uso, status_meta, variaveis_map')
+          .eq('id', campanha.template_id)
+          .eq('user_id', campanha.user_id)
+          .maybeSingle();
+
+        if (!tplCampanha) {
+          console.log(`🚫 [META] Template ${campanha.template_id} não encontrado para o tenant — pulando ${campanha.nome}`);
+          continue;
+        }
+        if (tplCampanha.status_meta !== 'aprovado') {
+          console.log(`🚫 [META] Template ${tplCampanha.nome_meta} não aprovado (status=${tplCampanha.status_meta}) — pulando ${campanha.nome}`);
+          continue;
+        }
+
         let enviados = 0;
         let errosEnvio = 0;
         let processados = 0;   // AUTOPILOT: sucesso+falha (base do recheck e da trava — tentativa conta pro ban)
         let capAtingido = false; // AUTOPILOT: sinaliza cap do NÚMERO batido — força reagendamento pra amanhã
-        let gatewayFailStreak = 0;      // GUARDRAIL: falhas de gateway consecutivas
-        let gatewayDown = false;        // GUARDRAIL: pausa quando streak >= GATEWAY_FAIL_THRESHOLD
-        const GATEWAY_FAIL_THRESHOLD = 5;
+        let gatewayDown = false;        // GUARDRAIL: pausa em falha estrutural da Meta (token/template/config)
+
 
         
         // ✅ OBTER PRODUTO (rotação ou fixo)
@@ -379,9 +398,15 @@ serve(async (req) => {
           }
         }
 
-        // ✅ ENVIAR PARA GRUPOS PJ (pj_grupos_ids ou listas_ids que são grupos PJ)
-        const gruposIdsParaBuscar = campanha.pj_grupos_ids?.length > 0 
-          ? campanha.pj_grupos_ids 
+        // ============================================================
+        // GRUPOS DE WHATSAPP — SEM CAMINHO OFICIAL
+        // A Meta Cloud API não envia mensagens para grupos. Com o Baileys
+        // aposentado, grupos deixam de ser destino de campanha: apenas logamos
+        // e seguimos só com contatos individuais com opt-in confirmado.
+        // (Não gravamos em historico_envios para não consumir teto diário.)
+        // ============================================================
+        const gruposIdsParaBuscar = campanha.pj_grupos_ids?.length > 0
+          ? campanha.pj_grupos_ids
           : campanha.listas_ids || [];
 
         const { data: gruposPJ } = await supabase
@@ -390,118 +415,10 @@ serve(async (req) => {
           .in("id", gruposIdsParaBuscar);
 
         if (gruposPJ && gruposPJ.length > 0) {
-          console.log(`👥 Enviando para ${gruposPJ.length} grupos PJ`);
-          
-          for (const grupo of gruposPJ) {
-            // AUTOPILOT: recheck a cada 10 TENTATIVAS (sucesso+falha) — falha conta pro ban
-            if (isAutopilot && processados > 0 && processados % 10 === 0) {
-              const [nCamp, nNum] = await Promise.all([
-                contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
-                contarEnviosHoje(supabase, { user_id: campanha.user_id }, diaSP),
-              ]);
-              if (nNum >= capNumero) {
-                console.log(`🛑 [AUTOPILOT] recheck grupos — teto NÚMERO ${nNum}/${capNumero} — para tudo (reagenda amanhã)`);
-                capAtingido = true;
-                break;
-              }
-              if (nCamp >= capCampanha) {
-                console.log(`🛑 [AUTOPILOT] recheck grupos — teto CAMPANHA ${nCamp}/${capCampanha} — para esta campanha`);
-                break;
-              }
-            }
-
-            try {
-              console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
-
-              const mensagemGrupo = (campanha.mensagem_template || '')
-                .replace(/\{\{?\s*nome\s*\}?\}/gi, 'pessoal')
-                .replace(/Olá\s+,/gi, 'Olá pessoal,')
-                .replace(/Oi\s+,/gi, 'Oi pessoal,')
-                .replace(/\{\{?\s*produto\s*\}?\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{?\s*preco\s*\}?\}/gi, formatPriceBRL(produtoParaEnviar?.preco));
-
-              // 🛡️ DEFENSIVA: nunca dispara mensagem vazia (autopilot ou não)
-              if (!mensagemGrupo.trim()) {
-                console.error(`🚫 [DEFENSIVA] Mensagem vazia após replaces — pulando grupo ${grupo.nome} (campanha ${campanha.id})`);
-                errosEnvio++;
-                processados++;
-                if (isAutopilot) {
-                  await registrarEnvio(supabase, {
-                    user_id: campanha.user_id,
-                    campanha_id: campanha.id,
-                    whatsapp: grupo.grupo_jid,
-                    sucesso: false,
-                    erro: 'mensagem_vazia_apos_replaces',
-                    tipo: 'autopilot_grupo',
-                  });
-                }
-                continue;
-              }
-
-              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
-                body: {
-                  userId: campanha.user_id,
-                  groupJid: grupo.grupo_jid,
-                  message: mensagemGrupo,
-                  imageUrl: imagemUrl,
-                  useQueue: isAutopilot,   // AUTOPILOT força jitter via fila
-                }
-              });
-
-              const outcome = classifySendOutcome(sendError, sendResult);
-              const sucesso = outcome === 'ok';
-              if (sucesso) {
-                enviados++;
-                gatewayFailStreak = 0;
-                console.log(`✅ Enviado para grupo PJ ${grupo.nome}`);
-              } else {
-                console.error(`❌ Erro (${outcome}) ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
-                errosEnvio++;
-                if (outcome === 'gateway') gatewayFailStreak++;
-                else gatewayFailStreak = 0;
-              }
-              processados++;
-
-              if (isAutopilot) {
-                await registrarEnvio(supabase, {
-                  user_id: campanha.user_id,
-                  campanha_id: campanha.id,
-                  whatsapp: grupo.grupo_jid,
-                  sucesso,
-                  erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
-                  tipo: 'autopilot_grupo',
-                });
-              }
-
-              if (isAutopilot && gatewayFailStreak >= GATEWAY_FAIL_THRESHOLD) {
-                console.log(`🚨 [AUTOPILOT] Gateway offline (${gatewayFailStreak} falhas seguidas) — pausando envios de grupos e reagendando para próximo slot`);
-                gatewayDown = true;
-                break;
-              }
-
-              // Delay aleatório entre 3-7 segundos (simula comportamento humano)
-              const delayGrupo = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
-              console.log(`⏱️ Aguardando ${delayGrupo}ms antes do próximo envio...`);
-              await new Promise(r => setTimeout(r, delayGrupo));
-
-            } catch (error) {
-              console.error(`❌ Erro ao processar grupo PJ ${grupo.nome}:`, error);
-              errosEnvio++;
-              processados++;
-              if (isAutopilot) {
-                await registrarEnvio(supabase, {
-                  user_id: campanha.user_id,
-                  campanha_id: campanha.id,
-                  whatsapp: grupo.grupo_jid,
-                  sucesso: false,
-                  erro: String((error as any)?.message || error),
-                  tipo: 'autopilot_grupo',
-                });
-              }
-            }
-          }
-
+          console.log(`🚫 [META] ${gruposPJ.length} grupo(s) ignorado(s) — Meta Cloud API não suporta envio para grupos: ${gruposPJ.map((g: any) => g.nome).join(', ')}`);
         }
+
+
 
         // ✅ PROCESSAR LISTAS NORMAIS - excluir IDs que são grupos PJ
         const gruposPJIds = (gruposPJ || []).map(g => g.id);
@@ -519,10 +436,41 @@ serve(async (req) => {
           // ✅ NOVO: Buscar também de pj_lista_membros (listas PJ criadas na interface)
           const { data: membrosPJ } = await supabase
             .from("pj_lista_membros")
-            .select("telefone, nome")
+            .select("telefone, nome, opt_in_status")
             .in("lista_id", listasNormaisIds);
 
           const contatosPJListas = (membrosPJ || []).map((m: any) => m.telefone).filter(Boolean);
+
+          // ============================================================
+          // OPT-IN OBRIGATÓRIO (Meta oficial) — allowlist + STOP universal
+          // Só entra na campanha telefone com pelo menos UM registro
+          // opt_in_status='confirmado' neste tenant, e NENHUM 'recusado'.
+          // ============================================================
+          // pj_lista_membros não tem user_id — o escopo do tenant vem das listas dele.
+          const { data: listasDoTenant } = await supabase
+            .from("pj_listas_categoria")
+            .select("id")
+            .eq("user_id", campanha.user_id);
+
+          const listaIdsTenant = (listasDoTenant || []).map((l: any) => l.id);
+
+          const { data: optinRows } = listaIdsTenant.length
+            ? await supabase
+                .from("pj_lista_membros")
+                .select("telefone, opt_in_status")
+                .in("lista_id", listaIdsTenant)
+                .in("opt_in_status", ["confirmado", "recusado"])
+            : { data: [] as any[] };
+
+
+          const confirmados = new Set<string>();
+          const recusados = new Set<string>();
+          for (const r of optinRows || []) {
+            const n = normalizePhone(String(r.telefone || ''));
+            if (!n) continue;
+            if (r.opt_in_status === 'confirmado') confirmados.add(n);
+            else recusados.add(n);
+          }
 
           // Dedup canônico por telefone normalizado
           const dedupSet = new Set<string>();
@@ -530,10 +478,18 @@ serve(async (req) => {
             const n = normalizePhone(String(raw || ''));
             if (n) dedupSet.add(n);
           }
-          const todosContatos = Array.from(dedupSet);
+
+          const bruto = Array.from(dedupSet);
+          const todosContatos = bruto.filter(p => confirmados.has(p) && !recusados.has(p));
+          const bloqueadosOptin = bruto.length - todosContatos.length;
 
           const totalBruto = contatosWhatsappGroups.length + contatosPJListas.length;
-          console.log(`📞 Autopilot=${isAutopilot} | dedup: ${totalBruto} → ${todosContatos.length} contatos (wg:${contatosWhatsappGroups.length}, pj:${contatosPJListas.length})`);
+          console.log(`📞 Autopilot=${isAutopilot} | dedup: ${totalBruto} → ${bruto.length} | opt-in confirmado: ${todosContatos.length} (bloqueados sem opt-in/STOP: ${bloqueadosOptin})`);
+
+          if (todosContatos.length === 0) {
+            console.log(`🚫 [OPT-IN] Nenhum contato com opt-in confirmado — campanha ${campanha.nome} não dispara`);
+          }
+
 
           for (const phone of todosContatos) {
             // AUTOPILOT: recheck a cada 10 TENTATIVAS (sucesso+falha)
@@ -579,75 +535,52 @@ serve(async (req) => {
                 }
               }
 
-              const mensagemPersonalizada = (campanha.mensagem_template || '')
-                .replace(/\{\{?\s*nome\s*\}?\}/gi, nome)
-                .replace(/\{\{?\s*produto\s*\}?\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{?\s*preco\s*\}?\}/gi, formatPriceBRL(produtoParaEnviar?.preco));
+              // Meta oficial: o conteúdo é o TEMPLATE aprovado.
+              // mensagem_template deixa de ser usada no envio (fica só como referência interna).
 
-              // 🛡️ DEFENSIVA: nunca dispara mensagem vazia (autopilot ou não)
-              if (!mensagemPersonalizada.trim()) {
-                console.error(`🚫 [DEFENSIVA] Mensagem vazia após replaces — pulando ${phone} (campanha ${campanha.id})`);
-                errosEnvio++;
-                processados++;
-                if (isAutopilot) {
-                  await registrarEnvio(supabase, {
-                    user_id: campanha.user_id,
-                    campanha_id: campanha.id,
-                    whatsapp: phone,
-                    sucesso: false,
-                    erro: 'mensagem_vazia_apos_replaces',
-                    tipo: 'autopilot',
-                  });
-                }
-                continue;
-              }
 
-              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-message-pj', {
+
+              // ✅ META OFICIAL — única saída de envio (Baileys/WuzAPI removido)
+              const variaveis = buildTemplateParams(tplCampanha, {
+                nome,
+                produto: produtoParaEnviar?.nome || '',
+                preco: formatPriceBRL(produtoParaEnviar?.preco),
+              });
+
+              const { data: sendResult, error: sendError } = await supabase.functions.invoke('whatsapp-cloud-send-template', {
                 body: {
-                  phoneNumbers: [phone],
-                  message: mensagemPersonalizada,
-                  imageUrl: imagemUrl,
-                  userId: campanha.user_id,
-                  skipProtection: true,
-                  useQueue: isAutopilot,   // AUTOPILOT força jitter via fila; manual mantém direto
+                  user_id: campanha.user_id,
+                  to: phone,
+                  template_id: campanha.template_id,
+                  variaveis,
+                  campanha_id: campanha.id,
+                  tipo: isAutopilot ? 'autopilot' : 'campanha',
                 }
               });
 
-              const outcome = classifySendOutcome(sendError, sendResult);
+              const outcome = classifyMetaOutcome(sendError, sendResult);
               const sucesso = outcome === 'ok';
               if (sucesso) {
                 enviados++;
-                gatewayFailStreak = 0;
-                console.log(`✅ Enviado para ${phone} (${nome})`);
+                console.log(`✅ [META] Enviado para ${phone} (${nome}) msg=${sendResult?.message_id}`);
               } else {
-                console.error(`❌ Erro (${outcome}) ao enviar para ${phone}:`, sendError || sendResult);
+                console.error(`❌ [META] Falha (${outcome}) ao enviar para ${phone}:`, sendError || sendResult);
                 errosEnvio++;
-                if (outcome === 'gateway') gatewayFailStreak++;
-                else gatewayFailStreak = 0;
               }
               processados++;
 
-              if (isAutopilot) {
-                await registrarEnvio(supabase, {
-                  user_id: campanha.user_id,
-                  campanha_id: campanha.id,
-                  whatsapp: phone,
-                  sucesso,
-                  erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
-                  tipo: 'autopilot',
-                });
-              }
-
-              if (isAutopilot && gatewayFailStreak >= GATEWAY_FAIL_THRESHOLD) {
-                console.log(`🚨 [AUTOPILOT] Gateway offline (${gatewayFailStreak} falhas seguidas) — pausando campanha ${campanha.nome} e reagendando`);
+              // FALHA ESTRUTURAL (token/template/config): pausa a campanha imediatamente.
+              if (outcome === 'fatal') {
+                console.log(`🚨 [META] Falha estrutural (${sendResult?.motivo || sendError?.message}) — pausando campanha ${campanha.nome} e reagendando`);
                 gatewayDown = true;
                 break;
               }
 
-              // Delay aleatório entre 3-7 segundos (simula comportamento humano)
-              const delayContato = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
-              console.log(`⏱️ Aguardando ${delayContato}ms antes do próximo envio...`);
+
+              // Meta oficial: throttle leve só pra suavizar rajada na Graph API
+              const delayContato = Math.floor(Math.random() * 700) + 500;
               await new Promise(r => setTimeout(r, delayContato));
+
 
             } catch (error) {
               console.error(`❌ Erro ao processar ${phone}:`, error);
