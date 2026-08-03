@@ -1139,7 +1139,7 @@ _Escolha quantidade e finalize!_ ✅`;
                   Crie e submeta um template do tipo "campanha" e aguarde a aprovação da Meta.
                 </p>
                 <a
-                  href="/whatsapp-templates"
+                  href="/pj/whatsapp-templates"
                   className="text-xs underline mt-2 inline-block"
                 >
                   Ir para Templates WhatsApp →
