@@ -130,8 +130,21 @@ export function CriarCampanhaWhatsAppModal({
   // META OFICIAL — TEMPLATES APROVADOS (obrigatório para campanha)
   // ============================================================
   const [templates, setTemplates] = useState<TemplateMeta[]>([]);
+  const [templatesCampanhaTodos, setTemplatesCampanhaTodos] = useState<TemplateMeta[]>([]);
+  const [templateConvite, setTemplateConvite] = useState<TemplateMeta | null>(null);
   const [templateSelecionado, setTemplateSelecionado] = useState<string>('');
   const templateAtivo = templates.find((t) => t.id === templateSelecionado) || null;
+
+  // ============================================================
+  // FLUXO GUIADO (linguagem de usuário leigo)
+  // Nada de "template", "Meta", "opt-in", "WABA" na tela.
+  // Camada de UX por cima das regras — não fura nenhum guardrail.
+  // ============================================================
+  const [textoModelo, setTextoModelo] = useState('');
+  const [salvandoModelo, setSalvandoModelo] = useState(false);
+  const [verificandoModelo, setVerificandoModelo] = useState(false);
+  const [enviandoAutorizacoes, setEnviandoAutorizacoes] = useState(false);
+  const [modeloEnviadoAgora, setModeloEnviadoAgora] = useState(false);
 
   const fetchTemplates = async () => {
     try {
@@ -142,23 +155,35 @@ export function CriarCampanhaWhatsAppModal({
         .from('whatsapp_templates')
         .select('id, nome_meta, idioma, body_text, variaveis_map, status_meta, tipo_uso')
         .eq('user_id', user.id)
-        .eq('tipo_uso', 'campanha')
-        .eq('status_meta', 'aprovado')
+        .in('tipo_uso', ['campanha', 'convite'])
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('⚠️ Erro ao buscar templates aprovados:', error);
+        console.error('⚠️ Erro ao buscar mensagens modelo:', error);
         setTemplates([]);
+        setTemplatesCampanhaTodos([]);
+        setTemplateConvite(null);
         return;
       }
 
-      setTemplates((data || []) as TemplateMeta[]);
-      if ((data || []).length === 1) setTemplateSelecionado(data![0].id);
+      const todos = (data || []) as TemplateMeta[];
+      const campanha = todos.filter((t) => t.tipo_uso === 'campanha');
+      const aprovados = campanha.filter((t) => t.status_meta === 'aprovado');
+
+      setTemplatesCampanhaTodos(campanha);
+      setTemplates(aprovados);
+      setTemplateConvite(
+        todos.find((t) => t.tipo_uso === 'convite' && t.status_meta === 'aprovado') || null
+      );
+      if (aprovados.length === 1) setTemplateSelecionado(aprovados[0].id);
     } catch (e) {
-      console.error('❌ Erro ao carregar templates:', e);
+      console.error('❌ Erro ao carregar mensagens modelo:', e);
       setTemplates([]);
+      setTemplatesCampanhaTodos([]);
+      setTemplateConvite(null);
     }
   };
+
 
   /** Chaves de variável do template, na ordem {{1}}, {{2}}, ... */
   const chavesTemplate = (tpl: TemplateMeta | null): string[] => {
@@ -205,6 +230,176 @@ export function CriarCampanhaWhatsAppModal({
     destinosSelecionadosObj.flatMap((l) => (l.phone_numbers || []).map(normalizarTelefoneUI))
   ).size;
   const totalSemOptin = Math.max(0, totalContatosSelecionados - totalConfirmadosSelecionados);
+
+  // ============================================================
+  // ETAPA DO FLUXO GUIADO
+  // A = ainda não tem mensagem modelo liberada e nada em análise
+  // B = mensagem em análise
+  // C = mensagem liberada, mas contatos escolhidos sem autorização
+  // D = tudo pronto
+  // ============================================================
+  const temModeloLiberado = templates.length > 0;
+  const temModeloEmAnalise = templatesCampanhaTodos.some((t) => t.status_meta === 'pendente');
+  const etapa: 'A' | 'B' | 'C' | 'D' = !temModeloLiberado
+    ? (temModeloEmAnalise ? 'B' : 'A')
+    : (listasSelecionadas.length > 0 && totalConfirmadosSelecionados === 0 ? 'C' : 'D');
+
+  /** Texto amigável → formato aceito pelo WhatsApp ({{1}}, {{2}}...) */
+  const CHIPS: { label: string; chave: string }[] = [
+    { label: '[nome do cliente]', chave: 'nome' },
+    { label: '[produto]', chave: 'produto' },
+    { label: '[preço]', chave: 'preco' },
+  ];
+
+  const converterTextoModelo = (texto: string) => {
+    const ordem: string[] = [];
+    let corpo = texto;
+    // percorre o texto na ordem real de aparição
+    const regex = new RegExp(CHIPS.map((c) => c.label.replace(/[[\]]/g, '\\$&')).join('|'), 'g');
+    corpo = corpo.replace(regex, (achado) => {
+      const chip = CHIPS.find((c) => c.label === achado)!;
+      ordem.push(chip.chave);
+      return `{{${ordem.length}}}`;
+    });
+    return { corpo, ordem };
+  };
+
+  const previewModeloAmigavel = () =>
+    textoModelo
+      .replace(/\[nome do cliente\]/g, 'Maria')
+      .replace(/\[produto\]/g, produto.nome || 'seu produto')
+      .replace(
+        /\[preço\]/g,
+        produto.preco != null ? `R$ ${Number(produto.preco).toFixed(2)}` : 'R$ —'
+      );
+
+  const inserirChip = (label: string) => setTextoModelo((atual) => `${atual}${label}`);
+
+  /** Cria a "mensagem modelo" e envia pra análise do WhatsApp (sem jargão na tela) */
+  const criarEEnviarModelo = async () => {
+    try {
+      setSalvandoModelo(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Faça login novamente');
+
+      const { corpo, ordem } = converterTextoModelo(textoModelo.trim());
+      if (!corpo) {
+        toast.error('Escreva a mensagem que você quer enviar');
+        return;
+      }
+
+      const nomeMeta = `campanha_${Date.now()}`;
+      const variaveis_map = ordem.reduce<Record<string, string>>((acc, chave, idx) => {
+        acc[String(idx + 1)] = chave;
+        return acc;
+      }, {});
+
+      const { data: novo, error: erroInsert } = await supabase
+        .from('whatsapp_templates')
+        .insert({
+          user_id: user.id,
+          nome_meta: nomeMeta,
+          idioma: 'pt_BR',
+          categoria_meta: 'MARKETING',
+          tipo_uso: 'campanha',
+          status_meta: 'rascunho',
+          body_text: corpo,
+          variaveis_map,
+        })
+        .select()
+        .single();
+
+      if (erroInsert) throw erroInsert;
+
+      const { data: submit, error: erroSubmit } = await supabase.functions.invoke(
+        'whatsapp-template-submit',
+        { body: { template_id: novo.id } }
+      );
+
+      if (erroSubmit || (submit as any)?.success === false) {
+        const msg = (submit as any)?.error || erroSubmit?.message || '';
+        toast.error(
+          `Não conseguimos enviar sua mensagem pra análise agora. ${msg ? `Motivo: ${msg}` : 'Tente novamente em instantes.'}`
+        );
+        await fetchTemplates();
+        return;
+      }
+
+      setModeloEnviadoAgora(true);
+      toast.success('✅ Enviamos sua mensagem para análise do WhatsApp!');
+      await fetchTemplates();
+    } catch (e: any) {
+      console.error('Erro ao criar mensagem modelo:', e);
+      toast.error(e?.message || 'Não conseguimos criar sua mensagem agora');
+    } finally {
+      setSalvandoModelo(false);
+    }
+  };
+
+  /** Consulta se a análise do WhatsApp já liberou */
+  const verificarModelo = async () => {
+    try {
+      setVerificandoModelo(true);
+      const { error } = await supabase.functions.invoke('whatsapp-template-refresh', {
+        body: { all: true },
+      });
+      if (error) throw error;
+      await fetchTemplates();
+      toast.success('Status atualizado');
+    } catch (e: any) {
+      toast.error('Não conseguimos verificar agora. Tente de novo em instantes.');
+    } finally {
+      setVerificandoModelo(false);
+    }
+  };
+
+  /** Pede autorização aos contatos que ainda não autorizaram */
+  const pedirAutorizacoes = async () => {
+    try {
+      setEnviandoAutorizacoes(true);
+
+      if (!templateConvite) {
+        toast.error(
+          'Antes de pedir autorização, sua mensagem de convite também precisa passar pela análise do WhatsApp. Fale com o suporte para liberar.'
+        );
+        return;
+      }
+
+      let enviados = 0;
+      for (const listaId of listasSelecionadas) {
+        const { data, error } = await supabase.functions.invoke('enviar-convite-optin', {
+          body: { lista_id: listaId, template_id: templateConvite.id },
+        });
+        if (error || (data as any)?.success === false) {
+          console.error('Falha ao pedir autorização:', listaId, error || data);
+          continue;
+        }
+        enviados += Number((data as any)?.enviados || 0);
+      }
+
+      if (enviados === 0) {
+        toast.warning('Nenhum convite novo foi enviado agora. Tente novamente mais tarde.');
+      } else {
+        toast.success(`Perguntamos a ${enviados} contato(s) se aceitam receber suas mensagens.`);
+      }
+      await fetchListas();
+    } catch (e: any) {
+      toast.error('Não conseguimos pedir as autorizações agora.');
+    } finally {
+      setEnviandoAutorizacoes(false);
+    }
+  };
+
+  // Pré-preenche a mensagem modelo com o produto ao abrir
+  useEffect(() => {
+    if (!open) {
+      setModeloEnviadoAgora(false);
+      return;
+    }
+    setTextoModelo(
+      `Oi [nome do cliente], tudo bem? Separei uma oferta especial pra você: [produto] sai por [preço]. Quer que eu te passe os detalhes?`
+    );
+  }, [open, produto?.id]);
 
 
   useEffect(() => {
@@ -957,6 +1152,97 @@ _Escolha quantidade e finalize!_ ✅`;
             </div>
           </div>
 
+          {/* ESTADO A — ainda não tem mensagem modelo liberada */}
+          {etapa === 'A' && !modeloEnviadoAgora && (
+            <div className="p-4 rounded-lg border bg-background space-y-4">
+              <div>
+                <p className="text-sm font-semibold">Vamos preparar sua primeira mensagem</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Para enviar campanhas no WhatsApp com segurança, o WhatsApp precisa aprovar sua
+                  mensagem uma vez. É rápido — vamos criar agora.
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-sm">Sua mensagem</Label>
+                <Textarea
+                  value={textoModelo}
+                  onChange={(e) => setTextoModelo(e.target.value)}
+                  rows={5}
+                  className="mt-2"
+                />
+                <div className="flex gap-2 flex-wrap mt-2">
+                  {CHIPS.map((chip) => (
+                    <Button
+                      key={chip.chave}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => inserirChip(chip.label)}
+                    >
+                      {chip.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Clique nos botões acima para inserir o nome do cliente, o produto e o preço — eles são
+                  preenchidos automaticamente em cada envio.
+                </p>
+              </div>
+
+              <div className="p-3 rounded-lg border bg-muted/30">
+                <p className="text-xs font-medium mb-2">Como o cliente vai ver:</p>
+                <p className="text-sm whitespace-pre-wrap">{previewModeloAmigavel() || '—'}</p>
+              </div>
+
+              <Button onClick={criarEEnviarModelo} disabled={salvandoModelo} className="w-full">
+                {salvandoModelo ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando para análise...
+                  </>
+                ) : (
+                  'Criar e enviar pra análise'
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* ESTADO A concluído / ESTADO B — mensagem em análise */}
+          {((etapa === 'A' && modeloEnviadoAgora) || etapa === 'B') && (
+            <div className="p-4 rounded-lg border bg-background space-y-3">
+              {modeloEnviadoAgora ? (
+                <p className="text-sm font-semibold">
+                  ✅ Enviamos sua mensagem pra análise do WhatsApp.
+                </p>
+              ) : (
+                <p className="text-sm font-semibold">
+                  ⏳ Sua mensagem está em análise pelo WhatsApp.
+                </p>
+              )}
+              <p className="text-sm text-muted-foreground">
+                Costuma levar de alguns minutos até 1 dia. Assim que liberar, você já pode enviar — e nós
+                avisamos.
+              </p>
+              <Button
+                variant="outline"
+                onClick={verificarModelo}
+                disabled={verificandoModelo}
+                className="w-full"
+              >
+                {verificandoModelo ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                  </>
+                ) : (
+                  'Verificar agora'
+                )}
+              </Button>
+            </div>
+          )}
+
+          {(etapa === 'C' || etapa === 'D') && (
+          <>
+
           {/* 1. FREQUÊNCIA */}
           <div>
             <Label className="text-lg font-semibold">1. Escolha a Frequência</Label>
@@ -1083,15 +1369,16 @@ _Escolha quantidade e finalize!_ ✅`;
             </p>
           </div>
 
-          {/* 3. LISTAS / SEGMENTOS (grupos não são destino de campanha) */}
+          {/* 3. GRUPOS DE CLIENTES (segmentos) */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">3. Selecione Lista(s) / Segmento(s)</Label>
+            <Label className="text-lg font-semibold">3. Para quem enviar</Label>
             <p className="text-xs text-muted-foreground mt-1">
-              Grupos de WhatsApp não são destino de campanha: a API oficial da Meta não envia para grupos e grupo não tem opt-in individual.
+              Escolha um ou mais grupos de clientes. Campanhas são enviadas individualmente para cada
+              cliente — grupos de WhatsApp não recebem campanha.
             </p>
             {listas.length === 0 ? (
               <p className="text-sm text-muted-foreground mt-3">
-                Nenhuma lista/segmento criado ainda. Crie em "Clientes e Segmentos".
+                Você ainda não criou grupos de clientes. Crie em "Clientes e Segmentos".
               </p>
             ) : (
               <div className="space-y-2 mt-3">
@@ -1102,106 +1389,98 @@ _Escolha quantidade e finalize!_ ✅`;
                       onCheckedChange={() => toggleLista(lista.id)}
                     />
                     <Label className="cursor-pointer flex-1">
-                      {lista.group_name} — {lista.phone_numbers.length} de {lista.member_count} com opt-in
+                      {lista.group_name} — {lista.phone_numbers.length} de {lista.member_count} autorizados
                     </Label>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* PREVIEW DE DESTINATÁRIOS — só quem tem opt-in confirmado recebe */}
+            {/* PREVIEW DE DESTINATÁRIOS — só quem autorizou recebe */}
             {listasSelecionadas.length > 0 && (
               <div className="mt-4 p-3 rounded-lg border bg-background">
                 <p className="text-sm font-medium">
                   ✅ {totalConfirmadosSelecionados} de {totalContatosSelecionados} vão receber
-                  {totalSemOptin > 0 && ` (${totalSemOptin} sem opt-in)`}
+                  {totalSemOptin > 0 && ` (${totalSemOptin} ainda sem autorização)`}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Somente contatos com opt-in confirmado recebem campanha. Para os demais, envie o convite de opt-in
-                  na área de contatos — sem confirmação, a Meta não permite o envio.
+                  Só enviamos para quem autorizou receber suas mensagens. É assim que o WhatsApp protege o
+                  seu número de bloqueio.
                 </p>
               </div>
             )}
           </div>
 
 
-          {/* 4. TEMPLATE APROVADO PELA META (conteúdo da campanha) */}
+          {/* 4. MENSAGEM MODELO JÁ LIBERADA */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-1 block">4. Template aprovado (Meta oficial)</Label>
+            <Label className="text-lg font-semibold mb-1 block">4. Sua mensagem modelo</Label>
             <p className="text-xs text-muted-foreground mb-3">
-              Campanha em massa pela API oficial só sai com template pré-aprovado pela Meta. Texto livre não é permitido.
+              Estas são as mensagens já liberadas para envio em massa. Escolha qual usar nesta campanha.
             </p>
 
-            {templates.length === 0 ? (
-              <div className="p-3 rounded-lg border border-destructive/40 bg-destructive/5">
-                <p className="text-sm font-medium">Nenhum template de campanha aprovado</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Crie e submeta um template do tipo "campanha" e aguarde a aprovação da Meta.
-                </p>
-                <a
-                  href="/pj/whatsapp-templates"
-                  className="text-xs underline mt-2 inline-block"
-                >
-                  Ir para Templates WhatsApp →
-                </a>
+            <Select value={templateSelecionado} onValueChange={setTemplateSelecionado}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Escolha a mensagem modelo" />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    ✅ {t.body_text ? `${t.body_text.slice(0, 60)}${t.body_text.length > 60 ? '…' : ''}` : t.nome_meta}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {templateAtivo && (
+              <div className="mt-4 p-3 rounded-lg border bg-background">
+                <p className="text-xs font-medium mb-2">Como o cliente vai receber (exemplo com "Maria"):</p>
+                <p className="text-sm whitespace-pre-wrap">{previewTemplate() || '—'}</p>
               </div>
-            ) : (
-              <>
-                <Select value={templateSelecionado} onValueChange={setTemplateSelecionado}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecione o template aprovado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        ✅ {t.nome_meta} ({t.idioma || 'pt_BR'})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {templateAtivo && (
-                  <div className="mt-4 space-y-3">
-                    {/* MAPEAMENTO DE VARIÁVEIS */}
-                    {chavesTemplate(templateAtivo).length > 0 && (
-                      <div className="p-3 rounded-lg border bg-background">
-                        <p className="text-xs font-medium mb-2">Variáveis do template:</p>
-                        <div className="space-y-1">
-                          {chavesTemplate(templateAtivo).map((chave, idx) => (
-                            <div key={idx} className="flex items-center justify-between text-xs">
-                              <code className="px-1.5 py-0.5 rounded bg-muted">{`{{${idx + 1}}}`} {chave}</code>
-                              <span className="text-muted-foreground">
-                                {chave.toLowerCase().includes('nome')
-                                  ? 'vem do contato'
-                                  : `vem do produto: ${valorDaVariavel(chave, '') || '—'}`}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* PREVIEW DA MENSAGEM FINAL */}
-                    <div className="p-3 rounded-lg border bg-background">
-                      <p className="text-xs font-medium mb-2">Preview (exemplo com contato "Maria"):</p>
-                      <p className="text-sm whitespace-pre-wrap">{previewTemplate() || '—'}</p>
-                    </div>
-                  </div>
-                )}
-              </>
             )}
           </div>
+          </>
+          )}
 
+          {/* ESTADO C — contatos ainda sem autorização */}
+          {etapa === 'C' && (
+            <div className="p-4 rounded-lg border bg-background space-y-3">
+              <p className="text-sm font-semibold">✅ Sua mensagem está liberada!</p>
+              <p className="text-sm text-muted-foreground">
+                Só podemos enviar para contatos que autorizaram receber suas mensagens — é assim que o
+                WhatsApp protege o seu número de bloqueio.
+              </p>
+              <p className="text-sm font-medium">
+                {totalConfirmadosSelecionados} de {totalContatosSelecionados} contatos autorizados
+              </p>
+              <Button onClick={pedirAutorizacoes} disabled={enviandoAutorizacoes} className="w-full">
+                {enviandoAutorizacoes ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Perguntando aos contatos...
+                  </>
+                ) : (
+                  'Pedir autorização aos demais'
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Vamos perguntar aos seus contatos se aceitam receber suas mensagens. Quem responder que
+                sim já entra na próxima campanha.
+              </p>
+            </div>
+          )}
 
           {/* BOTÕES */}
           <div className="flex gap-2 justify-end pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {etapa === 'A' || etapa === 'B' ? 'Fechar' : 'Cancelar'}
             </Button>
-            <Button onClick={handleCriarCampanha} disabled={isLoading}>
-              {isLoading ? 'Processando...' : frequencia === 'agora' ? '🚀 Enviar Agora' : '📅 Agendar Campanha'}
-            </Button>
+            {etapa === 'D' && (
+              <Button onClick={handleCriarCampanha} disabled={isLoading}>
+                {isLoading ? 'Processando...' : frequencia === 'agora' ? '🚀 Enviar Agora' : '📅 Agendar Campanha'}
+              </Button>
+            )}
           </div>
+
         </div>
       </DialogContent>
     </Dialog>
