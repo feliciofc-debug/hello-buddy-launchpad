@@ -1319,84 +1319,75 @@ _Escolha quantidade e finalize!_ ✅`;
             )}
           </div>
 
-
-          {/* 4. TEMPLATE APROVADO PELA META (conteúdo da campanha) */}
+          {/* 4. MENSAGEM MODELO JÁ LIBERADA */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-1 block">4. Template aprovado (Meta oficial)</Label>
+            <Label className="text-lg font-semibold mb-1 block">4. Sua mensagem modelo</Label>
             <p className="text-xs text-muted-foreground mb-3">
-              Campanha em massa pela API oficial só sai com template pré-aprovado pela Meta. Texto livre não é permitido.
+              Estas são as mensagens já liberadas para envio em massa. Escolha qual usar nesta campanha.
             </p>
 
-            {templates.length === 0 ? (
-              <div className="p-3 rounded-lg border border-destructive/40 bg-destructive/5">
-                <p className="text-sm font-medium">Nenhum template de campanha aprovado</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Crie e submeta um template do tipo "campanha" e aguarde a aprovação da Meta.
-                </p>
-                <a
-                  href="/pj/whatsapp-templates"
-                  className="text-xs underline mt-2 inline-block"
-                >
-                  Ir para Templates WhatsApp →
-                </a>
+            <Select value={templateSelecionado} onValueChange={setTemplateSelecionado}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Escolha a mensagem modelo" />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    ✅ {t.body_text ? `${t.body_text.slice(0, 60)}${t.body_text.length > 60 ? '…' : ''}` : t.nome_meta}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {templateAtivo && (
+              <div className="mt-4 p-3 rounded-lg border bg-background">
+                <p className="text-xs font-medium mb-2">Como o cliente vai receber (exemplo com "Maria"):</p>
+                <p className="text-sm whitespace-pre-wrap">{previewTemplate() || '—'}</p>
               </div>
-            ) : (
-              <>
-                <Select value={templateSelecionado} onValueChange={setTemplateSelecionado}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Selecione o template aprovado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        ✅ {t.nome_meta} ({t.idioma || 'pt_BR'})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                {templateAtivo && (
-                  <div className="mt-4 space-y-3">
-                    {/* MAPEAMENTO DE VARIÁVEIS */}
-                    {chavesTemplate(templateAtivo).length > 0 && (
-                      <div className="p-3 rounded-lg border bg-background">
-                        <p className="text-xs font-medium mb-2">Variáveis do template:</p>
-                        <div className="space-y-1">
-                          {chavesTemplate(templateAtivo).map((chave, idx) => (
-                            <div key={idx} className="flex items-center justify-between text-xs">
-                              <code className="px-1.5 py-0.5 rounded bg-muted">{`{{${idx + 1}}}`} {chave}</code>
-                              <span className="text-muted-foreground">
-                                {chave.toLowerCase().includes('nome')
-                                  ? 'vem do contato'
-                                  : `vem do produto: ${valorDaVariavel(chave, '') || '—'}`}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* PREVIEW DA MENSAGEM FINAL */}
-                    <div className="p-3 rounded-lg border bg-background">
-                      <p className="text-xs font-medium mb-2">Preview (exemplo com contato "Maria"):</p>
-                      <p className="text-sm whitespace-pre-wrap">{previewTemplate() || '—'}</p>
-                    </div>
-                  </div>
-                )}
-              </>
             )}
           </div>
+          </>
+          )}
 
+          {/* ESTADO C — contatos ainda sem autorização */}
+          {etapa === 'C' && (
+            <div className="p-4 rounded-lg border bg-background space-y-3">
+              <p className="text-sm font-semibold">✅ Sua mensagem está liberada!</p>
+              <p className="text-sm text-muted-foreground">
+                Só podemos enviar para contatos que autorizaram receber suas mensagens — é assim que o
+                WhatsApp protege o seu número de bloqueio.
+              </p>
+              <p className="text-sm font-medium">
+                {totalConfirmadosSelecionados} de {totalContatosSelecionados} contatos autorizados
+              </p>
+              <Button onClick={pedirAutorizacoes} disabled={enviandoAutorizacoes} className="w-full">
+                {enviandoAutorizacoes ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Perguntando aos contatos...
+                  </>
+                ) : (
+                  'Pedir autorização aos demais'
+                )}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Vamos perguntar aos seus contatos se aceitam receber suas mensagens. Quem responder que
+                sim já entra na próxima campanha.
+              </p>
+            </div>
+          )}
 
           {/* BOTÕES */}
           <div className="flex gap-2 justify-end pt-4">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {etapa === 'A' || etapa === 'B' ? 'Fechar' : 'Cancelar'}
             </Button>
-            <Button onClick={handleCriarCampanha} disabled={isLoading}>
-              {isLoading ? 'Processando...' : frequencia === 'agora' ? '🚀 Enviar Agora' : '📅 Agendar Campanha'}
-            </Button>
+            {etapa === 'D' && (
+              <Button onClick={handleCriarCampanha} disabled={isLoading}>
+                {isLoading ? 'Processando...' : frequencia === 'agora' ? '🚀 Enviar Agora' : '📅 Agendar Campanha'}
+              </Button>
+            )}
           </div>
+
         </div>
       </DialogContent>
     </Dialog>
