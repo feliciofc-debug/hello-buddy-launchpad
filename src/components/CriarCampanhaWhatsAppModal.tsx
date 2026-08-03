@@ -211,9 +211,11 @@ export function CriarCampanhaWhatsAppModal({
     console.log('⚙️ useEffect EXECUTADO', { open });
     if (open) {
       try {
-        console.log('🔄 Iniciando fetch de listas e vendedores...');
+        console.log('🔄 Iniciando fetch de listas, vendedores e templates aprovados...');
         fetchListas();
         fetchVendedores();
+        fetchTemplates();
+
         
         // Se tem campanha existente, carregar dados dela
         if (campanhaExistente) {
