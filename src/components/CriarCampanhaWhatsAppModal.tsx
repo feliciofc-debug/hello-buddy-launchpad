@@ -453,60 +453,56 @@ _Escolha quantidade e finalize!_ ✅`;
     
     console.log('📦 Produto:', produto.nome);
 
-    // Separar destinos de contato x destinos de grupo
-    const destinosSelecionados = listas.filter((lista) => listasSelecionadas.includes(lista.id));
-    const gruposSelecionados = destinosSelecionados.filter(
-      (destino): destino is WhatsAppGroup & { group_jid: string } => destino.source === 'pj_grupo' && !!destino.group_jid,
-    );
-    const listasContatoIds = destinosSelecionados
-      .filter((destino) => destino.source !== 'pj_grupo')
-      .map((destino) => destino.id);
-
-    // Buscar contatos das listas selecionadas (whatsapp_groups + pj_lista_membros + afiliado_lista_membros)
-    let todosContatos: string[] = [];
-
-    if (listasContatoIds.length > 0) {
-      // 1. Buscar de whatsapp_groups (listas manuais)
-      const { data: listasData } = await supabase
-        .from('whatsapp_groups')
-        .select('phone_numbers')
-        .in('id', listasContatoIds);
-      todosContatos.push(...(listasData?.flatMap(l => l.phone_numbers || []) || []));
-
-      // 2. Buscar de pj_lista_membros (listas PJ)
-      const { data: membrosPJ } = await supabase
-        .from('pj_lista_membros')
-        .select('telefone')
-        .in('lista_id', listasContatoIds);
-      todosContatos.push(...(membrosPJ?.map(m => m.telefone) || []));
-
-      // 3. Buscar de afiliado_lista_membros -> leads_ebooks (listas afiliado)
-      const { data: membrosAfiliado } = await supabase
-        .from('afiliado_lista_membros')
-        .select('lead_id')
-        .in('lista_id', listasContatoIds);
-      if (membrosAfiliado && membrosAfiliado.length > 0) {
-        const leadIds = membrosAfiliado.map(m => m.lead_id);
-        const { data: leads } = await supabase
-          .from('leads_ebooks')
-          .select('phone')
-          .in('id', leadIds);
-        todosContatos.push(...(leads?.map(l => l.phone) || []));
-      }
-    }
-
-    // Deduplicar + normalizar telefone para melhorar resolução de nome
-    todosContatos = [...new Set(todosContatos.map(normalizarTelefone))].filter(Boolean);
-    console.log('📋 Total contatos (deduplicados):', todosContatos.length);
-    console.log('👥 Total grupos selecionados:', gruposSelecionados.length);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    if (todosContatos.length === 0 && gruposSelecionados.length === 0) {
-      toast.error('Nenhum contato ou grupo válido encontrado nos destinos selecionados');
+    // ============================================================
+    // DISPARO 100% META CLOUD API OFICIAL
+    // - template aprovado obrigatório
+    // - só contatos com opt-in CONFIRMADO
+    // - sem Baileys / sem fila_atendimento_pj
+    // ============================================================
+    if (!templateSelecionado || !templateAtivo || templateAtivo.status_meta !== 'aprovado') {
+      toast.error('Selecione um template de campanha APROVADO pela Meta');
       return;
     }
 
-    // Criar campanha temporária para salvar na biblioteca ANTES de enviar
+    const listasContatoIds = listas
+      .filter((lista) => listasSelecionadas.includes(lista.id))
+      .map((lista) => lista.id);
+
+    if (listasContatoIds.length === 0) {
+      toast.error('Selecione pelo menos uma lista/segmento');
+      return;
+    }
+
+    const { data: membros } = await supabase
+      .from('pj_lista_membros')
+      .select('telefone, nome, opt_in_status')
+      .in('lista_id', listasContatoIds);
+
+    // Dedup canônico + separação por opt-in
+    const mapaContatos = new Map<string, { nome: string; status: string }>();
+    for (const m of membros || []) {
+      const tel = normalizarTelefone(String(m.telefone || ''));
+      if (!tel) continue;
+      const anterior = mapaContatos.get(tel);
+      // 'recusado' (STOP) sempre prevalece
+      const status = anterior?.status === 'recusado' || m.opt_in_status === 'recusado'
+        ? 'recusado'
+        : (m.opt_in_status === 'confirmado' || anterior?.status === 'confirmado' ? 'confirmado' : (m.opt_in_status || 'pendente'));
+      mapaContatos.set(tel, { nome: (m.nome || anterior?.nome || '').trim(), status });
+    }
+
+    const totalBruto = mapaContatos.size;
+    const confirmados = Array.from(mapaContatos.entries()).filter(([, v]) => v.status === 'confirmado');
+    const semOptin = totalBruto - confirmados.length;
+
+    console.log(`📋 Destinatários: ${confirmados.length} de ${totalBruto} com opt-in confirmado (${semOptin} sem opt-in)`);
+
+    if (confirmados.length === 0) {
+      toast.error(`Nenhum contato com opt-in confirmado (${totalBruto} sem opt-in). Envie o convite de opt-in primeiro.`);
+      return;
+    }
+
+    // Registrar a campanha (histórico/biblioteca) já no canal oficial
     const { data: campanhaTemp, error: erroCampanha } = await supabase
       .from('campanhas_recorrentes')
       .insert({
@@ -517,7 +513,9 @@ _Escolha quantidade e finalize!_ ✅`;
         frequencia: 'uma_vez',
         data_inicio: new Date().toISOString().split('T')[0],
         horarios: ['00:00'],
-        mensagem_template: mensagem,
+        mensagem_template: templateAtivo.body_text || '',
+        template_id: templateSelecionado,
+        canal: 'meta_oficial',
         ativa: false,
         status: 'enviada',
         vendedor_id: vendedorSelecionado || null
@@ -526,10 +524,7 @@ _Escolha quantidade e finalize!_ ✅`;
       .single();
 
     if (erroCampanha) {
-      console.error('❌ Erro ao criar campanha:', erroCampanha);
-    } else {
-      console.log('✅ Campanha salva:', campanhaTemp?.id);
-      console.log('✅ Campanha vendedor_id:', campanhaTemp?.vendedor_id);
+      console.error('❌ Erro ao criar registro da campanha:', erroCampanha);
     }
 
     if (campanhaTemp) {
@@ -544,132 +539,76 @@ _Escolha quantidade e finalize!_ ✅`;
         campanha: {
           id: campanhaTemp.id,
           nome: campanhaTemp.nome,
-          mensagem_template: mensagem,
+          mensagem_template: templateAtivo.body_text || '',
           frequencia: 'agora',
           listas_ids: listasSelecionadas
         }
       });
     }
 
-    // INSERIR NA FILA para o dispatcher local processar (RPC única)
-    const totalDestinos = todosContatos.length + gruposSelecionados.length;
-    toast.success(`🚀 Inserindo ${totalDestinos} destino(s) na fila de envio...`);
+    toast.success(`🚀 Enviando ${confirmados.length} mensagem(ns) via WhatsApp oficial...`);
 
-    const contatosPayload: Array<Record<string, any>> = [];
+    let enviados = 0;
+    let falhas = 0;
 
-    for (const phone of todosContatos) {
-      let nomeContato = '';
-
-      try {
-        nomeContato = await resolverNomeContato(phone, user.id, listasContatoIds);
-      } catch (nomeError) {
-        console.warn('[CAMPANHA] Falha ao resolver nome do contato, usando vazio:', phone, nomeError);
+    for (const [phone, info] of confirmados) {
+      let nomeContato = info.nome;
+      if (!nomeContato) {
+        try {
+          nomeContato = await resolverNomeContato(phone, user.id, listasContatoIds);
+        } catch {
+          nomeContato = 'Cliente';
+        }
       }
 
-      const mensagemFormatada = mensagem
-        .replace(/\{\{nome\}\}/gi, nomeContato || '')
-        .replace(/\{\{produto\}\}/gi, produto.nome)
-        .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
+      const variaveis = montarVariaveisTemplate(templateAtivo, nomeContato);
 
-      contatosPayload.push({
-        phone,
-        name: nomeContato || '',
-        mensagem: mensagemFormatada,
-        campanha_id: campanhaTemp?.id || null,
-        lead_source: 'campanha_produtos',
-        imagem_url: produto.imagem_url || null,
-        tipo_mensagem: 'campanha',
-        prioridade: 5,
-        scheduled_at: new Date().toISOString(),
-        metadata: {
-          produto_id: produto.id,
-          produto_nome: produto.nome,
-          produto_preco: produto.preco,
-          vendedor_id: vendedorSelecionado || null,
-        },
-      });
+      const { data: sendResult, error: sendError } = await supabase.functions.invoke(
+        'whatsapp-cloud-send-template',
+        {
+          body: {
+            user_id: user.id,
+            to: phone,
+            template_id: templateSelecionado,
+            variaveis,
+            campanha_id: campanhaTemp?.id || null,
+            tipo: 'campanha',
+          },
+        }
+      );
+
+      if (!sendError && (sendResult as any)?.success) {
+        enviados++;
+      } else {
+        falhas++;
+        console.error('❌ Falha no envio oficial:', phone, sendError || sendResult);
+        const categoria = String((sendResult as any)?.categoria || '');
+        if (categoria === 'token' || categoria === 'template' || categoria === 'config') {
+          toast.error(`Erro de configuração da Meta (${categoria}) — envio interrompido`);
+          break;
+        }
+      }
     }
 
-    for (const grupo of gruposSelecionados) {
-      const mensagemGrupo = mensagem
-        .replace(/\{\{nome\}\}/gi, 'Pessoal')
-        .replace(/\{\{produto\}\}/gi, produto.nome)
-        .replace(/\{\{preco\}\}/gi, produto.preco?.toString() || '');
-
-      contatosPayload.push({
-        phone: grupo.group_jid,
-        name: grupo.group_name,
-        mensagem: mensagemGrupo,
-        campanha_id: campanhaTemp?.id || null,
-        lead_source: 'campanha_produtos_grupo',
-        imagem_url: produto.imagem_url || null,
-        tipo_mensagem: 'campanha',
-        prioridade: 5,
-        scheduled_at: new Date().toISOString(),
-        metadata: {
-          produto_id: produto.id,
-          produto_nome: produto.nome,
-          produto_preco: produto.preco,
-          vendedor_id: vendedorSelecionado || null,
-          destination_type: 'grupo_whatsapp',
-          grupo_id: grupo.id,
-          grupo_jid: grupo.group_jid,
-          grupo_nome: grupo.group_name,
-        },
-      });
-    }
-
-    console.log('[CAMPANHA] Disparando para', contatosPayload.length, 'contatos');
-
-    const { data: rpcData, error: rpcError } = await supabase.rpc('inserir_campanha_fila', {
-      p_user_id: user.id,
-      p_contatos: contatosPayload,
-      p_mensagem: mensagem,
-      p_imagem_url: produto.imagem_url || null,
-      p_lead_source: 'campanha_produtos',
-      p_campanha_id: campanhaTemp?.id || null,
-      p_metadata: {
-        produto_id: produto.id,
-        produto_nome: produto.nome,
-        produto_preco: produto.preco,
-        vendedor_id: vendedorSelecionado || null,
-      },
-    });
-
-    console.log('[CAMPANHA] Resultado:', { data: rpcData, error: rpcError });
-
-    if (rpcError) {
-      console.error('ERRO RPC inserir_campanha_fila:', rpcError);
-      throw rpcError;
-    }
-
-    const inseridos = Number((rpcData as { inseridos?: number } | null)?.inseridos ?? 0);
-    const falhas = Number((rpcData as { falhas?: number } | null)?.falhas ?? 0);
-
-    if (inseridos === 0) {
-      throw new Error('Nenhum contato foi inserido na fila_atendimento_pj');
-    }
-
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`✅ ${inseridos}/${totalDestinos} destinos inseridos na fila`);
-    console.log(`⚠️ Falhas: ${falhas}`);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-    // Atualizar campanha com total
     if (campanhaTemp?.id) {
       await supabase
         .from('campanhas_recorrentes')
-        .update({ total_enviados: inseridos })
+        .update({ total_enviados: enviados })
         .eq('id', campanhaTemp.id);
     }
 
+    if (enviados === 0) {
+      throw new Error('Nenhuma mensagem foi aceita pela Meta. Verifique token e template.');
+    }
+
     if (falhas > 0) {
-      toast.warning(`⚠️ ${inseridos} inseridos e ${falhas} falharam. Veja o console para detalhes.`);
+      toast.warning(`⚠️ ${enviados} enviada(s) e ${falhas} falha(s). Veja o console.`);
       return;
     }
 
-    toast.success(`✅ ${inseridos} destino(s) na fila! O gateway local fará o envio.`);
+    toast.success(`✅ ${enviados} mensagem(ns) enviada(s) pela API oficial da Meta!`);
   };
+
 
   const salvarCampanhaRecorrente = async () => {
     const { data: { user } } = await supabase.auth.getUser();
