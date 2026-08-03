@@ -726,8 +726,8 @@ serve(async (req) => {
         executadas,
         erros,
         total: campanhas?.length || 0,
-        envioProgramado: envioProgramadoResult,
-        filaAtendimento: filaAtendimentoResult
+        envioProgramado: envioProgramadoResult
+
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
