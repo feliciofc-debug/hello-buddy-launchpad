@@ -379,9 +379,14 @@ serve(async (req) => {
           }
         }
 
-        // ✅ ENVIAR PARA GRUPOS PJ (pj_grupos_ids ou listas_ids que são grupos PJ)
-        const gruposIdsParaBuscar = campanha.pj_grupos_ids?.length > 0 
-          ? campanha.pj_grupos_ids 
+        // ============================================================
+        // GRUPOS DE WHATSAPP — SEM CAMINHO OFICIAL
+        // A Meta Cloud API não envia mensagens para grupos. Com o Baileys
+        // aposentado, grupos deixam de ser destino de campanha: registramos
+        // o motivo e seguimos só com contatos individuais com opt-in.
+        // ============================================================
+        const gruposIdsParaBuscar = campanha.pj_grupos_ids?.length > 0
+          ? campanha.pj_grupos_ids
           : campanha.listas_ids || [];
 
         const { data: gruposPJ } = await supabase
@@ -390,118 +395,19 @@ serve(async (req) => {
           .in("id", gruposIdsParaBuscar);
 
         if (gruposPJ && gruposPJ.length > 0) {
-          console.log(`👥 Enviando para ${gruposPJ.length} grupos PJ`);
-          
+          console.log(`🚫 [META] ${gruposPJ.length} grupo(s) ignorado(s) — Meta Cloud API não suporta envio para grupos`);
           for (const grupo of gruposPJ) {
-            // AUTOPILOT: recheck a cada 10 TENTATIVAS (sucesso+falha) — falha conta pro ban
-            if (isAutopilot && processados > 0 && processados % 10 === 0) {
-              const [nCamp, nNum] = await Promise.all([
-                contarEnviosHoje(supabase, { campanha_id: campanha.id }, diaSP),
-                contarEnviosHoje(supabase, { user_id: campanha.user_id }, diaSP),
-              ]);
-              if (nNum >= capNumero) {
-                console.log(`🛑 [AUTOPILOT] recheck grupos — teto NÚMERO ${nNum}/${capNumero} — para tudo (reagenda amanhã)`);
-                capAtingido = true;
-                break;
-              }
-              if (nCamp >= capCampanha) {
-                console.log(`🛑 [AUTOPILOT] recheck grupos — teto CAMPANHA ${nCamp}/${capCampanha} — para esta campanha`);
-                break;
-              }
-            }
-
-            try {
-              console.log(`📱 Enviando para grupo PJ: ${grupo.nome} (${grupo.grupo_jid})`);
-
-              const mensagemGrupo = (campanha.mensagem_template || '')
-                .replace(/\{\{?\s*nome\s*\}?\}/gi, 'pessoal')
-                .replace(/Olá\s+,/gi, 'Olá pessoal,')
-                .replace(/Oi\s+,/gi, 'Oi pessoal,')
-                .replace(/\{\{?\s*produto\s*\}?\}/gi, produtoParaEnviar?.nome || "")
-                .replace(/\{\{?\s*preco\s*\}?\}/gi, formatPriceBRL(produtoParaEnviar?.preco));
-
-              // 🛡️ DEFENSIVA: nunca dispara mensagem vazia (autopilot ou não)
-              if (!mensagemGrupo.trim()) {
-                console.error(`🚫 [DEFENSIVA] Mensagem vazia após replaces — pulando grupo ${grupo.nome} (campanha ${campanha.id})`);
-                errosEnvio++;
-                processados++;
-                if (isAutopilot) {
-                  await registrarEnvio(supabase, {
-                    user_id: campanha.user_id,
-                    campanha_id: campanha.id,
-                    whatsapp: grupo.grupo_jid,
-                    sucesso: false,
-                    erro: 'mensagem_vazia_apos_replaces',
-                    tipo: 'autopilot_grupo',
-                  });
-                }
-                continue;
-              }
-
-              const { data: sendResult, error: sendError } = await supabase.functions.invoke('send-wuzapi-group-message-pj', {
-                body: {
-                  userId: campanha.user_id,
-                  groupJid: grupo.grupo_jid,
-                  message: mensagemGrupo,
-                  imageUrl: imagemUrl,
-                  useQueue: isAutopilot,   // AUTOPILOT força jitter via fila
-                }
-              });
-
-              const outcome = classifySendOutcome(sendError, sendResult);
-              const sucesso = outcome === 'ok';
-              if (sucesso) {
-                enviados++;
-                gatewayFailStreak = 0;
-                console.log(`✅ Enviado para grupo PJ ${grupo.nome}`);
-              } else {
-                console.error(`❌ Erro (${outcome}) ao enviar para grupo PJ ${grupo.nome}:`, sendError || sendResult);
-                errosEnvio++;
-                if (outcome === 'gateway') gatewayFailStreak++;
-                else gatewayFailStreak = 0;
-              }
-              processados++;
-
-              if (isAutopilot) {
-                await registrarEnvio(supabase, {
-                  user_id: campanha.user_id,
-                  campanha_id: campanha.id,
-                  whatsapp: grupo.grupo_jid,
-                  sucesso,
-                  erro: sucesso ? undefined : String(sendError?.message || sendResult?.error || 'unknown'),
-                  tipo: 'autopilot_grupo',
-                });
-              }
-
-              if (isAutopilot && gatewayFailStreak >= GATEWAY_FAIL_THRESHOLD) {
-                console.log(`🚨 [AUTOPILOT] Gateway offline (${gatewayFailStreak} falhas seguidas) — pausando envios de grupos e reagendando para próximo slot`);
-                gatewayDown = true;
-                break;
-              }
-
-              // Delay aleatório entre 3-7 segundos (simula comportamento humano)
-              const delayGrupo = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
-              console.log(`⏱️ Aguardando ${delayGrupo}ms antes do próximo envio...`);
-              await new Promise(r => setTimeout(r, delayGrupo));
-
-            } catch (error) {
-              console.error(`❌ Erro ao processar grupo PJ ${grupo.nome}:`, error);
-              errosEnvio++;
-              processados++;
-              if (isAutopilot) {
-                await registrarEnvio(supabase, {
-                  user_id: campanha.user_id,
-                  campanha_id: campanha.id,
-                  whatsapp: grupo.grupo_jid,
-                  sucesso: false,
-                  erro: String((error as any)?.message || error),
-                  tipo: 'autopilot_grupo',
-                });
-              }
-            }
+            await registrarEnvio(supabase, {
+              user_id: campanha.user_id,
+              campanha_id: campanha.id,
+              whatsapp: grupo.grupo_jid,
+              sucesso: false,
+              erro: 'grupo_nao_suportado_meta_oficial',
+              tipo: 'campanha_grupo_ignorado',
+            });
           }
-
         }
+
 
         // ✅ PROCESSAR LISTAS NORMAIS - excluir IDs que são grupos PJ
         const gruposPJIds = (gruposPJ || []).map(g => g.id);
