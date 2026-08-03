@@ -390,6 +390,17 @@ export function CriarCampanhaWhatsAppModal({
     }
   };
 
+  // Pré-preenche a mensagem modelo com o produto ao abrir
+  useEffect(() => {
+    if (!open) {
+      setModeloEnviadoAgora(false);
+      return;
+    }
+    setTextoModelo(
+      `Oi [nome do cliente], tudo bem? Separei uma oferta especial pra você: [produto] sai por [preço]. Quer que eu te passe os detalhes?`
+    );
+  }, [open, produto?.id]);
+
 
   useEffect(() => {
     console.log('⚙️ useEffect EXECUTADO', { open });
