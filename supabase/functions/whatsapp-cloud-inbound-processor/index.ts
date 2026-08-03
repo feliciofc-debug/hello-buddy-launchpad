@@ -4988,6 +4988,9 @@ async function processOne(queueId: string) {
     const isAmzMode = (agent as any).agent_mode === "amz" && isAmzTenant;
 
     let amzContextBlock: string | undefined;
+    // Papel do agente no modo AMZ. DEFAULT "support": no ambíguo, atende.
+    // Só vira "sales" com LEAD NOVO confirmado (access === "stranger").
+    let amzAudience: "sales" | "support" = "support";
     // Roda buildAmzContext quando: (a) é o tenant AMZ (comportamento clássico),
     // ou (b) qualquer tenant que tenha owner_phone configurado — só pra
     // reconhecer o dono e injetar o bloco minimalista.
@@ -4998,9 +5001,11 @@ async function processOne(queueId: string) {
       // LEAD NOVO: não corta mais o atendimento. O bloco de contexto
       // "LEAD NOVO" (amz-context) faz o Pietro Eugenio atender do início ao
       // fim, sem repassar nenhum outro número de WhatsApp.
+      if (amzCtx.access === "stranger") amzAudience = "sales";
 
       if (amzCtx.block) amzContextBlock = amzCtx.block;
     }
+
 
     // "answerOwnerCommercialStatus" é uma feature Jarvis específica pra Felicio
     // consultar contatos comerciais dele — só faz sentido no tenant AMZ.
