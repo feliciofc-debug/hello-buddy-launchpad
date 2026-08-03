@@ -382,8 +382,9 @@ serve(async (req) => {
         // ============================================================
         // GRUPOS DE WHATSAPP — SEM CAMINHO OFICIAL
         // A Meta Cloud API não envia mensagens para grupos. Com o Baileys
-        // aposentado, grupos deixam de ser destino de campanha: registramos
-        // o motivo e seguimos só com contatos individuais com opt-in.
+        // aposentado, grupos deixam de ser destino de campanha: apenas logamos
+        // e seguimos só com contatos individuais com opt-in confirmado.
+        // (Não gravamos em historico_envios para não consumir teto diário.)
         // ============================================================
         const gruposIdsParaBuscar = campanha.pj_grupos_ids?.length > 0
           ? campanha.pj_grupos_ids
@@ -395,18 +396,9 @@ serve(async (req) => {
           .in("id", gruposIdsParaBuscar);
 
         if (gruposPJ && gruposPJ.length > 0) {
-          console.log(`🚫 [META] ${gruposPJ.length} grupo(s) ignorado(s) — Meta Cloud API não suporta envio para grupos`);
-          for (const grupo of gruposPJ) {
-            await registrarEnvio(supabase, {
-              user_id: campanha.user_id,
-              campanha_id: campanha.id,
-              whatsapp: grupo.grupo_jid,
-              sucesso: false,
-              erro: 'grupo_nao_suportado_meta_oficial',
-              tipo: 'campanha_grupo_ignorado',
-            });
-          }
+          console.log(`🚫 [META] ${gruposPJ.length} grupo(s) ignorado(s) — Meta Cloud API não suporta envio para grupos: ${gruposPJ.map((g: any) => g.nome).join(', ')}`);
         }
+
 
 
         // ✅ PROCESSAR LISTAS NORMAIS - excluir IDs que são grupos PJ
