@@ -1125,106 +1125,73 @@ _Escolha quantidade e finalize!_ ✅`;
           </div>
 
 
-          {/* 4. MENSAGEM */}
+          {/* 4. TEMPLATE APROVADO PELA META (conteúdo da campanha) */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-3 block">4. Mensagem</Label>
-            
-            {/* Campo de sugestões + Botão IA */}
-            <div className="flex gap-2 mb-4">
-              <Input
-                value={sugestaoIA}
-                onChange={(e) => setSugestaoIA(e.target.value)}
-                placeholder="Ex: promoção no Mundial, pão quentinho saindo agora, padaria Recreio..."
-                className="flex-1"
-              />
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={gerarPostsIA}
-                disabled={isGenerating}
-                className="gap-2 whitespace-nowrap"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Gerando...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Gerar com IA
-                  </>
+            <Label className="text-lg font-semibold mb-1 block">4. Template aprovado (Meta oficial)</Label>
+            <p className="text-xs text-muted-foreground mb-3">
+              Campanha em massa pela API oficial só sai com template pré-aprovado pela Meta. Texto livre não é permitido.
+            </p>
+
+            {templates.length === 0 ? (
+              <div className="p-3 rounded-lg border border-destructive/40 bg-destructive/5">
+                <p className="text-sm font-medium">Nenhum template de campanha aprovado</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Crie e submeta um template do tipo "campanha" e aguarde a aprovação da Meta.
+                </p>
+                <a
+                  href="/whatsapp-templates"
+                  className="text-xs underline mt-2 inline-block"
+                >
+                  Ir para Templates WhatsApp →
+                </a>
+              </div>
+            ) : (
+              <>
+                <Select value={templateSelecionado} onValueChange={setTemplateSelecionado}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione o template aprovado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        ✅ {t.nome_meta} ({t.idioma || 'pt_BR'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {templateAtivo && (
+                  <div className="mt-4 space-y-3">
+                    {/* MAPEAMENTO DE VARIÁVEIS */}
+                    {chavesTemplate(templateAtivo).length > 0 && (
+                      <div className="p-3 rounded-lg border bg-background">
+                        <p className="text-xs font-medium mb-2">Variáveis do template:</p>
+                        <div className="space-y-1">
+                          {chavesTemplate(templateAtivo).map((chave, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-xs">
+                              <code className="px-1.5 py-0.5 rounded bg-muted">{`{{${idx + 1}}}`} {chave}</code>
+                              <span className="text-muted-foreground">
+                                {chave.toLowerCase().includes('nome')
+                                  ? 'vem do contato'
+                                  : `vem do produto: ${valorDaVariavel(chave, '') || '—'}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* PREVIEW DA MENSAGEM FINAL */}
+                    <div className="p-3 rounded-lg border bg-background">
+                      <p className="text-xs font-medium mb-2">Preview (exemplo com contato "Maria"):</p>
+                      <p className="text-sm whitespace-pre-wrap">{previewTemplate() || '—'}</p>
+                    </div>
+                  </div>
                 )}
-              </Button>
-            </div>
-
-            {/* Posts gerados pela IA */}
-            {postsGerados && (
-              <div className="mb-4 space-y-3">
-                <p className="text-sm font-medium text-muted-foreground">✨ Escolha uma variação:</p>
-                
-                <div 
-                  onClick={() => selecionarPost(postsGerados.urgencia)}
-                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold bg-red-100 text-red-700 px-2 py-0.5 rounded">🔥 URGÊNCIA</span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{postsGerados.urgencia}</p>
-                </div>
-
-                <div 
-                  onClick={() => selecionarPost(postsGerados.beneficio)}
-                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded">✅ BENEFÍCIO</span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{postsGerados.beneficio}</p>
-                </div>
-
-                <div 
-                  onClick={() => selecionarPost(postsGerados.promocional)}
-                  className="p-3 border rounded-lg cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-semibold bg-orange-100 text-orange-700 px-2 py-0.5 rounded">🎁 PROMOCIONAL</span>
-                  </div>
-                  <p className="text-sm whitespace-pre-wrap">{postsGerados.promocional}</p>
-                </div>
-              </div>
+              </>
             )}
-
-            <Textarea
-              value={mensagem}
-              onChange={(e) => setMensagem(e.target.value)}
-              placeholder="Olá {{nome}}! Confira nosso produto..."
-              rows={8}
-            />
-            <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-              <p className="text-xs font-medium mb-2">💡 Variáveis disponíveis:</p>
-              <div className="flex gap-2 flex-wrap">
-                <code 
-                  className="text-xs bg-white dark:bg-slate-800 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700" 
-                  onClick={() => setMensagem(mensagem + '{{nome}}')}
-                >
-                  {'{{nome}}'}
-                </code>
-                <code 
-                  className="text-xs bg-white dark:bg-slate-800 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700" 
-                  onClick={() => setMensagem(mensagem + '{{produto}}')}
-                >
-                  {'{{produto}}'}
-                </code>
-                <code 
-                  className="text-xs bg-white dark:bg-slate-800 px-2 py-1 rounded cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700" 
-                  onClick={() => setMensagem(mensagem + '{{preco}}')}
-                >
-                  {'{{preco}}'}
-                </code>
-              </div>
-            </div>
           </div>
+
 
           {/* BOTÕES */}
           <div className="flex gap-2 justify-end pt-4">
