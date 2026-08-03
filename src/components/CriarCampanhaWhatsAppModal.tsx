@@ -1369,15 +1369,16 @@ _Escolha quantidade e finalize!_ ✅`;
             </p>
           </div>
 
-          {/* 3. LISTAS / SEGMENTOS (grupos não são destino de campanha) */}
+          {/* 3. GRUPOS DE CLIENTES (segmentos) */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">3. Selecione Lista(s) / Segmento(s)</Label>
+            <Label className="text-lg font-semibold">3. Para quem enviar</Label>
             <p className="text-xs text-muted-foreground mt-1">
-              Grupos de WhatsApp não são destino de campanha: a API oficial da Meta não envia para grupos e grupo não tem opt-in individual.
+              Escolha um ou mais grupos de clientes. Campanhas são enviadas individualmente para cada
+              cliente — grupos de WhatsApp não recebem campanha.
             </p>
             {listas.length === 0 ? (
               <p className="text-sm text-muted-foreground mt-3">
-                Nenhuma lista/segmento criado ainda. Crie em "Clientes e Segmentos".
+                Você ainda não criou grupos de clientes. Crie em "Clientes e Segmentos".
               </p>
             ) : (
               <div className="space-y-2 mt-3">
@@ -1388,27 +1389,28 @@ _Escolha quantidade e finalize!_ ✅`;
                       onCheckedChange={() => toggleLista(lista.id)}
                     />
                     <Label className="cursor-pointer flex-1">
-                      {lista.group_name} — {lista.phone_numbers.length} de {lista.member_count} com opt-in
+                      {lista.group_name} — {lista.phone_numbers.length} de {lista.member_count} autorizados
                     </Label>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* PREVIEW DE DESTINATÁRIOS — só quem tem opt-in confirmado recebe */}
+            {/* PREVIEW DE DESTINATÁRIOS — só quem autorizou recebe */}
             {listasSelecionadas.length > 0 && (
               <div className="mt-4 p-3 rounded-lg border bg-background">
                 <p className="text-sm font-medium">
                   ✅ {totalConfirmadosSelecionados} de {totalContatosSelecionados} vão receber
-                  {totalSemOptin > 0 && ` (${totalSemOptin} sem opt-in)`}
+                  {totalSemOptin > 0 && ` (${totalSemOptin} ainda sem autorização)`}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Somente contatos com opt-in confirmado recebem campanha. Para os demais, envie o convite de opt-in
-                  na área de contatos — sem confirmação, a Meta não permite o envio.
+                  Só enviamos para quem autorizou receber suas mensagens. É assim que o WhatsApp protege o
+                  seu número de bloqueio.
                 </p>
               </div>
             )}
           </div>
+
 
           {/* 4. MENSAGEM MODELO JÁ LIBERADA */}
           <div className="p-4 bg-muted/30 rounded-lg">
