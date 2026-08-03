@@ -1209,30 +1209,33 @@ _Escolha quantidade e finalize!_ ✅`;
               <Button onClick={criarEEnviarModelo} disabled={salvandoModelo} className="w-full">
                 {salvandoModelo ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando para análise...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
                   </>
                 ) : (
-                  'Criar e enviar pra análise'
+                  'Criar mensagem'
                 )}
               </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Você só precisa fazer isso uma vez. Depois é só escolher o produto e enviar.
+              </p>
             </div>
           )}
 
-          {/* ESTADO A concluído / ESTADO B — mensagem em análise */}
+          {/* ESTADO A concluído / ESTADO B — mensagem aguardando liberação */}
           {((etapa === 'A' && modeloEnviadoAgora) || etapa === 'B') && (
             <div className="p-4 rounded-lg border bg-background space-y-3">
               {modeloEnviadoAgora ? (
                 <p className="text-sm font-semibold">
-                  ✅ Enviamos sua mensagem pra análise do WhatsApp.
+                  ✅ Sua mensagem foi criada e já está a caminho da liberação.
                 </p>
               ) : (
                 <p className="text-sm font-semibold">
-                  ⏳ Sua mensagem está em análise pelo WhatsApp.
+                  ⏳ Sua mensagem está aguardando liberação do WhatsApp.
                 </p>
               )}
               <p className="text-sm text-muted-foreground">
                 Costuma levar de alguns minutos até 1 dia. Assim que liberar, você já pode enviar — e nós
-                avisamos.
+                avisamos. Pode fechar esta janela: quando voltar, o próximo passo aparece automaticamente.
               </p>
               <Button
                 variant="outline"
@@ -1242,10 +1245,10 @@ _Escolha quantidade e finalize!_ ✅`;
               >
                 {verificandoModelo ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Atualizando...
                   </>
                 ) : (
-                  'Verificar agora'
+                  'Já liberou? Atualizar status'
                 )}
               </Button>
             </div>
