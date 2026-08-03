@@ -1083,12 +1083,15 @@ _Escolha quantidade e finalize!_ ✅`;
             </p>
           </div>
 
-          {/* 3. LISTAS DE TRANSMISSÃO */}
+          {/* 3. LISTAS / SEGMENTOS (grupos não são destino de campanha) */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">3. Selecione Lista(s) de Transmissão</Label>
+            <Label className="text-lg font-semibold">3. Selecione Lista(s) / Segmento(s)</Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              Grupos de WhatsApp não são destino de campanha: a API oficial da Meta não envia para grupos e grupo não tem opt-in individual.
+            </p>
             {listas.length === 0 ? (
               <p className="text-sm text-muted-foreground mt-3">
-                Nenhuma lista criada ainda. Crie listas na página de WhatsApp Marketing.
+                Nenhuma lista/segmento criado ainda. Crie em "Clientes e Segmentos".
               </p>
             ) : (
               <div className="space-y-2 mt-3">
@@ -1099,13 +1102,28 @@ _Escolha quantidade e finalize!_ ✅`;
                       onCheckedChange={() => toggleLista(lista.id)}
                     />
                     <Label className="cursor-pointer flex-1">
-                      {lista.group_name} ({lista.member_count} contatos)
+                      {lista.group_name} — {lista.phone_numbers.length} de {lista.member_count} com opt-in
                     </Label>
                   </div>
                 ))}
               </div>
             )}
+
+            {/* PREVIEW DE DESTINATÁRIOS — só quem tem opt-in confirmado recebe */}
+            {listasSelecionadas.length > 0 && (
+              <div className="mt-4 p-3 rounded-lg border bg-background">
+                <p className="text-sm font-medium">
+                  ✅ {totalConfirmadosSelecionados} de {totalContatosSelecionados} vão receber
+                  {totalSemOptin > 0 && ` (${totalSemOptin} sem opt-in)`}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Somente contatos com opt-in confirmado recebem campanha. Para os demais, envie o convite de opt-in
+                  na área de contatos — sem confirmação, a Meta não permite o envio.
+                </p>
+              </div>
+            )}
           </div>
+
 
           {/* 4. MENSAGEM */}
           <div className="p-4 bg-muted/30 rounded-lg">
