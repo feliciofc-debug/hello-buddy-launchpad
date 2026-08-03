@@ -820,11 +820,14 @@ _Escolha quantidade e finalize!_ ✅`;
           data_inicio: dataInicio,
           horarios: horarios,
           dias_semana: diasSemana,
-          mensagem_template: mensagem,
+          mensagem_template: templateAtivo?.body_text || '',
+          template_id: templateSelecionado,
+          canal: 'meta_oficial',
           ativa: true,
           proxima_execucao: proximaExecucao,
           vendedor_id: vendedorSelecionado || null
         })
+
         .eq('id', campanhaExistente.id)
         .select()
         .single();
