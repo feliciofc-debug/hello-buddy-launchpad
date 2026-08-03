@@ -519,10 +519,30 @@ serve(async (req) => {
           // ✅ NOVO: Buscar também de pj_lista_membros (listas PJ criadas na interface)
           const { data: membrosPJ } = await supabase
             .from("pj_lista_membros")
-            .select("telefone, nome")
+            .select("telefone, nome, opt_in_status")
             .in("lista_id", listasNormaisIds);
 
           const contatosPJListas = (membrosPJ || []).map((m: any) => m.telefone).filter(Boolean);
+
+          // ============================================================
+          // OPT-IN OBRIGATÓRIO (Meta oficial) — allowlist + STOP universal
+          // Só entra na campanha telefone com pelo menos UM registro
+          // opt_in_status='confirmado' neste tenant, e NENHUM 'recusado'.
+          // ============================================================
+          const { data: optinRows } = await supabase
+            .from("pj_lista_membros")
+            .select("telefone, opt_in_status")
+            .eq("user_id", campanha.user_id)
+            .in("opt_in_status", ["confirmado", "recusado"]);
+
+          const confirmados = new Set<string>();
+          const recusados = new Set<string>();
+          for (const r of optinRows || []) {
+            const n = normalizePhone(String(r.telefone || ''));
+            if (!n) continue;
+            if (r.opt_in_status === 'confirmado') confirmados.add(n);
+            else recusados.add(n);
+          }
 
           // Dedup canônico por telefone normalizado
           const dedupSet = new Set<string>();
@@ -530,10 +550,18 @@ serve(async (req) => {
             const n = normalizePhone(String(raw || ''));
             if (n) dedupSet.add(n);
           }
-          const todosContatos = Array.from(dedupSet);
+
+          const bruto = Array.from(dedupSet);
+          const todosContatos = bruto.filter(p => confirmados.has(p) && !recusados.has(p));
+          const bloqueadosOptin = bruto.length - todosContatos.length;
 
           const totalBruto = contatosWhatsappGroups.length + contatosPJListas.length;
-          console.log(`📞 Autopilot=${isAutopilot} | dedup: ${totalBruto} → ${todosContatos.length} contatos (wg:${contatosWhatsappGroups.length}, pj:${contatosPJListas.length})`);
+          console.log(`📞 Autopilot=${isAutopilot} | dedup: ${totalBruto} → ${bruto.length} | opt-in confirmado: ${todosContatos.length} (bloqueados sem opt-in/STOP: ${bloqueadosOptin})`);
+
+          if (todosContatos.length === 0) {
+            console.log(`🚫 [OPT-IN] Nenhum contato com opt-in confirmado — campanha ${campanha.nome} não dispara`);
+          }
+
 
           for (const phone of todosContatos) {
             // AUTOPILOT: recheck a cada 10 TENTATIVAS (sucesso+falha)
