@@ -577,10 +577,10 @@ serve(async (req) => {
               }
 
 
-              // Delay aleatório entre 3-7 segundos (simula comportamento humano)
-              const delayContato = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
-              console.log(`⏱️ Aguardando ${delayContato}ms antes do próximo envio...`);
+              // Meta oficial: throttle leve só pra suavizar rajada na Graph API
+              const delayContato = Math.floor(Math.random() * 700) + 500;
               await new Promise(r => setTimeout(r, delayContato));
+
 
             } catch (error) {
               console.error(`❌ Erro ao processar ${phone}:`, error);
