@@ -18,9 +18,24 @@ interface WhatsAppGroup {
   group_name: string;
   member_count: number;
   phone_numbers: string[];
-  source: 'whatsapp_group' | 'afiliado_lista' | 'pj_lista' | 'pj_grupo';
+  /**
+   * Grupos de WhatsApp NÃO são mais destino de campanha:
+   * a Meta Cloud API não envia para grupos e grupo não tem opt-in individual.
+   */
+  source: 'pj_lista';
   group_jid?: string | null;
 }
+
+interface TemplateMeta {
+  id: string;
+  nome_meta: string;
+  idioma: string | null;
+  body_text: string | null;
+  variaveis_map: any;
+  status_meta: string;
+  tipo_uso: string;
+}
+
 
 interface Vendedor {
   id: string;
