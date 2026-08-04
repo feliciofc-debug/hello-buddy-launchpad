@@ -6269,6 +6269,7 @@ export type Database = {
           cor: string | null
           created_at: string
           descricao: string | null
+          descricao_visual: string | null
           dimensoes: string | null
           engajamento_estilos: string[]
           especificacoes: string | null
@@ -6311,6 +6312,7 @@ export type Database = {
           cor?: string | null
           created_at?: string
           descricao?: string | null
+          descricao_visual?: string | null
           dimensoes?: string | null
           engajamento_estilos?: string[]
           especificacoes?: string | null
@@ -6353,6 +6355,7 @@ export type Database = {
           cor?: string | null
           created_at?: string
           descricao?: string | null
+          descricao_visual?: string | null
           dimensoes?: string | null
           engajamento_estilos?: string[]
           especificacoes?: string | null
