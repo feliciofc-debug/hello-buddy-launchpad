@@ -157,6 +157,64 @@ export function CriarCampanhaWhatsAppModal({
   const [confirmAutorizacaoOpen, setConfirmAutorizacaoOpen] = useState(false);
   const [modeloEnviadoAgora, setModeloEnviadoAgora] = useState(false);
 
+  // ============================================================
+  // TESTE RÁPIDO — "ver no meu WhatsApp antes de enviar pra todos"
+  // Não depende de mensagem aprovada nem de autorização de contato:
+  // é você conversando com o seu próprio número (conversa já aberta).
+  // ============================================================
+  const [telefoneTeste, setTelefoneTeste] = useState('');
+  const [enviandoTeste, setEnviandoTeste] = useState(false);
+
+  const enviarTesteParaMim = async () => {
+    try {
+      setEnviandoTeste(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Faça login novamente');
+
+      const telefone = normalizarTelefoneUI(telefoneTeste);
+      if (!telefone || telefone.length < 12) {
+        toast.error('Digite seu WhatsApp com DDD. Ex: 21 96752-0706');
+        return;
+      }
+
+      const texto = (previewModeloAmigavel() || mensagem || '').trim();
+      if (!texto) {
+        toast.error('Escreva a mensagem antes de testar');
+        return;
+      }
+
+      localStorage.setItem('amz_teste_whatsapp', telefoneTeste);
+
+      const { data, error } = await supabase.functions.invoke('whatsapp-send-message', {
+        body: {
+          user_id: user.id,
+          to: telefone,
+          message: texto,
+          image_url: produto.imagem_url || undefined,
+        },
+      });
+
+      if (error || (data as any)?.success === false) {
+        const motivo = String((data as any)?.error || error?.message || '');
+        if (/24|window|re-?engag/i.test(motivo)) {
+          toast.error(
+            'Para o teste chegar, mande primeiro um "oi" no seu WhatsApp de atendimento e tente de novo.'
+          );
+        } else {
+          toast.error(`Não conseguimos enviar o teste agora. ${motivo}`);
+        }
+        return;
+      }
+
+      toast.success('✅ Teste enviado! Confira seu WhatsApp.');
+    } catch (e: any) {
+      toast.error(e?.message || 'Não conseguimos enviar o teste agora');
+    } finally {
+      setEnviandoTeste(false);
+    }
+  };
+
+
   const fetchTemplates = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -410,6 +468,7 @@ export function CriarCampanhaWhatsAppModal({
     setTextoModelo(
       `Oi [nome do cliente], tudo bem? Separei uma oferta especial pra você: [produto] sai por [preço]. Quer que eu te passe os detalhes?`
     );
+    setTelefoneTeste(localStorage.getItem('amz_teste_whatsapp') || '');
   }, [open, produto?.id]);
 
 
@@ -1162,6 +1221,43 @@ _Escolha quantidade e finalize!_ ✅`;
               )}
             </div>
           </div>
+
+          {/* TESTE RÁPIDO — atalho amigável, funciona em qualquer etapa */}
+          <div className="p-4 rounded-lg border-2 border-green-500/30 bg-green-500/5 space-y-3">
+            <div>
+              <p className="text-sm font-semibold">👀 Quer ver como fica antes de enviar pra todos?</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Manda um teste pro seu próprio WhatsApp agora. Não precisa esperar nada — é só pra você
+                conferir a mensagem e a foto do produto.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input
+                value={telefoneTeste}
+                onChange={(e) => setTelefoneTeste(e.target.value)}
+                placeholder="Seu WhatsApp com DDD. Ex: 21 96752-0706"
+                className="flex-1"
+              />
+              <Button
+                onClick={enviarTesteParaMim}
+                disabled={enviandoTeste}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                {enviandoTeste ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...
+                  </>
+                ) : (
+                  'Enviar teste pra mim'
+                )}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Dica: se o teste não chegar, mande um "oi" no seu WhatsApp de atendimento e tente de novo.
+            </p>
+          </div>
+
+
 
           {/* ESTADO A — ainda não tem mensagem modelo liberada */}
           {etapa === 'A' && !modeloEnviadoAgora && (
