@@ -1760,7 +1760,7 @@ async function toolConsultarEstoque(query: string, ctx: { userId: string; fromNu
   try {
     // SEMPRE filtra pelo user_id do próprio dono da conta.
     // Mesmo sendo admin, o Jarvis só enxerga o catálogo do Felicio — nunca mistura com clientes.
-    let p = sb.from("produtos").select("nome, categoria, preco, estoque, ativo, link").eq("user_id", ctx.userId).limit(20);
+    let p = sb.from("produtos").select("nome, categoria, preco, estoque, ativo, link, descricao, imagem_url, imagens").eq("user_id", ctx.userId).limit(20);
     if (q) p = p.or(`nome.ilike.%${q}%,descricao.ilike.%${q}%,categoria.ilike.%${q}%,tags.ilike.%${q}%`);
     const { data: prods } = await p;
 
@@ -1778,7 +1778,16 @@ async function toolConsultarEstoque(query: string, ctx: { userId: string; fromNu
       meu_catalogo_ativos: ativosOwn ?? 0,
       observacao: "Estes números refletem APENAS o catálogo do dono da conta (expo@atombrasildigital.com). Nunca inclua produtos de outros clientes da plataforma. Se o usuário perguntar 'quantos produtos temos', responda com meu_catalogo_total.",
       observacao_estoque: "Produtos afiliados não têm estoque físico rastreado. Não reporte 'estoque zerado' a menos que o usuário pergunte especificamente sobre um SKU físico em products_stock.",
-      encontrados_produtos: (prods ?? []).map((r: any) => ({ nome: r.nome, categoria: r.categoria, preco: r.preco, ativo: r.ativo, link: r.link })),
+      encontrados_produtos: (prods ?? []).map((r: any) => ({
+        nome: r.nome,
+        categoria: r.categoria,
+        preco: r.preco,
+        ativo: r.ativo,
+        link: r.link,
+        descricao: (r.descricao || "").slice(0, 300) || null,
+        tem_foto: !!(r.imagem_url || primeiraImagemProduto(r)),
+      })),
+      dica_visao: "Se o cliente demonstrar interesse REAL em um produto (pediu detalhes, perguntou preço/cor, ou você vai enviar a oferta), chame ver_produto(produto) UMA vez pra ENXERGAR a foto dele antes de descrever. Não chame ver_produto pra produtos que ninguém pediu.",
       encontrados_stock_fisico: (stock ?? []).map((r: any) => ({ nome: r.name, categoria: r.category, preco: r.price, qtd: r.qty, ativo: r.active })),
     });
   } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
@@ -1936,6 +1945,79 @@ async function descreverImagemVisao(imageUrl: string): Promise<string> {
   }
 }
 
+
+
+// ---- VISÃO DO CATÁLOGO (sob demanda) ----
+// Retorna a 1ª imagem utilizável de um produto (imagem_url ou array imagens).
+function primeiraImagemProduto(r: any): string | null {
+  if (r?.imagem_url && String(r.imagem_url).startsWith("http")) return String(r.imagem_url);
+  let arr = r?.imagens;
+  if (typeof arr === "string") { try { arr = JSON.parse(arr); } catch { arr = [arr]; } }
+  if (Array.isArray(arr)) {
+    const u = arr.find((x: any) => typeof x === "string" && x.startsWith("http"));
+    if (u) return u as string;
+  }
+  return null;
+}
+
+// Cache de descrições visuais por URL (vive no isolate). Evita pagar visão 2x pelo mesmo produto.
+const visaoProdutoCache = new Map<string, string>();
+async function descreverProdutoCacheado(url: string): Promise<string> {
+  const hit = visaoProdutoCache.get(url);
+  if (hit) { console.log("[visao-produto] cache hit"); return hit; }
+  const desc = await descreverImagemVisao(url);
+  if (desc) visaoProdutoCache.set(url, desc);
+  return desc;
+}
+
+// ver_produto: SOB DEMANDA. Só roda quando o agente vai realmente falar/oferecer aquele produto.
+async function toolVerProduto(
+  args: { produto?: string; enviar_foto?: boolean },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const q = (args?.produto || "").trim();
+  if (!q) return JSON.stringify({ erro: "informe o nome do produto" });
+  try {
+    const { data: prods } = await sb
+      .from("produtos")
+      .select("nome, categoria, preco, estoque, ativo, link, descricao, imagem_url, imagens")
+      .eq("user_id", ctx.userId)
+      .or(`nome.ilike.%${q}%,descricao.ilike.%${q}%,categoria.ilike.%${q}%,tags.ilike.%${q}%`)
+      .limit(3);
+
+    const p = (prods ?? [])[0];
+    if (!p) return JSON.stringify({ erro: "produto_nao_encontrado", busca: q });
+
+    const foto = primeiraImagemProduto(p);
+    const visao = foto ? await descreverProdutoCacheado(foto) : "";
+
+    let foto_enviada = false;
+    if (args?.enviar_foto && foto) {
+      const legenda = `*${p.nome}*${p.preco ? `\n💰 R$ ${Number(p.preco).toFixed(2)}` : ""}`;
+      try {
+        await sendWhatsApp(ctx.userId, ctx.fromNumber, legenda, foto);
+        foto_enviada = true;
+      } catch (e) {
+        console.warn("[ver_produto] envio de foto falhou:", (e as Error).message);
+      }
+    }
+
+    return JSON.stringify({
+      produto: {
+        nome: p.nome,
+        categoria: p.categoria,
+        preco: p.preco,
+        descricao: (p.descricao || "").slice(0, 600) || null,
+        link: p.link,
+        ativo: p.ativo,
+      },
+      o_que_eu_vejo_na_foto: visao || "sem foto disponível — não invente detalhes visuais",
+      foto_enviada,
+      instrucao: "Use 'o_que_eu_vejo_na_foto' pra descrever o produto com detalhes REAIS (cor, material, acabamento, texto da embalagem). Fale como quem está com o produto na mão, conectando ao que o cliente precisa. NUNCA invente o que não está na descrição visual.",
+      outros_parecidos: (prods ?? []).slice(1).map((r: any) => r.nome),
+    });
+  } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
+}
 
 
 // Pitch fixo da AMZ pra usar quando o post é sobre a MARCA (logo, institucional, arte da empresa).
@@ -3695,6 +3777,14 @@ const TOOLS = [
     },
   },
   {
+    type: "function",
+    function: {
+      name: "ver_produto",
+      description: "ENXERGA um produto do catálogo: retorna nome, preço, descrição E uma descrição visual precisa da FOTO do produto (cor, material, acabamento, texto na embalagem via OCR). Use SOB DEMANDA — apenas quando o cliente demonstrou interesse real naquele produto (pediu detalhes/preço/cor) ou quando você vai enviar a oferta. Passe enviar_foto=true pra mandar a foto do produto com legenda junto. NUNCA chame em toda mensagem nem pra produtos que ninguém pediu.",
+      parameters: { type: "object", properties: { produto: { type: "string", description: "nome ou parte do nome do produto" }, enviar_foto: { type: "boolean", description: "true pra enviar a foto do produto ao cliente junto com a legenda" } }, required: ["produto"] },
+    },
+  },
+  {
 
     type: "function",
     function: {
@@ -4038,6 +4128,7 @@ async function runTool(
   if (name === "listar_inadimplentes_amz") return { result: await toolInadimplentesAmz(ctx) };
   if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
   if (name === "criar_cobranca_amz") return { result: await toolCriarCobrancaAmz(args ?? {}, ctx) };
+  if (name === "ver_produto") return { result: await toolVerProduto(args ?? {}, ctx) };
   if (name === "consultar_estoque") return { result: await toolConsultarEstoque(args?.query ?? "", ctx) };
   if (name === "consultar_campanhas") return { result: await toolConsultarCampanhas(ctx) };
   if (name === "consultar_autopilot") return { result: await toolConsultarAutopilot(ctx) };
