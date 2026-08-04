@@ -468,6 +468,7 @@ export function CriarCampanhaWhatsAppModal({
     setTextoModelo(
       `Oi [nome do cliente], tudo bem? Separei uma oferta especial pra você: [produto] sai por [preço]. Quer que eu te passe os detalhes?`
     );
+    setTelefoneTeste(localStorage.getItem('amz_teste_whatsapp') || '');
   }, [open, produto?.id]);
 
 
