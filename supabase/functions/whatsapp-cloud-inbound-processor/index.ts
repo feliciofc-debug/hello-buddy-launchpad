@@ -1760,7 +1760,7 @@ async function toolConsultarEstoque(query: string, ctx: { userId: string; fromNu
   try {
     // SEMPRE filtra pelo user_id do próprio dono da conta.
     // Mesmo sendo admin, o Jarvis só enxerga o catálogo do Felicio — nunca mistura com clientes.
-    let p = sb.from("produtos").select("nome, categoria, preco, estoque, ativo, link, descricao, imagem_url, imagens").eq("user_id", ctx.userId).limit(20);
+    let p = sb.from("produtos").select("id, nome, categoria, preco, estoque, ativo, link, descricao, imagem_url, imagens, descricao_visual").eq("user_id", ctx.userId).limit(20);
     if (q) p = p.or(`nome.ilike.%${q}%,descricao.ilike.%${q}%,categoria.ilike.%${q}%,tags.ilike.%${q}%`);
     const { data: prods } = await p;
 
@@ -1989,7 +1989,17 @@ async function toolVerProduto(
     if (!p) return JSON.stringify({ erro: "produto_nao_encontrado", busca: q });
 
     const foto = primeiraImagemProduto(p);
-    const visao = foto ? await descreverProdutoCacheado(foto) : "";
+    // CACHE PERSISTENTE: roda a visão 1x por produto e reusa pra sempre (corta custo bruto).
+    let visao = (p.descricao_visual || "").trim();
+    if (!visao && foto) {
+      visao = await descreverProdutoCacheado(foto);
+      if (visao) {
+        await sb.from("produtos").update({ descricao_visual: visao }).eq("id", p.id);
+        console.log("[visao-produto] descricao_visual salva para", p.nome);
+      }
+    } else if (visao) {
+      console.log("[visao-produto] cache DB hit para", p.nome);
+    }
 
     let foto_enviada = false;
     if (args?.enviar_foto && foto) {
