@@ -7710,6 +7710,7 @@ export type Database = {
       tenant_ebooks: {
         Row: {
           arquivo_nome: string | null
+          arquivo_path: string | null
           arquivo_url: string | null
           ativo: boolean
           created_at: string
@@ -7721,6 +7722,7 @@ export type Database = {
         }
         Insert: {
           arquivo_nome?: string | null
+          arquivo_path?: string | null
           arquivo_url?: string | null
           ativo?: boolean
           created_at?: string
@@ -7732,6 +7734,7 @@ export type Database = {
         }
         Update: {
           arquivo_nome?: string | null
+          arquivo_path?: string | null
           arquivo_url?: string | null
           ativo?: boolean
           created_at?: string
