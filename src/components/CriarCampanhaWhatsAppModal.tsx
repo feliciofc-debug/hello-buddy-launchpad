@@ -205,7 +205,7 @@ export function CriarCampanhaWhatsAppModal({
         body: {
           user_id: user.id,
           to: telefone,
-          message: texto,
+          message: comLinkDoProduto(texto),
           image_url: produto.imagem_url || undefined,
         },
       });
