@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
   const results: any[] = [];
   for (const tpl of templates) {
     if (!tpl.nome_meta) continue;
-    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${cfg.waba_id}/message_templates?name=${encodeURIComponent(tpl.nome_meta)}`;
+    const url = `https://graph.facebook.com/${GRAPH_VERSION}/${cfg.waba_id}/message_templates?fields=name,language,status,category,rejected_reason,components&name=${encodeURIComponent(tpl.nome_meta)}`;
     try {
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${cfg.access_token}` },
