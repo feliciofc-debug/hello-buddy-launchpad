@@ -4228,6 +4228,7 @@ async function runTool(
   if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
   if (name === "criar_cobranca_amz") return { result: await toolCriarCobrancaAmz(args ?? {}, ctx) };
   if (name === "ver_produto") return { result: await toolVerProduto(args ?? {}, ctx) };
+  if (name === "entregar_ebook_presente") return { result: await toolEntregarEbook(ctx) };
   if (name === "consultar_estoque") return { result: await toolConsultarEstoque(args?.query ?? "", ctx) };
   if (name === "consultar_campanhas") return { result: await toolConsultarCampanhas(ctx) };
   if (name === "consultar_autopilot") return { result: await toolConsultarAutopilot(ctx) };
