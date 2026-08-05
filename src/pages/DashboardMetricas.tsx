@@ -42,7 +42,7 @@ import {
   Share2,
   Shield,
   Plug,
-  Briefcase
+  Briefcase,
   Gift,
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
