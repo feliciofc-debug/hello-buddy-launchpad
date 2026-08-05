@@ -109,15 +109,7 @@ Deno.serve(async (req) => {
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
   if (!jwt) return json(401, { error: "Missing Authorization" });
 
-  const supabaseUser = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-    global: { headers: { Authorization: `Bearer ${jwt}` } },
-    auth: { persistSession: false },
-  });
   const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-
-  const { data: userData, error: userErr } = await supabaseUser.auth.getUser();
-  if (userErr || !userData?.user) return json(401, { error: "Unauthorized" });
-  const userId = userData.user.id;
 
   let payload: any;
   try {
@@ -125,6 +117,22 @@ Deno.serve(async (req) => {
   } catch {
     return json(400, { error: "Invalid JSON" });
   }
+
+  // Chamada administrativa (service role) pode informar user_id explícito.
+  let userId: string;
+  if (jwt === SERVICE_KEY) {
+    if (!payload?.user_id) return json(400, { error: "user_id obrigatório em chamada administrativa" });
+    userId = String(payload.user_id);
+  } else {
+    const supabaseUser = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: `Bearer ${jwt}` } },
+      auth: { persistSession: false },
+    });
+    const { data: userData, error: userErr } = await supabaseUser.auth.getUser();
+    if (userErr || !userData?.user) return json(401, { error: "Unauthorized" });
+    userId = userData.user.id;
+  }
+
   const templateId = payload?.template_id;
   if (!templateId) return json(400, { error: "template_id obrigatório" });
 
