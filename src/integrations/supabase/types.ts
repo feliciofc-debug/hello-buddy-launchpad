@@ -5933,6 +5933,7 @@ export type Database = {
           opt_in_origem: string | null
           opt_in_status: string
           telefone: string | null
+          user_id: string | null
         }
         Insert: {
           adicionado_em?: string | null
@@ -5946,6 +5947,7 @@ export type Database = {
           opt_in_origem?: string | null
           opt_in_status?: string
           telefone?: string | null
+          user_id?: string | null
         }
         Update: {
           adicionado_em?: string | null
@@ -5959,6 +5961,7 @@ export type Database = {
           opt_in_origem?: string | null
           opt_in_status?: string
           telefone?: string | null
+          user_id?: string | null
         }
         Relationships: [
           {
