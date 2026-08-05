@@ -1230,133 +1230,29 @@ _Escolha quantidade e finalize!_ ✅`;
             </div>
           </div>
 
-          {/* TESTE RÁPIDO — atalho amigável, funciona em qualquer etapa */}
-          <div className="p-4 rounded-lg border-2 border-green-500/30 bg-green-500/5 space-y-3">
-            <div>
-              <p className="text-sm font-semibold">👀 Quer ver como fica antes de enviar pra todos?</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Manda um teste pro seu próprio WhatsApp agora. Não precisa esperar nada — é só pra você
-                conferir a mensagem e a foto do produto.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Input
-                value={telefoneTeste}
-                onChange={(e) => setTelefoneTeste(e.target.value)}
-                placeholder="Seu WhatsApp com DDD. Ex: 21 96752-0706"
-                className="flex-1"
-              />
-              <Button
-                onClick={enviarTesteParaMim}
-                disabled={enviandoTeste}
-                className="bg-green-600 hover:bg-green-700 text-white"
-              >
-                {enviandoTeste ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...
-                  </>
-                ) : (
-                  'Enviar teste pra mim'
-                )}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Dica: se o teste não chegar, mande um "oi" no seu WhatsApp de atendimento e tente de novo.
-            </p>
-          </div>
-
-
-
-          {/* ESTADO A — ainda não tem mensagem modelo liberada */}
-          {etapa === 'A' && !modeloEnviadoAgora && (
-            <div className="p-4 rounded-lg border bg-background space-y-4">
-              <div>
-                <p className="text-sm font-semibold">Vamos preparar sua primeira mensagem</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Para enviar campanhas no WhatsApp com segurança, o WhatsApp precisa aprovar sua
-                  mensagem uma vez. É rápido — vamos criar agora.
-                </p>
-              </div>
-
-              <div>
-                <Label className="text-sm">Sua mensagem</Label>
-                <Textarea
-                  value={textoModelo}
-                  onChange={(e) => setTextoModelo(e.target.value)}
-                  rows={5}
-                  className="mt-2"
-                />
-                <div className="flex gap-2 flex-wrap mt-2">
-                  {CHIPS.map((chip) => (
-                    <Button
-                      key={chip.chave}
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => inserirChip(chip.label)}
-                    >
-                      {chip.label}
-                    </Button>
-                  ))}
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Clique nos botões acima para inserir o nome do cliente, o produto e o preço — eles são
-                  preenchidos automaticamente em cada envio.
-                </p>
-              </div>
-
-              <div className="p-3 rounded-lg border bg-muted/30">
-                <p className="text-xs font-medium mb-2">Como o cliente vai ver:</p>
-                <p className="text-sm whitespace-pre-wrap">{previewModeloAmigavel() || '—'}</p>
-              </div>
-
-              <Button onClick={criarEEnviarModelo} disabled={salvandoModelo} className="w-full">
-                {salvandoModelo ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...
-                  </>
-                ) : (
-                  'Criar mensagem'
-                )}
-              </Button>
-              <p className="text-xs text-muted-foreground text-center">
-                Você só precisa fazer isso uma vez. Depois é só escolher o produto e enviar.
-              </p>
-            </div>
-          )}
-
-          {/* ESTADO A concluído / ESTADO B — mensagem aguardando liberação */}
-          {((etapa === 'A' && modeloEnviadoAgora) || etapa === 'B') && (
+          {/* SEM MENSAGEM LIBERADA — a criação/aprovação mora na tela de WhatsApp */}
+          {(etapa === 'A' || etapa === 'B') && (
             <div className="p-4 rounded-lg border bg-background space-y-3">
-              {modeloEnviadoAgora ? (
-                <p className="text-sm font-semibold">
-                  ✅ Sua mensagem foi criada e já está a caminho da liberação.
-                </p>
-              ) : (
-                <p className="text-sm font-semibold">
-                  ⏳ Sua mensagem está aguardando liberação do WhatsApp.
-                </p>
-              )}
+              <p className="text-sm font-semibold">
+                {etapa === 'B'
+                  ? '⏳ Sua mensagem está aguardando liberação do WhatsApp'
+                  : 'Você ainda não tem uma mensagem liberada'}
+              </p>
               <p className="text-sm text-muted-foreground">
-                Costuma levar de alguns minutos até 1 dia. Assim que liberar, você já pode enviar — e nós
-                avisamos. Pode fechar esta janela: quando voltar, o próximo passo aparece automaticamente.
+                {etapa === 'B'
+                  ? 'Assim que liberar, esta tela abre direto no envio: você escolhe a agenda de clientes e dispara.'
+                  : 'A mensagem é criada e liberada uma única vez na tela de WhatsApp. Depois, aqui só resta escolher a agenda de clientes e enviar.'}
               </p>
               <Button
                 variant="outline"
-                onClick={verificarModelo}
-                disabled={verificandoModelo}
                 className="w-full"
+                onClick={() => { window.location.href = '/pj/whatsapp-templates'; }}
               >
-                {verificandoModelo ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Atualizando...
-                  </>
-                ) : (
-                  'Já liberou? Atualizar status'
-                )}
+                Abrir tela de mensagens do WhatsApp
               </Button>
             </div>
           )}
+
 
           {(etapa === 'C' || etapa === 'D') && (
           <>
