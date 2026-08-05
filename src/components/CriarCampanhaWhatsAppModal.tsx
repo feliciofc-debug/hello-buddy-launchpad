@@ -1016,7 +1016,7 @@ _Escolha quantidade e finalize!_ ✅`;
           body: {
             user_id: user.id,
             to: phone,
-            message: textoBase,
+            message: comLinkDoProduto(textoBase),
             image_url: produto.imagem_url || undefined,
           },
         });
