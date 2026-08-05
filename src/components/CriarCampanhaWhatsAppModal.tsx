@@ -164,6 +164,8 @@ export function CriarCampanhaWhatsAppModal({
   // ============================================================
   const [telefoneTeste, setTelefoneTeste] = useState('');
   const [enviandoTeste, setEnviandoTeste] = useState(false);
+  // Quantos contatos têm conversa aberta (inbound nas últimas 24h) — janela livre da Meta
+  const [conversasAbertas, setConversasAbertas] = useState(0);
 
   const enviarTesteParaMim = async () => {
     try {
