@@ -4958,7 +4958,12 @@ async function processOne(queueId: string) {
           .replace(/[\u0300-\u036f]/g, "")
           .toLowerCase()
           .trim();
-        const buttonId: string = row.payload?.interactive?.button_reply?.id ?? "";
+        // Quick-reply de TEMPLATE chega como payload.button.{payload,text};
+        // botão interativo (não-template) chega como interactive.button_reply.id.
+        const buttonId: string = row.payload?.interactive?.button_reply?.id ??
+          row.payload?.button?.payload ?? "";
+        const buttonTextNorm = String(row.payload?.button?.text ?? "")
+          .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
         const STOP_TOKENS = new Set([
           "pare", "parar", "sair", "stop", "cancelar", "descadastrar",
@@ -4966,16 +4971,19 @@ async function processOne(queueId: string) {
         ]);
         const SIM_TOKENS = new Set([
           "sim", "s", "ok", "pode", "pode sim", "aceito", "confirmo",
-          "quero", "aceitar", "confirmar",
+          "quero", "aceitar", "confirmar", "sim, quero!", "sim quero",
+          "sim, quero",
         ]);
         const NAO_TOKENS_SOFT = new Set(["nao", "não", "n"]);
 
         const isStopButton = buttonId === "OPTIN_NAO" ||
           buttonId === "OPTIN_STOP" ||
-          buttonId === "STOP";
+          buttonId === "STOP" ||
+          buttonTextNorm.startsWith("nao");
         const isStopText = STOP_TOKENS.has(normalized);
-        const isSimButton = buttonId === "OPTIN_SIM";
-        const isSimText = SIM_TOKENS.has(normalized);
+        const isSimButton = buttonId === "OPTIN_SIM" ||
+          buttonTextNorm.startsWith("sim");
+        const isSimText = SIM_TOKENS.has(normalized) || normalized.startsWith("sim, quero") || normalized.startsWith("sim quero");
         const isSoftNao = NAO_TOKENS_SOFT.has(normalized);
 
         // Helper: registra log de auditoria (best-effort)

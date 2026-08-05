@@ -70,11 +70,13 @@ function buildComponents(tpl: any): any[] {
 
   // BOTÕES
   if (tpl.tipo_uso === "convite_optin") {
+    // Textos combinados com o gate de opt-in (aceita qualquer botão que comece
+    // com "Sim" → confirma; "Não" → recusa/stop).
     components.push({
       type: "BUTTONS",
       buttons: [
-        { type: "QUICK_REPLY", text: "SIM" },
-        { type: "QUICK_REPLY", text: "NÃO" },
+        { type: "QUICK_REPLY", text: "Sim, quero!" },
+        { type: "QUICK_REPLY", text: "Não, obrigado" },
       ],
     });
   } else if (Array.isArray(tpl.botoes) && tpl.botoes.length > 0) {
