@@ -124,6 +124,9 @@ export async function entregarEbookTenant(opts: {
       return { enviado: false, motivo: "recusado", ebook };
     }
 
+    const downloadUrl = await resolverUrlEbook(sb, ebook);
+    if (!downloadUrl) return { enviado: false, motivo: "arquivo_indisponivel", ebook };
+
     const caption = `Prontinho! 🎉 Aqui está seu ebook "${ebook.nome}". Aproveita!`;
     const filename = ebook.arquivo_nome || `${ebook.nome}.pdf`;
 
@@ -138,7 +141,7 @@ export async function entregarEbookTenant(opts: {
         user_id: userId,
         to: telefone,
         message: caption,
-        document_url: ebook.arquivo_url,
+        document_url: downloadUrl,
         document_filename: filename,
       }),
     });
