@@ -4950,8 +4950,22 @@ async function processOne(queueId: string) {
     // Se mudar aqui, atualizar o template na Meta na mesma PR.
     // =====================================================================
     try {
-      const isOwnerInbound = fromIsOwner;
+      // O dono normalmente não passa pelo gate (ele conversa como chefe).
+      // Exceção: se ELE recebeu um convite (teste/self-onboarding), o gate vale.
+      let conviteAbertoParaDono = false;
+      if (fromIsOwner && row.from_number) {
+        const { data: cv } = await sb
+          .from("pj_lista_membros")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("telefone", row.from_number)
+          .eq("opt_in_status", "convite_enviado")
+          .limit(1);
+        conviteAbertoParaDono = !!(cv && cv.length > 0);
+      }
+      const isOwnerInbound = fromIsOwner && !conviteAbertoParaDono;
       if (!isOwnerInbound && row.from_number) {
+
         const rawText = (userText || "").toString();
         const normalized = rawText
           .normalize("NFD")
