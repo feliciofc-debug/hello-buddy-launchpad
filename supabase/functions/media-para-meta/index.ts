@@ -53,15 +53,18 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
   const key = `${await sha1(src)}.jpg`;
-  const cdnUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${key}`;
 
-  // 1) Cache hit → redireciona pro CDN
+  // 1) Cache hit → serve o JPEG já convertido (bucket privado, servido pela função)
   try {
-    const head = await fetch(cdnUrl, { method: "HEAD" });
-    if (head.ok) {
-      return new Response(null, { status: 302, headers: { ...CORS, Location: cdnUrl } });
+    const { data: cached } = await admin.storage.from(BUCKET).download(key);
+    if (cached) {
+      const bytes = new Uint8Array(await cached.arrayBuffer());
+      return new Response(bytes, {
+        headers: { ...CORS, "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000" },
+      });
     }
   } catch { /* segue para conversão */ }
+
 
   // 2) Baixa a origem
   let originBytes: Uint8Array;
