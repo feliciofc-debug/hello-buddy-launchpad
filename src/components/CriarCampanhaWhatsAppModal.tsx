@@ -483,6 +483,25 @@ export function CriarCampanhaWhatsAppModal({
   }, [open, produto?.id]);
 
 
+  /** Conta contatos com conversa aberta (inbound nas últimas 24h) */
+  const fetchConversasAbertas = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from('whatsapp_cloud_messages')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+        .eq('direction', 'inbound')
+        .gte('created_at', desde);
+      setConversasAbertas(new Set((data || []).map((m: any) => m.conversation_id)).size);
+    } catch (e) {
+      console.warn('Falha ao apurar conversas abertas:', e);
+      setConversasAbertas(0);
+    }
+  };
+
   useEffect(() => {
     console.log('⚙️ useEffect EXECUTADO', { open });
     if (open) {
