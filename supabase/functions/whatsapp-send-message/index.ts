@@ -17,7 +17,12 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const body = await req.json()
-    const { user_id, to, message, template_name, template_language, image_url, document_url, document_filename } = body
+    const {
+      user_id, to, message, template_name, template_language,
+      image_url, document_url, document_filename,
+      // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
+      contact_card, // { nome: string, telefone: string }
+    } = body
 
     if (!user_id || !to) {
       throw new Error('user_id e to são obrigatórios')
@@ -61,6 +66,23 @@ serve(async (req) => {
           name: template_name,
           language: { code: template_language || 'pt_BR' },
         }
+      }
+    } else if (contact_card?.telefone) {
+      // ============================================================
+      // vCARD OFICIAL (type:contacts) — 1 toque para salvar o número.
+      // Dados sempre do TENANT (nome do negócio + número dele).
+      // ============================================================
+      const nomeCartao = String(contact_card.nome || 'Contato').trim()
+      const telCartao = String(contact_card.telefone).replace(/\D/g, '')
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'contacts',
+        contacts: [{
+          name: { formatted_name: nomeCartao, first_name: nomeCartao },
+          org: { company: nomeCartao },
+          phones: [{ phone: `+${telCartao}`, type: 'CELL', wa_id: telCartao }],
+        }],
       }
     } else if (document_url) {
       messagePayload = {
