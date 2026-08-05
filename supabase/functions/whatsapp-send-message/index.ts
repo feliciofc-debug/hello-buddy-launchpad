@@ -62,6 +62,17 @@ serve(async (req) => {
           language: { code: template_language || 'pt_BR' },
         }
       }
+    } else if (document_url) {
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'document',
+        document: {
+          link: document_url,
+          filename: document_filename || 'documento.pdf',
+          caption: message || '',
+        }
+      }
     } else if (image_url) {
       messagePayload = {
         messaging_product: 'whatsapp',
