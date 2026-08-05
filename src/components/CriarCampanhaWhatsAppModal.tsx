@@ -941,19 +941,19 @@ _Escolha quantidade e finalize!_ ✅`;
         campanha: {
           id: campanhaTemp.id,
           nome: campanhaTemp.nome,
-          mensagem_template: templateAtivo.body_text || '',
+          mensagem_template: templateAtivo?.body_text || mensagem || '',
           frequencia: 'agora',
           listas_ids: listasSelecionadas
         }
       });
     }
 
-    toast.success(`🚀 Enviando ${confirmados.length} mensagem(ns) via WhatsApp oficial...`);
+    toast.success(`🚀 Enviando ${elegiveis.length} mensagem(ns) via WhatsApp oficial...`);
 
     let enviados = 0;
     let falhas = 0;
 
-    for (const [phone, info] of confirmados) {
+    for (const [phone, info] of elegiveis) {
       let nomeContato = info.nome;
       if (!nomeContato) {
         try {
@@ -963,11 +963,31 @@ _Escolha quantidade e finalize!_ ✅`;
         }
       }
 
-      const variaveis = montarVariaveisTemplate(templateAtivo, nomeContato);
+      const usarTextoLivre = janelaAberta.has(phone);
 
-      const { data: sendResult, error: sendError } = await supabase.functions.invoke(
-        'whatsapp-cloud-send-template',
-        {
+      let sendResult: any = null;
+      let sendError: any = null;
+
+      if (usarTextoLivre) {
+        // Conversa aberta nas últimas 24h → texto livre + foto (permitido pela Meta)
+        const textoBase = (mensagem || previewTemplate() || `Oi {{nome}}! Novidade: ${produto.nome}${produto.preco != null ? ` por R$ ${Number(produto.preco).toFixed(2)}` : ''}.`)
+          .replace(/\{\{\s*nome\s*\}\}/gi, nomeContato || 'Cliente')
+          .replace(/\{\{\s*produto\s*\}\}/gi, produto.nome || '')
+          .replace(/\{\{\s*preco\s*\}\}/gi, produto.preco != null ? `R$ ${Number(produto.preco).toFixed(2)}` : '');
+
+        const resp = await supabase.functions.invoke('whatsapp-send-message', {
+          body: {
+            user_id: user.id,
+            to: phone,
+            message: textoBase,
+            image_url: produto.imagem_url || undefined,
+          },
+        });
+        sendResult = resp.data;
+        sendError = resp.error;
+      } else {
+        const variaveis = montarVariaveisTemplate(templateAtivo, nomeContato);
+        const resp = await supabase.functions.invoke('whatsapp-cloud-send-template', {
           body: {
             user_id: user.id,
             to: phone,
@@ -976,21 +996,24 @@ _Escolha quantidade e finalize!_ ✅`;
             campanha_id: campanhaTemp?.id || null,
             tipo: 'campanha',
           },
-        }
-      );
+        });
+        sendResult = resp.data;
+        sendError = resp.error;
+      }
 
-      if (!sendError && (sendResult as any)?.success) {
+      if (!sendError && sendResult?.success) {
         enviados++;
       } else {
         falhas++;
-        console.error('❌ Falha no envio oficial:', phone, sendError || sendResult);
-        const categoria = String((sendResult as any)?.categoria || '');
+        console.error('❌ Falha no envio oficial:', phone, usarTextoLivre ? '(texto livre)' : '(template)', sendError || sendResult);
+        const categoria = String(sendResult?.categoria || '');
         if (categoria === 'token' || categoria === 'template' || categoria === 'config') {
           toast.error(`Erro de configuração da Meta (${categoria}) — envio interrompido`);
           break;
         }
       }
     }
+
 
     if (campanhaTemp?.id) {
       await supabase
