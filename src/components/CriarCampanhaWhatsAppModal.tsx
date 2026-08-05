@@ -1346,12 +1346,18 @@ _Escolha quantidade e finalize!_ ✅`;
 
           {/* MODO PRONTO — a burocracia já foi feita uma vez */}
           <div className="p-4 rounded-lg border-2 border-primary/30 bg-primary/5">
-            <p className="text-sm font-semibold">✅ Sua mensagem já está liberada</p>
+            <p className="text-sm font-semibold">
+              {temModeloLiberado
+                ? '✅ Sua mensagem já está liberada'
+                : `✅ ${conversasAbertas} conversa(s) aberta(s) nas últimas 24h`}
+            </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Agora é só escolher para quem enviar e clicar em enviar. O nome do cliente, o produto e o
-              preço entram automáticos — você não precisa refazer nada a cada campanha.
+              {temModeloLiberado
+                ? 'Agora é só escolher para quem enviar e clicar em enviar. O nome do cliente, o produto e o preço entram automáticos — você não precisa refazer nada a cada campanha.'
+                : 'Quem falou com você nas últimas 24h pode receber a oferta agora mesmo, com foto e texto livre — sem depender de mensagem aprovada. Para os demais, é preciso a mensagem liberada pelo WhatsApp.'}
             </p>
           </div>
+
 
           {/* PASSO ÚNICO — PARA QUEM ENVIAR (segmentos) */}
           <div className="p-4 bg-muted/30 rounded-lg">
