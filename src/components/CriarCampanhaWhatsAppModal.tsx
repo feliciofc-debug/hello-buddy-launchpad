@@ -491,6 +491,7 @@ export function CriarCampanhaWhatsAppModal({
         fetchListas();
         fetchVendedores();
         fetchTemplates();
+        fetchConversasAbertas();
 
         
         // Se tem campanha existente, carregar dados dela
