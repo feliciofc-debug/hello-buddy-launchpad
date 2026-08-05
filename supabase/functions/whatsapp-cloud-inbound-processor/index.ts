@@ -5028,7 +5028,10 @@ async function processOne(queueId: string) {
               await logOptIn("confirmado", isSimButton ? "convite_botao_sim" : "convite_texto_sim");
 
               try {
-                const boasVindas = "Show! Você está na lista. 🎉 Em breve mandaremos novidades e ofertas selecionadas.";
+                const ebookTenant = await getTenantEbook(sb, userId);
+                const boasVindas = ebookTenant
+                  ? "Show! Você está na lista. 🎉 Já vou te mandar seu presente aqui."
+                  : "Show! Você está na lista. 🎉 Em breve mandaremos novidades e ofertas selecionadas.";
                 await sendWhatsApp(userId, row.from_number, boasVindas);
                 await sb.from("whatsapp_cloud_messages").insert({
                   conversation_id: conv.id,
@@ -5038,9 +5041,33 @@ async function processOne(queueId: string) {
                   content: boasVindas,
                   message_type: "text",
                 });
+
+                // ENTREGA DO EBOOK DO TENANT (janela 24h aberta pela resposta).
+                if (ebookTenant) {
+                  const r = await entregarEbookTenant({
+                    sb,
+                    userId,
+                    telefone: row.from_number,
+                    origem: "optin_convite_sim",
+                    supabaseUrl: SUPABASE_URL,
+                    serviceKey: SERVICE_KEY,
+                  });
+                  console.log(`[ebook] optin_sim tenant=${userId} enviado=${r.enviado} motivo=${r.motivo ?? "-"}`);
+                  if (r.enviado) {
+                    await sb.from("whatsapp_cloud_messages").insert({
+                      conversation_id: conv.id,
+                      user_id: userId,
+                      direction: "outbound",
+                      sender: "agent",
+                      content: `[ebook] ${ebookTenant.nome} enviado em PDF`,
+                      message_type: "document",
+                    });
+                  }
+                }
               } catch (e) {
                 console.warn("[opt-in-gate][sim][reply] falhou:", (e as Error).message);
               }
+
 
               console.log(`[opt-in-gate] SIM capturado tenant=${userId} from=${row.from_number} membros=${idsDentro.length}`);
               await doneQueue(row.id);
