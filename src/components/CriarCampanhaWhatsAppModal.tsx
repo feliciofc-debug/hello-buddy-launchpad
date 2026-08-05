@@ -1246,7 +1246,10 @@ _Escolha quantidade e finalize!_ ✅`;
     try {
       setIsLoading(true);
 
-      if (!templateSelecionado || !templateAtivo || templateAtivo.status_meta !== 'aprovado') {
+      const modeloOk = !!(templateSelecionado && templateAtivo && templateAtivo.status_meta === 'aprovado');
+      const janelaOk = conversasAbertas > 0 && frequencia === 'agora';
+
+      if (!modeloOk && !janelaOk) {
         toast.error('Selecione um template de campanha aprovado pela Meta');
         return;
       }
@@ -1256,10 +1259,11 @@ _Escolha quantidade e finalize!_ ✅`;
         return;
       }
 
-      if (totalConfirmadosSelecionados === 0) {
+      if (totalConfirmadosSelecionados === 0 && !janelaOk) {
         toast.error('Nenhum contato com opt-in confirmado nos destinos selecionados');
         return;
       }
+
 
 
 
