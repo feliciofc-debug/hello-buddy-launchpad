@@ -5040,6 +5040,7 @@ async function processOne(queueId: string) {
               });
             }
             await logOptIn("recusado", "stop_universal");
+            await registrarOfertaEbook(sb, userId, row.from_number, null, "recusado", "stop_universal");
           }
 
           // Resposta de despedida (dentro da janela 24h — texto livre, ok).
@@ -5170,6 +5171,7 @@ async function processOne(queueId: string) {
                 })
                 .in("id", idsDentro);
               await logOptIn("recusado", "convite_texto_nao");
+              await registrarOfertaEbook(sb, userId, row.from_number, null, "recusado", "convite_texto_nao");
 
               try {
                 const despedida = "Combinado, não vamos te incomodar. Se mudar de ideia, é só chamar aqui. 👋";
