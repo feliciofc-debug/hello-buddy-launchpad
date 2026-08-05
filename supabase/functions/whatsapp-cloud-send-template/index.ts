@@ -207,7 +207,7 @@ Deno.serve(async (req) => {
           template: {
             name: tpl.nome_meta,
             language: { code: tpl.idioma || "pt_BR" },
-            ...(components ? { components } : {}),
+            ...(components.length > 0 ? { components } : {}),
           },
         }),
       });
