@@ -3801,6 +3801,15 @@ const TOOLS = [
     },
   },
   {
+    type: "function",
+    function: {
+      name: "entregar_ebook_presente",
+      description: "Entrega o EBOOK DE PRESENTE deste negócio (PDF) para o cliente com quem você está conversando, e registra a autorização dele pra receber ofertas. Use SOMENTE depois de já ter resolvido o que a pessoa queria, num momento natural da conversa, e SOMENTE se ela disse que quer receber o presente. NUNCA use logo na abertura, nunca insista, nunca ofereça duas vezes.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+
+  {
 
     type: "function",
     function: {
