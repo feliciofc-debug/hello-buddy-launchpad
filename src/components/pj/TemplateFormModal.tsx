@@ -99,8 +99,8 @@ export function TemplateFormModal({ open, onOpenChange, initial, onSaved }: Prop
       header: form.header ?? null,
       botoes: form.tipo_uso === "convite_optin"
         ? [
-            { type: "QUICK_REPLY", text: "SIM" },
-            { type: "QUICK_REPLY", text: "NÃO" },
+            { type: "QUICK_REPLY", text: "Sim, quero!" },
+            { type: "QUICK_REPLY", text: "Não, obrigado" },
           ]
         : (form.botoes ?? []),
     };
