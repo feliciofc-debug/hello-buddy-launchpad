@@ -207,13 +207,23 @@ Deno.serve(async (req) => {
     return json(400, { error: "Conecte o WhatsApp Cloud antes de cadastrar templates (waba_id/access_token ausentes)." });
   }
 
-  // 3) Body Meta
+  // 3) HEADER IMAGE → obtém o handle na Meta (obrigatório)
+  let headerHandle: string | null = null;
+  if (tpl.header?.format === "IMAGE" && tpl.header?.example_url) {
+    headerHandle = await uploadHeaderHandle(cfg.access_token, String(tpl.header.example_url));
+    if (!headerHandle) {
+      return metaError("Não foi possível enviar a imagem de exemplo do cabeçalho à Meta.");
+    }
+  }
+
+  // 4) Body Meta
   const body = {
     name: tpl.nome_meta,
     language: tpl.idioma,
     category: tpl.categoria_meta,
-    components: buildComponents(tpl),
+    components: buildComponents(tpl, headerHandle),
   };
+
 
   // 4) POST Meta
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${cfg.waba_id}/message_templates`;
