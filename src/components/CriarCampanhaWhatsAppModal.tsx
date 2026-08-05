@@ -167,6 +167,20 @@ export function CriarCampanhaWhatsAppModal({
   // Quantos contatos têm conversa aberta (inbound nas últimas 24h) — janela livre da Meta
   const [conversasAbertas, setConversasAbertas] = useState(0);
 
+  // ============================================================
+  // FRENTE 2 — LINK NA COPY
+  // O link do produto (Shopee/marketplace) SEMPRE entra no texto final
+  // que o cliente recebe (caption da foto na janela de 24h).
+  // ============================================================
+  const comLinkDoProduto = (texto: string) => {
+    const link = (produto.link_marketplace || '').trim();
+    if (!link) return texto;
+    if (texto.includes(link)) return texto;
+    return `${texto.trim()}\n\n👉 ${link}`;
+  };
+
+
+
   const enviarTesteParaMim = async () => {
     try {
       setEnviandoTeste(true);
@@ -191,7 +205,7 @@ export function CriarCampanhaWhatsAppModal({
         body: {
           user_id: user.id,
           to: telefone,
-          message: texto,
+          message: comLinkDoProduto(texto),
           image_url: produto.imagem_url || undefined,
         },
       });
@@ -1002,7 +1016,7 @@ _Escolha quantidade e finalize!_ ✅`;
           body: {
             user_id: user.id,
             to: phone,
-            message: textoBase,
+            message: comLinkDoProduto(textoBase),
             image_url: produto.imagem_url || undefined,
           },
         });

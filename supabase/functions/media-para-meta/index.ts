@@ -1,0 +1,119 @@
+// ============================================================
+// media-para-meta — proxy de conversão de imagem para JPEG.
+//
+// GET /functions/v1/media-para-meta?url=<url-da-imagem>
+//
+// - Se a origem já é image/jpeg ou image/png → repassa o binário original.
+// - Se é AVIF/WEBP/HEIC/etc → converte para JPEG (ImageMagick WASM).
+// - Cache: grava o JPEG no bucket público `meta-media-cache` (chave = hash da
+//   URL) e, em hits futuros, redireciona direto para o CDN (custo ~zero).
+//
+// Público (verify_jwt = false) porque a Meta baixa a imagem anonimamente.
+// Multi-tenant por natureza: não depende de user_id, serve qualquer catálogo.
+// ============================================================
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import {
+  ImageMagick,
+  initializeImageMagick,
+  MagickFormat,
+} from "https://deno.land/x/imagemagick_deno@0.0.26/mod.ts";
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const BUCKET = "meta-media-cache";
+const SAFE_TYPES = ["image/jpeg", "image/png"];
+
+let magickReady = false;
+async function ensureMagick() {
+  if (!magickReady) {
+    await initializeImageMagick();
+    magickReady = true;
+  }
+}
+
+async function sha1(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(input));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+  const src = new URL(req.url).searchParams.get("url");
+  if (!src || !/^https?:\/\//i.test(src)) {
+    return new Response("url inválida", { status: 400, headers: CORS });
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+  const key = `${await sha1(src)}.jpg`;
+  const cdnUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${key}`;
+
+  // 1) Cache hit → redireciona pro CDN
+  try {
+    const head = await fetch(cdnUrl, { method: "HEAD" });
+    if (head.ok) {
+      return new Response(null, { status: 302, headers: { ...CORS, Location: cdnUrl } });
+    }
+  } catch { /* segue para conversão */ }
+
+  // 2) Baixa a origem
+  let originBytes: Uint8Array;
+  let originType = "";
+  try {
+    const r = await fetch(src, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!r.ok) return new Response("origem indisponível", { status: 502, headers: CORS });
+    originType = (r.headers.get("content-type") || "").toLowerCase().split(";")[0];
+    originBytes = new Uint8Array(await r.arrayBuffer());
+  } catch (e) {
+    console.error("[media-para-meta] download falhou:", (e as Error).message);
+    return new Response("falha ao baixar origem", { status: 502, headers: CORS });
+  }
+
+  // 3) Já é aceito pela Meta → repassa
+  if (SAFE_TYPES.includes(originType)) {
+    return new Response(originBytes, {
+      headers: { ...CORS, "Content-Type": originType, "Cache-Control": "public, max-age=31536000" },
+    });
+  }
+
+  // 4) Converte para JPEG
+  let jpeg: Uint8Array;
+  try {
+    await ensureMagick();
+    jpeg = await new Promise<Uint8Array>((resolve) => {
+      ImageMagick.read(originBytes, (img) => {
+        img.quality = 88;
+        // WhatsApp recomenda até ~1600px no maior lado; evita payload gigante.
+        if (img.width > 1600 || img.height > 1600) {
+          const scale = 1600 / Math.max(img.width, img.height);
+          img.resize(Math.round(img.width * scale), Math.round(img.height * scale));
+        }
+        img.write(MagickFormat.Jpeg, (data) => resolve(new Uint8Array(data)));
+      });
+    });
+  } catch (e) {
+    console.error("[media-para-meta] conversão falhou:", (e as Error).message);
+    return new Response("falha ao converter imagem", { status: 502, headers: CORS });
+  }
+
+  // 5) Cacheia (best-effort) e devolve
+  try {
+    await admin.storage.from(BUCKET).upload(key, jpeg, {
+      contentType: "image/jpeg",
+      upsert: true,
+    });
+  } catch (e) {
+    console.warn("[media-para-meta] cache falhou:", (e as Error).message);
+  }
+
+  return new Response(jpeg, {
+    headers: { ...CORS, "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000" },
+  });
+});

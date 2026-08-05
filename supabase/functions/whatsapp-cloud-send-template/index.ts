@@ -25,6 +25,8 @@
 // ============================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { toMetaSafeImageUrl } from "../_shared/meta-media.ts";
+
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -99,7 +101,11 @@ Deno.serve(async (req) => {
       campanha_id = null,
       tipo = "campanha",
       registrar = true,
+      // Frente 3 — template MARKETING com HEADER: IMAGE + BOTÃO URL dinâmico
+      imagem_url = null,   // foto do produto (vai no header)
+      link_sufixo = null,  // parte dinâmica do botão URL (ex: caminho/ID do produto)
     } = body ?? {};
+
 
     // Cliente admin (leituras cross-tenant controladas por user_id explícito)
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
@@ -155,12 +161,33 @@ Deno.serve(async (req) => {
     }
 
     // ---------- POST Meta ----------
-    const components = Array.isArray(variaveis) && variaveis.length > 0
-      ? [{
-          type: "body",
-          parameters: variaveis.map((v: unknown) => ({ type: "text", text: String(v ?? "") })),
-        }]
-      : undefined;
+    const components: any[] = [];
+
+    // HEADER: IMAGE — sempre convertida para JPEG (a Meta não entrega AVIF).
+    if (imagem_url) {
+      components.push({
+        type: "header",
+        parameters: [{ type: "image", image: { link: toMetaSafeImageUrl(String(imagem_url)) } }],
+      });
+    }
+
+    if (Array.isArray(variaveis) && variaveis.length > 0) {
+      components.push({
+        type: "body",
+        parameters: variaveis.map((v: unknown) => ({ type: "text", text: String(v ?? "") })),
+      });
+    }
+
+    // BOTÃO URL dinâmico (índice 0) — leva o cliente direto ao produto.
+    if (link_sufixo) {
+      components.push({
+        type: "button",
+        sub_type: "url",
+        index: "0",
+        parameters: [{ type: "text", text: String(link_sufixo) }],
+      });
+    }
+
 
     let messageId: string | null = null;
     let motivo = "";
@@ -180,7 +207,7 @@ Deno.serve(async (req) => {
           template: {
             name: tpl.nome_meta,
             language: { code: tpl.idioma || "pt_BR" },
-            ...(components ? { components } : {}),
+            ...(components.length > 0 ? { components } : {}),
           },
         }),
       });

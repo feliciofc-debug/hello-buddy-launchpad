@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { toMetaSafeImageUrl } from '../_shared/meta-media.ts'
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -96,15 +98,21 @@ serve(async (req) => {
         }
       }
     } else if (image_url) {
+      // Blindagem AVIF/WEBP → JPEG: a Meta só entrega JPEG/PNG.
+      const imagemSegura = toMetaSafeImageUrl(image_url)
+      if (imagemSegura !== image_url) {
+        console.log('🖼️ Imagem convertida para formato aceito pela Meta:', imagemSegura)
+      }
       messagePayload = {
         messaging_product: 'whatsapp',
         to: to.replace(/\D/g, ''),
         type: 'image',
         image: {
-          link: image_url,
+          link: imagemSegura,
           caption: message || '',
         }
       }
+
     } else {
       messagePayload = {
         messaging_product: 'whatsapp',
