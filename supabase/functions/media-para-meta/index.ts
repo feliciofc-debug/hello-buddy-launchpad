@@ -86,25 +86,45 @@ Deno.serve(async (req) => {
     });
   }
 
-  // 4) Converte para JPEG
-  let jpeg: Uint8Array;
+  // 4) Converte para JPEG.
+  //    ImageMagick WASM NÃO decodifica AVIF (formato das imagens da Shopee),
+  //    então o decoder primário é o wsrv.nl (gratuito, alta disponibilidade) e
+  //    o ImageMagick fica como fallback para WEBP/BMP/TIFF/GIF.
+  let jpeg: Uint8Array | null = null;
+
   try {
-    await ensureMagick();
-    jpeg = await new Promise<Uint8Array>((resolve) => {
-      ImageMagick.read(originBytes, (img) => {
-        img.quality = 88;
-        // WhatsApp recomenda até ~1600px no maior lado; evita payload gigante.
-        if (img.width > 1600 || img.height > 1600) {
-          const scale = 1600 / Math.max(img.width, img.height);
-          img.resize(Math.round(img.width * scale), Math.round(img.height * scale));
-        }
-        img.write(MagickFormat.Jpeg, (data) => resolve(new Uint8Array(data)));
-      });
-    });
+    const semProto = src.replace(/^https?:\/\//i, "");
+    const w = await fetch(
+      `https://wsrv.nl/?url=${encodeURIComponent(semProto)}&output=jpg&q=88&w=1600&h=1600&fit=inside&we`,
+    );
+    const wType = (w.headers.get("content-type") || "").toLowerCase();
+    if (w.ok && wType.includes("image/jpeg")) {
+      jpeg = new Uint8Array(await w.arrayBuffer());
+    }
   } catch (e) {
-    console.error("[media-para-meta] conversão falhou:", (e as Error).message);
-    return new Response("falha ao converter imagem", { status: 502, headers: CORS });
+    console.warn("[media-para-meta] wsrv falhou:", (e as Error).message);
   }
+
+  if (!jpeg) {
+    try {
+      await ensureMagick();
+      jpeg = await new Promise<Uint8Array>((resolve) => {
+        ImageMagick.read(originBytes, (img) => {
+          img.quality = 88;
+          // WhatsApp recomenda até ~1600px no maior lado; evita payload gigante.
+          if (img.width > 1600 || img.height > 1600) {
+            const scale = 1600 / Math.max(img.width, img.height);
+            img.resize(Math.round(img.width * scale), Math.round(img.height * scale));
+          }
+          img.write(MagickFormat.Jpeg, (data) => resolve(new Uint8Array(data)));
+        });
+      });
+    } catch (e) {
+      console.error("[media-para-meta] conversão falhou:", (e as Error).message);
+      return new Response("falha ao converter imagem", { status: 502, headers: CORS });
+    }
+  }
+
 
   // 5) Cacheia (best-effort) e devolve
   try {
