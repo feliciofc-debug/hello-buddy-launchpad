@@ -130,6 +130,47 @@ export async function entregarEbookTenant(opts: {
     const caption = `Prontinho! 🎉 Aqui está seu ebook "${ebook.nome}". Aproveita!`;
     const filename = ebook.arquivo_nome || `${ebook.nome}.pdf`;
 
+    // ============================================================
+    // PASSO 1+2 — Incentivo a salvar o contato + vCARD do TENANT.
+    // Dados vêm SEMPRE do row do tenant (business_name/display_phone).
+    // Nunca fixo/AMZ. Se o tenant não tem esses dados, apenas pula.
+    // Nunca bloqueia a entrega do PDF (passo 3).
+    // ============================================================
+    try {
+      const { data: cfg } = await sb
+        .from("whatsapp_config")
+        .select("business_name, display_phone")
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      const nomeCartao = (cfg?.business_name || "").trim();
+      const telCartao = String(cfg?.display_phone || "").replace(/\D/g, "");
+
+      if (nomeCartao && telCartao) {
+        const post = (payload: Record<string, unknown>) =>
+          fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${serviceKey}`,
+              "apikey": serviceKey,
+            },
+            body: JSON.stringify({ user_id: userId, to: telefone, ...payload }),
+          });
+
+        await post({
+          message: `Salva nosso contato pra não perder as novidades! 📲\nÉ 1 toque no cartão abaixo. 👇`,
+        });
+        await post({ contact_card: { nome: nomeCartao, telefone: telCartao } });
+      } else {
+        console.warn("[ebook][vcard] tenant sem business_name/display_phone — vCard pulado");
+      }
+    } catch (e) {
+      console.warn("[ebook][vcard] falhou (segue com o PDF):", (e as Error).message);
+    }
+
+
     const res = await fetch(`${supabaseUrl}/functions/v1/whatsapp-send-message`, {
       method: "POST",
       headers: {
