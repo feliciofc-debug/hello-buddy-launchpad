@@ -26,6 +26,12 @@ function getTenantOwnersForCtx(userId: string): string[] {
 
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
+import {
+  entregarEbookTenant,
+  getEntregaEbook,
+  getTenantEbook,
+  registrarOfertaEbook,
+} from "../_shared/tenant-ebook.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
