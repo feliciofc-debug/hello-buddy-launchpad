@@ -313,13 +313,14 @@ export function CriarCampanhaWhatsAppModal({
   // A = ainda não tem mensagem modelo liberada e nada em análise
   // B = mensagem em análise
   // C = mensagem liberada, mas contatos escolhidos sem autorização
-  // D = tudo pronto
+  // D = tudo pronto (ou existe conversa aberta nas últimas 24h)
   // ============================================================
   const temModeloLiberado = templates.length > 0;
   const temModeloEmAnalise = templatesCampanhaTodos.some((t) => t.status_meta === 'pendente');
   const etapa: 'A' | 'B' | 'C' | 'D' = !temModeloLiberado
-    ? (temModeloEmAnalise ? 'B' : 'A')
-    : (listasSelecionadas.length > 0 && totalConfirmadosSelecionados === 0 ? 'C' : 'D');
+    ? (conversasAbertas > 0 ? 'D' : (temModeloEmAnalise ? 'B' : 'A'))
+    : (listasSelecionadas.length > 0 && totalConfirmadosSelecionados === 0 && conversasAbertas === 0 ? 'C' : 'D');
+
 
   /** Texto amigável → formato aceito pelo WhatsApp ({{1}}, {{2}}...) */
   const CHIPS: { label: string; chave: string }[] = [
