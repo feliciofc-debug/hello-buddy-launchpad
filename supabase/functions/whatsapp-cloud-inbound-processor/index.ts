@@ -6097,7 +6097,28 @@ Regras:
       }
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock;
+    // EBOOK DE PRESENTE (multi-tenant): só entra no prompt se o tenant configurou
+    // e se este contato ainda não recebeu/recusou. Guardrail de 1x por contato.
+    let ebookBlock = "";
+    try {
+      if (!fromIsOwner && row.from_number) {
+        const ebookTenant = await getTenantEbook(sb, userId);
+        if (ebookTenant) {
+          const entregaEbook = await getEntregaEbook(sb, userId, row.from_number);
+          if (!entregaEbook) {
+            ebookBlock = `\n\nPRESENTE DISPONÍVEL (use com elegância, NUNCA de cara):\n- Este negócio tem um ebook de presente: "${ebookTenant.nome}".\n- REGRA: atender vem primeiro. Só mencione o presente DEPOIS de resolver o que a pessoa queria, e só se a conversa estiver num momento natural.\n- Convite sugerido (adapte ao seu tom, não copie robótico): "Ah, e se quiser, salva nosso contato que te mando de presente o ebook ${ebookTenant.nome} 🎁 — quer?"\n- Se ela disser que quer, chame entregar_ebook_presente. Se ela não quiser ou ignorar, DEIXE PASSAR e nunca ofereça de novo.\n- É PROIBIDO oferecer o presente mais de uma vez, insistir, ou usar o presente pra empurrar venda.`;
+          } else if (entregaEbook.status === "entregue") {
+            ebookBlock = `\n\nPRESENTE: este contato JÁ recebeu o ebook "${ebookTenant.nome}". NÃO ofereça de novo e não chame entregar_ebook_presente.`;
+          } else {
+            ebookBlock = `\n\nPRESENTE: este contato já foi abordado sobre o ebook "${ebookTenant.nome}". NÃO ofereça de novo.`;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[ebook][prompt-block] falhou:", (e as Error).message);
+    }
+
+    const systemPromptWithDate = systemPrompt + dateBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
