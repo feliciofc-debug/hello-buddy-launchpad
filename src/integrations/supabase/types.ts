@@ -7666,6 +7666,83 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_ebook_entregas: {
+        Row: {
+          created_at: string
+          ebook_id: string | null
+          id: string
+          origem: string | null
+          status: string
+          telefone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          ebook_id?: string | null
+          id?: string
+          origem?: string | null
+          status?: string
+          telefone: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          ebook_id?: string | null
+          id?: string
+          origem?: string | null
+          status?: string
+          telefone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_ebook_entregas_ebook_id_fkey"
+            columns: ["ebook_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_ebooks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_ebooks: {
+        Row: {
+          arquivo_nome: string | null
+          arquivo_url: string | null
+          ativo: boolean
+          created_at: string
+          id: string
+          nome: string
+          texto_convite: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          arquivo_nome?: string | null
+          arquivo_url?: string | null
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          nome: string
+          texto_convite?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          arquivo_nome?: string | null
+          arquivo_url?: string | null
+          ativo?: boolean
+          created_at?: string
+          id?: string
+          nome?: string
+          texto_convite?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tiktok_posts: {
         Row: {
           content_type: string
