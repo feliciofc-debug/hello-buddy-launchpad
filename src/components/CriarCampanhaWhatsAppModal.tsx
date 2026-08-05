@@ -164,6 +164,8 @@ export function CriarCampanhaWhatsAppModal({
   // ============================================================
   const [telefoneTeste, setTelefoneTeste] = useState('');
   const [enviandoTeste, setEnviandoTeste] = useState(false);
+  // Quantos contatos têm conversa aberta (inbound nas últimas 24h) — janela livre da Meta
+  const [conversasAbertas, setConversasAbertas] = useState(0);
 
   const enviarTesteParaMim = async () => {
     try {
@@ -313,13 +315,14 @@ export function CriarCampanhaWhatsAppModal({
   // A = ainda não tem mensagem modelo liberada e nada em análise
   // B = mensagem em análise
   // C = mensagem liberada, mas contatos escolhidos sem autorização
-  // D = tudo pronto
+  // D = tudo pronto (ou existe conversa aberta nas últimas 24h)
   // ============================================================
   const temModeloLiberado = templates.length > 0;
   const temModeloEmAnalise = templatesCampanhaTodos.some((t) => t.status_meta === 'pendente');
   const etapa: 'A' | 'B' | 'C' | 'D' = !temModeloLiberado
-    ? (temModeloEmAnalise ? 'B' : 'A')
-    : (listasSelecionadas.length > 0 && totalConfirmadosSelecionados === 0 ? 'C' : 'D');
+    ? (conversasAbertas > 0 ? 'D' : (temModeloEmAnalise ? 'B' : 'A'))
+    : (listasSelecionadas.length > 0 && totalConfirmadosSelecionados === 0 && conversasAbertas === 0 ? 'C' : 'D');
+
 
   /** Texto amigável → formato aceito pelo WhatsApp ({{1}}, {{2}}...) */
   const CHIPS: { label: string; chave: string }[] = [
@@ -480,6 +483,25 @@ export function CriarCampanhaWhatsAppModal({
   }, [open, produto?.id]);
 
 
+  /** Conta contatos com conversa aberta (inbound nas últimas 24h) */
+  const fetchConversasAbertas = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data } = await supabase
+        .from('whatsapp_cloud_messages')
+        .select('conversation_id')
+        .eq('user_id', user.id)
+        .eq('direction', 'inbound')
+        .gte('created_at', desde);
+      setConversasAbertas(new Set((data || []).map((m: any) => m.conversation_id)).size);
+    } catch (e) {
+      console.warn('Falha ao apurar conversas abertas:', e);
+      setConversasAbertas(0);
+    }
+  };
+
   useEffect(() => {
     console.log('⚙️ useEffect EXECUTADO', { open });
     if (open) {
@@ -488,6 +510,7 @@ export function CriarCampanhaWhatsAppModal({
         fetchListas();
         fetchVendedores();
         fetchTemplates();
+        fetchConversasAbertas();
 
         
         // Se tem campanha existente, carregar dados dela
@@ -820,14 +843,12 @@ _Escolha quantidade e finalize!_ ✅`;
 
     // ============================================================
     // DISPARO 100% META CLOUD API OFICIAL
-    // - template aprovado obrigatório
-    // - só contatos com opt-in CONFIRMADO
-    // - sem Baileys / sem fila_atendimento_pj
+    // Dois caminhos legítimos:
+    //  1) JANELA DE 24h ABERTA (cliente escreveu nas últimas 24h)
+    //     → texto livre + foto, sem template e sem opt-in (regra da Meta)
+    //  2) FORA DA JANELA → template aprovado + opt-in confirmado
     // ============================================================
-    if (!templateSelecionado || !templateAtivo || templateAtivo.status_meta !== 'aprovado') {
-      toast.error('Selecione um template de campanha APROVADO pela Meta');
-      return;
-    }
+    const temTemplateAprovado = !!(templateSelecionado && templateAtivo && templateAtivo.status_meta === 'aprovado');
 
     const listasContatoIds = listas
       .filter((lista) => listasSelecionadas.includes(lista.id))
@@ -856,16 +877,55 @@ _Escolha quantidade e finalize!_ ✅`;
       mapaContatos.set(tel, { nome: (m.nome || anterior?.nome || '').trim(), status });
     }
 
+    // ---- Janela de 24h: quem falou com o agente nas últimas 24h ----
+    const janelaAberta = new Set<string>();
+    try {
+      const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: convs } = await supabase
+        .from('whatsapp_cloud_conversations')
+        .select('id, contact_number')
+        .eq('user_id', user.id);
+
+      const idParaNumero = new Map<string, string>();
+      (convs || []).forEach((c: any) => idParaNumero.set(c.id, normalizarTelefone(String(c.contact_number || ''))));
+
+      if (idParaNumero.size > 0) {
+        const { data: inbounds } = await supabase
+          .from('whatsapp_cloud_messages')
+          .select('conversation_id, created_at')
+          .eq('user_id', user.id)
+          .eq('direction', 'inbound')
+          .gte('created_at', desde);
+
+        (inbounds || []).forEach((msg: any) => {
+          const tel = idParaNumero.get(msg.conversation_id);
+          if (tel) janelaAberta.add(tel);
+        });
+      }
+    } catch (e) {
+      console.warn('Não foi possível apurar a janela de 24h:', e);
+    }
+
     const totalBruto = mapaContatos.size;
-    const confirmados = Array.from(mapaContatos.entries()).filter(([, v]) => v.status === 'confirmado');
-    const semOptin = totalBruto - confirmados.length;
+    const elegiveis = Array.from(mapaContatos.entries()).filter(([tel, v]) => {
+      if (v.status === 'recusado') return false;
+      if (janelaAberta.has(tel)) return true;      // conversa aberta → texto livre
+      return v.status === 'confirmado' && temTemplateAprovado; // fora da janela → template
+    });
+    const naJanela = elegiveis.filter(([tel]) => janelaAberta.has(tel)).length;
+    const semOptin = totalBruto - elegiveis.length;
 
-    console.log(`📋 Destinatários: ${confirmados.length} de ${totalBruto} com opt-in confirmado (${semOptin} sem opt-in)`);
+    console.log(`📋 Destinatários: ${elegiveis.length} de ${totalBruto} elegíveis (${naJanela} em conversa aberta, ${semOptin} bloqueados)`);
 
-    if (confirmados.length === 0) {
-      toast.error(`Nenhum contato com opt-in confirmado (${totalBruto} sem opt-in). Envie o convite de opt-in primeiro.`);
+    if (elegiveis.length === 0) {
+      toast.error(
+        temTemplateAprovado
+          ? `Nenhum contato elegível (${totalBruto} sem autorização e sem conversa aberta).`
+          : 'Nenhum contato com conversa aberta nas últimas 24h. Para os demais é preciso uma mensagem aprovada pela Meta.'
+      );
       return;
     }
+
 
     // Registrar a campanha (histórico/biblioteca) já no canal oficial
     const { data: campanhaTemp, error: erroCampanha } = await supabase
@@ -878,8 +938,8 @@ _Escolha quantidade e finalize!_ ✅`;
         frequencia: 'uma_vez',
         data_inicio: new Date().toISOString().split('T')[0],
         horarios: ['00:00'],
-        mensagem_template: templateAtivo.body_text || '',
-        template_id: templateSelecionado,
+        mensagem_template: templateAtivo?.body_text || mensagem || '',
+        template_id: temTemplateAprovado ? templateSelecionado : null,
         canal: 'meta_oficial',
         ativa: false,
         status: 'enviada',
@@ -904,19 +964,19 @@ _Escolha quantidade e finalize!_ ✅`;
         campanha: {
           id: campanhaTemp.id,
           nome: campanhaTemp.nome,
-          mensagem_template: templateAtivo.body_text || '',
+          mensagem_template: templateAtivo?.body_text || mensagem || '',
           frequencia: 'agora',
           listas_ids: listasSelecionadas
         }
       });
     }
 
-    toast.success(`🚀 Enviando ${confirmados.length} mensagem(ns) via WhatsApp oficial...`);
+    toast.success(`🚀 Enviando ${elegiveis.length} mensagem(ns) via WhatsApp oficial...`);
 
     let enviados = 0;
     let falhas = 0;
 
-    for (const [phone, info] of confirmados) {
+    for (const [phone, info] of elegiveis) {
       let nomeContato = info.nome;
       if (!nomeContato) {
         try {
@@ -926,11 +986,31 @@ _Escolha quantidade e finalize!_ ✅`;
         }
       }
 
-      const variaveis = montarVariaveisTemplate(templateAtivo, nomeContato);
+      const usarTextoLivre = janelaAberta.has(phone);
 
-      const { data: sendResult, error: sendError } = await supabase.functions.invoke(
-        'whatsapp-cloud-send-template',
-        {
+      let sendResult: any = null;
+      let sendError: any = null;
+
+      if (usarTextoLivre) {
+        // Conversa aberta nas últimas 24h → texto livre + foto (permitido pela Meta)
+        const textoBase = (mensagem || previewTemplate() || `Oi {{nome}}! Novidade: ${produto.nome}${produto.preco != null ? ` por R$ ${Number(produto.preco).toFixed(2)}` : ''}.`)
+          .replace(/\{\{\s*nome\s*\}\}/gi, nomeContato || 'Cliente')
+          .replace(/\{\{\s*produto\s*\}\}/gi, produto.nome || '')
+          .replace(/\{\{\s*preco\s*\}\}/gi, produto.preco != null ? `R$ ${Number(produto.preco).toFixed(2)}` : '');
+
+        const resp = await supabase.functions.invoke('whatsapp-send-message', {
+          body: {
+            user_id: user.id,
+            to: phone,
+            message: textoBase,
+            image_url: produto.imagem_url || undefined,
+          },
+        });
+        sendResult = resp.data;
+        sendError = resp.error;
+      } else {
+        const variaveis = montarVariaveisTemplate(templateAtivo, nomeContato);
+        const resp = await supabase.functions.invoke('whatsapp-cloud-send-template', {
           body: {
             user_id: user.id,
             to: phone,
@@ -939,21 +1019,24 @@ _Escolha quantidade e finalize!_ ✅`;
             campanha_id: campanhaTemp?.id || null,
             tipo: 'campanha',
           },
-        }
-      );
+        });
+        sendResult = resp.data;
+        sendError = resp.error;
+      }
 
-      if (!sendError && (sendResult as any)?.success) {
+      if (!sendError && sendResult?.success) {
         enviados++;
       } else {
         falhas++;
-        console.error('❌ Falha no envio oficial:', phone, sendError || sendResult);
-        const categoria = String((sendResult as any)?.categoria || '');
+        console.error('❌ Falha no envio oficial:', phone, usarTextoLivre ? '(texto livre)' : '(template)', sendError || sendResult);
+        const categoria = String(sendResult?.categoria || '');
         if (categoria === 'token' || categoria === 'template' || categoria === 'config') {
           toast.error(`Erro de configuração da Meta (${categoria}) — envio interrompido`);
           break;
         }
       }
     }
+
 
     if (campanhaTemp?.id) {
       await supabase
@@ -1163,7 +1246,10 @@ _Escolha quantidade e finalize!_ ✅`;
     try {
       setIsLoading(true);
 
-      if (!templateSelecionado || !templateAtivo || templateAtivo.status_meta !== 'aprovado') {
+      const modeloOk = !!(templateSelecionado && templateAtivo && templateAtivo.status_meta === 'aprovado');
+      const janelaOk = conversasAbertas > 0 && frequencia === 'agora';
+
+      if (!modeloOk && !janelaOk) {
         toast.error('Selecione um template de campanha aprovado pela Meta');
         return;
       }
@@ -1173,10 +1259,11 @@ _Escolha quantidade e finalize!_ ✅`;
         return;
       }
 
-      if (totalConfirmadosSelecionados === 0) {
+      if (totalConfirmadosSelecionados === 0 && !janelaOk) {
         toast.error('Nenhum contato com opt-in confirmado nos destinos selecionados');
         return;
       }
+
 
 
 
@@ -1259,12 +1346,18 @@ _Escolha quantidade e finalize!_ ✅`;
 
           {/* MODO PRONTO — a burocracia já foi feita uma vez */}
           <div className="p-4 rounded-lg border-2 border-primary/30 bg-primary/5">
-            <p className="text-sm font-semibold">✅ Sua mensagem já está liberada</p>
+            <p className="text-sm font-semibold">
+              {temModeloLiberado
+                ? '✅ Sua mensagem já está liberada'
+                : `✅ ${conversasAbertas} conversa(s) aberta(s) nas últimas 24h`}
+            </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Agora é só escolher para quem enviar e clicar em enviar. O nome do cliente, o produto e o
-              preço entram automáticos — você não precisa refazer nada a cada campanha.
+              {temModeloLiberado
+                ? 'Agora é só escolher para quem enviar e clicar em enviar. O nome do cliente, o produto e o preço entram automáticos — você não precisa refazer nada a cada campanha.'
+                : 'Quem falou com você nas últimas 24h pode receber a oferta agora mesmo, com foto e texto livre — sem depender de mensagem aprovada. Para os demais, é preciso a mensagem liberada pelo WhatsApp.'}
             </p>
           </div>
+
 
           {/* PASSO ÚNICO — PARA QUEM ENVIAR (segmentos) */}
           <div className="p-4 bg-muted/30 rounded-lg">
