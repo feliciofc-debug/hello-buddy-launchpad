@@ -25,7 +25,53 @@ function metaError(msg: string, details?: unknown) {
   return json(200, { success: false, error: msg, details: details ?? null });
 }
 
-function buildComponents(tpl: any): any[] {
+// ============================================================
+// HEADER: IMAGE — a Meta exige um "header_handle" obtido pela Resumable Upload
+// API (uma URL de exemplo NÃO é aceita: erro 2388273). Fluxo, multi-tenant:
+//   1) descobre o app_id do token do próprio tenant (GET /app)
+//   2) POST /{app_id}/uploads?file_length&file_type → upload session
+//   3) POST /{upload_id} com o binário → devolve { h: "<handle>" }
+// A imagem de exemplo passa pelo proxy media-para-meta (sempre JPEG).
+// ============================================================
+async function uploadHeaderHandle(token: string, imageUrl: string): Promise<string | null> {
+  try {
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) return null;
+    const bytes = new Uint8Array(await imgRes.arrayBuffer());
+
+    const appRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/app?fields=id`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const appJson = await appRes.json().catch(() => ({}));
+    const appId = appJson?.id;
+    if (!appId) return null;
+
+    const sessRes = await fetch(
+      `https://graph.facebook.com/${GRAPH_VERSION}/${appId}/uploads?file_length=${bytes.length}&file_type=image/jpeg`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+    );
+    const sessJson = await sessRes.json().catch(() => ({}));
+    const uploadId = sessJson?.id;
+    if (!uploadId) return null;
+
+    const upRes = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${uploadId}`, {
+      method: "POST",
+      headers: {
+        Authorization: `OAuth ${token}`,
+        file_offset: "0",
+        "Content-Type": "application/octet-stream",
+      },
+      body: bytes,
+    });
+    const upJson = await upRes.json().catch(() => ({}));
+    return upJson?.h ? String(upJson.h) : null;
+  } catch (e) {
+    console.error("[template-submit] upload header falhou:", (e as Error).message);
+    return null;
+  }
+}
+
+function buildComponents(tpl: any, headerHandle?: string | null): any[] {
   const components: any[] = [];
 
   // HEADER opcional
@@ -33,13 +79,14 @@ function buildComponents(tpl: any): any[] {
   if (header && header.format) {
     if (header.format === "TEXT" && header.text) {
       components.push({ type: "HEADER", format: "TEXT", text: String(header.text) });
-    } else if (header.format === "IMAGE" && header.example_url) {
+    } else if (header.format === "IMAGE" && headerHandle) {
       components.push({
         type: "HEADER",
         format: "IMAGE",
-        example: { header_handle: [String(header.example_url)] },
+        example: { header_handle: [headerHandle] },
       });
     }
+
   }
 
   // BODY (com exemplos obrigatórios quando há variáveis {{n}})
@@ -160,13 +207,23 @@ Deno.serve(async (req) => {
     return json(400, { error: "Conecte o WhatsApp Cloud antes de cadastrar templates (waba_id/access_token ausentes)." });
   }
 
-  // 3) Body Meta
+  // 3) HEADER IMAGE → obtém o handle na Meta (obrigatório)
+  let headerHandle: string | null = null;
+  if (tpl.header?.format === "IMAGE" && tpl.header?.example_url) {
+    headerHandle = await uploadHeaderHandle(cfg.access_token, String(tpl.header.example_url));
+    if (!headerHandle) {
+      return metaError("Não foi possível enviar a imagem de exemplo do cabeçalho à Meta.");
+    }
+  }
+
+  // 4) Body Meta
   const body = {
     name: tpl.nome_meta,
     language: tpl.idioma,
     category: tpl.categoria_meta,
-    components: buildComponents(tpl),
+    components: buildComponents(tpl, headerHandle),
   };
+
 
   // 4) POST Meta
   const url = `https://graph.facebook.com/${GRAPH_VERSION}/${cfg.waba_id}/message_templates`;
