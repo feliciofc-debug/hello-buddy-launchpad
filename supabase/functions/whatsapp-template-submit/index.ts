@@ -42,8 +42,31 @@ function buildComponents(tpl: any): any[] {
     }
   }
 
-  // BODY
-  components.push({ type: "BODY", text: String(tpl.body_text ?? "") });
+  // BODY (com exemplos obrigatórios quando há variáveis {{n}})
+  const bodyText = String(tpl.body_text ?? "");
+  const varNums = [...new Set([...bodyText.matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1])))]
+    .sort((a, b) => a - b);
+  const bodyComp: any = { type: "BODY", text: bodyText };
+  if (varNums.length > 0) {
+    const map = tpl.variaveis_map && typeof tpl.variaveis_map === "object" ? tpl.variaveis_map : {};
+    const fallback: Record<string, string> = {
+      nome: "Maria",
+      produto: "Kit Skincare Facial",
+      preco: "R$ 89,90",
+      preco_brl: "R$ 89,90",
+    };
+    const examples = varNums.map((n) => {
+      const entry = (map as any)[String(n)];
+      if (entry && typeof entry === "object") {
+        if (entry.exemplo) return String(entry.exemplo);
+        if (entry.campo && fallback[entry.campo]) return fallback[entry.campo];
+      }
+      if (typeof entry === "string" && fallback[entry]) return fallback[entry];
+      return "Exemplo";
+    });
+    bodyComp.example = { body_text: [examples] };
+  }
+  components.push(bodyComp);
 
   // BOTÕES
   if (tpl.tipo_uso === "convite_optin") {
