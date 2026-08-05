@@ -205,8 +205,8 @@ export function TemplateFormModal({ open, onOpenChange, initial, onSaved }: Prop
             <div className="rounded-md border p-3 bg-muted/40 text-sm">
               <p className="font-medium mb-1">Botões Quick Reply</p>
               <p className="text-muted-foreground">
-                Serão adicionados automaticamente: <code>[SIM]</code> e <code>[NÃO]</code>. O agente de opt-in já
-                interpreta essas respostas para marcar o contato como confirmado ou recusado.
+                Serão adicionados automaticamente: <code>[Sim, quero!]</code> e <code>[Não, obrigado]</code>. O agente de
+                opt-in já interpreta essas respostas para marcar o contato como confirmado ou recusado.
               </p>
             </div>
           )}
