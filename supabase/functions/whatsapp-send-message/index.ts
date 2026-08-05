@@ -17,7 +17,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const body = await req.json()
-    const { user_id, to, message, template_name, template_language, image_url } = body
+    const { user_id, to, message, template_name, template_language, image_url, document_url, document_filename } = body
 
     if (!user_id || !to) {
       throw new Error('user_id e to são obrigatórios')
@@ -60,6 +60,17 @@ serve(async (req) => {
         template: {
           name: template_name,
           language: { code: template_language || 'pt_BR' },
+        }
+      }
+    } else if (document_url) {
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'document',
+        document: {
+          link: document_url,
+          filename: document_filename || 'documento.pdf',
+          caption: message || '',
         }
       }
     } else if (image_url) {

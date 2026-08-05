@@ -26,6 +26,12 @@ function getTenantOwnersForCtx(userId: string): string[] {
 
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
+import {
+  entregarEbookTenant,
+  getEntregaEbook,
+  getTenantEbook,
+  registrarOfertaEbook,
+} from "../_shared/tenant-ebook.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1971,7 +1977,81 @@ async function descreverProdutoCacheado(url: string): Promise<string> {
 }
 
 // ver_produto: SOB DEMANDA. Só roda quando o agente vai realmente falar/oferecer aquele produto.
+// entregar_ebook_presente: entrega o ebook DO TENANT + confirma o opt-in.
+// Guardrail: 1x por contato (tenant_ebook_entregas tem UNIQUE user_id+telefone).
+async function toolEntregarEbook(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  try {
+    const ebook = await getTenantEbook(sb, ctx.userId);
+    if (!ebook) return JSON.stringify({ ok: false, motivo: "este negócio não tem ebook de presente configurado" });
+
+    const entrega = await getEntregaEbook(sb, ctx.userId, ctx.fromNumber);
+    if (entrega?.status === "entregue") {
+      return JSON.stringify({ ok: false, motivo: "esse contato já recebeu o ebook — não ofereça de novo" });
+    }
+    if (entrega?.status === "recusado") {
+      return JSON.stringify({ ok: false, motivo: "esse contato já recusou — nunca ofereça de novo" });
+    }
+
+    const r = await entregarEbookTenant({
+      sb,
+      userId: ctx.userId,
+      telefone: ctx.fromNumber,
+      origem: "agente_janela_24h",
+      supabaseUrl: SUPABASE_URL,
+      serviceKey: SERVICE_KEY,
+    });
+
+    if (r.enviado) {
+      // Confirma a autorização de receber ofertas (opt-in) junto da entrega.
+      const nowIso = new Date().toISOString();
+      const { data: membros } = await sb
+        .from("pj_lista_membros")
+        .select("id, opt_in_status")
+        .eq("user_id", ctx.userId)
+        .eq("telefone", ctx.fromNumber);
+
+      const jaRecusado = (membros || []).some((m: any) => m.opt_in_status === "recusado");
+      if (!jaRecusado) {
+        if (membros && membros.length > 0) {
+          await sb
+            .from("pj_lista_membros")
+            .update({ opt_in_status: "confirmado", opt_in_origem: "ebook_janela_24h", opt_in_em: nowIso })
+            .eq("user_id", ctx.userId)
+            .eq("telefone", ctx.fromNumber)
+            .neq("opt_in_status", "recusado");
+        } else {
+          await sb.from("pj_lista_membros").insert({
+            user_id: ctx.userId,
+            telefone: ctx.fromNumber,
+            opt_in_status: "confirmado",
+            opt_in_origem: "ebook_janela_24h",
+            opt_in_em: nowIso,
+          });
+        }
+        await sb.from("opt_in_log").insert({
+          user_id: ctx.userId,
+          telefone: ctx.fromNumber,
+          status_novo: "confirmado",
+          origem: "ebook_janela_24h",
+          canal: "whatsapp_cloud",
+        }).then(() => {}, () => {});
+      }
+
+      return JSON.stringify({
+        ok: true,
+        ebook: ebook.nome,
+        aviso: "O PDF já foi enviado por você. Só comente naturalmente que chegou, sem repetir a oferta.",
+      });
+    }
+
+    return JSON.stringify({ ok: false, motivo: r.motivo ?? "não foi possível enviar agora" });
+  } catch (e) {
+    return JSON.stringify({ ok: false, motivo: (e as Error).message });
+  }
+}
+
 async function toolVerProduto(
+
   args: { produto?: string; enviar_foto?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
@@ -3795,6 +3875,15 @@ const TOOLS = [
     },
   },
   {
+    type: "function",
+    function: {
+      name: "entregar_ebook_presente",
+      description: "Entrega o EBOOK DE PRESENTE deste negócio (PDF) para o cliente com quem você está conversando, e registra a autorização dele pra receber ofertas. Use SOMENTE depois de já ter resolvido o que a pessoa queria, num momento natural da conversa, e SOMENTE se ela disse que quer receber o presente. NUNCA use logo na abertura, nunca insista, nunca ofereça duas vezes.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+
+  {
 
     type: "function",
     function: {
@@ -4139,6 +4228,7 @@ async function runTool(
   if (name === "status_plataforma_amz") return { result: await toolStatusPlataforma(ctx) };
   if (name === "criar_cobranca_amz") return { result: await toolCriarCobrancaAmz(args ?? {}, ctx) };
   if (name === "ver_produto") return { result: await toolVerProduto(args ?? {}, ctx) };
+  if (name === "entregar_ebook_presente") return { result: await toolEntregarEbook(ctx) };
   if (name === "consultar_estoque") return { result: await toolConsultarEstoque(args?.query ?? "", ctx) };
   if (name === "consultar_campanhas") return { result: await toolConsultarCampanhas(ctx) };
   if (name === "consultar_autopilot") return { result: await toolConsultarAutopilot(ctx) };
@@ -4950,6 +5040,7 @@ async function processOne(queueId: string) {
               });
             }
             await logOptIn("recusado", "stop_universal");
+            await registrarOfertaEbook(sb, userId, row.from_number, null, "recusado", "stop_universal");
           }
 
           // Resposta de despedida (dentro da janela 24h — texto livre, ok).
@@ -5022,7 +5113,10 @@ async function processOne(queueId: string) {
               await logOptIn("confirmado", isSimButton ? "convite_botao_sim" : "convite_texto_sim");
 
               try {
-                const boasVindas = "Show! Você está na lista. 🎉 Em breve mandaremos novidades e ofertas selecionadas.";
+                const ebookTenant = await getTenantEbook(sb, userId);
+                const boasVindas = ebookTenant
+                  ? "Show! Você está na lista. 🎉 Já vou te mandar seu presente aqui."
+                  : "Show! Você está na lista. 🎉 Em breve mandaremos novidades e ofertas selecionadas.";
                 await sendWhatsApp(userId, row.from_number, boasVindas);
                 await sb.from("whatsapp_cloud_messages").insert({
                   conversation_id: conv.id,
@@ -5032,9 +5126,33 @@ async function processOne(queueId: string) {
                   content: boasVindas,
                   message_type: "text",
                 });
+
+                // ENTREGA DO EBOOK DO TENANT (janela 24h aberta pela resposta).
+                if (ebookTenant) {
+                  const r = await entregarEbookTenant({
+                    sb,
+                    userId,
+                    telefone: row.from_number,
+                    origem: "optin_convite_sim",
+                    supabaseUrl: SUPABASE_URL,
+                    serviceKey: SERVICE_KEY,
+                  });
+                  console.log(`[ebook] optin_sim tenant=${userId} enviado=${r.enviado} motivo=${r.motivo ?? "-"}`);
+                  if (r.enviado) {
+                    await sb.from("whatsapp_cloud_messages").insert({
+                      conversation_id: conv.id,
+                      user_id: userId,
+                      direction: "outbound",
+                      sender: "agent",
+                      content: `[ebook] ${ebookTenant.nome} enviado em PDF`,
+                      message_type: "document",
+                    });
+                  }
+                }
               } catch (e) {
                 console.warn("[opt-in-gate][sim][reply] falhou:", (e as Error).message);
               }
+
 
               console.log(`[opt-in-gate] SIM capturado tenant=${userId} from=${row.from_number} membros=${idsDentro.length}`);
               await doneQueue(row.id);
@@ -5053,6 +5171,7 @@ async function processOne(queueId: string) {
                 })
                 .in("id", idsDentro);
               await logOptIn("recusado", "convite_texto_nao");
+              await registrarOfertaEbook(sb, userId, row.from_number, null, "recusado", "convite_texto_nao");
 
               try {
                 const despedida = "Combinado, não vamos te incomodar. Se mudar de ideia, é só chamar aqui. 👋";
@@ -5980,7 +6099,28 @@ Regras:
       }
     }
 
-    const systemPromptWithDate = systemPrompt + dateBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock;
+    // EBOOK DE PRESENTE (multi-tenant): só entra no prompt se o tenant configurou
+    // e se este contato ainda não recebeu/recusou. Guardrail de 1x por contato.
+    let ebookBlock = "";
+    try {
+      if (!fromIsOwner && row.from_number) {
+        const ebookTenant = await getTenantEbook(sb, userId);
+        if (ebookTenant) {
+          const entregaEbook = await getEntregaEbook(sb, userId, row.from_number);
+          if (!entregaEbook) {
+            ebookBlock = `\n\nPRESENTE DISPONÍVEL (use com elegância, NUNCA de cara):\n- Este negócio tem um ebook de presente: "${ebookTenant.nome}".\n- REGRA: atender vem primeiro. Só mencione o presente DEPOIS de resolver o que a pessoa queria, e só se a conversa estiver num momento natural.\n- Convite sugerido (adapte ao seu tom, não copie robótico): "Ah, e se quiser, salva nosso contato que te mando de presente o ebook ${ebookTenant.nome} 🎁 — quer?"\n- Se ela disser que quer, chame entregar_ebook_presente. Se ela não quiser ou ignorar, DEIXE PASSAR e nunca ofereça de novo.\n- É PROIBIDO oferecer o presente mais de uma vez, insistir, ou usar o presente pra empurrar venda.`;
+          } else if (entregaEbook.status === "entregue") {
+            ebookBlock = `\n\nPRESENTE: este contato JÁ recebeu o ebook "${ebookTenant.nome}". NÃO ofereça de novo e não chame entregar_ebook_presente.`;
+          } else {
+            ebookBlock = `\n\nPRESENTE: este contato já foi abordado sobre o ebook "${ebookTenant.nome}". NÃO ofereça de novo.`;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[ebook][prompt-block] falhou:", (e as Error).message);
+    }
+
+    const systemPromptWithDate = systemPrompt + dateBlock + ownerHintBlock + mediaBlock + recentMediaBlock + pendingConfirmBlock + contactMemoryBlock + ebookBlock;
     console.log(`[processor] tenant=${userId} mode=${mode} promptLen=${systemPromptWithDate.length}`);
 
     // Histórico
