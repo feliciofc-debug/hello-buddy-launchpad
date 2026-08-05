@@ -161,12 +161,33 @@ Deno.serve(async (req) => {
     }
 
     // ---------- POST Meta ----------
-    const components = Array.isArray(variaveis) && variaveis.length > 0
-      ? [{
-          type: "body",
-          parameters: variaveis.map((v: unknown) => ({ type: "text", text: String(v ?? "") })),
-        }]
-      : undefined;
+    const components: any[] = [];
+
+    // HEADER: IMAGE — sempre convertida para JPEG (a Meta não entrega AVIF).
+    if (imagem_url) {
+      components.push({
+        type: "header",
+        parameters: [{ type: "image", image: { link: toMetaSafeImageUrl(String(imagem_url)) } }],
+      });
+    }
+
+    if (Array.isArray(variaveis) && variaveis.length > 0) {
+      components.push({
+        type: "body",
+        parameters: variaveis.map((v: unknown) => ({ type: "text", text: String(v ?? "") })),
+      });
+    }
+
+    // BOTÃO URL dinâmico (índice 0) — leva o cliente direto ao produto.
+    if (link_sufixo) {
+      components.push({
+        type: "button",
+        sub_type: "url",
+        index: "0",
+        parameters: [{ type: "text", text: String(link_sufixo) }],
+      });
+    }
+
 
     let messageId: string | null = null;
     let motivo = "";
