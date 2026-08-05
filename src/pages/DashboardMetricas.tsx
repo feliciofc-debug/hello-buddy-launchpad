@@ -42,7 +42,8 @@ import {
   Share2,
   Shield,
   Plug,
-  Briefcase
+  Briefcase,
+  Gift,
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
@@ -295,6 +296,7 @@ export default function DashboardMetricas() {
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
     { id: 'whatsapp-templates', icon: MessageCircle, label: 'Templates WhatsApp', path: '/pj/whatsapp-templates' },
+    { id: 'ebook-presente', icon: Gift, label: 'Ebook de Presente', path: '/pj/ebook-presente' },
     { id: 'contatos-comerciais', icon: Briefcase, label: 'Contatos Comerciais', path: '/pj/contatos-comerciais' },
     { id: 'clientes-segmentos', icon: Users, label: 'Clientes e Segmentos', path: '/pj/listas-contatos' },
     // { id: 'integracoes', icon: Plug, label: t('nav.integrations', 'Integrações'), path: '/integracoes' }, // Oculto - reativar removendo o comentário
@@ -304,7 +306,7 @@ export default function DashboardMetricas() {
       : []),
   ];
 
-  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || item.id === 'clientes-segmentos' || item.id === 'whatsapp-templates' || isMenuAllowed(item.id));
+  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || item.id === 'clientes-segmentos' || item.id === 'whatsapp-templates' || item.id === 'ebook-presente' || isMenuAllowed(item.id));
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {

@@ -9,22 +9,47 @@ export interface TenantEbook {
   id: string;
   nome: string;
   arquivo_url: string | null;
+  arquivo_path: string | null;
   arquivo_nome: string | null;
   texto_convite: string | null;
   ativo: boolean;
 }
 
+const BUCKET = "tenant-ebooks";
+const SIGNED_TTL_SEG = 60 * 60 * 24 * 7; // 7 dias — a Meta busca o arquivo pelo link
+
 /** Ebook ativo do tenant, ou null se o tenant não configurou (feature opcional). */
 export async function getTenantEbook(sb: any, userId: string): Promise<TenantEbook | null> {
   const { data } = await sb
     .from("tenant_ebooks")
-    .select("id, nome, arquivo_url, arquivo_nome, texto_convite, ativo")
+    .select("id, nome, arquivo_url, arquivo_path, arquivo_nome, texto_convite, ativo")
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (!data?.ativo || !data?.arquivo_url) return null;
+  if (!data?.ativo) return null;
+  if (!data?.arquivo_path && !data?.arquivo_url) return null;
   return data as TenantEbook;
 }
+
+/**
+ * URL de download do PDF DO TENANT.
+ * Bucket é PRIVADO: gera URL assinada a partir do arquivo_path daquele tenant.
+ * Nunca há caminho fixo/global — o path sempre vem da linha do tenant do contato.
+ */
+async function resolverUrlEbook(sb: any, ebook: TenantEbook): Promise<string | null> {
+  if (ebook.arquivo_path) {
+    const { data, error } = await sb.storage
+      .from(BUCKET)
+      .createSignedUrl(ebook.arquivo_path, SIGNED_TTL_SEG);
+    if (error) {
+      console.error("[ebook] signed url falhou:", error.message);
+      return ebook.arquivo_url ?? null;
+    }
+    return data?.signedUrl ?? null;
+  }
+  return ebook.arquivo_url ?? null; // legado
+}
+
 
 /** Já recebeu / recusou / foi ofertado? (registro único por telefone no tenant) */
 export async function getEntregaEbook(
@@ -99,6 +124,9 @@ export async function entregarEbookTenant(opts: {
       return { enviado: false, motivo: "recusado", ebook };
     }
 
+    const downloadUrl = await resolverUrlEbook(sb, ebook);
+    if (!downloadUrl) return { enviado: false, motivo: "arquivo_indisponivel", ebook };
+
     const caption = `Prontinho! 🎉 Aqui está seu ebook "${ebook.nome}". Aproveita!`;
     const filename = ebook.arquivo_nome || `${ebook.nome}.pdf`;
 
@@ -113,7 +141,7 @@ export async function entregarEbookTenant(opts: {
         user_id: userId,
         to: telefone,
         message: caption,
-        document_url: ebook.arquivo_url,
+        document_url: downloadUrl,
         document_filename: filename,
       }),
     });
@@ -138,7 +166,7 @@ export async function entregarEbookTenant(opts: {
         body: JSON.stringify({
           user_id: userId,
           to: telefone,
-          message: `${caption}\n\n📥 ${ebook.arquivo_url}`,
+          message: `${caption}\n\n📥 ${downloadUrl}`,
         }),
       });
     }
