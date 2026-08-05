@@ -1977,7 +1977,81 @@ async function descreverProdutoCacheado(url: string): Promise<string> {
 }
 
 // ver_produto: SOB DEMANDA. Só roda quando o agente vai realmente falar/oferecer aquele produto.
+// entregar_ebook_presente: entrega o ebook DO TENANT + confirma o opt-in.
+// Guardrail: 1x por contato (tenant_ebook_entregas tem UNIQUE user_id+telefone).
+async function toolEntregarEbook(ctx: { userId: string; fromNumber: string }): Promise<string> {
+  try {
+    const ebook = await getTenantEbook(sb, ctx.userId);
+    if (!ebook) return JSON.stringify({ ok: false, motivo: "este negócio não tem ebook de presente configurado" });
+
+    const entrega = await getEntregaEbook(sb, ctx.userId, ctx.fromNumber);
+    if (entrega?.status === "entregue") {
+      return JSON.stringify({ ok: false, motivo: "esse contato já recebeu o ebook — não ofereça de novo" });
+    }
+    if (entrega?.status === "recusado") {
+      return JSON.stringify({ ok: false, motivo: "esse contato já recusou — nunca ofereça de novo" });
+    }
+
+    const r = await entregarEbookTenant({
+      sb,
+      userId: ctx.userId,
+      telefone: ctx.fromNumber,
+      origem: "agente_janela_24h",
+      supabaseUrl: SUPABASE_URL,
+      serviceKey: SERVICE_KEY,
+    });
+
+    if (r.enviado) {
+      // Confirma a autorização de receber ofertas (opt-in) junto da entrega.
+      const nowIso = new Date().toISOString();
+      const { data: membros } = await sb
+        .from("pj_lista_membros")
+        .select("id, opt_in_status")
+        .eq("user_id", ctx.userId)
+        .eq("telefone", ctx.fromNumber);
+
+      const jaRecusado = (membros || []).some((m: any) => m.opt_in_status === "recusado");
+      if (!jaRecusado) {
+        if (membros && membros.length > 0) {
+          await sb
+            .from("pj_lista_membros")
+            .update({ opt_in_status: "confirmado", opt_in_origem: "ebook_janela_24h", opt_in_em: nowIso })
+            .eq("user_id", ctx.userId)
+            .eq("telefone", ctx.fromNumber)
+            .neq("opt_in_status", "recusado");
+        } else {
+          await sb.from("pj_lista_membros").insert({
+            user_id: ctx.userId,
+            telefone: ctx.fromNumber,
+            opt_in_status: "confirmado",
+            opt_in_origem: "ebook_janela_24h",
+            opt_in_em: nowIso,
+          });
+        }
+        await sb.from("opt_in_log").insert({
+          user_id: ctx.userId,
+          telefone: ctx.fromNumber,
+          status_novo: "confirmado",
+          origem: "ebook_janela_24h",
+          canal: "whatsapp_cloud",
+        }).then(() => {}, () => {});
+      }
+
+      return JSON.stringify({
+        ok: true,
+        ebook: ebook.nome,
+        aviso: "O PDF já foi enviado por você. Só comente naturalmente que chegou, sem repetir a oferta.",
+      });
+    }
+
+    return JSON.stringify({ ok: false, motivo: r.motivo ?? "não foi possível enviar agora" });
+  } catch (e) {
+    return JSON.stringify({ ok: false, motivo: (e as Error).message });
+  }
+}
+
 async function toolVerProduto(
+
   args: { produto?: string; enviar_foto?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
