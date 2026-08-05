@@ -17,7 +17,12 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const body = await req.json()
-    const { user_id, to, message, template_name, template_language, image_url, document_url, document_filename } = body
+    const {
+      user_id, to, message, template_name, template_language,
+      image_url, document_url, document_filename,
+      // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
+      contact_card, // { nome: string, telefone: string }
+    } = body
 
     if (!user_id || !to) {
       throw new Error('user_id e to são obrigatórios')
