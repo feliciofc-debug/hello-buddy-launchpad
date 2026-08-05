@@ -244,7 +244,15 @@ export function CriarCampanhaWhatsAppModal({
       setTemplateConvite(
         todos.find((t) => t.tipo_uso === 'convite' && t.status_meta === 'aprovado') || null
       );
-      if (aprovados.length === 1) setTemplateSelecionado(aprovados[0].id);
+      // MODO PRONTO: se já existe mensagem liberada, seleciona automaticamente
+      // (a mais recente) para o cliente não precisar escolher nada.
+      if (aprovados.length > 0) {
+        setTemplateSelecionado((atual) =>
+          atual && aprovados.some((t) => t.id === atual) ? atual : aprovados[0].id
+        );
+      } else {
+        setTemplateSelecionado('');
+      }
     } catch (e) {
       console.error('❌ Erro ao carregar mensagens modelo:', e);
       setTemplates([]);
