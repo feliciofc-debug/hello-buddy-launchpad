@@ -67,6 +67,23 @@ serve(async (req) => {
           language: { code: template_language || 'pt_BR' },
         }
       }
+    } else if (contact_card?.telefone) {
+      // ============================================================
+      // vCARD OFICIAL (type:contacts) — 1 toque para salvar o número.
+      // Dados sempre do TENANT (nome do negócio + número dele).
+      // ============================================================
+      const nomeCartao = String(contact_card.nome || 'Contato').trim()
+      const telCartao = String(contact_card.telefone).replace(/\D/g, '')
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'contacts',
+        contacts: [{
+          name: { formatted_name: nomeCartao, first_name: nomeCartao },
+          org: { company: nomeCartao },
+          phones: [{ phone: `+${telCartao}`, type: 'CELL', wa_id: telCartao }],
+        }],
+      }
     } else if (document_url) {
       messagePayload = {
         messaging_product: 'whatsapp',
