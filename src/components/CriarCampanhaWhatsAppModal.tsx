@@ -244,7 +244,15 @@ export function CriarCampanhaWhatsAppModal({
       setTemplateConvite(
         todos.find((t) => t.tipo_uso === 'convite' && t.status_meta === 'aprovado') || null
       );
-      if (aprovados.length === 1) setTemplateSelecionado(aprovados[0].id);
+      // MODO PRONTO: se já existe mensagem liberada, seleciona automaticamente
+      // (a mais recente) para o cliente não precisar escolher nada.
+      if (aprovados.length > 0) {
+        setTemplateSelecionado((atual) =>
+          atual && aprovados.some((t) => t.id === atual) ? atual : aprovados[0].id
+        );
+      } else {
+        setTemplateSelecionado('');
+      }
     } catch (e) {
       console.error('❌ Erro ao carregar mensagens modelo:', e);
       setTemplates([]);
@@ -1353,135 +1361,18 @@ _Escolha quantidade e finalize!_ ✅`;
           {(etapa === 'C' || etapa === 'D') && (
           <>
 
-          {/* 1. FREQUÊNCIA */}
-          <div>
-            <Label className="text-lg font-semibold">1. Escolha a Frequência</Label>
-            <RadioGroup value={frequencia} onValueChange={(v: any) => setFrequencia(v)} className="mt-3">
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="agora" id="agora" />
-                <Label htmlFor="agora" className="cursor-pointer">🚀 Enviar Agora</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="uma_vez" id="uma_vez" />
-                <Label htmlFor="uma_vez" className="cursor-pointer">📅 Agendar Uma Vez</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="diario" id="diario" />
-                <Label htmlFor="diario" className="cursor-pointer">📆 Diário</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="semanal" id="semanal" />
-                <Label htmlFor="semanal" className="cursor-pointer">📅 Semanal</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="personalizado" id="personalizado" />
-                <Label htmlFor="personalizado" className="cursor-pointer">⚙️ Personalizado</Label>
-              </div>
-            </RadioGroup>
-          </div>
-
-          {/* 2. DATA E HORÁRIOS */}
-          {frequencia !== 'agora' && (
-            <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
-              <Label className="text-lg font-semibold">2. Selecione Data e Horários</Label>
-              
-              <div>
-                <Label>Data de Início</Label>
-                <Input 
-                  type="date" 
-                  value={dataInicio} 
-                  onChange={(e) => setDataInicio(e.target.value)} 
-                  className="mt-2"
-                />
-              </div>
-
-              <div>
-                <Label>Horários do Dia</Label>
-                {frequencia === 'uma_vez' && horarios.length > 1 && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    ℹ️ Todos os {horarios.length} horários serão disparados no mesmo dia ({new Date(dataInicio).toLocaleDateString('pt-BR')}). Não precisa duplicar a campanha.
-                  </p>
-                )}
-
-                {horarios.map((h, idx) => (
-                  <div key={idx} className="flex gap-2 items-center mt-2">
-                    <Input 
-                      type="time" 
-                      value={h} 
-                      onChange={(e) => updateHorario(idx, e.target.value)} 
-                    />
-                    {horarios.length > 1 && (
-                      <Button variant="ghost" size="sm" onClick={() => removeHorario(idx)}>
-                        <X className="w-4 h-4" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                <Button variant="outline" size="sm" className="mt-2 w-full" onClick={addHorario}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Adicionar Horário
-                </Button>
-              </div>
-
-              {/* Dias da Semana (para semanal) */}
-              {(frequencia === 'semanal' || frequencia === 'diario') && (
-                <div>
-                  <Label>Dias da Semana</Label>
-                  <div className="flex gap-2 mt-2 flex-wrap">
-                    {dayNames.map((dia, idx) => (
-                      <Button
-                        key={idx}
-                        size="sm"
-                        onClick={() => toggleDiaSemana(idx)}
-                        className={
-                          diasSemana.includes(idx)
-                            ? 'bg-green-500 hover:bg-green-600 text-white border-green-500'
-                            : 'bg-red-500 hover:bg-red-600 text-white border-red-500'
-                        }
-                      >
-                        {dia}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 2. VENDEDOR RESPONSÁVEL */}
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-3 block">2. Vendedor Responsável (Opcional)</Label>
-            <Select
-              value={vendedorSelecionado || 'nenhum'}
-              onValueChange={(v) => setVendedorSelecionado(v === 'nenhum' ? '' : v)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Selecione o vendedor" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="nenhum">
-                  Sem vendedor atribuído
-                </SelectItem>
-                {vendedores.map(vendedor => (
-                  <SelectItem key={vendedor.id} value={vendedor.id}>
-                    👤 {vendedor.nome}
-                    {vendedor.especialidade && (
-                      <span className="text-xs text-muted-foreground ml-2">
-                        ({vendedor.especialidade})
-                      </span>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground mt-2">
-              ℹ️ Conversas desta campanha serão automaticamente atribuídas a este vendedor
+          {/* MODO PRONTO — a burocracia já foi feita uma vez */}
+          <div className="p-4 rounded-lg border-2 border-primary/30 bg-primary/5">
+            <p className="text-sm font-semibold">✅ Sua mensagem já está liberada</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Agora é só escolher para quem enviar e clicar em enviar. O nome do cliente, o produto e o
+              preço entram automáticos — você não precisa refazer nada a cada campanha.
             </p>
           </div>
 
-          {/* 3. GRUPOS DE CLIENTES (segmentos) */}
+          {/* PASSO ÚNICO — PARA QUEM ENVIAR (segmentos) */}
           <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold">3. Para quem enviar</Label>
+            <Label className="text-lg font-semibold">Para quem enviar</Label>
             <p className="text-xs text-muted-foreground mt-1">
               Escolha um ou mais grupos de clientes. Campanhas são enviadas individualmente para cada
               cliente — grupos de WhatsApp não recebem campanha.
@@ -1521,36 +1412,173 @@ _Escolha quantidade e finalize!_ ✅`;
             )}
           </div>
 
+          {/* PREVIEW DA MENSAGEM QUE VAI SAIR (sem jargão, sem escolha obrigatória) */}
+          {templateAtivo && (
+            <div className="p-3 rounded-lg border bg-background">
+              <p className="text-xs font-medium mb-2">Como o cliente vai receber (exemplo com "Maria"):</p>
+              <p className="text-sm whitespace-pre-wrap">{previewTemplate() || '—'}</p>
+            </div>
+          )}
 
-          {/* 4. MENSAGEM MODELO JÁ LIBERADA */}
-          <div className="p-4 bg-muted/30 rounded-lg">
-            <Label className="text-lg font-semibold mb-1 block">4. Sua mensagem modelo</Label>
-            <p className="text-xs text-muted-foreground mb-3">
-              Estas são as mensagens já liberadas para envio em massa. Escolha qual usar nesta campanha.
-            </p>
+          {/* OPÇÕES AVANÇADAS — agendamento, vendedor e troca de mensagem ficam escondidos */}
+          <details className="rounded-lg border bg-background">
+            <summary className="cursor-pointer select-none p-3 text-sm font-medium">
+              ⚙️ Opções avançadas (agendar, vendedor, trocar a mensagem)
+            </summary>
 
-            <Select value={templateSelecionado} onValueChange={setTemplateSelecionado}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Escolha a mensagem modelo" />
-              </SelectTrigger>
-              <SelectContent>
-                {templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    ✅ {t.body_text ? `${t.body_text.slice(0, 60)}${t.body_text.length > 60 ? '…' : ''}` : t.nome_meta}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {templateAtivo && (
-              <div className="mt-4 p-3 rounded-lg border bg-background">
-                <p className="text-xs font-medium mb-2">Como o cliente vai receber (exemplo com "Maria"):</p>
-                <p className="text-sm whitespace-pre-wrap">{previewTemplate() || '—'}</p>
+            <div className="p-4 pt-0 space-y-6">
+              {/* FREQUÊNCIA */}
+              <div>
+                <Label className="text-sm font-semibold">Quando enviar</Label>
+                <RadioGroup value={frequencia} onValueChange={(v: any) => setFrequencia(v)} className="mt-3">
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="agora" id="agora" />
+                    <Label htmlFor="agora" className="cursor-pointer">🚀 Enviar Agora</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="uma_vez" id="uma_vez" />
+                    <Label htmlFor="uma_vez" className="cursor-pointer">📅 Agendar Uma Vez</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="diario" id="diario" />
+                    <Label htmlFor="diario" className="cursor-pointer">📆 Diário</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="semanal" id="semanal" />
+                    <Label htmlFor="semanal" className="cursor-pointer">📅 Semanal</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="personalizado" id="personalizado" />
+                    <Label htmlFor="personalizado" className="cursor-pointer">⚙️ Personalizado</Label>
+                  </div>
+                </RadioGroup>
               </div>
-            )}
-          </div>
+
+              {/* DATA E HORÁRIOS */}
+              {frequencia !== 'agora' && (
+                <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+                  <Label className="text-sm font-semibold">Data e horários</Label>
+
+                  <div>
+                    <Label>Data de Início</Label>
+                    <Input
+                      type="date"
+                      value={dataInicio}
+                      onChange={(e) => setDataInicio(e.target.value)}
+                      className="mt-2"
+                    />
+                  </div>
+
+                  <div>
+                    <Label>Horários do Dia</Label>
+                    {frequencia === 'uma_vez' && horarios.length > 1 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ℹ️ Todos os {horarios.length} horários serão disparados no mesmo dia ({new Date(dataInicio).toLocaleDateString('pt-BR')}). Não precisa duplicar a campanha.
+                      </p>
+                    )}
+
+                    {horarios.map((h, idx) => (
+                      <div key={idx} className="flex gap-2 items-center mt-2">
+                        <Input
+                          type="time"
+                          value={h}
+                          onChange={(e) => updateHorario(idx, e.target.value)}
+                        />
+                        {horarios.length > 1 && (
+                          <Button variant="ghost" size="sm" onClick={() => removeHorario(idx)}>
+                            <X className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" className="mt-2 w-full" onClick={addHorario}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Adicionar Horário
+                    </Button>
+                  </div>
+
+                  {/* Dias da Semana (para semanal) */}
+                  {(frequencia === 'semanal' || frequencia === 'diario') && (
+                    <div>
+                      <Label>Dias da Semana</Label>
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        {dayNames.map((dia, idx) => (
+                          <Button
+                            key={idx}
+                            size="sm"
+                            onClick={() => toggleDiaSemana(idx)}
+                            className={
+                              diasSemana.includes(idx)
+                                ? 'bg-green-500 hover:bg-green-600 text-white border-green-500'
+                                : 'bg-red-500 hover:bg-red-600 text-white border-red-500'
+                            }
+                          >
+                            {dia}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* VENDEDOR RESPONSÁVEL */}
+              <div className="p-4 bg-muted/30 rounded-lg">
+                <Label className="text-sm font-semibold mb-3 block">Vendedor responsável (opcional)</Label>
+                <Select
+                  value={vendedorSelecionado || 'nenhum'}
+                  onValueChange={(v) => setVendedorSelecionado(v === 'nenhum' ? '' : v)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Selecione o vendedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nenhum">
+                      Sem vendedor atribuído
+                    </SelectItem>
+                    {vendedores.map(vendedor => (
+                      <SelectItem key={vendedor.id} value={vendedor.id}>
+                        👤 {vendedor.nome}
+                        {vendedor.especialidade && (
+                          <span className="text-xs text-muted-foreground ml-2">
+                            ({vendedor.especialidade})
+                          </span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-2">
+                  ℹ️ Conversas desta campanha serão automaticamente atribuídas a este vendedor
+                </p>
+              </div>
+
+              {/* TROCAR A MENSAGEM LIBERADA (só faz sentido com mais de uma) */}
+              {templates.length > 1 && (
+                <div className="p-4 bg-muted/30 rounded-lg">
+                  <Label className="text-sm font-semibold mb-1 block">Trocar a mensagem</Label>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Estas são as mensagens já liberadas para envio em massa.
+                  </p>
+                  <Select value={templateSelecionado} onValueChange={setTemplateSelecionado}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Escolha a mensagem" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          ✅ {t.body_text ? `${t.body_text.slice(0, 60)}${t.body_text.length > 60 ? '…' : ''}` : t.nome_meta}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+          </details>
           </>
           )}
+
 
           {/* ESTADO C — contatos ainda sem autorização */}
           {etapa === 'C' && (
