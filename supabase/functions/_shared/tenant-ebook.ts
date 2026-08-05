@@ -166,7 +166,7 @@ export async function entregarEbookTenant(opts: {
         body: JSON.stringify({
           user_id: userId,
           to: telefone,
-          message: `${caption}\n\n📥 ${ebook.arquivo_url}`,
+          message: `${caption}\n\n📥 ${downloadUrl}`,
         }),
       });
     }
