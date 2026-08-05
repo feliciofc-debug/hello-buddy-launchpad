@@ -101,7 +101,11 @@ Deno.serve(async (req) => {
       campanha_id = null,
       tipo = "campanha",
       registrar = true,
+      // Frente 3 — template MARKETING com HEADER: IMAGE + BOTÃO URL dinâmico
+      imagem_url = null,   // foto do produto (vai no header)
+      link_sufixo = null,  // parte dinâmica do botão URL (ex: caminho/ID do produto)
     } = body ?? {};
+
 
     // Cliente admin (leituras cross-tenant controladas por user_id explícito)
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, serviceKey);
