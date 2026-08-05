@@ -43,6 +43,7 @@ import {
   Shield,
   Plug,
   Briefcase
+  Gift,
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
