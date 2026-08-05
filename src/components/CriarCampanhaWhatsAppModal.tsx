@@ -820,14 +820,12 @@ _Escolha quantidade e finalize!_ ✅`;
 
     // ============================================================
     // DISPARO 100% META CLOUD API OFICIAL
-    // - template aprovado obrigatório
-    // - só contatos com opt-in CONFIRMADO
-    // - sem Baileys / sem fila_atendimento_pj
+    // Dois caminhos legítimos:
+    //  1) JANELA DE 24h ABERTA (cliente escreveu nas últimas 24h)
+    //     → texto livre + foto, sem template e sem opt-in (regra da Meta)
+    //  2) FORA DA JANELA → template aprovado + opt-in confirmado
     // ============================================================
-    if (!templateSelecionado || !templateAtivo || templateAtivo.status_meta !== 'aprovado') {
-      toast.error('Selecione um template de campanha APROVADO pela Meta');
-      return;
-    }
+    const temTemplateAprovado = !!(templateSelecionado && templateAtivo && templateAtivo.status_meta === 'aprovado');
 
     const listasContatoIds = listas
       .filter((lista) => listasSelecionadas.includes(lista.id))
@@ -856,16 +854,55 @@ _Escolha quantidade e finalize!_ ✅`;
       mapaContatos.set(tel, { nome: (m.nome || anterior?.nome || '').trim(), status });
     }
 
+    // ---- Janela de 24h: quem falou com o agente nas últimas 24h ----
+    const janelaAberta = new Set<string>();
+    try {
+      const desde = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const { data: convs } = await supabase
+        .from('whatsapp_cloud_conversations')
+        .select('id, contact_number')
+        .eq('user_id', user.id);
+
+      const idParaNumero = new Map<string, string>();
+      (convs || []).forEach((c: any) => idParaNumero.set(c.id, normalizarTelefone(String(c.contact_number || ''))));
+
+      if (idParaNumero.size > 0) {
+        const { data: inbounds } = await supabase
+          .from('whatsapp_cloud_messages')
+          .select('conversation_id, created_at')
+          .eq('user_id', user.id)
+          .eq('direction', 'inbound')
+          .gte('created_at', desde);
+
+        (inbounds || []).forEach((msg: any) => {
+          const tel = idParaNumero.get(msg.conversation_id);
+          if (tel) janelaAberta.add(tel);
+        });
+      }
+    } catch (e) {
+      console.warn('Não foi possível apurar a janela de 24h:', e);
+    }
+
     const totalBruto = mapaContatos.size;
-    const confirmados = Array.from(mapaContatos.entries()).filter(([, v]) => v.status === 'confirmado');
-    const semOptin = totalBruto - confirmados.length;
+    const elegiveis = Array.from(mapaContatos.entries()).filter(([tel, v]) => {
+      if (v.status === 'recusado') return false;
+      if (janelaAberta.has(tel)) return true;      // conversa aberta → texto livre
+      return v.status === 'confirmado' && temTemplateAprovado; // fora da janela → template
+    });
+    const naJanela = elegiveis.filter(([tel]) => janelaAberta.has(tel)).length;
+    const semOptin = totalBruto - elegiveis.length;
 
-    console.log(`📋 Destinatários: ${confirmados.length} de ${totalBruto} com opt-in confirmado (${semOptin} sem opt-in)`);
+    console.log(`📋 Destinatários: ${elegiveis.length} de ${totalBruto} elegíveis (${naJanela} em conversa aberta, ${semOptin} bloqueados)`);
 
-    if (confirmados.length === 0) {
-      toast.error(`Nenhum contato com opt-in confirmado (${totalBruto} sem opt-in). Envie o convite de opt-in primeiro.`);
+    if (elegiveis.length === 0) {
+      toast.error(
+        temTemplateAprovado
+          ? `Nenhum contato elegível (${totalBruto} sem autorização e sem conversa aberta).`
+          : 'Nenhum contato com conversa aberta nas últimas 24h. Para os demais é preciso uma mensagem aprovada pela Meta.'
+      );
       return;
     }
+
 
     // Registrar a campanha (histórico/biblioteca) já no canal oficial
     const { data: campanhaTemp, error: erroCampanha } = await supabase
