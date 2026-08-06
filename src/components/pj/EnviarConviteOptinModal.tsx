@@ -60,6 +60,7 @@ interface DisparoResult {
   restante_apos_batch?: number;
   reason?: string;
   motivo?: string;
+  erros?: Array<{ telefone: string; erro: string }>;
 }
 
 export default function EnviarConviteOptinModal({
