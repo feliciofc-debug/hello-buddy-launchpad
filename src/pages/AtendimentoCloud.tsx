@@ -368,6 +368,7 @@ export default function AtendimentoCloud() {
                 {messages.map((m) => {
                   const isInbound = m.direction === "inbound";
                   const isHuman = m.sender === "human";
+                  const isCampanha = m.sender === "campanha";
                   return (
                     <div key={m.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
                       <div
@@ -376,6 +377,8 @@ export default function AtendimentoCloud() {
                             ? "bg-white border"
                             : isHuman
                             ? "bg-amber-500 text-white"
+                            : isCampanha
+                            ? "bg-blue-600 text-white"
                             : "bg-green-600 text-white"
                         }`}
                       >
@@ -388,6 +391,11 @@ export default function AtendimentoCloud() {
                             <>
                               <Hand className="h-3 w-3" /> Você
                             </>
+                          ) : isCampanha ? (
+                            <>
+                              <Megaphone className="h-3 w-3" /> Campanha
+                              {m.message_type === "template" ? " (mensagem aprovada)" : ""}
+                            </>
                           ) : (
                             <>
                               <Bot className="h-3 w-3" /> IA
@@ -397,6 +405,7 @@ export default function AtendimentoCloud() {
                         </div>
                         <div className="whitespace-pre-wrap break-words">{m.content}</div>
                       </div>
+
                     </div>
                   );
                 })}
