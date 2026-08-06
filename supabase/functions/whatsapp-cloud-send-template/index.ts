@@ -246,8 +246,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ---------- Monitor de conversas (acompanhamento em tempo real) ----------
+    if (messageId) {
+      const corpo = Array.isArray(variaveis) && variaveis.length > 0
+        ? `📣 ${tpl.nome_meta} → ${variaveis.map((v: unknown) => String(v ?? "")).join(" · ")}`
+        : `📣 ${tpl.nome_meta}`;
+      await logOutboundMessage(admin, {
+        userId: userId!,
+        phone: telefone,
+        content: corpo,
+        messageType: "template",
+        wamid: messageId,
+        sender: "campanha",
+      });
+    }
+
     if (!messageId) return fail(motivo || "sem_message_id", categoria);
     return ok({ success: true, message_id: messageId, canal: "meta_cloud" });
+
   } catch (e) {
     return fail((e as Error).message, "rede");
   }
