@@ -487,18 +487,57 @@ export default function ContatosListasPJ() {
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {lista.total_membros} contatos • {new Date(lista.created_at).toLocaleDateString("pt-BR")}
+                            Total: {lista.total_membros} • {new Date(lista.created_at).toLocaleDateString("pt-BR")}
                           </p>
                           <div className="flex items-center gap-1.5 flex-wrap mt-1">
                             <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                              ✅ {lista.optin_confirmados ?? 0} confirmados
+                              ✅ Qualificados (aceitaram): {lista.optin_confirmados ?? 0}
                             </Badge>
                             <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
-                              ⏳ {lista.optin_pendentes ?? 0} pendentes
+                              ⏳ Aguardando resposta: {lista.optin_pendentes ?? 0}
                             </Badge>
                             <Badge variant="outline" className="text-[10px] bg-red-50 text-red-700 border-red-200">
-                              🚫 {lista.optin_recusados ?? 0} recusados
+                              🚫 Recusaram: {lista.optin_recusados ?? 0}
                             </Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            A campanha vai <strong>somente</strong> para os {lista.optin_confirmados ?? 0} qualificados — quem
+                            não respondeu não recebe campanha (regra da Meta).
+                          </p>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px] gap-1.5"
+                              disabled={(lista.optin_pendentes ?? 0) === 0}
+                              onClick={() => setConviteTarget({ id: lista.id, nome: lista.nome })}
+                            >
+                              <Send className="h-3 w-3" />
+                              Convidar quem ainda não respondeu ({lista.optin_pendentes ?? 0})
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="h-7 text-[11px] gap-1.5"
+                              disabled={(lista.optin_confirmados ?? 0) === 0}
+                              onClick={() => {
+                                toast.info("Escolha o produto da campanha — o disparo sai só para os qualificados desta lista.");
+                                navigate("/meus-produtos");
+                              }}
+                            >
+                              <Users className="h-3 w-3" />
+                              Enviar campanha aos qualificados ({lista.optin_confirmados ?? 0})
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-[11px]"
+                              onClick={() => {
+                                if (expandedLista !== lista.id) loadListaMembros(lista.id);
+                                setFiltroQualificacao("qualificados");
+                              }}
+                            >
+                              Ver qualificados
+                            </Button>
                           </div>
                         </div>
                       )}
