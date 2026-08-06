@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,7 @@ interface MembroItem {
   nome: string | null;
   telefone: string;
   lista_id: string;
+  opt_in_status?: string | null;
 }
 
 interface ContatoUnico {
@@ -69,6 +71,7 @@ interface ContatoUnico {
 }
 
 export default function ContatosListasPJ() {
+  const navigate = useNavigate();
   const [userId, setUserId] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -118,6 +121,18 @@ export default function ContatosListasPJ() {
 
   // Convite opt-in modal
   const [conviteTarget, setConviteTarget] = useState<{ id: string; nome: string } | null>(null);
+
+  // Filtro de qualificação nos membros expandidos
+  const [filtroQualificacao, setFiltroQualificacao] = useState<"todos" | "qualificados" | "aguardando" | "recusaram">("todos");
+
+  const membrosFiltrados = listaMembros.filter((m) => {
+    const s = m.opt_in_status;
+    if (filtroQualificacao === "qualificados") return s === "confirmado";
+    if (filtroQualificacao === "recusaram") return s === "recusado";
+    if (filtroQualificacao === "aguardando") return s !== "confirmado" && s !== "recusado";
+    return true;
+  });
+
 
   useEffect(() => { loadUser(); }, []);
 
@@ -215,9 +230,10 @@ export default function ContatosListasPJ() {
     if (expandedLista === listaId) { setExpandedLista(null); return; }
     setLoadingMembros(true);
     setExpandedLista(listaId);
+    setFiltroQualificacao("todos");
     const { data } = await supabase
       .from("pj_lista_membros")
-      .select("id, nome, telefone, lista_id")
+      .select("id, nome, telefone, lista_id, opt_in_status")
       .eq("lista_id", listaId)
       .order("nome", { ascending: true });
     setListaMembros((data as unknown as MembroItem[]) || []);
@@ -482,18 +498,57 @@ export default function ContatosListasPJ() {
                             )}
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {lista.total_membros} contatos • {new Date(lista.created_at).toLocaleDateString("pt-BR")}
+                            Total: {lista.total_membros} • {new Date(lista.created_at).toLocaleDateString("pt-BR")}
                           </p>
                           <div className="flex items-center gap-1.5 flex-wrap mt-1">
                             <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">
-                              ✅ {lista.optin_confirmados ?? 0} confirmados
+                              ✅ Qualificados (aceitaram): {lista.optin_confirmados ?? 0}
                             </Badge>
                             <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200">
-                              ⏳ {lista.optin_pendentes ?? 0} pendentes
+                              ⏳ Aguardando resposta: {lista.optin_pendentes ?? 0}
                             </Badge>
                             <Badge variant="outline" className="text-[10px] bg-red-50 text-red-700 border-red-200">
-                              🚫 {lista.optin_recusados ?? 0} recusados
+                              🚫 Recusaram: {lista.optin_recusados ?? 0}
                             </Badge>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground mt-1">
+                            A campanha vai <strong>somente</strong> para os {lista.optin_confirmados ?? 0} qualificados — quem
+                            não respondeu não recebe campanha (regra da Meta).
+                          </p>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px] gap-1.5"
+                              disabled={(lista.optin_pendentes ?? 0) === 0}
+                              onClick={() => setConviteTarget({ id: lista.id, nome: lista.nome })}
+                            >
+                              <Send className="h-3 w-3" />
+                              Convidar quem ainda não respondeu ({lista.optin_pendentes ?? 0})
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="h-7 text-[11px] gap-1.5"
+                              disabled={(lista.optin_confirmados ?? 0) === 0}
+                              onClick={() => {
+                                toast.info("Escolha o produto da campanha — o disparo sai só para os qualificados desta lista.");
+                                navigate("/meus-produtos");
+                              }}
+                            >
+                              <Users className="h-3 w-3" />
+                              Enviar campanha aos qualificados ({lista.optin_confirmados ?? 0})
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-[11px]"
+                              onClick={() => {
+                                if (expandedLista !== lista.id) loadListaMembros(lista.id);
+                                setFiltroQualificacao("qualificados");
+                              }}
+                            >
+                              Ver qualificados
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -541,12 +596,33 @@ export default function ContatosListasPJ() {
                     {/* Expanded members */}
                     {expandedLista === lista.id && (
                       <div className="mt-3 border-t pt-3 max-h-52 overflow-y-auto space-y-1">
+                        <div className="flex flex-wrap gap-1 pb-2 sticky top-0 bg-card">
+                          {([
+                            { key: "todos", label: "Todos" },
+                            { key: "qualificados", label: "✅ Qualificados" },
+                            { key: "aguardando", label: "⏳ Aguardando" },
+                            { key: "recusaram", label: "🚫 Recusaram" },
+                          ] as const).map((f) => (
+                            <Button
+                              key={f.key}
+                              size="sm"
+                              variant={filtroQualificacao === f.key ? "default" : "outline"}
+                              className="h-6 text-[10px] px-2"
+                              onClick={() => setFiltroQualificacao(f.key)}
+                            >
+                              {f.label}
+                            </Button>
+                          ))}
+                        </div>
                         {loadingMembros ? (
                           <Loader2 className="h-4 w-4 animate-spin mx-auto my-4" />
-                        ) : listaMembros.length === 0 ? (
-                          <p className="text-xs text-muted-foreground text-center py-4">Lista vazia — adicione membros acima</p>
+                        ) : membrosFiltrados.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            {listaMembros.length === 0 ? "Lista vazia — adicione membros acima" : "Nenhum contato neste grupo"}
+                          </p>
                         ) : (
-                          listaMembros.map((m) => (
+                          membrosFiltrados.map((m) => (
+
                             <div key={m.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded hover:bg-muted/50 group/member">
                               {editingMembroId === m.id ? (
                                 <div className="flex items-center gap-2 flex-1">
@@ -562,7 +638,24 @@ export default function ContatosListasPJ() {
                               ) : (
                                 <>
                                   <span className="truncate flex-1">{m.nome || "(Sem nome)"}</span>
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[9px] shrink-0 ${
+                                      m.opt_in_status === "confirmado"
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : m.opt_in_status === "recusado"
+                                        ? "bg-red-50 text-red-700 border-red-200"
+                                        : "bg-amber-50 text-amber-700 border-amber-200"
+                                    }`}
+                                  >
+                                    {m.opt_in_status === "confirmado"
+                                      ? "✅ Qualificado"
+                                      : m.opt_in_status === "recusado"
+                                      ? "🚫 Recusou"
+                                      : "⏳ Aguardando"}
+                                  </Badge>
                                   <span className="text-muted-foreground font-mono mx-2">{m.telefone}</span>
+
                                   <div className="flex gap-0.5 opacity-0 group-hover/member:opacity-100 transition-opacity">
                                     <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => startEditMembro(m)}>
                                       <Edit2 className="h-3 w-3" />
