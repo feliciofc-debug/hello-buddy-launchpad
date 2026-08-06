@@ -216,11 +216,15 @@ export default function AtendimentoCloud() {
   const selected = useMemo(() => conversations.find((c) => c.id === selectedId) || null, [conversations, selectedId]);
 
   const filtered = useMemo(() => {
-    if (filter === "campanha") return conversations.filter((c) => campanhaConvIds.has(c.id));
-    if (filter === "ia") return conversations.filter((c) => c.status === "active");
-    if (filter === "humano") return conversations.filter((c) => c.status === "handoff");
-    return conversations;
-  }, [conversations, filter, campanhaConvIds]);
+    const base =
+      filter === "campanha" ? conversations.filter((c) => campanhaConvIds.has(c.id))
+      : filter === "ia" ? conversations.filter((c) => c.status === "active")
+      : filter === "humano" ? conversations.filter((c) => c.status === "handoff")
+      : filter === "responderam" ? conversations.filter((c) => respondidasIds.has(c.id))
+      : conversations;
+    // Quem respondeu sempre em evidência no topo
+    return [...base].sort((a, b) => Number(respondidasIds.has(b.id)) - Number(respondidasIds.has(a.id)));
+  }, [conversations, filter, campanhaConvIds, respondidasIds]);
 
 
   // 24h window from last inbound message
@@ -238,12 +242,14 @@ export default function AtendimentoCloud() {
   const counts = useMemo(
     () => ({
       todas: conversations.length,
+      responderam: conversations.filter((c) => respondidasIds.has(c.id)).length,
       campanha: conversations.filter((c) => campanhaConvIds.has(c.id)).length,
       ia: conversations.filter((c) => c.status === "active").length,
       humano: conversations.filter((c) => c.status === "handoff").length,
     }),
-    [conversations, campanhaConvIds]
+    [conversations, campanhaConvIds, respondidasIds]
   );
+
 
 
   const updateStatus = async (status: "active" | "handoff" | "closed") => {
