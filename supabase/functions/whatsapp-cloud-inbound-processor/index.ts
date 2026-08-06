@@ -4527,6 +4527,51 @@ async function sendWhatsApp(user_id: string, to: string, message: string, imageU
   }
 }
 
+// Avisa o dono do tenant no WhatsApp quando um cliente ACEITA o opt-in.
+// Manda nome + telefone (clicável via wa.me) para ele poder chamar direto.
+async function notificarDonoOptinAceito(
+  userId: string,
+  telefone: string,
+  nome?: string | null,
+  origem?: string,
+) {
+  try {
+    const owner = await resolveTenantOwner(sb, userId);
+    if (!owner.phone) return;
+    if ((owner.phone || "").replace(/\D/g, "") === (telefone || "").replace(/\D/g, "")) return;
+
+    let nomeFinal = (nome || "").trim();
+    if (!nomeFinal) {
+      const { data: m } = await sb
+        .from("pj_lista_membros")
+        .select("nome")
+        .eq("user_id", userId)
+        .eq("telefone", telefone)
+        .not("nome", "is", null)
+        .limit(1);
+      nomeFinal = (m?.[0]?.nome || "").trim();
+    }
+
+    const texto = [
+      "🟢 *Opt-in ACEITO!*",
+      "",
+      `👤 ${nomeFinal || "Cliente sem nome cadastrado"}`,
+      `📱 ${telefone}`,
+      origem ? `🔖 origem: ${origem}` : "",
+      "",
+      `Falar agora: https://wa.me/${(telefone || "").replace(/\D/g, "")}`,
+    ].filter(Boolean).join("\n");
+
+    const wamid = await sendWhatsApp(userId, owner.phone, texto);
+    await logOwnerHeadsup(userId, texto, wamid);
+    console.log(`[optin-notify] dono avisado tenant=${userId} lead=${telefone}`);
+  } catch (e) {
+    console.warn("[optin-notify] falhou:", (e as Error).message);
+  }
+}
+
+
+
 function shortStableHash(raw: string): string {
   let h = 0;
   for (let i = 0; i < raw.length; i += 1) h = Math.imul(31, h) + raw.charCodeAt(i) | 0;
