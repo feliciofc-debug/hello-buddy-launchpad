@@ -234,7 +234,20 @@ Deno.serve(async (req) => {
             messaging_product: "whatsapp",
             to: tel,
             type: "template",
-            template: { name: tpl.nome_meta, language: { code: tpl.idioma || "pt_BR" } },
+            template: {
+              name: tpl.nome_meta,
+              language: { code: tpl.idioma || "pt_BR" },
+              ...(varIdx.length
+                ? {
+                    components: [
+                      {
+                        type: "body",
+                        parameters: buildParams((m.nome || "").trim() || "Cliente"),
+                      },
+                    ],
+                  }
+                : {}),
+            },
           }),
         });
         const j = await r.json();
