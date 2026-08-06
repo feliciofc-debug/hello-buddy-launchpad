@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Bot, User, Send, ArrowLeft, MessageCircle, Hand, RotateCcw, AlertTriangle } from "lucide-react";
+import { Bot, User, Send, ArrowLeft, MessageCircle, Hand, RotateCcw, AlertTriangle, Megaphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 type Conversation = {
