@@ -314,8 +314,14 @@ export default function AtendimentoCloud() {
                     <div className="font-medium truncate text-sm">
                       {c.contact_name || c.contact_number}
                     </div>
-                    {statusBadge(c.status)}
+                    <div className="flex items-center gap-1">
+                      {campanhaConvIds.has(c.id) && (
+                        <Badge variant="secondary" className="text-[10px]">📣 campanha</Badge>
+                      )}
+                      {statusBadge(c.status)}
+                    </div>
                   </div>
+
                   <div className="flex items-center justify-between mt-1">
                     <div className="text-xs text-muted-foreground truncate">{c.contact_number}</div>
                     <div className="text-[11px] text-muted-foreground whitespace-nowrap ml-2">
