@@ -2035,7 +2035,7 @@ async function toolEntregarEbook(ctx: { userId: string; fromNumber: string }): P
           origem: "ebook_janela_24h",
           canal: "whatsapp_cloud",
         }).then(() => {}, () => {});
-        await notificarDonoOptinAceito(ctx.userId, ctx.fromNumber, ctx.contact?.name ?? null, "ebook_janela_24h");
+        await notificarDonoOptinAceito(ctx.userId, ctx.fromNumber, null, "ebook_janela_24h");
       }
 
 
