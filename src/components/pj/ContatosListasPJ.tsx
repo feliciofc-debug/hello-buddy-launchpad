@@ -123,6 +123,8 @@ export default function ContatosListasPJ() {
 
   // Convite opt-in modal
   const [conviteTarget, setConviteTarget] = useState<{ id: string; nome: string } | null>(null);
+  const [novidadeTarget, setNovidadeTarget] = useState<{ id: string; nome: string } | null>(null);
+
 
   // Filtro de qualificação nos membros expandidos
   const [filtroQualificacao, setFiltroQualificacao] = useState<"todos" | "qualificados" | "aguardando" | "recusaram">("todos");
