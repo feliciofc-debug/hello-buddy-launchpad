@@ -51,7 +51,10 @@ export default function AtendimentoCloud() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [campanhaConvIds, setCampanhaConvIds] = useState<Set<string>>(new Set());
+  const [respondidasIds, setRespondidasIds] = useState<Set<string>>(new Set());
   const threadRef = useRef<HTMLDivElement>(null);
+  const respondidasRef = useRef<Set<string>>(new Set());
+  const primeiroLoadRef = useRef(true);
 
 
   // Auth
@@ -64,6 +67,14 @@ export default function AtendimentoCloud() {
       setUserId(data.user.id);
     });
   }, [navigate]);
+
+  // Pede permissão de notificação do navegador (uma vez)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
 
   // Load conversations + realtime
   useEffect(() => {
@@ -81,8 +92,9 @@ export default function AtendimentoCloud() {
         console.error(error);
         return;
       }
+      const convs: Conversation[] = ((data as any) || []) as Conversation[];
       if (mounted) {
-        setConversations((data as any) || []);
+        setConversations(convs);
         setLoading(false);
       }
 
@@ -96,7 +108,48 @@ export default function AtendimentoCloud() {
       if (mounted) {
         setCampanhaConvIds(new Set(((camp as any[]) || []).map((r) => r.conversation_id)));
       }
+
+      // Quem RESPONDEU e está aguardando: última mensagem da conversa é inbound
+      const { data: msgs } = await supabase
+        .from("whatsapp_cloud_messages" as any)
+        .select("conversation_id, direction, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(3000);
+
+      const visto = new Set<string>();
+      const respondeu = new Set<string>();
+      for (const m of ((msgs as any[]) || [])) {
+        if (visto.has(m.conversation_id)) continue;
+        visto.add(m.conversation_id);
+        if (m.direction === "inbound") respondeu.add(m.conversation_id);
+      }
+
+      if (mounted) {
+        // Novas respostas desde o último ciclo → notifica
+        if (!primeiroLoadRef.current) {
+          const novas = [...respondeu].filter((id) => !respondidasRef.current.has(id));
+          for (const id of novas) {
+            const c = convs.find((x) => x.id === id);
+            if (!c) continue;
+            const nome = c.contact_name || c.contact_number;
+            toast.success(`🟢 ${nome} respondeu!`, {
+              description: c.contact_number,
+              action: { label: "Abrir", onClick: () => setSelectedId(id) },
+            });
+            try {
+              if ("Notification" in window && Notification.permission === "granted") {
+                new Notification(`🟢 ${nome} respondeu`, { body: c.contact_number, tag: id });
+              }
+            } catch { /* ignore */ }
+          }
+        }
+        primeiroLoadRef.current = false;
+        respondidasRef.current = respondeu;
+        setRespondidasIds(respondeu);
+      }
     };
+
     load();
 
 
