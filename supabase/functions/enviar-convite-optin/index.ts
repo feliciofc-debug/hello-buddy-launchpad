@@ -3,6 +3,7 @@
 // Autenticação: JWT do usuário (RLS via user_id).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { logOutboundMessage } from "../_shared/cloud-log.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +46,12 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_ANON_KEY")!,
       { global: { headers: { Authorization: authHeader } } }
+    );
+
+    // Client admin: usado só para registrar o disparo no monitor de conversas
+    const sbAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
     const { data: userData } = await supabase.auth.getUser();
@@ -297,6 +304,25 @@ Deno.serve(async (req) => {
         origem: "enviar-convite-optin",
         message_id: messageId,
         metadata: { template_id: tpl.id, lista_id, race: !winner },
+      });
+
+      // Registra no monitor de conversas (Atendimento Cloud → aba Campanhas)
+      const textoRenderizado = (() => {
+        let t = String(tpl.body_text || `convite: ${tpl.nome_meta}`);
+        buildParams((m.nome || "").trim() || "Cliente").forEach((p: any, idx: number) => {
+          t = t.replaceAll(`{{${varIdx[idx]}}}`, p.text);
+        });
+        return t;
+      })();
+
+      await logOutboundMessage(sbAdmin, {
+        userId: user.id,
+        phone: tel,
+        content: textoRenderizado,
+        messageType: "template",
+        wamid: messageId,
+        sender: "campanha",
+        contactName: (m.nome || "").trim() || null,
       });
 
       if (winner) enviados++;
