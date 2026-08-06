@@ -97,12 +97,20 @@ export function TemplateFormModal({ open, onOpenChange, initial, onSaved }: Prop
       tipo_uso: form.tipo_uso,
       body_text: form.body_text,
       header: form.header ?? null,
+      // Regra da plataforma (multi-tenant): TODO template sai com botão de
+      // 1 toque. Nunca depender de "digite SIM" — botão converte muito mais.
       botoes: form.tipo_uso === "convite_optin"
         ? [
             { type: "QUICK_REPLY", text: "Sim, quero!" },
             { type: "QUICK_REPLY", text: "Não, obrigado" },
           ]
-        : (form.botoes ?? []),
+        : (Array.isArray(form.botoes) && form.botoes.length > 0
+            ? form.botoes
+            : [
+                { type: "QUICK_REPLY", text: "Quero!" },
+                { type: "QUICK_REPLY", text: "Agora não" },
+              ]),
+
     };
 
     let error: any = null;

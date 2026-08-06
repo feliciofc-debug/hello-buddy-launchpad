@@ -4976,7 +4976,10 @@ async function processOne(queueId: string) {
         // botão interativo (não-template) chega como interactive.button_reply.id.
         const buttonId: string = row.payload?.interactive?.button_reply?.id ??
           row.payload?.button?.payload ?? "";
-        const buttonTextNorm = String(row.payload?.button?.text ?? "")
+        const buttonTextNorm = String(
+          row.payload?.button?.text ??
+          row.payload?.interactive?.button_reply?.title ?? "",
+        )
           .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
         const STOP_TOKENS = new Set([
@@ -4990,15 +4993,25 @@ async function processOne(queueId: string) {
         ]);
         const NAO_TOKENS_SOFT = new Set(["nao", "não", "n"]);
 
+        // Botões de TODOS os templates da plataforma (multi-tenant):
+        //   convite_ebook_v1        → "Sim, quero!" / "Não, obrigado"
+        //   novidade_v1            → "Quero ver!"  / "Agora não"
+        //   campanha_oferta_img_v1 → "Quero esta oferta!" / "Não quero mais"
+        // Qualquer botão positivo confirma o opt-in; qualquer negativo recusa.
+        const POSITIVE_BUTTON_PREFIXES = ["sim", "quero", "ver oferta", "quero ver", "quero esta"];
+        const NEGATIVE_BUTTON_PREFIXES = ["nao", "agora nao", "nao quero", "sair", "parar"];
+
         const isStopButton = buttonId === "OPTIN_NAO" ||
           buttonId === "OPTIN_STOP" ||
           buttonId === "STOP" ||
-          buttonTextNorm.startsWith("nao");
+          NEGATIVE_BUTTON_PREFIXES.some((p) => buttonTextNorm.startsWith(p));
         const isStopText = STOP_TOKENS.has(normalized);
         const isSimButton = buttonId === "OPTIN_SIM" ||
-          buttonTextNorm.startsWith("sim");
-        const isSimText = SIM_TOKENS.has(normalized) || normalized.startsWith("sim, quero") || normalized.startsWith("sim quero");
+          (!!buttonTextNorm && !isStopButton &&
+            POSITIVE_BUTTON_PREFIXES.some((p) => buttonTextNorm.startsWith(p)));
+        const isSimText = SIM_TOKENS.has(normalized) || normalized.startsWith("sim, quero") || normalized.startsWith("sim quero") || normalized.startsWith("quero ver");
         const isSoftNao = NAO_TOKENS_SOFT.has(normalized);
+
 
         // Helper: registra log de auditoria (best-effort)
         const logOptIn = async (

@@ -18,7 +18,14 @@ const NOME_TEMPLATE_NOVIDADE = "novidade_v1";
 
 export const BODY_NOVIDADE_V1 =
   "Oi {{1}}! 🎉 Aqui é a {{2}} e temos novidades muito legais pra te mostrar hoje. " +
-  "Me chama que te conto tudo! Para não receber, responda SAIR.";
+  "Toque em \"Quero ver!\" que eu te conto tudo agora.";
+
+// Regra da plataforma: todo template vem com botão de 1 toque (nunca \"digite X\").
+export const BOTOES_NOVIDADE_V1 = [
+  { type: "QUICK_REPLY", text: "Quero ver!" },
+  { type: "QUICK_REPLY", text: "Agora não" },
+];
+
 
 interface Props {
   open: boolean;
@@ -147,7 +154,9 @@ export default function AvisarNovidadeModal({ open, onClose, listaId, listaNome 
           categoria_meta: "UTILITY",
           tipo_uso: "transacional",
           body_text: BODY_NOVIDADE_V1,
+          botoes: BOTOES_NOVIDADE_V1,
           status_meta: "rascunho",
+
           variaveis_map: { "1": { campo: "nome", exemplo: "Maria" }, "2": { campo: "negocio", exemplo: negocio || "Sua Empresa" } },
         } as any)
         .select("id, status_meta")
