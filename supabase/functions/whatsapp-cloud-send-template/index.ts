@@ -26,6 +26,8 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { toMetaSafeImageUrl } from "../_shared/meta-media.ts";
+import { logOutboundMessage } from "../_shared/cloud-log.ts";
+
 
 
 const CORS = {
