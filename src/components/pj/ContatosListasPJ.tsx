@@ -125,6 +125,15 @@ export default function ContatosListasPJ() {
   // Filtro de qualificação nos membros expandidos
   const [filtroQualificacao, setFiltroQualificacao] = useState<"todos" | "qualificados" | "aguardando" | "recusaram">("todos");
 
+  const membrosFiltrados = listaMembros.filter((m) => {
+    const s = m.opt_in_status;
+    if (filtroQualificacao === "qualificados") return s === "confirmado";
+    if (filtroQualificacao === "recusaram") return s === "recusado";
+    if (filtroQualificacao === "aguardando") return s !== "confirmado" && s !== "recusado";
+    return true;
+  });
+
+
   useEffect(() => { loadUser(); }, []);
 
   const loadUser = async () => {
