@@ -48,7 +48,9 @@ export default function AtendimentoCloud() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [campanhaConvIds, setCampanhaConvIds] = useState<Set<string>>(new Set());
   const threadRef = useRef<HTMLDivElement>(null);
+
 
   // Auth
   useEffect(() => {
