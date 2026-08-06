@@ -83,8 +83,20 @@ export default function AtendimentoCloud() {
         setConversations((data as any) || []);
         setLoading(false);
       }
+
+      // Quais conversas receberam disparo de campanha (template/oferta)
+      const { data: camp } = await supabase
+        .from("whatsapp_cloud_messages" as any)
+        .select("conversation_id")
+        .eq("user_id", userId)
+        .eq("sender", "campanha")
+        .limit(5000);
+      if (mounted) {
+        setCampanhaConvIds(new Set(((camp as any[]) || []).map((r) => r.conversation_id)));
+      }
     };
     load();
+
 
     const channel = supabase
       .channel(`atendimento-cloud-conv-${userId}`)
