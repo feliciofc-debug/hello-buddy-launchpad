@@ -5196,7 +5196,7 @@ async function processOne(queueId: string) {
               await notificarDonoOptinAceito(
                 userId,
                 row.from_number,
-                conv.contact_name ?? null,
+                (conv as any).contact_name ?? null,
                 isSimButton ? "botao_sim" : "resposta_sim",
               );
 
