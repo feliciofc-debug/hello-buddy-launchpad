@@ -183,11 +183,13 @@ export default function AtendimentoCloud() {
   const counts = useMemo(
     () => ({
       todas: conversations.length,
+      campanha: conversations.filter((c) => campanhaConvIds.has(c.id)).length,
       ia: conversations.filter((c) => c.status === "active").length,
       humano: conversations.filter((c) => c.status === "handoff").length,
     }),
-    [conversations]
+    [conversations, campanhaConvIds]
   );
+
 
   const updateStatus = async (status: "active" | "handoff" | "closed") => {
     if (!selected || !userId) return;
