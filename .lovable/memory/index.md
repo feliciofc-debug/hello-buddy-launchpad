@@ -1,0 +1,1 @@
+- [Templates com botão de 1 toque](mem://features/whatsapp/templates-botao-1-toque-padrao) — Todo template nasce com quick-reply; gate entende resposta por botão
