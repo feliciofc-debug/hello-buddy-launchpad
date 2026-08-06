@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
 
     const { data: tpl } = await supabase
       .from("whatsapp_templates")
-      .select("id, nome_meta, idioma, tipo_uso, status_meta")
+      .select("id, nome_meta, idioma, tipo_uso, status_meta, body_text, variaveis_map")
       .eq("id", template_id)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -87,6 +87,40 @@ Deno.serve(async (req) => {
       .eq("flag_key", "usar_meta_oficial")
       .maybeSingle();
     const flagOn = !!flag?.is_enabled;
+
+    // ---------- 1.b Dados para preencher as variáveis do template ----------
+    const [{ data: ebookCfg }, { data: empresaCfg }, { data: perfil }] = await Promise.all([
+      supabase.from("tenant_ebooks").select("nome").eq("user_id", user.id).maybeSingle(),
+      supabase.from("empresa_config").select("nome_empresa").eq("user_id", user.id).maybeSingle(),
+      supabase.from("profiles").select("nome_fantasia").eq("id", user.id).maybeSingle(),
+    ]);
+
+    const nomeNegocio =
+      empresaCfg?.nome_empresa || perfil?.nome_fantasia || "nossa equipe";
+    const nomeEbook = ebookCfg?.nome || "nosso ebook exclusivo";
+
+    // Quantas variáveis {{n}} o template exige (ordem importa para a Meta)
+    const varIdx = Array.from(
+      new Set(
+        [...String(tpl.body_text || "").matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]))
+      )
+    ).sort((a, b) => a - b);
+
+    const varMap = (tpl.variaveis_map || {}) as Record<string, { campo?: string }>;
+
+    function buildParams(nomeContato: string) {
+      return varIdx.map((i) => {
+        const campo = varMap[String(i)]?.campo || "";
+        let valor: string;
+        if (campo === "negocio" || campo === "empresa") valor = nomeNegocio;
+        else if (campo === "ebook") valor = nomeEbook;
+        else if (campo === "nome" || campo === "" ) valor = nomeContato;
+        else valor = nomeContato;
+        return { type: "text", text: (valor || "Cliente").slice(0, 120) };
+      });
+    }
+
+
 
     // ---------- 2. Teto diário (mesmo contador do executor) ----------
     const { data: clienteCfg } = await supabase
@@ -200,7 +234,20 @@ Deno.serve(async (req) => {
             messaging_product: "whatsapp",
             to: tel,
             type: "template",
-            template: { name: tpl.nome_meta, language: { code: tpl.idioma || "pt_BR" } },
+            template: {
+              name: tpl.nome_meta,
+              language: { code: tpl.idioma || "pt_BR" },
+              ...(varIdx.length
+                ? {
+                    components: [
+                      {
+                        type: "body",
+                        parameters: buildParams((m.nome || "").trim() || "Cliente"),
+                      },
+                    ],
+                  }
+                : {}),
+            },
           }),
         });
         const j = await r.json();

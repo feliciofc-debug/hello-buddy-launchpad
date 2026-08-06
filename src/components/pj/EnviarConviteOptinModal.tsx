@@ -60,6 +60,7 @@ interface DisparoResult {
   restante_apos_batch?: number;
   reason?: string;
   motivo?: string;
+  erros?: Array<{ telefone: string; erro: string }>;
 }
 
 export default function EnviarConviteOptinModal({
@@ -277,7 +278,16 @@ export default function EnviarConviteOptinModal({
                   🚫 Bloqueados STOP: <strong>{resultado.bloqueados_stop_universal ?? 0}</strong>
                 </div>
               </div>
+              {!!resultado.erros?.length && (
+                <div className="mt-2 p-2 rounded bg-red-50 border border-red-200 text-red-800 space-y-0.5">
+                  <div className="font-semibold">Motivo das falhas (WhatsApp):</div>
+                  {resultado.erros.slice(0, 5).map((e, i) => (
+                    <div key={i}>• {e.telefone}: {e.erro}</div>
+                  ))}
+                </div>
+              )}
             </div>
+
           )}
 
           <div className="flex justify-end gap-2 pt-2">
