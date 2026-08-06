@@ -587,12 +587,33 @@ export default function ContatosListasPJ() {
                     {/* Expanded members */}
                     {expandedLista === lista.id && (
                       <div className="mt-3 border-t pt-3 max-h-52 overflow-y-auto space-y-1">
+                        <div className="flex flex-wrap gap-1 pb-2 sticky top-0 bg-card">
+                          {([
+                            { key: "todos", label: "Todos" },
+                            { key: "qualificados", label: "✅ Qualificados" },
+                            { key: "aguardando", label: "⏳ Aguardando" },
+                            { key: "recusaram", label: "🚫 Recusaram" },
+                          ] as const).map((f) => (
+                            <Button
+                              key={f.key}
+                              size="sm"
+                              variant={filtroQualificacao === f.key ? "default" : "outline"}
+                              className="h-6 text-[10px] px-2"
+                              onClick={() => setFiltroQualificacao(f.key)}
+                            >
+                              {f.label}
+                            </Button>
+                          ))}
+                        </div>
                         {loadingMembros ? (
                           <Loader2 className="h-4 w-4 animate-spin mx-auto my-4" />
-                        ) : listaMembros.length === 0 ? (
-                          <p className="text-xs text-muted-foreground text-center py-4">Lista vazia — adicione membros acima</p>
+                        ) : membrosFiltrados.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            {listaMembros.length === 0 ? "Lista vazia — adicione membros acima" : "Nenhum contato neste grupo"}
+                          </p>
                         ) : (
-                          listaMembros.map((m) => (
+                          membrosFiltrados.map((m) => (
+
                             <div key={m.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded hover:bg-muted/50 group/member">
                               {editingMembroId === m.id ? (
                                 <div className="flex items-center gap-2 flex-1">
