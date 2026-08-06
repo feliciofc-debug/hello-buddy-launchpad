@@ -16,14 +16,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  Loader2, Plus, Trash2, Eye, Copy, ChevronDown, Search, Users, Edit2, Save, X, UserPlus, FileDown,
+  Loader2, Plus, Trash2, Eye, Copy, ChevronDown, Search, Users, Edit2, Save, X, UserPlus, FileDown, Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import ImportContatosPJ from "./ImportContatosPJ";
 import EnviosProgramadosPJ from "./EnviosProgramadosPJ";
 import CriarGrupoWhatsAppPJ from "./CriarGrupoWhatsAppPJ";
 import EnviarConviteOptinModal from "./EnviarConviteOptinModal";
+import AvisarNovidadeModal from "./AvisarNovidadeModal";
 import { Send } from "lucide-react";
+
 
 // Normaliza nome de lista/grupo para casar espelho "📱 X" com grupo "X"
 // (remove prefixo espelho, faz trim + lowercase + colapsa espaços)
