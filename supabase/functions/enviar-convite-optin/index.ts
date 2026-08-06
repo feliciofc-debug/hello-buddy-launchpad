@@ -73,7 +73,9 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (!tpl) return refuse("template_nao_encontrado");
-    if (tpl.tipo_uso !== "convite") return refuse("template_nao_e_convite");
+    if (!["convite", "convite_optin"].includes(tpl.tipo_uso ?? "")) {
+      return refuse("template_nao_e_convite", { tipo_uso: tpl.tipo_uso });
+    }
     if (tpl.status_meta !== "aprovado") {
       return refuse("template_nao_aprovado", { status_meta: tpl.status_meta });
     }
