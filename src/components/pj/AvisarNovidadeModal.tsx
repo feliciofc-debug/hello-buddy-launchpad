@@ -154,7 +154,9 @@ export default function AvisarNovidadeModal({ open, onClose, listaId, listaNome 
           categoria_meta: "UTILITY",
           tipo_uso: "transacional",
           body_text: BODY_NOVIDADE_V1,
+          botoes: BOTOES_NOVIDADE_V1,
           status_meta: "rascunho",
+
           variaveis_map: { "1": { campo: "nome", exemplo: "Maria" }, "2": { campo: "negocio", exemplo: negocio || "Sua Empresa" } },
         } as any)
         .select("id, status_meta")
