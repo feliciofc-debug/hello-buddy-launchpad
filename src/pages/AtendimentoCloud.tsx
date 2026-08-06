@@ -347,7 +347,7 @@ export default function AtendimentoCloud() {
         <Card className="md:col-span-1 flex flex-col overflow-hidden">
           <div className="p-3 border-b">
             <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
-              <TabsList className="w-full grid grid-cols-4">
+              <TabsList className="w-full grid grid-cols-5">
                 {FILTERS.map((f) => (
                   <TabsTrigger key={f.value} value={f.value} className="text-xs">
                     {f.label}
