@@ -240,7 +240,7 @@ export function CriarCampanhaWhatsAppModal({
         .from('whatsapp_templates')
         .select('id, nome_meta, idioma, body_text, variaveis_map, status_meta, tipo_uso')
         .eq('user_id', user.id)
-        .in('tipo_uso', ['campanha', 'convite'])
+        .in('tipo_uso', ['campanha', 'convite', 'convite_optin'])
         .order('created_at', { ascending: false });
 
       if (error) {
