@@ -5193,6 +5193,13 @@ async function processOne(queueId: string) {
                 })
                 .in("id", idsDentro);
               await logOptIn("confirmado", isSimButton ? "convite_botao_sim" : "convite_texto_sim");
+              await notificarDonoOptinAceito(
+                userId,
+                row.from_number,
+                conv.contact_name ?? null,
+                isSimButton ? "botao_sim" : "resposta_sim",
+              );
+
 
               try {
                 const ebookTenant = await getTenantEbook(sb, userId);
