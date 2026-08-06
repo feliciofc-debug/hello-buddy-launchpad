@@ -161,10 +161,12 @@ export default function AtendimentoCloud() {
   const selected = useMemo(() => conversations.find((c) => c.id === selectedId) || null, [conversations, selectedId]);
 
   const filtered = useMemo(() => {
+    if (filter === "campanha") return conversations.filter((c) => campanhaConvIds.has(c.id));
     if (filter === "ia") return conversations.filter((c) => c.status === "active");
     if (filter === "humano") return conversations.filter((c) => c.status === "handoff");
     return conversations;
-  }, [conversations, filter]);
+  }, [conversations, filter, campanhaConvIds]);
+
 
   // 24h window from last inbound message
   const lastInboundAt = useMemo(() => {
