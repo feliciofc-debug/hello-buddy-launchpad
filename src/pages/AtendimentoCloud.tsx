@@ -32,10 +32,12 @@ type Message = {
 
 const FILTERS = [
   { value: "todas", label: "Todas" },
+  { value: "responderam", label: "Responderam" },
   { value: "campanha", label: "Campanhas" },
   { value: "ia", label: "IA atendendo" },
   { value: "humano", label: "Você atendendo" },
 ] as const;
+
 
 
 export default function AtendimentoCloud() {
@@ -49,7 +51,10 @@ export default function AtendimentoCloud() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [campanhaConvIds, setCampanhaConvIds] = useState<Set<string>>(new Set());
+  const [respondidasIds, setRespondidasIds] = useState<Set<string>>(new Set());
   const threadRef = useRef<HTMLDivElement>(null);
+  const respondidasRef = useRef<Set<string>>(new Set());
+  const primeiroLoadRef = useRef(true);
 
 
   // Auth
@@ -62,6 +67,14 @@ export default function AtendimentoCloud() {
       setUserId(data.user.id);
     });
   }, [navigate]);
+
+  // Pede permissão de notificação do navegador (uma vez)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
 
   // Load conversations + realtime
   useEffect(() => {
@@ -79,8 +92,9 @@ export default function AtendimentoCloud() {
         console.error(error);
         return;
       }
+      const convs: Conversation[] = ((data as any) || []) as Conversation[];
       if (mounted) {
-        setConversations((data as any) || []);
+        setConversations(convs);
         setLoading(false);
       }
 
@@ -94,7 +108,48 @@ export default function AtendimentoCloud() {
       if (mounted) {
         setCampanhaConvIds(new Set(((camp as any[]) || []).map((r) => r.conversation_id)));
       }
+
+      // Quem RESPONDEU e está aguardando: última mensagem da conversa é inbound
+      const { data: msgs } = await supabase
+        .from("whatsapp_cloud_messages" as any)
+        .select("conversation_id, direction, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(3000);
+
+      const visto = new Set<string>();
+      const respondeu = new Set<string>();
+      for (const m of ((msgs as any[]) || [])) {
+        if (visto.has(m.conversation_id)) continue;
+        visto.add(m.conversation_id);
+        if (m.direction === "inbound") respondeu.add(m.conversation_id);
+      }
+
+      if (mounted) {
+        // Novas respostas desde o último ciclo → notifica
+        if (!primeiroLoadRef.current) {
+          const novas = [...respondeu].filter((id) => !respondidasRef.current.has(id));
+          for (const id of novas) {
+            const c = convs.find((x) => x.id === id);
+            if (!c) continue;
+            const nome = c.contact_name || c.contact_number;
+            toast.success(`🟢 ${nome} respondeu!`, {
+              description: c.contact_number,
+              action: { label: "Abrir", onClick: () => setSelectedId(id) },
+            });
+            try {
+              if ("Notification" in window && Notification.permission === "granted") {
+                new Notification(`🟢 ${nome} respondeu`, { body: c.contact_number, tag: id });
+              }
+            } catch { /* ignore */ }
+          }
+        }
+        primeiroLoadRef.current = false;
+        respondidasRef.current = respondeu;
+        setRespondidasIds(respondeu);
+      }
     };
+
     load();
 
 
@@ -161,11 +216,15 @@ export default function AtendimentoCloud() {
   const selected = useMemo(() => conversations.find((c) => c.id === selectedId) || null, [conversations, selectedId]);
 
   const filtered = useMemo(() => {
-    if (filter === "campanha") return conversations.filter((c) => campanhaConvIds.has(c.id));
-    if (filter === "ia") return conversations.filter((c) => c.status === "active");
-    if (filter === "humano") return conversations.filter((c) => c.status === "handoff");
-    return conversations;
-  }, [conversations, filter, campanhaConvIds]);
+    const base =
+      filter === "campanha" ? conversations.filter((c) => campanhaConvIds.has(c.id))
+      : filter === "ia" ? conversations.filter((c) => c.status === "active")
+      : filter === "humano" ? conversations.filter((c) => c.status === "handoff")
+      : filter === "responderam" ? conversations.filter((c) => respondidasIds.has(c.id))
+      : conversations;
+    // Quem respondeu sempre em evidência no topo
+    return [...base].sort((a, b) => Number(respondidasIds.has(b.id)) - Number(respondidasIds.has(a.id)));
+  }, [conversations, filter, campanhaConvIds, respondidasIds]);
 
 
   // 24h window from last inbound message
@@ -183,12 +242,14 @@ export default function AtendimentoCloud() {
   const counts = useMemo(
     () => ({
       todas: conversations.length,
+      responderam: conversations.filter((c) => respondidasIds.has(c.id)).length,
       campanha: conversations.filter((c) => campanhaConvIds.has(c.id)).length,
       ia: conversations.filter((c) => c.status === "active").length,
       humano: conversations.filter((c) => c.status === "handoff").length,
     }),
-    [conversations, campanhaConvIds]
+    [conversations, campanhaConvIds, respondidasIds]
   );
+
 
 
   const updateStatus = async (status: "active" | "handoff" | "closed") => {
@@ -286,7 +347,7 @@ export default function AtendimentoCloud() {
         <Card className="md:col-span-1 flex flex-col overflow-hidden">
           <div className="p-3 border-b">
             <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
-              <TabsList className="w-full grid grid-cols-4">
+              <TabsList className="w-full grid grid-cols-5">
                 {FILTERS.map((f) => (
                   <TabsTrigger key={f.value} value={f.value} className="text-xs">
                     {f.label}
@@ -302,17 +363,27 @@ export default function AtendimentoCloud() {
             ) : filtered.length === 0 ? (
               <div className="p-4 text-sm text-muted-foreground">Nenhuma conversa.</div>
             ) : (
-              filtered.map((c) => (
+              filtered.map((c) => {
+                const respondeu = respondidasIds.has(c.id);
+                return (
                 <button
                   key={c.id}
                   onClick={() => setSelectedId(c.id)}
                   className={`w-full text-left px-3 py-3 border-b hover:bg-muted/50 transition-colors ${
-                    selectedId === c.id ? "bg-muted" : ""
-                  }`}
+                    selectedId === c.id ? "bg-muted" : respondeu ? "bg-green-50" : ""
+                  } ${respondeu ? "border-l-4 border-l-green-500" : ""}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium truncate text-sm">
-                      {c.contact_name || c.contact_number}
+                    <div className="flex items-center gap-2 min-w-0">
+                      {respondeu && (
+                        <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-60" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                        </span>
+                      )}
+                      <div className={`truncate text-sm ${respondeu ? "font-bold" : "font-medium"}`}>
+                        {c.contact_name || c.contact_number}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1">
                       {campanhaConvIds.has(c.id) && (
@@ -323,13 +394,18 @@ export default function AtendimentoCloud() {
                   </div>
 
                   <div className="flex items-center justify-between mt-1">
-                    <div className="text-xs text-muted-foreground truncate">{c.contact_number}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {respondeu ? <span className="text-green-700 font-medium">respondeu · </span> : null}
+                      {c.contact_number}
+                    </div>
                     <div className="text-[11px] text-muted-foreground whitespace-nowrap ml-2">
                       {fmtTime(c.last_message_at)}
                     </div>
                   </div>
                 </button>
-              ))
+                );
+              })
+
             )}
           </ScrollArea>
         </Card>
@@ -345,7 +421,15 @@ export default function AtendimentoCloud() {
               <div className="p-3 border-b flex items-center justify-between gap-2 flex-wrap">
                 <div>
                   <div className="font-semibold">{selected.contact_name || selected.contact_number}</div>
-                  <div className="text-xs text-muted-foreground">{selected.contact_number}</div>
+                  <a
+                    href={`https://wa.me/${selected.contact_number.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-green-700 underline hover:no-underline"
+                  >
+                    {selected.contact_number} · falar do meu celular
+                  </a>
+
                 </div>
                 <div className="flex items-center gap-2">
                   {statusBadge(selected.status)}
