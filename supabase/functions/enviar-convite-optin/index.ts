@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
 
     const { data: tpl } = await supabase
       .from("whatsapp_templates")
-      .select("id, nome_meta, idioma, tipo_uso, status_meta")
+      .select("id, nome_meta, idioma, tipo_uso, status_meta, body_text, variaveis_map")
       .eq("id", template_id)
       .eq("user_id", user.id)
       .maybeSingle();
