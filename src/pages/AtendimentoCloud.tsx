@@ -421,7 +421,15 @@ export default function AtendimentoCloud() {
               <div className="p-3 border-b flex items-center justify-between gap-2 flex-wrap">
                 <div>
                   <div className="font-semibold">{selected.contact_name || selected.contact_number}</div>
-                  <div className="text-xs text-muted-foreground">{selected.contact_number}</div>
+                  <a
+                    href={`https://wa.me/${selected.contact_number.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-green-700 underline hover:no-underline"
+                  >
+                    {selected.contact_number} · falar do meu celular
+                  </a>
+
                 </div>
                 <div className="flex items-center gap-2">
                   {statusBadge(selected.status)}
