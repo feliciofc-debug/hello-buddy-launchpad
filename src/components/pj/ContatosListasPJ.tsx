@@ -60,6 +60,7 @@ interface MembroItem {
   nome: string | null;
   telefone: string;
   lista_id: string;
+  opt_in_status?: string | null;
 }
 
 interface ContatoUnico {
