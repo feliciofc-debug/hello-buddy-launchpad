@@ -258,7 +258,7 @@ export function CriarCampanhaWhatsAppModal({
       setTemplatesCampanhaTodos(campanha);
       setTemplates(aprovados);
       setTemplateConvite(
-        todos.find((t) => t.tipo_uso === 'convite' && t.status_meta === 'aprovado') || null
+        todos.find((t) => (t.tipo_uso === 'convite' || t.tipo_uso === 'convite_optin') && t.status_meta === 'aprovado') || null
       );
       // MODO PRONTO: se já existe mensagem liberada, seleciona automaticamente
       // (a mais recente) para o cliente não precisar escolher nada.
