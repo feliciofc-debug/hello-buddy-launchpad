@@ -88,6 +88,40 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const flagOn = !!flag?.is_enabled;
 
+    // ---------- 1.b Dados para preencher as variáveis do template ----------
+    const [{ data: ebookCfg }, { data: empresaCfg }, { data: perfil }] = await Promise.all([
+      supabase.from("tenant_ebooks").select("nome").eq("user_id", user.id).maybeSingle(),
+      supabase.from("empresa_config").select("nome_empresa").eq("user_id", user.id).maybeSingle(),
+      supabase.from("profiles").select("nome_fantasia").eq("id", user.id).maybeSingle(),
+    ]);
+
+    const nomeNegocio =
+      empresaCfg?.nome_empresa || perfil?.nome_fantasia || "nossa equipe";
+    const nomeEbook = ebookCfg?.nome || "nosso ebook exclusivo";
+
+    // Quantas variáveis {{n}} o template exige (ordem importa para a Meta)
+    const varIdx = Array.from(
+      new Set(
+        [...String(tpl.body_text || "").matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]))
+      )
+    ).sort((a, b) => a - b);
+
+    const varMap = (tpl.variaveis_map || {}) as Record<string, { campo?: string }>;
+
+    function buildParams(nomeContato: string) {
+      return varIdx.map((i) => {
+        const campo = varMap[String(i)]?.campo || "";
+        let valor: string;
+        if (campo === "negocio" || campo === "empresa") valor = nomeNegocio;
+        else if (campo === "ebook") valor = nomeEbook;
+        else if (campo === "nome" || campo === "" ) valor = nomeContato;
+        else valor = nomeContato;
+        return { type: "text", text: (valor || "Cliente").slice(0, 120) };
+      });
+    }
+
+
+
     // ---------- 2. Teto diário (mesmo contador do executor) ----------
     const { data: clienteCfg } = await supabase
       .from("pj_clientes_config")
