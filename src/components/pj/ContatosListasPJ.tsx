@@ -71,6 +71,7 @@ interface ContatoUnico {
 }
 
 export default function ContatosListasPJ() {
+  const navigate = useNavigate();
   const [userId, setUserId] = useState("");
   const [loading, setLoading] = useState(true);
 
