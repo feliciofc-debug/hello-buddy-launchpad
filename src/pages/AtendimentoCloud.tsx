@@ -32,9 +32,11 @@ type Message = {
 
 const FILTERS = [
   { value: "todas", label: "Todas" },
+  { value: "campanha", label: "Campanhas" },
   { value: "ia", label: "IA atendendo" },
   { value: "humano", label: "Você atendendo" },
 ] as const;
+
 
 export default function AtendimentoCloud() {
   const navigate = useNavigate();
