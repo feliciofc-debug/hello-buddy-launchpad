@@ -934,6 +934,16 @@ export default function ContatosListasPJ() {
           onDisparoConcluido={() => loadListas()}
         />
       )}
+
+      {novidadeTarget && (
+        <AvisarNovidadeModal
+          open={!!novidadeTarget}
+          onClose={() => setNovidadeTarget(null)}
+          listaId={novidadeTarget.id}
+          listaNome={novidadeTarget.nome}
+        />
+      )}
+
     </div>
   );
 }
