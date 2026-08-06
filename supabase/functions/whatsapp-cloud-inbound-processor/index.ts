@@ -4976,7 +4976,10 @@ async function processOne(queueId: string) {
         // botão interativo (não-template) chega como interactive.button_reply.id.
         const buttonId: string = row.payload?.interactive?.button_reply?.id ??
           row.payload?.button?.payload ?? "";
-        const buttonTextNorm = String(row.payload?.button?.text ?? "")
+        const buttonTextNorm = String(
+          row.payload?.button?.text ??
+          row.payload?.interactive?.button_reply?.title ?? "",
+        )
           .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
         const STOP_TOKENS = new Set([
