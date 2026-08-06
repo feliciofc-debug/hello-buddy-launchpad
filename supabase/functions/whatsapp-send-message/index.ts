@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { toMetaSafeImageUrl } from '../_shared/meta-media.ts'
+import { logOutboundMessage } from '../_shared/cloud-log.ts'
+
 
 
 const corsHeaders = {
@@ -142,12 +144,23 @@ serve(async (req) => {
 
     console.log('✅ Mensagem enviada:', result.messages?.[0]?.id)
 
+    // Registra no monitor de conversas (para acompanhar campanhas em tempo real)
+    await logOutboundMessage(supabase, {
+      userId: user_id,
+      phone: String(to),
+      content: message || (document_url ? `📄 ${document_filename || 'documento'}` : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))),
+      messageType: document_url ? 'document' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
+      wamid: result.messages?.[0]?.id ?? null,
+      sender: 'campanha',
+    })
+
     return new Response(JSON.stringify({
       success: true,
       message_id: result.messages?.[0]?.id,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
+
 
   } catch (error) {
     console.error('❌ Erro:', error)
