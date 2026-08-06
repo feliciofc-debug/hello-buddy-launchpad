@@ -536,8 +536,19 @@ export default function ContatosListasPJ() {
                               }}
                             >
                               <Users className="h-3 w-3" />
-                              Enviar campanha aos qualificados ({lista.optin_confirmados ?? 0})
+                              Campanha de produto aos qualificados ({lista.optin_confirmados ?? 0})
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px] gap-1.5"
+                              disabled={(lista.optin_confirmados ?? 0) === 0}
+                              onClick={() => setNovidadeTarget({ id: lista.id, nome: lista.nome })}
+                            >
+                              <Megaphone className="h-3 w-3" />
+                              Avisar novidade (sem produto)
+                            </Button>
+
                             <Button
                               size="sm"
                               variant="ghost"
