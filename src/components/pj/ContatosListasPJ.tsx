@@ -16,14 +16,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  Loader2, Plus, Trash2, Eye, Copy, ChevronDown, Search, Users, Edit2, Save, X, UserPlus, FileDown,
+  Loader2, Plus, Trash2, Eye, Copy, ChevronDown, Search, Users, Edit2, Save, X, UserPlus, FileDown, Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import ImportContatosPJ from "./ImportContatosPJ";
 import EnviosProgramadosPJ from "./EnviosProgramadosPJ";
 import CriarGrupoWhatsAppPJ from "./CriarGrupoWhatsAppPJ";
 import EnviarConviteOptinModal from "./EnviarConviteOptinModal";
+import AvisarNovidadeModal from "./AvisarNovidadeModal";
 import { Send } from "lucide-react";
+
 
 // Normaliza nome de lista/grupo para casar espelho "📱 X" com grupo "X"
 // (remove prefixo espelho, faz trim + lowercase + colapsa espaços)
@@ -121,6 +123,8 @@ export default function ContatosListasPJ() {
 
   // Convite opt-in modal
   const [conviteTarget, setConviteTarget] = useState<{ id: string; nome: string } | null>(null);
+  const [novidadeTarget, setNovidadeTarget] = useState<{ id: string; nome: string } | null>(null);
+
 
   // Filtro de qualificação nos membros expandidos
   const [filtroQualificacao, setFiltroQualificacao] = useState<"todos" | "qualificados" | "aguardando" | "recusaram">("todos");
@@ -536,8 +540,19 @@ export default function ContatosListasPJ() {
                               }}
                             >
                               <Users className="h-3 w-3" />
-                              Enviar campanha aos qualificados ({lista.optin_confirmados ?? 0})
+                              Campanha de produto aos qualificados ({lista.optin_confirmados ?? 0})
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-[11px] gap-1.5"
+                              disabled={(lista.optin_confirmados ?? 0) === 0}
+                              onClick={() => setNovidadeTarget({ id: lista.id, nome: lista.nome })}
+                            >
+                              <Megaphone className="h-3 w-3" />
+                              Avisar novidade (sem produto)
+                            </Button>
+
                             <Button
                               size="sm"
                               variant="ghost"
@@ -923,6 +938,16 @@ export default function ContatosListasPJ() {
           onDisparoConcluido={() => loadListas()}
         />
       )}
+
+      {novidadeTarget && (
+        <AvisarNovidadeModal
+          open={!!novidadeTarget}
+          onClose={() => setNovidadeTarget(null)}
+          listaId={novidadeTarget.id}
+          listaNome={novidadeTarget.nome}
+        />
+      )}
+
     </div>
   );
 }
