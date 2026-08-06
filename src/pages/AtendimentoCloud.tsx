@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Bot, User, Send, ArrowLeft, MessageCircle, Hand, RotateCcw, AlertTriangle } from "lucide-react";
+import { Bot, User, Send, ArrowLeft, MessageCircle, Hand, RotateCcw, AlertTriangle, Megaphone } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 type Conversation = {
@@ -32,9 +32,11 @@ type Message = {
 
 const FILTERS = [
   { value: "todas", label: "Todas" },
+  { value: "campanha", label: "Campanhas" },
   { value: "ia", label: "IA atendendo" },
   { value: "humano", label: "Você atendendo" },
 ] as const;
+
 
 export default function AtendimentoCloud() {
   const navigate = useNavigate();
@@ -46,7 +48,9 @@ export default function AtendimentoCloud() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [campanhaConvIds, setCampanhaConvIds] = useState<Set<string>>(new Set());
   const threadRef = useRef<HTMLDivElement>(null);
+
 
   // Auth
   useEffect(() => {
@@ -79,8 +83,20 @@ export default function AtendimentoCloud() {
         setConversations((data as any) || []);
         setLoading(false);
       }
+
+      // Quais conversas receberam disparo de campanha (template/oferta)
+      const { data: camp } = await supabase
+        .from("whatsapp_cloud_messages" as any)
+        .select("conversation_id")
+        .eq("user_id", userId)
+        .eq("sender", "campanha")
+        .limit(5000);
+      if (mounted) {
+        setCampanhaConvIds(new Set(((camp as any[]) || []).map((r) => r.conversation_id)));
+      }
     };
     load();
+
 
     const channel = supabase
       .channel(`atendimento-cloud-conv-${userId}`)
@@ -145,10 +161,12 @@ export default function AtendimentoCloud() {
   const selected = useMemo(() => conversations.find((c) => c.id === selectedId) || null, [conversations, selectedId]);
 
   const filtered = useMemo(() => {
+    if (filter === "campanha") return conversations.filter((c) => campanhaConvIds.has(c.id));
     if (filter === "ia") return conversations.filter((c) => c.status === "active");
     if (filter === "humano") return conversations.filter((c) => c.status === "handoff");
     return conversations;
-  }, [conversations, filter]);
+  }, [conversations, filter, campanhaConvIds]);
+
 
   // 24h window from last inbound message
   const lastInboundAt = useMemo(() => {
@@ -165,11 +183,13 @@ export default function AtendimentoCloud() {
   const counts = useMemo(
     () => ({
       todas: conversations.length,
+      campanha: conversations.filter((c) => campanhaConvIds.has(c.id)).length,
       ia: conversations.filter((c) => c.status === "active").length,
       humano: conversations.filter((c) => c.status === "handoff").length,
     }),
-    [conversations]
+    [conversations, campanhaConvIds]
   );
+
 
   const updateStatus = async (status: "active" | "handoff" | "closed") => {
     if (!selected || !userId) return;
@@ -266,7 +286,7 @@ export default function AtendimentoCloud() {
         <Card className="md:col-span-1 flex flex-col overflow-hidden">
           <div className="p-3 border-b">
             <Tabs value={filter} onValueChange={(v) => setFilter(v as any)}>
-              <TabsList className="w-full grid grid-cols-3">
+              <TabsList className="w-full grid grid-cols-4">
                 {FILTERS.map((f) => (
                   <TabsTrigger key={f.value} value={f.value} className="text-xs">
                     {f.label}
@@ -294,8 +314,14 @@ export default function AtendimentoCloud() {
                     <div className="font-medium truncate text-sm">
                       {c.contact_name || c.contact_number}
                     </div>
-                    {statusBadge(c.status)}
+                    <div className="flex items-center gap-1">
+                      {campanhaConvIds.has(c.id) && (
+                        <Badge variant="secondary" className="text-[10px]">📣 campanha</Badge>
+                      )}
+                      {statusBadge(c.status)}
+                    </div>
                   </div>
+
                   <div className="flex items-center justify-between mt-1">
                     <div className="text-xs text-muted-foreground truncate">{c.contact_number}</div>
                     <div className="text-[11px] text-muted-foreground whitespace-nowrap ml-2">
@@ -342,6 +368,7 @@ export default function AtendimentoCloud() {
                 {messages.map((m) => {
                   const isInbound = m.direction === "inbound";
                   const isHuman = m.sender === "human";
+                  const isCampanha = m.sender === "campanha";
                   return (
                     <div key={m.id} className={`flex ${isInbound ? "justify-start" : "justify-end"}`}>
                       <div
@@ -350,6 +377,8 @@ export default function AtendimentoCloud() {
                             ? "bg-white border"
                             : isHuman
                             ? "bg-amber-500 text-white"
+                            : isCampanha
+                            ? "bg-blue-600 text-white"
                             : "bg-green-600 text-white"
                         }`}
                       >
@@ -362,6 +391,11 @@ export default function AtendimentoCloud() {
                             <>
                               <Hand className="h-3 w-3" /> Você
                             </>
+                          ) : isCampanha ? (
+                            <>
+                              <Megaphone className="h-3 w-3" /> Campanha
+                              {m.message_type === "template" ? " (mensagem aprovada)" : ""}
+                            </>
                           ) : (
                             <>
                               <Bot className="h-3 w-3" /> IA
@@ -371,6 +405,7 @@ export default function AtendimentoCloud() {
                         </div>
                         <div className="whitespace-pre-wrap break-words">{m.content}</div>
                       </div>
+
                     </div>
                   );
                 })}
