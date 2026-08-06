@@ -215,9 +215,10 @@ export default function ContatosListasPJ() {
     if (expandedLista === listaId) { setExpandedLista(null); return; }
     setLoadingMembros(true);
     setExpandedLista(listaId);
+    setFiltroQualificacao("todos");
     const { data } = await supabase
       .from("pj_lista_membros")
-      .select("id, nome, telefone, lista_id")
+      .select("id, nome, telefone, lista_id, opt_in_status")
       .eq("lista_id", listaId)
       .order("nome", { ascending: true });
     setListaMembros((data as unknown as MembroItem[]) || []);
