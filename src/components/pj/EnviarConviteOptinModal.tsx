@@ -101,7 +101,7 @@ export default function EnviarConviteOptinModal({
       .from("whatsapp_templates")
       .select("id, nome_meta, idioma, status_meta, tipo_uso")
       .eq("user_id", userData.user.id)
-      .eq("tipo_uso", "convite")
+      .in("tipo_uso", ["convite", "convite_optin"])
       .eq("status_meta", "aprovado")
       .order("nome_meta", { ascending: true });
     setTemplates((data as TemplateConvite[]) || []);
