@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { toMetaSafeImageUrl } from '../_shared/meta-media.ts'
+import { logOutboundMessage } from '../_shared/cloud-log.ts'
+
 
 
 const corsHeaders = {
