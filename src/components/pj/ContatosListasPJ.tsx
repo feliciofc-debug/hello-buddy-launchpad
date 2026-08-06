@@ -638,7 +638,24 @@ export default function ContatosListasPJ() {
                               ) : (
                                 <>
                                   <span className="truncate flex-1">{m.nome || "(Sem nome)"}</span>
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-[9px] shrink-0 ${
+                                      m.opt_in_status === "confirmado"
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : m.opt_in_status === "recusado"
+                                        ? "bg-red-50 text-red-700 border-red-200"
+                                        : "bg-amber-50 text-amber-700 border-amber-200"
+                                    }`}
+                                  >
+                                    {m.opt_in_status === "confirmado"
+                                      ? "✅ Qualificado"
+                                      : m.opt_in_status === "recusado"
+                                      ? "🚫 Recusou"
+                                      : "⏳ Aguardando"}
+                                  </Badge>
                                   <span className="text-muted-foreground font-mono mx-2">{m.telefone}</span>
+
                                   <div className="flex gap-0.5 opacity-0 group-hover/member:opacity-100 transition-opacity">
                                     <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => startEditMembro(m)}>
                                       <Edit2 className="h-3 w-3" />
