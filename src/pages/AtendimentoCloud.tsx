@@ -363,17 +363,27 @@ export default function AtendimentoCloud() {
             ) : filtered.length === 0 ? (
               <div className="p-4 text-sm text-muted-foreground">Nenhuma conversa.</div>
             ) : (
-              filtered.map((c) => (
+              filtered.map((c) => {
+                const respondeu = respondidasIds.has(c.id);
+                return (
                 <button
                   key={c.id}
                   onClick={() => setSelectedId(c.id)}
                   className={`w-full text-left px-3 py-3 border-b hover:bg-muted/50 transition-colors ${
-                    selectedId === c.id ? "bg-muted" : ""
-                  }`}
+                    selectedId === c.id ? "bg-muted" : respondeu ? "bg-green-50" : ""
+                  } ${respondeu ? "border-l-4 border-l-green-500" : ""}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium truncate text-sm">
-                      {c.contact_name || c.contact_number}
+                    <div className="flex items-center gap-2 min-w-0">
+                      {respondeu && (
+                        <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-60" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500" />
+                        </span>
+                      )}
+                      <div className={`truncate text-sm ${respondeu ? "font-bold" : "font-medium"}`}>
+                        {c.contact_name || c.contact_number}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1">
                       {campanhaConvIds.has(c.id) && (
@@ -384,13 +394,18 @@ export default function AtendimentoCloud() {
                   </div>
 
                   <div className="flex items-center justify-between mt-1">
-                    <div className="text-xs text-muted-foreground truncate">{c.contact_number}</div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {respondeu ? <span className="text-green-700 font-medium">respondeu · </span> : null}
+                      {c.contact_number}
+                    </div>
                     <div className="text-[11px] text-muted-foreground whitespace-nowrap ml-2">
                       {fmtTime(c.last_message_at)}
                     </div>
                   </div>
                 </button>
-              ))
+                );
+              })
+
             )}
           </ScrollArea>
         </Card>
