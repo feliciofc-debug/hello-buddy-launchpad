@@ -3573,14 +3573,16 @@ async function toolPostarMidiaBiblioteca(
     const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
     if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
 
-    const variantesEntries = await Promise.all(
-      redes.map(async (r) => {
-        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
-      }),
-    );
-    let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
-    let scripts: Record<string, string> = Object.fromEntries(variantesEntries.map(([r, v]) => [r, v.A]));
+    // Gera as 3 opções UMA vez (rede-base) e reaproveita nas demais redes.
+    // Antes gerava 1 chamada de IA por rede em paralelo — dobrava a latência e às vezes
+    // a função encerrava antes de responder ("pedi a copy e não chegou nada").
+    const redeBase: "facebook" | "instagram" = redes.includes("instagram") ? "instagram" : "facebook";
+    console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
+    const opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx);
+    console.log(`[pietro][postar_midia] copy gerada lenA=${opcoesBase.A.length}`);
+    let variantes: Record<string, PostVariantes> = Object.fromEntries(redes.map((r) => [r, { ...opcoesBase }]));
+    let scripts: Record<string, string> = Object.fromEntries(redes.map((r) => [r, opcoesBase.A]));
+
 
     // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
     const incluirCta = !!args?.incluir_cta_whatsapp;
