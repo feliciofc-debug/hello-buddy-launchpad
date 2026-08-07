@@ -2244,25 +2244,35 @@ Responda APENAS com JSON válido nesta forma exata:
   };
 
   try {
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: "Você retorna APENAS JSON válido, sem markdown, sem texto extra." },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.9,
-        max_tokens: 3500,
-        response_format: { type: "json_object" },
-      }),
-    });
+    // Timeout duro: sem isso o fetch pode pendurar e a resposta NUNCA chega no WhatsApp.
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 25000);
+    let res: Response;
+    try {
+      res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        signal: ac.signal,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: "Você retorna APENAS JSON válido, sem markdown, sem texto extra." },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.9,
+          max_tokens: 3500,
+          response_format: { type: "json_object" },
+        }),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) {
       console.error("[postar_redes] gemini !ok:", res.status, await res.text());
       return fallback();
     }
     const data = await res.json();
+
     let txt = (data?.choices?.[0]?.message?.content || "").trim();
     txt = txt.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
     const m = txt.match(/\{[\s\S]*\}/);
