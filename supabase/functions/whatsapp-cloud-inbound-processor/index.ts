@@ -2244,25 +2244,35 @@ Responda APENAS com JSON válido nesta forma exata:
   };
 
   try {
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: "Você retorna APENAS JSON válido, sem markdown, sem texto extra." },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.9,
-        max_tokens: 3500,
-        response_format: { type: "json_object" },
-      }),
-    });
+    // Timeout duro: sem isso o fetch pode pendurar e a resposta NUNCA chega no WhatsApp.
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 25000);
+    let res: Response;
+    try {
+      res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        signal: ac.signal,
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${LOVABLE_API_KEY}` },
+        body: JSON.stringify({
+          model: "google/gemini-2.5-flash",
+          messages: [
+            { role: "system", content: "Você retorna APENAS JSON válido, sem markdown, sem texto extra." },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.9,
+          max_tokens: 3500,
+          response_format: { type: "json_object" },
+        }),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) {
       console.error("[postar_redes] gemini !ok:", res.status, await res.text());
       return fallback();
     }
     const data = await res.json();
+
     let txt = (data?.choices?.[0]?.message?.content || "").trim();
     txt = txt.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
     const m = txt.match(/\{[\s\S]*\}/);
@@ -3563,14 +3573,16 @@ async function toolPostarMidiaBiblioteca(
     const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
     if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
 
-    const variantesEntries = await Promise.all(
-      redes.map(async (r) => {
-        const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, undefined, brandCtx)] as const;
-      }),
-    );
-    let variantes: Record<string, PostVariantes> = Object.fromEntries(variantesEntries);
-    let scripts: Record<string, string> = Object.fromEntries(variantesEntries.map(([r, v]) => [r, v.A]));
+    // Gera as 3 opções UMA vez (rede-base) e reaproveita nas demais redes.
+    // Antes gerava 1 chamada de IA por rede em paralelo — dobrava a latência e às vezes
+    // a função encerrava antes de responder ("pedi a copy e não chegou nada").
+    const redeBase: "facebook" | "instagram" = redes.includes("instagram") ? "instagram" : "facebook";
+    console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
+    const opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx);
+    console.log(`[pietro][postar_midia] copy gerada lenA=${opcoesBase.A.length}`);
+    let variantes: Record<string, PostVariantes> = Object.fromEntries(redes.map((r) => [r, { ...opcoesBase }]));
+    let scripts: Record<string, string> = Object.fromEntries(redes.map((r) => [r, opcoesBase.A]));
+
 
     // Feature A: CTA de WhatsApp (opt-in, número dinâmico do tenant).
     const incluirCta = !!args?.incluir_cta_whatsapp;
