@@ -185,6 +185,7 @@ const App = () => (
             <Route path="/pj/listas-contatos" element={<ListasContatosPJ />} />
             <Route path="/pj/whatsapp-templates" element={<WhatsAppTemplatesPJ />} />
             <Route path="/pj/ebook-presente" element={<EbookPresentePJ />} />
+            <Route path="/pj/minha-marca" element={<LogoMarcaPJ />} />
             <Route path="/pj/contatos-comerciais" element={<ContatosComerciais />} />
             {/* <Route path="/integracoes" element={<Integracoes />} /> */} {/* Oculto - reativar removendo o comentário */}
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
