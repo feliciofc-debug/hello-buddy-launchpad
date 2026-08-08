@@ -2883,7 +2883,10 @@ function detectStandaloneFormatReply(text: string): "feed" | "story" | "reels" |
 function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[]; temProduto: boolean; formato?: "feed" | "story" | "reels" } | null {
   const original = compactSpaces(text || "");
   const normalized = normalizePt(original);
+  // Pedido de CARROSSEL nunca é post único — quem trata é o roteador de carrossel.
+  if (/\bcarrosse(l|is)\b|\bcarousel\b/.test(normalized)) return null;
   if (!/\b(posta|poste|postar|publica|publique|publicar)\b/.test(normalized)) return null;
+
 
   const redes: string[] = [];
   if (/\b(face|facebook|fb)\b/.test(normalized)) redes.push("facebook");
@@ -4426,6 +4429,81 @@ async function toolCriarCarrossel(
   }
 }
 
+// ============================================================
+// FASE 4B.1 — ROTEAMENTO DETERMINÍSTICO DO CARROSSEL
+// O pré-roteador de post social (detectSocialPostIntent) capturava
+// "faz um carrossel ... postar no Instagram" antes do modelo, caindo no
+// fluxo antigo de post único (A/B/C). Aqui garantimos: pedido de carrossel
+// → SEMPRE toolCriarCarrossel, sem depender da escolha do modelo.
+// ============================================================
+type PendingCarrossel = { tema: string; createdAt: number };
+const PENDING_CARROSSEL = new Map<string, PendingCarrossel>();
+const PENDING_CARROSSEL_TTL_MS = 30 * 60 * 1000;
+
+function setPendingCarrossel(userId: string, tema: string) {
+  PENDING_CARROSSEL.set(userId, { tema, createdAt: Date.now() });
+}
+function getPendingCarrossel(userId: string): string | null {
+  const p = PENDING_CARROSSEL.get(userId);
+  if (!p) return null;
+  if (Date.now() - p.createdAt > PENDING_CARROSSEL_TTL_MS) {
+    PENDING_CARROSSEL.delete(userId);
+    return null;
+  }
+  return p.tema;
+}
+function clearPendingCarrossel(userId: string) { PENDING_CARROSSEL.delete(userId); }
+
+export function isCarrosselRequest(text: string): boolean {
+  const n = normalizePt(compactSpaces(text || ""));
+  return /\bcarrosse(l|is)\b|\bcarousel\b/.test(n);
+}
+
+// Extrai o tema do pedido, tirando o "faz um carrossel", o nº de páginas e o "posta no instagram".
+function extractCarrosselTema(text: string): string {
+  let t = compactSpaces(text || "").replace(/^jarvis[,.!\s-]*/i, "");
+  const sobre = t.match(/\b(?:sobre|com o tema|de tema|falando de|falando sobre)\s+(.+)$/i);
+  if (sobre?.[1]) t = sobre[1];
+  else {
+    t = t.replace(/^.*?\bcarrosse(?:l|is)\b/i, "").replace(/^.*?\bcarousel\b/i, "");
+  }
+  t = t
+    .replace(/\b(para|pra|pro|no|na|em)\s+(o\s+|a\s+)?(instagram|insta|ig|facebook|face|fb|whatsapp|zap)\b/gi, " ")
+    .replace(/\bcom\s+\d+\s*(paginas?|páginas?|cards?|slides?)\b/gi, " ")
+    .replace(/\b\d+\s*(paginas?|páginas?|cards?|slides?)\b/gi, " ")
+    .replace(/\b(incluido|incluindo|inclusive)\b.*$/i, " ")
+    .replace(/\b(posta|poste|postar|publica|publique|publicar|manda|mandar|envia|enviar)\b/gi, " ")
+    .replace(/^[\s,.:;–—-]+|[\s,.:;–—-]+$/g, "");
+  return compactSpaces(t);
+}
+
+// Resposta curta só com a cor ("Azul", "🟡 Dourado", "quero dourado")
+function detectStandaloneCarrosselColor(text: string): string | null {
+  const raw = compactSpaces(text || "");
+  if (!raw || raw.length > 40) return null;
+  return resolveCarouselColor(raw) ? raw : null;
+}
+
+function formatCarrosselToolResult(raw: string): string {
+  let d: any = null;
+  try { d = JSON.parse(raw); } catch { return raw; }
+  if (d?.status === "aguardando_cor") return "É só escolher a cor aí em cima 👆";
+  if (d?.status === "publicado") {
+    return `✅ Carrossel de *${d.cards} cards* na cor *${d.cor}* publicado no seu Instagram!<<SPLIT>>Confere aqui: ${d.link_perfil}`;
+  }
+  if (d?.status === "gerado_sem_publicar") {
+    return `🎨 Prontinho — ${d.cards} cards na cor *${d.cor}*.<<SPLIT>>Posso publicar no Instagram agora? Responde *sim*.`;
+  }
+  if (d?.erro === "falha_ao_publicar") {
+    return `Os cards ficaram prontos, mas o Instagram recusou a publicação (${d.detalhe ?? "erro"}). Quer que eu tente de novo?`;
+  }
+  if (d?.mensagem) return String(d.mensagem);
+  if (d?.erro) return `Não consegui montar o carrossel: ${d.erro}`;
+  return "Carrossel processado.";
+}
+
+
+
 
 async function runTool(
 
@@ -4623,7 +4701,36 @@ async function callGemini(
       clearPendingFormatChoice(toolCtx.userId);
     }
 
+    // ---- CARROSSEL (prioridade sobre o post único) ----
+    // 1) pedido explícito de carrossel
+    if (isCarrosselRequest(userContent)) {
+      if (!remetenteEhDono) {
+        return { text: "Criar e publicar carrossel é restrito ao responsável da conta. Posso encaminhar seu pedido pra ele, se quiser." };
+      }
+      const tema = extractCarrosselTema(userContent);
+      const corPedida = resolveCarouselColor(userContent) ? userContent : undefined;
+      console.log("[pietro][forced_carrossel]", { tema, cor: corPedida ? "detectada" : "aguardando" });
+      if (tema.length < 3) {
+        return { text: "Fechado, carrossel! Sobre qual assunto você quer? (ex: “vantagens da AMZ Ofertas”)" };
+      }
+      setPendingCarrossel(toolCtx.userId, tema);
+      const r = await toolCriarCarrossel({ tema, cor: corPedida, publicar: true }, toolCtx);
+      if (!/"status"\s*:\s*"aguardando_cor"/.test(r)) clearPendingCarrossel(toolCtx.userId);
+      return { text: formatCarrosselToolResult(r) };
+    }
+
+    // 2) resposta curta só com a cor, retomando o carrossel pendente
+    const temaPendente = getPendingCarrossel(toolCtx.userId);
+    const corResposta = temaPendente ? detectStandaloneCarrosselColor(userContent) : null;
+    if (remetenteEhDono && temaPendente && corResposta) {
+      console.log("[pietro][carrossel_cor_escolhida]", { tema: temaPendente });
+      clearPendingCarrossel(toolCtx.userId);
+      const r = await toolCriarCarrossel({ tema: temaPendente, cor: corResposta, publicar: true }, toolCtx);
+      return { text: formatCarrosselToolResult(r) };
+    }
+
     const socialPost = detectSocialPostIntent(userContent);
+
     if (socialPost) {
       if (!remetenteEhDono) {
         return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
