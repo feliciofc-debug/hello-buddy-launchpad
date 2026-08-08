@@ -26,7 +26,12 @@ serve(async (req) => {
       image_url, document_url, document_filename,
       // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
       contact_card, // { nome: string, telefone: string }
+      // Lista interativa (1 toque) — usada p/ escolher cor do carrossel, etc.
+      // { body: string, button: string, header?: string, footer?: string,
+      //   rows: [{ id, title, description? }] }  (máx 10 rows)
+      interactive_list,
     } = body
+
 
     if (!user_id || !to) {
       throw new Error('user_id e to são obrigatórios')
@@ -61,7 +66,36 @@ serve(async (req) => {
 
     let messagePayload: any
 
-    if (template_name) {
+    if (interactive_list?.rows?.length) {
+      // ============================================================
+      // LISTA INTERATIVA (type:interactive/list) — 1 toque, até 10 opções.
+      // Usada quando 3 reply-buttons não bastam (ex: paleta de cores).
+      // ============================================================
+      const rows = interactive_list.rows.slice(0, 10).map((r: any, i: number) => ({
+        id: String(r?.id ?? `opt_${i}`).slice(0, 200),
+        title: String(r?.title ?? `Opção ${i + 1}`).slice(0, 24),
+        ...(r?.description ? { description: String(r.description).slice(0, 72) } : {}),
+      }))
+      messagePayload = {
+        messaging_product: 'whatsapp',
+        to: to.replace(/\D/g, ''),
+        type: 'interactive',
+        interactive: {
+          type: 'list',
+          ...(interactive_list.header
+            ? { header: { type: 'text', text: String(interactive_list.header).slice(0, 60) } }
+            : {}),
+          body: { text: String(interactive_list.body || message || 'Escolha uma opção').slice(0, 1024) },
+          ...(interactive_list.footer
+            ? { footer: { text: String(interactive_list.footer).slice(0, 60) } }
+            : {}),
+          action: {
+            button: String(interactive_list.button || 'Escolher').slice(0, 20),
+            sections: [{ title: String(interactive_list.section_title || 'Opções').slice(0, 24), rows }],
+          },
+        },
+      }
+    } else if (template_name) {
       messagePayload = {
         messaging_product: 'whatsapp',
         to: to.replace(/\D/g, ''),
@@ -72,6 +106,7 @@ serve(async (req) => {
         }
       }
     } else if (contact_card?.telefone) {
+
       // ============================================================
       // vCARD OFICIAL (type:contacts) — 1 toque para salvar o número.
       // Dados sempre do TENANT (nome do negócio + número dele).
@@ -148,8 +183,9 @@ serve(async (req) => {
     await logOutboundMessage(supabase, {
       userId: user_id,
       phone: String(to),
-      content: message || (document_url ? `📄 ${document_filename || 'documento'}` : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : ''))),
-      messageType: document_url ? 'document' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
+      content: message || (interactive_list ? `🎨 ${interactive_list.body || 'lista de opções'}` : (document_url ? `📄 ${document_filename || 'documento'}` : (image_url ? '🖼️ imagem' : (contact_card ? '📇 cartão de contato' : '')))),
+      messageType: interactive_list ? 'interactive' : document_url ? 'document' : image_url ? 'image' : contact_card ? 'contacts' : template_name ? 'template' : 'text',
+
       wamid: result.messages?.[0]?.id ?? null,
       sender: 'campanha',
     })
