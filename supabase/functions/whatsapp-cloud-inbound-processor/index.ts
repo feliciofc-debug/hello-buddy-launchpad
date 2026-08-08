@@ -27,6 +27,9 @@ function getTenantOwnersForCtx(userId: string): string[] {
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
 import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
+import { carouselColorRows, resolveCarouselColor } from "../_shared/carousel-colors.ts";
+import { logOutboundMessage } from "../_shared/cloud-log.ts";
+
 import {
   entregarEbookTenant,
   getEntregaEbook,
