@@ -4171,7 +4171,240 @@ async function toolEncaminharRecadoAoDono(
 }
 
 
-async function runTool(
+// ============================================================
+// FASE 4B — criar_carrossel: carrossel de Instagram 100% pelo WhatsApp.
+// Fluxo: gerar-carousel-content → render-carousel-slides → meta-publish-carousel
+// Sem aprovação card por card. Cor escolhida por LISTA de 1 toque.
+// Multi-tenant: usa SEMPRE o IG e a logo do próprio tenant (nunca admin).
+// ============================================================
+const CARROSSEL_MAX_DIA = 5; // guardrail simples por tenant/dia
+
+async function callEdge(fn: string, payload: any, timeoutMs = 120000): Promise<any> {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/${fn}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SERVICE_KEY}`,
+      "apikey": SERVICE_KEY,
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const txt = await res.text();
+  let json: any = null;
+  try { json = JSON.parse(txt); } catch { /* resposta não-JSON */ }
+  if (!res.ok) {
+    throw new Error(json?.error || `${fn} ${res.status}: ${txt.slice(0, 200)}`);
+  }
+  return json ?? {};
+}
+
+async function sendCarrosselColorPicker(userId: string, to: string, tema: string): Promise<void> {
+  await fetch(`${SUPABASE_URL}/functions/v1/whatsapp-send-message`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${SERVICE_KEY}`,
+      "apikey": SERVICE_KEY,
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      to,
+      interactive_list: {
+        header: "🎨 Cor do carrossel",
+        body: `Beleza! Vou montar o carrossel sobre *${tema.slice(0, 120)}*.\n\nEscolha a cor de destaque — é só 1 toque:`,
+        footer: "Depois eu já publico no seu Instagram",
+        button: "Escolher cor",
+        section_title: "Cores",
+        rows: carouselColorRows(),
+      },
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
+}
+
+async function toolCriarCarrossel(
+  args: { tema?: string; cor?: string; publicar?: boolean; legenda?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  try {
+    if (!isOwner(ctx)) {
+      return JSON.stringify({
+        erro: "acao_restrita_ao_responsavel",
+        mensagem: "Criar e publicar carrossel é restrito ao responsável da conta.",
+      });
+    }
+
+    const tema = (args?.tema || "").trim();
+    if (tema.length < 3) return JSON.stringify({ erro: "informe o tema/assunto do carrossel" });
+
+    // 1) COR — se não vier (ou vier irreconhecível), manda a LISTA de 1 toque e para aqui.
+    const cor = resolveCarouselColor(args?.cor);
+    if (!cor) {
+      await sendCarrosselColorPicker(ctx.userId, ctx.fromNumber, tema);
+      return JSON.stringify({
+        status: "aguardando_cor",
+        tema,
+        instrucao:
+          "Já enviei ao usuário uma LISTA de cores (1 toque). NÃO escreva a lista de novo, NÃO repita as opções. Responda no máximo 1 linha curta tipo 'É só escolher a cor aí em cima 👆'. Quando ele responder a cor (ex: 'Azul'), chame criar_carrossel outra vez com tema=\"" +
+          tema.replace(/"/g, "'") + "\" e cor=<a cor escolhida>.",
+      });
+    }
+
+    // 2) Guardrail de volume por tenant/dia
+    const desdeHoje = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count: feitosHoje } = await sb
+      .from("social_posts_queue")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", ctx.userId)
+      .eq("post_type", "carousel")
+      .gte("created_at", desdeHoje);
+    if ((feitosHoje ?? 0) >= CARROSSEL_MAX_DIA) {
+      return JSON.stringify({
+        erro: "limite_diario_carrossel",
+        mensagem: `Você já criou ${feitosHoje} carrosséis nas últimas 24h (limite ${CARROSSEL_MAX_DIA}). Amanhã libera de novo.`,
+      });
+    }
+
+    // 3) Identidade do tenant (nome/@ do próprio Instagram conectado)
+    const { data: conn } = await sb
+      .from("meta_connections")
+      .select("page_name, ig_username, ig_account_id")
+      .eq("user_id", ctx.userId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!conn?.ig_account_id) {
+      return JSON.stringify({
+        erro: "instagram_nao_conectado",
+        mensagem: "Seu Instagram não está conectado. Vá em Configurações → Redes Sociais, conecte a conta e me chama de novo.",
+      });
+    }
+    const businessName = (conn.page_name || "").trim() || null;
+    const profileHandle = conn.ig_username ? `@${String(conn.ig_username).replace(/^@/, "")}` : null;
+
+    // 4) CONTEÚDO dos slides (mesma função usada pelo app)
+    const prompt = [
+      `Crie um carrossel de Instagram sobre: "${tema}".`,
+      businessName ? `A marca é "${businessName}".` : "",
+      "Regras: 1 slide 'cover' (título curto e forte), 4 a 6 slides 'content' (title curto + body de 1 a 3 frases, linguagem simples e direta, sem jargão), e 1 slide 'cta' final convidando a seguir/chamar no direct.",
+      "Português do Brasil. Sem emojis nos títulos dos cards. Legenda (caption) com 6 a 10 hashtags relevantes ao final.",
+    ].filter(Boolean).join(" ");
+
+    const conteudo = await callEdge("gerar-carousel-content", { prompt, tema }, 90000);
+    const slides = Array.isArray(conteudo?.slides) ? conteudo.slides : [];
+    if (slides.length < 2) {
+      return JSON.stringify({ erro: "conteudo_insuficiente", detalhe: "a IA não devolveu slides suficientes; peça pra tentar de novo" });
+    }
+    const caption = (args?.legenda || conteudo?.caption || tema).toString();
+
+    // 5) RENDER server-side (Satori + resvg) — template dark-premium
+    const render = await callEdge("render-carousel-slides", {
+      user_id: ctx.userId,
+      slides,
+      template: "dark-premium",
+      primaryColor: cor.primaryColor,
+      secondaryColor: cor.secondaryColor,
+      businessName,
+      profileHandle,
+      incluir_logo: true,
+    }, 180000);
+    const imageUrls: string[] = Array.isArray(render?.image_urls) ? render.image_urls : [];
+    if (imageUrls.length < 2) {
+      return JSON.stringify({ erro: "falha_no_render", detalhe: "não consegui gerar as imagens dos cards" });
+    }
+
+    // 6) Prévia pro dono: manda a CAPA no WhatsApp (não é aprovação, é transparência)
+    let capaWamid: string | null = null;
+    try {
+      capaWamid = await sendWhatsApp(
+        ctx.userId,
+        ctx.fromNumber,
+        `🎨 Carrossel *${cor.label}* pronto — ${imageUrls.length} cards (esta é a capa).`,
+        imageUrls[0],
+      );
+    } catch (e) {
+      console.warn("[criar_carrossel] falhou ao enviar a capa:", (e as Error).message);
+    }
+
+    // Sem publicar (publicar=false): devolve os links e para.
+    if (args?.publicar === false) {
+      return JSON.stringify({
+        status: "gerado_sem_publicar",
+        cor: cor.label,
+        cards: imageUrls.length,
+        image_urls: imageUrls,
+        legenda: caption,
+        instrucao: "Diga em 1-2 linhas que os cards estão prontos e pergunte se pode publicar no Instagram. Se ele confirmar, chame criar_carrossel de novo com o MESMO tema e cor e publicar=true.",
+      });
+    }
+
+    // 7) PUBLICA no Instagram do tenant
+    let publicado: any = null;
+    let erroPublicacao: string | null = null;
+    try {
+      publicado = await callEdge("meta-publish-carousel", {
+        user_id: ctx.userId,
+        image_urls: imageUrls,
+        caption,
+      }, 180000);
+    } catch (e) {
+      erroPublicacao = String((e as Error).message).slice(0, 250);
+    }
+
+    // 8) Log/auditoria: fila social + monitor de conversas
+    try {
+      await sb.from("social_posts_queue").insert({
+        user_id: ctx.userId,
+        platform: "instagram",
+        post_type: "carousel",
+        post_text: caption,
+        image_url: imageUrls[0],
+        status: publicado?.id ? "publicado" : "erro",
+        fb_post_id: publicado?.id ?? null,
+        published_at: publicado?.id ? new Date().toISOString() : null,
+        error_message: erroPublicacao,
+      });
+    } catch (e) {
+      console.warn("[criar_carrossel] log em social_posts_queue falhou:", (e as Error).message);
+    }
+    await logOutboundMessage(sb, {
+      userId: ctx.userId,
+      phone: ctx.fromNumber,
+      content: publicado?.id
+        ? `📣 Carrossel (${imageUrls.length} cards, cor ${cor.label}) publicado no Instagram — ${caption.slice(0, 120)}`
+        : `📣 Carrossel (${imageUrls.length} cards, cor ${cor.label}) NÃO publicado: ${erroPublicacao ?? "erro desconhecido"}`,
+      messageType: "image",
+      wamid: capaWamid,
+      sender: "agent",
+    });
+
+    if (!publicado?.id) {
+      return JSON.stringify({
+        erro: "falha_ao_publicar",
+        detalhe: erroPublicacao,
+        cards_gerados: imageUrls.length,
+        image_urls: imageUrls,
+        instrucao: "Avise que os cards ficaram prontos mas o Instagram recusou a publicação, diga o motivo em linguagem simples e ofereça tentar de novo.",
+      });
+    }
+
+    const link = profileHandle
+      ? `https://www.instagram.com/${profileHandle.replace(/^@/, "")}/`
+      : "https://www.instagram.com/";
+    return JSON.stringify({
+      status: "publicado",
+      cor: cor.label,
+      cards: imageUrls.length,
+      instagram_media_id: publicado.id,
+      link_perfil: link,
+      legenda: caption,
+      instrucao: `Confirme em 2 linhas curtas: carrossel de ${imageUrls.length} cards na cor ${cor.label} publicado no Instagram agora, e mande o link ${link} pra ele conferir. Não recite a legenda inteira.`,
+    });
+  } catch (e) {
+    return JSON.stringify({ erro: String((e as Error).message).slice(0, 250) });
+  }
+}
+
 
   name: string,
   args: any,
