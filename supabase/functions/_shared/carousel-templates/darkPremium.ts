@@ -239,7 +239,8 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
       left: 0,
       width: 8,
       height: CARD_HEIGHT,
-      backgroundImage: `linear-gradient(180deg, ${p}, ${rgba(s, 0.55)}, ${rgba(s, 0.08)})`,
+      backgroundColor: p,
+      opacity: 0.85,
     }),
     circle(300, rgba(p, 0.1), { top: -100, right: -100 }),
     // Number badge
@@ -283,7 +284,8 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
         display: "flex",
         flexDirection: "column",
         flexGrow: 1,
-        justifyContent: "flex-start",
+        justifyContent: "center",
+        marginBottom: 170,
         gap: 18,
       }, lines.slice(0, 5).map((line) =>
         el("div", {
