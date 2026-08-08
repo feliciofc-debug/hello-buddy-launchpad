@@ -2883,7 +2883,10 @@ function detectStandaloneFormatReply(text: string): "feed" | "story" | "reels" |
 function detectSocialPostIntent(text: string): { produto: string; tom: string; redes: string[]; temProduto: boolean; formato?: "feed" | "story" | "reels" } | null {
   const original = compactSpaces(text || "");
   const normalized = normalizePt(original);
+  // Pedido de CARROSSEL nunca é post único — quem trata é o roteador de carrossel.
+  if (/\bcarrosse(l|is)\b|\bcarousel\b/.test(normalized)) return null;
   if (!/\b(posta|poste|postar|publica|publique|publicar)\b/.test(normalized)) return null;
+
 
   const redes: string[] = [];
   if (/\b(face|facebook|fb)\b/.test(normalized)) redes.push("facebook");
