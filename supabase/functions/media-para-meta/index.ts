@@ -121,14 +121,23 @@ Deno.serve(async (req) => {
       jpeg = await new Promise<Uint8Array>((resolve) => {
         ImageMagick.read(originBytes, (img) => {
           img.quality = 88;
-          // WhatsApp recomenda até ~1600px no maior lado; evita payload gigante.
-          if (img.width > 1600 || img.height > 1600) {
+          if (igMode) {
+            // Normaliza para 1080x1080 sem cortar (contain + fundo branco)
+            const scale = Math.min(1080 / img.width, 1080 / img.height);
+            img.resize(Math.max(1, Math.round(img.width * scale)), Math.max(1, Math.round(img.height * scale)));
+            try {
+              img.backgroundColor = "#FFFFFF" as unknown as never;
+              img.extent(1080, 1080);
+            } catch { /* se extent não estiver disponível, segue redimensionado */ }
+          } else if (img.width > 1600 || img.height > 1600) {
+            // WhatsApp recomenda até ~1600px no maior lado; evita payload gigante.
             const scale = 1600 / Math.max(img.width, img.height);
             img.resize(Math.round(img.width * scale), Math.round(img.height * scale));
           }
           img.write(MagickFormat.Jpeg, (data) => resolve(new Uint8Array(data)));
         });
       });
+
     } catch (e) {
       console.error("[media-para-meta] conversão falhou:", (e as Error).message);
       return new Response("falha ao converter imagem", { status: 502, headers: CORS });
