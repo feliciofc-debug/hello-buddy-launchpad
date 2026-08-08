@@ -59,17 +59,51 @@ export async function getTenantLogoSignedUrl(
   return data?.signedUrl ?? null;
 }
 
+/** Logo legada do próprio tenant (tela Configurações → Marca): profiles.logo_reel_url. */
+async function getProfileLogoDataUrl(sb: any, userId: string): Promise<string | null> {
+  if (!userId) return null;
+  const { data, error } = await sb
+    .from("profiles")
+    .select("logo_reel_url")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !data?.logo_reel_url) return null;
+  // Isolamento: a URL precisa pertencer à pasta do próprio tenant.
+  const url = String(data.logo_reel_url);
+  if (!url.includes(`/${userId}/`)) {
+    console.error("[tenant-logo] logo_reel_url fora do escopo do tenant — ignorando");
+    return null;
+  }
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    let bin = "";
+    const CHUNK = 8192;
+    for (let i = 0; i < buf.length; i += CHUNK) {
+      bin += String.fromCharCode(...buf.subarray(i, i + CHUNK));
+    }
+    const mime = resp.headers.get("content-type") || "image/png";
+    return `data:${mime};base64,${btoa(bin)}`;
+  } catch (e) {
+    console.error("[tenant-logo] fetch logo_reel_url falhou:", (e as Error).message);
+    return null;
+  }
+}
+
 /**
  * Logo do tenant como data URL base64 — formato aceito como imagem de
  * REFERÊNCIA na geração de imagem. null quando o tenant não tem logo.
+ * Fonte 1: tenant_logos (tela "Minha Marca"). Fonte 2 (fallback do MESMO
+ * tenant): profiles.logo_reel_url (tela Configurações → Marca).
  */
 export async function getTenantLogoDataUrl(sb: any, userId: string): Promise<string | null> {
   const logo = await getTenantLogo(sb, userId);
-  if (!logo) return null;
+  if (!logo) return await getProfileLogoDataUrl(sb, userId);
   const { data, error } = await sb.storage.from(BUCKET).download(logo.storage_path);
   if (error || !data) {
     console.error("[tenant-logo] download falhou:", error?.message);
-    return null;
+    return await getProfileLogoDataUrl(sb, userId);
   }
   const buf = new Uint8Array(await data.arrayBuffer());
   let bin = "";
