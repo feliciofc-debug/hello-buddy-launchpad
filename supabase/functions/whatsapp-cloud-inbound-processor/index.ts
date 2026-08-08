@@ -3721,7 +3721,10 @@ const TOOLS = [
       description: "Cria uma imagem ULTRA REALISTA por IA (padrão IA Marketing — fotorealista, iluminação profissional, qualidade editorial, SEM texto/letras) a partir de um prompt descritivo. Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria uma foto de X', 'desenha', 'me manda uma imagem', 'faz um banner/post/mockup'. A imagem é enviada automaticamente no WhatsApp E salva na biblioteca /midias — o usuário pode publicar direto nas redes sociais depois. Responda com legenda curta (1-2 linhas) descrevendo o que criou e avisando que já está pronta pra postar. NUNCA cole a URL na resposta.",
       parameters: {
         type: "object",
-        properties: { prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" } },
+        properties: {
+          prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" },
+          incluir_logo: { type: "boolean", description: "SOMENTE true quando o usuário pedir EXPLICITAMENTE a marca dele na imagem ('coloca minha logo', 'com a minha marca', 'com a logo da empresa', 'marca essa imagem'). Padrão false — se ele não pediu, NÃO ative. Quando true, a logomarca cadastrada do cliente é usada como referência e aplicada na cena." },
+        },
         required: ["prompt"],
       },
     },
