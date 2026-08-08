@@ -4406,6 +4406,10 @@ async function toolCriarCarrossel(
 }
 
 
+async function runTool(
+
+
+
   name: string,
   args: any,
   ctx: { userId: string; fromNumber: string; media?: MediaExtract[] },
