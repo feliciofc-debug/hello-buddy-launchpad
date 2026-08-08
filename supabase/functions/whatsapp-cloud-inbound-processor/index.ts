@@ -26,6 +26,7 @@ function getTenantOwnersForCtx(userId: string): string[] {
 
 import { downloadAllMedia, type MediaExtract } from "../_shared/whatsapp-media.ts";
 import { extractDocumentText } from "../_shared/document-extract.ts";
+import { getTenantLogoDataUrl } from "../_shared/tenant-logo.ts";
 import {
   entregarEbookTenant,
   getEntregaEbook,
@@ -855,11 +856,20 @@ async function toolBuscarLugaresNominatim(locRow: any, query: string, radiusMete
 // Padrão IA Marketing: fotorealista, sem texto/letras/marca d'água, iluminação profissional.
 async function toolGerarImagem(
   prompt: string,
-  ctx: { userId: string; fromNumber?: string },
+  ctx: { userId: string; fromNumber?: string; incluirLogo?: boolean },
 ): Promise<string> {
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
   try {
+    // FASE 2 — logo do tenant SOB COMANDO (default false).
+    // Só busca a logo quando o usuário pediu explicitamente. Sem logo cadastrada
+    // => segue sem marca (nunca usa logo de outro tenant).
+    let logoDataUrl: string | null = null;
+    if (ctx.incluirLogo) {
+      logoDataUrl = await getTenantLogoDataUrl(sb, ctx.userId);
+      console.log("[gerar_imagem] incluir_logo=true, logo encontrada:", !!logoDataUrl);
+    }
+
     // Blindagem de qualidade — força padrão ULTRA REALISTA idêntico ao IA Marketing
     const enhancedPrompt = `${clean}
 
@@ -870,18 +880,28 @@ DIRETRIZES OBRIGATÓRIAS DE QUALIDADE (padrão IA Marketing):
 - Composição equilibrada, enquadramento profissional (regra dos terços quando fizer sentido).
 - Se houver produto: destacado em primeiro plano, foco perfeito, apelo comercial.
 - Se houver pessoa: rosto e mãos anatomicamente corretos, expressão natural.
-- PROIBIDO: qualquer texto, letras, palavras, números, legendas, marcas d'água, logos artificiais, bordas ou molduras.
+${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. Reproduza-a na cena com FIDELIDADE ABSOLUTA: mesmas formas, mesmas cores, mesmas proporções e o texto/lettering EXATAMENTE igual — não redesenhe, não traduza, não estilize, não invente elementos.
+- Aplique a logo de forma NATIVA e discreta (canto superior direito ou inferior direito), tamanho pequeno, integrada à iluminação da cena, sem moldura, sem fundo branco atrás e sem efeito de adesivo colado.
+- PROIBIDO: qualquer outro texto, letras, palavras, números, legendas, marcas d'água ou logos além dessa logomarca.` : `- PROIBIDO: qualquer texto, letras, palavras, números, legendas, marcas d'água, logos artificiais, bordas ou molduras.`}
 - PROIBIDO: aparência de IA/CGI barato, plástico, cartoon (a menos que o usuário peça explicitamente).
 - Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.`;
 
-    console.log("[gerar_imagem] iniciando geração, promptLen=", enhancedPrompt.length);
+    // Conteúdo multimodal: prompt + logo como IMAGEM DE REFERÊNCIA (quando pedida)
+    const userContent: any = logoDataUrl
+      ? [
+          { type: "text", text: enhancedPrompt },
+          { type: "image_url", image_url: { url: logoDataUrl } },
+        ]
+      : enhancedPrompt;
+
+    console.log("[gerar_imagem] iniciando geração, promptLen=", enhancedPrompt.length, "comLogo=", !!logoDataUrl);
     const t0 = Date.now();
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
         model: "google/gemini-3.1-flash-image",
-        messages: [{ role: "user", content: enhancedPrompt }],
+        messages: [{ role: "user", content: userContent }],
         modalities: ["image", "text"],
       }),
       signal: AbortSignal.timeout(90000),
@@ -941,7 +961,13 @@ DIRETRIZES OBRIGATÓRIAS DE QUALIDADE (padrão IA Marketing):
       prompt: clean,
       midia_id: midiaId,
       salvo_em_midias: !!midiaId,
-      instrucao: "A imagem foi enviada ao usuário E salva automaticamente na biblioteca /midias. Diga em 1-2 linhas o que criou e avise que já está disponível pra publicar nas redes sociais (ele pode pedir 'posta essa imagem' ou usar em /midias).",
+      logo_aplicada: !!logoDataUrl,
+      logo_solicitada_sem_cadastro: !!ctx.incluirLogo && !logoDataUrl,
+      instrucao: !!ctx.incluirLogo && !logoDataUrl
+        ? "A imagem foi criada e enviada, MAS sem a logo: não há logomarca cadastrada nesta conta. Avise em 1 linha e diga que ele pode cadastrar em Minha Marca (menu do painel) e pedir de novo."
+        : (logoDataUrl
+          ? "A imagem foi criada COM a logomarca da empresa, enviada ao usuário e salva na biblioteca /midias. Diga em 1-2 linhas o que criou, confirme que a marca foi aplicada e peça pra ele conferir se ficou fiel."
+          : "A imagem foi enviada ao usuário E salva automaticamente na biblioteca /midias. Diga em 1-2 linhas o que criou e avise que já está disponível pra publicar nas redes sociais (ele pode pedir 'posta essa imagem' ou usar em /midias)."),
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
@@ -3695,7 +3721,10 @@ const TOOLS = [
       description: "Cria uma imagem ULTRA REALISTA por IA (padrão IA Marketing — fotorealista, iluminação profissional, qualidade editorial, SEM texto/letras) a partir de um prompt descritivo. Use SEMPRE que o usuário pedir 'faz uma imagem', 'gera uma arte', 'cria uma foto de X', 'desenha', 'me manda uma imagem', 'faz um banner/post/mockup'. A imagem é enviada automaticamente no WhatsApp E salva na biblioteca /midias — o usuário pode publicar direto nas redes sociais depois. Responda com legenda curta (1-2 linhas) descrevendo o que criou e avisando que já está pronta pra postar. NUNCA cole a URL na resposta.",
       parameters: {
         type: "object",
-        properties: { prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" } },
+        properties: {
+          prompt: { type: "string", description: "Descrição visual detalhada. Inclua estilo (fotorealista, cartoon, aquarela), enquadramento, iluminação, cores, elementos. Ex: 'foto profissional de um café expresso em mesa de madeira rústica, luz natural quente, estilo editorial'" },
+          incluir_logo: { type: "boolean", description: "SOMENTE true quando o usuário pedir EXPLICITAMENTE a marca dele na imagem ('coloca minha logo', 'com a minha marca', 'com a logo da empresa', 'marca essa imagem'). Padrão false — se ele não pediu, NÃO ative. Quando true, a logomarca cadastrada do cliente é usada como referência e aplicada na cena." },
+        },
         required: ["prompt"],
       },
     },
@@ -4199,7 +4228,7 @@ async function runTool(
   if (name === "pesquisar_web") return { result: await toolPesquisarWeb(args?.query ?? "", args?.recencia) };
   if (name === "buscar_lugares_proximos") return { result: await toolBuscarLugaresProximos(ctx, args?.query ?? "", args?.radius_meters) };
   if (name === "gerar_imagem") {
-    const r = await toolGerarImagem(args?.prompt ?? "", { userId: ctx.userId, fromNumber: ctx.fromNumber });
+    const r = await toolGerarImagem(args?.prompt ?? "", { userId: ctx.userId, fromNumber: ctx.fromNumber, incluirLogo: args?.incluir_logo === true });
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
     return { result: r, imageUrl: parsed?.image_url };
   }
