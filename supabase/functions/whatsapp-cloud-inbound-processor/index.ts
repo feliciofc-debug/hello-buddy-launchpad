@@ -856,11 +856,20 @@ async function toolBuscarLugaresNominatim(locRow: any, query: string, radiusMete
 // Padrão IA Marketing: fotorealista, sem texto/letras/marca d'água, iluminação profissional.
 async function toolGerarImagem(
   prompt: string,
-  ctx: { userId: string; fromNumber?: string },
+  ctx: { userId: string; fromNumber?: string; incluirLogo?: boolean },
 ): Promise<string> {
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
   try {
+    // FASE 2 — logo do tenant SOB COMANDO (default false).
+    // Só busca a logo quando o usuário pediu explicitamente. Sem logo cadastrada
+    // => segue sem marca (nunca usa logo de outro tenant).
+    let logoDataUrl: string | null = null;
+    if (ctx.incluirLogo) {
+      logoDataUrl = await getTenantLogoDataUrl(sb, ctx.userId);
+      console.log("[gerar_imagem] incluir_logo=true, logo encontrada:", !!logoDataUrl);
+    }
+
     // Blindagem de qualidade — força padrão ULTRA REALISTA idêntico ao IA Marketing
     const enhancedPrompt = `${clean}
 
@@ -871,18 +880,28 @@ DIRETRIZES OBRIGATÓRIAS DE QUALIDADE (padrão IA Marketing):
 - Composição equilibrada, enquadramento profissional (regra dos terços quando fizer sentido).
 - Se houver produto: destacado em primeiro plano, foco perfeito, apelo comercial.
 - Se houver pessoa: rosto e mãos anatomicamente corretos, expressão natural.
-- PROIBIDO: qualquer texto, letras, palavras, números, legendas, marcas d'água, logos artificiais, bordas ou molduras.
+${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. Reproduza-a na cena com FIDELIDADE ABSOLUTA: mesmas formas, mesmas cores, mesmas proporções e o texto/lettering EXATAMENTE igual — não redesenhe, não traduza, não estilize, não invente elementos.
+- Aplique a logo de forma NATIVA e discreta (canto superior direito ou inferior direito), tamanho pequeno, integrada à iluminação da cena, sem moldura, sem fundo branco atrás e sem efeito de adesivo colado.
+- PROIBIDO: qualquer outro texto, letras, palavras, números, legendas, marcas d'água ou logos além dessa logomarca.` : `- PROIBIDO: qualquer texto, letras, palavras, números, legendas, marcas d'água, logos artificiais, bordas ou molduras.`}
 - PROIBIDO: aparência de IA/CGI barato, plástico, cartoon (a menos que o usuário peça explicitamente).
 - Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.`;
 
-    console.log("[gerar_imagem] iniciando geração, promptLen=", enhancedPrompt.length);
+    // Conteúdo multimodal: prompt + logo como IMAGEM DE REFERÊNCIA (quando pedida)
+    const userContent: any = logoDataUrl
+      ? [
+          { type: "text", text: enhancedPrompt },
+          { type: "image_url", image_url: { url: logoDataUrl } },
+        ]
+      : enhancedPrompt;
+
+    console.log("[gerar_imagem] iniciando geração, promptLen=", enhancedPrompt.length, "comLogo=", !!logoDataUrl);
     const t0 = Date.now();
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
         model: "google/gemini-3.1-flash-image",
-        messages: [{ role: "user", content: enhancedPrompt }],
+        messages: [{ role: "user", content: userContent }],
         modalities: ["image", "text"],
       }),
       signal: AbortSignal.timeout(90000),
