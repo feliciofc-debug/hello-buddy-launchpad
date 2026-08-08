@@ -43,7 +43,11 @@ async function sha1(input: string): Promise<string> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
-  const src = new URL(req.url).searchParams.get("url");
+  const reqUrl = new URL(req.url);
+  const src = reqUrl.searchParams.get("url");
+  // ig=1 → normaliza para 1080x1080 (aspect ratio sempre aceito pelo Instagram),
+  // com preenchimento branco nas bordas (sem cortar o conteúdo).
+  const igMode = reqUrl.searchParams.get("ig") === "1";
   if (!src || !/^https?:\/\//i.test(src)) {
     return new Response("url inválida", { status: 400, headers: CORS });
   }
@@ -52,7 +56,8 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
-  const key = `${await sha1(src)}.jpg`;
+  const key = `${await sha1(igMode ? `ig1:${src}` : src)}.jpg`;
+
 
   // 1) Cache hit → serve o JPEG já convertido (bucket privado, servido pela função)
   try {
