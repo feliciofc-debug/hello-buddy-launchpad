@@ -26,7 +26,12 @@ serve(async (req) => {
       image_url, document_url, document_filename,
       // vCard (cartão de contato clicável) — Meta Cloud API type:contacts
       contact_card, // { nome: string, telefone: string }
+      // Lista interativa (1 toque) — usada p/ escolher cor do carrossel, etc.
+      // { body: string, button: string, header?: string, footer?: string,
+      //   rows: [{ id, title, description? }] }  (máx 10 rows)
+      interactive_list,
     } = body
+
 
     if (!user_id || !to) {
       throw new Error('user_id e to são obrigatórios')
