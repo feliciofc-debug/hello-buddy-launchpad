@@ -4086,8 +4086,26 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "criar_carrossel",
+      description: "🎠 Cria um CARROSSEL de Instagram (vários cards com texto) sobre um TEMA e PUBLICA no Instagram da conta. Use quando o responsável pedir 'faz um carrossel sobre X', 'monta um carrossel de dicas', 'cria um carrossel'. NÃO use para post de imagem única (use gerar_imagem/postar_redes_sociais). FLUXO: 1) na PRIMEIRA chamada passe só o tema, SEM cor — eu envio automaticamente uma lista de cores pro usuário tocar; 2) quando ele responder a cor (ex: 'Azul', 'Dourado'), chame de novo com tema + cor e publicar=true. Nunca invente a cor: se ele não disse, deixe o campo cor vazio. Restrito ao responsável da conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          tema: { type: "string", description: "Assunto/tema do carrossel, como o usuário pediu (ex: '5 dicas para vender mais no Instagram')." },
+          cor: { type: "string", description: "Cor de destaque escolhida PELO USUÁRIO: azul, verde, laranja, preto, dourado ou roxo. Deixe VAZIO na primeira chamada para eu perguntar com a lista de 1 toque." },
+          publicar: { type: "boolean", description: "true (padrão) = gera e já publica no Instagram. false = só gera os cards e devolve os links, sem publicar." },
+          legenda: { type: "string", description: "Legenda do post, se o usuário ditou uma. Vazio = a IA escreve a legenda com hashtags." },
+        },
+        required: ["tema"],
+      },
+    },
+  },
 
 ];
+
 
 
 // ---- encaminhar_recado_ao_dono: cliente/contato pede pra encaminhar recado/foto pro dono do tenant ----
