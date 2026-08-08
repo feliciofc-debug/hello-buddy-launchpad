@@ -4257,7 +4257,7 @@ async function toolCriarCarrossel(
       .from("social_posts_queue")
       .select("id", { count: "exact", head: true })
       .eq("user_id", ctx.userId)
-      .eq("post_type", "carousel")
+      .eq("produto_source", "carrossel_whatsapp")
       .gte("created_at", desdeHoje);
     if ((feitosHoje ?? 0) >= CARROSSEL_MAX_DIA) {
       return JSON.stringify({
