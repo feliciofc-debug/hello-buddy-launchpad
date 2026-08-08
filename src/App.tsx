@@ -71,6 +71,7 @@ import ListasContatosPJ from "./pages/pj/ListasContatosPJ";
 import ContatosComerciais from "./pages/pj/ContatosComerciais";
 import WhatsAppTemplatesPJ from "./pages/pj/WhatsAppTemplatesPJ";
 import EbookPresentePJ from "./pages/pj/EbookPresentePJ";
+import LogoMarcaPJ from "./pages/pj/LogoMarcaPJ";
 import ExtensaoDownload from "./pages/ExtensaoDownload";
 import ContatosWhatsApp from "./pages/ContatosWhatsApp";
 // SophiaDispatcher removido (Sophia descontinuada — 27/04/2026). Arquivo físico mantido como órfão em src/pages/SophiaDispatcher.tsx.
@@ -184,6 +185,7 @@ const App = () => (
             <Route path="/pj/listas-contatos" element={<ListasContatosPJ />} />
             <Route path="/pj/whatsapp-templates" element={<WhatsAppTemplatesPJ />} />
             <Route path="/pj/ebook-presente" element={<EbookPresentePJ />} />
+            <Route path="/pj/minha-marca" element={<LogoMarcaPJ />} />
             <Route path="/pj/contatos-comerciais" element={<ContatosComerciais />} />
             {/* <Route path="/integracoes" element={<Integracoes />} /> */} {/* Oculto - reativar removendo o comentário */}
             <Route path="/extensao-whatsapp" element={<ExtensaoDownload />} />
