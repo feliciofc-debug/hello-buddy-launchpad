@@ -43,7 +43,11 @@ async function sha1(input: string): Promise<string> {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
-  const src = new URL(req.url).searchParams.get("url");
+  const reqUrl = new URL(req.url);
+  const src = reqUrl.searchParams.get("url");
+  // ig=1 → normaliza para 1080x1080 (aspect ratio sempre aceito pelo Instagram),
+  // com preenchimento branco nas bordas (sem cortar o conteúdo).
+  const igMode = reqUrl.searchParams.get("ig") === "1";
   if (!src || !/^https?:\/\//i.test(src)) {
     return new Response("url inválida", { status: 400, headers: CORS });
   }
@@ -52,7 +56,8 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
 
-  const key = `${await sha1(src)}.jpg`;
+  const key = `${await sha1(igMode ? `ig1:${src}` : src)}.jpg`;
+
 
   // 1) Cache hit → serve o JPEG já convertido (bucket privado, servido pela função)
   try {
@@ -79,8 +84,9 @@ Deno.serve(async (req) => {
     return new Response("falha ao baixar origem", { status: 502, headers: CORS });
   }
 
-  // 3) Já é aceito pela Meta → repassa
-  if (SAFE_TYPES.includes(originType)) {
+  // 3) Já é aceito pela Meta → repassa (exceto no modo Instagram, que precisa
+  //    de normalização de aspect ratio mesmo quando já é JPEG/PNG)
+  if (!igMode && SAFE_TYPES.includes(originType)) {
     return new Response(originBytes, {
       headers: { ...CORS, "Content-Type": originType, "Cache-Control": "public, max-age=31536000" },
     });
@@ -94,9 +100,13 @@ Deno.serve(async (req) => {
 
   try {
     const semProto = src.replace(/^https?:\/\//i, "");
+    const params = igMode
+      ? "output=jpg&q=88&w=1080&h=1080&fit=contain&cbg=white&we"
+      : "output=jpg&q=88&w=1600&h=1600&fit=inside&we";
     const w = await fetch(
-      `https://wsrv.nl/?url=${encodeURIComponent(semProto)}&output=jpg&q=88&w=1600&h=1600&fit=inside&we`,
+      `https://wsrv.nl/?url=${encodeURIComponent(semProto)}&${params}`,
     );
+
     const wType = (w.headers.get("content-type") || "").toLowerCase();
     if (w.ok && wType.includes("image/jpeg")) {
       jpeg = new Uint8Array(await w.arrayBuffer());
@@ -111,14 +121,23 @@ Deno.serve(async (req) => {
       jpeg = await new Promise<Uint8Array>((resolve) => {
         ImageMagick.read(originBytes, (img) => {
           img.quality = 88;
-          // WhatsApp recomenda até ~1600px no maior lado; evita payload gigante.
-          if (img.width > 1600 || img.height > 1600) {
+          if (igMode) {
+            // Normaliza para 1080x1080 sem cortar (contain + fundo branco)
+            const scale = Math.min(1080 / img.width, 1080 / img.height);
+            img.resize(Math.max(1, Math.round(img.width * scale)), Math.max(1, Math.round(img.height * scale)));
+            try {
+              img.backgroundColor = "#FFFFFF" as unknown as never;
+              img.extent(1080, 1080);
+            } catch { /* se extent não estiver disponível, segue redimensionado */ }
+          } else if (img.width > 1600 || img.height > 1600) {
+            // WhatsApp recomenda até ~1600px no maior lado; evita payload gigante.
             const scale = 1600 / Math.max(img.width, img.height);
             img.resize(Math.round(img.width * scale), Math.round(img.height * scale));
           }
           img.write(MagickFormat.Jpeg, (data) => resolve(new Uint8Array(data)));
         });
       });
+
     } catch (e) {
       console.error("[media-para-meta] conversão falhou:", (e as Error).message);
       return new Response("falha ao converter imagem", { status: 502, headers: CORS });
