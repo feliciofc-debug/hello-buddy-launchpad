@@ -212,7 +212,7 @@ function cover(slide: RenderSlide, ctx: RenderContext): Node {
         fontSize: 18,
         fontWeight: 500,
         letterSpacing: 2,
-      }, "DESLIZE PARA VER →"),
+      }, "DESLIZE PARA VER"),
       progressDots(0, ctx.totalSlides, p),
     ]),
   );
@@ -239,7 +239,7 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
       left: 0,
       width: 8,
       height: CARD_HEIGHT,
-      backgroundImage: `linear-gradient(180deg, ${p}, ${rgba(s, 0.35)}, ${rgba(s, 0)})`,
+      backgroundImage: `linear-gradient(180deg, ${p}, ${rgba(s, 0.55)}, ${rgba(s, 0.08)})`,
     }),
     circle(300, rgba(p, 0.1), { top: -100, right: -100 }),
     // Number badge
@@ -283,7 +283,7 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
         display: "flex",
         flexDirection: "column",
         flexGrow: 1,
-        justifyContent: "center",
+        justifyContent: "flex-start",
         gap: 18,
       }, lines.slice(0, 5).map((line) =>
         el("div", {
@@ -311,7 +311,7 @@ function content(slide: RenderSlide, ctx: RenderContext): Node {
       el("div", {
         display: "flex",
         flexGrow: 1,
-        alignItems: "center",
+        alignItems: "flex-start",
       }, el("div", {
         display: "flex",
         color: "rgba(255,255,255,0.82)",
