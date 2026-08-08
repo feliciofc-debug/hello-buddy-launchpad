@@ -297,6 +297,7 @@ export default function DashboardMetricas() {
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
     { id: 'whatsapp-templates', icon: MessageCircle, label: 'Templates WhatsApp', path: '/pj/whatsapp-templates' },
     { id: 'ebook-presente', icon: Gift, label: 'Ebook de Presente', path: '/pj/ebook-presente' },
+    { id: 'minha-marca', icon: Images, label: 'Minha Marca', path: '/pj/minha-marca' },
     { id: 'contatos-comerciais', icon: Briefcase, label: 'Contatos Comerciais', path: '/pj/contatos-comerciais' },
     { id: 'clientes-segmentos', icon: Users, label: 'Clientes e Segmentos', path: '/pj/listas-contatos' },
     // { id: 'integracoes', icon: Plug, label: t('nav.integrations', 'Integrações'), path: '/integracoes' }, // Oculto - reativar removendo o comentário
