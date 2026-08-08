@@ -294,26 +294,40 @@ async function publishImageToInstagram(
   const safeImageUrl = await ensureInstagramCompatibleImageUrl(imageUrl, userId)
 
   // Passo 1: Criar container de mídia
-  const containerResponse = await fetch(
-    `https://graph.facebook.com/v25.0/${igAccountId}/media`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_url: safeImageUrl,
-        caption: caption,
-        access_token: pageToken
-      })
-    }
-  )
+  const criarContainer = async (url: string) => {
+    const resp = await fetch(
+      `https://graph.facebook.com/v25.0/${igAccountId}/media`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_url: url,
+          caption: caption,
+          access_token: pageToken
+        })
+      }
+    )
+    return await resp.json()
+  }
 
-  const containerResult = await containerResponse.json()
+  let containerResult = await criarContainer(safeImageUrl)
+
+  // Instagram só aceita aspect ratio entre 4:5 e 1.91:1 → normaliza para 1080x1080
+  // (contain + fundo branco, sem cortar) e tenta de novo.
+  if (containerResult?.error && /aspect ratio/i.test(containerResult.error.message || '')) {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const normalizedUrl = `${supabaseUrl}/functions/v1/media-para-meta?ig=1&url=${encodeURIComponent(safeImageUrl)}`
+    console.log('🔄 Aspect ratio rejeitado pelo Instagram — normalizando para 1080x1080:', normalizedUrl)
+    containerResult = await criarContainer(normalizedUrl)
+  }
+
   if (containerResult.error) {
     throw new Error(`Instagram API (container): ${containerResult.error.message}`)
   }
 
   const creationId = containerResult.id
   console.log('✅ Container criado:', creationId)
+
 
   // Aguardar processamento
   await waitForContainer(creationId, pageToken)
