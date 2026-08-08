@@ -84,8 +84,9 @@ Deno.serve(async (req) => {
     return new Response("falha ao baixar origem", { status: 502, headers: CORS });
   }
 
-  // 3) Já é aceito pela Meta → repassa
-  if (SAFE_TYPES.includes(originType)) {
+  // 3) Já é aceito pela Meta → repassa (exceto no modo Instagram, que precisa
+  //    de normalização de aspect ratio mesmo quando já é JPEG/PNG)
+  if (!igMode && SAFE_TYPES.includes(originType)) {
     return new Response(originBytes, {
       headers: { ...CORS, "Content-Type": originType, "Cache-Control": "public, max-age=31536000" },
     });
@@ -99,9 +100,13 @@ Deno.serve(async (req) => {
 
   try {
     const semProto = src.replace(/^https?:\/\//i, "");
+    const params = igMode
+      ? "output=jpg&q=88&w=1080&h=1080&fit=contain&cbg=white&we"
+      : "output=jpg&q=88&w=1600&h=1600&fit=inside&we";
     const w = await fetch(
-      `https://wsrv.nl/?url=${encodeURIComponent(semProto)}&output=jpg&q=88&w=1600&h=1600&fit=inside&we`,
+      `https://wsrv.nl/?url=${encodeURIComponent(semProto)}&${params}`,
     );
+
     const wType = (w.headers.get("content-type") || "").toLowerCase();
     if (w.ok && wType.includes("image/jpeg")) {
       jpeg = new Uint8Array(await w.arrayBuffer());
