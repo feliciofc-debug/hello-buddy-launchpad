@@ -4356,7 +4356,7 @@ async function toolCriarCarrossel(
       await sb.from("social_posts_queue").insert({
         user_id: ctx.userId,
         platform: "instagram",
-        post_type: "carousel",
+        produto_source: "carrossel_whatsapp",
         post_text: caption,
         image_url: imageUrls[0],
         status: publicado?.id ? "publicado" : "erro",
