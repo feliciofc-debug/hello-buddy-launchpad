@@ -961,7 +961,13 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
       prompt: clean,
       midia_id: midiaId,
       salvo_em_midias: !!midiaId,
-      instrucao: "A imagem foi enviada ao usuário E salva automaticamente na biblioteca /midias. Diga em 1-2 linhas o que criou e avise que já está disponível pra publicar nas redes sociais (ele pode pedir 'posta essa imagem' ou usar em /midias).",
+      logo_aplicada: !!logoDataUrl,
+      logo_solicitada_sem_cadastro: !!ctx.incluirLogo && !logoDataUrl,
+      instrucao: !!ctx.incluirLogo && !logoDataUrl
+        ? "A imagem foi criada e enviada, MAS sem a logo: não há logomarca cadastrada nesta conta. Avise em 1 linha e diga que ele pode cadastrar em Minha Marca (menu do painel) e pedir de novo."
+        : (logoDataUrl
+          ? "A imagem foi criada COM a logomarca da empresa, enviada ao usuário e salva na biblioteca /midias. Diga em 1-2 linhas o que criou, confirme que a marca foi aplicada e peça pra ele conferir se ficou fiel."
+          : "A imagem foi enviada ao usuário E salva automaticamente na biblioteca /midias. Diga em 1-2 linhas o que criou e avise que já está disponível pra publicar nas redes sociais (ele pode pedir 'posta essa imagem' ou usar em /midias)."),
     });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
