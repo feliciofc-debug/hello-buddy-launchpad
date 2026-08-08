@@ -7749,6 +7749,39 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_logos: {
+        Row: {
+          ativo: boolean
+          created_at: string
+          file_name: string | null
+          id: string
+          mime_type: string | null
+          storage_path: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          mime_type?: string | null
+          storage_path: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ativo?: boolean
+          created_at?: string
+          file_name?: string | null
+          id?: string
+          mime_type?: string | null
+          storage_path?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tiktok_posts: {
         Row: {
           content_type: string
