@@ -4698,7 +4698,36 @@ async function callGemini(
       clearPendingFormatChoice(toolCtx.userId);
     }
 
+    // ---- CARROSSEL (prioridade sobre o post único) ----
+    // 1) pedido explícito de carrossel
+    if (isCarrosselRequest(userContent)) {
+      if (!remetenteEhDono) {
+        return { text: "Criar e publicar carrossel é restrito ao responsável da conta. Posso encaminhar seu pedido pra ele, se quiser." };
+      }
+      const tema = extractCarrosselTema(userContent);
+      const corPedida = resolveCarouselColor(userContent) ? userContent : undefined;
+      console.log("[pietro][forced_carrossel]", { tema, cor: corPedida ? "detectada" : "aguardando" });
+      if (tema.length < 3) {
+        return { text: "Fechado, carrossel! Sobre qual assunto você quer? (ex: “vantagens da AMZ Ofertas”)" };
+      }
+      setPendingCarrossel(toolCtx.userId, tema);
+      const r = await toolCriarCarrossel({ tema, cor: corPedida, publicar: true }, toolCtx);
+      if (!/"status"\s*:\s*"aguardando_cor"/.test(r)) clearPendingCarrossel(toolCtx.userId);
+      return { text: formatCarrosselToolResult(r) };
+    }
+
+    // 2) resposta curta só com a cor, retomando o carrossel pendente
+    const temaPendente = getPendingCarrossel(toolCtx.userId);
+    const corResposta = temaPendente ? detectStandaloneCarrosselColor(userContent) : null;
+    if (remetenteEhDono && temaPendente && corResposta) {
+      console.log("[pietro][carrossel_cor_escolhida]", { tema: temaPendente });
+      clearPendingCarrossel(toolCtx.userId);
+      const r = await toolCriarCarrossel({ tema: temaPendente, cor: corResposta, publicar: true }, toolCtx);
+      return { text: formatCarrosselToolResult(r) };
+    }
+
     const socialPost = detectSocialPostIntent(userContent);
+
     if (socialPost) {
       if (!remetenteEhDono) {
         return { text: "Esse tipo de publicação só o responsável da conta pode autorizar. Posso encaminhar seu pedido para ele, se quiser." };
