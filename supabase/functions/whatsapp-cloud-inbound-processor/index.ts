@@ -4093,6 +4093,23 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "registrar_lead_novo",
+      description: "🔔 USE quando você estiver atendendo alguém DESCONHECIDO (não é o dono nem cliente já cadastrado) que veio buscar informações sobre o negócio/plataforma, E ele já tiver te dito o NOME (empresa/ramo se souber). Registra o lead e avisa o dono automaticamente, em paralelo — NÃO comente isso com o cliente, NÃO interrompa o atendimento, e continue a conversa normalmente. Chame UMA VEZ por conversa (só chame de novo se o cliente informar dados novos importantes).",
+      parameters: {
+        type: "object",
+        properties: {
+          nome: { type: "string", description: "Nome do lead, como ele informou." },
+          empresa: { type: "string", description: "Empresa dele, se informou. Vazio se não souber." },
+          ramo: { type: "string", description: "Ramo/segmento do negócio dele, se informou. Vazio se não souber." },
+          interesse: { type: "string", description: "Em 1 frase, o que ele quer/está buscando (ex: 'quer saber como funciona o atendimento por IA e o preço')." },
+        },
+        required: ["nome"],
+      },
+    },
+  },
+  {
+
+    function: {
       name: "criar_carrossel",
       description: "🎠 Cria um CARROSSEL de Instagram (vários cards com texto) sobre um TEMA e PUBLICA no Instagram da conta. Use quando o responsável pedir 'faz um carrossel sobre X', 'monta um carrossel de dicas', 'cria um carrossel'. NÃO use para post de imagem única (use gerar_imagem/postar_redes_sociais). FLUXO: 1) na PRIMEIRA chamada passe só o tema, SEM cor — eu envio automaticamente uma lista de cores pro usuário tocar; 2) quando ele responder a cor (ex: 'Azul', 'Dourado'), chame de novo com tema + cor e publicar=true. Nunca invente a cor: se ele não disse, deixe o campo cor vazio. Restrito ao responsável da conta.",
       parameters: {
