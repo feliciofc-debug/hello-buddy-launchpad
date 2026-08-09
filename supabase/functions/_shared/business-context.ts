@@ -82,6 +82,30 @@ export async function getTenantBusinessContext(
     }
   }
 
+  // Contato de atendimento do PRÓPRIO tenant (whatsapp_config.display_phone).
+  // Sem display_phone → sem link. NUNCA cai em número fixo/AMZ.
+  let atendimentoTelefone: string | null = null;
+  let atendimentoTelefoneFmt: string | null = null;
+  let atendimentoWaLink: string | null = null;
+  try {
+    const { data } = await sb
+      .from("whatsapp_config")
+      .select("business_name, display_phone")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const digits = String(data?.display_phone || "").replace(/\D/g, "");
+    if (digits.length >= 10) {
+      atendimentoTelefone = digits;
+      atendimentoTelefoneFmt = formatBrPhone(digits);
+      atendimentoWaLink = `https://wa.me/${digits}`;
+    } else {
+      console.warn("[business-context] tenant sem display_phone — CTA de atendimento sem link");
+    }
+    if (!nome && data?.business_name) nome = String(data.business_name).trim() || null;
+  } catch (e) {
+    console.warn("[business-context] whatsapp_config falhou:", (e as Error).message);
+  }
+
   const temContexto = !!(sobre || diferenciais);
 
   const linhas: string[] = [];
@@ -92,6 +116,7 @@ export async function getTenantBusinessContext(
   if (publicoAlvo) linhas.push(`- Público-alvo: ${publicoAlvo}`);
   if (site) linhas.push(`- Site/link: ${site}`);
   if (produtos.length) linhas.push(`- Produtos/serviços em destaque: ${produtos.slice(0, 8).join("; ")}`);
+  if (atendimentoTelefoneFmt) linhas.push(`- WhatsApp de atendimento: ${atendimentoTelefoneFmt}`);
 
   const promptBlock = linhas.length
     ? [
@@ -100,8 +125,22 @@ export async function getTenantBusinessContext(
       ].join("\n")
     : "";
 
-  return { nome, segmento, sobre, diferenciais, publicoAlvo, site, produtos, temContexto, promptBlock };
+  return {
+    nome,
+    segmento,
+    sobre,
+    diferenciais,
+    publicoAlvo,
+    site,
+    produtos,
+    atendimentoTelefone,
+    atendimentoTelefoneFmt,
+    atendimentoWaLink,
+    temContexto,
+    promptBlock,
+  };
 }
+
 
 // ============================================================
 // PROMPT DO CARROSSEL — MESMA METODOLOGIA DA PLATAFORMA
