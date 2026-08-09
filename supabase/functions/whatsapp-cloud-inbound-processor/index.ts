@@ -1911,13 +1911,30 @@ async function toolConsultarClientesLeads(ctx: { userId: string; fromNumber: str
     if (scopeUserId) lc = lc.eq("user_id", scopeUserId);
     const { count: leadsB2c } = await lc;
 
+    // Leads captados pelo próprio JARVIS no WhatsApp (SDR)
+    let jarvisLeads: any[] = [];
+    try {
+      let jl = sb
+        .from("jarvis_leads")
+        .select("nome, empresa, ramo, interesse, telefone, created_at")
+        .order("created_at", { ascending: false })
+        .limit(15);
+      if (scopeUserId) jl = jl.eq("user_id", scopeUserId);
+      const { data } = await jl;
+      jarvisLeads = data ?? [];
+    } catch (e) {
+      console.warn("[consultar_clientes_leads] jarvis_leads falhou:", (e as Error).message);
+    }
+
     return JSON.stringify({
       escopo: isAdmin ? "admin_global" : "usuario",
       clientes_ativos: clientesAtivos ?? 0,
       novos_clientes_7d: novos7d ?? 0,
       leads_b2b: leadsB2b ?? 0,
       leads_b2c: leadsB2c ?? 0,
+      leads_captados_pelo_assistente: jarvisLeads,
     });
+
   } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
 }
 
@@ -4093,6 +4110,24 @@ const TOOLS = [
   {
     type: "function",
     function: {
+      name: "registrar_lead_novo",
+      description: "🔔 USE quando você estiver atendendo alguém DESCONHECIDO (não é o dono nem cliente já cadastrado) que veio buscar informações sobre o negócio/plataforma, E ele já tiver te dito o NOME (empresa/ramo se souber). Registra o lead e avisa o dono automaticamente, em paralelo — NÃO comente isso com o cliente, NÃO interrompa o atendimento, e continue a conversa normalmente. Chame UMA VEZ por conversa (só chame de novo se o cliente informar dados novos importantes).",
+      parameters: {
+        type: "object",
+        properties: {
+          nome: { type: "string", description: "Nome do lead, como ele informou." },
+          empresa: { type: "string", description: "Empresa dele, se informou. Vazio se não souber." },
+          ramo: { type: "string", description: "Ramo/segmento do negócio dele, se informou. Vazio se não souber." },
+          interesse: { type: "string", description: "Em 1 frase, o que ele quer/está buscando (ex: 'quer saber como funciona o atendimento por IA e o preço')." },
+        },
+        required: ["nome"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+
       name: "criar_carrossel",
       description: "🎠 Cria um CARROSSEL de Instagram (vários cards com texto) sobre um TEMA e PUBLICA no Instagram da conta. Use quando o responsável pedir 'faz um carrossel sobre X', 'monta um carrossel de dicas', 'cria um carrossel'. NÃO use para post de imagem única (use gerar_imagem/postar_redes_sociais). FLUXO: 1) na PRIMEIRA chamada passe só o tema, SEM cor — eu envio automaticamente uma lista de cores pro usuário tocar; 2) quando ele responder a cor (ex: 'Azul', 'Dourado'), chame de novo com tema + cor e publicar=true. Nunca invente a cor: se ele não disse, deixe o campo cor vazio. Restrito ao responsável da conta.",
       parameters: {
@@ -4194,6 +4229,89 @@ async function toolEncaminharRecadoAoDono(
     return JSON.stringify({ erro: "falha_ao_enviar", detalhe: String((e as Error).message).slice(0, 200) });
   }
 }
+
+
+// ---- registrar_lead_novo: JARVIS como SDR — registra o lead e avisa o dono do tenant ----
+// Regras: só stranger/lead novo; 1 notificação por lead (notificado_em); nunca interrompe
+// o atendimento (o agente é instruído a NÃO comentar isso com o cliente).
+async function toolRegistrarLeadNovo(
+  args: { nome?: string; empresa?: string; ramo?: string; interesse?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const nome = (args?.nome || "").trim();
+  if (!nome) return JSON.stringify({ erro: "nome_obrigatorio" });
+
+  const empresa = (args?.empresa || "").trim() || null;
+  const ramo = (args?.ramo || "").trim() || null;
+  const interesse = (args?.interesse || "").trim() || null;
+  const telefone = ctx.fromNumber;
+
+  const owner = await resolveTenantOwner(sb, ctx.userId);
+  // Nunca trata o próprio dono como lead
+  if (owner?.phone && owner.phone === telefone) {
+    return JSON.stringify({ ok: false, motivo: "remetente_e_o_dono" });
+  }
+
+  let jaNotificado = false;
+  try {
+    const { data: existente } = await sb
+      .from("jarvis_leads")
+      .select("id, notificado_em")
+      .eq("user_id", ctx.userId)
+      .eq("telefone", telefone)
+      .maybeSingle();
+    jaNotificado = !!existente?.notificado_em;
+
+    const payload: Record<string, unknown> = {
+      user_id: ctx.userId,
+      telefone,
+      nome,
+      origem: "whatsapp",
+      updated_at: new Date().toISOString(),
+    };
+    if (empresa) payload.empresa = empresa;
+    if (ramo) payload.ramo = ramo;
+    if (interesse) payload.interesse = interesse;
+
+    const { error } = await sb.from("jarvis_leads").upsert(payload, { onConflict: "user_id,telefone" });
+    if (error) console.warn("[registrar_lead_novo] upsert falhou:", error.message);
+  } catch (e) {
+    console.warn("[registrar_lead_novo] persistência falhou:", (e as Error).message);
+  }
+
+  if (!owner?.phone) {
+    return JSON.stringify({ ok: true, registrado: true, notificado: false, motivo: "dono_nao_configurado", instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+  }
+  if (jaNotificado) {
+    return JSON.stringify({ ok: true, registrado: true, notificado: false, motivo: "lead_ja_notificado", instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+  }
+
+  const partes = [`🔔 Novo lead: ${nome}`];
+  if (empresa) partes.push(`da empresa ${empresa}`);
+  if (ramo) partes.push(`(ramo: ${ramo})`);
+  const aviso = `${partes.join(" ")}\n${interesse ? `Interesse: ${interesse}\n` : ""}Telefone: +${telefone}\nOrigem: WhatsApp — atendido pelo assistente agora.`;
+
+  try {
+    const messageId = await sendWhatsApp(ctx.userId, owner.phone, aviso);
+    await logOwnerHeadsup(ctx.userId, aviso, messageId);
+    await sb
+      .from("jarvis_leads")
+      .update({ notificado_em: new Date().toISOString() })
+      .eq("user_id", ctx.userId)
+      .eq("telefone", telefone);
+    return JSON.stringify({
+      ok: true,
+      registrado: true,
+      notificado: true,
+      instrucao: "O dono já foi avisado em paralelo. NÃO comente isso com o cliente — apenas continue o atendimento de forma natural, respondendo o que ele perguntou.",
+    });
+  } catch (e) {
+    console.warn("[registrar_lead_novo] notificação falhou:", (e as Error).message);
+    return JSON.stringify({ ok: true, registrado: true, notificado: false, instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+  }
+}
+
+
 
 
 // ============================================================
@@ -4630,6 +4748,8 @@ async function runTool(
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
   if (name === "encaminhar_recado_ao_dono") return { result: await toolEncaminharRecadoAoDono(args ?? {}, ctx) };
+  if (name === "registrar_lead_novo") return { result: await toolRegistrarLeadNovo(args ?? {}, ctx) };
+
 
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }

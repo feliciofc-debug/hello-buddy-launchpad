@@ -17,11 +17,25 @@ export type TenantBusinessContext = {
   publicoAlvo: string | null;
   site: string | null;
   produtos: string[];
+  /** telefone de atendimento do tenant (display_phone do whatsapp_config), só dígitos */
+  atendimentoTelefone: string | null;
+  /** telefone formatado para leitura humana, ex: +55 21 96752-0706 */
+  atendimentoTelefoneFmt: string | null;
+  /** link wa.me do próprio tenant (nunca fixo/AMZ) */
+  atendimentoWaLink: string | null;
   /** true quando o tenant descreveu o negócio (sobre/diferenciais) */
   temContexto: boolean;
   /** bloco pronto para injetar no prompt (vazio quando não há nada) */
   promptBlock: string;
 };
+
+function formatBrPhone(digits: string): string {
+  const d = digits.replace(/\D/g, "");
+  const m = d.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
+  if (m) return `+55 ${m[1]} ${m[2]}-${m[3]}`;
+  return d ? `+${d}` : "";
+}
+
 
 export async function getTenantBusinessContext(
   sb: SupabaseClient,
@@ -68,6 +82,30 @@ export async function getTenantBusinessContext(
     }
   }
 
+  // Contato de atendimento do PRÓPRIO tenant (whatsapp_config.display_phone).
+  // Sem display_phone → sem link. NUNCA cai em número fixo/AMZ.
+  let atendimentoTelefone: string | null = null;
+  let atendimentoTelefoneFmt: string | null = null;
+  let atendimentoWaLink: string | null = null;
+  try {
+    const { data } = await sb
+      .from("whatsapp_config")
+      .select("business_name, display_phone")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const digits = String(data?.display_phone || "").replace(/\D/g, "");
+    if (digits.length >= 10) {
+      atendimentoTelefone = digits;
+      atendimentoTelefoneFmt = formatBrPhone(digits);
+      atendimentoWaLink = `https://wa.me/${digits}`;
+    } else {
+      console.warn("[business-context] tenant sem display_phone — CTA de atendimento sem link");
+    }
+    if (!nome && data?.business_name) nome = String(data.business_name).trim() || null;
+  } catch (e) {
+    console.warn("[business-context] whatsapp_config falhou:", (e as Error).message);
+  }
+
   const temContexto = !!(sobre || diferenciais);
 
   const linhas: string[] = [];
@@ -78,6 +116,7 @@ export async function getTenantBusinessContext(
   if (publicoAlvo) linhas.push(`- Público-alvo: ${publicoAlvo}`);
   if (site) linhas.push(`- Site/link: ${site}`);
   if (produtos.length) linhas.push(`- Produtos/serviços em destaque: ${produtos.slice(0, 8).join("; ")}`);
+  if (atendimentoTelefoneFmt) linhas.push(`- WhatsApp de atendimento: ${atendimentoTelefoneFmt}`);
 
   const promptBlock = linhas.length
     ? [
@@ -86,8 +125,22 @@ export async function getTenantBusinessContext(
       ].join("\n")
     : "";
 
-  return { nome, segmento, sobre, diferenciais, publicoAlvo, site, produtos, temContexto, promptBlock };
+  return {
+    nome,
+    segmento,
+    sobre,
+    diferenciais,
+    publicoAlvo,
+    site,
+    produtos,
+    atendimentoTelefone,
+    atendimentoTelefoneFmt,
+    atendimentoWaLink,
+    temContexto,
+    promptBlock,
+  };
 }
+
 
 // ============================================================
 // PROMPT DO CARROSSEL — MESMA METODOLOGIA DA PLATAFORMA
@@ -102,14 +155,27 @@ export function buildCarouselPrompt(opts: {
   const n = Math.max(3, Math.min(10, opts.numSlides || 7));
   const contentCount = Math.max(n - 2, 1);
   const ctx = opts.business?.promptBlock ? `\n${opts.business.promptBlock}\n` : "";
+  const tel = opts.business?.atendimentoTelefoneFmt || null;
+  const waLink = opts.business?.atendimentoWaLink || null;
+  const ctaBlock = tel && waLink
+    ? `\nCTA DE ATENDIMENTO (OBRIGATÓRIO):
+- No slide "cta", convide para falar no WhatsApp e mostre o número ${tel} numa linha do body. Ex.: body "💬 Fale com a gente no WhatsApp\\n📱 ${tel}", ctaLabel "Falar no WhatsApp".
+- NÃO escreva o endereço https://wa.me dentro da arte (fica ilegível) — só a chamada + o número.
+- Na "caption", inclua exatamente esta linha antes das hashtags: "Fale com a gente no WhatsApp 👉 ${waLink}".
+- É proibido usar qualquer outro número, link ou canal de contato que não seja esse.\n`
+    : `\nCTA DE ATENDIMENTO:
+- No slide "cta", convide para chamar no WhatsApp de forma genérica ("💬 Chama a gente no WhatsApp"), SEM número e SEM link — o contato do negócio não está cadastrado.
+- É proibido inventar telefone, link ou canal de contato.\n`;
+
 
   return `Você é um diretor criativo e copywriter sênior especialista em carrosséis premium para Instagram.
 Crie um carrossel de alto nível, com páginas completas, linguagem forte e benefícios reais — nada genérico, nada vazio.
 
 TEMA BASE DO USUÁRIO:
 """${opts.tema}"""
-${ctx}
+${ctx}${ctaBlock}
 NÚMERO EXATO DE SLIDES: ${n}
+
 
 OBJETIVO DO CARROSSEL:
 - parecer conteúdo premium, estratégico e profissional
