@@ -173,8 +173,9 @@ Crie um carrossel de alto nível, com páginas completas, linguagem forte e bene
 
 TEMA BASE DO USUÁRIO:
 """${opts.tema}"""
-${ctx}
+${ctx}${ctaBlock}
 NÚMERO EXATO DE SLIDES: ${n}
+
 
 OBJETIVO DO CARROSSEL:
 - parecer conteúdo premium, estratégico e profissional
