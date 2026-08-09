@@ -1,0 +1,5 @@
+ALTER TABLE public.empresa_config
+  ADD COLUMN IF NOT EXISTS sobre_negocio TEXT,
+  ADD COLUMN IF NOT EXISTS diferenciais TEXT,
+  ADD COLUMN IF NOT EXISTS publico_alvo TEXT,
+  ADD COLUMN IF NOT EXISTS site TEXT;
