@@ -4495,7 +4495,10 @@ function formatCarrosselToolResult(raw: string): string {
   try { d = JSON.parse(raw); } catch { return raw; }
   if (d?.status === "aguardando_cor") return "É só escolher a cor aí em cima 👆";
   if (d?.status === "publicado") {
-    return `✅ Carrossel de *${d.cards} cards* na cor *${d.cor}* publicado no seu Instagram!<<SPLIT>>Confere aqui: ${d.link_perfil}`;
+    const base = `✅ Carrossel de *${d.cards} cards* na cor *${d.cor}* publicado no seu Instagram!<<SPLIT>>Confere aqui: ${d.link_perfil}`;
+    return d?.aviso_sem_contexto
+      ? `${base}<<SPLIT>>💡 Dica: preencha *Sobre o meu negócio* em Configuração da Empresa — assim os próximos carrosséis falam do seu negócio de verdade, não só do tema.`
+      : base;
   }
   if (d?.status === "gerado_sem_publicar") {
     return `🎨 Prontinho — ${d.cards} cards na cor *${d.cor}*.<<SPLIT>>Posso publicar no Instagram agora? Responde *sim*.`;
