@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
+import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -4424,6 +4425,9 @@ async function toolCriarCarrossel(
       instagram_media_id: publicado.id,
       link_perfil: link,
       legenda: caption,
+      aviso_sem_contexto: business.temContexto
+        ? null
+        : "Este tenant não descreveu o negócio: o conteúdo saiu com base só no tema. Sugira 1 linha pedindo pra preencher \"Sobre o meu negócio\" em Configuração da Empresa, pra os próximos carrosséis falarem do negócio de verdade.",
       instrucao: `Confirme em 2 linhas curtas: carrossel de ${imageUrls.length} cards na cor ${cor.label} publicado no Instagram agora, e mande o link ${link} pra ele conferir. Não recite a legenda inteira.`,
     });
   } catch (e) {
