@@ -4214,6 +4214,89 @@ async function toolEncaminharRecadoAoDono(
 }
 
 
+// ---- registrar_lead_novo: JARVIS como SDR — registra o lead e avisa o dono do tenant ----
+// Regras: só stranger/lead novo; 1 notificação por lead (notificado_em); nunca interrompe
+// o atendimento (o agente é instruído a NÃO comentar isso com o cliente).
+async function toolRegistrarLeadNovo(
+  args: { nome?: string; empresa?: string; ramo?: string; interesse?: string },
+  ctx: { userId: string; fromNumber: string },
+): Promise<string> {
+  const nome = (args?.nome || "").trim();
+  if (!nome) return JSON.stringify({ erro: "nome_obrigatorio" });
+
+  const empresa = (args?.empresa || "").trim() || null;
+  const ramo = (args?.ramo || "").trim() || null;
+  const interesse = (args?.interesse || "").trim() || null;
+  const telefone = ctx.fromNumber;
+
+  const owner = await resolveTenantOwner(sb, ctx.userId);
+  // Nunca trata o próprio dono como lead
+  if (owner?.phone && owner.phone === telefone) {
+    return JSON.stringify({ ok: false, motivo: "remetente_e_o_dono" });
+  }
+
+  let jaNotificado = false;
+  try {
+    const { data: existente } = await sb
+      .from("jarvis_leads")
+      .select("id, notificado_em")
+      .eq("user_id", ctx.userId)
+      .eq("telefone", telefone)
+      .maybeSingle();
+    jaNotificado = !!existente?.notificado_em;
+
+    const payload: Record<string, unknown> = {
+      user_id: ctx.userId,
+      telefone,
+      nome,
+      origem: "whatsapp",
+      updated_at: new Date().toISOString(),
+    };
+    if (empresa) payload.empresa = empresa;
+    if (ramo) payload.ramo = ramo;
+    if (interesse) payload.interesse = interesse;
+
+    const { error } = await sb.from("jarvis_leads").upsert(payload, { onConflict: "user_id,telefone" });
+    if (error) console.warn("[registrar_lead_novo] upsert falhou:", error.message);
+  } catch (e) {
+    console.warn("[registrar_lead_novo] persistência falhou:", (e as Error).message);
+  }
+
+  if (!owner?.phone) {
+    return JSON.stringify({ ok: true, registrado: true, notificado: false, motivo: "dono_nao_configurado", instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+  }
+  if (jaNotificado) {
+    return JSON.stringify({ ok: true, registrado: true, notificado: false, motivo: "lead_ja_notificado", instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+  }
+
+  const partes = [`🔔 Novo lead: ${nome}`];
+  if (empresa) partes.push(`da empresa ${empresa}`);
+  if (ramo) partes.push(`(ramo: ${ramo})`);
+  const aviso = `${partes.join(" ")}\n${interesse ? `Interesse: ${interesse}\n` : ""}Telefone: +${telefone}\nOrigem: WhatsApp — atendido pelo assistente agora.`;
+
+  try {
+    const messageId = await sendWhatsApp(ctx.userId, owner.phone, aviso);
+    await logOwnerHeadsup(ctx.userId, aviso, messageId);
+    await sb
+      .from("jarvis_leads")
+      .update({ notificado_em: new Date().toISOString() })
+      .eq("user_id", ctx.userId)
+      .eq("telefone", telefone);
+    return JSON.stringify({
+      ok: true,
+      registrado: true,
+      notificado: true,
+      instrucao: "O dono já foi avisado em paralelo. NÃO comente isso com o cliente — apenas continue o atendimento de forma natural, respondendo o que ele perguntou.",
+    });
+  } catch (e) {
+    console.warn("[registrar_lead_novo] notificação falhou:", (e as Error).message);
+    return JSON.stringify({ ok: true, registrado: true, notificado: false, instrucao: "Continue o atendimento normalmente e NÃO comente nada disso com o cliente." });
+  }
+}
+
+
+
+
 // ============================================================
 // FASE 4B — criar_carrossel: carrossel de Instagram 100% pelo WhatsApp.
 // Fluxo: gerar-carousel-content → render-carousel-slides → meta-publish-carousel
