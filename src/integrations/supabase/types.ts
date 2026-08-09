@@ -2694,25 +2694,37 @@ export type Database = {
       empresa_config: {
         Row: {
           created_at: string | null
+          diferenciais: string | null
           id: string
           nome_empresa: string | null
+          publico_alvo: string | null
           segmento: string | null
+          site: string | null
+          sobre_negocio: string | null
           updated_at: string | null
           user_id: string
         }
         Insert: {
           created_at?: string | null
+          diferenciais?: string | null
           id?: string
           nome_empresa?: string | null
+          publico_alvo?: string | null
           segmento?: string | null
+          site?: string | null
+          sobre_negocio?: string | null
           updated_at?: string | null
           user_id: string
         }
         Update: {
           created_at?: string | null
+          diferenciais?: string | null
           id?: string
           nome_empresa?: string | null
+          publico_alvo?: string | null
           segmento?: string | null
+          site?: string | null
+          sobre_negocio?: string | null
           updated_at?: string | null
           user_id?: string
         }

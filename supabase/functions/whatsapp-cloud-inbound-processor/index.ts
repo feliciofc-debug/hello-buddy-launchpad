@@ -5,6 +5,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { decode as base64Decode } from "https://deno.land/std@0.168.0/encoding/base64.ts";
 import { buildSystemPrompt, ADMIN_AMZ_USER_ID } from "../_shared/agent-soul.ts";
 import { buildAmzContext, OWNER_PHONE, resolveTenantOwner, isAmzOwnerAltPhone } from "../_shared/amz-context.ts";
+import { getTenantBusinessContext, buildCarouselPrompt } from "../_shared/business-context.ts";
 
 // ---------------------------------------------------------------------------
 // Multi-tenant owner registry (populado no início de cada processMessage).
@@ -4306,13 +4307,15 @@ async function toolCriarCarrossel(
     const businessName = (conn.page_name || "").trim() || null;
     const profileHandle = conn.ig_username ? `@${String(conn.ig_username).replace(/^@/, "")}` : null;
 
-    // 4) CONTEÚDO dos slides (mesma função usada pelo app)
-    const prompt = [
-      `Crie um carrossel de Instagram sobre: "${tema}".`,
-      businessName ? `A marca é "${businessName}".` : "",
-      "Regras: 1 slide 'cover' (título curto e forte), 4 a 6 slides 'content' (title curto + body de 1 a 3 frases, linguagem simples e direta, sem jargão), e 1 slide 'cta' final convidando a seguir/chamar no direct.",
-      "Português do Brasil. Sem emojis nos títulos dos cards. Legenda (caption) com 6 a 10 hashtags relevantes ao final.",
-    ].filter(Boolean).join(" ");
+    // 4) CONTEÚDO dos slides — MESMO gerador E MESMA metodologia do app
+    //    (buildCarouselPrompt espelha src/components/CarouselGenerator.tsx:
+    //     4-5 tópicos densos por card) + CONTEXTO REAL do negócio do tenant.
+    const business = await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
+    const prompt = buildCarouselPrompt({ tema, numSlides: 7, business });
+    console.log("[criar_carrossel] contexto_do_negocio", {
+      tem_contexto: business.temContexto,
+      produtos: business.produtos.length,
+    });
 
     const conteudo = await callEdge("gerar-carousel-content", { prompt, tema }, 90000);
     const slides = Array.isArray(conteudo?.slides) ? conteudo.slides : [];
@@ -4422,6 +4425,9 @@ async function toolCriarCarrossel(
       instagram_media_id: publicado.id,
       link_perfil: link,
       legenda: caption,
+      aviso_sem_contexto: business.temContexto
+        ? null
+        : "Este tenant não descreveu o negócio: o conteúdo saiu com base só no tema. Sugira 1 linha pedindo pra preencher \"Sobre o meu negócio\" em Configuração da Empresa, pra os próximos carrosséis falarem do negócio de verdade.",
       instrucao: `Confirme em 2 linhas curtas: carrossel de ${imageUrls.length} cards na cor ${cor.label} publicado no Instagram agora, e mande o link ${link} pra ele conferir. Não recite a legenda inteira.`,
     });
   } catch (e) {
@@ -4489,7 +4495,10 @@ function formatCarrosselToolResult(raw: string): string {
   try { d = JSON.parse(raw); } catch { return raw; }
   if (d?.status === "aguardando_cor") return "É só escolher a cor aí em cima 👆";
   if (d?.status === "publicado") {
-    return `✅ Carrossel de *${d.cards} cards* na cor *${d.cor}* publicado no seu Instagram!<<SPLIT>>Confere aqui: ${d.link_perfil}`;
+    const base = `✅ Carrossel de *${d.cards} cards* na cor *${d.cor}* publicado no seu Instagram!<<SPLIT>>Confere aqui: ${d.link_perfil}`;
+    return d?.aviso_sem_contexto
+      ? `${base}<<SPLIT>>💡 Dica: preencha *Sobre o meu negócio* em Configuração da Empresa — assim os próximos carrosséis falam do seu negócio de verdade, não só do tema.`
+      : base;
   }
   if (d?.status === "gerado_sem_publicar") {
     return `🎨 Prontinho — ${d.cards} cards na cor *${d.cor}*.<<SPLIT>>Posso publicar no Instagram agora? Responde *sim*.`;
