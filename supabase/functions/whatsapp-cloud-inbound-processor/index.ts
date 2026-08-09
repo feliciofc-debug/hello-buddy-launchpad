@@ -1911,13 +1911,30 @@ async function toolConsultarClientesLeads(ctx: { userId: string; fromNumber: str
     if (scopeUserId) lc = lc.eq("user_id", scopeUserId);
     const { count: leadsB2c } = await lc;
 
+    // Leads captados pelo próprio JARVIS no WhatsApp (SDR)
+    let jarvisLeads: any[] = [];
+    try {
+      let jl = sb
+        .from("jarvis_leads")
+        .select("nome, empresa, ramo, interesse, telefone, created_at")
+        .order("created_at", { ascending: false })
+        .limit(15);
+      if (scopeUserId) jl = jl.eq("user_id", scopeUserId);
+      const { data } = await jl;
+      jarvisLeads = data ?? [];
+    } catch (e) {
+      console.warn("[consultar_clientes_leads] jarvis_leads falhou:", (e as Error).message);
+    }
+
     return JSON.stringify({
       escopo: isAdmin ? "admin_global" : "usuario",
       clientes_ativos: clientesAtivos ?? 0,
       novos_clientes_7d: novos7d ?? 0,
       leads_b2b: leadsB2b ?? 0,
       leads_b2c: leadsB2c ?? 0,
+      leads_captados_pelo_assistente: jarvisLeads,
     });
+
   } catch (e) { return JSON.stringify({ erro: String((e as Error).message) }); }
 }
 
