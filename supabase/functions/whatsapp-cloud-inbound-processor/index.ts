@@ -4731,6 +4731,8 @@ async function runTool(
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
   if (name === "encaminhar_recado_ao_dono") return { result: await toolEncaminharRecadoAoDono(args ?? {}, ctx) };
+  if (name === "registrar_lead_novo") return { result: await toolRegistrarLeadNovo(args ?? {}, ctx) };
+
 
   return { result: JSON.stringify({ erro: `ferramenta ${name} não existe` }) };
 }
