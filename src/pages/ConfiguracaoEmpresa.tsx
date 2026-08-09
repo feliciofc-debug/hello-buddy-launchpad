@@ -4,14 +4,19 @@ import { SEGMENTOS_EMPRESA } from '@/lib/segments';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { ArrowLeft, Building2, Target, Bot, Save } from 'lucide-react';
+import { ArrowLeft, Building2, Target, Bot, Save, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function ConfiguracaoEmpresa() {
   const [segmentoSelecionado, setSegmentoSelecionado] = useState('outros');
   const [nomeEmpresa, setNomeEmpresa] = useState('');
+  const [sobreNegocio, setSobreNegocio] = useState('');
+  const [diferenciais, setDiferenciais] = useState('');
+  const [publicoAlvo, setPublicoAlvo] = useState('');
+  const [site, setSite] = useState('');
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -33,6 +38,10 @@ export default function ConfiguracaoEmpresa() {
       if (data) {
         setSegmentoSelecionado(data.segmento || 'outros');
         setNomeEmpresa(data.nome_empresa || '');
+        setSobreNegocio(data.sobre_negocio || '');
+        setDiferenciais(data.diferenciais || '');
+        setPublicoAlvo(data.publico_alvo || '');
+        setSite(data.site || '');
       }
     } catch (error) {
       console.error('Erro ao carregar config:', error);
@@ -56,6 +65,10 @@ export default function ConfiguracaoEmpresa() {
           user_id: user.id,
           segmento: segmentoSelecionado,
           nome_empresa: nomeEmpresa,
+          sobre_negocio: sobreNegocio,
+          diferenciais: diferenciais,
+          publico_alvo: publicoAlvo,
+          site: site,
           updated_at: new Date().toISOString()
         }, {
           onConflict: 'user_id'
@@ -114,6 +127,55 @@ export default function ConfiguracaoEmpresa() {
               value={nomeEmpresa}
               onChange={(e) => setNomeEmpresa(e.target.value)}
               placeholder="Ex: Mercado Central, Tech Solutions"
+            />
+          </div>
+          <div>
+            <Label>Site ou link principal (opcional)</Label>
+            <Input
+              value={site}
+              onChange={(e) => setSite(e.target.value)}
+              placeholder="Ex: https://minhaempresa.com.br"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5" />
+            Sobre o meu negócio
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            É daqui que a IA tira o conteúdo real dos seus carrosséis, posts e atendimentos.
+            Quanto mais concreto, melhor o conteúdo — sem isso ela fala de forma genérica.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>O que o seu negócio faz?</Label>
+            <Textarea
+              rows={4}
+              value={sobreNegocio}
+              onChange={(e) => setSobreNegocio(e.target.value)}
+              placeholder="Ex: A AMZ Ofertas é uma plataforma de automação de vendas no WhatsApp e redes sociais: cria campanhas, publica conteúdo e atende clientes com IA 24h."
+            />
+          </div>
+          <div>
+            <Label>Diferenciais / por que escolher você</Label>
+            <Textarea
+              rows={3}
+              value={diferenciais}
+              onChange={(e) => setDiferenciais(e.target.value)}
+              placeholder="Ex: WhatsApp oficial da Meta, agente de IA próprio, publicação automática no Instagram e Facebook, suporte humano."
+            />
+          </div>
+          <div>
+            <Label>Público-alvo</Label>
+            <Input
+              value={publicoAlvo}
+              onChange={(e) => setPublicoAlvo(e.target.value)}
+              placeholder="Ex: lojistas, academias e prestadores de serviço que vendem pelo WhatsApp"
             />
           </div>
         </CardContent>
