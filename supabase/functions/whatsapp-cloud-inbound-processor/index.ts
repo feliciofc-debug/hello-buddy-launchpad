@@ -4306,13 +4306,15 @@ async function toolCriarCarrossel(
     const businessName = (conn.page_name || "").trim() || null;
     const profileHandle = conn.ig_username ? `@${String(conn.ig_username).replace(/^@/, "")}` : null;
 
-    // 4) CONTEÚDO dos slides (mesma função usada pelo app)
-    const prompt = [
-      `Crie um carrossel de Instagram sobre: "${tema}".`,
-      businessName ? `A marca é "${businessName}".` : "",
-      "Regras: 1 slide 'cover' (título curto e forte), 4 a 6 slides 'content' (title curto + body de 1 a 3 frases, linguagem simples e direta, sem jargão), e 1 slide 'cta' final convidando a seguir/chamar no direct.",
-      "Português do Brasil. Sem emojis nos títulos dos cards. Legenda (caption) com 6 a 10 hashtags relevantes ao final.",
-    ].filter(Boolean).join(" ");
+    // 4) CONTEÚDO dos slides — MESMO gerador E MESMA metodologia do app
+    //    (buildCarouselPrompt espelha src/components/CarouselGenerator.tsx:
+    //     4-5 tópicos densos por card) + CONTEXTO REAL do negócio do tenant.
+    const business = await getTenantBusinessContext(sb, ctx.userId, { nomeFallback: businessName });
+    const prompt = buildCarouselPrompt({ tema, numSlides: 7, business });
+    console.log("[criar_carrossel] contexto_do_negocio", {
+      tem_contexto: business.temContexto,
+      produtos: business.produtos.length,
+    });
 
     const conteudo = await callEdge("gerar-carousel-content", { prompt, tema }, 90000);
     const slides = Array.isArray(conteudo?.slides) ? conteudo.slides : [];
