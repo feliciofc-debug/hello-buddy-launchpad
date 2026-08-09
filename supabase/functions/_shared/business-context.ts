@@ -155,6 +155,18 @@ export function buildCarouselPrompt(opts: {
   const n = Math.max(3, Math.min(10, opts.numSlides || 7));
   const contentCount = Math.max(n - 2, 1);
   const ctx = opts.business?.promptBlock ? `\n${opts.business.promptBlock}\n` : "";
+  const tel = opts.business?.atendimentoTelefoneFmt || null;
+  const waLink = opts.business?.atendimentoWaLink || null;
+  const ctaBlock = tel && waLink
+    ? `\nCTA DE ATENDIMENTO (OBRIGATÓRIO):
+- No slide "cta", convide para falar no WhatsApp e mostre o número ${tel} numa linha do body. Ex.: body "💬 Fale com a gente no WhatsApp\\n📱 ${tel}", ctaLabel "Falar no WhatsApp".
+- NÃO escreva o endereço https://wa.me dentro da arte (fica ilegível) — só a chamada + o número.
+- Na "caption", inclua exatamente esta linha antes das hashtags: "Fale com a gente no WhatsApp 👉 ${waLink}".
+- É proibido usar qualquer outro número, link ou canal de contato que não seja esse.\n`
+    : `\nCTA DE ATENDIMENTO:
+- No slide "cta", convide para chamar no WhatsApp de forma genérica ("💬 Chama a gente no WhatsApp"), SEM número e SEM link — o contato do negócio não está cadastrado.
+- É proibido inventar telefone, link ou canal de contato.\n`;
+
 
   return `Você é um diretor criativo e copywriter sênior especialista em carrosséis premium para Instagram.
 Crie um carrossel de alto nível, com páginas completas, linguagem forte e benefícios reais — nada genérico, nada vazio.
