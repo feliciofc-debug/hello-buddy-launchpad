@@ -17,11 +17,25 @@ export type TenantBusinessContext = {
   publicoAlvo: string | null;
   site: string | null;
   produtos: string[];
+  /** telefone de atendimento do tenant (display_phone do whatsapp_config), só dígitos */
+  atendimentoTelefone: string | null;
+  /** telefone formatado para leitura humana, ex: +55 21 96752-0706 */
+  atendimentoTelefoneFmt: string | null;
+  /** link wa.me do próprio tenant (nunca fixo/AMZ) */
+  atendimentoWaLink: string | null;
   /** true quando o tenant descreveu o negócio (sobre/diferenciais) */
   temContexto: boolean;
   /** bloco pronto para injetar no prompt (vazio quando não há nada) */
   promptBlock: string;
 };
+
+function formatBrPhone(digits: string): string {
+  const d = digits.replace(/\D/g, "");
+  const m = d.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
+  if (m) return `+55 ${m[1]} ${m[2]}-${m[3]}`;
+  return d ? `+${d}` : "";
+}
+
 
 export async function getTenantBusinessContext(
   sb: SupabaseClient,
