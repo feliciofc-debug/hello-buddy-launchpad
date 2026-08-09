@@ -3894,6 +3894,48 @@ export type Database = {
         }
         Relationships: []
       }
+      jarvis_leads: {
+        Row: {
+          created_at: string
+          empresa: string | null
+          id: string
+          interesse: string | null
+          nome: string | null
+          notificado_em: string | null
+          origem: string
+          ramo: string | null
+          telefone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          empresa?: string | null
+          id?: string
+          interesse?: string | null
+          nome?: string | null
+          notificado_em?: string | null
+          origem?: string
+          ramo?: string | null
+          telefone: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          empresa?: string | null
+          id?: string
+          interesse?: string | null
+          nome?: string | null
+          notificado_em?: string | null
+          origem?: string
+          ramo?: string | null
+          telefone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       jarvis_notes: {
         Row: {
           contact_number: string
