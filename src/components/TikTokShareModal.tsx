@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Loader2, Video, Image, ExternalLink, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { buildTikTokAuthUrl } from "@/config/tiktok";
 
 interface TikTokShareModalProps {
   open: boolean;
