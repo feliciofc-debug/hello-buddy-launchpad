@@ -75,6 +75,19 @@ serve(async (req) => {
     const videoSize = videoBytes.length;
     console.log("✅ Vídeo baixado:", videoSize, "bytes");
 
+    // Detectar o Content-Type real do vídeo (Content Posting API aceita mp4, quicktime e webm)
+    const headerType = videoResponse.headers.get("content-type") || "";
+    const urlExt = (content_url.split("?")[0].split(".").pop() || "").toLowerCase();
+    const extMap: Record<string, string> = {
+      mp4: "video/mp4",
+      mov: "video/quicktime",
+      webm: "video/webm",
+    };
+    const videoContentType =
+      headerType.startsWith("video/") ? headerType : (extMap[urlExt] || "video/mp4");
+
+    console.log("🎞️ Content-Type detectado:", videoContentType);
+
     // === PASSO 2: Iniciar upload no TikTok (FILE_UPLOAD) ===
     // TIKTOK_ENV controla o comportamento:
     //  - sandbox  -> app não auditado: TikTok só aceita inbox (rascunho) + SELF_ONLY
@@ -169,7 +182,7 @@ serve(async (req) => {
         method: "PUT",
         headers: {
           "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
-          "Content-Type": "video/mp4",
+          "Content-Type": videoContentType,
         },
         body: videoBytes,
       });
@@ -202,17 +215,26 @@ serve(async (req) => {
     
     console.log("✅ Upload do vídeo concluído com sucesso");
 
-    // Salvar histórico do post
-    await supabase.from("tiktok_posts").insert({
-      user_id,
-      content_type,
-      content_url,
-      title,
-      post_mode,
-      tiktok_response: initData,
-      status: directPost ? "published" : "draft",
-      publish_id: publishId || null,
-    });
+    // Salvar histórico do post (status real só é conhecido via polling em tiktok-post-status)
+    const { data: postRow, error: insertError } = await supabase
+      .from("tiktok_posts")
+      .insert({
+        user_id,
+        content_type,
+        content_url,
+        title,
+        post_mode,
+        tiktok_response: initData,
+        status: "processing",
+        publish_status: "PROCESSING_UPLOAD",
+        publish_id: publishId || null,
+      })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      console.error("⚠️ Erro ao salvar histórico do post:", insertError.message);
+    }
 
     return new Response(
       JSON.stringify({
@@ -222,6 +244,7 @@ serve(async (req) => {
           ? "Vídeo publicado no TikTok!"
           : "Vídeo enviado para os rascunhos do TikTok. Abra o app TikTok (Caixa de entrada) e toque em publicar para ir ao perfil.",
         publish_id: publishId,
+        post_row_id: postRow?.id ?? null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

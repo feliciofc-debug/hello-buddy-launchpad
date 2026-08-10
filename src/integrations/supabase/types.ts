@@ -7838,39 +7838,51 @@ export type Database = {
       }
       tiktok_posts: {
         Row: {
+          checked_at: string | null
           content_type: string
           content_url: string
           created_at: string
+          fail_reason: string | null
           id: string
           post_mode: string
           publish_id: string | null
+          publish_status: string | null
           status: string
+          tiktok_post_id: string | null
           tiktok_response: Json | null
           title: string
           updated_at: string
           user_id: string
         }
         Insert: {
+          checked_at?: string | null
           content_type: string
           content_url: string
           created_at?: string
+          fail_reason?: string | null
           id?: string
           post_mode?: string
           publish_id?: string | null
+          publish_status?: string | null
           status?: string
+          tiktok_post_id?: string | null
           tiktok_response?: Json | null
           title: string
           updated_at?: string
           user_id: string
         }
         Update: {
+          checked_at?: string | null
           content_type?: string
           content_url?: string
           created_at?: string
+          fail_reason?: string | null
           id?: string
           post_mode?: string
           publish_id?: string | null
+          publish_status?: string | null
           status?: string
+          tiktok_post_id?: string | null
           tiktok_response?: Json | null
           title?: string
           updated_at?: string

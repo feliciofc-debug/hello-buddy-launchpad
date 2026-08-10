@@ -1,14 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Loader2, Video, Image, ExternalLink, AlertTriangle } from "lucide-react";
+import { Loader2, Video, Image, ExternalLink, AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { buildTikTokAuthUrl } from "@/config/tiktok";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface TikTokShareModalProps {
   open: boolean;
@@ -36,15 +37,119 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
   } | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      checkTikTokConnection();
-      // Preencher caption com título do produto se disponível
-      if (content.title) {
-        setCaption(`${content.title}\n\n🔥 Confira essa oferta incrível!\n\n#tiktok #ofertas #promocao #fyp #viral`);
-      }
+  type PostStatus = "idle" | "uploading" | "processing" | "done" | "failed";
+  const [postStatus, setPostStatus] = useState<PostStatus>("idle");
+  const [statusMessage, setStatusMessage] = useState<string>("");
+  const [failReason, setFailReason] = useState<string>("");
+  const [attempts, setAttempts] = useState(0);
+
+  const pollTimerRef = useRef<number | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
+
+  const clearTimers = useCallback(() => {
+    cancelledRef.current = true;
+    if (pollTimerRef.current !== null) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
     }
-  }, [open, content.title]);
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  // Cleanup: nunca deixar polling rodando em background
+  useEffect(() => clearTimers, [clearTimers]);
+
+  useEffect(() => {
+    if (!open) {
+      clearTimers();
+      setPostStatus("idle");
+      setStatusMessage("");
+      setFailReason("");
+      setAttempts(0);
+      return;
+    }
+
+    cancelledRef.current = false;
+    checkTikTokConnection();
+    // Preencher caption com título do produto se disponível
+    if (content.title) {
+      setCaption(`${content.title}\n\n🔥 Confira essa oferta incrível!\n\n#tiktok #ofertas #promocao #fyp #viral`);
+    }
+  }, [open, content.title, clearTimers]);
+
+  const MAX_ATTEMPTS = 40;
+
+  const startPolling = (userId: string, publishId: string) => {
+    let attempt = 0;
+
+    const tick = async () => {
+      if (cancelledRef.current) return;
+      attempt += 1;
+      setAttempts(attempt);
+
+      try {
+        const { data, error } = await supabase.functions.invoke("tiktok-post-status", {
+          body: { user_id: userId, publish_id: publishId },
+        });
+
+        if (cancelledRef.current) return;
+
+        if (!error && data?.success) {
+          const status: string = data.status;
+
+          if (status === "PUBLISH_COMPLETE") {
+            setPostStatus("done");
+            setStatusMessage("✅ Publicado no TikTok!");
+            closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
+            return;
+          }
+          if (status === "SEND_TO_USER_INBOX") {
+            setPostStatus("done");
+            setStatusMessage(
+              "✅ Vídeo enviado! Abra o app do TikTok, vá na Caixa de entrada e toque em publicar."
+            );
+            closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
+            return;
+          }
+          if (status === "FAILED") {
+            setPostStatus("failed");
+            setFailReason(data.fail_reason || "O TikTok não informou o motivo.");
+            setStatusMessage("");
+            return;
+          }
+
+          // PROCESSING_UPLOAD / PROCESSING_DOWNLOAD
+          setPostStatus("processing");
+          setStatusMessage(
+            attempt >= 15
+              ? "Ainda processando. Você pode fechar esta janela — o vídeo aparecerá na Caixa de entrada do TikTok."
+              : "Processando no TikTok..."
+          );
+        }
+      } catch (e) {
+        console.error("Erro ao consultar status TikTok:", e);
+      }
+
+      if (cancelledRef.current) return;
+
+      if (attempt >= MAX_ATTEMPTS) {
+        // Estourar o limite NÃO é erro
+        setPostStatus("processing");
+        setStatusMessage("O TikTok ainda está processando. Confira no app em alguns minutos.");
+        return;
+      }
+
+      const delay = attempt < 10 ? 3000 : 5000;
+      pollTimerRef.current = window.setTimeout(tick, delay);
+    };
+
+    setPostStatus("processing");
+    setStatusMessage("Processando no TikTok...");
+    pollTimerRef.current = window.setTimeout(tick, 3000);
+  };
 
   const checkTikTokConnection = async () => {
     setCheckingConnection(true);
@@ -124,11 +229,17 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
       return;
     }
 
+    cancelledRef.current = false;
+    setFailReason("");
+    setAttempts(0);
+    setPostStatus("uploading");
+    setStatusMessage("Enviando vídeo para o TikTok...");
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Você precisa estar logado");
+        setPostStatus("idle");
         return;
       }
 
@@ -145,26 +256,34 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
       if (error) throw error;
 
       if (data.success) {
-        toast.success(
-          postMode === "draft" 
-            ? "✅ Vídeo enviado para rascunhos do TikTok!" 
-            : "✅ Vídeo publicado no TikTok!"
-        );
-        onOpenChange(false);
+        if (data.publish_id) {
+          startPolling(user.id, data.publish_id);
+        } else {
+          setPostStatus("done");
+          setStatusMessage(data.message || "✅ Vídeo enviado ao TikTok!");
+          closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
+        }
       } else {
         throw new Error(data.error || "Erro ao postar no TikTok");
       }
     } catch (error: any) {
       console.error("Erro ao postar:", error);
+      setPostStatus("failed");
+      setFailReason(error.message || "Erro ao enviar para o TikTok");
       toast.error(error.message || "Erro ao enviar para o TikTok");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleDialogChange = (next: boolean) => {
+    if (!next) clearTimers();
+    onOpenChange(next);
+  };
+
   if (checkingConnection) {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleDialogChange}>
         <DialogContent className="sm:max-w-md">
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -176,7 +295,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
   if (!isConnected) {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleDialogChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -211,7 +330,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -315,25 +434,62 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             </p>
           </div>
 
+          {/* Acompanhamento do status real da publicação */}
+          {(postStatus === "uploading" || postStatus === "processing") && (
+            <Alert>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertDescription>
+                {statusMessage}
+                {postStatus === "processing" && attempts > 0 && (
+                  <span className="block text-xs text-muted-foreground mt-1">
+                    Verificação {attempts} de {MAX_ATTEMPTS}
+                  </span>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {postStatus === "done" && (
+            <Alert>
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertDescription>{statusMessage}</AlertDescription>
+            </Alert>
+          )}
+
+          {postStatus === "failed" && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="space-y-2">
+                <p>{failReason}</p>
+                <Button size="sm" variant="outline" onClick={handlePost}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Tentar novamente
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Botão de enviar */}
-          <Button 
-            onClick={handlePost} 
-            disabled={loading || !caption.trim()}
-            className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
-            size="lg"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Enviando...
-              </>
-            ) : (
-              <>
-                {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
-                {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
-              </>
-            )}
-          </Button>
+          {postStatus !== "done" && postStatus !== "failed" && (
+            <Button
+              onClick={handlePost}
+              disabled={loading || !caption.trim() || postStatus === "processing"}
+              className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
+              size="lg"
+            >
+              {loading || postStatus === "processing" ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  {postStatus === "processing" ? "Processando..." : "Enviando..."}
+                </>
+              ) : (
+                <>
+                  {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
+                  {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

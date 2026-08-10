@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Loader2, Video, Download, Facebook, Instagram, Plus, X, Sparkles } from "lucide-react";
+import { Loader2, Video, Download, Facebook, Instagram, Plus, X, Sparkles, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface SlideshowConfig {
   productName: string;
@@ -17,6 +18,21 @@ interface SlideshowConfig {
   textColor: string;
   showPrice: boolean;
   showCta: boolean;
+}
+
+function pickRecorderMime(): { mimeType: string; ext: string; contentType: string } {
+  const candidates = [
+    { mimeType: "video/mp4;codecs=avc1.42E01E", ext: "mp4", contentType: "video/mp4" },
+    { mimeType: "video/webm;codecs=vp9", ext: "webm", contentType: "video/webm" },
+    { mimeType: "video/webm;codecs=vp8", ext: "webm", contentType: "video/webm" },
+    { mimeType: "video/webm", ext: "webm", contentType: "video/webm" },
+  ];
+  for (const c of candidates) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c.mimeType)) {
+      return c;
+    }
+  }
+  return { mimeType: "", ext: "webm", contentType: "video/webm" };
 }
 
 export const VideoSlideshowGenerator = () => {
@@ -36,6 +52,7 @@ export const VideoSlideshowGenerator = () => {
   const [uploadingReels, setUploadingReels] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([""]);
+  const [recorderMime] = useState(pickRecorderMime);
 
   const addImageUrl = () => {
     if (imageUrls.length >= 10) { toast.error("Máximo de 10 imagens"); return; }
@@ -229,8 +246,8 @@ export const VideoSlideshowGenerator = () => {
 
       const stream = canvas.captureStream(30);
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9",
-        videoBitsPerSecond: 5000000,
+        ...(recorderMime.mimeType ? { mimeType: recorderMime.mimeType } : {}),
+        videoBitsPerSecond: 2500000,
       });
 
       const chunks: Blob[] = [];
@@ -240,7 +257,7 @@ export const VideoSlideshowGenerator = () => {
 
       const videoReady = new Promise<Blob>((resolve) => {
         mediaRecorder.onstop = () => {
-          resolve(new Blob(chunks, { type: "video/webm" }));
+          resolve(new Blob(chunks, { type: recorderMime.contentType }));
         };
       });
 
@@ -312,7 +329,7 @@ export const VideoSlideshowGenerator = () => {
     if (!videoBlob) return;
     const a = document.createElement("a");
     a.href = URL.createObjectURL(videoBlob);
-    a.download = `reels-${config.productName.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.webm`;
+    a.download = `reels-${config.productName.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.${recorderMime.ext}`;
     a.click();
     toast.success("Vídeo baixado!");
   };
@@ -326,10 +343,10 @@ export const VideoSlideshowGenerator = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error("Você precisa estar logado"); return; }
 
-      const fileName = `reels/${user.id}/${Date.now()}.webm`;
+      const fileName = `reels/${user.id}/${Date.now()}.${recorderMime.ext}`;
       const { error: uploadError } = await supabase.storage
         .from("videos")
-        .upload(fileName, videoBlob, { contentType: "video/webm", cacheControl: "3600" });
+        .upload(fileName, videoBlob, { contentType: recorderMime.contentType, cacheControl: "3600" });
 
       if (uploadError) throw new Error(`Erro no upload: ${uploadError.message}`);
 
@@ -476,6 +493,16 @@ export const VideoSlideshowGenerator = () => {
                   placeholder="Legenda do Reels..."
                 />
               </div>
+
+              {recorderMime.ext === "webm" && (
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Seu navegador não suporta MP4. O vídeo funciona no TikTok, mas o Instagram e o
+                    Facebook não aceitam este formato para Reels — use o Chrome para publicar nessas redes.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Button onClick={handleDownload} variant="outline" className="gap-2">
