@@ -674,7 +674,11 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                       <Checkbox
                         id="branded-content"
                         checked={brandedContent}
-                        onCheckedChange={(v) => setBrandedContent(!!v)}
+                        onCheckedChange={(v) => {
+                          setBrandedContent(!!v);
+                          // Conteúdo de marca não pode ser privado: limpa a escolha
+                          if (v && privacyLevel === "SELF_ONLY") setPrivacyLevel("");
+                        }}
                       />
                       <Label htmlFor="branded-content" className="text-sm font-normal cursor-pointer">
                         Conteúdo de marca
@@ -685,9 +689,14 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                     </div>
 
                     {disclosureIncompleto && (
-                      <p className="text-xs text-destructive">
-                        Escolha ao menos uma opção: "Sua marca" ou "Conteúdo de marca".
-                      </p>
+                      <>
+                        <p className="text-xs text-destructive">
+                          Você precisa indicar se seu conteúdo promove você mesmo, um terceiro, ou ambos.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          You need to indicate if your content promotes yourself, a third party, or both.
+                        </p>
+                      </>
                     )}
                     {brandedContentPrivado && (
                       <p className="text-xs text-destructive">
