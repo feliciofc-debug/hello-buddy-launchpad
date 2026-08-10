@@ -449,30 +449,60 @@ export default function DashboardMetricas() {
 
       {/* Main Content */}
       <main className="flex-1 min-h-screen overflow-auto">
-        <div className="p-6 space-y-6">
+        <div className="p-4 md:p-6 space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setIsMenuOpen(true)}>
                 <Menu className="w-5 h-5" />
               </Button>
               <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                  {t('dashboard.title')}
+                <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+                  {saudacao}
+                  {nomeExibicao ? `, ${nomeExibicao}` : ''} 👋
                 </h1>
-                <p className="text-muted-foreground">{t('dashboard.subtitle')}</p>
+                <p className="text-sm text-muted-foreground">
+                  Veja o que sua IA fez pelo seu negócio.
+                  {metricasDash.atualizadoEm && (
+                    <>
+                      {' '}Atualizado às{' '}
+                      {metricasDash.atualizadoEm.toLocaleTimeString('pt-BR', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                      .
+                    </>
+                  )}
+                </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <Badge className="bg-green-500/10 text-green-500 border-green-500/20">
-                <Activity className="w-3 h-3 mr-1" />
-                {t('dashboard.online')}
-              </Badge>
-              <LanguageSwitcher />
-              <Button variant="outline" size="sm" onClick={carregarMetricas}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                {t('dashboard.refresh')}
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border bg-card p-1">
+                {(
+                  [
+                    { id: 'hoje', label: 'Hoje' },
+                    { id: '7d', label: '7 dias' },
+                    { id: '30d', label: '30 dias' },
+                  ] as { id: DashboardPeriod; label: string }[]
+                ).map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setPeriodo(p.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      periodo === p.id
+                        ? 'bg-brand text-brand-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <Button variant="outline" size="icon" onClick={recarregarDash} title="Atualizar">
+                <RefreshCw className={`w-4 h-4 ${loadingDash ? 'animate-spin' : ''}`} />
               </Button>
+              <ThemeToggle />
+              <LanguageSwitcher />
               <NotificationCenter />
               <Button variant="ghost" size="icon" onClick={handleLogout} title={t('dashboard.logout')}>
                 <LogOut className="w-5 h-5" />
@@ -480,456 +510,18 @@ export default function DashboardMetricas() {
             </div>
           </div>
 
-      {/* Cards Principais */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Mensagens Enviadas */}
-        <Card className="border-l-4 border-l-blue-500 hover:shadow-lg transition-all">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-blue-500/10 rounded-lg">
-                <Send className="w-5 h-5 text-blue-500" />
-              </div>
-              <Badge variant="secondary" className="text-xs">
-                +{metricas.mensagensHoje} {t('dashboard.today')}
-              </Badge>
+          {loadingDash && !metricasDash.atualizadoEm ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-32 rounded-2xl bg-muted animate-pulse" />
+              ))}
             </div>
-            <p className="text-3xl font-bold">{metricas.totalMensagens.toLocaleString()}</p>
-            <p className="text-sm text-muted-foreground">{t('dashboard.messages_sent')}</p>
-          </CardContent>
-        </Card>
-
-        {/* Total Leads */}
-        <Card className="border-l-4 border-l-purple-500 hover:shadow-lg transition-all">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-purple-500/10 rounded-lg">
-                <Users className="w-5 h-5 text-purple-500" />
-              </div>
-              <Badge variant="secondary" className="text-xs">
-                {metricas.leadsQuentes} {t('dashboard.hot')}
-              </Badge>
-            </div>
-            <p className="text-3xl font-bold">{metricas.totalLeads.toLocaleString()}</p>
-            <p className="text-sm text-muted-foreground">{t('dashboard.total_leads')}</p>
-          </CardContent>
-        </Card>
-
-        {/* Campanhas */}
-        <Card className="border-l-4 border-l-green-500 hover:shadow-lg transition-all">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-green-500/10 rounded-lg">
-                <Target className="w-5 h-5 text-green-500" />
-              </div>
-              <Badge variant="secondary" className="text-xs">
-                {metricas.campanhasAtivas} {t('dashboard.active')}
-              </Badge>
-            </div>
-            <p className="text-3xl font-bold">{metricas.totalCampanhas}</p>
-            <p className="text-sm text-muted-foreground">{t('dashboard.campaigns')}</p>
-          </CardContent>
-        </Card>
-
-        {/* Automação IA */}
-        <Card className="border-l-4 border-l-orange-500 hover:shadow-lg transition-all">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-orange-500/10 rounded-lg">
-                <Bot className="w-5 h-5 text-orange-500" />
-              </div>
-              <Badge className="bg-orange-500/10 text-orange-500 border-orange-500/20">
-                {t('dashboard.ia_active')}
-              </Badge>
-            </div>
-            <p className="text-3xl font-bold">{metricas.taxaAutomacao}%</p>
-            <p className="text-sm text-muted-foreground">{t('dashboard.automation')}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Cards Secundários - Métricas do Dia */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="bg-gradient-to-br from-blue-500/5 to-blue-500/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <MessageCircle className="w-8 h-8 text-blue-500" />
-            <div>
-              <p className="text-2xl font-bold">{metricas.mensagensHoje}</p>
-              <p className="text-xs text-muted-foreground">{t('dashboard.messages_today')}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-purple-500/5 to-purple-500/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Users className="w-8 h-8 text-purple-500" />
-            <div>
-              <p className="text-2xl font-bold">{metricas.conversasHoje}</p>
-              <p className="text-xs text-muted-foreground">{t('dashboard.conversations_today')}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-green-500/5 to-green-500/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <CheckCircle className="w-8 h-8 text-green-500" />
-            <div>
-              <p className="text-2xl font-bold">{metricas.mensagensIA}</p>
-              <p className="text-xs text-muted-foreground">{t('dashboard.ia_attendances')}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-orange-500/5 to-orange-500/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <Clock className="w-8 h-8 text-orange-500" />
-            <div>
-              <p className="text-2xl font-bold">{metricas.totalConversas}</p>
-              <p className="text-xs text-muted-foreground">{t('dashboard.total_conversations')}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Gráficos Principais */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Gráfico de Mensagens por Dia */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5 text-primary" />
-              {t('dashboard.messages_last_7_days')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={dadosGraficos.mensagensPorDia}>
-                <defs>
-                  <linearGradient id="colorEnviadas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorRecebidas" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="dia" className="text-xs" />
-                <YAxis className="text-xs" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'hsl(var(--card))', 
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
-                  }} 
-                />
-                <Legend />
-                <Area
-                  type="monotone"
-                  dataKey="enviadas"
-                  stroke="hsl(var(--primary))"
-                  fillOpacity={1}
-                  fill="url(#colorEnviadas)"
-                  name={t('dashboard.sent')}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="recebidas"
-                  stroke="#10b981"
-                  fillOpacity={1}
-                  fill="url(#colorRecebidas)"
-                  name={t('dashboard.received')}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Funil de Leads */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-primary" />
-              {t('dashboard.sales_funnel')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={dadosGraficos.leadsNoFunil} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis type="number" className="text-xs" />
-                <YAxis dataKey="nome" type="category" className="text-xs" width={80} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
-                  }}
-                />
-                <Bar dataKey="valor" radius={[0, 4, 4, 0]}>
-                  {dadosGraficos.leadsNoFunil.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.cor} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Gráficos Secundários */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Status das Campanhas */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('dashboard.campaign_status')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={dadosGraficos.campanhasPorStatus}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={70}
-                  paddingAngle={5}
-                  dataKey="valor"
-                >
-                  {dadosGraficos.campanhasPorStatus.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.cor} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
-                  }}
-                />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Tipo de Atendimento */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('dashboard.ia_vs_human')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <PieChart>
-                <Pie
-                  data={dadosGraficos.atendimentoPorTipo}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={70}
-                  paddingAngle={5}
-                  dataKey="valor"
-                >
-                  {dadosGraficos.atendimentoPorTipo.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.cor} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: '8px'
-                  }}
-                />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Card de Resumo */}
-        <Card className="bg-gradient-to-br from-primary/5 to-purple-500/10">
-          <CardHeader>
-            <CardTitle className="text-base">{t('dashboard.general_summary')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{t('dashboard.total_messages')}</span>
-              <span className="font-bold">{metricas.totalMensagens}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{t('dashboard.total_conversations')}</span>
-              <span className="font-bold">{metricas.totalConversas}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{t('dashboard.total_leads')}</span>
-              <span className="font-bold">{metricas.totalLeads}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{t('dashboard.automation_rate')}</span>
-              <Badge className="bg-primary/10 text-primary">{metricas.taxaAutomacao}%</Badge>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Ações Rápidas */}
-      <Card className="bg-gradient-to-r from-primary/5 to-purple-500/10">
-        <CardContent className="p-6">
-          <h3 className="font-semibold mb-4 text-center">{t('dashboard.quick_actions')}</h3>
-          <div className="flex flex-wrap gap-3 justify-center">
-            <Button onClick={() => navigate('/meus-produtos')} className="gap-2">
-              <Plus className="w-4 h-4" />
-              {t('dashboard.new_product')}
-            </Button>
-            <Button variant="secondary" onClick={() => navigate('/campanhas')} className="gap-2">
-              <Megaphone className="w-4 h-4" />
-              {t('dashboard.create_campaign')}
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/whatsapp')} className="gap-2">
-              <Calendar className="w-4 h-4" />
-              {t('dashboard.schedule_send')}
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/google-ads')} className="gap-2">
-              <Target className="w-4 h-4" />
-              Google Ads
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/configurar-icp')} className="gap-2">
-              <Users className="w-4 h-4" />
-              {t('dashboard.configure_icp')}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Campanhas em Andamento + Leads Quentes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Campanhas em Andamento */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Megaphone className="w-5 h-5 text-red-500" />
-              {t('dashboard.campaigns_running')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <CampanhasEmAndamentoSection navigate={navigate} />
-            <div className="flex gap-2 pt-2">
-              <Button size="sm" onClick={() => navigate('/campanhas')} className="gap-1">
-                <Plus className="w-4 h-4" />
-                {t('dashboard.new_campaign')}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => navigate('/biblioteca')}>
-                {t('dashboard.view_history')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Leads Quentes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Flame className="w-5 h-5 text-orange-500" />
-              {t('dashboard.hot_leads')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <LeadsQuentes />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Google Ads + Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Google Ads */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Target className="w-5 h-5 text-red-500" />
-              {t('dashboard.google_ads')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">{t('dashboard.active_campaigns')}</p>
-                <p className="text-xl font-bold">3</p>
-              </div>
-              <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">{t('dashboard.avg_cpc')}</p>
-                <p className="text-xl font-bold">R$ 0.42</p>
-              </div>
-              <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">CTR</p>
-                <p className="text-xl font-bold text-green-500">4.8%</p>
-              </div>
-              <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">ROI</p>
-                <p className="text-xl font-bold text-purple-500">4.5x</p>
-              </div>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button size="sm" onClick={() => navigate('/google-ads')} className="flex-1 gap-1">
-                <Eye className="w-4 h-4" />
-                {t('dashboard.view_campaigns')}
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => navigate('/google-ads')} className="flex-1 gap-1">
-                <Plus className="w-4 h-4" />
-                {t('dashboard.create_new')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Google Analytics */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-blue-500" />
-              {t('dashboard.analytics')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">{t('dashboard.visits_month')}</p>
-                <p className="text-xl font-bold">12.5K</p>
-              </div>
-              <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground">{t('dashboard.conversion_rate')}</p>
-                <p className="text-xl font-bold text-green-500">4.2%</p>
-              </div>
-              <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <MousePointer className="w-3 h-3" />
-                  {t('dashboard.checkout_clicks')}
-                </p>
-                <p className="text-xl font-bold text-orange-500">847</p>
-              </div>
-              <div className="bg-muted/50 p-3 rounded-lg">
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <DollarSign className="w-3 h-3" />
-                  {t('dashboard.sales')}
-                </p>
-                <p className="text-xl font-bold text-green-500">R$ 15.8K</p>
-              </div>
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button size="sm" onClick={() => navigate('/analytics')} className="flex-1 gap-1">
-                <BarChart3 className="w-4 h-4" />
-                {t('dashboard.view_report')}
-              </Button>
-              <Button size="sm" variant="outline" className="flex-1 gap-1">
-                <ExternalLink className="w-4 h-4" />
-                {t('dashboard.export')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          ) : (
+            <DashboardOverview metrics={metricasDash} period={periodo} />
+          )}
         </div>
       </main>
     </div>
   );
 }
+
