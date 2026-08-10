@@ -75,6 +75,19 @@ serve(async (req) => {
     const videoSize = videoBytes.length;
     console.log("✅ Vídeo baixado:", videoSize, "bytes");
 
+    // Detectar o Content-Type real do vídeo (Content Posting API aceita mp4, quicktime e webm)
+    const headerType = videoResponse.headers.get("content-type") || "";
+    const urlExt = (content_url.split("?")[0].split(".").pop() || "").toLowerCase();
+    const extMap: Record<string, string> = {
+      mp4: "video/mp4",
+      mov: "video/quicktime",
+      webm: "video/webm",
+    };
+    const videoContentType =
+      headerType.startsWith("video/") ? headerType : (extMap[urlExt] || "video/mp4");
+
+    console.log("🎞️ Content-Type detectado:", videoContentType);
+
     // === PASSO 2: Iniciar upload no TikTok (FILE_UPLOAD) ===
     // TIKTOK_ENV controla o comportamento:
     //  - sandbox  -> app não auditado: TikTok só aceita inbox (rascunho) + SELF_ONLY
