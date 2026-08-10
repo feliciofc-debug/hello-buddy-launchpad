@@ -805,7 +805,58 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             </Alert>
           )}
 
+          {/* Declaração de consentimento — visível nos DOIS modos, logo acima do botão */}
+          <div className="space-y-1 border-t pt-3">
+            {commercialContent && brandedContent ? (
+              <>
+                <p className="text-sm">
+                  Ao publicar, você concorda com a{" "}
+                  <a
+                    href="https://www.tiktok.com/legal/page/global/bc-policy/pt-BR"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-primary"
+                  >
+                    Política de Conteúdo de Marca
+                  </a>{" "}
+                  e a{" "}
+                  <a
+                    href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-primary"
+                  >
+                    Confirmação de Uso de Música
+                  </a>{" "}
+                  do TikTok.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  By posting, you agree to TikTok's Branded Content Policy and Music Usage Confirmation.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">
+                  Ao publicar, você concorda com a{" "}
+                  <a
+                    href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-primary"
+                  >
+                    Confirmação de Uso de Música
+                  </a>{" "}
+                  do TikTok.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  By posting, you agree to TikTok's Music Usage Confirmation.
+                </p>
+              </>
+            )}
+          </div>
+
           {/* Botão de enviar */}
+
           {postStatus !== "done" && postStatus !== "failed" && (
             <span
               className="block"
