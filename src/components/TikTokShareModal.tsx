@@ -567,15 +567,38 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 <Label>Quem pode ver este vídeo</Label>
                 {creator && creator.privacy_level_options.length > 0 ? (
                   <RadioGroup value={privacyLevel} onValueChange={setPrivacyLevel}>
-                    {creator.privacy_level_options.map((opt) => (
-                      <div key={opt} className="flex items-center space-x-2">
-                        <RadioGroupItem value={opt} id={`privacy-${opt}`} />
-                        <Label htmlFor={`privacy-${opt}`} className="cursor-pointer">
-                          {PRIVACY_LABELS[opt] || opt}
-                        </Label>
-                      </div>
-                    ))}
+                    {creator.privacy_level_options.map((opt) => {
+                      const bloqueadoPorBranded = brandedContent && opt === "SELF_ONLY";
+                      return (
+                        <div
+                          key={opt}
+                          className="flex items-center space-x-2"
+                          title={
+                            bloqueadoPorBranded
+                              ? "A visibilidade de conteúdo de marca não pode ser definida como privada."
+                              : undefined
+                          }
+                        >
+                          <RadioGroupItem
+                            value={opt}
+                            id={`privacy-${opt}`}
+                            disabled={bloqueadoPorBranded}
+                          />
+                          <Label
+                            htmlFor={`privacy-${opt}`}
+                            className={
+                              bloqueadoPorBranded
+                                ? "text-muted-foreground opacity-50 cursor-not-allowed"
+                                : "cursor-pointer"
+                            }
+                          >
+                            {PRIVACY_LABELS[opt] || opt}
+                          </Label>
+                        </div>
+                      );
+                    })}
                   </RadioGroup>
+
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Carregue as informações da sua conta para escolher a privacidade.
@@ -674,7 +697,11 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                       <Checkbox
                         id="branded-content"
                         checked={brandedContent}
-                        onCheckedChange={(v) => setBrandedContent(!!v)}
+                        onCheckedChange={(v) => {
+                          setBrandedContent(!!v);
+                          // Conteúdo de marca não pode ser privado: limpa a escolha
+                          if (v && privacyLevel === "SELF_ONLY") setPrivacyLevel("");
+                        }}
                       />
                       <Label htmlFor="branded-content" className="text-sm font-normal cursor-pointer">
                         Conteúdo de marca
@@ -685,9 +712,14 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                     </div>
 
                     {disclosureIncompleto && (
-                      <p className="text-xs text-destructive">
-                        Escolha ao menos uma opção: "Sua marca" ou "Conteúdo de marca".
-                      </p>
+                      <>
+                        <p className="text-xs text-destructive">
+                          Você precisa indicar se seu conteúdo promove você mesmo, um terceiro, ou ambos.
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          You need to indicate if your content promotes yourself, a third party, or both.
+                        </p>
+                      </>
                     )}
                     {brandedContentPrivado && (
                       <p className="text-xs text-destructive">
@@ -708,55 +740,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 )}
               </div>
 
-              {/* Declaração de consentimento */}
-              <div className="space-y-1 border-t pt-3">
-                {commercialContent && brandedContent ? (
-                  <>
-                    <p className="text-sm">
-                      Ao publicar, você concorda com a{" "}
-                      <a
-                        href="https://www.tiktok.com/legal/page/global/bc-policy/pt-BR"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline text-primary"
-                      >
-                        Política de Conteúdo de Marca
-                      </a>{" "}
-                      e a{" "}
-                      <a
-                        href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/pt-BR"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline text-primary"
-                      >
-                        Confirmação de Uso de Música
-                      </a>{" "}
-                      do TikTok.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      By posting, you agree to TikTok's Branded Content Policy and Music Usage Confirmation.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm">
-                      Ao publicar, você concorda com a{" "}
-                      <a
-                        href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/pt-BR"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline text-primary"
-                      >
-                        Confirmação de Uso de Música
-                      </a>{" "}
-                      do TikTok.
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      By posting, you agree to TikTok's Music Usage Confirmation.
-                    </p>
-                  </>
-                )}
-              </div>
+
             </div>
           )}
 
@@ -805,27 +789,88 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             </Alert>
           )}
 
+          {/* Declaração de consentimento — visível nos DOIS modos, logo acima do botão */}
+          <div className="space-y-1 border-t pt-3">
+            {commercialContent && brandedContent ? (
+              <>
+                <p className="text-sm">
+                  Ao publicar, você concorda com a{" "}
+                  <a
+                    href="https://www.tiktok.com/legal/page/global/bc-policy/pt-BR"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-primary"
+                  >
+                    Política de Conteúdo de Marca
+                  </a>{" "}
+                  e a{" "}
+                  <a
+                    href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-primary"
+                  >
+                    Confirmação de Uso de Música
+                  </a>{" "}
+                  do TikTok.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  By posting, you agree to TikTok's Branded Content Policy and Music Usage Confirmation.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">
+                  Ao publicar, você concorda com a{" "}
+                  <a
+                    href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline text-primary"
+                  >
+                    Confirmação de Uso de Música
+                  </a>{" "}
+                  do TikTok.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  By posting, you agree to TikTok's Music Usage Confirmation.
+                </p>
+              </>
+            )}
+          </div>
+
           {/* Botão de enviar */}
+
           {postStatus !== "done" && postStatus !== "failed" && (
-            <Button
-              onClick={handlePost}
-              disabled={loading || !caption.trim() || postStatus === "processing" || bloqueado || loadingCreator}
-              className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
-              size="lg"
+            <span
+              className="block"
+              title={
+                disclosureIncompleto
+                  ? "Você precisa indicar se seu conteúdo promove você mesmo, um terceiro, ou ambos."
+                  : undefined
+              }
             >
-              {loading || postStatus === "processing" ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  {postStatus === "processing" ? "Processando..." : "Enviando..."}
-                </>
-              ) : (
-                <>
-                  {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
-                  {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
-                </>
-              )}
-            </Button>
+              <Button
+                onClick={handlePost}
+                disabled={loading || !caption.trim() || postStatus === "processing" || bloqueado || loadingCreator}
+                className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
+                size="lg"
+              >
+                {loading || postStatus === "processing" ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    {postStatus === "processing" ? "Processando..." : "Enviando..."}
+                  </>
+                ) : (
+                  <>
+                    {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
+                    {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
+                  </>
+                )}
+              </Button>
+            </span>
           )}
+
         </div>
       </DialogContent>
     </Dialog>
