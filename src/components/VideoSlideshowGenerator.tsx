@@ -20,6 +20,21 @@ interface SlideshowConfig {
   showCta: boolean;
 }
 
+function pickRecorderMime(): { mimeType: string; ext: string; contentType: string } {
+  const candidates = [
+    { mimeType: "video/mp4;codecs=avc1.42E01E", ext: "mp4", contentType: "video/mp4" },
+    { mimeType: "video/webm;codecs=vp9", ext: "webm", contentType: "video/webm" },
+    { mimeType: "video/webm;codecs=vp8", ext: "webm", contentType: "video/webm" },
+    { mimeType: "video/webm", ext: "webm", contentType: "video/webm" },
+  ];
+  for (const c of candidates) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c.mimeType)) {
+      return c;
+    }
+  }
+  return { mimeType: "", ext: "webm", contentType: "video/webm" };
+}
+
 export const VideoSlideshowGenerator = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [config, setConfig] = useState<SlideshowConfig>({
