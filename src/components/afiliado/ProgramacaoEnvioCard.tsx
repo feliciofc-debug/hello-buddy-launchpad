@@ -490,24 +490,9 @@ export function ProgramacaoEnvioCard() {
               />
             </div>
             {form.enviar_tiktok && (
-              <div className="ml-4 space-y-2">
-                <Label>Modo de Postagem</Label>
-                <Select
-                  value={form.tiktok_post_mode || 'draft'}
-                  onValueChange={(v) => setForm({ ...form, tiktok_post_mode: v })}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">📝 Rascunho (revisar antes de publicar)</SelectItem>
-                    <SelectItem value="direct">🚀 Publicar Direto (automático)</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="ml-4">
                 <p className="text-xs text-muted-foreground">
-                  {form.tiktok_post_mode === 'direct' 
-                    ? '⚡ O vídeo será publicado automaticamente no seu TikTok' 
-                    : '📋 O vídeo será salvo como rascunho para você revisar'}
+                  📝 Publicações agendadas vão para os rascunhos do TikTok. Você finaliza a publicação pelo app.
                 </p>
               </div>
             )}
