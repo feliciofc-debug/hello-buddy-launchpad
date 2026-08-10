@@ -1,0 +1,1 @@
+DELETE FROM public.integrations WHERE platform = 'tiktok' AND user_id IN (SELECT id FROM auth.users WHERE email = 'expo@atombrasildigital.com');
