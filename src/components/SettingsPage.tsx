@@ -10,7 +10,7 @@ import { buildTikTokAuthUrl } from "@/config/tiktok";
 
 const SettingsPage = () => {
   const navigate = useNavigate();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [metaConnection, setMetaConnection] = useState<any>(null);
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -152,7 +152,7 @@ const SettingsPage = () => {
           <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="meta">{t('settings.meta_tab')}</TabsTrigger>
             <TabsTrigger value="tiktok">{t('settings.tiktok_tab')}</TabsTrigger>
-            <TabsTrigger value="marca">🎨 Marca</TabsTrigger>
+            <TabsTrigger value="marca">🎨 {t('settings.brand_tab')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="meta">
@@ -162,7 +162,7 @@ const SettingsPage = () => {
               {loadingMeta ? (
                 <div className="flex items-center gap-2 text-gray-500">
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Carregando status da conexão...</span>
+                  <span>{t('settings.loading_connection')}</span>
                 </div>
               ) : metaConnection ? (
                 <div className="space-y-4">
@@ -181,7 +181,7 @@ const SettingsPage = () => {
                       <p><span className="font-medium">Facebook Page ID:</span> {metaConnection.page_id}</p>
                     )}
                     {metaConnection.last_verified_at && (
-                      <p><span className="font-medium">{t('settings.connected_since')}</span> {new Date(metaConnection.last_verified_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                      <p><span className="font-medium">{t('settings.connected_since')}</span> {new Date(metaConnection.last_verified_at).toLocaleDateString(i18n.language === 'en' ? 'en-US' : 'pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
                     )}
                   </div>
 
@@ -225,18 +225,18 @@ const SettingsPage = () => {
             <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
               <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">TikTok for Developers</h2>
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
-                Conecte sua conta TikTok para postar vídeos diretamente da plataforma.
+                {t('settings.tiktok_dev_description')}
               </p>
 
               {loadingTiktok ? (
                 <div className="flex items-center gap-2 text-gray-500">
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Carregando status da conexão...</span>
+                  <span>{t('settings.loading_connection')}</span>
                 </div>
               ) : tiktokConnection ? (
                 <div className="space-y-4">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                    ✅ Conectado
+                    ✅ {t('settings.connected')}
                   </span>
 
                   <div className="flex items-center gap-4">
@@ -267,17 +267,17 @@ const SettingsPage = () => {
                       <p><span className="font-medium">Open ID:</span> {tiktokConnection.open_id}</p>
                     )}
                     {tiktokConnection.scope && (
-                      <p><span className="font-medium">Permissões:</span> {tiktokConnection.scope}</p>
+                      <p><span className="font-medium">{t('settings.permissions_label')}</span> {tiktokConnection.scope}</p>
                     )}
                     {tiktokConnection.connected_at && (
                       <p>
-                        <span className="font-medium">Conectado em:</span>{' '}
-                        {new Date(tiktokConnection.connected_at).toLocaleString('pt-BR')}
+                        <span className="font-medium">{t('settings.connected_at')}</span>{' '}
+                        {new Date(tiktokConnection.connected_at).toLocaleString(i18n.language === 'en' ? 'en-US' : 'pt-BR')}
                       </p>
                     )}
                     {tiktokConnection.expired && (
                       <p className="text-yellow-700 dark:text-yellow-400 font-medium">
-                        ⚠️ Token expirado — clique em Reconectar
+                        ⚠️ {t('settings.token_expired_reconnect')}
                       </p>
                     )}
                   </div>
@@ -287,7 +287,7 @@ const SettingsPage = () => {
                       onClick={handleConnectTiktok}
                       className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
                     >
-                      🔄 Reconectar
+                      🔄 {t('settings.reconnect')}
                     </button>
                     <button
                       onClick={handleDisconnectTiktok}
@@ -295,23 +295,23 @@ const SettingsPage = () => {
                       className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold py-2 px-4 rounded transition-colors flex items-center gap-2"
                     >
                       {disconnectingTiktok && <Loader2 className="w-4 h-4 animate-spin" />}
-                      🗑️ Desconectar
+                      🗑️ {t('settings.disconnect')}
                     </button>
                   </div>
                 </div>
               ) : (
                 <div>
                   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 mb-4">
-                    Não conectado
+                    {t('settings.not_connected')}
                   </span>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 mt-3">
-                    Sua conta TikTok ainda não está conectada.
+                    {t('settings.tiktok_not_connected_desc')}
                   </p>
                   <button
                     onClick={handleConnectTiktok}
                     className="bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700 text-white font-bold py-2 px-4 rounded transition-colors"
                   >
-                    Conectar com TikTok
+                    {t('settings.connect_tiktok')}
                   </button>
                 </div>
               )}

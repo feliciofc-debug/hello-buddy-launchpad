@@ -172,7 +172,14 @@
     "operating_states": "Operating States",
     "operating_radius": "Operating Radius (km)",
     "company_profile": "Company Profile",
-    "company_profile_desc": "Characteristics of prospect companies"
+    "company_profile_desc": "Characteristics of prospect companies",
+    "brand_tab": "Brand",
+    "loading_connection": "Loading connection status...",
+    "tiktok_dev_description": "Connect your TikTok account to post videos directly from the platform.",
+    "permissions_label": "Permissions:",
+    "connected_at": "Connected at:",
+    "token_expired_reconnect": "Token expired — click Reconnect",
+    "tiktok_not_connected_desc": "Your TikTok account is not connected yet."
   },
   "publish": {
     "create_post": "Create Post",
@@ -716,5 +723,25 @@
     "campaigns_desc": "Create and manage sending campaigns",
     "connected_success": "WhatsApp connected!",
     "back": "Back"
+  },
+  "cookies": {
+    "title": "🍪 This site uses cookies",
+    "desc": "We use cookies to improve your experience, analyze traffic and personalize content. By clicking \"Accept all\", you agree to our use of cookies.",
+    "learn_more": "Learn more",
+    "accept_all": "✅ Accept All",
+    "reject_all": "❌ Reject All",
+    "preferences": "Preferences",
+    "prefs_title": "⚙️ Cookie Preferences",
+    "prefs_desc": "Manage your cookie preferences. Necessary cookies cannot be disabled as they are essential for the site to work.",
+    "necessary": "🔒 Necessary Cookies",
+    "necessary_desc": "Essential for the basic operation of the site (login, security, preferences). They cannot be disabled.",
+    "analytics": "📊 Analytics Cookies",
+    "analytics_desc": "Help us understand how you use the site to improve the experience (Google Analytics, usage metrics).",
+    "marketing": "🎯 Marketing Cookies",
+    "marketing_desc": "Used to show relevant ads and measure campaign effectiveness (Google Ads, Facebook Pixel, remarketing).",
+    "functional": "⚡ Functional Cookies",
+    "functional_desc": "Enable extra features such as chat, embedded videos and personalization.",
+    "cancel": "Cancel",
+    "save": "Save Preferences"
   }
 }

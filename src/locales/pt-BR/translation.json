@@ -172,7 +172,14 @@
     "operating_states": "Estados de Atuação",
     "operating_radius": "Raio de Atuação (km)",
     "company_profile": "Perfil da Empresa",
-    "company_profile_desc": "Características das empresas dos prospects"
+    "company_profile_desc": "Características das empresas dos prospects",
+    "brand_tab": "Marca",
+    "loading_connection": "Carregando status da conexão...",
+    "tiktok_dev_description": "Conecte sua conta TikTok para postar vídeos diretamente da plataforma.",
+    "permissions_label": "Permissões:",
+    "connected_at": "Conectado em:",
+    "token_expired_reconnect": "Token expirado — clique em Reconectar",
+    "tiktok_not_connected_desc": "Sua conta TikTok ainda não está conectada."
   },
   "publish": {
     "create_post": "Criar Publicação",
@@ -716,5 +723,25 @@
     "campaigns_desc": "Crie e gerencie campanhas de envio",
     "connected_success": "WhatsApp conectado!",
     "back": "Voltar"
+  },
+  "cookies": {
+    "title": "🍪 Este site usa cookies",
+    "desc": "Usamos cookies para melhorar sua experiência, analisar o tráfego e personalizar conteúdo. Ao clicar em \"Aceitar todos\", você concorda com nosso uso de cookies.",
+    "learn_more": "Saiba mais",
+    "accept_all": "✅ Aceitar Todos",
+    "reject_all": "❌ Rejeitar Todos",
+    "preferences": "Preferências",
+    "prefs_title": "⚙️ Preferências de Cookies",
+    "prefs_desc": "Gerencie suas preferências de cookies. Cookies necessários não podem ser desativados pois são essenciais para o funcionamento do site.",
+    "necessary": "🔒 Cookies Necessários",
+    "necessary_desc": "Essenciais para o funcionamento básico do site (login, segurança, preferências). Não podem ser desativados.",
+    "analytics": "📊 Cookies de Analytics",
+    "analytics_desc": "Nos ajudam a entender como você usa o site para melhorar a experiência (Google Analytics, métricas de uso).",
+    "marketing": "🎯 Cookies de Marketing",
+    "marketing_desc": "Usados para mostrar anúncios relevantes e medir eficácia de campanhas (Google Ads, Facebook Pixel, remarketing).",
+    "functional": "⚡ Cookies Funcionais",
+    "functional_desc": "Permitem funcionalidades extras como chat, vídeos incorporados e personalização.",
+    "cancel": "Cancelar",
+    "save": "Salvar Preferências"
   }
 }

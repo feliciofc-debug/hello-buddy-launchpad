@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import { useTranslation } from 'react-i18next';
 
 interface CookiePreferences {
   necessary: boolean;
@@ -25,6 +26,7 @@ declare global {
 }
 
 export default function CookieBanner() {
+  const { t } = useTranslation();
   const [showBanner, setShowBanner] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [preferences, setPreferences] = useState<CookiePreferences>({
@@ -109,12 +111,10 @@ export default function CookieBanner() {
             
             <div className="flex-1">
               <h3 className="text-lg font-bold mb-2">
-                🍪 Este site usa cookies
+                {t('cookies.title')}
               </h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Usamos cookies para melhorar sua experiência, analisar o tráfego 
-                e personalizar conteúdo. Ao clicar em &quot;Aceitar todos&quot;, você concorda 
-                com nosso uso de cookies.
+                {t('cookies.desc')}
                 {' '}
                 <a 
                   href="/privacy" 
@@ -122,7 +122,7 @@ export default function CookieBanner() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  Saiba mais
+                  {t('cookies.learn_more')}
                 </a>
               </p>
               
@@ -131,14 +131,14 @@ export default function CookieBanner() {
                   onClick={acceptAll}
                   className="bg-primary"
                 >
-                  ✅ Aceitar Todos
+                  {t('cookies.accept_all')}
                 </Button>
                 
                 <Button 
                   onClick={rejectAll}
                   variant="outline"
                 >
-                  ❌ Rejeitar Todos
+                  {t('cookies.reject_all')}
                 </Button>
                 
                 <Button 
@@ -146,7 +146,7 @@ export default function CookieBanner() {
                   variant="ghost"
                 >
                   <Settings className="w-4 h-4 mr-2" />
-                  Preferências
+                  {t('cookies.preferences')}
                 </Button>
               </div>
             </div>
@@ -166,10 +166,9 @@ export default function CookieBanner() {
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>⚙️ Preferências de Cookies</DialogTitle>
+            <DialogTitle>{t('cookies.prefs_title')}</DialogTitle>
             <DialogDescription>
-              Gerencie suas preferências de cookies. Cookies necessários não podem 
-              ser desativados pois são essenciais para o funcionamento do site.
+              {t('cookies.prefs_desc')}
             </DialogDescription>
           </DialogHeader>
           
@@ -177,11 +176,10 @@ export default function CookieBanner() {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <h4 className="font-semibold mb-1">
-                  🔒 Cookies Necessários
+                  {t('cookies.necessary')}
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  Essenciais para o funcionamento básico do site (login, segurança, 
-                  preferências). Não podem ser desativados.
+                  {t('cookies.necessary_desc')}
                 </p>
               </div>
               <Switch 
@@ -193,11 +191,10 @@ export default function CookieBanner() {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <h4 className="font-semibold mb-1">
-                  📊 Cookies de Analytics
+                  {t('cookies.analytics')}
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  Nos ajudam a entender como você usa o site para melhorar 
-                  a experiência (Google Analytics, métricas de uso).
+                  {t('cookies.analytics_desc')}
                 </p>
               </div>
               <Switch 
@@ -211,11 +208,10 @@ export default function CookieBanner() {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <h4 className="font-semibold mb-1">
-                  🎯 Cookies de Marketing
+                  {t('cookies.marketing')}
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  Usados para mostrar anúncios relevantes e medir eficácia 
-                  de campanhas (Google Ads, Facebook Pixel, remarketing).
+                  {t('cookies.marketing_desc')}
                 </p>
               </div>
               <Switch 
@@ -229,11 +225,10 @@ export default function CookieBanner() {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <h4 className="font-semibold mb-1">
-                  ⚡ Cookies Funcionais
+                  {t('cookies.functional')}
                 </h4>
                 <p className="text-sm text-muted-foreground">
-                  Permitem funcionalidades extras como chat, vídeos 
-                  incorporados e personalização.
+                  {t('cookies.functional_desc')}
                 </p>
               </div>
               <Switch 
@@ -250,10 +245,10 @@ export default function CookieBanner() {
               variant="outline" 
               onClick={() => setShowSettings(false)}
             >
-              Cancelar
+              {t('cookies.cancel')}
             </Button>
             <Button onClick={savePreferences}>
-              Salvar Preferências
+              {t('cookies.save')}
             </Button>
           </div>
         </DialogContent>
