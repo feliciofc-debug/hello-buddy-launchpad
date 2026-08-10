@@ -229,11 +229,17 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
       return;
     }
 
+    cancelledRef.current = false;
+    setFailReason("");
+    setAttempts(0);
+    setPostStatus("uploading");
+    setStatusMessage("Enviando vídeo para o TikTok...");
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         toast.error("Você precisa estar logado");
+        setPostStatus("idle");
         return;
       }
 
@@ -250,21 +256,29 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
       if (error) throw error;
 
       if (data.success) {
-        toast.success(
-          postMode === "draft" 
-            ? "✅ Vídeo enviado para rascunhos do TikTok!" 
-            : "✅ Vídeo publicado no TikTok!"
-        );
-        onOpenChange(false);
+        if (data.publish_id) {
+          startPolling(user.id, data.publish_id);
+        } else {
+          setPostStatus("done");
+          setStatusMessage(data.message || "✅ Vídeo enviado ao TikTok!");
+          closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
+        }
       } else {
         throw new Error(data.error || "Erro ao postar no TikTok");
       }
     } catch (error: any) {
       console.error("Erro ao postar:", error);
+      setPostStatus("failed");
+      setFailReason(error.message || "Erro ao enviar para o TikTok");
       toast.error(error.message || "Erro ao enviar para o TikTok");
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDialogChange = (next: boolean) => {
+    if (!next) clearTimers();
+    onOpenChange(next);
   };
 
   if (checkingConnection) {
