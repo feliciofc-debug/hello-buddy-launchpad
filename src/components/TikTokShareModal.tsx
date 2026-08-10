@@ -567,15 +567,38 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 <Label>Quem pode ver este vídeo</Label>
                 {creator && creator.privacy_level_options.length > 0 ? (
                   <RadioGroup value={privacyLevel} onValueChange={setPrivacyLevel}>
-                    {creator.privacy_level_options.map((opt) => (
-                      <div key={opt} className="flex items-center space-x-2">
-                        <RadioGroupItem value={opt} id={`privacy-${opt}`} />
-                        <Label htmlFor={`privacy-${opt}`} className="cursor-pointer">
-                          {PRIVACY_LABELS[opt] || opt}
-                        </Label>
-                      </div>
-                    ))}
+                    {creator.privacy_level_options.map((opt) => {
+                      const bloqueadoPorBranded = brandedContent && opt === "SELF_ONLY";
+                      return (
+                        <div
+                          key={opt}
+                          className="flex items-center space-x-2"
+                          title={
+                            bloqueadoPorBranded
+                              ? "A visibilidade de conteúdo de marca não pode ser definida como privada."
+                              : undefined
+                          }
+                        >
+                          <RadioGroupItem
+                            value={opt}
+                            id={`privacy-${opt}`}
+                            disabled={bloqueadoPorBranded}
+                          />
+                          <Label
+                            htmlFor={`privacy-${opt}`}
+                            className={
+                              bloqueadoPorBranded
+                                ? "text-muted-foreground opacity-50 cursor-not-allowed"
+                                : "cursor-pointer"
+                            }
+                          >
+                            {PRIVACY_LABELS[opt] || opt}
+                          </Label>
+                        </div>
+                      );
+                    })}
                   </RadioGroup>
+
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     Carregue as informações da sua conta para escolher a privacidade.
