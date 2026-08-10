@@ -494,6 +494,16 @@ export const VideoSlideshowGenerator = () => {
                 />
               </div>
 
+              {recorderMime.ext === "webm" && (
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Seu navegador não suporta MP4. O vídeo funciona no TikTok, mas o Instagram e o
+                    Facebook não aceitam este formato para Reels — use o Chrome para publicar nessas redes.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <Button onClick={handleDownload} variant="outline" className="gap-2">
                   <Download className="h-4 w-4" /> Baixar Vídeo
