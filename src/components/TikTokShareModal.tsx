@@ -795,51 +795,82 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             </Alert>
           )}
 
-          {/* Declaração de consentimento — visível nos DOIS modos, logo acima do botão */}
+          {/* Declaração de consentimento — exigência literal do TikTok. NÃO traduzir os literais em inglês. */}
           <div className="space-y-1 border-t pt-3">
             {commercialContent && brandedContent ? (
               <>
-                <p className="text-sm">
-                  Ao publicar, você concorda com a{" "}
+                {!isEnglish && (
+                  <p className="text-sm">
+                    {t("tiktok_share.consent_prefix")}{" "}
+                    <a
+                      href="https://www.tiktok.com/legal/page/global/bc-policy/pt-BR"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline text-primary"
+                    >
+                      {t("tiktok_share.link_branded_policy")}
+                    </a>{" "}
+                    {t("tiktok_share.consent_and")}{" "}
+                    <a
+                      href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline text-primary"
+                    >
+                      {t("tiktok_share.link_music_usage")}
+                    </a>{" "}
+                    {t("tiktok_share.consent_suffix")}
+                  </p>
+                )}
+                <p className={isEnglish ? "text-sm" : "text-xs text-muted-foreground"}>
+                  By posting, you agree to TikTok's{" "}
                   <a
                     href="https://www.tiktok.com/legal/page/global/bc-policy/pt-BR"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline text-primary"
                   >
-                    Política de Conteúdo de Marca
+                    Branded Content Policy
                   </a>{" "}
-                  e a{" "}
+                  and{" "}
                   <a
                     href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline text-primary"
                   >
-                    Confirmação de Uso de Música
-                  </a>{" "}
-                  do TikTok.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  By posting, you agree to TikTok's Branded Content Policy and Music Usage Confirmation.
+                    Music Usage Confirmation
+                  </a>
+                  .
                 </p>
               </>
             ) : (
               <>
-                <p className="text-sm">
-                  Ao publicar, você concorda com a{" "}
+                {!isEnglish && (
+                  <p className="text-sm">
+                    {t("tiktok_share.consent_prefix")}{" "}
+                    <a
+                      href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline text-primary"
+                    >
+                      {t("tiktok_share.link_music_usage")}
+                    </a>{" "}
+                    {t("tiktok_share.consent_suffix")}
+                  </p>
+                )}
+                <p className={isEnglish ? "text-sm" : "text-xs text-muted-foreground"}>
+                  By posting, you agree to TikTok's{" "}
                   <a
                     href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="underline text-primary"
                   >
-                    Confirmação de Uso de Música
-                  </a>{" "}
-                  do TikTok.
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  By posting, you agree to TikTok's Music Usage Confirmation.
+                    Music Usage Confirmation
+                  </a>
+                  .
                 </p>
               </>
             )}
