@@ -434,25 +434,62 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             </p>
           </div>
 
+          {/* Acompanhamento do status real da publicação */}
+          {(postStatus === "uploading" || postStatus === "processing") && (
+            <Alert>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <AlertDescription>
+                {statusMessage}
+                {postStatus === "processing" && attempts > 0 && (
+                  <span className="block text-xs text-muted-foreground mt-1">
+                    Verificação {attempts} de {MAX_ATTEMPTS}
+                  </span>
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {postStatus === "done" && (
+            <Alert>
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertDescription>{statusMessage}</AlertDescription>
+            </Alert>
+          )}
+
+          {postStatus === "failed" && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="space-y-2">
+                <p>{failReason}</p>
+                <Button size="sm" variant="outline" onClick={handlePost}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Tentar novamente
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Botão de enviar */}
-          <Button 
-            onClick={handlePost} 
-            disabled={loading || !caption.trim()}
-            className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
-            size="lg"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                Enviando...
-              </>
-            ) : (
-              <>
-                {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
-                {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
-              </>
-            )}
-          </Button>
+          {postStatus !== "done" && postStatus !== "failed" && (
+            <Button
+              onClick={handlePost}
+              disabled={loading || !caption.trim() || postStatus === "processing"}
+              className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
+              size="lg"
+            >
+              {loading || postStatus === "processing" ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  {postStatus === "processing" ? "Processando..." : "Enviando..."}
+                </>
+              ) : (
+                <>
+                  {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
+                  {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
