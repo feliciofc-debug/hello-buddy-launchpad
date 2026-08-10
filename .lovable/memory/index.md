@@ -1,1 +1,2 @@
 - [Templates com botão de 1 toque](mem://features/whatsapp/templates-botao-1-toque-padrao) — Todo template nasce com quick-reply; gate entende resposta por botão
+- [Dashboard do cliente final](mem://features/dashboard/dashboard-cliente-final-metricas) — Fontes das métricas + fase futura de delivered/read no historico_envios
