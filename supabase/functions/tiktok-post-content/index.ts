@@ -161,7 +161,6 @@ serve(async (req) => {
         case "scope_not_authorized":
           errorMessage = "Permissão video.publish não autorizada. Desconecte e reconecte a conta TikTok para conceder a permissão.";
           break;
-          break;
         default:
           errorMessage = initData?.error?.message || errorMessage;
       }
