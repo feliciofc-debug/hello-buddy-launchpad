@@ -47,6 +47,9 @@ import {
 } from 'lucide-react';
 import NotificationCenter from '@/components/NotificationCenter';
 import LanguageSwitcher from '@/components/LanguageSwitcher';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import DashboardOverview from '@/components/dashboard/DashboardOverview';
+import { useDashboardMetrics, type DashboardPeriod } from '@/hooks/useDashboardMetrics';
 import { useBillingAccess } from '@/hooks/useBillingAccess';
 import BillingBlockedScreen from '@/components/BillingBlockedScreen';
 
