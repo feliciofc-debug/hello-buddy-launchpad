@@ -1324,7 +1324,10 @@ async function processarProgramacao(
               content_type: "image",
               content_url: imagemUrl,
               title: tiktokTitle,
-              post_mode: programacao.tiktok_post_mode || "draft"
+              // Caminho automático SEMPRE em rascunho: o usuário finaliza a publicação
+              // pelo app do TikTok, mantendo controle total sobre privacidade/disclosure.
+              post_mode: "draft",
+              source: "scheduled"
             })
           });
           

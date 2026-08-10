@@ -470,10 +470,6 @@ export function SchedulePostsModal({ open, onOpenChange, postContent, userType =
                 <Checkbox id="facebook" checked={networks.facebook} onCheckedChange={() => toggleNetwork('facebook')} />
                 <Label htmlFor="facebook" className="cursor-pointer">👍 Facebook</Label>
               </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="tiktok" checked={networks.tiktok} onCheckedChange={() => toggleNetwork('tiktok')} />
-                <Label htmlFor="tiktok" className="cursor-pointer">🎵 TikTok</Label>
-              </div>
             </div>
           </div>
 

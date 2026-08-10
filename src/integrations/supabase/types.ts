@@ -7838,15 +7838,24 @@ export type Database = {
       }
       tiktok_posts: {
         Row: {
+          brand_organic: boolean | null
+          branded_content: boolean | null
           checked_at: string | null
+          consent_accepted_at: string | null
           content_type: string
           content_url: string
           created_at: string
+          disable_comment: boolean | null
+          disable_duet: boolean | null
+          disable_stitch: boolean | null
           fail_reason: string | null
           id: string
+          is_commercial_content: boolean | null
           post_mode: string
+          privacy_level: string | null
           publish_id: string | null
           publish_status: string | null
+          source: string | null
           status: string
           tiktok_post_id: string | null
           tiktok_response: Json | null
@@ -7855,15 +7864,24 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          brand_organic?: boolean | null
+          branded_content?: boolean | null
           checked_at?: string | null
+          consent_accepted_at?: string | null
           content_type: string
           content_url: string
           created_at?: string
+          disable_comment?: boolean | null
+          disable_duet?: boolean | null
+          disable_stitch?: boolean | null
           fail_reason?: string | null
           id?: string
+          is_commercial_content?: boolean | null
           post_mode?: string
+          privacy_level?: string | null
           publish_id?: string | null
           publish_status?: string | null
+          source?: string | null
           status?: string
           tiktok_post_id?: string | null
           tiktok_response?: Json | null
@@ -7872,15 +7890,24 @@ export type Database = {
           user_id: string
         }
         Update: {
+          brand_organic?: boolean | null
+          branded_content?: boolean | null
           checked_at?: string | null
+          consent_accepted_at?: string | null
           content_type?: string
           content_url?: string
           created_at?: string
+          disable_comment?: boolean | null
+          disable_duet?: boolean | null
+          disable_stitch?: boolean | null
           fail_reason?: string | null
           id?: string
+          is_commercial_content?: boolean | null
           post_mode?: string
+          privacy_level?: string | null
           publish_id?: string | null
           publish_status?: string | null
+          source?: string | null
           status?: string
           tiktok_post_id?: string | null
           tiktok_response?: Json | null

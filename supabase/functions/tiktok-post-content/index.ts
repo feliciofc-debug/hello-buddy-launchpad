@@ -12,6 +12,16 @@ interface PostRequest {
   content_url: string;
   title: string;
   post_mode: "direct" | "draft";
+  // Compliance UX (Direct Post)
+  privacy_level?: string;
+  disable_comment?: boolean;
+  disable_duet?: boolean;
+  disable_stitch?: boolean;
+  is_commercial_content?: boolean;
+  brand_organic?: boolean;
+  branded_content?: boolean;
+  // Origem: "manual" (tela com UX de compliance) ou "scheduled" (cron -> sempre rascunho)
+  source?: "manual" | "scheduled";
 }
 
 serve(async (req) => {
@@ -24,11 +34,57 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { user_id, content_type, content_url, title, post_mode }: PostRequest = await req.json();
+    const body: PostRequest = await req.json();
+    const {
+      user_id,
+      content_type,
+      content_url,
+      title,
+      privacy_level,
+      disable_comment = false,
+      disable_duet = false,
+      disable_stitch = false,
+      is_commercial_content = false,
+      brand_organic = false,
+      branded_content = false,
+      source = "manual",
+    } = body;
+
+    // Defesa em profundidade: o caminho automático (agendamento) NUNCA publica direto.
+    let post_mode = body.post_mode;
+    if (source === "scheduled" && post_mode !== "draft") {
+      console.log(`🔒 Coerção: source="scheduled" recebeu post_mode="${post_mode}" -> forçando "draft"`);
+      post_mode = "draft";
+    }
 
     if (!user_id || !content_url || !title) {
       return new Response(
         JSON.stringify({ success: false, error: "Parâmetros obrigatórios faltando" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Título: limite oficial de 2200 caracteres
+    const safeTitle = title.substring(0, 2200);
+
+    // Direct Post exige as escolhas de compliance feitas pelo usuário
+    if (post_mode === "direct" && !privacy_level) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Selecione quem pode ver este vídeo antes de publicar." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (post_mode === "direct" && is_commercial_content && !brand_organic && !branded_content) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Indique se o conteúdo promove sua própria marca ou uma marca de terceiros." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (post_mode === "direct" && branded_content && privacy_level === "SELF_ONLY") {
+      return new Response(
+        JSON.stringify({ success: false, error: "Conteúdo de marca não pode ser publicado como visível apenas para você." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -102,9 +158,9 @@ serve(async (req) => {
       ? "https://open.tiktokapis.com/v2/post/publish/video/init/"
       : "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
 
-    // App não auditado só consegue postar em SELF_ONLY.
-    // Enviar PUBLIC_TO_EVERYONE em sandbox faz a chamada falhar.
-    const privacyLevel = (directPost && isProducao) ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY";
+    // Em produção respeitamos a escolha do usuário (vinda de creator_info).
+    // Em sandbox o app não auditado só consegue postar em SELF_ONLY.
+    const privacyLevel = isProducao ? (privacy_level || "SELF_ONLY") : "SELF_ONLY";
 
     const tiktokPayload: Record<string, unknown> = {
       source_info: {
@@ -118,12 +174,14 @@ serve(async (req) => {
     // O endpoint de inbox (rascunho) NÃO aceita post_info — só o Direct Post aceita.
     if (directPost) {
       tiktokPayload.post_info = {
-        title: title.substring(0, 150),
+        title: safeTitle,
         privacy_level: privacyLevel,
-        disable_duet: false,
-        disable_comment: false,
-        disable_stitch: false,
+        disable_duet: !!disable_duet,
+        disable_comment: !!disable_comment,
+        disable_stitch: !!disable_stitch,
         video_cover_timestamp_ms: 1000,
+        brand_content_toggle: !!branded_content,
+        brand_organic_toggle: !!brand_organic,
       };
     }
 
@@ -232,8 +290,17 @@ serve(async (req) => {
         user_id,
         content_type,
         content_url,
-        title,
+        title: safeTitle,
         post_mode,
+        privacy_level: post_mode === "direct" ? privacyLevel : null,
+        disable_comment: !!disable_comment,
+        disable_duet: !!disable_duet,
+        disable_stitch: !!disable_stitch,
+        is_commercial_content: !!is_commercial_content,
+        brand_organic: !!brand_organic,
+        branded_content: !!branded_content,
+        consent_accepted_at: source === "manual" ? new Date().toISOString() : null,
+        source,
         tiktok_response: initData,
         status: "processing",
         publish_status: "PROCESSING_UPLOAD",
