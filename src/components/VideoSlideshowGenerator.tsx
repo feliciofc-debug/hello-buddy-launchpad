@@ -52,6 +52,7 @@ export const VideoSlideshowGenerator = () => {
   const [uploadingReels, setUploadingReels] = useState<string | null>(null);
   const [caption, setCaption] = useState("");
   const [imageUrls, setImageUrls] = useState<string[]>([""]);
+  const [recorderMime] = useState(pickRecorderMime);
 
   const addImageUrl = () => {
     if (imageUrls.length >= 10) { toast.error("Máximo de 10 imagens"); return; }
