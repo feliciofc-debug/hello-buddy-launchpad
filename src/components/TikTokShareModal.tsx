@@ -36,14 +36,17 @@ interface CreatorInfo {
   max_video_post_duration_sec: number | null;
 }
 
-const PRIVACY_LABELS: Record<string, string> = {
-  PUBLIC_TO_EVERYONE: "Público — qualquer pessoa no TikTok",
-  MUTUAL_FOLLOW_FRIENDS: "Amigos — quem me segue e eu sigo de volta",
-  FOLLOWER_OF_CREATOR: "Seguidores",
-  SELF_ONLY: "Somente eu (privado)",
-};
-
 export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareModalProps) => {
+  const { t, i18n } = useTranslation();
+  const isEnglish = (i18n.language || "").toLowerCase().startsWith("en");
+
+  const PRIVACY_LABELS = useMemo<Record<string, string>>(() => ({
+    PUBLIC_TO_EVERYONE: t("tiktok_share.privacy_public"),
+    MUTUAL_FOLLOW_FRIENDS: t("tiktok_share.privacy_friends"),
+    FOLLOWER_OF_CREATOR: t("tiktok_share.privacy_followers"),
+    SELF_ONLY: t("tiktok_share.privacy_self"),
+  }), [t]);
+
   const [loading, setLoading] = useState(false);
   const [caption, setCaption] = useState("");
   const [postMode, setPostMode] = useState<"direct" | "draft">("draft");
