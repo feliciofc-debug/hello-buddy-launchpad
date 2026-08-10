@@ -94,13 +94,17 @@ serve(async (req) => {
     //  - producao -> Direct Post aprovado: post_mode "direct" publica direto no perfil
     const tiktokEnv = (Deno.env.get("TIKTOK_ENV") || "sandbox").toLowerCase();
     const isProducao = tiktokEnv === "producao" || tiktokEnv === "production";
-    const directPost = isProducao && post_mode === "direct";
+    // Permite testar Direct Post em sandbox (conteúdo sai como SELF_ONLY).
+    // Em produção auditada, o mesmo caminho publica com a privacidade escolhida.
+    const directPost = post_mode === "direct";
 
     const endpoint = directPost
       ? "https://open.tiktokapis.com/v2/post/publish/video/init/"
       : "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
 
-    const privacyLevel = directPost ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY";
+    // App não auditado só consegue postar em SELF_ONLY.
+    // Enviar PUBLIC_TO_EVERYONE em sandbox faz a chamada falhar.
+    const privacyLevel = (directPost && isProducao) ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY";
 
     const tiktokPayload: Record<string, unknown> = {
       source_info: {
