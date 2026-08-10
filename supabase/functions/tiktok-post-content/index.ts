@@ -182,7 +182,7 @@ serve(async (req) => {
         method: "PUT",
         headers: {
           "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
-          "Content-Type": "video/mp4",
+          "Content-Type": videoContentType,
         },
         body: videoBytes,
       });
