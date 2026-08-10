@@ -158,9 +158,21 @@ serve(async (req) => {
       ? "https://open.tiktokapis.com/v2/post/publish/video/init/"
       : "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
 
+    // Em sandbox (app não auditado) só SELF_ONLY é aceito.
+    // Falhar explicitamente é melhor que trocar sem avisar.
+    if (directPost && !isProducao && privacy_level && privacy_level !== "SELF_ONLY") {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Enquanto o app não for auditado pelo TikTok, apenas 'Somente eu' está disponível. Escolha essa opção para publicar em modo de teste.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     // Em produção respeitamos a escolha do usuário (vinda de creator_info).
-    // Em sandbox o app não auditado só consegue postar em SELF_ONLY.
     const privacyLevel = isProducao ? (privacy_level || "SELF_ONLY") : "SELF_ONLY";
+
 
     const tiktokPayload: Record<string, unknown> = {
       source_info: {
