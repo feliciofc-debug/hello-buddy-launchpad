@@ -807,25 +807,35 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
           {/* Botão de enviar */}
           {postStatus !== "done" && postStatus !== "failed" && (
-            <Button
-              onClick={handlePost}
-              disabled={loading || !caption.trim() || postStatus === "processing" || bloqueado || loadingCreator}
-              className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
-              size="lg"
+            <span
+              className="block"
+              title={
+                disclosureIncompleto
+                  ? "Você precisa indicar se seu conteúdo promove você mesmo, um terceiro, ou ambos."
+                  : undefined
+              }
             >
-              {loading || postStatus === "processing" ? (
-                <>
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  {postStatus === "processing" ? "Processando..." : "Enviando..."}
-                </>
-              ) : (
-                <>
-                  {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
-                  {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
-                </>
-              )}
-            </Button>
+              <Button
+                onClick={handlePost}
+                disabled={loading || !caption.trim() || postStatus === "processing" || bloqueado || loadingCreator}
+                className="w-full bg-gradient-to-r from-pink-500 to-cyan-500 hover:from-pink-600 hover:to-cyan-600"
+                size="lg"
+              >
+                {loading || postStatus === "processing" ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    {postStatus === "processing" ? "Processando..." : "Enviando..."}
+                  </>
+                ) : (
+                  <>
+                    {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
+                    {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
+                  </>
+                )}
+              </Button>
+            </span>
           )}
+
         </div>
       </DialogContent>
     </Dialog>
