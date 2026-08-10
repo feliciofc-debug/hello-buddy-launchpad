@@ -35,15 +35,30 @@ serve(async (req) => {
   }
 
   try {
-    const TIKTOK_CLIENT_KEY = Deno.env.get('TIKTOK_CLIENT_KEY')
-    const TIKTOK_CLIENT_SECRET = Deno.env.get('TIKTOK_CLIENT_SECRET')
+    // ===== Switch de ambiente: sandbox | producao =====
+    // TIKTOK_ENV (secret) define qual par de credenciais usar.
+    // Fallback: TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET (produção legado).
+    const TIKTOK_ENV = (Deno.env.get('TIKTOK_ENV') || 'sandbox').toLowerCase()
+    const isSandbox = TIKTOK_ENV !== 'producao' && TIKTOK_ENV !== 'production'
+
+    const TIKTOK_CLIENT_KEY = isSandbox
+      ? (Deno.env.get('TIKTOK_CLIENT_KEY_SANDBOX') || 'sbawx08s3trep7gfvg')
+      : (Deno.env.get('TIKTOK_CLIENT_KEY') || 'aw2ouo90dyp4ju9w')
+
+    const TIKTOK_CLIENT_SECRET = isSandbox
+      ? Deno.env.get('TIKTOK_CLIENT_SECRET_SANDBOX')
+      : Deno.env.get('TIKTOK_CLIENT_SECRET')
+
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
+    console.log(`🌍 TikTok env: ${isSandbox ? 'sandbox' : 'producao'} | client_key: ${TIKTOK_CLIENT_KEY}`)
+
     if (!TIKTOK_CLIENT_KEY || !TIKTOK_CLIENT_SECRET) {
-      console.error('❌ Missing TikTok credentials')
-      throw new Error('Missing TikTok API credentials')
+      console.error(`❌ Missing TikTok credentials for env=${isSandbox ? 'sandbox' : 'producao'}`)
+      throw new Error(`Credenciais do TikTok ausentes para o ambiente ${isSandbox ? 'sandbox' : 'producao'}`)
     }
+
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error('Missing Supabase credentials')

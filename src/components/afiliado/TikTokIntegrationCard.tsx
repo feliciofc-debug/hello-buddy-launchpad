@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { CheckCircle, XCircle, Loader2, ExternalLink, RefreshCw, Music2 } from 'lucide-react';
+import { buildTikTokAuthUrl } from "@/config/tiktok";
 
 interface TikTokIntegration {
   id: string;
@@ -73,12 +74,7 @@ export default function TikTokIntegrationCard() {
 
     try {
       // TikTok OAuth URL - usando user_id como state
-      const CLIENT_KEY = 'aw2ouo90dyp4ju9w';
-      const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
-      const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
-      const STATE = userId; // Usar user_id para identificar o usuário no callback
-
-      const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
+      const authUrl = buildTikTokAuthUrl(userId);
 
       console.log('🔗 Redirecionando TikTok OAuth com user_id:', userId);
       console.log('🔗 URL:', authUrl);

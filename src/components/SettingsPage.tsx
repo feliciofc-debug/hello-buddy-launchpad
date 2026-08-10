@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState } from 'react';
 import { MarcaPersonalizacao } from './MarcaPersonalizacao';
+import { buildTikTokAuthUrl } from "@/config/tiktok";
 
 const SettingsPage = () => {
   const navigate = useNavigate();
@@ -110,11 +111,7 @@ const SettingsPage = () => {
       toast.error(t('settings.login_required_tiktok'));
       return;
     }
-    const CLIENT_KEY = 'sbawx08s3trep7gfvg';
-    const REDIRECT_URI = encodeURIComponent('https://amzofertas.com.br/tiktok/callback');
-    const SCOPE = encodeURIComponent('user.info.basic,user.info.profile,video.upload,video.publish');
-    const STATE = user.id;
-    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${CLIENT_KEY}&response_type=code&scope=${SCOPE}&redirect_uri=${REDIRECT_URI}&state=${STATE}`;
+    const authUrl = buildTikTokAuthUrl(user.id);
     localStorage.setItem('tiktok_auth_origin', 'settings');
     window.location.href = authUrl;
   };

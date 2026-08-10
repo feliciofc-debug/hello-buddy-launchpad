@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { buildTikTokAuthUrl } from "@/config/tiktok";
 
 interface TikTokPost {
   id: string;
@@ -89,12 +90,7 @@ export default function AfiliadoTikTok() {
       return;
     }
 
-    const clientKey = "aw2ouo90dyp4ju9w";
-    const redirectUri = encodeURIComponent("https://amzofertas.com.br/tiktok/callback");
-    const scope = "user.info.basic,user.info.profile,video.upload,video.publish";
-    const state = user.id;
-
-    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${redirectUri}&state=${state}`;
+    const authUrl = buildTikTokAuthUrl(user.id);
 
     console.log("🔗 Redirecionando TikTok OAuth:", authUrl);
     window.location.href = authUrl;
