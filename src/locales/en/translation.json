@@ -759,7 +759,7 @@
     "preview_alt": "Preview",
     "caption_label": "Caption / Title",
     "caption_placeholder": "Write the caption for your post...",
-    "caption_counter": "{{count}}/2200 characters",
+    "caption_counter": "{{num}}/2200 characters",
     "post_mode_label": "Publishing mode",
     "mode_draft": "📝 Save as draft (recommended)",
     "mode_direct": "🚀 Post to TikTok",

@@ -533,7 +533,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
               maxLength={2200}
             />
             <p className="text-xs text-muted-foreground text-right">
-              {t("tiktok_share.caption_counter", { count: caption.length })}
+              {t("tiktok_share.caption_counter", { num: caption.length })}
             </p>
           </div>
 

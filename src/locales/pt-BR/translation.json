@@ -759,7 +759,7 @@
     "preview_alt": "Pré-visualização",
     "caption_label": "Legenda / Título",
     "caption_placeholder": "Digite a legenda do seu post...",
-    "caption_counter": "{{count}}/2200 caracteres",
+    "caption_counter": "{{num}}/2200 caracteres",
     "post_mode_label": "Modo de Publicação",
     "mode_draft": "📝 Salvar como Rascunho (recomendado)",
     "mode_direct": "🚀 Publicar no TikTok",
