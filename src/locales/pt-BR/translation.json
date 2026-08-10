@@ -723,5 +723,25 @@
     "campaigns_desc": "Crie e gerencie campanhas de envio",
     "connected_success": "WhatsApp conectado!",
     "back": "Voltar"
+  },
+  "cookies": {
+    "title": "🍪 Este site usa cookies",
+    "desc": "Usamos cookies para melhorar sua experiência, analisar o tráfego e personalizar conteúdo. Ao clicar em \"Aceitar todos\", você concorda com nosso uso de cookies.",
+    "learn_more": "Saiba mais",
+    "accept_all": "✅ Aceitar Todos",
+    "reject_all": "❌ Rejeitar Todos",
+    "preferences": "Preferências",
+    "prefs_title": "⚙️ Preferências de Cookies",
+    "prefs_desc": "Gerencie suas preferências de cookies. Cookies necessários não podem ser desativados pois são essenciais para o funcionamento do site.",
+    "necessary": "🔒 Cookies Necessários",
+    "necessary_desc": "Essenciais para o funcionamento básico do site (login, segurança, preferências). Não podem ser desativados.",
+    "analytics": "📊 Cookies de Analytics",
+    "analytics_desc": "Nos ajudam a entender como você usa o site para melhorar a experiência (Google Analytics, métricas de uso).",
+    "marketing": "🎯 Cookies de Marketing",
+    "marketing_desc": "Usados para mostrar anúncios relevantes e medir eficácia de campanhas (Google Ads, Facebook Pixel, remarketing).",
+    "functional": "⚡ Cookies Funcionais",
+    "functional_desc": "Permitem funcionalidades extras como chat, vídeos incorporados e personalização.",
+    "cancel": "Cancelar",
+    "save": "Salvar Preferências"
   }
 }
