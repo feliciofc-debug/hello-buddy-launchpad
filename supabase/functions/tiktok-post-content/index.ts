@@ -76,21 +76,20 @@ serve(async (req) => {
     console.log("✅ Vídeo baixado:", videoSize, "bytes");
 
     // === PASSO 2: Iniciar upload no TikTok (FILE_UPLOAD) ===
-    // SANDBOX: Forçar endpoint de inbox/rascunho — apps não auditados não podem usar /publish/video/init/
-    const endpoint = "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
+    // TIKTOK_ENV controla o comportamento:
+    //  - sandbox  -> app não auditado: TikTok só aceita inbox (rascunho) + SELF_ONLY
+    //  - producao -> Direct Post aprovado: post_mode "direct" publica direto no perfil
+    const tiktokEnv = (Deno.env.get("TIKTOK_ENV") || "sandbox").toLowerCase();
+    const isProducao = tiktokEnv === "producao" || tiktokEnv === "production";
+    const directPost = isProducao && post_mode === "direct";
 
-    // App em modo sandbox: TikTok só permite SELF_ONLY até aprovação
-    // Após aprovação do app, trocar para: post_mode === "direct" ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY"
-    const privacyLevel = "SELF_ONLY";
+    const endpoint = directPost
+      ? "https://open.tiktokapis.com/v2/post/publish/video/init/"
+      : "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/";
 
-    const tiktokPayload = {
-      post_info: {
-        title: title.substring(0, 150),
-        privacy_level: privacyLevel,
-        disable_duet: false,
-        disable_comment: false,
-        disable_stitch: false,
-      },
+    const privacyLevel = directPost ? "PUBLIC_TO_EVERYONE" : "SELF_ONLY";
+
+    const tiktokPayload: Record<string, unknown> = {
       source_info: {
         source: "FILE_UPLOAD",
         video_size: videoSize,
@@ -98,6 +97,19 @@ serve(async (req) => {
         total_chunk_count: 1,
       },
     };
+
+    // O endpoint de inbox (rascunho) NÃO aceita post_info — só o Direct Post aceita.
+    if (directPost) {
+      tiktokPayload.post_info = {
+        title: title.substring(0, 150),
+        privacy_level: privacyLevel,
+        disable_duet: false,
+        disable_comment: false,
+        disable_stitch: false,
+        video_cover_timestamp_ms: 1000,
+      };
+    }
+
 
     console.log("📤 Iniciando upload no TikTok:", { endpoint, payload: tiktokPayload });
 
@@ -198,20 +210,22 @@ serve(async (req) => {
       title,
       post_mode,
       tiktok_response: initData,
-      status: post_mode === "draft" ? "draft" : "published",
+      status: directPost ? "published" : "draft",
       publish_id: publishId || null,
     });
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: post_mode === "draft"
-          ? "Vídeo enviado para rascunhos do TikTok!"
-          : "Vídeo publicado no TikTok!",
+        direct_post: directPost,
+        message: directPost
+          ? "Vídeo publicado no TikTok!"
+          : "Vídeo enviado para os rascunhos do TikTok. Abra o app TikTok (Caixa de entrada) e toque em publicar para ir ao perfil.",
         publish_id: publishId,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
 
   } catch (error: any) {
     console.error("❌ Erro no tiktok-post-content:", error);
