@@ -343,10 +343,10 @@ export const VideoSlideshowGenerator = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { toast.error("Você precisa estar logado"); return; }
 
-      const fileName = `reels/${user.id}/${Date.now()}.webm`;
+      const fileName = `reels/${user.id}/${Date.now()}.${recorderMime.ext}`;
       const { error: uploadError } = await supabase.storage
         .from("videos")
-        .upload(fileName, videoBlob, { contentType: "video/webm", cacheControl: "3600" });
+        .upload(fileName, videoBlob, { contentType: recorderMime.contentType, cacheControl: "3600" });
 
       if (uploadError) throw new Error(`Erro no upload: ${uploadError.message}`);
 
