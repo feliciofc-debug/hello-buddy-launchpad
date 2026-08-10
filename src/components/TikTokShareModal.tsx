@@ -178,10 +178,10 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
         setCreator(null);
         setCreatorError(
           data?.error === "token_expired"
-            ? "Sua conexão com o TikTok expirou. Reconecte a conta para publicar."
+            ? t("tiktok_share.err_token_expired")
             : data?.error === "not_connected"
-              ? "TikTok não conectado."
-              : data?.error || "Não foi possível carregar suas informações do TikTok."
+              ? t("tiktok_share.err_not_connected")
+              : data?.error || t("tiktok_share.err_creator_info")
         );
         return;
       }
@@ -195,7 +195,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
     } catch (e: any) {
       console.error("Erro ao carregar creator info:", e);
       setCreator(null);
-      setCreatorError(e?.message || "Não foi possível carregar suas informações do TikTok.");
+      setCreatorError(e?.message || t("tiktok_share.err_creator_info"));
     } finally {
       setLoadingCreator(false);
     }
@@ -221,21 +221,19 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
           if (status === "PUBLISH_COMPLETE") {
             setPostStatus("done");
-            setStatusMessage("✅ Publicado no TikTok!");
+            setStatusMessage(t("tiktok_share.status_published"));
             closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
             return;
           }
           if (status === "SEND_TO_USER_INBOX") {
             setPostStatus("done");
-            setStatusMessage(
-              "✅ Vídeo enviado! Abra o app do TikTok, vá na Caixa de entrada e toque em publicar."
-            );
+            setStatusMessage(t("tiktok_share.status_inbox"));
             closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
             return;
           }
           if (status === "FAILED") {
             setPostStatus("failed");
-            setFailReason(data.fail_reason || "O TikTok não informou o motivo.");
+            setFailReason(data.fail_reason || t("tiktok_share.fail_unknown"));
             setStatusMessage("");
             return;
           }
@@ -243,8 +241,8 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
           setPostStatus("processing");
           setStatusMessage(
             attempt >= 15
-              ? "Ainda processando. Você pode fechar esta janela — o vídeo aparecerá na Caixa de entrada do TikTok."
-              : "Processando no TikTok..."
+              ? t("tiktok_share.status_processing_long")
+              : t("tiktok_share.status_processing")
           );
         }
       } catch (e) {
@@ -255,7 +253,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
       if (attempt >= MAX_ATTEMPTS) {
         setPostStatus("processing");
-        setStatusMessage("O TikTok ainda está processando. Confira no app em alguns minutos.");
+        setStatusMessage(t("tiktok_share.status_timeout"));
         return;
       }
 
@@ -264,7 +262,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
     };
 
     setPostStatus("processing");
-    setStatusMessage("Processando no TikTok...");
+    setStatusMessage(t("tiktok_share.status_processing"));
     pollTimerRef.current = window.setTimeout(tick, 3000);
   };
 
@@ -305,7 +303,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
   const handleConnectTikTok = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      toast.error("Você precisa estar logado");
+      toast.error(t("tiktok_share.err_login"));
       return;
     }
     const authUrl = buildTikTokAuthUrl(user.id);
@@ -326,23 +324,23 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
   const handlePost = async () => {
     if (!caption.trim()) {
-      toast.error("Digite uma legenda para o post");
+      toast.error(t("tiktok_share.err_caption"));
       return;
     }
     if (postMode === "direct" && !privacyLevel) {
-      toast.error("Escolha quem pode ver este vídeo");
+      toast.error(t("tiktok_share.err_choose_privacy"));
       return;
     }
     if (postMode === "direct" && disclosureIncompleto) {
-      toast.error("Indique se o conteúdo promove sua marca ou uma marca de terceiros");
+      toast.error(t("tiktok_share.err_disclosure"));
       return;
     }
     if (postMode === "direct" && brandedContentPrivado) {
-      toast.error("Conteúdo de marca não pode ser publicado como 'Somente eu'");
+      toast.error(t("tiktok_share.err_branded_private"));
       return;
     }
     if (duracaoExcedida) {
-      toast.error(`Este vídeo excede o limite de ${creator?.max_video_post_duration_sec}s da sua conta`);
+      toast.error(t("tiktok_share.err_duration", { max: creator?.max_video_post_duration_sec }));
       return;
     }
 
@@ -350,7 +348,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
     setFailReason("");
     setAttempts(0);
     setPostStatus("uploading");
-    setStatusMessage("Enviando vídeo para o TikTok...");
+    setStatusMessage(t("tiktok_share.status_uploading"));
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -385,17 +383,17 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
           startPolling(user.id, data.publish_id);
         } else {
           setPostStatus("done");
-          setStatusMessage(data.message || "✅ Vídeo enviado ao TikTok!");
+          setStatusMessage(data.message || t("tiktok_share.status_sent"));
           closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
         }
       } else {
-        throw new Error(data.error || "Erro ao postar no TikTok");
+        throw new Error(data.error || t("tiktok_share.err_post_generic"));
       }
     } catch (error: any) {
       console.error("Erro ao postar:", error);
       setPostStatus("failed");
-      setFailReason(error.message || "Erro ao enviar para o TikTok");
-      toast.error(error.message || "Erro ao enviar para o TikTok");
+      setFailReason(error.message || t("tiktok_share.err_send_generic"));
+      toast.error(error.message || t("tiktok_share.err_send_generic"));
     } finally {
       setLoading(false);
     }
@@ -427,26 +425,26 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
               <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
                 <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
               </svg>
-              Conectar TikTok
+              {t("tiktok_share.connect_title")}
             </DialogTitle>
             <DialogDescription>
-              Você precisa conectar sua conta do TikTok para compartilhar conteúdo.
+              {t("tiktok_share.connect_description")}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="bg-muted rounded-lg p-4 space-y-2">
-              <p className="text-sm font-medium">Benefícios da conexão:</p>
+              <p className="text-sm font-medium">{t("tiktok_share.benefits_title")}</p>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>✅ Postar vídeos diretamente no TikTok</li>
-                <li>✅ Salvar como rascunho para edição</li>
-                <li>✅ Gerenciar seus posts de um só lugar</li>
+                <li>{t("tiktok_share.benefit_1")}</li>
+                <li>{t("tiktok_share.benefit_2")}</li>
+                <li>{t("tiktok_share.benefit_3")}</li>
               </ul>
             </div>
 
             <Button onClick={handleConnectTikTok} className="w-full" size="lg">
               <ExternalLink className="mr-2 h-4 w-4" />
-              Conectar TikTok
+              {t("tiktok_share.connect_button")}
             </Button>
           </div>
         </DialogContent>
@@ -462,7 +460,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
               <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-5.2 1.74 2.89 2.89 0 012.31-4.64 2.93 2.93 0 01.88.13V9.4a6.84 6.84 0 00-1-.05A6.33 6.33 0 005 20.1a6.34 6.34 0 0010.86-4.43v-7a8.16 8.16 0 004.77 1.52v-3.4a4.85 4.85 0 01-1-.1z"/>
             </svg>
-            Compartilhar no TikTok
+            {t("tiktok_share.dialog_title")}
           </DialogTitle>
         </DialogHeader>
 
@@ -471,7 +469,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
           {loadingCreator ? (
             <div className="flex items-center gap-3 rounded-lg border bg-muted/40 p-3">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Carregando conta do TikTok…</span>
+              <span className="text-sm text-muted-foreground">{t("tiktok_share.loading_account")}</span>
             </div>
           ) : creator ? (
             <div className="rounded-lg border bg-muted/40 p-3">
@@ -485,7 +483,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-muted-foreground">Publicando na conta do TikTok:</p>
+                  <p className="text-xs text-muted-foreground">{t("tiktok_share.posting_to_account")}</p>
                   <p className="font-semibold truncate">{creator.creator_nickname || "—"}</p>
                   {creator.creator_username && (
                     <p className="text-xs text-muted-foreground truncate">@{creator.creator_username}</p>
@@ -500,7 +498,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 <p>{creatorError}</p>
                 <Button size="sm" variant="outline" onClick={() => checkTikTokConnection()}>
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Tentar novamente
+                  {t("tiktok_share.try_again")}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -518,7 +516,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             ) : (
               <img
                 src={content.url}
-                alt="Preview"
+                alt={t("tiktok_share.preview_alt")}
                 className="w-full h-full object-contain"
               />
             )}
@@ -526,40 +524,40 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
           {/* Caption */}
           <div className="space-y-2">
-            <Label>Legenda / Título</Label>
+            <Label>{t("tiktok_share.caption_label")}</Label>
             <Textarea
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              placeholder="Digite a legenda do seu post..."
+              placeholder={t("tiktok_share.caption_placeholder")}
               className="min-h-[100px]"
               maxLength={2200}
             />
             <p className="text-xs text-muted-foreground text-right">
-              {caption.length}/2200 caracteres
+              {t("tiktok_share.caption_counter", { count: caption.length })}
             </p>
           </div>
 
           {/* Post Mode */}
           <div className="space-y-2">
-            <Label>Modo de Publicação</Label>
+            <Label>{t("tiktok_share.post_mode_label")}</Label>
             <RadioGroup value={postMode} onValueChange={(v) => setPostMode(v as "direct" | "draft")}>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="draft" id="draft" />
                 <Label htmlFor="draft" className="cursor-pointer">
-                  📝 Salvar como Rascunho (recomendado)
+                  {t("tiktok_share.mode_draft")}
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="direct" id="direct" />
                 <Label htmlFor="direct" className="cursor-pointer">
-                  🚀 Publicar no TikTok
+                  {t("tiktok_share.mode_direct")}
                 </Label>
               </div>
             </RadioGroup>
             <p className="text-xs text-muted-foreground">
               {postMode === "draft"
-                ? "O vídeo será enviado para seus rascunhos no TikTok. Você escolhe privacidade e finaliza a publicação no app."
-                : "O vídeo será publicado no seu perfil com as opções escolhidas abaixo."
+                ? t("tiktok_share.mode_draft_help")
+                : t("tiktok_share.mode_direct_help")
               }
             </p>
           </div>
@@ -568,7 +566,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             <div className="space-y-4 rounded-lg border p-3">
               {/* Privacidade — somente opções vindas da API */}
               <div className="space-y-2">
-                <Label>Quem pode ver este vídeo</Label>
+                <Label>{t("tiktok_share.privacy_label")}</Label>
                 {creator && creator.privacy_level_options.length > 0 ? (
                   <RadioGroup value={privacyLevel} onValueChange={setPrivacyLevel}>
                     {creator.privacy_level_options.map((opt) => {
@@ -579,7 +577,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                           className="flex items-center space-x-2"
                           title={
                             bloqueadoPorBranded
-                              ? "A visibilidade de conteúdo de marca não pode ser definida como privada."
+                              ? t("tiktok_share.branded_private_tooltip")
                               : undefined
                           }
                         >
@@ -605,22 +603,22 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
 
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Carregue as informações da sua conta para escolher a privacidade.
+                    {t("tiktok_share.privacy_load_hint")}
                   </p>
                 )}
                 {!privacyLevel && (
-                  <p className="text-xs text-muted-foreground">Selecione uma opção para continuar.</p>
+                  <p className="text-xs text-muted-foreground">{t("tiktok_share.privacy_select_hint")}</p>
                 )}
               </div>
 
               {/* Interações */}
               <div className="space-y-3">
-                <Label>Permitir interações</Label>
+                <Label>{t("tiktok_share.interactions_label")}</Label>
                 <div className="flex items-center justify-between">
                   <Label htmlFor="allow-comment" className="text-sm font-normal">
-                    Comentários
+                    {t("tiktok_share.comments")}
                     {creator?.comment_disabled && (
-                      <span className="block text-xs text-muted-foreground">Desativado nas configurações da sua conta</span>
+                      <span className="block text-xs text-muted-foreground">{t("tiktok_share.disabled_in_account")}</span>
                     )}
                   </Label>
                   <Switch
@@ -632,7 +630,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 </div>
                 <div className="flex items-center justify-between">
                   <Label htmlFor="allow-duet" className="text-sm font-normal">
-                    Duetos
+                    {t("tiktok_share.duets")}
                     {creator?.duet_disabled && (
                       <span className="block text-xs text-muted-foreground">Desativado nas configurações da sua conta</span>
                     )}
@@ -646,7 +644,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 </div>
                 <div className="flex items-center justify-between">
                   <Label htmlFor="allow-stitch" className="text-sm font-normal">
-                    Stitch
+                    {t("tiktok_share.stitch")}
                     {creator?.stitch_disabled && (
                       <span className="block text-xs text-muted-foreground">Desativado nas configurações da sua conta</span>
                     )}
@@ -664,9 +662,9 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="commercial" className="text-sm">
-                    Divulgar conteúdo comercial
+                    {t("tiktok_share.commercial_label")}
                     <span className="block text-xs text-muted-foreground font-normal">
-                      Ative se este vídeo promove um produto, serviço ou marca.
+                      {t("tiktok_share.commercial_description")}
                     </span>
                   </Label>
                   <Switch
@@ -691,9 +689,9 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                         onCheckedChange={(v) => setBrandOrganic(!!v)}
                       />
                       <Label htmlFor="brand-organic" className="text-sm font-normal cursor-pointer">
-                        Sua marca
+                        {t("tiktok_share.brand_organic")}
                         <span className="block text-xs text-muted-foreground">
-                          O vídeo promove você mesmo ou o seu próprio negócio.
+                          {t("tiktok_share.brand_organic_description")}
                         </span>
                       </Label>
                     </div>
@@ -708,9 +706,9 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                         }}
                       />
                       <Label htmlFor="branded-content" className="text-sm font-normal cursor-pointer">
-                        Conteúdo de marca
+                        {t("tiktok_share.branded_content")}
                         <span className="block text-xs text-muted-foreground">
-                          O vídeo promove uma marca de terceiros ou um parceiro pago.
+                          {t("tiktok_share.branded_content_description")}
                         </span>
                       </Label>
                     </div>
@@ -718,26 +716,28 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                     {disclosureIncompleto && (
                       <>
                         <p className="text-xs text-destructive">
-                          Você precisa indicar se seu conteúdo promove você mesmo, um terceiro, ou ambos.
+                          {t("tiktok_share.disclosure_incomplete")}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          You need to indicate if your content promotes yourself, a third party, or both.
-                        </p>
+                        {!isEnglish && (
+                          <p className="text-xs text-muted-foreground">
+                            You need to indicate if your content promotes yourself, a third party, or both.
+                          </p>
+                        )}
                       </>
                     )}
                     {brandedContentPrivado && (
                       <p className="text-xs text-destructive">
-                        Conteúdo de marca não pode ser publicado como "Somente eu". Escolha outra privacidade.
+                        {t("tiktok_share.branded_private_error")}
                       </p>
                     )}
                     {brandedContent && (
                       <p className="text-xs text-muted-foreground">
-                        Seu vídeo será rotulado como "Parceria paga".
+                        {t("tiktok_share.label_paid_partnership")}
                       </p>
                     )}
                     {!brandedContent && brandOrganic && (
                       <p className="text-xs text-muted-foreground">
-                        Seu vídeo será rotulado como "Conteúdo promocional".
+                        {t("tiktok_share.label_promotional")}
                       </p>
                     )}
                   </div>
@@ -752,8 +752,10 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription>
-                Este vídeo tem {Math.round(videoDuration!)}s e sua conta permite no máximo{" "}
-                {creator?.max_video_post_duration_sec}s.
+                {t("tiktok_share.duration_exceeded", {
+                  duration: Math.round(videoDuration!),
+                  max: creator?.max_video_post_duration_sec,
+                })}
               </AlertDescription>
             </Alert>
           )}
@@ -766,7 +768,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 {statusMessage}
                 {postStatus === "processing" && attempts > 0 && (
                   <span className="block text-xs text-muted-foreground mt-1">
-                    Verificação {attempts} de {MAX_ATTEMPTS}
+                    {t("tiktok_share.check_progress", { current: attempts, total: MAX_ATTEMPTS })}
                   </span>
                 )}
               </AlertDescription>
@@ -787,7 +789,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 <p>{failReason}</p>
                 <Button size="sm" variant="outline" onClick={handlePost}>
                   <RefreshCw className="mr-2 h-4 w-4" />
-                  Tentar novamente
+                  {t("tiktok_share.try_again")}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -850,7 +852,7 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
               className="block"
               title={
                 disclosureIncompleto
-                  ? "Você precisa indicar se seu conteúdo promove você mesmo, um terceiro, ou ambos."
+                  ? t("tiktok_share.disclosure_incomplete")
                   : undefined
               }
             >
@@ -863,12 +865,12 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
                 {loading || postStatus === "processing" ? (
                   <>
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    {postStatus === "processing" ? "Processando..." : "Enviando..."}
+                    {postStatus === "processing" ? t("tiktok_share.btn_processing") : t("tiktok_share.btn_sending")}
                   </>
                 ) : (
                   <>
                     {content.type === "video" ? <Video className="mr-2 h-5 w-5" /> : <Image className="mr-2 h-5 w-5" />}
-                    {postMode === "draft" ? "Salvar Rascunho" : "Publicar no TikTok"}
+                    {postMode === "draft" ? t("tiktok_share.btn_save_draft") : t("tiktok_share.btn_publish")}
                   </>
                 )}
               </Button>
