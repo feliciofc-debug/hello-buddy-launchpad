@@ -1,8 +1,26 @@
 {
   "common": {
-    "cancel": "Cancelar",
     "save": "Salvar",
-    "loading": "Carregando..."
+    "cancel": "Cancelar",
+    "delete": "Excluir",
+    "edit": "Editar",
+    "loading": "Carregando...",
+    "confirm": "Confirmar",
+    "back": "Voltar",
+    "next": "Próximo",
+    "close": "Fechar",
+    "search": "Pesquisar",
+    "filter": "Filtrar",
+    "no_results": "Nenhum resultado",
+    "error_occurred": "Ocorreu um erro",
+    "try_again": "Tentar novamente",
+    "success": "Sucesso",
+    "yes": "Sim",
+    "no": "Não",
+    "error": "Erro",
+    "saved_success": "Configuração salva com sucesso!",
+    "need_login": "Você precisa estar logado",
+    "select": "Selecionar"
   },
   "integracoes": {
     "title": "Integrações",
@@ -91,7 +109,15 @@
     "section_marketing": "Marketing",
     "social_networks": "Redes Sociais",
     "back": "Voltar",
-    "back_to_dashboard": "Voltar ao Dashboard"
+    "back_to_dashboard": "Voltar ao Dashboard",
+    "media": "Mídias",
+    "whatsapp_templates": "Templates WhatsApp",
+    "gift_ebook": "Ebook de Presente",
+    "my_brand": "Minha Marca",
+    "business_contacts": "Contatos Comerciais",
+    "clients_segments": "Clientes e Segmentos",
+    "my_company": "Minha Empresa",
+    "admin": "Admin"
   },
   "settings": {
     "title": "Configurações",
@@ -615,29 +641,6 @@
   "affiliate": {
     "campaigns_title": "Campanhas",
     "campaigns_subtitle": "Gerencie suas campanhas ativas e programações de envio"
-  },
-  "common": {
-    "save": "Salvar",
-    "cancel": "Cancelar",
-    "delete": "Excluir",
-    "edit": "Editar",
-    "loading": "Carregando...",
-    "confirm": "Confirmar",
-    "back": "Voltar",
-    "next": "Próximo",
-    "close": "Fechar",
-    "search": "Pesquisar",
-    "filter": "Filtrar",
-    "no_results": "Nenhum resultado",
-    "error_occurred": "Ocorreu um erro",
-    "try_again": "Tentar novamente",
-    "success": "Sucesso",
-    "yes": "Sim",
-    "no": "Não",
-    "error": "Erro",
-    "saved_success": "Configuração salva com sucesso!",
-    "need_login": "Você precisa estar logado",
-    "select": "Selecionar"
   },
   "language": {
     "pt": "Português",
