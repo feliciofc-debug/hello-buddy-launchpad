@@ -110,12 +110,8 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
       return;
     }
 
-    const clientKey = "aw2ouo90dyp4ju9w";
-    const redirectUri = encodeURIComponent("https://amzofertas.com.br/tiktok/callback");
-    const scope = "user.info.basic,user.info.profile,video.upload,video.publish";
-    const state = user.id;
+    const authUrl = buildTikTokAuthUrl(user.id);
 
-    const authUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&response_type=code&scope=${scope}&redirect_uri=${redirectUri}&state=${state}`;
 
     onOpenChange(false);
     window.location.href = authUrl;
