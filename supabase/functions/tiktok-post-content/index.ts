@@ -155,6 +155,13 @@ serve(async (req) => {
         case "spam_risk_too_many_posts":
           errorMessage = "Muitas publicações recentes. Aguarde um pouco.";
           break;
+        case "unaudited_client_can_only_post_to_private_accounts":
+          errorMessage = "A conta TikTok precisa estar configurada como privada para publicar durante os testes. Ative 'Conta Privada' nas configurações do TikTok.";
+          break;
+        case "scope_not_authorized":
+          errorMessage = "Permissão video.publish não autorizada. Desconecte e reconecte a conta TikTok para conceder a permissão.";
+          break;
+          break;
         default:
           errorMessage = initData?.error?.message || errorMessage;
       }
