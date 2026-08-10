@@ -210,20 +210,22 @@ serve(async (req) => {
       title,
       post_mode,
       tiktok_response: initData,
-      status: post_mode === "draft" ? "draft" : "published",
+      status: directPost ? "published" : "draft",
       publish_id: publishId || null,
     });
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: post_mode === "draft"
-          ? "Vídeo enviado para rascunhos do TikTok!"
-          : "Vídeo publicado no TikTok!",
+        direct_post: directPost,
+        message: directPost
+          ? "Vídeo publicado no TikTok!"
+          : "Vídeo enviado para os rascunhos do TikTok. Abra o app TikTok (Caixa de entrada) e toque em publicar para ir ao perfil.",
         publish_id: publishId,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
 
   } catch (error: any) {
     console.error("❌ Erro no tiktok-post-content:", error);
