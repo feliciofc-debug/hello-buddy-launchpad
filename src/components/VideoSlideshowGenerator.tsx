@@ -246,8 +246,8 @@ export const VideoSlideshowGenerator = () => {
 
       const stream = canvas.captureStream(30);
       const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9",
-        videoBitsPerSecond: 5000000,
+        ...(recorderMime.mimeType ? { mimeType: recorderMime.mimeType } : {}),
+        videoBitsPerSecond: 2500000,
       });
 
       const chunks: Blob[] = [];
