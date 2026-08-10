@@ -215,17 +215,26 @@ serve(async (req) => {
     
     console.log("✅ Upload do vídeo concluído com sucesso");
 
-    // Salvar histórico do post
-    await supabase.from("tiktok_posts").insert({
-      user_id,
-      content_type,
-      content_url,
-      title,
-      post_mode,
-      tiktok_response: initData,
-      status: directPost ? "published" : "draft",
-      publish_id: publishId || null,
-    });
+    // Salvar histórico do post (status real só é conhecido via polling em tiktok-post-status)
+    const { data: postRow, error: insertError } = await supabase
+      .from("tiktok_posts")
+      .insert({
+        user_id,
+        content_type,
+        content_url,
+        title,
+        post_mode,
+        tiktok_response: initData,
+        status: "processing",
+        publish_status: "PROCESSING_UPLOAD",
+        publish_id: publishId || null,
+      })
+      .select("id")
+      .single();
+
+    if (insertError) {
+      console.error("⚠️ Erro ao salvar histórico do post:", insertError.message);
+    }
 
     return new Response(
       JSON.stringify({
@@ -235,6 +244,7 @@ serve(async (req) => {
           ? "Vídeo publicado no TikTok!"
           : "Vídeo enviado para os rascunhos do TikTok. Abra o app TikTok (Caixa de entrada) e toque em publicar para ir ao perfil.",
         publish_id: publishId,
+        post_row_id: postRow?.id ?? null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
