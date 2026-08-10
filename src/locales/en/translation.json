@@ -172,7 +172,14 @@
     "operating_states": "Operating States",
     "operating_radius": "Operating Radius (km)",
     "company_profile": "Company Profile",
-    "company_profile_desc": "Characteristics of prospect companies"
+    "company_profile_desc": "Characteristics of prospect companies",
+    "brand_tab": "Brand",
+    "loading_connection": "Loading connection status...",
+    "tiktok_dev_description": "Connect your TikTok account to post videos directly from the platform.",
+    "permissions_label": "Permissions:",
+    "connected_at": "Connected at:",
+    "token_expired_reconnect": "Token expired — click Reconnect",
+    "tiktok_not_connected_desc": "Your TikTok account is not connected yet."
   },
   "publish": {
     "create_post": "Create Post",
