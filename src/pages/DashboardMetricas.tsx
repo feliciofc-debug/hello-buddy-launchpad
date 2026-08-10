@@ -301,13 +301,14 @@ export default function DashboardMetricas() {
     { id: 'contatos-comerciais', icon: Briefcase, label: 'Contatos Comerciais', path: '/pj/contatos-comerciais' },
     { id: 'clientes-segmentos', icon: Users, label: 'Clientes e Segmentos', path: '/pj/listas-contatos' },
     // { id: 'integracoes', icon: Plug, label: t('nav.integrations', 'Integrações'), path: '/integracoes' }, // Oculto - reativar removendo o comentário
+    { id: 'minha-empresa', icon: Building2, label: 'Minha Empresa', path: '/configuracao-empresa' },
     { id: 'configuracoes', icon: Settings, label: t('nav.settings'), path: '/configuracoes' },
     ...(userEmail === 'expo@atombrasildigital.com'
       ? [{ id: 'admin', icon: Shield, label: 'Admin', path: '/admin' }]
       : []),
   ];
 
-  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || item.id === 'clientes-segmentos' || item.id === 'whatsapp-templates' || item.id === 'ebook-presente' || isMenuAllowed(item.id));
+  const menuItems = menuItemsAll.filter((item) => item.id === 'admin' || item.id === 'contatos-comerciais' || item.id === 'clientes-segmentos' || item.id === 'whatsapp-templates' || item.id === 'ebook-presente' || item.id === 'minha-empresa' || isMenuAllowed(item.id));
 
   // Componente de campanhas em andamento
   const CampanhasEmAndamentoSection = ({ navigate }: { navigate: (path: string) => void }) => {
