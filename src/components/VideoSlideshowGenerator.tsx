@@ -257,7 +257,7 @@ export const VideoSlideshowGenerator = () => {
 
       const videoReady = new Promise<Blob>((resolve) => {
         mediaRecorder.onstop = () => {
-          resolve(new Blob(chunks, { type: "video/webm" }));
+          resolve(new Blob(chunks, { type: recorderMime.contentType }));
         };
       });
 
