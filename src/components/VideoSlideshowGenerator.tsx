@@ -329,7 +329,7 @@ export const VideoSlideshowGenerator = () => {
     if (!videoBlob) return;
     const a = document.createElement("a");
     a.href = URL.createObjectURL(videoBlob);
-    a.download = `reels-${config.productName.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.webm`;
+    a.download = `reels-${config.productName.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.${recorderMime.ext}`;
     a.click();
     toast.success("Vídeo baixado!");
   };
