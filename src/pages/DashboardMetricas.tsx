@@ -129,6 +129,13 @@ export default function DashboardMetricas() {
   });
   const [userProfile, setUserProfile] = useState<any>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [periodo, setPeriodo] = useState<DashboardPeriod>('7d');
+  const { data: metricasDash, loading: loadingDash, refetch: recarregarDash } = useDashboardMetrics(periodo);
+
+  const horaLocal = new Date().getHours();
+  const saudacao = horaLocal < 12 ? 'Bom dia' : horaLocal < 18 ? 'Boa tarde' : 'Boa noite';
+  const nomeExibicao =
+    userProfile?.nome_fantasia || userProfile?.nome || userEmail?.split('@')[0] || '';
 
   const { isMenuAllowed, empresaNome } = useClientMenus(userProfile?.tipo, userProfile?.nome_fantasia);
 
