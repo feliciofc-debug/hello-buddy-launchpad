@@ -37,15 +37,119 @@ export const TikTokShareModal = ({ open, onOpenChange, content }: TikTokShareMod
   } | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      checkTikTokConnection();
-      // Preencher caption com título do produto se disponível
-      if (content.title) {
-        setCaption(`${content.title}\n\n🔥 Confira essa oferta incrível!\n\n#tiktok #ofertas #promocao #fyp #viral`);
-      }
+  type PostStatus = "idle" | "uploading" | "processing" | "done" | "failed";
+  const [postStatus, setPostStatus] = useState<PostStatus>("idle");
+  const [statusMessage, setStatusMessage] = useState<string>("");
+  const [failReason, setFailReason] = useState<string>("");
+  const [attempts, setAttempts] = useState(0);
+
+  const pollTimerRef = useRef<number | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const cancelledRef = useRef(false);
+
+  const clearTimers = useCallback(() => {
+    cancelledRef.current = true;
+    if (pollTimerRef.current !== null) {
+      window.clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
     }
-  }, [open, content.title]);
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  // Cleanup: nunca deixar polling rodando em background
+  useEffect(() => clearTimers, [clearTimers]);
+
+  useEffect(() => {
+    if (!open) {
+      clearTimers();
+      setPostStatus("idle");
+      setStatusMessage("");
+      setFailReason("");
+      setAttempts(0);
+      return;
+    }
+
+    cancelledRef.current = false;
+    checkTikTokConnection();
+    // Preencher caption com título do produto se disponível
+    if (content.title) {
+      setCaption(`${content.title}\n\n🔥 Confira essa oferta incrível!\n\n#tiktok #ofertas #promocao #fyp #viral`);
+    }
+  }, [open, content.title, clearTimers]);
+
+  const MAX_ATTEMPTS = 40;
+
+  const startPolling = (userId: string, publishId: string) => {
+    let attempt = 0;
+
+    const tick = async () => {
+      if (cancelledRef.current) return;
+      attempt += 1;
+      setAttempts(attempt);
+
+      try {
+        const { data, error } = await supabase.functions.invoke("tiktok-post-status", {
+          body: { user_id: userId, publish_id: publishId },
+        });
+
+        if (cancelledRef.current) return;
+
+        if (!error && data?.success) {
+          const status: string = data.status;
+
+          if (status === "PUBLISH_COMPLETE") {
+            setPostStatus("done");
+            setStatusMessage("✅ Publicado no TikTok!");
+            closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
+            return;
+          }
+          if (status === "SEND_TO_USER_INBOX") {
+            setPostStatus("done");
+            setStatusMessage(
+              "✅ Vídeo enviado! Abra o app do TikTok, vá na Caixa de entrada e toque em publicar."
+            );
+            closeTimerRef.current = window.setTimeout(() => onOpenChange(false), 2000);
+            return;
+          }
+          if (status === "FAILED") {
+            setPostStatus("failed");
+            setFailReason(data.fail_reason || "O TikTok não informou o motivo.");
+            setStatusMessage("");
+            return;
+          }
+
+          // PROCESSING_UPLOAD / PROCESSING_DOWNLOAD
+          setPostStatus("processing");
+          setStatusMessage(
+            attempt >= 15
+              ? "Ainda processando. Você pode fechar esta janela — o vídeo aparecerá na Caixa de entrada do TikTok."
+              : "Processando no TikTok..."
+          );
+        }
+      } catch (e) {
+        console.error("Erro ao consultar status TikTok:", e);
+      }
+
+      if (cancelledRef.current) return;
+
+      if (attempt >= MAX_ATTEMPTS) {
+        // Estourar o limite NÃO é erro
+        setPostStatus("processing");
+        setStatusMessage("O TikTok ainda está processando. Confira no app em alguns minutos.");
+        return;
+      }
+
+      const delay = attempt < 10 ? 3000 : 5000;
+      pollTimerRef.current = window.setTimeout(tick, delay);
+    };
+
+    setPostStatus("processing");
+    setStatusMessage("Processando no TikTok...");
+    pollTimerRef.current = window.setTimeout(tick, 3000);
+  };
 
   const checkTikTokConnection = async () => {
     setCheckingConnection(true);
