@@ -1,8 +1,26 @@
 {
   "common": {
-    "cancel": "Cancel",
     "save": "Save",
-    "loading": "Loading..."
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "loading": "Loading...",
+    "confirm": "Confirm",
+    "back": "Back",
+    "next": "Next",
+    "close": "Close",
+    "search": "Search",
+    "filter": "Filter",
+    "no_results": "No results",
+    "error_occurred": "An error occurred",
+    "try_again": "Try again",
+    "success": "Success",
+    "yes": "Yes",
+    "no": "No",
+    "error": "Error",
+    "saved_success": "Configuration saved successfully!",
+    "need_login": "You need to be logged in",
+    "select": "Select"
   },
   "integracoes": {
     "title": "Integrations",
@@ -91,7 +109,15 @@
     "section_marketing": "Marketing",
     "social_networks": "Social Networks",
     "back": "Back",
-    "back_to_dashboard": "Back to Dashboard"
+    "back_to_dashboard": "Back to Dashboard",
+    "media": "Media",
+    "whatsapp_templates": "WhatsApp Templates",
+    "gift_ebook": "Gift Ebook",
+    "my_brand": "My Brand",
+    "business_contacts": "Business Contacts",
+    "clients_segments": "Clients & Segments",
+    "my_company": "My Company",
+    "admin": "Admin"
   },
   "settings": {
     "title": "Settings",
@@ -615,29 +641,6 @@
   "affiliate": {
     "campaigns_title": "Campaigns",
     "campaigns_subtitle": "Manage your active campaigns and send schedules"
-  },
-  "common": {
-    "save": "Save",
-    "cancel": "Cancel",
-    "delete": "Delete",
-    "edit": "Edit",
-    "loading": "Loading...",
-    "confirm": "Confirm",
-    "back": "Back",
-    "next": "Next",
-    "close": "Close",
-    "search": "Search",
-    "filter": "Filter",
-    "no_results": "No results",
-    "error_occurred": "An error occurred",
-    "try_again": "Try again",
-    "success": "Success",
-    "yes": "Yes",
-    "no": "No",
-    "error": "Error",
-    "saved_success": "Configuration saved successfully!",
-    "need_login": "You need to be logged in",
-    "select": "Select"
   },
   "language": {
     "pt": "Português",

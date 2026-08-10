@@ -301,20 +301,20 @@ export default function DashboardMetricas() {
   const menuItemsAll = [
     { id: 'dashboard', icon: BarChart3, label: t('nav.dashboard'), path: '/dashboard' },
     { id: 'produtos', icon: Package, label: t('nav.products'), path: '/meus-produtos' },
-    { id: 'midias', icon: Images, label: 'Mídias', path: '/midias' },
+    { id: 'midias', icon: Images, label: t('nav.media'), path: '/midias' },
     { id: 'ia-marketing', icon: Zap, label: t('nav.ia_marketing'), path: '/ia-marketing' },
     { id: 'redes-sociais', icon: Share2, label: t('nav.social_networks'), path: '/redes-sociais' },
     { id: 'whatsapp', icon: MessageCircle, label: t('nav.whatsapp'), path: '/whatsapp-painel' },
-    { id: 'whatsapp-templates', icon: MessageCircle, label: 'Templates WhatsApp', path: '/pj/whatsapp-templates' },
-    { id: 'ebook-presente', icon: Gift, label: 'Ebook de Presente', path: '/pj/ebook-presente' },
-    { id: 'minha-marca', icon: Images, label: 'Minha Marca', path: '/pj/minha-marca' },
-    { id: 'contatos-comerciais', icon: Briefcase, label: 'Contatos Comerciais', path: '/pj/contatos-comerciais' },
-    { id: 'clientes-segmentos', icon: Users, label: 'Clientes e Segmentos', path: '/pj/listas-contatos' },
+    { id: 'whatsapp-templates', icon: MessageCircle, label: t('nav.whatsapp_templates'), path: '/pj/whatsapp-templates' },
+    { id: 'ebook-presente', icon: Gift, label: t('nav.gift_ebook'), path: '/pj/ebook-presente' },
+    { id: 'minha-marca', icon: Images, label: t('nav.my_brand'), path: '/pj/minha-marca' },
+    { id: 'contatos-comerciais', icon: Briefcase, label: t('nav.business_contacts'), path: '/pj/contatos-comerciais' },
+    { id: 'clientes-segmentos', icon: Users, label: t('nav.clients_segments'), path: '/pj/listas-contatos' },
     // { id: 'integracoes', icon: Plug, label: t('nav.integrations', 'Integrações'), path: '/integracoes' }, // Oculto - reativar removendo o comentário
-    { id: 'minha-empresa', icon: Building2, label: 'Minha Empresa', path: '/configuracao-empresa' },
+    { id: 'minha-empresa', icon: Building2, label: t('nav.my_company'), path: '/configuracao-empresa' },
     { id: 'configuracoes', icon: Settings, label: t('nav.settings'), path: '/configuracoes' },
     ...(userEmail === 'expo@atombrasildigital.com'
-      ? [{ id: 'admin', icon: Shield, label: 'Admin', path: '/admin' }]
+      ? [{ id: 'admin', icon: Shield, label: t('nav.admin'), path: '/admin' }]
       : []),
   ];
 
