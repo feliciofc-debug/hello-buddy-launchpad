@@ -2313,10 +2313,10 @@ Responda APENAS com JSON válido nesta forma exata:
   };
 
 
-  try {
+  const tentativa = async (): Promise<{ A: string; B: string; C: string } | null> => {
     // Timeout duro: sem isso o fetch pode pendurar e a resposta NUNCA chega no WhatsApp.
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 25000);
+    const timer = setTimeout(() => ac.abort(), 20000);
     let res: Response;
     try {
       res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -2339,26 +2339,36 @@ Responda APENAS com JSON válido nesta forma exata:
     }
     if (!res.ok) {
       console.error("[postar_redes] gemini !ok:", res.status, await res.text());
-      return fallback();
+      return null;
     }
     const data = await res.json();
 
     let txt = (data?.choices?.[0]?.message?.content || "").trim();
     txt = txt.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
     const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return fallback();
+    if (!m) return null;
     const parsed = JSON.parse(m[0].replace(/,(\s*[}\]])/g, "$1"));
     const clean = (s: unknown) => (typeof s === "string" ? s.trim().slice(0, limite) : "");
     const A = clean(parsed.A) || clean(parsed.opcaoA);
     const B = clean(parsed.B) || clean(parsed.opcaoB);
     const C = clean(parsed.C) || clean(parsed.opcaoC);
-    if (!A || !B || !C) return fallback();
+    if (!A || !B || !C) return null;
     return { A, B, C };
-  } catch (e) {
-    console.error("[postar_redes] gerar 3 opções falhou:", e);
-    return fallback();
+  };
+
+  // 2 tentativas: uma falha de rede/timeout não pode mais derrubar a copy pro fallback pobre.
+  for (let i = 0; i < 2; i++) {
+    try {
+      const r = await tentativa();
+      if (r) return r;
+      console.warn(`[postar_redes] tentativa ${i + 1} sem copy válida`);
+    } catch (e) {
+      console.error(`[postar_redes] tentativa ${i + 1} falhou:`, e);
+    }
   }
+  return fallback();
 }
+
 
 // Wrapper compat: devolve UMA string (a opção A) — mantém API antiga viva pra qualquer chamador residual.
 async function gerarScriptRedesSociais(
