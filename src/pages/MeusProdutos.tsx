@@ -1270,6 +1270,40 @@ export default function MeusProdutos() {
     }
   };
 
+  const toggleSelected = (productId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Excluir ${selectedIds.length} produto(s) selecionado(s)? Esta ação não pode ser desfeita.`)) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const userId = (await supabase.auth.getUser()).data.user?.id || '';
+      const { error } = await supabase
+        .from('produtos')
+        .delete()
+        .in('id', selectedIds)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      toast.success(`${selectedIds.length} produto(s) excluído(s)`);
+      setSelectedIds([]);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Erro ao excluir produtos:', error);
+      toast.error(error?.message || 'Erro ao excluir produtos');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+
+
   const handleCreateCampaign = (product: Product) => {
     setSelectedProduct(product);
     setSelectedCampanha(null);
