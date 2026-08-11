@@ -2255,12 +2255,26 @@ async function gerarTresOpcoesRedeSocial(
     ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
     : "";
 
+  const brief = (briefing || "").toString().trim().slice(0, 2500);
+  const blocoBriefing = brief
+    ? `\n========================================
+📝 TEXTO/CONTEXTO ESCRITO PELO DONO (PRIORIDADE MÁXIMA — é a MENSAGEM que ele quer comunicar):
+"${brief}"
+
+COMO USAR:
+- Esta é a MENSAGEM CENTRAL do post. As 3 opções DEVEM comunicar ESTA ideia, com as palavras/argumentos dele reescritos com qualidade publicitária.
+- A imagem é apenas o VISUAL de apoio. NÃO descreva a imagem, NÃO transforme a descrição visual em legenda.
+- Respeite o TOM e a TEMÁTICA do texto do dono (institucional, técnico, comemorativo, provocativo...). NÃO invente oferta, preço ou urgência que não esteja nele.
+- Se o texto citar tecnologia, diferencial ou frase de efeito (ex: "é uma gota no oceano"), aproveite isso.
+========================================\n`
+    : "";
+
   const prompt = `Você é copywriter sênior de redes sociais. Crie 3 VARIAÇÕES CURTAS de post para ${rede.toUpperCase()} sobre o produto/tema abaixo.
 ${guiaTom}${regraConsorcio}
-
+${blocoBriefing}
 DADOS:
 - Nome/tema: ${produto.nome}
-${produto.descricao ? `- Contexto/imagem: ${produto.descricao}\n  (a legenda DEVE conversar com esse contexto — nunca contrarie o visual)` : ""}
+${produto.descricao ? `- ${brief ? "Visual de apoio (NÃO descreva, só não contrarie)" : "Contexto/imagem"}: ${produto.descricao}` : ""}
 ${preco ? `- Preço: ${preco}` : "- Preço: não citar valor"}
 ${produto.categoria ? `- Categoria: ${produto.categoria}` : ""}
 ${temLink ? `- Link: ${produto.link}` : "- SEM link (post de engajamento/institucional)"}
@@ -2272,6 +2286,7 @@ REGRAS DURAS (valem pra TODAS as 3 opções):
 - ${ctaBase}
 - 5-8 hashtags no fim, relevantes, separadas por espaço.
 - NUNCA invente: preço, desconto, "%", "só hoje", "estoque", "últimas unidades", "vagas limitadas", depoimentos, números de clientes.
+- NUNCA escreva "Conteúdo da imagem", "Nesta imagem", "A arte mostra" ou qualquer descrição do visual.
 - Se briefing cita PESSOA nomeada (consultor/atleta/cliente), use essa pessoa nas 3 opções.
 - Sem markdown, sem "Aqui está:", sem aspas envolvendo o post.
 
@@ -2286,10 +2301,17 @@ ${brandContext ? `\n🏢 CONTEXTO DA MARCA (BASE — não é produto físico):\n
 Responda APENAS com JSON válido nesta forma exata:
 {"A":"texto da opção A","B":"texto da opção B","C":"texto da opção C"}`;
 
+  // Fallback só entra se a IA falhar 2x. Quando existe briefing do dono, o fallback
+  // usa o TEXTO DELE (nunca a descrição da imagem) — era isso que gerava as 3 opções
+  // idênticas com "Conteúdo da imagem: ...".
   const fallback = (): { A: string; B: string; C: string } => {
-    const base = `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n${(produto.descricao || "").slice(0, 200)}\n\n${temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!"}`.slice(0, limite);
+    const corpo = (brief || produto.descricao || "").toString().replace(/^Conteúdo da imagem:\s*/i, "").trim();
+    const cta = temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!";
+    const cabeca = brief ? "" : `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n`;
+    const base = `${cabeca}${corpo.slice(0, 380)}\n\n${cta}`.slice(0, limite);
     return { A: base, B: base, C: base };
   };
+
 
   try {
     // Timeout duro: sem isso o fetch pode pendurar e a resposta NUNCA chega no WhatsApp.
