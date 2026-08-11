@@ -1668,12 +1668,61 @@ export default function MeusProdutos() {
             </CardContent>
           </Card>
         ) : (
+          <>
+          {/* BARRA DE SELEÇÃO EM MASSA */}
+          <Card className="border-primary/30">
+            <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="select-all-products"
+                  checked={selectedIds.length > 0 && selectedIds.length === filteredProducts.length}
+                  onCheckedChange={(checked) =>
+                    setSelectedIds(checked ? filteredProducts.map((p) => p.id) : [])
+                  }
+                />
+                <label htmlFor="select-all-products" className="text-sm font-medium cursor-pointer">
+                  Selecionar tudo ({filteredProducts.length})
+                </label>
+                {selectedIds.length > 0 && (
+                  <Badge variant="secondary">{selectedIds.length} selecionado(s)</Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedIds.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>
+                    Limpar seleção
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-2"
+                  disabled={selectedIds.length === 0 || isBulkDeleting}
+                  onClick={handleBulkDelete}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {isBulkDeleting ? 'Excluindo...' : `Confirmar e apagar (${selectedIds.length})`}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => (
               <React.Fragment key={product.id}>
               <div className="space-y-4">
-              <Card className="hover:shadow-lg transition-all duration-300">
+              <Card className={`hover:shadow-lg transition-all duration-300 ${selectedIds.includes(product.id) ? 'ring-2 ring-destructive' : ''}`}>
                 <CardHeader>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Checkbox
+                      checked={selectedIds.includes(product.id)}
+                      onCheckedChange={() => toggleSelected(product.id)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {selectedIds.includes(product.id) ? 'Marcado para apagar' : 'Selecionar'}
+                    </span>
+                  </div>
+
                   <div className="flex items-start justify-between mb-3">
                     <div className="relative">
                       <ProductImageCarousel
