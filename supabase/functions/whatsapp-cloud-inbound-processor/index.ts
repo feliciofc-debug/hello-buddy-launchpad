@@ -2416,6 +2416,7 @@ type PendingPostMarkerState = {
   variantSelecionada?: "A" | "B" | "C";
   incluirCtaWhatsapp?: boolean;
   tom?: string;
+  briefing?: string;
 };
 
 function encodePendingPostState(state?: PendingPostMarkerState): string {
@@ -3096,6 +3097,7 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
     variantSelecionada: pending.variantSelecionada,
     incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
     tom: pending.tom,
+    briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
