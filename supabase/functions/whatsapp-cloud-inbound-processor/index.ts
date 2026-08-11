@@ -3549,9 +3549,52 @@ async function toolSalvarMidiaBiblioteca(
   }
 }
 
+// Recupera o TEXTO SUBSTANCIAL mais recente que o dono escreveu nesta conversa
+// (últimos 90 min) pra usar como briefing do post quando ele disser "usa aquele
+// texto que te mandei". Ignora comandos curtos ("posta no feed", "A", "pode postar").
+async function buscarBriefingRecenteDono(userId: string, fromNumber: string): Promise<string> {
+  try {
+    const digits = normalizePhoneBR(fromNumber || "");
+    if (!digits) return "";
+    const tail8 = digits.slice(-8);
+    const { data: convs } = await sb
+      .from("whatsapp_cloud_conversations")
+      .select("id, contact_number")
+      .eq("user_id", userId)
+      .order("last_message_at", { ascending: false })
+      .limit(200);
+    const conv = (convs ?? []).find((c: any) => normalizePhoneBR(c.contact_number || "").slice(-8) === tail8);
+    if (!conv?.id) return "";
+
+    const since = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+    const { data: msgs } = await sb
+      .from("whatsapp_cloud_messages")
+      .select("direction, content, created_at")
+      .eq("conversation_id", conv.id)
+      .eq("direction", "inbound")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(25);
+
+    const comando = /^(a|b|c|op[cç][aã]o\s*[abc]|sim|ok|pode postar|posta|publica|manda|vai|confirma|feed|story|stories|reels)\b/i;
+    for (const m of msgs ?? []) {
+      const t = String(m.content || "")
+        .replace(/^🎙️\s*Áudio transcrito:\s*/i, "")
+        .trim();
+      if (t.length < 90) continue;
+      if (comando.test(t)) continue;
+      return t.slice(0, 2500);
+    }
+    return "";
+  } catch (e) {
+    console.error("[postar_midia] briefing recente falhou:", e);
+    return "";
+  }
+}
+
 // ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
 async function toolPostarMidiaBiblioteca(
-  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean },
+  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
