@@ -2230,6 +2230,7 @@ async function gerarTresOpcoesRedeSocial(
   rede: "facebook" | "instagram",
   ajuste?: string,
   brandContext?: string,
+  briefing?: string,
 ): Promise<{ A: string; B: string; C: string }> {
   const tomLabel = (tom || "beneficio").toLowerCase();
   const guia: Record<string, string> = {
@@ -2254,12 +2255,26 @@ async function gerarTresOpcoesRedeSocial(
     ? `\n⚠️ ESTE PRODUTO É CONSÓRCIO. PROIBIDO: "estoque limitado", "últimas unidades", "peças", "pronta-entrega". PERMITIDO: carta de crédito, contemplação, parcelas, planejamento, sonho realizado.`
     : "";
 
+  const brief = (briefing || "").toString().trim().slice(0, 2500);
+  const blocoBriefing = brief
+    ? `\n========================================
+📝 TEXTO/CONTEXTO ESCRITO PELO DONO (PRIORIDADE MÁXIMA — é a MENSAGEM que ele quer comunicar):
+"${brief}"
+
+COMO USAR:
+- Esta é a MENSAGEM CENTRAL do post. As 3 opções DEVEM comunicar ESTA ideia, com as palavras/argumentos dele reescritos com qualidade publicitária.
+- A imagem é apenas o VISUAL de apoio. NÃO descreva a imagem, NÃO transforme a descrição visual em legenda.
+- Respeite o TOM e a TEMÁTICA do texto do dono (institucional, técnico, comemorativo, provocativo...). NÃO invente oferta, preço ou urgência que não esteja nele.
+- Se o texto citar tecnologia, diferencial ou frase de efeito (ex: "é uma gota no oceano"), aproveite isso.
+========================================\n`
+    : "";
+
   const prompt = `Você é copywriter sênior de redes sociais. Crie 3 VARIAÇÕES CURTAS de post para ${rede.toUpperCase()} sobre o produto/tema abaixo.
 ${guiaTom}${regraConsorcio}
-
+${blocoBriefing}
 DADOS:
 - Nome/tema: ${produto.nome}
-${produto.descricao ? `- Contexto/imagem: ${produto.descricao}\n  (a legenda DEVE conversar com esse contexto — nunca contrarie o visual)` : ""}
+${produto.descricao ? `- ${brief ? "Visual de apoio (NÃO descreva, só não contrarie)" : "Contexto/imagem"}: ${produto.descricao}` : ""}
 ${preco ? `- Preço: ${preco}` : "- Preço: não citar valor"}
 ${produto.categoria ? `- Categoria: ${produto.categoria}` : ""}
 ${temLink ? `- Link: ${produto.link}` : "- SEM link (post de engajamento/institucional)"}
@@ -2271,6 +2286,7 @@ REGRAS DURAS (valem pra TODAS as 3 opções):
 - ${ctaBase}
 - 5-8 hashtags no fim, relevantes, separadas por espaço.
 - NUNCA invente: preço, desconto, "%", "só hoje", "estoque", "últimas unidades", "vagas limitadas", depoimentos, números de clientes.
+- NUNCA escreva "Conteúdo da imagem", "Nesta imagem", "A arte mostra" ou qualquer descrição do visual.
 - Se briefing cita PESSOA nomeada (consultor/atleta/cliente), use essa pessoa nas 3 opções.
 - Sem markdown, sem "Aqui está:", sem aspas envolvendo o post.
 
@@ -2285,15 +2301,22 @@ ${brandContext ? `\n🏢 CONTEXTO DA MARCA (BASE — não é produto físico):\n
 Responda APENAS com JSON válido nesta forma exata:
 {"A":"texto da opção A","B":"texto da opção B","C":"texto da opção C"}`;
 
+  // Fallback só entra se a IA falhar 2x. Quando existe briefing do dono, o fallback
+  // usa o TEXTO DELE (nunca a descrição da imagem) — era isso que gerava as 3 opções
+  // idênticas com "Conteúdo da imagem: ...".
   const fallback = (): { A: string; B: string; C: string } => {
-    const base = `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n${(produto.descricao || "").slice(0, 200)}\n\n${temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!"}`.slice(0, limite);
+    const corpo = (brief || produto.descricao || "").toString().replace(/^Conteúdo da imagem:\s*/i, "").trim();
+    const cta = temLink ? `👉 ${produto.link}` : "👉 Chama no direct pra saber mais!";
+    const cabeca = brief ? "" : `🔥 ${produto.nome}${preco ? ` — ${preco}` : ""}\n\n`;
+    const base = `${cabeca}${corpo.slice(0, 380)}\n\n${cta}`.slice(0, limite);
     return { A: base, B: base, C: base };
   };
 
-  try {
+
+  const tentativa = async (): Promise<{ A: string; B: string; C: string } | null> => {
     // Timeout duro: sem isso o fetch pode pendurar e a resposta NUNCA chega no WhatsApp.
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 25000);
+    const timer = setTimeout(() => ac.abort(), 20000);
     let res: Response;
     try {
       res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -2316,26 +2339,36 @@ Responda APENAS com JSON válido nesta forma exata:
     }
     if (!res.ok) {
       console.error("[postar_redes] gemini !ok:", res.status, await res.text());
-      return fallback();
+      return null;
     }
     const data = await res.json();
 
     let txt = (data?.choices?.[0]?.message?.content || "").trim();
     txt = txt.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
     const m = txt.match(/\{[\s\S]*\}/);
-    if (!m) return fallback();
+    if (!m) return null;
     const parsed = JSON.parse(m[0].replace(/,(\s*[}\]])/g, "$1"));
     const clean = (s: unknown) => (typeof s === "string" ? s.trim().slice(0, limite) : "");
     const A = clean(parsed.A) || clean(parsed.opcaoA);
     const B = clean(parsed.B) || clean(parsed.opcaoB);
     const C = clean(parsed.C) || clean(parsed.opcaoC);
-    if (!A || !B || !C) return fallback();
+    if (!A || !B || !C) return null;
     return { A, B, C };
-  } catch (e) {
-    console.error("[postar_redes] gerar 3 opções falhou:", e);
-    return fallback();
+  };
+
+  // 2 tentativas: uma falha de rede/timeout não pode mais derrubar a copy pro fallback pobre.
+  for (let i = 0; i < 2; i++) {
+    try {
+      const r = await tentativa();
+      if (r) return r;
+      console.warn(`[postar_redes] tentativa ${i + 1} sem copy válida`);
+    } catch (e) {
+      console.error(`[postar_redes] tentativa ${i + 1} falhou:`, e);
+    }
   }
+  return fallback();
 }
+
 
 // Wrapper compat: devolve UMA string (a opção A) — mantém API antiga viva pra qualquer chamador residual.
 async function gerarScriptRedesSociais(
@@ -2366,6 +2399,7 @@ type PendingSocialPost = {
   midiaTipo?: "foto" | "video";
   queueRows?: Array<{ id: string; platform: string }>;
   incluirCtaWhatsapp?: boolean;
+  briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
@@ -2382,6 +2416,7 @@ type PendingPostMarkerState = {
   variantSelecionada?: "A" | "B" | "C";
   incluirCtaWhatsapp?: boolean;
   tom?: string;
+  briefing?: string;
 };
 
 function encodePendingPostState(state?: PendingPostMarkerState): string {
@@ -2454,6 +2489,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       variantSelecionada: pending.variantSelecionada,
       incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
       tom: pending.tom,
+      briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
     }),
     updated_at: new Date().toISOString(),
   }));
@@ -2519,6 +2555,7 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     variantes: state?.variantes,
     variantSelecionada: state?.variantSelecionada,
     incluirCtaWhatsapp: state?.incluirCtaWhatsapp,
+    briefing: (state as any)?.briefing,
   };
 }
 
@@ -3060,6 +3097,7 @@ async function updatePendingSocialPostMarker(token: string, pending: PendingSoci
     variantSelecionada: pending.variantSelecionada,
     incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
     tom: pending.tom,
+    briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
   });
   const rowIds = pending.queueRows?.map((r) => r.id).filter(Boolean) ?? [];
   if (rowIds.length > 0) {
@@ -3266,7 +3304,7 @@ async function toolRevisarPostPendente(
     const varEntries = await Promise.all(
       p.redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
+        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx, p.briefing)] as const;
       }),
     );
     variantes = Object.fromEntries(varEntries);
@@ -3516,9 +3554,52 @@ async function toolSalvarMidiaBiblioteca(
   }
 }
 
+// Recupera o TEXTO SUBSTANCIAL mais recente que o dono escreveu nesta conversa
+// (últimos 90 min) pra usar como briefing do post quando ele disser "usa aquele
+// texto que te mandei". Ignora comandos curtos ("posta no feed", "A", "pode postar").
+async function buscarBriefingRecenteDono(userId: string, fromNumber: string): Promise<string> {
+  try {
+    const digits = normalizePhoneBR(fromNumber || "");
+    if (!digits) return "";
+    const tail8 = digits.slice(-8);
+    const { data: convs } = await sb
+      .from("whatsapp_cloud_conversations")
+      .select("id, contact_number")
+      .eq("user_id", userId)
+      .order("last_message_at", { ascending: false })
+      .limit(200);
+    const conv = (convs ?? []).find((c: any) => normalizePhoneBR(c.contact_number || "").slice(-8) === tail8);
+    if (!conv?.id) return "";
+
+    const since = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+    const { data: msgs } = await sb
+      .from("whatsapp_cloud_messages")
+      .select("direction, content, created_at")
+      .eq("conversation_id", conv.id)
+      .eq("direction", "inbound")
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(25);
+
+    const comando = /^(a|b|c|op[cç][aã]o\s*[abc]|sim|ok|pode postar|posta|publica|manda|vai|confirma|feed|story|stories|reels)\b/i;
+    for (const m of msgs ?? []) {
+      const t = String(m.content || "")
+        .replace(/^🎙️\s*Áudio transcrito:\s*/i, "")
+        .trim();
+      if (t.length < 90) continue;
+      if (comando.test(t)) continue;
+      return t.slice(0, 2500);
+    }
+    return "";
+  } catch (e) {
+    console.error("[postar_midia] briefing recente falhou:", e);
+    return "";
+  }
+}
+
 // ---- postar_midia_biblioteca: gera preview de post usando a ÚLTIMA mídia salva em /midias (não busca catálogo) ----
 async function toolPostarMidiaBiblioteca(
-  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean },
+  args: { legenda?: string; nome?: string; preco?: number | string; tom?: string; redes?: string[]; midia_id?: string; formato?: string; incluir_cta_whatsapp?: boolean; briefing?: string; usar_contexto_conversa?: boolean },
   ctx: { userId: string; fromNumber: string },
 ): Promise<string> {
   try {
@@ -3582,8 +3663,21 @@ async function toolPostarMidiaBiblioteca(
     }
     const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
 
+    // BRIEFING DO DONO: texto que ele escreveu e quer que seja a MENSAGEM do post.
+    // Vem explícito da tool (briefing/legenda longa) ou é recuperado da conversa recente
+    // quando ele diz "usa aquele texto que te mandei" (usar_contexto_conversa=true).
+    let briefing = (args?.briefing || "").toString().trim();
+    const legendaArg = (args?.legenda || "").toString().trim();
+    if (!briefing && legendaArg.length >= 120) briefing = legendaArg;
+    if (!briefing && contextoUsuario.length >= 120) briefing = contextoUsuario;
+    if (!briefing && args?.usar_contexto_conversa !== false) {
+      briefing = await buscarBriefingRecenteDono(ctx.userId, ctx.fromNumber);
+      if (briefing) console.log(`[pietro][postar_midia] briefing recuperado da conversa len=${briefing.length}`);
+    }
+    briefing = briefing.slice(0, 2500);
+
     // VÍDEO precisa de contexto do dono (não temos visão de vídeo — não inventar descrição).
-    const legendaDono = (args?.legenda || contextoUsuario || "").toString().trim();
+    const legendaDono = (legendaArg || contextoUsuario || briefing || "").toString().trim();
     if (isVideo && !legendaDono) {
       return JSON.stringify({
         erro: "video_sem_contexto",
@@ -3591,10 +3685,11 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    const nome = (args?.nome || legendaDono || "Produto").toString().trim().slice(0, 120);
+    const nome = (args?.nome || (briefing ? briefing.slice(0, 80) : "") || legendaDono || "Produto").toString().trim().slice(0, 120);
     const descricaoFinal = isVideo
       ? legendaDono  // vídeo: usa direto o texto do dono, sem alucinar
-      : [legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+      : [briefing ? "" : legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+
 
     const produtoLike = {
       nome,
@@ -3628,7 +3723,7 @@ async function toolPostarMidiaBiblioteca(
     // a função encerrava antes de responder ("pedi a copy e não chegou nada").
     const redeBase: "facebook" | "instagram" = redes.includes("instagram") ? "instagram" : "facebook";
     console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
-    const opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx);
+    const opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx, briefing || undefined);
     console.log(`[pietro][postar_midia] copy gerada lenA=${opcoesBase.A.length}`);
     let variantes: Record<string, PostVariantes> = Object.fromEntries(redes.map((r) => [r, { ...opcoesBase }]));
     let scripts: Record<string, string> = Object.fromEntries(redes.map((r) => [r, opcoesBase.A]));
@@ -3653,7 +3748,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
@@ -4071,11 +4166,13 @@ const TOOLS = [
     type: "function",
     function: {
       name: "postar_midia_biblioteca",
-      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Nunca use para cliente/contato. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
+      description: "🟢 USE SOMENTE quando o DONO/RESPONSÁVEL pedir pra POSTAR/DIVULGAR nas redes usando a foto/vídeo que ele ACABOU DE ENVIAR. Nunca use para cliente/contato. Pega a ÚLTIMA mídia salva em /midias. FORMATO: 'story' (foto ou vídeo 9:16), 'reels' (só vídeo, IG/FB), 'feed' (default). Se o dono disser 'reels' passe formato='reels'; 'story'/'stories' → 'story'; senão 'feed'. Para VÍDEO, sempre passe a legenda que o dono forneceu — não invente descrição de vídeo. ⚠️ BRIEFING (MUITO IMPORTANTE): se o dono ESCREVEU um texto/contexto nesta conversa (mesmo em mensagens anteriores) e pediu pra usar aquele texto/aquele contexto/aquela ideia no post, COPIE esse texto INTEIRO no parâmetro 'briefing'. A legenda deve comunicar a MENSAGEM DELE — a imagem é só o visual. Se ele se referir a um texto que mandou antes e você não tiver o texto em mãos, passe usar_contexto_conversa=true. CTA DE WHATSAPP: passe incluir_cta_whatsapp=true SÓ SE o dono pedir explicitamente (ex: 'posta com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA').",
       parameters: {
         type: "object",
         properties: {
           legenda: { type: "string", description: "Texto/legenda que o cliente falou junto." },
+          briefing: { type: "string", description: "TEXTO INTEGRAL escrito pelo dono que deve ser a MENSAGEM CENTRAL do post (argumentos, diferenciais, tema, frase de efeito). Copie literalmente da conversa, sem resumir. Tem prioridade sobre a descrição visual da imagem." },
+          usar_contexto_conversa: { type: "boolean", description: "true quando o dono se referir a um texto que ele já mandou antes ('usa aquele texto que te mandei', 'pega o contexto que escrevi') e você não tiver o texto pra copiar no briefing. O sistema busca o último texto longo dele na conversa." },
           nome: { type: "string", description: "Nome do produto/item, se informado." },
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
@@ -4084,6 +4181,7 @@ const TOOLS = [
           incluir_cta_whatsapp: { type: "boolean", description: "OPT-IN. true = adiciona '📱 Fale comigo no WhatsApp: wa.me/<numero_do_agente>' em SANDUÍCHE (no INÍCIO E no FIM) da legenda de todas as redes escolhidas. Idempotente: limpa CTA antigo antes de reaplicar (nunca triplica). Nunca inclua automaticamente — só quando o dono pedir com palavras claras ('com meu whatsapp', 'inclui meu whatsapp', 'põe o CTA')." },
         },
       },
+
     },
   },
   {
