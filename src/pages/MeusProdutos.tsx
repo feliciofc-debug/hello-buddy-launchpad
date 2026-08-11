@@ -2091,7 +2091,9 @@ export default function MeusProdutos() {
               </React.Fragment>
             ))}
           </div>
+          </>
         )}
+
         
         {/* PAINEL DE DEBUG DE CAMPANHAS */}
         <div className="mt-8">
