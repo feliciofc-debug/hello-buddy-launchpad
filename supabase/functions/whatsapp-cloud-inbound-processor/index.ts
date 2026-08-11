@@ -3300,7 +3300,7 @@ async function toolRevisarPostPendente(
     const varEntries = await Promise.all(
       p.redes.map(async (r) => {
         const redeGen = r === "tiktok" ? "instagram" : (r as "facebook" | "instagram");
-        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx)] as const;
+        return [r, await gerarTresOpcoesRedeSocial(produtoLike, tom, redeGen, ajuste, brandCtx, p.briefing)] as const;
       }),
     );
     variantes = Object.fromEntries(varEntries);
@@ -3719,7 +3719,7 @@ async function toolPostarMidiaBiblioteca(
     // a função encerrava antes de responder ("pedi a copy e não chegou nada").
     const redeBase: "facebook" | "instagram" = redes.includes("instagram") ? "instagram" : "facebook";
     console.log(`[pietro][postar_midia] gerando copy redes=${redes.join(",")} base=${redeBase} formato=${formato}`);
-    const opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx);
+    const opcoesBase = await gerarTresOpcoesRedeSocial(produtoLike, tom, redeBase, undefined, brandCtx, briefing || undefined);
     console.log(`[pietro][postar_midia] copy gerada lenA=${opcoesBase.A.length}`);
     let variantes: Record<string, PostVariantes> = Object.fromEntries(redes.map((r) => [r, { ...opcoesBase }]));
     let scripts: Record<string, string> = Object.fromEntries(redes.map((r) => [r, opcoesBase.A]));
@@ -3744,7 +3744,7 @@ async function toolPostarMidiaBiblioteca(
     }
 
     const token = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta };
+    const pending: PendingSocialPost = { produto: produtoLike, tom, redes, scripts, variantes, variantSelecionada: "A", userId: ctx.userId, createdAt: Date.now(), formato, midiaTipo: produtoLike.midia_tipo, incluirCtaWhatsapp: incluirCta, briefing: briefing || undefined };
     const queueRows = await persistPendingSocialPost(token, pending);
     PENDING_POSTS.set(token, { ...pending, queueRows });
 
