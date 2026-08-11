@@ -2230,6 +2230,7 @@ async function gerarTresOpcoesRedeSocial(
   rede: "facebook" | "instagram",
   ajuste?: string,
   brandContext?: string,
+  briefing?: string,
 ): Promise<{ A: string; B: string; C: string }> {
   const tomLabel = (tom || "beneficio").toLowerCase();
   const guia: Record<string, string> = {
