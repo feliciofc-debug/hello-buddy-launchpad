@@ -2488,6 +2488,7 @@ async function persistPendingSocialPost(token: string, pending: PendingSocialPos
       variantSelecionada: pending.variantSelecionada,
       incluirCtaWhatsapp: pending.incluirCtaWhatsapp,
       tom: pending.tom,
+      briefing: pending.briefing ? pending.briefing.slice(0, 1200) : undefined,
     }),
     updated_at: new Date().toISOString(),
   }));
@@ -2553,6 +2554,7 @@ async function loadPendingSocialPost(token: string, userId: string): Promise<Pen
     variantes: state?.variantes,
     variantSelecionada: state?.variantSelecionada,
     incluirCtaWhatsapp: state?.incluirCtaWhatsapp,
+    briefing: (state as any)?.briefing,
   };
 }
 
