@@ -3658,8 +3658,21 @@ async function toolPostarMidiaBiblioteca(
     }
     const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
 
+    // BRIEFING DO DONO: texto que ele escreveu e quer que seja a MENSAGEM do post.
+    // Vem explícito da tool (briefing/legenda longa) ou é recuperado da conversa recente
+    // quando ele diz "usa aquele texto que te mandei" (usar_contexto_conversa=true).
+    let briefing = (args?.briefing || "").toString().trim();
+    const legendaArg = (args?.legenda || "").toString().trim();
+    if (!briefing && legendaArg.length >= 120) briefing = legendaArg;
+    if (!briefing && contextoUsuario.length >= 120) briefing = contextoUsuario;
+    if (!briefing && args?.usar_contexto_conversa !== false) {
+      briefing = await buscarBriefingRecenteDono(ctx.userId, ctx.fromNumber);
+      if (briefing) console.log(`[pietro][postar_midia] briefing recuperado da conversa len=${briefing.length}`);
+    }
+    briefing = briefing.slice(0, 2500);
+
     // VÍDEO precisa de contexto do dono (não temos visão de vídeo — não inventar descrição).
-    const legendaDono = (args?.legenda || contextoUsuario || "").toString().trim();
+    const legendaDono = (legendaArg || contextoUsuario || briefing || "").toString().trim();
     if (isVideo && !legendaDono) {
       return JSON.stringify({
         erro: "video_sem_contexto",
@@ -3667,10 +3680,11 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    const nome = (args?.nome || legendaDono || "Produto").toString().trim().slice(0, 120);
+    const nome = (args?.nome || (briefing ? briefing.slice(0, 80) : "") || legendaDono || "Produto").toString().trim().slice(0, 120);
     const descricaoFinal = isVideo
       ? legendaDono  // vídeo: usa direto o texto do dono, sem alucinar
-      : [legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+      : [briefing ? "" : legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+
 
     const produtoLike = {
       nome,
