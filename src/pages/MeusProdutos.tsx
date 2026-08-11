@@ -789,6 +789,9 @@ export default function MeusProdutos() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
   
   const [isFacebookModalOpen, setIsFacebookModalOpen] = useState(false);
   const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
