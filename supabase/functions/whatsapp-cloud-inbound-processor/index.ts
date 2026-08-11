@@ -2399,6 +2399,7 @@ type PendingSocialPost = {
   midiaTipo?: "foto" | "video";
   queueRows?: Array<{ id: string; platform: string }>;
   incluirCtaWhatsapp?: boolean;
+  briefing?: string; // texto escrito pelo dono que é a MENSAGEM do post (prioridade sobre o visual)
 };
 const PENDING_POSTS = new Map<string, PendingSocialPost>();
 function pendingCleanup() {
