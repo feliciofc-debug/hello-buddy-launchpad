@@ -789,6 +789,9 @@ export default function MeusProdutos() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
   
   const [isFacebookModalOpen, setIsFacebookModalOpen] = useState(false);
   const [facebookProduct, setFacebookProduct] = useState<Product | null>(null);
@@ -1267,6 +1270,40 @@ export default function MeusProdutos() {
     }
   };
 
+  const toggleSelected = (productId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(productId) ? prev.filter((id) => id !== productId) : [...prev, productId]
+    );
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Excluir ${selectedIds.length} produto(s) selecionado(s)? Esta ação não pode ser desfeita.`)) return;
+
+    setIsBulkDeleting(true);
+    try {
+      const userId = (await supabase.auth.getUser()).data.user?.id || '';
+      const { error } = await supabase
+        .from('produtos')
+        .delete()
+        .in('id', selectedIds)
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      toast.success(`${selectedIds.length} produto(s) excluído(s)`);
+      setSelectedIds([]);
+      fetchProducts();
+    } catch (error: any) {
+      console.error('Erro ao excluir produtos:', error);
+      toast.error(error?.message || 'Erro ao excluir produtos');
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
+
+
   const handleCreateCampaign = (product: Product) => {
     setSelectedProduct(product);
     setSelectedCampanha(null);
@@ -1631,12 +1668,61 @@ export default function MeusProdutos() {
             </CardContent>
           </Card>
         ) : (
+          <>
+          {/* BARRA DE SELEÇÃO EM MASSA */}
+          <Card className="border-primary/30">
+            <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="select-all-products"
+                  checked={selectedIds.length > 0 && selectedIds.length === filteredProducts.length}
+                  onCheckedChange={(checked) =>
+                    setSelectedIds(checked ? filteredProducts.map((p) => p.id) : [])
+                  }
+                />
+                <label htmlFor="select-all-products" className="text-sm font-medium cursor-pointer">
+                  Selecionar tudo ({filteredProducts.length})
+                </label>
+                {selectedIds.length > 0 && (
+                  <Badge variant="secondary">{selectedIds.length} selecionado(s)</Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedIds.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>
+                    Limpar seleção
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="gap-2"
+                  disabled={selectedIds.length === 0 || isBulkDeleting}
+                  onClick={handleBulkDelete}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {isBulkDeleting ? 'Excluindo...' : `Confirmar e apagar (${selectedIds.length})`}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => (
               <React.Fragment key={product.id}>
               <div className="space-y-4">
-              <Card className="hover:shadow-lg transition-all duration-300">
+              <Card className={`hover:shadow-lg transition-all duration-300 ${selectedIds.includes(product.id) ? 'ring-2 ring-destructive' : ''}`}>
                 <CardHeader>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Checkbox
+                      checked={selectedIds.includes(product.id)}
+                      onCheckedChange={() => toggleSelected(product.id)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {selectedIds.includes(product.id) ? 'Marcado para apagar' : 'Selecionar'}
+                    </span>
+                  </div>
+
                   <div className="flex items-start justify-between mb-3">
                     <div className="relative">
                       <ProductImageCarousel
@@ -2005,7 +2091,9 @@ export default function MeusProdutos() {
               </React.Fragment>
             ))}
           </div>
+          </>
         )}
+
         
         {/* PAINEL DE DEBUG DE CAMPANHAS */}
         <div className="mt-8">
