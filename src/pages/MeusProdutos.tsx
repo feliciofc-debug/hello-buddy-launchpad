@@ -1608,7 +1608,52 @@ export default function MeusProdutos() {
 
           <TabsContent value="produtos">
 
+        {/* BARRA DE SELEÇÃO EM MASSA — bem visível */}
+        <Card className="sticky top-2 z-30 mb-4 border-2 border-destructive/60 bg-destructive/10 shadow-lg">
+          <CardContent className="py-4 flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Checkbox
+                id="select-all-products"
+                className="h-6 w-6 border-2 border-destructive data-[state=checked]:bg-destructive data-[state=checked]:text-destructive-foreground"
+                checked={selectedIds.length > 0 && selectedIds.length === filteredProducts.length}
+                onCheckedChange={(checked) =>
+                  setSelectedIds(checked ? filteredProducts.map((p) => p.id) : [])
+                }
+              />
+              <label htmlFor="select-all-products" className="text-base font-bold cursor-pointer">
+                ✅ Selecionar TUDO ({filteredProducts.length})
+              </label>
+              <span className="text-xs text-muted-foreground">
+                Marque tudo e desmarque só o que deve permanecer
+              </span>
+              {selectedIds.length > 0 && (
+                <Badge variant="destructive" className="text-sm">
+                  {selectedIds.length} selecionado(s)
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {selectedIds.length > 0 && (
+                <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>
+                  Limpar seleção
+                </Button>
+              )}
+              <Button
+                variant="destructive"
+                size="lg"
+                className="gap-2 font-bold"
+                disabled={selectedIds.length === 0 || isBulkDeleting}
+                onClick={handleBulkDelete}
+              >
+                <Trash2 className="w-5 h-5" />
+                {isBulkDeleting ? 'Excluindo...' : `Confirmar e apagar (${selectedIds.length})`}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Filtros */}
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -1669,43 +1714,7 @@ export default function MeusProdutos() {
           </Card>
         ) : (
           <>
-          {/* BARRA DE SELEÇÃO EM MASSA */}
-          <Card className="border-primary/30">
-            <CardContent className="py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-              <div className="flex items-center gap-3">
-                <Checkbox
-                  id="select-all-products"
-                  checked={selectedIds.length > 0 && selectedIds.length === filteredProducts.length}
-                  onCheckedChange={(checked) =>
-                    setSelectedIds(checked ? filteredProducts.map((p) => p.id) : [])
-                  }
-                />
-                <label htmlFor="select-all-products" className="text-sm font-medium cursor-pointer">
-                  Selecionar tudo ({filteredProducts.length})
-                </label>
-                {selectedIds.length > 0 && (
-                  <Badge variant="secondary">{selectedIds.length} selecionado(s)</Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {selectedIds.length > 0 && (
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedIds([])}>
-                    Limpar seleção
-                  </Button>
-                )}
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="gap-2"
-                  disabled={selectedIds.length === 0 || isBulkDeleting}
-                  onClick={handleBulkDelete}
-                >
-                  <Trash2 className="w-4 h-4" />
-                  {isBulkDeleting ? 'Excluindo...' : `Confirmar e apagar (${selectedIds.length})`}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProducts.map((product) => (
