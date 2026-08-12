@@ -1022,21 +1022,30 @@ async function toolEditarImagem(
 
   const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
   const modo = (ctx.modo || "").trim().toLowerCase();
-  const preservar = ctx.preservarAmbiente !== false;
+  const isAnuncio = modo === "ficha_tecnica" || modo === "anuncio" || modo === "estudio" || modo === "trocar_ambiente";
+  // Em modo anúncio/ficha técnica o ambiente ORIGINAL deve ser descartado por padrão
+  // (fios, TV, móveis, bagunça de casa nunca podem aparecer numa arte comercial).
+  const preservar = isAnuncio ? ctx.preservarAmbiente === true : ctx.preservarAmbiente !== false;
 
   const blocoTexto = textos.length
     ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
     : `\n\nRegras: NÃO inclua texto, palavras, letras, números ou marcas d'água na imagem.`;
 
-  const blocoModo = modo === "ficha_tecnica" || modo === "anuncio"
-    ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA: resultado publicitário profissional do objeto principal (ex: veículo) — iluminação de estúdio ou golden hour, reflexos limpos, fundo elegante e desfocado, ângulo valorizado. Preserve o modelo, cor, rodas, placa e detalhes reais do objeto: é a MESMA unidade, não um carro genérico.`
+  const blocoModo = isAnuncio
+    ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA — TROCA TOTAL DE AMBIENTE (obrigatório):
+- RECORTE o produto principal da foto e DESCARTE COMPLETAMENTE o cenário original.
+- É PROIBIDO deixar qualquer resquício do local original: fios, tomadas, televisão, monitor, móveis, mesa, sofá, cortina, parede de casa, chão de casa, rodapé, roupa, pessoas ao fundo, papel, embalagens soltas, objetos de fundo, reflexo do ambiente antigo.
+- SUBSTITUA por um set comercial limpo: fundo de estúdio sólido/gradiente sofisticado (ou showroom, quando for veículo), piso levemente reflexivo, iluminação de estúdio com sombra suave sob o produto, profundidade de campo rasa.
+- O RESULTADO deve parecer foto de catálogo/e-commerce profissional: fundo totalmente controlado, zero bagunça, zero distração.
+- Preserve 100% o PRODUTO em si: mesma marca, mesmo rótulo, mesmas cores, mesmo formato, mesmos textos da embalagem, mesma unidade (não troque por outro modelo, não redesenhe o rótulo).`
     : modo === "figurino" || modo === "fantasia" || modo === "roupa"
     ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
     : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
 
   const blocoPreservar = preservar
     ? `\n\n🔒 PRESERVAÇÃO OBRIGATÓRIA: mantenha o mesmo ambiente/cenário, o mesmo enquadramento e as mesmas pessoas (rosto, feições, tom de pele, cabelo) e o mesmo objeto/produto principal identificáveis. Não substitua por outra pessoa/objeto.`
-    : "";
+    : `\n\n🔒 PRESERVE SÓ O PRODUTO: o objeto/produto principal (e rostos, se houver pessoa) deve continuar idêntico e reconhecível. O CENÁRIO pode e DEVE ser recriado do zero.`;
+
 
   try {
     const dataUrlInput = imageInput;
@@ -3928,8 +3937,8 @@ const TOOLS = [
         properties: {
           prompt: { type: "string", description: "Descrição da edição desejada. Ex: 'anúncio profissional desse SUV prata, luz de fim de tarde, fundo elegante desfocado' — mantendo o veículo/pessoa original." },
           textos: { type: "array", items: { type: "string" }, description: "Até 6 frases curtas para APARECEREM escritas na imagem, ao lado do objeto. Ex: ['45.000 km', 'Ano/Modelo 2021/2022', 'Único dono', 'Todas as revisões na concessionária']. Deixe vazio se o usuário não pediu texto na imagem." },
-          modo: { type: "string", enum: ["melhoria", "ficha_tecnica", "figurino"], description: "'ficha_tecnica' = anúncio comercial de produto/veículo com dados ao lado; 'figurino' = trocar roupa/fantasia da pessoa mantendo rosto e ambiente; 'melhoria' = só melhorar a foto." },
-          preservar_ambiente: { type: "boolean", description: "true (padrão) para manter o mesmo cenário/ambiente e as mesmas pessoas. Use false só se ele pedir explicitamente para trocar o cenário." },
+          modo: { type: "string", enum: ["melhoria", "ficha_tecnica", "figurino"], description: "'ficha_tecnica' = anúncio comercial de produto/veículo: o cenário original é DESCARTADO e o produto vai pra um set de estúdio/showroom limpo (use SEMPRE que ele pedir anúncio, arte, 'ambiente bonito', 'fundo profissional', ou quando a foto tiver bagunça de casa: fios, TV, móveis); 'figurino' = trocar roupa/fantasia mantendo rosto e ambiente; 'melhoria' = só melhorar nitidez/luz mantendo a cena." },
+          preservar_ambiente: { type: "boolean", description: "Omita normalmente. Em modo 'ficha_tecnica' o cenário é trocado por padrão — só passe true se ele pedir EXPLICITAMENTE para manter o local original. Em 'melhoria'/'figurino' o padrão já é manter." },
         },
         required: ["prompt"],
       },
@@ -5083,7 +5092,7 @@ async function runTool(
       media: ctx.media,
       textos: Array.isArray(args?.textos) ? args.textos : [],
       modo: args?.modo,
-      preservarAmbiente: args?.preservar_ambiente !== false,
+      preservarAmbiente: typeof args?.preservar_ambiente === "boolean" ? args.preservar_ambiente : undefined,
     });
 
     let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
@@ -6966,7 +6975,7 @@ Regras:
     const inboundFromOwner = fromIsOwner;
     const mediaBlock = media.length > 0
       ? inboundFromOwner
-        ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, montar ANÚNCIO, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo) ou modo='figurino' (troca de roupa mantendo rosto e cenário).\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
+        ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, montar ANÚNCIO, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo — TROCA o ambiente por estúdio/showroom limpo, tirando fios, TV, móveis e bagunça da foto) ou modo='figurino' (troca de roupa mantendo rosto e cenário). Se ele pedir 'ambiente bonito', 'fundo profissional' ou 'ambiente para anúncio', use modo='ficha_tecnica' e NÃO passe preservar_ambiente.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
         : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta — trate como cliente, NUNCA como "chefe"/"dono".\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia (uso interno, não comente com o cliente).\n- DEPOIS: OLHE a foto/vídeo, IDENTIFIQUE o teor (o que aparece — produto, documento, print, situação, etc.) e responda naturalmente comentando o que viu. Se o cliente fez uma pergunta ou pedido junto (ex: "esse produto tem?", "quanto custa?", "vocês fazem isso?"), TIRE A DÚVIDA dele com base no que dá pra ver + contexto do negócio.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Só DEPOIS de comentar a foto e responder a dúvida, PERGUNTE se ele quer que você encaminhe essa foto/recado pro responsável (Marcelo). Só chame encaminhar_recado_ao_dono se ele CONFIRMAR que quer encaminhar (ou já pediu explicitamente na mesma mensagem).`
       : "";
 
