@@ -5136,6 +5136,12 @@ async function runTool(
   if (name === "salvar_midia_biblioteca") return { result: await toolSalvarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "postar_midia_biblioteca") return { result: await toolPostarMidiaBiblioteca(args ?? {}, ctx) };
   if (name === "criar_carrossel") return { result: await toolCriarCarrossel(args ?? {}, ctx) };
+  if (name === "criar_anuncio") {
+    const r = await toolCriarAnuncio(args ?? {}, ctx);
+    let parsed: any = {}; try { parsed = JSON.parse(r); } catch {}
+    return { result: r, imageUrl: parsed?.image_url };
+  }
+
   if (name === "encaminhar_recado_ao_dono") return { result: await toolEncaminharRecadoAoDono(args ?? {}, ctx) };
   if (name === "registrar_lead_novo") return { result: await toolRegistrarLeadNovo(args ?? {}, ctx) };
 
