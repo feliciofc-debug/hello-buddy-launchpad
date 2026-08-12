@@ -2376,7 +2376,7 @@ async function gerarTresOpcoesRedeSocial(
 
 COMO USAR:
 - Esta é a MENSAGEM CENTRAL do post. As 3 opções DEVEM comunicar ESTA ideia, com as palavras/argumentos dele reescritos com qualidade publicitária.
-- A imagem é apenas o VISUAL de apoio. NÃO descreva a imagem, NÃO transforme a descrição visual em legenda.
+- A imagem é o VISUAL de apoio: NÃO descreva a imagem, mas o post TEM que ser coerente com o item mostrado nela (se a imagem é um produto, o post é sobre esse produto — o texto do dono só define o ângulo/tom).
 - Respeite o TOM e a TEMÁTICA do texto do dono (institucional, técnico, comemorativo, provocativo...). NÃO invente oferta, preço ou urgência que não esteja nele.
 - Se o texto citar tecnologia, diferencial ou frase de efeito (ex: "é uma gota no oceano"), aproveite isso.
 ========================================\n`
@@ -3678,9 +3678,10 @@ async function toolSalvarMidiaBiblioteca(
 }
 
 // Recupera o TEXTO SUBSTANCIAL mais recente que o dono escreveu nesta conversa
-// (últimos 90 min) pra usar como briefing do post quando ele disser "usa aquele
-// texto que te mandei". Ignora comandos curtos ("posta no feed", "A", "pode postar").
-async function buscarBriefingRecenteDono(userId: string, fromNumber: string): Promise<string> {
+// SOMENTE quando ele pede explicitamente ("usa aquele texto que te mandei").
+// Janela curta (padrão 20 min) e, se informado, só mensagens POSTERIORES ao envio
+// da mídia — evita pegar assunto antigo e gerar post fora de contexto.
+async function buscarBriefingRecenteDono(userId: string, fromNumber: string, afterISO?: string): Promise<string> {
   try {
     const digits = normalizePhoneBR(fromNumber || "");
     if (!digits) return "";
@@ -3694,7 +3695,8 @@ async function buscarBriefingRecenteDono(userId: string, fromNumber: string): Pr
     const conv = (convs ?? []).find((c: any) => normalizePhoneBR(c.contact_number || "").slice(-8) === tail8);
     if (!conv?.id) return "";
 
-    const since = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+    const janela = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const since = afterISO && afterISO > janela ? afterISO : janela;
     const { data: msgs } = await sb
       .from("whatsapp_cloud_messages")
       .select("direction, content, created_at")
@@ -3703,6 +3705,7 @@ async function buscarBriefingRecenteDono(userId: string, fromNumber: string): Pr
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(25);
+
 
     const comando = /^(a|b|c|op[cç][aã]o\s*[abc]|sim|ok|pode postar|posta|publica|manda|vai|confirma|feed|story|stories|reels)\b/i;
     for (const m of msgs ?? []) {
@@ -3787,14 +3790,17 @@ async function toolPostarMidiaBiblioteca(
     const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
 
     // BRIEFING DO DONO: texto que ele escreveu e quer que seja a MENSAGEM do post.
-    // Vem explícito da tool (briefing/legenda longa) ou é recuperado da conversa recente
-    // quando ele diz "usa aquele texto que te mandei" (usar_contexto_conversa=true).
+    // Vem explícito da tool (briefing/legenda longa) ou do contexto salvo com a mídia.
+    // ⚠️ A recuperação automática da conversa SÓ acontece quando o dono pede
+    // explicitamente (usar_contexto_conversa === true) e apenas com mensagens
+    // POSTERIORES ao envio da mídia — antes disso ela pegava assunto antigo e
+    // gerava post totalmente fora de contexto.
     let briefing = (args?.briefing || "").toString().trim();
     const legendaArg = (args?.legenda || "").toString().trim();
     if (!briefing && legendaArg.length >= 120) briefing = legendaArg;
     if (!briefing && contextoUsuario.length >= 120) briefing = contextoUsuario;
-    if (!briefing && args?.usar_contexto_conversa !== false) {
-      briefing = await buscarBriefingRecenteDono(ctx.userId, ctx.fromNumber);
+    if (!briefing && args?.usar_contexto_conversa === true) {
+      briefing = await buscarBriefingRecenteDono(ctx.userId, ctx.fromNumber, midia.created_at as string | undefined);
       if (briefing) console.log(`[pietro][postar_midia] briefing recuperado da conversa len=${briefing.length}`);
     }
     briefing = briefing.slice(0, 2500);
@@ -3808,10 +3814,16 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    const nome = (args?.nome || (briefing ? briefing.slice(0, 80) : "") || legendaDono || "Produto").toString().trim().slice(0, 120);
+    // Foto: a descrição visual SEMPRE entra (mesmo com briefing) — o post é sobre
+    // a imagem enviada; o briefing define o ângulo, não substitui o assunto.
+    const nome = (args?.nome
+      || (descricaoVisual ? descricaoVisual.slice(0, 80) : "")
+      || (briefing ? briefing.slice(0, 80) : "")
+      || legendaDono
+      || "Produto").toString().trim().slice(0, 120);
     const descricaoFinal = isVideo
       ? legendaDono  // vídeo: usa direto o texto do dono, sem alucinar
-      : [briefing ? "" : legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+      : [legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
 
 
     const produtoLike = {
@@ -3827,19 +3839,18 @@ async function toolPostarMidiaBiblioteca(
       midia_tipo: isVideo ? ("video" as const) : ("foto" as const),
     };
 
-    // Foto E vídeo: gerar script vendedor por IA usando o contexto do dono como INSUMO
-    // (não como legenda final). Vídeo sem visão automática usa apenas o contexto textual;
-    // foto usa contexto + descrição visual. Isso restaura a copy rica pro vídeo sem reabrir
-    // o loop de contexto (contexto já está persistido em midias_whatsapp.contexto_original).
-    // Detecta se a mídia é da MARCA AMZ (logo/institucional) — quando o contexto/descrição
-    // menciona AMZ, amzofertas, "logo", ou está vazio (dono só mandou a arte). Nesse caso
-    // injeta o brand context pro script falar das TECNOLOGIAS reais da plataforma, não
-    // alucinar produto físico ("maleta", "kit", "estoque").
+    // Detecta mídia INSTITUCIONAL da marca AMZ (arte/logo, sem produto concreto).
+    // Só injeta o pitch da plataforma quando NÃO existe descrição visual de produto —
+    // senão a copy virava propaganda da AMZ em cima da foto de um produto do cliente.
     const contextoLower = `${legendaDono} ${descricaoVisual}`.toLowerCase();
-    const isBrandContent = /\bamz\s*ofertas\b|\bamz\b|amzofertas|\blogo\s*(da|do)?\s*(amz|empresa|marca)?\b|institucional|nossa\s+plataforma/i.test(contextoLower)
-      || (!legendaDono.trim() && (!descricaoVisual || descricaoVisual.length < 40));
+    const temProdutoVisivel = !isVideo && descricaoVisual.trim().length >= 40;
+    const isBrandContent = !temProdutoVisivel && (
+      /\bamz\s*ofertas\b|amzofertas|institucional|nossa\s+plataforma/i.test(contextoLower)
+      || (!legendaDono.trim() && (!descricaoVisual || descricaoVisual.length < 40))
+    );
     const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
     if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
+
 
     // Gera as 3 opções UMA vez (rede-base) e reaproveita nas demais redes.
     // Antes gerava 1 chamada de IA por rede em paralelo — dobrava a latência e às vezes
@@ -4301,7 +4312,7 @@ const TOOLS = [
         properties: {
           legenda: { type: "string", description: "Texto/legenda que o cliente falou junto." },
           briefing: { type: "string", description: "TEXTO INTEGRAL escrito pelo dono que deve ser a MENSAGEM CENTRAL do post (argumentos, diferenciais, tema, frase de efeito). Copie literalmente da conversa, sem resumir. Tem prioridade sobre a descrição visual da imagem." },
-          usar_contexto_conversa: { type: "boolean", description: "true quando o dono se referir a um texto que ele já mandou antes ('usa aquele texto que te mandei', 'pega o contexto que escrevi') e você não tiver o texto pra copiar no briefing. O sistema busca o último texto longo dele na conversa." },
+          usar_contexto_conversa: { type: "boolean", description: "Use SOMENTE se o dono, NESTA mensagem, se referir a um texto que ele mandou logo antes junto com essa mídia ('usa aquele texto que te mandei agora', 'pega o contexto que escrevi'). NUNCA passe true quando ele só disser 'posta no feed/story/reels' — nesse caso o post é sobre a FOTO enviada, e puxar assunto antigo gera post errado." },
           nome: { type: "string", description: "Nome do produto/item, se informado." },
           preco: { type: "string", description: "Preço se informado (ex: '29,99')." },
           tom: { type: "string", enum: ["urgencia", "escassez", "black-friday", "prova-social", "beneficio"] },
