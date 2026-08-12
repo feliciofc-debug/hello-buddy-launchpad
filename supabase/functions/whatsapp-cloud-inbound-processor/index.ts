@@ -978,22 +978,68 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
   }
 }
 
-// ---- editar_imagem: edita/melhora foto que o usuário mandou (usa última imagem do turno) ----
+// ---- editar_imagem: edita/melhora foto enviada (turno atual ou última foto recente da biblioteca) ----
 async function toolEditarImagem(
   prompt: string,
-  ctx: { userId: string; media?: MediaExtract[] },
+  ctx: {
+    userId: string;
+    media?: MediaExtract[];
+    textos?: string[];
+    modo?: string;
+    preservarAmbiente?: boolean;
+  },
 ): Promise<string> {
   const clean = (prompt || "").trim();
   if (!clean) return JSON.stringify({ erro: "prompt vazio" });
+
+  // 1) imagem do turno atual; 2) fallback: última foto recente da biblioteca (30 min)
+  let imageInput: string | null = null;
   const img = (ctx.media || []).slice().reverse().find((m) => m.kind === "image");
-  if (!img) {
+  if (img) {
+    imageInput = `data:${img.mime};base64,${img.base64}`;
+  } else {
+    try {
+      const cutoff = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+      const { data: rec } = await sb
+        .from("midias_whatsapp")
+        .select("midia_url, created_at")
+        .eq("user_id", ctx.userId)
+        .eq("tipo", "foto")
+        .gte("created_at", cutoff)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (rec?.[0]?.midia_url) imageInput = rec[0].midia_url as string;
+    } catch (e) {
+      console.warn("[editar_imagem] fallback midias falhou:", (e as Error).message);
+    }
+  }
+  if (!imageInput) {
     return JSON.stringify({
       erro: "sem_imagem",
       instrucao: "Peça ao usuário para enviar a foto no mesmo momento do pedido de edição.",
     });
   }
+
+  const textos = (ctx.textos || []).map((t) => String(t || "").trim()).filter(Boolean).slice(0, 6);
+  const modo = (ctx.modo || "").trim().toLowerCase();
+  const preservar = ctx.preservarAmbiente !== false;
+
+  const blocoTexto = textos.length
+    ? `\n\n📝 TEXTOS QUE DEVEM APARECER NA IMAGEM (obrigatório, escreva EXATAMENTE assim, sem inventar nem traduzir):\n${textos.map((t) => `- "${t}"`).join("\n")}\nRegras da tipografia:\n- Posicione as informações AO LADO (ou em faixa lateral/inferior) do objeto principal, em área limpa, NUNCA cobrindo o produto, rostos ou placa.\n- Fonte sans-serif moderna, legível, alinhada, hierarquia clara (destaque no dado mais forte).\n- Fundo sutil atrás do texto (faixa translúcida ou bloco sólido) para garantir contraste.\n- Sem erros de ortografia, sem letras cortadas, sem repetir o mesmo texto duas vezes.\n- Não adicione NENHUM outro texto além dos listados acima.`
+    : `\n\nRegras: NÃO inclua texto, palavras, letras, números ou marcas d'água na imagem.`;
+
+  const blocoModo = modo === "ficha_tecnica" || modo === "anuncio"
+    ? `\n\n🎯 MODO ANÚNCIO/FICHA TÉCNICA: resultado publicitário profissional do objeto principal (ex: veículo) — iluminação de estúdio ou golden hour, reflexos limpos, fundo elegante e desfocado, ângulo valorizado. Preserve o modelo, cor, rodas, placa e detalhes reais do objeto: é a MESMA unidade, não um carro genérico.`
+    : modo === "figurino" || modo === "fantasia" || modo === "roupa"
+    ? `\n\n🎯 MODO FIGURINO: troque APENAS a roupa/fantasia da pessoa conforme o pedido. É OBRIGATÓRIO manter o MESMO rosto, mesma idade, mesmo corte de cabelo, mesma pele, mesma pose e o MESMO AMBIENTE/fundo (mesmos móveis, mesma luz, mesmo enquadramento). Não troque o cenário, não deixe a pessoa parecida com outra criança/adulto, não gere desenho — fotorealista.`
+    : `\n\n🎯 MODO MELHORIA: eleve a qualidade (nitidez, cor, luz, composição) mantendo a cena reconhecível.`;
+
+  const blocoPreservar = preservar
+    ? `\n\n🔒 PRESERVAÇÃO OBRIGATÓRIA: mantenha o mesmo ambiente/cenário, o mesmo enquadramento e as mesmas pessoas (rosto, feições, tom de pele, cabelo) e o mesmo objeto/produto principal identificáveis. Não substitua por outra pessoa/objeto.`
+    : "";
+
   try {
-    const dataUrlInput = `data:${img.mime};base64,${img.base64}`;
+    const dataUrlInput = imageInput;
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${LOVABLE_API_KEY}` },
@@ -1005,7 +1051,7 @@ async function toolEditarImagem(
             content: [
               {
                 type: "text",
-                text: `Edite esta foto conforme o pedido abaixo, preservando pessoas, rostos e o produto/objeto principal reconhecíveis. Apenas melhore ambiente, iluminação, cores, fundo e composição.\n\nPedido: ${clean}\n\nRegras: sem texto, palavras, letras ou marcas d'água na imagem. Resultado fotorealista de alta qualidade.`,
+                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
               },
               { type: "image_url", image_url: { url: dataUrlInput } },
             ],
@@ -1015,6 +1061,7 @@ async function toolEditarImagem(
       }),
       signal: AbortSignal.timeout(90000),
     });
+
     if (!res.ok) {
       const t = await res.text();
       return JSON.stringify({ erro: `image_edit ${res.status}`, detalhe: t.slice(0, 200) });
