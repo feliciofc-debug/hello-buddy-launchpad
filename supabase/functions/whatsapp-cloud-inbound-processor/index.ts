@@ -983,10 +983,12 @@ async function toolEditarImagem(
   prompt: string,
   ctx: {
     userId: string;
+    fromNumber?: string;
     media?: MediaExtract[];
     textos?: string[];
     modo?: string;
     preservarAmbiente?: boolean;
+    registrarNaBiblioteca?: boolean;
   },
 ): Promise<string> {
   const clean = (prompt || "").trim();
@@ -1091,7 +1093,44 @@ async function toolEditarImagem(
     if (upErr) return JSON.stringify({ erro: `upload_falhou: ${upErr.message}` });
     const { data: pub } = sb.storage.from("produtos").getPublicUrl(fileName);
     if (!pub?.publicUrl) return JSON.stringify({ erro: "sem_url_publica" });
-    return JSON.stringify({ ok: true, image_url: pub.publicUrl, prompt: clean });
+
+    // 🔒 BLINDAGEM: a imagem MELHORADA precisa entrar na biblioteca /midias como a
+    // mídia MAIS RECENTE. Sem isso, "posta essa imagem" pegava a FOTO ORIGINAL
+    // (salva por salvar_midia_biblioteca) em vez da versão tratada.
+    let midiaId: string | null = null;
+    if (ctx.registrarNaBiblioteca !== false) {
+      try {
+        const { data: novo } = await sb
+          .from("midias_whatsapp")
+          .insert({
+            user_id: ctx.userId,
+            origem: "ia_edicao",
+            telefone_origem: ctx.fromNumber ?? null,
+            tipo: "foto",
+            midia_url: pub.publicUrl,
+            mime_type: mime,
+            tamanho_bytes: bytes.length,
+            contexto_original: [clean, textos.length ? `Dados: ${textos.join(" | ")}` : ""].filter(Boolean).join("\n").slice(0, 1500),
+            status: "pendente",
+          })
+          .select("id")
+          .maybeSingle();
+        midiaId = novo?.id ?? null;
+      } catch (e) {
+        console.warn("[editar_imagem] falhou ao salvar em midias_whatsapp:", (e as Error).message);
+      }
+    }
+
+    return JSON.stringify({
+      ok: true,
+      image_url: pub.publicUrl,
+      prompt: clean,
+      midia_id: midiaId,
+      salvo_em_midias: !!midiaId,
+      instrucao: midiaId
+        ? `A imagem TRATADA foi enviada ao usuário e salva na biblioteca /midias com midia_id="${midiaId}". Se ele pedir pra publicar, chame postar_midia_biblioteca SEMPRE passando midia_id="${midiaId}" — é PROIBIDO publicar a foto original.`
+        : "A imagem tratada foi enviada ao usuário. Se ele pedir pra publicar, use a versão tratada (não a foto original).",
+    });
   } catch (e) {
     return JSON.stringify({ erro: String((e as Error).message) });
   }
@@ -4845,7 +4884,7 @@ async function toolCriarAnuncio(
       try {
         const raw = await toolEditarImagem(
           `Prepare esta foto de ${titulo} para um anúncio comercial premium: recorte/valorize o produto principal, ambiente elegante de showroom com piso reflexivo, iluminação de estúdio, fundo escuro sofisticado e levemente desfocado. É a MESMA unidade da foto original (mesma cor, mesmos detalhes, mesma placa) — não troque por outro modelo.`,
-          { userId: ctx.userId, media: ctx.media, textos: [], modo: "anuncio", preservarAmbiente: false },
+          { userId: ctx.userId, fromNumber: ctx.fromNumber, media: ctx.media, textos: [], modo: "anuncio", preservarAmbiente: false, registrarNaBiblioteca: false },
         );
         const parsed = JSON.parse(raw);
         if (parsed?.image_url) fotoFinal = parsed.image_url;
@@ -5089,6 +5128,7 @@ async function runTool(
   if (name === "editar_imagem") {
     const r = await toolEditarImagem(args?.prompt ?? "", {
       userId: ctx.userId,
+      fromNumber: ctx.fromNumber,
       media: ctx.media,
       textos: Array.isArray(args?.textos) ? args.textos : [],
       modo: args?.modo,
@@ -6975,7 +7015,7 @@ Regras:
     const inboundFromOwner = fromIsOwner;
     const mediaBlock = media.length > 0
       ? inboundFromOwner
-        ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, montar ANÚNCIO, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo — TROCA o ambiente por estúdio/showroom limpo, tirando fios, TV, móveis e bagunça da foto) ou modo='figurino' (troca de roupa mantendo rosto e cenário). Se ele pedir 'ambiente bonito', 'fundo profissional' ou 'ambiente para anúncio', use modo='ficha_tecnica' e NÃO passe preservar_ambiente.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
+        ? `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- O DONO/RESPONSÁVEL ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Foto/vídeo/áudio recebido é MÍDIA LIVRE da biblioteca — NÃO é um produto do catálogo.\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE. Passe em "contexto" o que ele falou (ou "sem contexto" se só mandou o arquivo).\n- É PROIBIDO chamar postar_redes_sociais quando há mídia nova enviada nesta mensagem — aquela tool é SÓ pra produtos do catálogo, nunca pra mídia recém-enviada.\n- 🎨 EDIÇÃO: se ele pedir para MELHORAR a foto, montar ANÚNCIO, escrever dados na imagem (km, ano/modelo, "único dono", preço) ou trocar roupa/fantasia mantendo o ambiente, chame editar_imagem DEPOIS de salvar. Coloque cada dado citado por ele em "textos" (exatamente como ele escreveu) e escolha modo='ficha_tecnica' (produto/veículo — TROCA o ambiente por estúdio/showroom limpo, tirando fios, TV, móveis e bagunça da foto) ou modo='figurino' (troca de roupa mantendo rosto e cenário). Se ele pedir 'ambiente bonito', 'fundo profissional' ou 'ambiente para anúncio', use modo='ficha_tecnica' e NÃO passe preservar_ambiente.\n- ⛔ REGRA DE PUBLICAÇÃO PÓS-EDIÇÃO: se você chamou editar_imagem (ou criar_anuncio) e ele pedir pra POSTAR, a mídia a publicar é SEMPRE a versão TRATADA — chame postar_midia_biblioteca passando o midia_id retornado por aquela tool. É PROIBIDO publicar a foto original enviada por ele.\n- Depois de salvar, responda curto. Só fale de publicar/reusar porque o remetente é o responsável da conta.`
         : `\n\nMÍDIA RECEBIDA AGORA (REGRA CRÍTICA):\n- Um CLIENTE/CONTATO ENVIOU ${media.length} arquivo(s) (foto/vídeo/áudio) nesta mensagem.\n- Esse remetente NÃO é o dono/responsável da conta — trate como cliente, NUNCA como "chefe"/"dono".\n- SEMPRE chame salvar_midia_biblioteca IMEDIATAMENTE para arquivar a mídia (uso interno, não comente com o cliente).\n- DEPOIS: OLHE a foto/vídeo, IDENTIFIQUE o teor (o que aparece — produto, documento, print, situação, etc.) e responda naturalmente comentando o que viu. Se o cliente fez uma pergunta ou pedido junto (ex: "esse produto tem?", "quanto custa?", "vocês fazem isso?"), TIRE A DÚVIDA dele com base no que dá pra ver + contexto do negócio.\n- É PROIBIDO perguntar onde postar, oferecer preparar legenda/post, publicar/reusar em redes ou pedir confirmação de rede/formato.\n- Só DEPOIS de comentar a foto e responder a dúvida, PERGUNTE se ele quer que você encaminhe essa foto/recado pro responsável (Marcelo). Só chame encaminhar_recado_ao_dono se ele CONFIRMAR que quer encaminhar (ou já pediu explicitamente na mesma mensagem).`
       : "";
 
