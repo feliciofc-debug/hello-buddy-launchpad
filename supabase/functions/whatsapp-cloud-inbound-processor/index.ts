@@ -4293,8 +4293,36 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "criar_anuncio",
+      description: "🏷️ Monta um ANÚNCIO PROFISSIONAL de produto (arte pronta pra vender) a partir de uma FOTO enviada + os dados que o responsável falar. Use quando ele disser 'faz um anúncio disso', 'monta a arte desse carro/imóvel/produto', 'cria anúncio com esses dados'. Serve pra qualquer nicho: veículo (km, ano, dono), imóvel (m², quartos, vaga), máquina (horas, ano), produto de loja (garantia, parcelas). O texto, o preço e a LOGO do cliente entram por template (exatos, nunca desenhados pela IA); a IA só melhora a foto. NUNCA invente dado que o usuário não falou. Restrito ao responsável da conta.",
+      parameters: {
+        type: "object",
+        properties: {
+          titulo: { type: "string", description: "Nome do produto em destaque (ex: 'HYUNDAI CRETA 1.0 TURBO', 'APARTAMENTO 2 QUARTOS')." },
+          subtitulo: { type: "string", description: "Complemento curto (ex: 'AUTOMÁTICO 2023/2023', 'BAIRRO CENTRO'). Vazio se não souber." },
+          itens: {
+            type: "array",
+            description: "Lista de 4 a 8 destaques EXATAMENTE como o usuário falou (ex: '38 MIL KM', 'ÚNICO DONO', 'PNEUS NOVOS', 'IPVA PAGO'). Não invente.",
+            items: { type: "string" },
+          },
+          preco: { type: "string", description: "Preço formatado (ex: 'R$ 118.900,00'). Vazio se ele não disse o preço." },
+          preco_label: { type: "string", description: "Rótulo acima do preço (ex: 'À VISTA', 'VALOR', 'A PARTIR DE'). Padrão: VALOR." },
+          badge: { type: "string", description: "Selo de destaque, se houver (ex: 'PINTURA 100% ORIGINAL', 'ÚLTIMA UNIDADE')." },
+          telefone: { type: "string", description: "Telefone de contato pra arte, se o usuário informou." },
+          instagram: { type: "string", description: "@ do Instagram pra arte, se o usuário informou. Vazio = uso o do cadastro." },
+          formato: { type: "string", description: "'feed' (quadrado, padrão) ou 'story' (9:16 vertical)." },
+          melhorar_foto: { type: "boolean", description: "true (padrão) = a IA melhora a foto/ambiente antes de montar. false = usa a foto como está." },
+        },
+        required: ["titulo"],
+      },
+    },
+  },
 
 ];
+
 
 
 
