@@ -2376,7 +2376,7 @@ async function gerarTresOpcoesRedeSocial(
 
 COMO USAR:
 - Esta é a MENSAGEM CENTRAL do post. As 3 opções DEVEM comunicar ESTA ideia, com as palavras/argumentos dele reescritos com qualidade publicitária.
-- A imagem é apenas o VISUAL de apoio. NÃO descreva a imagem, NÃO transforme a descrição visual em legenda.
+- A imagem é o VISUAL de apoio: NÃO descreva a imagem, mas o post TEM que ser coerente com o item mostrado nela (se a imagem é um produto, o post é sobre esse produto — o texto do dono só define o ângulo/tom).
 - Respeite o TOM e a TEMÁTICA do texto do dono (institucional, técnico, comemorativo, provocativo...). NÃO invente oferta, preço ou urgência que não esteja nele.
 - Se o texto citar tecnologia, diferencial ou frase de efeito (ex: "é uma gota no oceano"), aproveite isso.
 ========================================\n`
