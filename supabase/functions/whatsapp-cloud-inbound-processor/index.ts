@@ -3790,14 +3790,17 @@ async function toolPostarMidiaBiblioteca(
     const contextoUsuario = contextoRaw.replace(/\n?\[visão\][\s\S]*/i, "").trim();
 
     // BRIEFING DO DONO: texto que ele escreveu e quer que seja a MENSAGEM do post.
-    // Vem explícito da tool (briefing/legenda longa) ou é recuperado da conversa recente
-    // quando ele diz "usa aquele texto que te mandei" (usar_contexto_conversa=true).
+    // Vem explícito da tool (briefing/legenda longa) ou do contexto salvo com a mídia.
+    // ⚠️ A recuperação automática da conversa SÓ acontece quando o dono pede
+    // explicitamente (usar_contexto_conversa === true) e apenas com mensagens
+    // POSTERIORES ao envio da mídia — antes disso ela pegava assunto antigo e
+    // gerava post totalmente fora de contexto.
     let briefing = (args?.briefing || "").toString().trim();
     const legendaArg = (args?.legenda || "").toString().trim();
     if (!briefing && legendaArg.length >= 120) briefing = legendaArg;
     if (!briefing && contextoUsuario.length >= 120) briefing = contextoUsuario;
-    if (!briefing && args?.usar_contexto_conversa !== false) {
-      briefing = await buscarBriefingRecenteDono(ctx.userId, ctx.fromNumber);
+    if (!briefing && args?.usar_contexto_conversa === true) {
+      briefing = await buscarBriefingRecenteDono(ctx.userId, ctx.fromNumber, midia.created_at as string | undefined);
       if (briefing) console.log(`[pietro][postar_midia] briefing recuperado da conversa len=${briefing.length}`);
     }
     briefing = briefing.slice(0, 2500);
@@ -3811,10 +3814,16 @@ async function toolPostarMidiaBiblioteca(
       });
     }
 
-    const nome = (args?.nome || (briefing ? briefing.slice(0, 80) : "") || legendaDono || "Produto").toString().trim().slice(0, 120);
+    // Foto: a descrição visual SEMPRE entra (mesmo com briefing) — o post é sobre
+    // a imagem enviada; o briefing define o ângulo, não substitui o assunto.
+    const nome = (args?.nome
+      || (descricaoVisual ? descricaoVisual.slice(0, 80) : "")
+      || (briefing ? briefing.slice(0, 80) : "")
+      || legendaDono
+      || "Produto").toString().trim().slice(0, 120);
     const descricaoFinal = isVideo
       ? legendaDono  // vídeo: usa direto o texto do dono, sem alucinar
-      : [briefing ? "" : legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
+      : [legendaDono, descricaoVisual ? `Conteúdo da imagem: ${descricaoVisual}` : ""].filter(Boolean).join("\n").trim();
 
 
     const produtoLike = {
@@ -3830,19 +3839,18 @@ async function toolPostarMidiaBiblioteca(
       midia_tipo: isVideo ? ("video" as const) : ("foto" as const),
     };
 
-    // Foto E vídeo: gerar script vendedor por IA usando o contexto do dono como INSUMO
-    // (não como legenda final). Vídeo sem visão automática usa apenas o contexto textual;
-    // foto usa contexto + descrição visual. Isso restaura a copy rica pro vídeo sem reabrir
-    // o loop de contexto (contexto já está persistido em midias_whatsapp.contexto_original).
-    // Detecta se a mídia é da MARCA AMZ (logo/institucional) — quando o contexto/descrição
-    // menciona AMZ, amzofertas, "logo", ou está vazio (dono só mandou a arte). Nesse caso
-    // injeta o brand context pro script falar das TECNOLOGIAS reais da plataforma, não
-    // alucinar produto físico ("maleta", "kit", "estoque").
+    // Detecta mídia INSTITUCIONAL da marca AMZ (arte/logo, sem produto concreto).
+    // Só injeta o pitch da plataforma quando NÃO existe descrição visual de produto —
+    // senão a copy virava propaganda da AMZ em cima da foto de um produto do cliente.
     const contextoLower = `${legendaDono} ${descricaoVisual}`.toLowerCase();
-    const isBrandContent = /\bamz\s*ofertas\b|\bamz\b|amzofertas|\blogo\s*(da|do)?\s*(amz|empresa|marca)?\b|institucional|nossa\s+plataforma/i.test(contextoLower)
-      || (!legendaDono.trim() && (!descricaoVisual || descricaoVisual.length < 40));
+    const temProdutoVisivel = !isVideo && descricaoVisual.trim().length >= 40;
+    const isBrandContent = !temProdutoVisivel && (
+      /\bamz\s*ofertas\b|amzofertas|institucional|nossa\s+plataforma/i.test(contextoLower)
+      || (!legendaDono.trim() && (!descricaoVisual || descricaoVisual.length < 40))
+    );
     const brandCtx = isBrandContent ? AMZ_BRAND_PITCH : undefined;
     if (isBrandContent) console.log("[pietro][brand_content_detected] injecting AMZ pitch");
+
 
     // Gera as 3 opções UMA vez (rede-base) e reaproveita nas demais redes.
     // Antes gerava 1 chamada de IA por rede em paralelo — dobrava a latência e às vezes
