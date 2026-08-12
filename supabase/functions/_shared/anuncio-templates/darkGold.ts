@@ -344,9 +344,11 @@ function contatoChip(texto: string, d: AnuncioData, compact: boolean): Node {
 
 function rodape(d: AnuncioData, style: Record<string, unknown>, compact: boolean): Node[] {
   const chips: Node[] = [];
-  if (d.telefone) chips.push(contatoChip(`📞 ${d.telefone}`, d, compact));
-  if (d.instagram) chips.push(contatoChip(`📸 ${d.instagram.startsWith("@") ? d.instagram : "@" + d.instagram}`, d, compact));
-  if (d.site) chips.push(contatoChip(`🌐 ${d.site}`, d, compact));
+  // Sem emoji: a fonte embutida (Inter) não tem glifos de emoji e sairia como quadrado.
+  if (d.telefone) chips.push(contatoChip(`Tel. ${d.telefone}`, d, compact));
+  if (d.instagram) chips.push(contatoChip(`${d.instagram.startsWith("@") ? d.instagram : "@" + d.instagram}`, d, compact));
+  if (d.site) chips.push(contatoChip(d.site, d, compact));
+
   if (!chips.length) return [];
   return [el("div", { display: "flex", flexWrap: "wrap", gap: 12, ...style }, chips)];
 }
