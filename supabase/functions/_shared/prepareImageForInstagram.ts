@@ -17,8 +17,18 @@
  * retorna a URL original (rota rápida).
  */
 
-import { decode, Image } from "https://deno.land/x/imagescript@1.2.17/mod.ts";
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+// IMPORTANTE: imagescript é carregado via import DINÂMICO (dentro da função).
+// O import estático baixa/descomprime WASM no boot e, quando o CDN falha
+// ("brotli error"), derruba a Edge Function inteira antes de qualquer código rodar.
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// deno-lint-ignore no-explicit-any
+type Image = any;
+
+async function loadImagescript() {
+  const mod = await import("https://deno.land/x/imagescript@1.2.17/mod.ts");
+  return { decode: mod.decode, Image: mod.Image };
+}
 
 const BUCKET = "produtos";
 const IG_MIN_RATIO = 0.8; // 4:5 retrato
