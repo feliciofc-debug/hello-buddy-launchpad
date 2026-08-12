@@ -856,6 +856,23 @@ async function toolBuscarLugaresNominatim(locRow: any, query: string, radiusMete
   }
 }
 
+// 📐 FORMATO SOCIAL OBRIGATÓRIO — toda imagem do Jarvis já sai pronta pra Instagram
+// (e por consequência serve pro Facebook, que é menos exigente).
+// Padrão: 1:1 quadrado 1080x1080. Só vira 9:16 vertical quando o pedido fala de story/reels.
+function blocoFormatoSocial(pedido?: string): string {
+  const vertical = /\bstor(y|ies)\b|\breels?\b|\bvertical\b|9:16|tela cheia/i.test(pedido || "");
+  return vertical
+    ? `\n\n📐 FORMATO OBRIGATÓRIO — STORY/REELS:
+- Proporção EXATA 9:16 (vertical, 1080x1920 px). Não entregue quadrado nem paisagem.
+- Composição pensada para tela de celular: produto/assunto centralizado, respiro no topo e na base (áreas seguras), nada essencial nos 15% superiores e inferiores.
+- Preencha todo o quadro: sem bordas brancas, sem barras laterais, sem moldura, sem letterbox.`
+    : `\n\n📐 FORMATO OBRIGATÓRIO — FEED INSTAGRAM/FACEBOOK:
+- Proporção EXATA 1:1 (quadrado, 1080x1080 px). Não entregue 16:9, 4:3, panorâmica nem vertical.
+- Enquadre o assunto de forma que nada importante fique cortado no quadrado.
+- Preencha todo o quadro: sem bordas brancas, sem barras laterais, sem moldura, sem letterbox, sem fundo transparente.
+- Qualidade alta, pronta para publicação direta no Instagram e Facebook.`;
+}
+
 // ---- gerar_imagem: cria imagem por IA (Nano Banana), sobe pro storage e salva em /midias ----
 // Padrão IA Marketing: fotorealista, sem texto/letras/marca d'água, iluminação profissional.
 async function toolGerarImagem(
@@ -888,7 +905,7 @@ ${logoDataUrl ? `- A SEGUNDA IMAGEM ANEXADA É A LOGOMARCA OFICIAL DA EMPRESA. R
 - Aplique a logo de forma NATIVA e discreta (canto superior direito ou inferior direito), tamanho pequeno, integrada à iluminação da cena, sem moldura, sem fundo branco atrás e sem efeito de adesivo colado.
 - PROIBIDO: qualquer outro texto, letras, palavras, números, legendas, marcas d'água ou logos além dessa logomarca.` : `- PROIBIDO: qualquer texto, letras, palavras, números, legendas, marcas d'água, logos artificiais, bordas ou molduras.`}
 - PROIBIDO: aparência de IA/CGI barato, plástico, cartoon (a menos que o usuário peça explicitamente).
-- Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.`;
+- Resultado final: parece uma foto tirada por um fotógrafo profissional de marketing.${blocoFormatoSocial(clean)}`;
 
     // Conteúdo multimodal: prompt + logo como IMAGEM DE REFERÊNCIA (quando pedida)
     const userContent: any = logoDataUrl
@@ -1062,7 +1079,7 @@ async function toolEditarImagem(
             content: [
               {
                 type: "text",
-                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
+                text: `Edite esta foto conforme o pedido abaixo.\n\nPedido: ${clean}${blocoModo}${blocoPreservar}${blocoTexto}${blocoFormatoSocial(clean + " " + modo)}\n\nResultado fotorealista de alta qualidade, pronto para publicação.`,
               },
               { type: "image_url", image_url: { url: dataUrlInput } },
             ],
